@@ -129,12 +129,12 @@ function SidebarContent({
       <div className="flex items-center gap-3 px-6 py-4 border-b border-[#FF1493]/20">
         <img 
           src="/merchant/merchant.png" 
-          alt={`${import.meta.env.VITE_APP_NAME || 'Believe'} Merchant`} 
+          alt="BIU Merchant" 
           className="w-10 h-10 object-contain"
         />
         <div className="flex flex-col">
           <span className="text-sm font-bold text-white">
-            {import.meta.env.VITE_APP_NAME || 'Believe'} Merchant
+            BIU Merchant
           </span>
           <span className="text-xs text-gray-400">Dashboard</span>
         </div>

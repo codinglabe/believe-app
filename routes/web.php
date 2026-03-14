@@ -391,13 +391,18 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin|use
 // Merchant Hub Routes (Public - for viewing offers)
 Route::prefix('merchant-hub')->name('merchant-hub.')->group(function () {
     Route::get('/', [App\Http\Controllers\MerchantHubOfferController::class, 'index'])->name('index');
-
+    // SEO-friendly referral: /merchant-hub/offers/8/ref/ABC123 — stores ref in session, redirects to offer
+    Route::get('/offers/{id}/ref/{refCode}', [App\Http\Controllers\MerchantRedemptionController::class, 'offerRefRedirect'])->name('offer.show.ref');
     Route::get('/offers/{id}', [App\Http\Controllers\MerchantHubOfferController::class, 'show'])->name('offer.show');
 });
 
 // Merchant Hub Redemption Routes (Requires auth)
 Route::middleware(['auth', 'EnsureEmailIsVerified'])->prefix('merchant-hub')->name('merchant-hub.')->group(function () {
+    Route::get('/my-purchases', [App\Http\Controllers\MerchantRedemptionController::class, 'myPurchases'])->name('my-purchases');
+    Route::get('/offers/{id}/checkout', [App\Http\Controllers\MerchantRedemptionController::class, 'checkoutShow'])->name('offer.checkout');
+    Route::post('/checkout', [App\Http\Controllers\MerchantRedemptionController::class, 'checkoutStore'])->name('checkout.store');
     Route::post('/redeem', [App\Http\Controllers\MerchantRedemptionController::class, 'redeem'])->name('redeem');
+    Route::get('/redemption/stripe-success', [App\Http\Controllers\MerchantRedemptionController::class, 'stripeSuccess'])->name('redemption.stripe-success');
     Route::get('/redemption/confirmed/{code?}', [App\Http\Controllers\MerchantRedemptionController::class, 'confirmed'])->name('redemption.confirmed');
     Route::get('/redemption/verify/{code}', [App\Http\Controllers\MerchantRedemptionController::class, 'verify'])->name('redemption.verify');
 });

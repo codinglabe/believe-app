@@ -13,7 +13,12 @@ interface Offer {
   slug: string
   title: string
   image: string
+  referencePrice?: number | null
+  discountPercentage?: number | null
+  discountAmount?: number
   pointsRequired: number
+  customerPriceWithPoints?: number
+  communityCashPrice?: number
   cashRequired?: number
   merchantName: string
   merchantId?: string
@@ -47,10 +52,17 @@ interface Props {
   relatedOffers?: RelatedOffer[]
 }
 
+const BIU_CASH_DISCOUNT_PERCENT = 10
+
 export default function HubOfferDetail({ offer, relatedOffers = [] }: Props) {
   const { auth } = usePage().props as any
   const [isFavorite, setIsFavorite] = useState(false)
   const [isProcessing, setIsProcessing] = useState(false)
+  const [paymentMethod, setPaymentMethod] = useState<'points' | 'cash' | null>(null)
+  const userPoints = (auth?.user as any)?.believe_points ?? (auth?.user as any)?.reward_points ?? 0
+  // Show points + cash options when we have retail price or at least a cash price (backend may derive reference from points/discount)
+  const hasReferencePrice = (offer.referencePrice != null && offer.referencePrice > 0) ||
+    (offer.communityCashPrice != null && offer.communityCashPrice > 0)
 
   const getCategoryColor = (category: string) => {
     const colors: Record<string, string> = {
@@ -85,34 +97,35 @@ export default function HubOfferDetail({ offer, relatedOffers = [] }: Props) {
     })
   }
 
-  const handleRedeemOffer = async () => {
-    // Check if user is logged in
+  const handleRedeemOffer = async (method: 'points' | 'cash') => {
     if (!auth?.user) {
-      router.visit('/login', {
-        data: { redirect: window.location.pathname }
-      })
+      router.visit('/login', { data: { redirect: window.location.pathname } })
       return
     }
-
+    if (method === 'points' && userPoints < offer.pointsRequired) {
+      alert(`You need ${offer.pointsRequired.toLocaleString()} points but you have ${Number(userPoints).toLocaleString()}.`)
+      return
+    }
+    setPaymentMethod(method)
     setIsProcessing(true)
 
     try {
-      // Create Stripe checkout session
       const response = await axios.post('/hub/offers/checkout', {
         offer_id: offer.id,
+        payment_method: method,
       })
-
       if (response.data.success && response.data.url) {
-        // Redirect to Stripe checkout
         window.location.href = response.data.url
       } else {
         setIsProcessing(false)
-        alert('Failed to create payment session. Please try again.')
+        setPaymentMethod(null)
+        alert(response.data?.error || 'Failed to start checkout. Please try again.')
       }
     } catch (error: any) {
       setIsProcessing(false)
-      const errorMessage = error.response?.data?.error || error.response?.data?.message || 'Failed to process redemption. Please try again.'
-      alert(errorMessage)
+      setPaymentMethod(null)
+      const msg = error.response?.data?.error || error.response?.data?.message || 'Failed to process redemption.'
+      alert(msg)
     }
   }
 
@@ -249,32 +262,101 @@ export default function HubOfferDetail({ offer, relatedOffers = [] }: Props) {
                   </div>
                 </MerchantCardHeader>
                 <MerchantCardContent className="space-y-6">
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between text-lg">
-                      <span className="font-medium text-gray-300">Points Required:</span>
-                      <span className="font-bold text-[#FF1493]">
-                        {offer.pointsRequired.toLocaleString()}
-                      </span>
-                    </div>
-                    {offer.cashRequired && (
-                      <div className="flex items-center justify-between text-lg">
-                        <span className="font-medium text-gray-300">Cash Required:</span>
-                        <span className="font-bold text-white">
-                          {offer.currency || 'USD'} {offer.cashRequired.toFixed(2)}
-                        </span>
-                      </div>
-                    )}
-                  </div>
+                  {hasReferencePrice && (
+                    <>
+                      {offer.referencePrice != null && offer.referencePrice > 0 && (
+                        <div className="space-y-1">
+                          <p className="text-sm font-medium text-gray-400">Retail Price</p>
+                          <p className="text-2xl font-bold text-white">
+                            {offer.currency || 'USD'} {offer.referencePrice.toFixed(2)}
+                          </p>
+                        </div>
+                      )}
 
-                  {offer.isAvailable ? (
+                      <div className="space-y-4 border-t border-gray-700 pt-4">
+                        <p className="text-sm text-gray-400">
+                          {userPoints >= offer.pointsRequired
+                            ? 'You have enough points — use them for the discount below, or pay with cash instead.'
+                            : "You don't have enough points — pay with cash to get 10% off."}
+                        </p>
+
+                        <div className="rounded-lg bg-gray-800/60 p-4 border border-[#FF1493]/20">
+                          <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-1">Use points (if you have enough)</p>
+                          <p className="text-lg text-white">
+                            {offer.pointsRequired.toLocaleString()} points → {offer.currency || 'USD'} {(offer.discountAmount ?? 0).toFixed(2)} off
+                          </p>
+                          <p className="text-xl font-bold text-[#FF1493] mt-1">
+                            You pay: {offer.currency || 'USD'} {(offer.customerPriceWithPoints ?? 0).toFixed(2)}
+                          </p>
+                          {offer.isAvailable && (
+                            <MerchantButton
+                              onClick={() => handleRedeemOffer('points')}
+                              disabled={isProcessing || userPoints < offer.pointsRequired}
+                              className="mt-3 w-full bg-gradient-to-r from-[#FF1493] via-[#DC143C] to-[#E97451] text-white disabled:opacity-50"
+                            >
+                              {isProcessing && paymentMethod === 'points' ? 'Processing...' : userPoints >= offer.pointsRequired ? `Use ${offer.pointsRequired.toLocaleString()} points` : `Need ${offer.pointsRequired.toLocaleString()} points`}
+                            </MerchantButton>
+                          )}
+                          {auth?.user && userPoints < offer.pointsRequired && (
+                            <p className="mt-2 text-sm text-amber-400">You have {Number(userPoints).toLocaleString()} points. Use cash below to still get 10% off.</p>
+                          )}
+                        </div>
+
+                        <div className="flex items-center gap-2 text-gray-500">
+                          <span className="flex-1 h-px bg-gray-600" />
+                          <span className="text-sm font-medium">Or pay with money</span>
+                          <span className="flex-1 h-px bg-gray-600" />
+                        </div>
+
+                        <div className="rounded-lg bg-gray-800/60 p-4 border border-green-500/20">
+                          <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-1">Pay with cash — 10% off</p>
+                          <p className="text-lg text-white">
+                            {BIU_CASH_DISCOUNT_PERCENT}% discount when you pay with money
+                          </p>
+                          <p className="text-xl font-bold text-green-400 mt-1">
+                            You pay: {offer.currency || 'USD'} {(offer.communityCashPrice ?? 0).toFixed(2)}
+                          </p>
+                          {offer.isAvailable && (
+                            <MerchantButton
+                              onClick={() => handleRedeemOffer('cash')}
+                              disabled={isProcessing}
+                              variant="outline"
+                              className="mt-3 w-full border-green-500/50 text-green-400 hover:bg-green-500/10"
+                            >
+                              {isProcessing && paymentMethod === 'cash' ? 'Processing...' : `Pay ${(offer.communityCashPrice ?? 0).toFixed(2)}`}
+                            </MerchantButton>
+                          )}
+                        </div>
+                      </div>
+                    </>
+                  )}
+
+                  {!hasReferencePrice && (
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between text-lg">
+                        <span className="font-medium text-gray-300">Points Required:</span>
+                        <span className="font-bold text-[#FF1493]">{offer.pointsRequired.toLocaleString()}</span>
+                      </div>
+                      {offer.cashRequired != null && offer.cashRequired > 0 && (
+                        <div className="flex items-center justify-between text-lg">
+                          <span className="font-medium text-gray-300">Cash Required:</span>
+                          <span className="font-bold text-white">{offer.currency || 'USD'} {offer.cashRequired.toFixed(2)}</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {offer.isAvailable && !hasReferencePrice ? (
                     <MerchantButton
-                      onClick={handleRedeemOffer}
+                      onClick={() => handleRedeemOffer('points')}
                       disabled={isProcessing}
-                      className="w-full bg-gradient-to-r from-[#FF1493] via-[#DC143C] to-[#E97451] hover:from-[#FF1FA3] hover:via-[#EC1F4C] hover:to-[#F98461] text-white text-lg py-3 h-auto disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="w-full bg-gradient-to-r from-[#FF1493] via-[#DC143C] to-[#E97451] text-white text-lg py-3 h-auto disabled:opacity-50"
                     >
                       {isProcessing ? 'Processing...' : 'Redeem Offer'}
                     </MerchantButton>
-                  ) : (
+                  ) : null}
+
+                  {!offer.isAvailable && (
                     <MerchantButton
                       disabled
                       className="w-full bg-gray-600 text-gray-400 text-lg py-3 h-auto cursor-not-allowed"

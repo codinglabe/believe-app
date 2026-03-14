@@ -9,12 +9,30 @@ use App\Models\Merchant;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
 use SimpleSoftwareIO\QrCode\Facades\QrCode;
 
 class MerchantRedemptionsController extends Controller
 {
+    /**
+     * Format shipping address for display (null if no shipping data).
+     */
+    protected function formatShippingAddress(MerchantHubOfferRedemption $redemption): ?array
+    {
+        if (empty($redemption->shipping_line1) && empty($redemption->shipping_city)) {
+            return null;
+        }
+        return [
+            'name' => $redemption->shipping_name,
+            'line1' => $redemption->shipping_line1,
+            'line2' => $redemption->shipping_line2,
+            'city' => $redemption->shipping_city,
+            'state' => $redemption->shipping_state,
+            'postalCode' => $redemption->shipping_postal_code,
+            'country' => $redemption->shipping_country,
+        ];
+    }
+
     /**
      * Get or create MerchantHubMerchant for the authenticated merchant
      */
@@ -112,41 +130,53 @@ class MerchantRedemptionsController extends Controller
 
         // Transform redemptions for frontend
         $transformedRedemptions = $redemptions->through(function ($redemption) {
-            // Calculate pricing breakdown - ALWAYS use offer's cash_required as regular price
+            $offer = $redemption->offer;
+            // Calculate pricing breakdown - use reference_price or cash_required as regular price
+            $referencePrice = (float) ($offer->reference_price ?? 0);
+            if ($referencePrice <= 0 && $offer->points_required > 0 && $offer->discount_percentage > 0) {
+                $referencePrice = ($offer->points_required / 1000) * 100 / (float) $offer->discount_percentage;
+            }
+            if ($referencePrice <= 0 && $offer->cash_required > 0) {
+                $referencePrice = (float) $offer->cash_required;
+            }
             $pricingBreakdown = null;
-            if ($redemption->offer->cash_required && $redemption->offer->cash_required > 0) {
-                // cash_required on the offer is the REGULAR PRICE (before discount)
-                $discountPercentage = $redemption->offer->discount_percentage ?? 10.0;
-                $regularPrice = (float) $redemption->offer->cash_required;
-                $discountAmount = ($regularPrice * $discountPercentage) / 100;
-
-                // Apply discount cap if set
-                if ($redemption->offer->discount_cap && $discountAmount > $redemption->offer->discount_cap) {
-                    $discountAmount = (float) $redemption->offer->discount_cap;
+            if ($referencePrice > 0) {
+                $discountPercentage = $offer->discount_percentage ? (float) $offer->discount_percentage : 10.0;
+                $discountAmount = round($referencePrice * ($discountPercentage / 100), 2);
+                if ($offer->discount_cap && $discountAmount > (float) $offer->discount_cap) {
+                    $discountAmount = (float) $offer->discount_cap;
                 }
-
-                $discountPrice = $regularPrice - $discountAmount;
-
+                $discountPrice = round($referencePrice - $discountAmount, 2);
+                $communityCashPrice = round($referencePrice * 0.90, 2);
                 $pricingBreakdown = [
-                    'regularPrice' => round($regularPrice, 2),
+                    'regularPrice' => round($referencePrice, 2),
                     'discountPercentage' => round($discountPercentage, 2),
-                    'discountAmount' => round($discountAmount, 2),
-                    'discountPrice' => round($discountPrice, 2),
+                    'discountAmount' => $discountAmount,
+                    'discountPrice' => $discountPrice,
+                    'communityCashPrice' => $communityCashPrice,
+                    'currency' => $offer->currency ?? 'USD',
                 ];
             }
+
+            $pointsUsed = (int) $redemption->points_spent;
+            $cashPaid = $redemption->cash_spent ? (float) $redemption->cash_spent : 0;
+            $paymentMethod = $pointsUsed > 0 && $cashPaid > 0 ? 'points_and_cash'
+                : ($pointsUsed > 0 ? 'points' : 'cash');
 
             return [
                 'id' => (string) $redemption->id,
                 'offerTitle' => $redemption->offer->title ?? 'N/A',
                 'customerName' => $redemption->user->name ?? 'N/A',
                 'customerEmail' => $redemption->user->email ?? 'N/A',
-                'pointsUsed' => $redemption->points_spent,
-                'cashPaid' => $redemption->cash_spent ? (float) $redemption->cash_spent : null,
+                'pointsUsed' => $pointsUsed,
+                'cashPaid' => $cashPaid > 0 ? $cashPaid : null,
+                'paymentMethod' => $paymentMethod,
                 'status' => $redemption->status,
                 'redeemedAt' => $redemption->created_at->toIso8601String(),
                 'usedAt' => $redemption->used_at ? $redemption->used_at->toIso8601String() : null,
                 'code' => $redemption->receipt_code,
                 'pricingBreakdown' => $pricingBreakdown,
+                'currency' => $redemption->offer->currency ?? 'USD',
             ];
         });
 
@@ -190,32 +220,39 @@ class MerchantRedemptionsController extends Controller
             ->whereIn('merchant_hub_offer_id', $offerIds)
             ->findOrFail($id);
 
-        // Transform redemption data
+        // Transform redemption data — use same-origin URL so image loads on merchant dashboard
         $imageUrl = $redemption->offer->image_url ?? null;
         if ($imageUrl && !filter_var($imageUrl, FILTER_VALIDATE_URL)) {
-            $imageUrl = Storage::disk('public')->url($imageUrl);
+            $imageUrl = asset('storage/' . ltrim($imageUrl, '/'));
         }
 
-        // Calculate pricing breakdown - ALWAYS use offer's cash_required as regular price
+        // Build calculation / what supporter paid (works for reference_price BIU and cash_required)
+        $offer = $redemption->offer;
+        $referencePrice = (float) ($offer->reference_price ?? 0);
+        if ($referencePrice <= 0 && $offer->points_required > 0 && $offer->discount_percentage > 0) {
+            $referencePrice = ($offer->points_required / 1000) * 100 / (float) $offer->discount_percentage;
+        }
+        if ($referencePrice <= 0 && $offer->cash_required > 0) {
+            $referencePrice = (float) $offer->cash_required;
+        }
+        $discountPercentage = $offer->discount_percentage ? (float) $offer->discount_percentage : 10.0;
+        $discountAmount = $referencePrice > 0 ? round($referencePrice * ($discountPercentage / 100), 2) : 0.0;
+        if ($offer->discount_cap && $discountAmount > (float) $offer->discount_cap) {
+            $discountAmount = (float) $offer->discount_cap;
+        }
+        $priceAfterDiscount = $referencePrice > 0 ? round($referencePrice - $discountAmount, 2) : 0.0;
+        $communityCashPrice = $referencePrice > 0 ? round($referencePrice * 0.90, 2) : 0.0;
+        $currency = $offer->currency ?? 'USD';
+
         $pricingBreakdown = null;
-        if ($redemption->offer->cash_required && $redemption->offer->cash_required > 0) {
-            // cash_required on the offer is the REGULAR PRICE (before discount)
-            $discountPercentage = $redemption->offer->discount_percentage ?? 10.0;
-            $regularPrice = (float) $redemption->offer->cash_required;
-            $discountAmount = ($regularPrice * $discountPercentage) / 100;
-
-            // Apply discount cap if set
-            if ($redemption->offer->discount_cap && $discountAmount > $redemption->offer->discount_cap) {
-                $discountAmount = (float) $redemption->offer->discount_cap;
-            }
-
-            $discountPrice = $regularPrice - $discountAmount;
-
+        if ($referencePrice > 0) {
             $pricingBreakdown = [
-                'regularPrice' => round($regularPrice, 2),
+                'regularPrice' => round($referencePrice, 2),
                 'discountPercentage' => round($discountPercentage, 2),
-                'discountAmount' => round($discountAmount, 2),
-                'discountPrice' => round($discountPrice, 2),
+                'discountAmount' => $discountAmount,
+                'discountPrice' => $priceAfterDiscount,
+                'communityCashPrice' => $communityCashPrice,
+                'currency' => $currency,
             ];
         }
 
@@ -235,6 +272,8 @@ class MerchantRedemptionsController extends Controller
             'usedAt' => $redemption->used_at ? $redemption->used_at->toIso8601String() : null,
             'qrCodeUrl' => route('redemptions.qr-code', ['code' => $redemption->receipt_code]),
             'pricingBreakdown' => $pricingBreakdown,
+            'currency' => $currency,
+            'shippingAddress' => $this->formatShippingAddress($redemption),
         ];
 
         return Inertia::render('merchant/Redemptions/Show', [

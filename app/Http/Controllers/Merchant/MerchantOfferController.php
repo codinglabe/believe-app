@@ -47,13 +47,11 @@ class MerchantOfferController extends Controller
             ->paginate(20)
             ->withQueryString();
 
-        // Convert image_url to full URLs
+        // Convert image_url to same-origin URL (works on merchant subdomain)
         $offers->getCollection()->transform(function ($offer) {
             if ($offer->image_url) {
-                // Check if it's already a full URL or just a path
                 if (!filter_var($offer->image_url, FILTER_VALIDATE_URL)) {
-                    // It's a path, convert to full URL
-                    $offer->image_url = Storage::disk('public')->url($offer->image_url);
+                    $offer->image_url = asset('storage/' . ltrim($offer->image_url, '/'));
                 }
             }
             return $offer;
@@ -95,8 +93,10 @@ class MerchantOfferController extends Controller
             'title' => 'required|string|max:255',
             'short_description' => 'nullable|string|max:500',
             'description' => 'required|string',
+            'reference_price' => 'required|numeric|min:0.01',
+            'discount_percentage' => 'required|numeric|min:1|max:10',
+            'discount_cap' => 'nullable|numeric|min:0',
             'image' => 'nullable|image|mimes:jpeg,png,jpg,gif,webp|max:5120',
-            'points_required' => 'required|integer|min:0',
             'cash_required' => 'nullable|numeric|min:0',
             'currency' => 'nullable|string|max:3',
             'inventory_qty' => 'nullable|integer|min:0',
@@ -110,12 +110,16 @@ class MerchantOfferController extends Controller
             'title.max' => 'The title may not be greater than 255 characters.',
             'short_description.max' => 'The short description may not be greater than 500 characters.',
             'description.required' => 'The offer description is required.',
+            'reference_price.required' => 'Retail price is required.',
+            'reference_price.numeric' => 'Retail price must be a number.',
+            'reference_price.min' => 'Retail price must be at least 0.01.',
+            'discount_percentage.required' => 'Discount percentage is required (1–10%).',
+            'discount_percentage.numeric' => 'Discount must be a number.',
+            'discount_percentage.min' => 'Discount must be between 1% and 10%.',
+            'discount_percentage.max' => 'Discount must be between 1% and 10%.',
             'image.image' => 'The image must be an image file.',
             'image.mimes' => 'The image must be a file of type: jpeg, png, jpg, gif, webp.',
             'image.max' => 'The image may not be greater than 5MB.',
-            'points_required.required' => 'The points required field is required.',
-            'points_required.integer' => 'The points required must be an integer.',
-            'points_required.min' => 'The points required must be at least 0.',
             'cash_required.numeric' => 'The cash required must be a number.',
             'cash_required.min' => 'The cash required must be at least 0.',
             'currency.max' => 'The currency may not be greater than 3 characters.',
@@ -131,17 +135,12 @@ class MerchantOfferController extends Controller
         // Set merchant_hub_merchant_id
         $validated['merchant_hub_merchant_id'] = $merchantHubMerchant->id;
 
-        // If standard discount, enforce rules
-        if ($request->boolean('is_standard_discount')) {
-            // Must be exactly 100 points for standard 10% discount
-            if ($validated['points_required'] != 100) {
-                return redirect()->back()
-                    ->withInput()
-                    ->withErrors(['points_required' => 'Standard 10% discount offers must require exactly 100 points.']);
-            }
-            // Set discount percentage to 10%
-            $validated['discount_percentage'] = 10;
-        }
+        // BIU: Points are auto-calculated; merchants cannot edit. $1 discount = 1,000 points.
+        $validated['points_required'] = MerchantHubOffer::calculatePointsRequired(
+            (float) $validated['reference_price'],
+            (float) $validated['discount_percentage'],
+            isset($validated['discount_cap']) ? (float) $validated['discount_cap'] : null
+        );
 
         // Handle image upload
         if ($request->hasFile('image')) {
@@ -178,12 +177,10 @@ class MerchantOfferController extends Controller
 
         $offer->load(['category']);
 
-        // Convert image_url to full URL
+        // Convert image_url to same-origin URL
         $offerData = $offer->toArray();
-        if ($offerData['image_url']) {
-            if (!filter_var($offerData['image_url'], FILTER_VALIDATE_URL)) {
-                $offerData['image_url'] = Storage::disk('public')->url($offerData['image_url']);
-            }
+        if (!empty($offerData['image_url']) && !filter_var($offerData['image_url'], FILTER_VALIDATE_URL)) {
+            $offerData['image_url'] = asset('storage/' . ltrim($offerData['image_url'], '/'));
         }
 
         return Inertia::render('merchant/Offers/Show', [
@@ -207,12 +204,10 @@ class MerchantOfferController extends Controller
         $offer->load(['category']);
         $categories = MerchantHubCategory::where('is_active', true)->orderBy('name')->get();
 
-        // Convert image_url to full URL
+        // Convert image_url to same-origin URL
         $offerData = $offer->toArray();
-        if ($offerData['image_url']) {
-            if (!filter_var($offerData['image_url'], FILTER_VALIDATE_URL)) {
-                $offerData['image_url'] = Storage::disk('public')->url($offerData['image_url']);
-            }
+        if (!empty($offerData['image_url']) && !filter_var($offerData['image_url'], FILTER_VALIDATE_URL)) {
+            $offerData['image_url'] = asset('storage/' . ltrim($offerData['image_url'], '/'));
         }
 
         return Inertia::render('merchant/Offers/Edit', [
@@ -239,17 +234,16 @@ class MerchantOfferController extends Controller
             'title' => 'required|string|max:255',
             'short_description' => 'nullable|string|max:500',
             'description' => 'required|string',
+            'reference_price' => 'required|numeric|min:0.01',
+            'discount_percentage' => 'required|numeric|min:1|max:10',
+            'discount_cap' => 'nullable|numeric|min:0',
             'image' => 'nullable|image|mimes:jpeg,png,jpg,gif,webp|max:5120',
-            'points_required' => 'required|integer|min:0',
             'cash_required' => 'nullable|numeric|min:0',
             'currency' => 'nullable|string|max:3',
             'inventory_qty' => 'nullable|integer|min:0',
             'starts_at' => 'nullable|date',
             'ends_at' => 'nullable|date|after_or_equal:starts_at',
             'status' => 'required|in:draft,active,paused,expired',
-            'is_standard_discount' => 'nullable|boolean',
-            'discount_percentage' => 'nullable|numeric|min:0|max:100',
-            'discount_cap' => 'nullable|numeric|min:0',
         ], [
             'merchant_hub_category_id.required' => 'Please select a category.',
             'merchant_hub_category_id.exists' => 'The selected category does not exist.',
@@ -257,12 +251,16 @@ class MerchantOfferController extends Controller
             'title.max' => 'The title may not be greater than 255 characters.',
             'short_description.max' => 'The short description may not be greater than 500 characters.',
             'description.required' => 'The offer description is required.',
+            'reference_price.required' => 'Retail price is required.',
+            'reference_price.numeric' => 'Retail price must be a number.',
+            'reference_price.min' => 'Retail price must be at least 0.01.',
+            'discount_percentage.required' => 'Discount percentage is required (1–10%).',
+            'discount_percentage.numeric' => 'Discount must be a number.',
+            'discount_percentage.min' => 'Discount must be between 1% and 10%.',
+            'discount_percentage.max' => 'Discount must be between 1% and 10%.',
             'image.image' => 'The image must be an image file.',
             'image.mimes' => 'The image must be a file of type: jpeg, png, jpg, gif, webp.',
             'image.max' => 'The image may not be greater than 5MB.',
-            'points_required.required' => 'The points required field is required.',
-            'points_required.integer' => 'The points required must be an integer.',
-            'points_required.min' => 'The points required must be at least 0.',
             'cash_required.numeric' => 'The cash required must be a number.',
             'cash_required.min' => 'The cash required must be at least 0.',
             'currency.max' => 'The currency may not be greater than 3 characters.',
@@ -275,17 +273,12 @@ class MerchantOfferController extends Controller
             'status.in' => 'The selected status is invalid.',
         ]);
 
-        // If standard discount, enforce rules
-        if ($request->boolean('is_standard_discount')) {
-            // Must be exactly 100 points for standard 10% discount
-            if ($validated['points_required'] != 100) {
-                return redirect()->back()
-                    ->withInput()
-                    ->withErrors(['points_required' => 'Standard 10% discount offers must require exactly 100 points.']);
-            }
-            // Set discount percentage to 10%
-            $validated['discount_percentage'] = 10;
-        }
+        // BIU: Points auto-calculated; merchants cannot edit.
+        $validated['points_required'] = MerchantHubOffer::calculatePointsRequired(
+            (float) $validated['reference_price'],
+            (float) $validated['discount_percentage'],
+            isset($validated['discount_cap']) ? (float) $validated['discount_cap'] : null
+        );
 
         // Handle image upload - replace old image if new one is uploaded
         if ($request->hasFile('image')) {
