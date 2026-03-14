@@ -1345,6 +1345,8 @@ class ProductController extends BaseController
     {
         $request->validate([
             'bid_amount' => 'required|numeric|min:0',
+            'city' => 'nullable|string|max:100',
+            'state' => 'nullable|string|max:50',
         ]);
 
         $user = $request->user();
@@ -1396,11 +1398,15 @@ class ProductController extends BaseController
             }
         }
 
+        $city = $request->filled('city') ? $request->city : $user->city;
+        $state = $request->filled('state') ? $request->state : $user->state;
         Bid::create([
             'product_id' => $product->id,
             'user_id' => $user->id,
             'bid_amount' => $amount,
             'status' => 'active',
+            'city' => $city,
+            'state' => $state,
         ]);
 
         return back()->with('success', 'Your bid has been placed.');
@@ -1419,13 +1425,14 @@ class ProductController extends BaseController
         }
 
         $bids = $product->bids()
-            ->with(['user:id,name,city,state'])
+            ->with('user:id,city,state')
             ->orderByDesc('submitted_at')
             ->orderByDesc('created_at')
             ->paginate(25)
             ->through(function (Bid $bid) {
-                $city = $bid->user?->city;
-                $state = $bid->user?->state;
+                $city = $bid->city ?? $bid->user?->city;
+                $state = $bid->state ?? $bid->user?->state;
+                $location = trim(($city ?? '') . ($city && $state ? ', ' : '') . ($state ?? '')) ?: '—';
 
                 return [
                     'id' => $bid->id,
@@ -1433,13 +1440,7 @@ class ProductController extends BaseController
                     'bid_amount_formatted' => '$' . number_format((float) $bid->bid_amount, 2),
                     'status' => $bid->status,
                     'submitted_at' => optional($bid->submitted_at ?? $bid->created_at)->toIso8601String(),
-                    'user' => [
-                        'id' => $bid->user?->id,
-                        'name' => $bid->user?->name,
-                        'city' => $city,
-                        'state' => $state,
-                        'location' => trim($city . ($city && $state ? ', ' : '') . ($state ?? '')) ?: null,
-                    ],
+                    'location' => $location,
                 ];
             });
 
@@ -1470,6 +1471,11 @@ class ProductController extends BaseController
         // Ensure the bid belongs to this product
         if ($bid->product_id !== $product->id) {
             abort(404);
+        }
+
+        // Cannot cancel a bid after a winner has been selected
+        if ($product->hasWinner()) {
+            return back()->withErrors(['bid' => 'Bids cannot be cancelled after a winner has been selected.']);
         }
 
         if ($bid->status === 'cancelled') {
@@ -1559,6 +1565,65 @@ class ProductController extends BaseController
         });
 
         return back()->with('success', 'Bidding closed. Winner has been notified to pay.');
+    }
+
+    /**
+     * Seller manually picks a bid as winner (instead of auto-highest).
+     */
+    public function pickWinner(Request $request, Product $product, Bid $bid)
+    {
+        $user = $request->user();
+        if (! $user || ($user->role !== 'admin' && $product->organization_id !== optional($user->organization)->id)) {
+            abort(403, 'You are not allowed to pick a winner for this product.');
+        }
+        if (! $product->isBiddable()) {
+            return back()->withErrors(['bid' => 'This product does not accept bids.']);
+        }
+        if ($product->hasWinner()) {
+            return back()->with('info', 'A winner has already been selected.');
+        }
+        if ($bid->product_id != $product->id) {
+            abort(404);
+        }
+        if (! in_array($bid->status, ['active', 'winning'])) {
+            return back()->withErrors(['bid' => 'This bid cannot be selected as winner.']);
+        }
+
+        \DB::transaction(function () use ($product, $bid) {
+            $product->bids()->where('id', '!=', $bid->id)->whereIn('status', ['active', 'winning'])->update(['status' => 'lost']);
+            $bid->update(['status' => 'winning']);
+
+            $window = $product->winner_payment_window ?? '48h';
+            $hours = (int) preg_replace('/[^0-9]/', '', $window) ?: 48;
+            if (stripos($window, '24') !== false) {
+                $hours = 24;
+            } elseif (stripos($window, '72') !== false) {
+                $hours = 72;
+            }
+            $deadline = now()->addHours($hours);
+
+            $product->update([
+                'winner_user_id' => $bid->user_id,
+                'winning_bid_id' => $bid->id,
+                'winner_payment_deadline' => $deadline,
+                'winner_status' => 'pending_payment',
+            ]);
+
+            $winner = $bid->user;
+            if ($winner) {
+                Notification::send($winner, new BidWonNotification(
+                    $product,
+                    (float) $bid->bid_amount,
+                    $deadline->toFormattedDateString()
+                ));
+            }
+            $losers = $product->bids()->where('user_id', '!=', $bid->user_id)->whereNotNull('user_id')->get()->pluck('user')->filter()->unique('id');
+            if ($losers->isNotEmpty()) {
+                Notification::send($losers, new BidLostNotification($product));
+            }
+        });
+
+        return back()->with('success', 'Winner selected. They have been notified to pay.');
     }
 
     /**

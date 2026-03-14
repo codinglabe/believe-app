@@ -1087,6 +1087,9 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin|org
     Route::post('/products/{product}/close-bidding', [ProductController::class, 'closeBidding'])
         ->name('products.bids.close')
         ->middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected', 'permission:product.update']);
+    Route::post('/products/{product}/bids/{bid}/pick-winner', [ProductController::class, 'pickWinner'])
+        ->name('products.bids.pick-winner')
+        ->middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected', 'permission:product.update']);
 
     // Admin/Organization show route for managing their products (must come after public route)
     // This route will only be used when user is authenticated and has permission

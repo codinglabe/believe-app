@@ -206,12 +206,10 @@ export default function AboutPage() {
     }
   }, [content])
 
-  const [currentTeamIndex, setCurrentTeamIndex] = useState(0)
   const [currentOfferingIndex, setCurrentOfferingIndex] = useState(0)
 
   const stats = aboutContent?.stats ?? []
   const offerings = aboutContent?.offerings ?? []
-  const teamMembers = aboutContent?.team ?? []
   const values = aboutContent?.values ?? []
   const reasons = aboutContent?.reasons ?? []
   const storyParagraphs = aboutContent?.story?.paragraphs ?? []
@@ -228,17 +226,12 @@ export default function AboutPage() {
   const hasMissionSection = Boolean(hasMissionContent || hasVisionContent || missionImageUrl)
   const hasStatsContent = stats.length > 0
   const hasOfferingsContent = offerings.length > 0
-  const hasTeamContent = teamMembers.length > 0
   const hasStoryContent = Boolean(aboutContent && (aboutContent.story?.title || storyParagraphs.length))
   const hasValuesContent = values.length > 0
   const hasReasonsContent = reasons.length > 0
   const hasCtaContent = Boolean(
     aboutContent && (aboutContent.cta.title || aboutContent.cta.subtitle || aboutContent.cta.description || ctaButtons.length)
   )
-
-  useEffect(() => {
-    setCurrentTeamIndex((prev) => (prev >= teamMembers.length ? 0 : prev))
-  }, [teamMembers.length])
 
   useEffect(() => {
     setCurrentOfferingIndex((prev) => (prev >= offerings.length ? 0 : prev))
@@ -259,16 +252,6 @@ export default function AboutPage() {
         </div>
       </FrontendLayout>
     )
-  }
-
-  const nextTeamMember = () => {
-    if (!teamMembers.length) return
-    setCurrentTeamIndex((prev) => (prev + 1) % teamMembers.length)
-  }
-
-  const prevTeamMember = () => {
-    if (!teamMembers.length) return
-    setCurrentTeamIndex((prev) => (prev - 1 + teamMembers.length) % teamMembers.length)
   }
 
   const nextOffering = () => {
@@ -653,174 +636,6 @@ export default function AboutPage() {
               </motion.div>
             </div>
           </section>
-        )}
-
-        {hasTeamContent && (
-          <section className="py-20 bg-gray-50 dark:bg-gray-800">
-          <div className="container mx-auto px-4">
-            <motion.div
-              initial={{ opacity: 0, y: 30 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.8 }}
-              viewport={{ once: true }}
-              className="text-center mb-16"
-            >
-              <h2 className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white mb-4">Meet Our Team</h2>
-            </motion.div>
-
-            {teamMembers.length ? (
-              <div className="relative max-w-4xl mx-auto">
-                <div className="hidden md:grid md:grid-cols-3 gap-8">
-                  {teamMembers.map((member, index) => (
-                    <motion.div
-                      key={`${member.name}-${index}`}
-                      initial={{ opacity: 0, y: 30 }}
-                      whileInView={{ opacity: 1, y: 0 }}
-                      transition={{ duration: 0.6, delay: index * 0.1 }}
-                      viewport={{ once: true }}
-                      whileHover={{ y: -5 }}
-                    >
-                      <Card className="text-center hover:shadow-lg transition-shadow bg-white dark:bg-gray-800">
-                        <CardContent className="pt-6">
-                          <div className="w-32 h-32 mx-auto mb-4 rounded-full overflow-hidden">
-                            {(() => {
-                              const imageUrl = resolveImageUrl(member.image)
-                              if (imageUrl) {
-                                return (
-                                  <img
-                                    src={imageUrl}
-                                    alt={member.name}
-                                    width={128}
-                                    height={128}
-                                    className="w-full h-full object-cover"
-                                    loading="lazy"
-                                  />
-                                )
-                              }
-
-                              const initials = member.name
-                                ?.split(" ")
-                                .map((part) => part.charAt(0))
-                                .join("")
-                                .toUpperCase()
-                                .slice(0, 2)
-
-                              return (
-                                <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-blue-500 to-emerald-500 text-white text-3xl font-semibold">
-                                  {initials || "?"}
-                                </div>
-                              )
-                            })()}
-                          </div>
-                          <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">{member.name}</h3>
-                          {member.role && <p className="text-blue-600 font-medium mb-3">{member.role}</p>}
-                          {member.bio && <p className="text-gray-600 dark:text-gray-300 text-sm">{member.bio}</p>}
-                        </CardContent>
-                      </Card>
-                    </motion.div>
-                  ))}
-                </div>
-
-                <div className="md:hidden">
-                  <div className="relative overflow-hidden">
-                    <motion.div
-                      key={currentTeamIndex}
-                      initial={{ opacity: 0, x: 100 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      exit={{ opacity: 0, x: -100 }}
-                      transition={{ duration: 0.5 }}
-                      className="w-full"
-                    >
-                      <Card className="text-center hover:shadow-lg transition-shadow bg-white dark:bg-gray-800">
-                        <CardContent className="pt-6">
-                          <div className="w-32 h-32 mx-auto mb-4 rounded-full overflow-hidden">
-                            {(() => {
-                              const currentMember = teamMembers[currentTeamIndex]
-                              const imageUrl = resolveImageUrl(currentMember.image)
-                              if (imageUrl) {
-                                return (
-                                  <img
-                                    src={imageUrl}
-                                    alt={currentMember.name}
-                                    width={128}
-                                    height={128}
-                                    className="w-full h-full object-cover"
-                                    loading="lazy"
-                                  />
-                                )
-                              }
-
-                              const initials = currentMember.name
-                                ?.split(" ")
-                                .map((part) => part.charAt(0))
-                                .join("")
-                                .toUpperCase()
-                                .slice(0, 2)
-
-                              return (
-                                <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-blue-500 to-emerald-500 text-white text-3xl font-semibold">
-                                  {initials || "?"}
-                                </div>
-                              )
-                            })()}
-                          </div>
-                          <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">
-                            {teamMembers[currentTeamIndex].name}
-                          </h3>
-                          {teamMembers[currentTeamIndex].role && (
-                            <p className="text-blue-600 font-medium mb-3">{teamMembers[currentTeamIndex].role}</p>
-                          )}
-                          {teamMembers[currentTeamIndex].bio && (
-                            <p className="text-gray-600 dark:text-gray-300 text-sm">
-                              {teamMembers[currentTeamIndex].bio}
-                            </p>
-                          )}
-                        </CardContent>
-                      </Card>
-                    </motion.div>
-                  </div>
-
-                  {teamMembers.length > 1 && (
-                    <div className="flex items-center justify-center gap-4 mt-6">
-                      <Button
-                        variant="outline"
-                        size="icon"
-                        onClick={prevTeamMember}
-                        className="rounded-full bg-transparent"
-                        aria-label="Previous team member"
-                      >
-                        <ChevronLeft className="h-5 w-5" />
-                      </Button>
-
-                      <div className="flex gap-2">
-                        {teamMembers.map((member, index) => (
-                          <button
-                            key={`${member.name}-${index}`}
-                            onClick={() => setCurrentTeamIndex(index)}
-                            className={`w-2 h-2 rounded-full transition-all ${
-                              index === currentTeamIndex ? "bg-blue-600 w-6" : "bg-gray-300 dark:bg-gray-600"
-                            }`}
-                            aria-label={`Go to team member ${index + 1}`}
-                          />
-                        ))}
-                      </div>
-
-                      <Button
-                        variant="outline"
-                        size="icon"
-                        onClick={nextTeamMember}
-                        className="rounded-full bg-transparent"
-                        aria-label="Next team member"
-                      >
-                        <ChevronRight className="h-5 w-5" />
-                      </Button>
-                    </div>
-                  )}
-                </div>
-              </div>
-            ) : null}
-          </div>
-        </section>
         )}
 
         {hasValuesContent && (

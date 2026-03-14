@@ -2,18 +2,10 @@
 
 import AppLayout from "@/layouts/app-layout"
 import { usePage, router, Link } from "@inertiajs/react"
-import { ArrowLeft, Ban, CheckCircle2, Clock, DollarSign, MapPin, Flag } from "lucide-react"
+import { ArrowLeft, Ban, CheckCircle2, Clock, DollarSign, MapPin, Flag, Trophy } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import type { BreadcrumbItem } from "@/types"
-
-interface BidUser {
-  id: number | null
-  name: string | null
-  city?: string | null
-  state?: string | null
-  location?: string | null
-}
 
 interface Bid {
   id: number
@@ -21,7 +13,7 @@ interface Bid {
   bid_amount_formatted: string
   status: string
   submitted_at: string | null
-  user: BidUser | null
+  location: string
 }
 
 interface BidsPageProps {
@@ -76,9 +68,18 @@ export default function ProductBidsPage() {
         bid: bid.id,
       }),
       {},
-      {
-        preserveScroll: true,
-      },
+      { preserveScroll: true },
+    )
+  }
+
+  const handlePickWinner = (bid: Bid) => {
+    if (!confirm("Select this bid as the winner? The winner will be notified to pay; other bidders will be notified they did not win.")) {
+      return
+    }
+    router.post(
+      route("products.bids.pick-winner", { product: product.id, bid: bid.id }),
+      {},
+      { preserveScroll: true },
     )
   }
 
@@ -137,7 +138,6 @@ export default function ProductBidsPage() {
             <table className="min-w-full text-sm">
               <thead className="bg-muted/40">
                 <tr>
-                  <th className="px-4 py-3 text-left font-medium text-muted-foreground">Bidder</th>
                   <th className="px-4 py-3 text-left font-medium text-muted-foreground">Location</th>
                   <th className="px-4 py-3 text-left font-medium text-muted-foreground">Amount</th>
                   <th className="px-4 py-3 text-left font-medium text-muted-foreground">Status</th>
@@ -148,13 +148,12 @@ export default function ProductBidsPage() {
               <tbody>
                 {bids.data.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-4 py-10 text-center text-muted-foreground">
+                    <td colSpan={5} className="px-4 py-10 text-center text-muted-foreground">
                       <div className="flex flex-col items-center gap-2">
                         <Clock className="w-8 h-8 text-muted-foreground" />
                         <p className="font-medium">No bids yet</p>
                         <p className="text-xs max-w-md">
-                          Once supporters place bids on this product, you will see them here along with their bid amounts
-                          and locations.
+                          Once supporters place bids on this product, you will see location, amount, status and time here.
                         </p>
                       </div>
                     </td>
@@ -168,20 +167,14 @@ export default function ProductBidsPage() {
                     if (status === "active") statusVariant = "secondary"
                     if (status === "winning") statusVariant = "default"
                     if (status === "cancelled" || status === "rejected") statusVariant = "destructive"
+                    const canPickWinner = product.can_close_bidding && status === "active"
 
                     return (
                       <tr key={bid.id} className="border-t">
                         <td className="px-4 py-3 align-top">
-                          <div className="flex flex-col gap-0.5">
-                            <span className="font-medium">
-                              {bid.user?.name || "Supporter #" + bid.id}
-                            </span>
-                          </div>
-                        </td>
-                        <td className="px-4 py-3 align-top">
-                          <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                            <MapPin className="w-3 h-3" />
-                            <span>{bid.user?.location || "Unknown"}</span>
+                          <div className="flex items-center gap-1 text-muted-foreground">
+                            <MapPin className="w-3 h-3 shrink-0" />
+                            <span>{bid.location}</span>
                           </div>
                         </td>
                         <td className="px-4 py-3 align-top">
@@ -208,19 +201,34 @@ export default function ProductBidsPage() {
                           {formatDateTime(bid.submitted_at)}
                         </td>
                         <td className="px-4 py-3 align-top text-right">
-                          {status === "cancelled" ? (
-                            <span className="text-xs text-muted-foreground italic">Already cancelled</span>
-                          ) : (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="text-red-600 hover:text-red-700"
-                              onClick={() => handleCancelBid(bid)}
-                            >
-                              <Ban className="w-3 h-3 mr-1" />
-                              Cancel bid
-                            </Button>
-                          )}
+                          <div className="flex items-center justify-end gap-2 flex-wrap">
+                            {canPickWinner && (
+                              <Button
+                                variant="default"
+                                size="sm"
+                                className="gap-1"
+                                onClick={() => handlePickWinner(bid)}
+                              >
+                                <Trophy className="w-3 h-3" />
+                                Pick as winner
+                              </Button>
+                            )}
+                            {status === "cancelled" ? (
+                              <span className="text-xs text-muted-foreground italic">Already cancelled</span>
+                            ) : product.has_winner ? (
+                              <span className="text-xs text-muted-foreground italic">—</span>
+                            ) : (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="text-red-600 hover:text-red-700"
+                                onClick={() => handleCancelBid(bid)}
+                              >
+                                <Ban className="w-3 h-3 mr-1" />
+                                Cancel bid
+                              </Button>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     )

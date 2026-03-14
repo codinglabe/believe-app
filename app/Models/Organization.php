@@ -105,6 +105,11 @@ class Organization extends Model
         return $this->users()->where('login_status', true);
     }
 
+    public function nonprofitCompliance(): HasOne
+    {
+        return $this->hasOne(NonprofitCompliance::class);
+    }
+
     public function form990Filings()
     {
         return $this->hasMany(Form990Filing::class);

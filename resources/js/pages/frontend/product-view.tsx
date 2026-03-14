@@ -122,6 +122,8 @@ export default function ProductView({
   const [cartData, setCartData] = useState<CartData | null>(null);
   const [isCartLoading, setIsCartLoading] = useState(false);
   const [bidAmount, setBidAmount] = useState('');
+  const [bidCity, setBidCity] = useState('');
+  const [bidState, setBidState] = useState('');
   const [isBidSubmitting, setIsBidSubmitting] = useState(false);
   const [bidEndCountdown, setBidEndCountdown] = useState<string>('');
 
@@ -158,12 +160,17 @@ export default function ProductView({
       return;
     }
     setIsBidSubmitting(true);
-    router.post(route('product.bid', { product: product.id }), { bid_amount: parseFloat(bidAmount) }, {
+    const payload: { bid_amount: number; city?: string; state?: string } = { bid_amount: parseFloat(bidAmount) };
+    if (bidCity.trim()) payload.city = bidCity.trim();
+    if (bidState.trim()) payload.state = bidState.trim();
+    router.post(route('product.bid', { product: product.id }), payload, {
       preserveScroll: true,
       onFinish: () => setIsBidSubmitting(false),
       onSuccess: () => {
         showSuccessToast('Your bid has been placed.');
         setBidAmount('');
+        setBidCity('');
+        setBidState('');
         router.reload();
       },
       onError: (errors) => {
@@ -641,8 +648,33 @@ export default function ProductView({
                           {isBidSubmitting ? 'Submitting...' : product.pricing_model === 'blind_bid' ? 'Submit Blind Bid' : 'Place Bid'}
                         </button>
                       </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                          <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">City (optional)</label>
+                          <input
+                            type="text"
+                            value={bidCity}
+                            onChange={(e) => setBidCity(e.target.value)}
+                            placeholder="Your city"
+                            maxLength={100}
+                            className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">State (optional)</label>
+                          <input
+                            type="text"
+                            value={bidState}
+                            onChange={(e) => setBidState(e.target.value)}
+                            placeholder="State / Region"
+                            maxLength={50}
+                            className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm"
+                          />
+                        </div>
+                      </div>
                       <p className="text-xs text-gray-500 dark:text-gray-400">
                         {product.pricing_model === 'blind_bid' ? 'Bids are private. Winner notified after deadline.' : `Minimum bid $${biddingInfo.min_bid.toFixed(2)}`}
+                        {' '}Location is shown to the seller for fulfillment; if you win, they may use it for shipping.
                       </p>
                     </form>
                   )}

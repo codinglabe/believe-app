@@ -13,7 +13,15 @@ class Bid extends Model
         'bid_amount',
         'status',
         'submitted_at',
+        'city',
+        'state',
     ];
+
+    public function getLocationDisplayAttribute(): string
+    {
+        $parts = array_filter([$this->city, $this->state]);
+        return $parts ? implode(', ', $parts) : '';
+    }
 
     protected $casts = [
         'bid_amount' => 'decimal:2',

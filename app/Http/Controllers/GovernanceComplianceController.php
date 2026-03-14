@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\ExcelData;
 use App\Models\FoundationCode;
+use App\Models\NonprofitCompliance;
 use App\Models\NteeCode;
 use App\Models\StatusCode;
 use App\Models\SubsectionCode;
@@ -44,6 +45,84 @@ class GovernanceComplianceController extends Controller
         $months = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
         return $months[$m] . ' ' . $y;
+    }
+
+    /**
+     * Parse tax year end (e.g. "Dec 2023" or "202312") to year and month.
+     *
+     * @return array{year: int, month: int}|null
+     */
+    private static function parseTaxYearEnd(?string $taxYearEnd): ?array
+    {
+        if ($taxYearEnd === null || $taxYearEnd === '') {
+            return null;
+        }
+        $s = trim((string) $taxYearEnd);
+        if (preg_match('/^\d{6}$/', preg_replace('/\D/', '', $s))) {
+            $n = preg_replace('/\D/', '', $s);
+            $year = (int) substr($n, 0, 4);
+            $month = (int) substr($n, 4, 2);
+            if ($month >= 1 && $month <= 12) {
+                return ['year' => $year, 'month' => $month];
+            }
+        }
+        if (preg_match('/\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s*((?:19|20)\d{2})\b/i', $s, $m)) {
+            $months = ['jan' => 1, 'feb' => 2, 'mar' => 3, 'apr' => 4, 'may' => 5, 'jun' => 6, 'jul' => 7, 'aug' => 8, 'sep' => 9, 'oct' => 10, 'nov' => 11, 'dec' => 12];
+            $month = $months[strtolower($m[1])] ?? null;
+            $year = (int) $m[2];
+            if ($month !== null) {
+                return ['year' => $year, 'month' => $month];
+            }
+        }
+        if (preg_match('/\b(19|20)\d{2}\b/', $s, $m)) {
+            return ['year' => (int) $m[0], 'month' => 12];
+        }
+        return null;
+    }
+
+    /**
+     * Compute Form 990 next due date: 15th day of the 5th month after fiscal year end.
+     */
+    private static function computeNextDueDateFromFiscalYearEnd(?string $taxYearEnd): ?string
+    {
+        $parsed = self::parseTaxYearEnd($taxYearEnd);
+        if ($parsed === null) {
+            return null;
+        }
+        $month = $parsed['month'] + 5;
+        $year = $parsed['year'];
+        if ($month > 12) {
+            $month -= 12;
+            $year += 1;
+        }
+        try {
+            $due = \Carbon\Carbon::createFromDate($year, $month, 15);
+            return $due->format('Y-m-d');
+        } catch (\Throwable $e) {
+            return null;
+        }
+    }
+
+    /**
+     * Fallback labels for IRS foundation codes when foundation_codes table is not seeded (e.g. live).
+     */
+    private static function foundationCodeToLabel(int $code): ?string
+    {
+        $map = [
+            0 => 'Church 170(b)(1)(A)(i)',
+            1 => 'School 170(b)(1)(A)(ii)',
+            2 => 'Hospital or medical research organization 170(b)(1)(A)(iii)',
+            3 => 'Organization supporting government entity 170(b)(1)(A)(iv)',
+            4 => 'Organization receiving substantial support from public 170(b)(1)(A)(vi)',
+            5 => 'Organization supporting a 501(c)(3) 509(a)(3)',
+            6 => 'Public safety testing organization 509(a)(4)',
+            7 => 'Private operating foundation 4942(j)(3)',
+            9 => 'Private non-operating foundation',
+            10 => 'Exempt operating foundation',
+            16 => 'Public charity (foundation code 16)',
+        ];
+
+        return $map[$code] ?? null;
     }
 
     public function index(Request $request)
@@ -143,8 +222,11 @@ class GovernanceComplianceController extends Controller
                 $foundationCode = $rowData[self::BMF_FOUNDATION];
                 if (is_numeric($foundationCode)) {
                     $publicCharityStatus = FoundationCode::where('foundation_codes', (int) $foundationCode)->value('foundation_type');
+                    if ($publicCharityStatus === null || $publicCharityStatus === '') {
+                        $publicCharityStatus = self::foundationCodeToLabel((int) $foundationCode) ?? (string) $foundationCode;
+                    }
                 }
-                if ($publicCharityStatus === null) {
+                if ($publicCharityStatus === null || $publicCharityStatus === '') {
                     $publicCharityStatus = (string) $foundationCode;
                 }
             }
@@ -179,6 +261,19 @@ class GovernanceComplianceController extends Controller
                 $taxYearEnd = 'Dec ' . $latest990->tax_year;
             }
         }
+        // When we have Tax Year End but no filing date (no Form 990 record), show period covered so the field isn't blank
+        if (($lastFiledDate === null || $lastFiledDate === '') && $taxYearEnd !== null && trim((string) $taxYearEnd) !== '') {
+            $lastFiledDate = 'Return for year ending ' . $taxYearEnd;
+        }
+
+        // Live fallbacks: when org/meta have no value but we have tax year end or 501(c)(3), show sensible defaults
+        $hasTaxYearOrSubsection = ($taxYearEnd !== null && trim((string) $taxYearEnd) !== '') || ($subsectionDisplay !== null && stripos((string) $subsectionDisplay, '501') !== false);
+        if (($filingRequirementCode === null || trim((string) $filingRequirementCode) === '') && $hasTaxYearOrSubsection) {
+            $filingRequirementCode = '990';
+        }
+        if (($lastFiledType === null || trim((string) $lastFiledType) === '') && $hasTaxYearOrSubsection) {
+            $lastFiledType = '990';
+        }
 
         // Status Code fallback when BMF has no status: show Active for compliant/current orgs
         if (($statusCode === null || $statusCode === '') && in_array($organization->tax_compliance_status, ['compliant', 'current'], true)) {
@@ -193,9 +288,85 @@ class GovernanceComplianceController extends Controller
         if ($nteeDisplay && empty($nteeDescription)) {
             $nteeDescription = NteeCode::where('ntee_codes', $nteeDisplay)->value('description');
         }
+        $nteeCategoryStored = $nteeDisplay;
         if ($nteeDisplay && ! empty($nteeDescription)) {
             $nteeDisplay = $nteeDisplay . ' - ' . $nteeDescription;
         }
+
+        // Last return year: from latest 990 tax_year, or parse from last_filed_date, or meta, or derive from tax_year_end
+        $lastReturnYear = $meta['last_return_year'] ?? null;
+        if ($lastReturnYear === null && $latest990 && ! empty($latest990->tax_year)) {
+            $lastReturnYear = (string) $latest990->tax_year;
+        }
+        if ($lastReturnYear === null && $lastFiledDate !== null && preg_match('/\b(19|20)\d{2}\b/', (string) $lastFiledDate, $m)) {
+            $lastReturnYear = $m[0];
+        }
+        if ($lastReturnYear === null && $taxYearEnd !== null && $taxYearEnd !== '') {
+            $parsed = self::parseTaxYearEnd($taxYearEnd);
+            if ($parsed !== null) {
+                $lastReturnYear = (string) $parsed['year'];
+            }
+        }
+
+        // Next due date: from meta, or compute from fiscal year end (Form 990 due 15th of 5th month after year end)
+        $nextDueDateRaw = null;
+        $nextDueDateDisplay = null;
+        if (! empty($meta['next_due_date'])) {
+            try {
+                $parsed = \Carbon\Carbon::parse($meta['next_due_date']);
+                $nextDueDateRaw = $parsed->format('Y-m-d');
+                $nextDueDateDisplay = $parsed->format('M j, Y');
+            } catch (\Throwable $e) {
+                // ignore
+            }
+        }
+        if ($nextDueDateRaw === null && $taxYearEnd !== null && $taxYearEnd !== '') {
+            $nextDueDateRaw = self::computeNextDueDateFromFiscalYearEnd($taxYearEnd);
+            if ($nextDueDateRaw !== null) {
+                $dueCarbon = \Carbon\Carbon::parse($nextDueDateRaw);
+                if ($dueCarbon->isPast()) {
+                    $parsed = self::parseTaxYearEnd($taxYearEnd);
+                    if ($parsed !== null) {
+                        $nextYearEnd = $parsed['year'] + 1;
+                        $nextDueDateRaw = self::computeNextDueDateFromFiscalYearEnd("Dec {$nextYearEnd}");
+                    }
+                }
+                if ($nextDueDateRaw !== null) {
+                    $nextDueDateDisplay = \Carbon\Carbon::parse($nextDueDateRaw)->format('M j, Y');
+                }
+            }
+        }
+        // Fallback: compute from last return year (e.g. "2023" -> due May 15, 2024; if past, May 15, 2025)
+        if ($nextDueDateDisplay === null && $lastReturnYear !== null && preg_match('/^(19|20)\d{2}$/', trim((string) $lastReturnYear))) {
+            $yr = (int) $lastReturnYear;
+            $nextDueDateRaw = self::computeNextDueDateFromFiscalYearEnd("Dec {$yr}");
+            if ($nextDueDateRaw !== null) {
+                $dueCarbon = \Carbon\Carbon::parse($nextDueDateRaw);
+                if ($dueCarbon->isPast()) {
+                    $nextDueDateRaw = self::computeNextDueDateFromFiscalYearEnd('Dec ' . ($yr + 1));
+                }
+                if ($nextDueDateRaw !== null) {
+                    $nextDueDateDisplay = \Carbon\Carbon::parse($nextDueDateRaw)->format('M j, Y');
+                }
+            }
+        }
+
+        // Upsert nonprofit_compliance (canonical BMF governance fields)
+        NonprofitCompliance::updateOrCreate(
+            ['organization_id' => $organization->id],
+            [
+                'ein' => $einFormatted ?: $organization->ein,
+                'organization_name' => $organizationLegalName,
+                'irs_status' => $publicCharityStatus,
+                'exempt_since' => $ruleDate,
+                'ntee_category' => $nteeDisplay ?: $nteeCategoryStored,
+                'fiscal_year_end' => $taxYearEnd,
+                'return_type' => $lastFiledType,
+                'last_return_year' => $lastReturnYear,
+                'next_due_date' => $nextDueDateRaw,
+                'filing_status' => $statusCode,
+            ]
+        );
 
         $scheduleRequirements = $meta['schedule_requirements'] ?? [];
         $lastSyncedAt = $organization->tax_compliance_checked_at?->toIso8601String();
@@ -216,10 +387,7 @@ class GovernanceComplianceController extends Controller
                 'tax_compliance_meta' => $organization->tax_compliance_meta,
             ],
             'complianceOverview' => [
-                'last_filed_type' => $lastFiledType,
-                'last_filed_date' => $lastFiledDate,
-                'revocation_status' => $revocationStatus,
-                'subsection' => $subsectionDisplay,
+                'ein' => $einFormatted ?: $organization->ein,
                 'organization_legal_name' => $organizationLegalName,
                 'filing_requirement_code' => $filingRequirementCode,
                 'deductibility_code' => $deductibilityCode,
@@ -227,7 +395,13 @@ class GovernanceComplianceController extends Controller
                 'rule_date' => $ruleDate,
                 'ntee_code' => $nteeDisplay,
                 'tax_year_end' => $taxYearEnd,
+                'last_filed_type' => $lastFiledType,
+                'last_filed_date' => $lastFiledDate,
+                'last_return_year' => $lastReturnYear,
+                'next_due_date' => $nextDueDateDisplay,
                 'status_code' => $statusCode,
+                'revocation_status' => $revocationStatus,
+                'subsection' => $subsectionDisplay,
             ],
             'scheduleRequirements' => $scheduleRequirements,
             'lastSyncedAt' => $lastSyncedAt,

@@ -23,6 +23,7 @@ class FoundationTypesTableSeeder extends Seeder
             ['foundation_code' => 7, 'foundation_type' => 'Private operating foundation 4942(j)(3)', 'description' => 'A private foundation that actively conducts charitable programs and meets minimum spending requirements.'],
             ['foundation_code' => 9, 'foundation_type' => 'Private non-operating foundation', 'description' => 'A typical grant-making foundation that does not directly operate charitable activities.'],
             ['foundation_code' => 10, 'foundation_type' => 'Exempt operating foundation', 'description' => 'A special type of private operating foundation with additional qualifications under IRC 4940(d)(2).'],
+            ['foundation_code' => 16, 'foundation_type' => 'Public charity (foundation code 16)', 'description' => 'IRS BMF foundation code 16 – public charity classification.'],
         ];
 
         foreach ($data as $item) {

@@ -13,10 +13,7 @@ const BRAND = {
 }
 
 interface ComplianceOverview {
-  last_filed_type: string | null
-  last_filed_date: string | null
-  revocation_status: string | null
-  subsection: string | null
+  ein?: string | null
   organization_legal_name: string
   filing_requirement_code: string | null
   deductibility_code: string | null
@@ -24,7 +21,13 @@ interface ComplianceOverview {
   rule_date: string | null
   ntee_code: string | null
   tax_year_end: string | null
+  last_filed_type: string | null
+  last_filed_date: string | null
+  last_return_year: string | null
+  next_due_date: string | null
   status_code: string | null
+  revocation_status: string | null
+  subsection: string | null
 }
 
 interface ScheduleItem {
@@ -91,6 +94,8 @@ export default function GovernanceCompliance({
     { field: "Tax Year End", value: complianceOverview.tax_year_end ?? "—" },
     { field: "Last Filed Form 990 Type", value: complianceOverview.last_filed_type ?? "—" },
     { field: "Last Filed Filing Date", value: complianceOverview.last_filed_date ?? "—" },
+    { field: "Last Return Year", value: complianceOverview.last_return_year ?? "—" },
+    { field: "Next Due Date", value: complianceOverview.next_due_date ?? "—" },
     {
       field: "Status Code",
       value: complianceOverview.status_code
