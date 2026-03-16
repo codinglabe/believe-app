@@ -231,7 +231,7 @@ class HubController extends Controller
             $userPoints = $user->currentBelievePoints();
             $receiptCode = 'RED-' . strtoupper(Str::random(8));
 
-            // BIU: Pay with Cash (10% BIU Community Cash discount) — Stripe
+            // BIU: Pay with Cash (full amount) — Stripe
             if ($paymentMethod === 'cash') {
                 $referencePrice = (float) ($offer->reference_price ?? 0);
                 if ($referencePrice <= 0 && $offer->points_required > 0 && $offer->discount_percentage > 0) {
@@ -243,7 +243,7 @@ class HubController extends Controller
                         'error' => 'This offer does not support cash purchase.'
                     ], 400);
                 }
-                $cashAmount = round($referencePrice * 0.90, 2); // 90% of retail
+                $cashAmount = round($referencePrice, 2); // Full amount when paying with cash (no points)
 
                 $amountCents = (int) round($cashAmount * 100);
                 $currency = strtolower($offer->currency ?? 'usd');
@@ -253,7 +253,7 @@ class HubController extends Controller
                             'currency' => $currency,
                             'product_data' => [
                                 'name' => $offer->title,
-                                'description' => 'BIU Community Cash (10% off) - ' . $offer->merchant->name,
+                                'description' => 'Pay with cash (full amount) - ' . $offer->merchant->name,
                             ],
                             'unit_amount' => $amountCents,
                         ],

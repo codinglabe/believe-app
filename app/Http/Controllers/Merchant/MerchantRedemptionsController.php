@@ -147,7 +147,7 @@ class MerchantRedemptionsController extends Controller
                     $discountAmount = (float) $offer->discount_cap;
                 }
                 $discountPrice = round($referencePrice - $discountAmount, 2);
-                $communityCashPrice = round($referencePrice * 0.90, 2);
+                $communityCashPrice = round($referencePrice, 2); // Full amount when paying with cash (no points)
                 $pricingBreakdown = [
                     'regularPrice' => round($referencePrice, 2),
                     'discountPercentage' => round($discountPercentage, 2),
@@ -241,7 +241,7 @@ class MerchantRedemptionsController extends Controller
             $discountAmount = (float) $offer->discount_cap;
         }
         $priceAfterDiscount = $referencePrice > 0 ? round($referencePrice - $discountAmount, 2) : 0.0;
-        $communityCashPrice = $referencePrice > 0 ? round($referencePrice * 0.90, 2) : 0.0;
+        $communityCashPrice = $referencePrice > 0 ? round($referencePrice, 2) : 0.0; // Full amount when paying with cash (no points)
         $currency = $offer->currency ?? 'USD';
 
         $pricingBreakdown = null;

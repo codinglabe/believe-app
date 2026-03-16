@@ -75,7 +75,7 @@ export function MerchantHeader({
             <Link href="/" className="flex items-center gap-2">
               <img 
                 src="/merchant/merchant.png" 
-                alt={`${import.meta.env.VITE_APP_NAME || 'Believe'} Merchant`} 
+                alt="BIU Merchant" 
                 className="w-8 h-8 sm:w-10 sm:h-10 object-contain"
               />
               {title ? (
@@ -85,10 +85,10 @@ export function MerchantHeader({
               ) : (
                 <>
                   <span className="text-lg sm:text-xl font-bold text-white hidden sm:inline">
-                    {import.meta.env.VITE_APP_NAME || 'Believe'} Merchant
+                    BIU Merchant
                   </span>
                   <span className="text-base font-bold text-white sm:hidden">
-                    {import.meta.env.VITE_APP_NAME || 'Believe'} Merchant
+                    BIU Merchant
                   </span>
                 </>
               )}

@@ -52,8 +52,6 @@ interface Props {
   relatedOffers?: RelatedOffer[]
 }
 
-const BIU_CASH_DISCOUNT_PERCENT = 10
-
 export default function HubOfferDetail({ offer, relatedOffers = [] }: Props) {
   const { auth } = usePage().props as any
   const [isFavorite, setIsFavorite] = useState(false)
@@ -277,7 +275,7 @@ export default function HubOfferDetail({ offer, relatedOffers = [] }: Props) {
                         <p className="text-sm text-gray-400">
                           {userPoints >= offer.pointsRequired
                             ? 'You have enough points — use them for the discount below, or pay with cash instead.'
-                            : "You don't have enough points — pay with cash to get 10% off."}
+                            : "You don't have enough points — pay with cash (full amount)."}
                         </p>
 
                         <div className="rounded-lg bg-gray-800/60 p-4 border border-[#FF1493]/20">
@@ -298,7 +296,7 @@ export default function HubOfferDetail({ offer, relatedOffers = [] }: Props) {
                             </MerchantButton>
                           )}
                           {auth?.user && userPoints < offer.pointsRequired && (
-                            <p className="mt-2 text-sm text-amber-400">You have {Number(userPoints).toLocaleString()} points. Use cash below to still get 10% off.</p>
+                            <p className="mt-2 text-sm text-amber-400">You have {Number(userPoints).toLocaleString()} points. Use cash below to pay the full amount.</p>
                           )}
                         </div>
 
@@ -309,10 +307,7 @@ export default function HubOfferDetail({ offer, relatedOffers = [] }: Props) {
                         </div>
 
                         <div className="rounded-lg bg-gray-800/60 p-4 border border-green-500/20">
-                          <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-1">Pay with cash — 10% off</p>
-                          <p className="text-lg text-white">
-                            {BIU_CASH_DISCOUNT_PERCENT}% discount when you pay with money
-                          </p>
+                          <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-1">Pay with cash</p>
                           <p className="text-xl font-bold text-green-400 mt-1">
                             You pay: {offer.currency || 'USD'} {(offer.communityCashPrice ?? 0).toFixed(2)}
                           </p>

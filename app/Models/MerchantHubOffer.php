@@ -222,12 +222,12 @@ class MerchantHubOffer extends Model
     }
 
     /**
-     * BIU Community Cash: 10% off for cash purchases.
+     * Cash price when user has no points: full reference price.
      */
     public function getCommunityCashPrice(): float
     {
         $price = (float) ($this->reference_price ?? 0);
-        return round($price * 0.90, 2);
+        return round($price, 2);
     }
 
     /**

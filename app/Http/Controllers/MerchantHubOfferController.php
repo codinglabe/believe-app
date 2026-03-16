@@ -244,12 +244,12 @@ class MerchantHubOfferController extends Controller
                 // Allow redeem via cash even when not enough points (reason explains points shortfall)
                 $redemptionEligibility['canRedeem'] = true;
                 $redemptionEligibility['canPayWithCash'] = true;
-                $redemptionEligibility['reason'] = "You need " . number_format($offer->points_required) . " points for points redemption, but you have " . number_format($userPoints) . ". You can pay with cash below to get 10% off.";
+                $redemptionEligibility['reason'] = "You need " . number_format($offer->points_required) . " points for points redemption, but you have " . number_format($userPoints) . ". You can pay with cash below (full amount).";
             } elseif ($monthlyPointsRedeemed + $offer->points_required > 100) {
                 $remainingPoints = 100 - $monthlyPointsRedeemed;
                 $redemptionEligibility['canRedeem'] = true;
                 $redemptionEligibility['canPayWithCash'] = true;
-                $redemptionEligibility['reason'] = "You can only use up to {$remainingPoints} more points this month at this merchant. You can pay with cash below to get 10% off.";
+                $redemptionEligibility['reason'] = "You can only use up to {$remainingPoints} more points this month at this merchant. You can pay with cash below (full amount).";
             }
         }
 
@@ -299,7 +299,7 @@ class MerchantHubOfferController extends Controller
             ];
         }
 
-        // BIU: reference price and cash option (for "Pay with cash — 10% off")
+        // BIU: reference price and cash option (full amount when paying with cash, no points)
         $referencePrice = (float) ($offer->reference_price ?? 0);
         if ($referencePrice <= 0 && $offer->points_required > 0 && $offer->discount_percentage > 0) {
             $referencePrice = ($offer->points_required / 1000) * 100 / (float) $offer->discount_percentage;
@@ -308,7 +308,7 @@ class MerchantHubOfferController extends Controller
             ? round($referencePrice * ((float) $offer->discount_percentage / 100), 2)
             : 0.0;
         $customerPriceWithPoints = $referencePrice > 0 ? round($referencePrice - $refDiscountAmount, 2) : 0.0;
-        $communityCashPrice = $referencePrice > 0 ? round($referencePrice * 0.90, 2) : 0.0;
+        $communityCashPrice = $referencePrice > 0 ? round($referencePrice, 2) : 0.0;
 
         $transformedOffer = [
             'id' => (string) $offer->id,

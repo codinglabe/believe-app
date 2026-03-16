@@ -204,7 +204,7 @@ class MerchantRedemptionController extends Controller
         if ($referencePrice <= 0 && $offer->points_required > 0 && $offer->discount_percentage > 0) {
             $referencePrice = ($offer->points_required / 1000) * 100 / (float) $offer->discount_percentage;
         }
-        $communityCashPrice = $referencePrice > 0 ? round($referencePrice * 0.90, 2) : 0;
+        $communityCashPrice = $referencePrice > 0 ? round($referencePrice, 2) : 0; // Full amount when paying with cash (no points)
         $imageUrl = $offer->image_url;
         if ($imageUrl && !filter_var($imageUrl, FILTER_VALIDATE_URL)) {
             $imageUrl = asset('storage/' . ltrim($imageUrl, '/'));
@@ -251,7 +251,7 @@ class MerchantRedemptionController extends Controller
         if ($referencePrice <= 0) {
             return back()->withErrors(['error' => 'This offer does not support cash purchase.']);
         }
-        $cashAmount = round($referencePrice * 0.90, 2);
+        $cashAmount = round($referencePrice, 2); // Full amount when paying with cash (no points)
         $receiptCode = 'RED-' . strtoupper(Str::random(8));
         if (!config('cashier.secret')) {
             return back()->withErrors(['error' => 'Stripe is not configured. Set STRIPE_SECRET in your .env file.']);
@@ -285,7 +285,7 @@ class MerchantRedemptionController extends Controller
                         'currency' => $currency,
                         'product_data' => [
                             'name' => $offer->title,
-                            'description' => 'BIU Community Cash (10% off) - ' . $merchantName,
+                            'description' => 'Pay with cash (full amount) - ' . $merchantName,
                         ],
                         'unit_amount' => $amountCents,
                     ],
@@ -359,7 +359,8 @@ class MerchantRedemptionController extends Controller
                     DB::rollBack();
                     return back()->withErrors(['error' => 'This offer does not support cash purchase.']);
                 }
-                $cashAmount = round($referencePrice * 0.90, 2);
+                $cashAmount = round($referencePrice, 2); // Full amount when paying with cash (no points)
+
                 $receiptCode = 'RED-' . strtoupper(Str::random(8));
 
                 $amountCents = (int) round($cashAmount * 100);
@@ -370,7 +371,7 @@ class MerchantRedemptionController extends Controller
                             'currency' => $currency,
                             'product_data' => [
                                 'name' => $offer->title,
-                                'description' => 'BIU Community Cash (10% off) - ' . $offer->merchant->name,
+                                'description' => 'Pay with cash (full amount) - ' . $offer->merchant->name,
                             ],
                             'unit_amount' => $amountCents,
                         ],
@@ -399,7 +400,7 @@ class MerchantRedemptionController extends Controller
             if ($userPoints < $offer->points_required) {
                 DB::rollBack();
                 return back()->withErrors([
-                    'error' => 'You do not have enough points. You need ' . number_format($offer->points_required) . ' points, but you only have ' . number_format($userPoints) . '. Use "Pay with cash" to get 10% off instead.'
+                    'error' => 'You do not have enough points. You need ' . number_format($offer->points_required) . ' points, but you only have ' . number_format($userPoints) . '. Use "Pay with cash" to pay the full amount instead.'
                 ]);
             }
 
