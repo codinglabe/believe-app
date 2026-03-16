@@ -61,7 +61,7 @@ class HubOfferController extends Controller
             ? round($referencePrice * ((float) $offer->discount_percentage / 100), 2)
             : 0.0;
         $customerPriceWithPoints = $referencePrice > 0 ? round($referencePrice - $discountAmount, 2) : 0.0;
-        $communityCashPrice = $referencePrice > 0 ? round($referencePrice * 0.90, 2) : 0.0;
+        $communityCashPrice = $referencePrice > 0 ? round($referencePrice, 2) : 0.0; // Full amount when paying with cash (no points)
 
         $transformedOffer = [
             'id' => (string) $offer->id,

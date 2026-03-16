@@ -13,8 +13,6 @@ import {
   Gift,
   Star,
   Check,
-  Share2,
-  Heart,
   ShoppingBag,
   DollarSign,
   TrendingUp,
@@ -87,7 +85,6 @@ interface Props {
 export default function OfferDetail({ offerId, offer: initialOffer, relatedOffers: initialRelatedOffers = [], redemptionEligibility: initialRedemptionEligibility }: Props) {
   const { auth, errors, redemption_success } = usePage().props as any
   const [selectedImageIndex, setSelectedImageIndex] = useState(0)
-  const [isFavorite, setIsFavorite] = useState(false)
   const [isRedeeming, setIsRedeeming] = useState(false)
   const [showSuccessModal, setShowSuccessModal] = useState(false)
   const [redemptionData, setRedemptionData] = useState<any>(null)
@@ -214,18 +211,6 @@ export default function OfferDetail({ offerId, offer: initialOffer, relatedOffer
     })
   }
 
-  const handleShare = () => {
-    if (navigator.share) {
-      navigator.share({
-        title: offer.title,
-        text: offer.description,
-        url: window.location.href,
-      })
-    } else {
-      navigator.clipboard.writeText(window.location.href)
-    }
-  }
-
   const metaDescription = offer.description ? String(offer.description).slice(0, 160) : undefined;
 
   return (
@@ -281,24 +266,6 @@ export default function OfferDetail({ offerId, offer: initialOffer, relatedOffer
                       </Button>
                     </>
                   )}
-                  <div className="absolute top-4 right-4 flex gap-2">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="bg-black/50 hover:bg-black/70 text-white"
-                      onClick={() => setIsFavorite(!isFavorite)}
-                    >
-                      <Heart className={`h-4 w-4 ${isFavorite ? 'fill-red-500 text-red-500' : ''}`} />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="bg-black/50 hover:bg-black/70 text-white"
-                      onClick={handleShare}
-                    >
-                      <Share2 className="h-4 w-4" />
-                    </Button>
-                  </div>
                 </div>
               </Card>
 
@@ -401,8 +368,6 @@ export default function OfferDetail({ offerId, offer: initialOffer, relatedOffer
                       const pointsDiscountAmount = offer.pricingBreakdown?.discountAmount ?? offer.discountAmount ?? (regularPrice * pointsDiscountPct / 100);
                       const youPayWithPoints = offer.pricingBreakdown?.discountPrice ?? offer.customerPriceWithPoints ?? (regularPrice - pointsDiscountAmount);
                       const showPayWithCash = offer.communityCashPrice != null && offer.communityCashPrice > 0;
-                      const cashDiscountPct = 10;
-                      const cashDiscountAmount = showPayWithCash ? regularPrice - (offer.communityCashPrice ?? 0) : 0;
                       const youPayWithCash = offer.communityCashPrice ?? 0;
                       
                       return (
@@ -437,16 +402,12 @@ export default function OfferDetail({ offerId, offer: initialOffer, relatedOffer
                               )}
                             </div>
 
-                            {/* Pay with cash — percentage calculation */}
+                            {/* Pay with cash — full amount, no discount */}
                             {showPayWithCash && (
                               <div className="rounded-lg bg-emerald-50 dark:bg-emerald-900/20 p-3 space-y-2 border border-emerald-100 dark:border-emerald-800/50">
                                 <p className="text-xs font-medium text-emerald-700 dark:text-emerald-300 uppercase tracking-wide">Pay with cash</p>
                                 <div className="space-y-1.5 text-sm">
-                                  <div className="flex justify-between">
-                                    <span className="text-muted-foreground">Discount ({cashDiscountPct}%)</span>
-                                    <span className="font-medium text-green-600 dark:text-green-400">−{currency} {cashDiscountAmount.toFixed(2)}</span>
-                                  </div>
-                                  <div className="flex justify-between pt-1.5 border-t border-emerald-200 dark:border-emerald-700">
+                                  <div className="flex justify-between pt-1.5">
                                     <span className="font-medium text-foreground">You pay</span>
                                     <span className="font-bold text-emerald-600 dark:text-emerald-400">{currency} {youPayWithCash.toFixed(2)}</span>
                                   </div>
@@ -474,7 +435,7 @@ export default function OfferDetail({ offerId, offer: initialOffer, relatedOffer
                     <div className="space-y-3">
                       {redemptionEligibility.userPoints < offer.pointsRequired && (offer.communityCashPrice ?? 0) > 0 && (
                         <p className="text-sm text-amber-600 dark:text-amber-400">
-                          You have {redemptionEligibility.userPoints.toLocaleString()} points (need {offer.pointsRequired.toLocaleString()}). You can still get 10% off by paying with cash.
+                          You have {redemptionEligibility.userPoints.toLocaleString()} points (need {offer.pointsRequired.toLocaleString()}). You can pay the full amount with cash.
                         </p>
                       )}
                       <div className="flex flex-col sm:flex-row gap-2">

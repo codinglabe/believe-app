@@ -196,22 +196,15 @@ export default function RedemptionShow({ redemption }: Props) {
                           </div>
                         </div>
                         <div className="rounded-lg border border-green-500/30 bg-green-950/20 p-4 space-y-2">
-                          <p className="text-xs font-medium text-green-400 uppercase tracking-wide">Pay with cash (10% off)</p>
+                          <p className="text-xs font-medium text-green-400 uppercase tracking-wide">Pay with cash</p>
                           {(() => {
                             const curr = redemption.pricingBreakdown.currency || redemption.currency || 'USD'
-                            const cashPrice = redemption.pricingBreakdown.communityCashPrice ?? Math.round(redemption.pricingBreakdown.regularPrice * 0.9 * 100) / 100
-                            const cashDiscount = redemption.pricingBreakdown.regularPrice - cashPrice
+                            const cashPrice = redemption.pricingBreakdown.communityCashPrice ?? redemption.pricingBreakdown.regularPrice
                             return (
-                              <>
-                                <div className="flex justify-between text-sm">
-                                  <span className="text-gray-400">Discount (10%)</span>
-                                  <span className="text-green-400">−{curr} {cashDiscount.toFixed(2)}</span>
-                                </div>
-                                <div className="flex justify-between pt-1 border-t border-gray-700">
-                                  <span className="text-gray-400">You pay</span>
-                                  <span className="font-semibold text-green-400">{curr} {cashPrice.toFixed(2)}</span>
-                                </div>
-                              </>
+                              <div className="flex justify-between text-sm pt-1 border-t border-gray-700">
+                                <span className="text-gray-400">You pay</span>
+                                <span className="font-semibold text-green-400">{curr} {cashPrice.toFixed(2)}</span>
+                              </div>
                             )
                           })()}
                         </div>

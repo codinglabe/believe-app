@@ -32,7 +32,6 @@ export default function CreateOffer({ categories }: CreateOfferProps) {
     discount_percentage: 5 as number,
     discount_cap: '' as string | number,
     image: null as File | null,
-    cash_required: '',
     currency: 'USD',
     inventory_qty: '',
     starts_at: '',
@@ -95,58 +94,57 @@ export default function CreateOffer({ categories }: CreateOfferProps) {
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-6">
-              <MerchantCard className="shadow-2xl">
+              {/* 1. Offer information */}
+              <MerchantCard className="shadow-xl">
                 <MerchantCardHeader>
-                  <MerchantCardTitle className="text-white">Offer Details</MerchantCardTitle>
+                  <MerchantCardTitle className="text-white">Offer information</MerchantCardTitle>
+                  <p className="text-sm text-gray-400 mt-1">Basic details and description</p>
                 </MerchantCardHeader>
-                <MerchantCardContent className="space-y-6">
-                  {/* Category */}
-                  <div>
-                    <MerchantLabel htmlFor="merchant_hub_category_id">Category *</MerchantLabel>
-                    <Select
-                      value={data.merchant_hub_category_id}
-                      onValueChange={(value) => setData('merchant_hub_category_id', value)}
-                    >
-                      <SelectTrigger className={`mt-1 bg-gray-900/50 border-[#FF1493]/40 text-white ${errors.merchant_hub_category_id ? 'border-red-500' : ''}`}>
-                        <SelectValue placeholder="Select a category" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {categories.map((category) => (
-                          <SelectItem key={category.id} value={category.id.toString()}>
-                            {category.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    {errors.merchant_hub_category_id && (
-                      <p className="mt-1 text-sm text-red-400">{errors.merchant_hub_category_id}</p>
-                    )}
+                <MerchantCardContent className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <MerchantLabel htmlFor="merchant_hub_category_id">Category *</MerchantLabel>
+                      <Select
+                        value={data.merchant_hub_category_id}
+                        onValueChange={(value) => setData('merchant_hub_category_id', value)}
+                      >
+                        <SelectTrigger className={`mt-1 bg-gray-900/50 border-[#FF1493]/40 text-white ${errors.merchant_hub_category_id ? 'border-red-500' : ''}`}>
+                          <SelectValue placeholder="Select a category" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {categories.map((category) => (
+                            <SelectItem key={category.id} value={category.id.toString()}>
+                              {category.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {errors.merchant_hub_category_id && (
+                        <p className="mt-1 text-sm text-red-400">{errors.merchant_hub_category_id}</p>
+                      )}
+                    </div>
+                    <div>
+                      <MerchantLabel htmlFor="title">Title *</MerchantLabel>
+                      <MerchantInput
+                        id="title"
+                        value={data.title}
+                        onChange={(e) => setData('title', e.target.value)}
+                        placeholder="e.g., 50% Off Electronics"
+                        className={`mt-1 ${errors.title ? 'border-red-500' : ''}`}
+                        required
+                      />
+                      {errors.title && (
+                        <p className="mt-1 text-sm text-red-400">{errors.title}</p>
+                      )}
+                    </div>
                   </div>
-
-                  {/* Title */}
                   <div>
-                    <MerchantLabel htmlFor="title">Title *</MerchantLabel>
-                    <MerchantInput
-                      id="title"
-                      value={data.title}
-                      onChange={(e) => setData('title', e.target.value)}
-                      placeholder="e.g., 50% Off Electronics"
-                      className={`mt-1 ${errors.title ? 'border-red-500' : ''}`}
-                      required
-                    />
-                    {errors.title && (
-                      <p className="mt-1 text-sm text-red-400">{errors.title}</p>
-                    )}
-                  </div>
-
-                  {/* Short Description */}
-                  <div>
-                    <MerchantLabel htmlFor="short_description">Short Description</MerchantLabel>
+                    <MerchantLabel htmlFor="short_description">Short description</MerchantLabel>
                     <MerchantInput
                       id="short_description"
                       value={data.short_description}
                       onChange={(e) => setData('short_description', e.target.value)}
-                      placeholder="Brief description (max 500 characters)"
+                      placeholder="Brief summary (max 500 characters)"
                       maxLength={500}
                       className={`mt-1 ${errors.short_description ? 'border-red-500' : ''}`}
                     />
@@ -154,8 +152,6 @@ export default function CreateOffer({ categories }: CreateOfferProps) {
                       <p className="mt-1 text-sm text-red-400">{errors.short_description}</p>
                     )}
                   </div>
-
-                  {/* Description */}
                   <div>
                     <MerchantLabel htmlFor="description">Description *</MerchantLabel>
                     <MerchantTextarea
@@ -163,7 +159,7 @@ export default function CreateOffer({ categories }: CreateOfferProps) {
                       value={data.description}
                       onChange={(e) => setData('description', e.target.value)}
                       placeholder="Full description of the offer"
-                      rows={6}
+                      rows={4}
                       className={`mt-1 ${errors.description ? 'border-red-500' : ''}`}
                       required
                     />
@@ -171,97 +167,63 @@ export default function CreateOffer({ categories }: CreateOfferProps) {
                       <p className="mt-1 text-sm text-red-400">{errors.description}</p>
                     )}
                   </div>
-
-                  {/* Image Upload */}
                   <div>
                     <ImageUpload
-                      label="Offer Image"
+                      label="Offer image"
                       value={null}
                       onChange={(file) => setData('image', file)}
                       processing={processing}
                     />
-                    <p className="text-xs text-gray-400 mt-1">
-                      Upload an image for the offer (max 5MB)
-                    </p>
+                    <p className="text-xs text-gray-400 mt-1">Max 5MB</p>
                     {errors.image && (
                       <p className="mt-1 text-sm text-red-400">{errors.image}</p>
                     )}
                   </div>
+                </MerchantCardContent>
+              </MerchantCard>
 
-                  {/* BIU Discount Rules: 1–10% only; points auto-calculated */}
-                  <div className="rounded-xl border border-[#FF1493]/30 bg-gray-900/50 p-4 space-y-4">
-                    <p className="text-sm font-medium text-gray-300">Pricing &amp; Discount (1–10% only; points calculated automatically)</p>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <MerchantLabel htmlFor="reference_price">Retail / Product Price *</MerchantLabel>
-                        <MerchantInput
-                          id="reference_price"
-                          type="number"
-                          min="0.01"
-                          step="0.01"
-                          value={data.reference_price === '' ? '' : data.reference_price}
-                          onChange={(e) => setData('reference_price', e.target.value ? Number(e.target.value) : '')}
-                          placeholder="e.g. 100"
-                          className={`mt-1 ${errors.reference_price ? 'border-red-500' : ''}`}
-                          required
-                        />
-                        {errors.reference_price && (
-                          <p className="mt-1 text-sm text-red-400">{errors.reference_price}</p>
-                        )}
-                      </div>
-                      <div>
-                        <MerchantLabel htmlFor="discount_percentage">Discount % * (1–10% only)</MerchantLabel>
-                        <Select
-                          value={String(data.discount_percentage)}
-                          onValueChange={(value) => setData('discount_percentage', Number(value))}
-                        >
-                          <SelectTrigger className={`mt-1 bg-gray-900/50 border-[#FF1493]/40 text-white ${errors.discount_percentage ? 'border-red-500' : ''}`}>
-                            <SelectValue placeholder="Select %" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => (
-                              <SelectItem key={n} value={String(n)}>{n}%</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        {errors.discount_percentage && (
-                          <p className="mt-1 text-sm text-red-400">{errors.discount_percentage}</p>
-                        )}
-                      </div>
-                    </div>
-                    {/* Live calculator preview */}
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 border-t border-gray-700">
-                      <div className="bg-gray-800/60 rounded-lg p-3">
-                        <p className="text-xs text-gray-400 uppercase tracking-wide">Discount amount</p>
-                        <p className="text-lg font-bold text-[#FF1493]">${discountAmount.toFixed(2)}</p>
-                      </div>
-                      <div className="bg-gray-800/60 rounded-lg p-3">
-                        <p className="text-xs text-gray-400 uppercase tracking-wide">Points required</p>
-                        <p className="text-lg font-bold text-white">{pointsRequired.toLocaleString()}</p>
-                      </div>
-                      <div className="bg-gray-800/60 rounded-lg p-3">
-                        <p className="text-xs text-gray-400 uppercase tracking-wide">Customer pays (with points)</p>
-                        <p className="text-lg font-bold text-green-400">${customerPays.toFixed(2)}</p>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {/* Cash Required (optional) */}
+              {/* 2. Pricing & points */}
+              <MerchantCard className="shadow-xl">
+                <MerchantCardHeader>
+                  <MerchantCardTitle className="text-white">Pricing & points</MerchantCardTitle>
+                  <p className="text-sm text-gray-400 mt-1">Discount 1–10%. Points are calculated automatically.</p>
+                </MerchantCardHeader>
+                <MerchantCardContent className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div>
-                      <MerchantLabel htmlFor="cash_required">Cash Required (Optional)</MerchantLabel>
+                      <MerchantLabel htmlFor="reference_price">Retail / product price *</MerchantLabel>
                       <MerchantInput
-                        id="cash_required"
+                        id="reference_price"
                         type="number"
-                        min="0"
+                        min="0.01"
                         step="0.01"
-                        value={data.cash_required}
-                        onChange={(e) => setData('cash_required', e.target.value)}
-                        placeholder="0.00"
-                        className={`mt-1 ${errors.cash_required ? 'border-red-500' : ''}`}
+                        value={data.reference_price === '' ? '' : data.reference_price}
+                        onChange={(e) => setData('reference_price', e.target.value ? Number(e.target.value) : '')}
+                        placeholder="e.g. 100"
+                        className={`mt-1 ${errors.reference_price ? 'border-red-500' : ''}`}
+                        required
                       />
-                      {errors.cash_required && (
-                        <p className="mt-1 text-sm text-red-400">{errors.cash_required}</p>
+                      {errors.reference_price && (
+                        <p className="mt-1 text-sm text-red-400">{errors.reference_price}</p>
+                      )}
+                    </div>
+                    <div>
+                      <MerchantLabel htmlFor="discount_percentage">Discount % *</MerchantLabel>
+                      <Select
+                        value={String(data.discount_percentage)}
+                        onValueChange={(value) => setData('discount_percentage', Number(value))}
+                      >
+                        <SelectTrigger className={`mt-1 bg-gray-900/50 border-[#FF1493]/40 text-white ${errors.discount_percentage ? 'border-red-500' : ''}`}>
+                          <SelectValue placeholder="Select %" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => (
+                            <SelectItem key={n} value={String(n)}>{n}%</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {errors.discount_percentage && (
+                        <p className="mt-1 text-sm text-red-400">{errors.discount_percentage}</p>
                       )}
                     </div>
                     <div>
@@ -281,28 +243,48 @@ export default function CreateOffer({ categories }: CreateOfferProps) {
                       </Select>
                     </div>
                   </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    {/* Inventory Quantity */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 rounded-lg bg-gray-900/50 border border-gray-700/50 p-4">
                     <div>
-                      <MerchantLabel htmlFor="inventory_qty">Inventory Quantity (Optional)</MerchantLabel>
+                      <p className="text-xs text-gray-400 uppercase tracking-wide">Discount amount</p>
+                      <p className="text-lg font-bold text-[#FF1493]">${discountAmount.toFixed(2)}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-400 uppercase tracking-wide">Points required</p>
+                      <p className="text-lg font-bold text-white">{pointsRequired.toLocaleString()}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-400 uppercase tracking-wide">Customer pays (points)</p>
+                      <p className="text-lg font-bold text-green-400">${customerPays.toFixed(2)}</p>
+                    </div>
+                  </div>
+                </MerchantCardContent>
+              </MerchantCard>
+
+              {/* 3. Availability & publish */}
+              <MerchantCard className="shadow-xl">
+                <MerchantCardHeader>
+                  <MerchantCardTitle className="text-white">Availability & publish</MerchantCardTitle>
+                  <p className="text-sm text-gray-400 mt-1">Inventory, dates and status</p>
+                </MerchantCardHeader>
+                <MerchantCardContent className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                      <MerchantLabel htmlFor="inventory_qty">Inventory quantity</MerchantLabel>
                       <MerchantInput
                         id="inventory_qty"
                         type="number"
                         min="0"
                         value={data.inventory_qty}
                         onChange={(e) => setData('inventory_qty', e.target.value)}
-                        placeholder="Leave empty for unlimited"
+                        placeholder="Unlimited if empty"
                         className={`mt-1 ${errors.inventory_qty ? 'border-red-500' : ''}`}
                       />
                       {errors.inventory_qty && (
                         <p className="mt-1 text-sm text-red-400">{errors.inventory_qty}</p>
                       )}
                     </div>
-
-                    {/* Starts At */}
                     <div>
-                      <MerchantLabel htmlFor="starts_at">Starts At (Optional)</MerchantLabel>
+                      <MerchantLabel htmlFor="starts_at">Starts at</MerchantLabel>
                       <MerchantInput
                         id="starts_at"
                         type="datetime-local"
@@ -314,10 +296,8 @@ export default function CreateOffer({ categories }: CreateOfferProps) {
                         <p className="mt-1 text-sm text-red-400">{errors.starts_at}</p>
                       )}
                     </div>
-
-                    {/* Ends At */}
                     <div>
-                      <MerchantLabel htmlFor="ends_at">Ends At (Optional)</MerchantLabel>
+                      <MerchantLabel htmlFor="ends_at">Ends at</MerchantLabel>
                       <MerchantInput
                         id="ends_at"
                         type="datetime-local"
@@ -330,9 +310,7 @@ export default function CreateOffer({ categories }: CreateOfferProps) {
                       )}
                     </div>
                   </div>
-
-                  {/* Status */}
-                  <div>
+                  <div className="max-w-xs">
                     <MerchantLabel htmlFor="status">Status *</MerchantLabel>
                     <Select
                       value={data.status}
@@ -355,8 +333,8 @@ export default function CreateOffer({ categories }: CreateOfferProps) {
                 </MerchantCardContent>
               </MerchantCard>
 
-              {/* Submit Buttons */}
-              <div className="flex justify-end gap-3">
+              {/* Submit */}
+              <div className="flex flex-wrap justify-end gap-3 pt-2">
                 <Link href="/offers">
                   <MerchantButton type="button" variant="outline">
                     Cancel
