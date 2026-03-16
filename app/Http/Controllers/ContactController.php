@@ -55,7 +55,7 @@ class ContactController extends Controller
             ]);
 
             // Send email notification
-            $adminEmail = config('mail.from.address', 'wendhi@stuttiegroup.com');
+            $adminEmail = config('mail.from.address', 'wendhi@supportgroup.com');
 
             Mail::send([], [], function ($message) use ($validated, $adminEmail) {
                 $message->to($adminEmail)

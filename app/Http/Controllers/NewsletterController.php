@@ -276,7 +276,7 @@ class NewsletterController extends BaseController
         // Get real data for variable preview
         $previewData = [
             'organization_name' => $user->organization->name ?? ($user->name ?? 'Your Organization'),
-            'organization_email' => $user->organization->email ?? ($user->email ?? 'wendhi@stuttiegroup.com'),
+            'organization_email' => $user->organization->email ?? ($user->email ?? 'wendhi@supportgroup.com'),
             'organization_phone' => $user->organization->phone ?? ($user->contact_number ?? '+1 (555) 000-0000'),
             'organization_address' => $orgAddress ?: 'Your Organization Address',
             'recipient_name' => $user->name ?? 'Recipient Name',
@@ -361,7 +361,7 @@ class NewsletterController extends BaseController
         // Get real data for variable preview
         $previewData = [
             'organization_name' => $user->organization->name ?? ($user->name ?? 'Your Organization'),
-            'organization_email' => $user->organization->email ?? ($user->email ?? 'wendhi@stuttiegroup.com'),
+            'organization_email' => $user->organization->email ?? ($user->email ?? 'wendhi@supportgroup.com'),
             'organization_phone' => $user->organization->phone ?? ($user->contact_number ?? '+1 (555) 000-0000'),
             'organization_address' => $orgAddress ?: 'Your Organization Address',
             'recipient_name' => $user->name ?? 'Recipient Name',
@@ -872,7 +872,7 @@ class NewsletterController extends BaseController
 
         $previewData = [
             'organization_name' => $user->organization->name ?? ($user->name ?? 'Your Organization'),
-            'organization_email' => $user->organization->email ?? ($user->email ?? 'wendhi@stuttiegroup.com'),
+            'organization_email' => $user->organization->email ?? ($user->email ?? 'wendhi@supportgroup.com'),
             'organization_phone' => $user->organization->phone ?? ($user->contact_number ?? '+1 (555) 000-0000'),
             'organization_address' => $orgAddress ?: 'Your Organization Address',
             'recipient_name' => $user->name ?? 'Recipient Name',
@@ -1133,7 +1133,7 @@ class NewsletterController extends BaseController
 
         $previewData = [
             'organization_name' => $user->organization->name ?? ($user->name ?? 'Your Organization'),
-            'organization_email' => $user->organization->email ?? ($user->email ?? 'wendhi@stuttiegroup.com'),
+            'organization_email' => $user->organization->email ?? ($user->email ?? 'wendhi@supportgroup.com'),
             'organization_phone' => $user->organization->phone ?? ($user->contact_number ?? '+1 (555) 000-0000'),
             'organization_address' => $orgAddress ?: 'Your Organization Address',
             'recipient_name' => $user->name ?? 'Recipient Name',
@@ -1245,7 +1245,7 @@ class NewsletterController extends BaseController
 
         $previewData = [
             'organization_name' => $user->organization->name ?? ($user->name ?? 'Your Organization'),
-            'organization_email' => $user->organization->email ?? ($user->email ?? 'wendhi@stuttiegroup.com'),
+            'organization_email' => $user->organization->email ?? ($user->email ?? 'wendhi@supportgroup.com'),
             'organization_phone' => $user->organization->phone ?? ($user->contact_number ?? '+1 (555) 000-0000'),
             'organization_address' => $orgAddress ?: 'Your Organization Address',
             'recipient_name' => $user->name ?? 'Recipient Name',

@@ -211,7 +211,7 @@ const PrivacyPolicy = () => {
                                         To exercise any of these rights, please contact us at:
                                     </p>
                                     <p className="text-lg font-semibold text-gray-900 dark:text-white mt-2">
-                                        wendhi@stuttiegroup.com
+                                        wendhi@supportgroup.com
                                     </p>
                                 </div>
                             </div>
@@ -229,7 +229,7 @@ const PrivacyPolicy = () => {
                                             Privacy Team
                                         </h3>
                                         <p className="text-gray-600 dark:text-gray-300">
-                                            Email: wendhi@stuttiegroup.com
+                                            Email: wendhi@supportgroup.com
                                         </p>
                                     </div>
                                     <div>
@@ -237,7 +237,7 @@ const PrivacyPolicy = () => {
                                             General Support
                                         </h3>
                                         <p className="text-gray-600 dark:text-gray-300">
-                                            Email: wendhi@stuttiegroup.com
+                                            Email: wendhi@supportgroup.com
                                         </p>
                                     </div>
                                     <div>

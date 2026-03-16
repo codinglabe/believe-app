@@ -46,7 +46,7 @@ export default function Footer() {
       { title: "Contact", url: route("contact") },
       { title: "Register Organization", url: route("register.organization") }
     ],
-    contact_email: "wendhi@stuttiegroup.com",
+    contact_email: "wendhi@supportgroup.com",
     contact_phone: "+1 (555) 123-4567",
     contact_address: "123 Charity Lane\nNew York, NY 10001",
     copyright_text: `${new Date().getFullYear()} ${import.meta.env.VITE_APP_NAME}. All rights reserved.`,
