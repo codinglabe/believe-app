@@ -882,6 +882,12 @@ const mainNavItems: (NavItem | NavGroup)[] = [
                         icon: List,
                         role: "admin"
                     },
+                    {
+                        title: 'Kiosk Requests',
+                        href: '/admin/kiosk/requests',
+                        icon: ClipboardList,
+                        role: "admin"
+                    },
                 ],
             },
             {

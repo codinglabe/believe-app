@@ -192,6 +192,8 @@ Route::post('/contact', [App\Http\Controllers\ContactController::class, 'store']
 
 Route::get('/kiosk', [App\Http\Controllers\KioskController::class, 'index'])->name('kiosk.index');
 Route::get('/kiosk/services', [App\Http\Controllers\KioskController::class, 'services'])->name('kiosk.services');
+Route::post('/kiosk/service-requests', [App\Http\Controllers\KioskServiceRequestController::class, 'store'])->name('kiosk.service-requests.store');
+Route::patch('/kiosk/service-requests/{serviceRequest}/link', [App\Http\Controllers\KioskServiceRequestController::class, 'updateLink'])->name('kiosk.service-requests.update-link');
 
 Route::middleware(['auth', 'EnsureEmailIsVerified'])->prefix('kiosk/dashboard')->name('kiosk.dashboard.')->group(function () {
     Route::get('/', [App\Http\Controllers\KioskDashboardController::class, 'index'])->name('index');
@@ -220,6 +222,7 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:admin'])->group(functi
     Route::get('/admin/kiosk/items/{item}/edit', [App\Http\Controllers\Admin\KioskItemsController::class, 'edit'])->name('admin.kiosk.items.edit');
     Route::put('/admin/kiosk/items/{item}', [App\Http\Controllers\Admin\KioskItemsController::class, 'update'])->name('admin.kiosk.items.update');
     Route::delete('/admin/kiosk/items/{item}', [App\Http\Controllers\Admin\KioskItemsController::class, 'destroy'])->name('admin.kiosk.items.destroy');
+    Route::get('/admin/kiosk/requests', [App\Http\Controllers\Admin\KioskServiceRequestsController::class, 'index'])->name('admin.kiosk.requests.index');
 
     Route::get('/admin/kiosk/subcategories', [App\Http\Controllers\Admin\KioskSubcategoryController::class, 'index'])->name('admin.kiosk.subcategories.index');
     Route::get('/admin/kiosk/subcategories/create', [App\Http\Controllers\Admin\KioskSubcategoryController::class, 'create'])->name('admin.kiosk.subcategories.create');

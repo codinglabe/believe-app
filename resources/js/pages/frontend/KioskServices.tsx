@@ -23,6 +23,7 @@ import {
   Search,
   ChevronLeft,
   ChevronRight,
+  Send,
   type LucideIcon,
 } from "lucide-react"
 import { Label } from "@/components/ui/label"
@@ -120,10 +121,51 @@ export default function KioskServices({
   )
 
   const [searchInput, setSearchInput] = useState(filters.search ?? "")
+  const [requestForm, setRequestForm] = useState({
+    requester_name: "",
+    requester_email: "",
+    display_name: "",
+    category_slug: filters.category ?? "",
+    subcategory: filters.subcategory ?? "",
+    state: filters.state ?? "",
+    city: filters.city ?? "",
+    url: "",
+    details: "",
+  })
+  const [requestState, setRequestState] = useState<{
+    loading: boolean
+    status: "approved" | "pending" | "rejected" | null
+    reason: string | null
+    requestId: number | null
+    editToken: string | null
+    suggestedUrl: string | null
+    message: string | null
+  }>({
+    loading: false,
+    status: null,
+    reason: null,
+    requestId: null,
+    editToken: null,
+    suggestedUrl: null,
+    message: null,
+  })
+  const [correctedUrl, setCorrectedUrl] = useState("")
+  const [showRequestForm, setShowRequestForm] = useState(false)
+  const requestSectionRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
     setSearchInput(filters.search ?? "")
   }, [filters.search])
+
+  useEffect(() => {
+    setRequestForm((prev) => ({
+      ...prev,
+      category_slug: filters.category ?? prev.category_slug,
+      subcategory: filters.subcategory ?? prev.subcategory,
+      state: filters.state ?? prev.state,
+      city: filters.city ?? prev.city,
+    }))
+  }, [filters.category, filters.subcategory, filters.state, filters.city])
 
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const handleSearchChange = useCallback(
@@ -146,6 +188,94 @@ export default function KioskServices({
     },
     [filters, buildUrl]
   )
+
+  const submitServiceRequest = async () => {
+    setRequestState((s) => ({ ...s, loading: true, message: null }))
+    try {
+      const res = await fetch(route("kiosk.service-requests.store"), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Requested-With": "XMLHttpRequest",
+          "X-CSRF-TOKEN": (document.querySelector('meta[name="csrf-token"]') as HTMLMetaElement | null)?.content ?? "",
+        },
+        body: JSON.stringify(requestForm),
+      })
+      const data = await res.json()
+      if (!res.ok || !data?.ok) {
+        throw new Error(data?.message ?? "Request failed")
+      }
+      setRequestState({
+        loading: false,
+        status: data.status ?? null,
+        reason: data.reason ?? null,
+        requestId: data.request_id ?? null,
+        editToken: data.edit_token ?? null,
+        suggestedUrl: data.suggested_url ?? null,
+        message:
+          data.status === "approved"
+            ? "Approved and added to kiosk services."
+            : data.status === "pending"
+              ? "Pending: please provide a better matching link."
+              : "Rejected by validation.",
+      })
+      setCorrectedUrl(data.suggested_url ?? "")
+      if (data.status === "approved") {
+        router.reload({ only: ["services", "filterOptions"] })
+      }
+    } catch (e) {
+      setRequestState((s) => ({
+        ...s,
+        loading: false,
+        message: e instanceof Error ? e.message : "Unable to submit request",
+      }))
+    }
+  }
+
+  const submitCorrectedLink = async () => {
+    if (!requestState.requestId || !requestState.editToken) return
+    setRequestState((s) => ({ ...s, loading: true, message: null }))
+    try {
+      const res = await fetch(route("kiosk.service-requests.update-link", requestState.requestId), {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Requested-With": "XMLHttpRequest",
+          "X-CSRF-TOKEN": (document.querySelector('meta[name="csrf-token"]') as HTMLMetaElement | null)?.content ?? "",
+        },
+        body: JSON.stringify({
+          edit_token: requestState.editToken,
+          url: correctedUrl,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok || !data?.ok) {
+        throw new Error(data?.message ?? "Update failed")
+      }
+      setRequestState((s) => ({
+        ...s,
+        loading: false,
+        status: data.status ?? s.status,
+        reason: data.reason ?? s.reason,
+        suggestedUrl: data.suggested_url ?? s.suggestedUrl,
+        message:
+          data.status === "approved"
+            ? "Approved and added to kiosk services."
+            : data.status === "pending"
+              ? "Still pending. Please refine the URL."
+              : "Rejected by validation.",
+      }))
+      if (data.status === "approved") {
+        router.reload({ only: ["services", "filterOptions"] })
+      }
+    } catch (e) {
+      setRequestState((s) => ({
+        ...s,
+        loading: false,
+        message: e instanceof Error ? e.message : "Unable to update link",
+      }))
+    }
+  }
 
   return (
     <FrontendLayout>
@@ -178,6 +308,22 @@ export default function KioskServices({
         </section>
 
         <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="mb-4 flex justify-end">
+            <button
+              type="button"
+              onClick={() => {
+                setShowRequestForm(true)
+                setTimeout(() => {
+                  requestSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
+                }, 50)
+              }}
+              className="inline-flex items-center gap-2 rounded-md bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 text-sm font-medium"
+            >
+              <Send className="h-4 w-4" />
+              Request service
+            </button>
+          </div>
+
           {/* Filters */}
           <div className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4 sm:p-6 mb-6 shadow-sm">
             <h2 className="text-sm font-semibold text-foreground mb-4">Filters</h2>
@@ -434,6 +580,131 @@ export default function KioskServices({
               </>
             )}
           </div>
+
+          {showRequestForm && (
+          <div ref={requestSectionRef} className="mt-8 rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4 sm:p-6 shadow-sm">
+            <h3 className="text-base font-semibold text-foreground">Can&apos;t find your service?</h3>
+            <p className="text-sm text-muted-foreground mt-1">
+              Submit a service request. We use AI to validate the details and link before publishing.
+            </p>
+
+            <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              <input
+                className="rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm"
+                placeholder="Your name (optional)"
+                value={requestForm.requester_name}
+                onChange={(e) => setRequestForm((p) => ({ ...p, requester_name: e.target.value }))}
+              />
+              <input
+                className="rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm"
+                placeholder="Your email (optional)"
+                value={requestForm.requester_email}
+                onChange={(e) => setRequestForm((p) => ({ ...p, requester_email: e.target.value }))}
+              />
+              <input
+                className="rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm"
+                placeholder="Service name *"
+                value={requestForm.display_name}
+                onChange={(e) => setRequestForm((p) => ({ ...p, display_name: e.target.value }))}
+              />
+              <select
+                className="rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm"
+                value={requestForm.category_slug}
+                onChange={(e) => setRequestForm((p) => ({ ...p, category_slug: e.target.value }))}
+              >
+                <option value="">Select category *</option>
+                {filterOptions.categories.map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+              <input
+                className="rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm"
+                placeholder="Subcategory"
+                value={requestForm.subcategory}
+                onChange={(e) => setRequestForm((p) => ({ ...p, subcategory: e.target.value }))}
+              />
+              <input
+                className="rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm"
+                placeholder="URL"
+                value={requestForm.url}
+                onChange={(e) => setRequestForm((p) => ({ ...p, url: e.target.value }))}
+              />
+              <input
+                className="rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm"
+                placeholder="State"
+                value={requestForm.state}
+                onChange={(e) => setRequestForm((p) => ({ ...p, state: e.target.value }))}
+              />
+              <input
+                className="rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm"
+                placeholder="City"
+                value={requestForm.city}
+                onChange={(e) => setRequestForm((p) => ({ ...p, city: e.target.value }))}
+              />
+              <input
+                className="sm:col-span-2 lg:col-span-3 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm"
+                placeholder="Extra details (why this service is needed)"
+                value={requestForm.details}
+                onChange={(e) => setRequestForm((p) => ({ ...p, details: e.target.value }))}
+              />
+            </div>
+
+            <div className="mt-4 flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                onClick={submitServiceRequest}
+                disabled={requestState.loading || !requestForm.display_name || !requestForm.category_slug}
+                className="inline-flex items-center gap-2 rounded-md bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white px-4 py-2 text-sm font-medium"
+              >
+                <Send className="h-4 w-4" />
+                {requestState.loading ? "Submitting..." : "Submit request"}
+              </button>
+              {requestState.message && (
+                <span className="text-sm text-muted-foreground">{requestState.message}</span>
+              )}
+            </div>
+
+            {(requestState.reason || requestState.status) && (
+              <div className="mt-3 text-sm">
+                <span className="font-medium text-foreground">Status: </span>
+                <span className="capitalize">{requestState.status}</span>
+                {requestState.reason ? <span className="text-muted-foreground"> — {requestState.reason}</span> : null}
+              </div>
+            )}
+
+            {requestState.status === "pending" && requestState.requestId && requestState.editToken && (
+              <div className="mt-4 border-t border-gray-200 dark:border-gray-700 pt-4">
+                <p className="text-sm font-medium text-foreground mb-2">Add corrected link</p>
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <input
+                    className="flex-1 rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm"
+                    placeholder="https://..."
+                    value={correctedUrl}
+                    onChange={(e) => setCorrectedUrl(e.target.value)}
+                  />
+                  <button
+                    type="button"
+                    onClick={submitCorrectedLink}
+                    disabled={requestState.loading || !correctedUrl.trim()}
+                    className="rounded-md bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white px-4 py-2 text-sm font-medium"
+                  >
+                    {requestState.loading ? "Validating..." : "Validate link"}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            <div className="mt-4 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setShowRequestForm(false)}
+                className="rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2 text-sm font-medium text-foreground hover:bg-gray-50 dark:hover:bg-gray-700"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+          )}
         </div>
       </div>
     </FrontendLayout>
