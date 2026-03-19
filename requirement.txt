@@ -1,0 +1,167 @@
+# Supporter Activity Tracking – Developer Specification
+
+## Purpose
+
+Create a simple analytics system to track *supporter engagement* across the platform.
+The goal is to understand *which supporters are active and how they interact with organizations*.
+
+Only *five events* will be tracked across the entire system. These events will power the *Supporter Activity Dashboard*.
+
+---
+
+# 1. Events to Track
+
+The platform should only record the following events:
+
+
+donation.completed
+purchase.completed
+courses.completed
+events.completed
+volunteer.signup
+
+
+### Event Definitions
+
+*donation.completed*
+Triggered when a supporter successfully completes a donation.
+
+*purchase.completed*
+Triggered when a supporter purchases an item in the Marketplace.
+
+*courses.completed*
+Triggered when a supporter completes a course.
+
+*events.completed*
+Triggered when a supporter attends or completes an event.
+
+*volunteer.signup*
+Triggered when a supporter signs up for a volunteer opportunity.
+
+---
+
+# 2. Activity Tracking Table
+
+Create a single table that stores all supporter actions.
+
+### Table Name
+
+supporter_activity
+
+### Columns
+
+| Column          | Type      | Description                                          |
+| --------------- | --------- | ---------------------------------------------------- |
+| id              | bigint    | Primary key                                          |
+| supporter_id    | bigint    | ID of the supporter performing the action            |
+| organization_id | bigint    | Organization involved                                |
+| event_type      | string    | One of the five events listed above                  |
+| reference_id    | bigint    | ID of related record (donation, event, course, etc.) |
+| created_at      | timestamp | Time the action occurred                             |
+
+---
+
+# 3. Example Data
+
+| id | supporter_id | organization_id | event_type         | created_at |
+| -- | ------------ | --------------- | ------------------ | ---------- |
+| 1  | 104          | 22              | donation.completed | 2026-05-18 |
+| 2  | 104          | 22              | events.completed   | 2026-05-15 |
+| 3  | 211          | 34              | purchase.completed | 2026-05-18 |
+| 4  | 315          | 22              | volunteer.signup   | 2026-05-14 |
+
+---
+
+# 4. Supporter Activity Dashboard
+
+The dashboard should display *supporter engagement*, not just totals.
+
+## Section 1 – Active Supporters
+
+List supporters with recent activity.
+
+| Supporter     | Donation | Purchase | Course | Event | Volunteer | Last Activity |
+| ------------- | -------- | -------- | ------ | ----- | --------- | ------------- |
+| Maria Lopez   | ✓        |          | ✓      | ✓     |           | May 18        |
+| David Kim     |          | ✓        |        |       |           | May 18        |
+| Sarah Johnson | ✓        | ✓        |        | ✓     | ✓         | May 17        |
+
+---
+
+## Section 2 – Top Supporters
+
+Rank supporters by engagement.
+
+| Rank | Supporter     | Donations | Purchases | Courses | Events | Volunteers |
+| ---- | ------------- | --------- | --------- | ------- | ------ | ---------- |
+| 1    | Sarah Johnson | 3         | 2         | 1       | 2      | 1          |
+| 2    | Maria Lopez   | 2         | 0         | 3       | 1      | 0          |
+| 3    | David Kim     | 1         | 3         | 0       | 0      | 0          |
+
+---
+
+## Section 3 – Engagement Summary
+
+| Metric              | Count |
+| ------------------- | ----- |
+| Active Supporters   | 248   |
+| Donors              | 142   |
+| Buyers              | 87    |
+| Course Participants | 95    |
+| Event Participants  | 133   |
+| Volunteers          | 41    |
+
+---
+
+# 5. Supporter Profile View
+
+When clicking a supporter, show their activity timeline.
+
+Example:
+
+### Sarah Johnson – Activity Timeline
+
+| Date   | Event              |
+| ------ | ------------------ |
+| May 18 | donation.completed |
+| May 17 | volunteer.signup   |
+| May 15 | events.completed   |
+| May 10 | purchase.completed |
+| May 8  | courses.completed  |
+
+---
+
+# 6. Key Objective
+
+This system allows the platform to measure:
+
+* Which supporters are most engaged
+* How supporters contribute (money, purchases, learning, volunteering)
+* Recent supporter activity
+* Overall supporter participation across organizations
+
+This activity data will power the *Supporter Engagement Dashboard* used by organizations.
+
+---
+
+# Summary
+
+Track only *five events* and store them in a single *supporter_activity* table.
+
+Events:
+
+
+donation.completed
+purchase.completed
+courses.completed
+events.completed
+volunteer.signup
+
+
+From this data the system can generate:
+
+* Active supporters
+* Top supporters
+* Supporter activity timeline
+* Engagement metrics
+* Organization supporter insights

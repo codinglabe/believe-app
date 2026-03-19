@@ -65,8 +65,8 @@ export default function SupporterActivityShow({
                         {supporter.name}
                     </h1>
                     <p className="text-muted-foreground mt-1">
-                        Activity timeline · {organization.name} · list uses {periodLabels[dashboardPeriod]} context for navigation
-                        only
+                        Activity timeline · {organization.name} · list uses {periodLabels[dashboardPeriod]} context for
+                        navigation only
                     </p>
                 </div>
 

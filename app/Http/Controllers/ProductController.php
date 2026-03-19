@@ -24,6 +24,7 @@ use App\Models\StateSalesTax;
 use Laravel\Cashier\Cashier;
 use Illuminate\Support\Str;
 use App\Services\ShippoService;
+use App\Services\SupporterActivityService;
 
 class ProductController extends BaseController
 {
@@ -1893,6 +1894,17 @@ class ProductController extends BaseController
                 'quantity_available' => max(0, $product->quantity_available - 1),
             ]);
             \DB::commit();
+
+            try {
+                $order->load('items');
+                app(SupporterActivityService::class)->recordPurchasesForOrder($order);
+            } catch (\Throwable $e) {
+                \Log::warning('Supporter activity (purchase) failed', [
+                    'order_id' => $order->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+
             return redirect()->route('user.profile.orders')->with('success', 'Payment complete. Your order has been placed.');
         } catch (\Exception $e) {
             \DB::rollBack();
