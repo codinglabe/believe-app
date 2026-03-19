@@ -241,15 +241,17 @@ export default function ProfileEdit() {
 
             <div>
               <Label htmlFor="dob" className="text-gray-900 dark:text-white">
-                Date of Birth
+                Date of Birth (MM/DD) *
               </Label>
               <Input
                 id="dob"
-                type="date"
+                type="text"
                 value={data.dob}
                 onChange={(e) => setData("dob", e.target.value)}
                 className="bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600"
-                max={new Date().toISOString().split('T')[0]}
+                placeholder="MM/DD"
+                pattern="^(0[1-9]|1[0-2])\/(0[1-9]|[12][0-9]|3[01])$"
+                required
               />
               {errors.dob && <p className="text-red-600 text-sm mt-1">{errors.dob}</p>}
             </div>
@@ -258,7 +260,7 @@ export default function ProfileEdit() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
                 <Label htmlFor="city" className="text-gray-900 dark:text-white">
-                  City
+                  City *
                 </Label>
                 <Input
                   id="city"
@@ -266,13 +268,14 @@ export default function ProfileEdit() {
                   onChange={(e) => setData("city", e.target.value)}
                   className="bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600"
                   placeholder="City"
+                  required
                 />
                 {errors.city && <p className="text-red-600 text-sm mt-1">{errors.city}</p>}
               </div>
 
               <div>
                 <Label htmlFor="state" className="text-gray-900 dark:text-white">
-                  State
+                  State *
                 </Label>
                 <Input
                   id="state"
@@ -281,6 +284,7 @@ export default function ProfileEdit() {
                   className="bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600"
                   placeholder="State (e.g., CA)"
                   maxLength={2}
+                  required
                 />
                 {errors.state && <p className="text-red-600 text-sm mt-1">{errors.state}</p>}
               </div>

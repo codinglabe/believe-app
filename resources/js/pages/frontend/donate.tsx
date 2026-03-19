@@ -12,6 +12,7 @@ import { PageHead } from "@/components/frontend/PageHead"
 import { useNotification } from "@/components/frontend/notification-provider"
 import { SubscriptionRequiredModal } from "@/components/SubscriptionRequiredModal"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/frontend/ui/avatar"
+import SiteTitle from "@/components/site-title"
 
 // Define the expected props structure for an Inertia page
 interface Organization {
@@ -322,23 +323,24 @@ export default function DonatePage({
   return (
     <FrontendLayout>
       <PageHead title={seo?.title ?? "Donate"} description={seo?.description} />
-      {/* Cosmic dark purple background with subtle speckles */}
       <div
-        className="min-h-screen relative overflow-hidden"
-        style={{
-          background: "linear-gradient(135deg, #1e0a2e 0%, #2d1b4e 25%, #1a0a2e 50%, #2d1b4e 75%, #1e0a2e 100%)",
-          backgroundImage: `
-            radial-gradient(ellipse at 20% 20%, rgba(147, 51, 234, 0.15) 0%, transparent 50%),
-            radial-gradient(ellipse at 80% 80%, rgba(236, 72, 153, 0.12) 0%, transparent 50%),
-            radial-gradient(circle at 50% 50%, rgba(255,255,255,0.03) 0%, transparent 1px),
-            linear-gradient(135deg, #1e0a2e 0%, #2d1b4e 25%, #1a0a2e 50%, #2d1b4e 75%, #1e0a2e 100%)
-          `,
-          backgroundSize: "100% 100%, 100% 100%, 2px 2px, 100% 100%",
-        }}
+        className="min-h-screen relative overflow-hidden bg-gradient-to-br from-slate-50 via-indigo-50 to-purple-100/30 dark:from-[#1e0a2e] dark:via-[#2d1b4e] dark:to-[#1e0a2e]"
       >
-        {/* Subtle speckle overlay */}
+        {/* Light-mode speckles */}
         <div
-          className="absolute inset-0 pointer-events-none opacity-40"
+          className="absolute inset-0 pointer-events-none opacity-70 block dark:hidden"
+          style={{
+            backgroundImage: `radial-gradient(circle at 10% 30%, rgba(236,72,153,0.12) 0%, transparent 2%),
+              radial-gradient(circle at 90% 20%, rgba(147,51,234,0.12) 0%, transparent 2%),
+              radial-gradient(circle at 50% 70%, rgba(255,255,255,0.35) 0%, transparent 1.5%),
+              radial-gradient(circle at 30% 80%, rgba(236,72,153,0.10) 0%, transparent 2%),
+              radial-gradient(circle at 70% 50%, rgba(147,51,234,0.10) 0%, transparent 2%)`,
+          }}
+        />
+
+        {/* Dark-mode speckles (existing style) */}
+        <div
+          className="absolute inset-0 pointer-events-none opacity-40 hidden dark:block"
           style={{
             backgroundImage: `radial-gradient(circle at 10% 30%, rgba(236,72,153,0.2) 0%, transparent 2%),
               radial-gradient(circle at 90% 20%, rgba(147,51,234,0.2) 0%, transparent 2%),
@@ -351,7 +353,7 @@ export default function DonatePage({
           {/* Back to Home */}
           <Link
             href="/"
-            className="inline-flex items-center gap-2 text-sm font-medium text-white/70 hover:text-white mb-6 transition-colors"
+            className="inline-flex items-center gap-2 text-sm font-medium text-slate-900/70 hover:text-slate-900 dark:text-white/70 dark:hover:text-white mb-6 transition-colors"
           >
             <ArrowLeft className="h-4 w-4" />
             Back to Home
@@ -365,22 +367,14 @@ export default function DonatePage({
             className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6 mb-8 sm:mb-10"
           >
             {/* Left: BELIEVE IN UNITY branding */}
-            <Link
-              href="/"
-              className="flex items-center gap-2 shrink-0 order-2 lg:order-1 justify-center lg:justify-start"
-            >
-              <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center shadow-lg shadow-purple-500/20">
-                <Heart className="h-5 w-5 text-white fill-white" />
-              </div>
-              <span className="text-lg font-bold text-white tracking-tight">BELIEVE IN UNITY</span>
-            </Link>
+            <SiteTitle className="shrink-0 order-2 lg:order-1 justify-center lg:justify-start" />
 
             {/* Center: Make a Difference Today + subtitle */}
             <div className="text-center order-1 lg:order-2 flex-1 px-0 lg:px-4">
-              <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold text-white mb-1">
+              <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold text-slate-900 mb-1 dark:text-white">
                 Make a Difference Today
               </h1>
-              <p className="text-sm sm:text-base text-white/80 max-w-xl mx-auto">
+              <p className="text-sm sm:text-base text-slate-900/80 max-w-xl mx-auto dark:text-white/80">
                 Your donation, no matter the size, creates real impact in communities worldwide.
               </p>
             </div>
@@ -388,15 +382,15 @@ export default function DonatePage({
             {/* Right: User profile (when logged in) */}
             <div className="flex items-center justify-center lg:justify-end gap-3 shrink-0 order-3">
               {authUser ? (
-                <div className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 backdrop-blur-sm">
-                  <Avatar className="h-9 w-9 border border-white/20">
+                <div className="flex items-center gap-3 rounded-xl border border-slate-200/70 bg-white/70 dark:border-white/10 dark:bg-white/5 px-4 py-2.5 backdrop-blur-sm">
+                  <Avatar className="h-9 w-9 border border-slate-200/70 dark:border-white/20">
                     <AvatarImage src={typeof (authUser as any).image === 'string' && (authUser as any).image ? ((authUser as any).image.startsWith('/') ? (authUser as any).image : `/${(authUser as any).image}`) : undefined} />
-                    <AvatarFallback className="bg-purple-500/30 text-white text-sm">
+                    <AvatarFallback className="bg-purple-500/25 text-slate-900 text-sm dark:text-white">
                       {(authUser as any).name?.charAt(0)?.toUpperCase() || "U"}
                     </AvatarFallback>
                   </Avatar>
                   <div className="text-left min-w-0">
-                    <p className="font-medium text-white text-sm truncate">{(authUser as any).name}</p>
+                    <p className="font-medium text-slate-900 text-sm truncate dark:text-white">{(authUser as any).name}</p>
                     <p className="flex items-center gap-1 text-xs text-green-400">
                       <Check className="h-3.5 w-3.5 shrink-0" />
                       {(authUser as any).role === "organization" || (authUser as any).role === "organization_pending" ? "Organization" : "Verified Supporter"}
@@ -406,7 +400,7 @@ export default function DonatePage({
               ) : (
                 <Link
                   href={route("login")}
-                  className="text-sm font-medium text-white/80 hover:text-white transition-colors"
+                  className="text-sm font-medium text-slate-900/70 hover:text-slate-900 dark:text-white/80 dark:hover:text-white transition-colors"
                 >
                   Sign in
                 </Link>
@@ -418,7 +412,7 @@ export default function DonatePage({
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            className="mb-8 flex flex-col sm:flex-row gap-3 p-1 rounded-2xl bg-white/5 border border-white/10 w-full sm:w-auto sm:inline-flex"
+            className="mb-8 flex flex-col sm:flex-row gap-3 p-1 rounded-2xl bg-white/70 dark:bg-white/5 border border-slate-200/70 dark:border-white/10 w-full sm:w-auto sm:inline-flex"
           >
             <button
               type="button"
@@ -426,7 +420,7 @@ export default function DonatePage({
               className={`flex items-center justify-center gap-2 py-3.5 px-6 rounded-xl font-semibold transition-all ${
                 donationMode === "cash_points"
                   ? "bg-purple-500/40 text-white shadow-lg shadow-purple-500/25 border border-purple-400/50"
-                  : "text-white/80 hover:text-white hover:bg-white/10 border border-transparent"
+                  : "text-slate-900/70 dark:text-white/80 hover:text-slate-900 dark:hover:text-white hover:bg-purple-500/10 dark:hover:bg-white/10 border border-transparent"
               }`}
             >
               <Coins className="h-5 w-5 shrink-0" />
@@ -438,7 +432,7 @@ export default function DonatePage({
               className={`flex items-center justify-center gap-2 py-3.5 px-6 rounded-xl font-semibold transition-all ${
                 donationMode === "non_cash"
                   ? "bg-purple-500/40 text-white shadow-lg shadow-purple-500/25 border border-purple-400/50"
-                  : "text-white/80 hover:text-white hover:bg-white/10 border border-transparent"
+                  : "text-slate-900/70 dark:text-white/80 hover:text-slate-900 dark:hover:text-white hover:bg-purple-500/10 dark:hover:bg-white/10 border border-transparent"
               }`}
             >
               <Gift className="h-5 w-5 shrink-0" />
@@ -455,18 +449,18 @@ export default function DonatePage({
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5 }}
-              className="rounded-2xl border border-white/10 bg-purple-950/40 backdrop-blur-xl shadow-xl shadow-black/20 overflow-hidden"
+              className="rounded-2xl border border-slate-200/70 bg-white/60 backdrop-blur-xl shadow-xl shadow-black/10 overflow-hidden text-slate-900 dark:text-white dark:border-white/10 dark:bg-purple-950/40"
             >
-              <div className="px-5 py-4 flex items-center gap-2 border-b border-white/10">
+              <div className="px-5 py-4 flex items-center gap-2 border-b border-slate-200/70 dark:border-white/10">
                 <Heart className="h-5 w-5 text-purple-300 fill-purple-400/80 shrink-0" />
-                <h2 className="text-lg font-bold text-white">Select Your Donation</h2>
+                <h2 className="text-lg font-bold text-slate-900 dark:text-white">Select Your Donation</h2>
               </div>
               <div className="p-5 space-y-5">
-                <p className="text-sm text-white/70">Choose amount to donate.</p>
+                <p className="text-sm text-slate-600 dark:text-white/70">Choose amount to donate.</p>
                 {/* Org search */}
                 <div className="relative" ref={searchContainerRef}>
                   <div className="relative">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-white/50" />
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500 dark:text-white/50" />
                     <Input
                       type="text"
                       placeholder="Search for non-profit organisation..."
@@ -474,13 +468,13 @@ export default function DonatePage({
                       onChange={(e) => setSearchQuery(e.target.value)}
                       onFocus={() => setIsSearchFocused(true)}
                       onKeyDown={(e) => e.key === "Enter" && performSearch(searchQuery)}
-                      className="pl-10 h-11 rounded-lg border-white/20 bg-white/5 text-white placeholder:text-white/50 text-sm focus-visible:ring-purple-400/50 focus-visible:border-purple-400/50"
+                      className="pl-10 h-11 rounded-lg border-slate-200/60 bg-white/60 text-slate-900 placeholder:text-slate-500 text-sm focus-visible:ring-purple-400/50 focus-visible:border-purple-400/50 dark:border-white/20 dark:bg-white/5 dark:text-white dark:placeholder:text-white/50"
                     />
                     {searchQuery && (
                       <button
                         type="button"
                         onClick={() => setSearchQuery("")}
-                        className="absolute right-2 top-1/2 -translate-y-1/2 text-white/60 hover:text-white"
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-600/70 hover:text-slate-900 dark:text-white/60 dark:hover:text-white"
                       >
                         <X className="h-4 w-4" />
                       </button>
@@ -492,7 +486,7 @@ export default function DonatePage({
                         initial={{ opacity: 0, height: 0 }}
                         animate={{ opacity: 1, height: "auto" }}
                         exit={{ opacity: 0, height: 0 }}
-                        className="mt-2 flex items-center justify-between p-2 rounded-lg bg-white/10 border border-white/10"
+                        className="mt-2 flex items-center justify-between p-2 rounded-lg bg-white/70 border border-slate-200/70 dark:bg-white/10 dark:border-white/10"
                       >
                         <div className="flex items-center gap-2 min-w-0">
                           <img
@@ -500,34 +494,39 @@ export default function DonatePage({
                             alt=""
                             className="h-8 w-8 rounded-full object-cover shrink-0"
                           />
-                          <span className="font-medium text-white truncate">{selectedCause.name}</span>
+                          <span className="font-medium text-slate-900 truncate dark:text-white">{selectedCause.name}</span>
                         </div>
-                        <Button variant="ghost" size="icon" className="shrink-0 h-8 w-8 text-white/80 hover:text-white hover:bg-white/10" onClick={handleClearCauseSelection}>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="shrink-0 h-8 w-8 text-slate-700/80 hover:text-slate-900 hover:bg-white/80 dark:text-white/80 dark:hover:text-white dark:hover:bg-white/10"
+                          onClick={handleClearCauseSelection}
+                        >
                           <X className="h-4 w-4" />
                         </Button>
                       </motion.div>
                     )}
                   </AnimatePresence>
                   {isSearchFocused && !selectedCause && (searchQuery || displayedOrganizations.length > 0) && (
-                    <div className="absolute z-20 w-full mt-1 rounded-lg border border-white/20 bg-purple-950/95 backdrop-blur-xl shadow-xl max-h-52 overflow-y-auto">
+                    <div className="absolute z-20 w-full mt-1 rounded-lg border border-slate-200/70 bg-white/90 backdrop-blur-xl shadow-xl max-h-52 overflow-y-auto dark:border-white/20 dark:bg-purple-950/95">
                       {isSearchingOrganizations ? (
-                        <div className="p-3 text-center text-sm text-white/60 flex items-center justify-center gap-2">
+                        <div className="p-3 text-center text-sm text-slate-600/70 dark:text-white/60 flex items-center justify-center gap-2">
                           <Loader2 className="h-4 w-4 animate-spin" /> Searching...
                         </div>
                       ) : displayedOrganizations.length === 0 ? (
-                        <p className="p-3 text-sm text-white/60">No organizations found.</p>
+                        <p className="p-3 text-sm text-slate-600/70 dark:text-white/60">No organizations found.</p>
                       ) : (
                         displayedOrganizations.map((cause) => (
                           <button
                             key={cause.id}
                             type="button"
-                            className="w-full p-3 text-left hover:bg-white/10 flex items-center gap-3 text-white"
+                            className="w-full p-3 text-left hover:bg-white/80 flex items-center gap-3 text-slate-900 dark:hover:bg-white/10 dark:text-white"
                             onClick={() => handleCauseSelect(cause.id)}
                           >
                             <img src={cause.image || "/placeholder.svg"} alt="" className="h-9 w-9 rounded-md object-cover shrink-0" />
                             <div className="min-w-0">
                               <div className="font-medium text-sm truncate">{cause.name}</div>
-                              <div className="text-xs text-white/60 truncate">{cause.description}</div>
+                              <div className="text-xs text-slate-600/70 truncate dark:text-white/60">{cause.description}</div>
                             </div>
                           </button>
                         ))
@@ -544,8 +543,8 @@ export default function DonatePage({
                       onClick={() => handleAmountSelect(amount)}
                       className={`relative rounded-xl border-2 p-3 text-center transition-all ${
                         selectedAmount === amount
-                          ? "border-purple-400 bg-purple-500/30 text-white shadow-lg shadow-purple-500/20"
-                          : "border-white/20 bg-white/5 hover:border-purple-400/50 hover:bg-white/10 text-white"
+                          ? "border-purple-400 bg-purple-500/30 text-slate-900 shadow-lg shadow-purple-500/20 dark:text-white"
+                          : "border-slate-200/60 bg-white/60 hover:border-purple-400/50 hover:bg-white/80 text-slate-800 dark:border-white/20 dark:bg-white/5 dark:hover:bg-white/10 dark:text-white"
                       }`}
                     >
                       {badge && (
@@ -554,20 +553,20 @@ export default function DonatePage({
                         </span>
                       )}
                       <span className="block text-lg font-bold">${amount}</span>
-                      {impact && <span className="block text-xs text-white/60 mt-0.5">{impact}</span>}
+                      {impact && <span className="block text-xs text-slate-600/70 mt-0.5 dark:text-white/60">{impact}</span>}
                     </button>
                   ))}
                 </div>
                 <div>
-                  <Label className="text-xs text-white/70 mb-1 block">Other amount</Label>
+                  <Label className="text-xs text-slate-600/70 mb-1 block dark:text-white/70">Other amount</Label>
                   <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-white/60">$</span>
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-600/70 dark:text-white/60">$</span>
                     <Input
                       type="number"
                       placeholder="0.00"
                       value={customAmount}
                       onChange={(e) => handleCustomAmountChange(e.target.value)}
-                      className="pl-8 h-11 rounded-lg border-white/20 bg-white/5 text-white placeholder:text-white/40 focus-visible:ring-purple-400/50 focus-visible:border-purple-400/50"
+                      className="pl-8 h-11 rounded-lg border-slate-200/60 bg-white/60 text-slate-900 placeholder:text-slate-500 focus-visible:ring-purple-400/50 focus-visible:border-purple-400/50 dark:border-white/20 dark:bg-white/5 dark:text-white dark:placeholder:text-white/40"
                     />
                   </div>
                 </div>
@@ -579,11 +578,11 @@ export default function DonatePage({
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5, delay: 0.1 }}
-              className="rounded-2xl border border-white/10 bg-purple-950/40 backdrop-blur-xl shadow-xl shadow-black/20 overflow-hidden"
+              className="rounded-2xl border border-slate-200/70 bg-white/60 backdrop-blur-xl shadow-xl shadow-black/10 overflow-hidden text-slate-900 dark:text-white dark:border-white/10 dark:bg-purple-950/40"
             >
-              <div className="px-5 py-4 flex items-center gap-2 border-b border-white/10">
+              <div className="px-5 py-4 flex items-center gap-2 border-b border-slate-200/70 dark:border-white/10">
                 <Lock className="h-5 w-5 text-purple-300 shrink-0" />
-                <h2 className="text-lg font-bold text-white">Pay Securely</h2>
+                <h2 className="text-lg font-bold text-slate-900 dark:text-white">Pay Securely</h2>
               </div>
               <div className="p-5 space-y-3">
                 <button
@@ -591,20 +590,20 @@ export default function DonatePage({
                   onClick={() => setPaymentMethod('stripe')}
                   className={`w-full flex items-center gap-3 p-4 rounded-xl border-2 text-left transition-all ${
                     paymentMethod === 'stripe'
-                      ? "border-purple-400 bg-purple-500/20 text-white shadow-lg shadow-purple-500/10"
-                      : "border-white/20 bg-white/5 hover:border-purple-400/50 text-white"
+                      ? "border-purple-400 bg-purple-500/20 text-slate-900 shadow-lg shadow-purple-500/10 dark:text-white"
+                      : "border-slate-200/60 bg-white/60 hover:border-purple-400/50 text-slate-800 dark:border-white/20 dark:bg-white/5 dark:text-white"
                   }`}
                 >
                   <div className="h-10 w-10 rounded-lg bg-white/20 flex items-center justify-center shrink-0">
-                    <CreditCard className="h-5 w-5 text-white" />
+                    <CreditCard className="h-5 w-5 text-slate-900 dark:text-white" />
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="font-semibold">Pay with Credit/Debit (Square)</div>
-                    <div className="flex items-center gap-1.5 text-sm text-white/60">
+                    <div className="flex items-center gap-1.5 text-sm text-slate-600/70 dark:text-white/60">
                       <Lock className="h-3.5 w-3.5" /> 100% Secure Donation
                     </div>
                   </div>
-                  <ChevronRight className="h-5 w-5 text-white/50 shrink-0" />
+                  <ChevronRight className="h-5 w-5 text-slate-600/50 shrink-0 dark:text-white/50" />
                 </button>
                 <button
                   type="button"
@@ -612,8 +611,8 @@ export default function DonatePage({
                   disabled={!canUseBelievePoints}
                   className={`w-full flex items-center gap-3 p-4 rounded-xl border-2 text-left transition-all ${
                     paymentMethod === 'believe_points'
-                      ? "border-purple-400 bg-purple-500/20 text-white shadow-lg shadow-purple-500/10"
-                      : "border-white/20 bg-white/5 hover:border-purple-400/50 text-white"
+                      ? "border-purple-400 bg-purple-500/20 text-slate-900 shadow-lg shadow-purple-500/10 dark:text-white"
+                      : "border-slate-200/60 bg-white/60 hover:border-purple-400/50 text-slate-800 dark:border-white/20 dark:bg-white/5 dark:text-white"
                   } ${!canUseBelievePoints ? "opacity-60 cursor-not-allowed" : ""}`}
                 >
                   <div className="h-10 w-10 rounded-lg bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center shrink-0">
@@ -623,13 +622,13 @@ export default function DonatePage({
                     <div className="font-semibold">
                       {currentBalance.toLocaleString('en-US', { maximumFractionDigits: 0 })} Believe Points
                     </div>
-                    <div className="text-sm text-white/60">Use your points balance</div>
+                    <div className="text-sm text-slate-600/70 dark:text-white/60">Use your points balance</div>
                   </div>
-                  <ChevronRight className="h-5 w-5 text-white/50 shrink-0" />
+                  <ChevronRight className="h-5 w-5 text-slate-600/50 shrink-0 dark:text-white/50" />
                 </button>
                 <Link
                   href="/believe-points"
-                  className="flex items-center justify-between gap-3 p-3 rounded-xl border border-white/20 bg-white/5 hover:border-purple-400/50 hover:bg-white/10 text-purple-300 font-medium text-sm transition-all"
+                  className="flex items-center justify-between gap-3 p-3 rounded-xl border border-slate-200/70 bg-white/60 hover:border-purple-400/50 hover:bg-white/80 text-purple-700 dark:text-purple-300 font-medium text-sm transition-all"
                 >
                   <span className="flex items-center gap-2">
                     <Coins className="h-4 w-4 shrink-0" />
@@ -645,19 +644,19 @@ export default function DonatePage({
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5, delay: 0.2 }}
-              className="rounded-2xl border border-white/10 bg-purple-950/40 backdrop-blur-xl shadow-xl shadow-black/20 overflow-hidden"
+              className="rounded-2xl border border-slate-200/70 bg-white/60 backdrop-blur-xl shadow-xl shadow-black/10 overflow-hidden text-slate-900 dark:text-white dark:border-white/10 dark:bg-purple-950/40"
             >
-              <div className="px-5 py-4 border-b border-white/10">
-                <h2 className="text-lg font-bold text-white">Your Year-to-Date Giving</h2>
+              <div className="px-5 py-4 border-b border-slate-200/70 dark:border-white/10">
+                <h2 className="text-lg font-bold text-slate-900 dark:text-white">Your Year-to-Date Giving</h2>
               </div>
               <div className="p-5 space-y-4">
                 <div>
-                  <div className="text-2xl font-bold text-white">
+                  <div className="text-2xl font-bold text-slate-900 dark:text-white">
                     ${typeof thisYearDonated === 'number' ? thisYearDonated.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) : 0}
                   </div>
-                  <div className="text-sm text-white/60">/ ${givingGoal.toLocaleString()} Goal</div>
+                  <div className="text-sm text-slate-600/70 dark:text-white/60">/ ${givingGoal.toLocaleString()} Goal</div>
                 </div>
-                <div className="h-2.5 rounded-full bg-white/20 overflow-hidden">
+                <div className="h-2.5 rounded-full bg-slate-200/50 dark:bg-white/20 overflow-hidden">
                   <div
                     className="h-full rounded-full bg-gradient-to-r from-purple-500 to-pink-500 transition-all duration-500"
                     style={{ width: `${givingProgress}%` }}
@@ -665,15 +664,15 @@ export default function DonatePage({
                 </div>
                 {topOrganizations.length > 0 ? (
                   <div className="space-y-2">
-                    <div className="text-sm font-semibold text-white">Top 3 Organizations</div>
+                    <div className="text-sm font-semibold text-slate-900 dark:text-white">Top 3 Organizations</div>
                     <ul className="space-y-2">
                       {topOrganizations.slice(0, 3).map((org, i) => {
                         const Icon = TOP_ORG_ICONS[i] ?? Building2
                         return (
-                          <li key={i} className="flex items-center gap-2 text-sm text-white/80">
+                          <li key={i} className="flex items-center gap-2 text-sm text-slate-700/90 dark:text-white/80">
                             <Icon className="h-4 w-4 text-purple-400 shrink-0" />
                             <span className="truncate flex-1">{org.name}</span>
-                            <span className="font-medium text-white shrink-0">
+                            <span className="font-medium text-slate-900 shrink-0 dark:text-white">
                               ${org.total.toLocaleString('en-US', { minimumFractionDigits: 2 })}
                             </span>
                           </li>
@@ -682,11 +681,11 @@ export default function DonatePage({
                     </ul>
                   </div>
                 ) : (
-                  <p className="text-sm text-white/60">Your top supported organizations will appear here after you donate.</p>
+                  <p className="text-sm text-slate-600/70 dark:text-white/60">Your top supported organizations will appear here after you donate.</p>
                 )}
                 <Link
                   href={route("profile.donations")}
-                  className="inline-flex items-center justify-center w-full py-2.5 rounded-xl border border-white/20 bg-white/10 hover:bg-white/20 hover:border-purple-400/50 text-white font-medium text-sm transition-all"
+                  className="inline-flex items-center justify-center w-full py-2.5 rounded-xl border border-slate-200/70 bg-white/60 hover:bg-white/80 hover:border-purple-400/50 text-slate-900 dark:border-white/20 dark:bg-white/10 dark:hover:bg-white/20 dark:hover:border-purple-400/50 dark:text-white font-medium text-sm transition-all"
                 >
                   View Giving Dashboard
                 </Link>
@@ -702,9 +701,9 @@ export default function DonatePage({
             className="mt-8 space-y-6"
           >
             {submissionError && (
-              <div className="rounded-xl border border-red-400/30 bg-red-500/20 backdrop-blur-sm p-4 flex items-start gap-3">
-                <X className="h-5 w-5 text-red-300 shrink-0 mt-0.5" />
-                <p className="text-sm font-medium text-red-200">{submissionError}</p>
+              <div className="rounded-xl border border-red-300/60 bg-red-50/80 dark:border-red-400/30 dark:bg-red-500/20 backdrop-blur-sm p-4 flex items-start gap-3">
+                <X className="h-5 w-5 text-red-600 dark:text-red-300 shrink-0 mt-0.5" />
+                <p className="text-sm font-medium text-red-800 dark:text-red-200">{submissionError}</p>
               </div>
             )}
             <Button
@@ -732,13 +731,13 @@ export default function DonatePage({
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              className="rounded-2xl border border-white/10 bg-purple-950/40 backdrop-blur-xl shadow-xl shadow-black/20 overflow-hidden"
+              className="rounded-2xl border border-slate-200/80 bg-white/75 backdrop-blur-xl shadow-xl shadow-black/10 overflow-hidden text-slate-900 dark:text-white dark:border-white/10 dark:bg-purple-950/40"
             >
-              <div className="px-5 py-4 border-b border-white/10">
-                <h2 className="text-lg font-bold text-white">Donate Non-Cash Asset</h2>
+              <div className="px-5 py-4 border-b border-slate-200/80 dark:border-white/10">
+                <h2 className="text-lg font-bold text-slate-900 dark:text-white">Donate Non-Cash Asset</h2>
               </div>
               <div className="p-5 space-y-3">
-                <p className="text-sm text-white/70">Select a type:</p>
+                <p className="text-sm text-slate-600/70 dark:text-white/70">Select a type:</p>
                 {NON_CASH_TYPES.map(({ id, label, icon: Icon }) => (
                   <button
                     key={id}
@@ -746,15 +745,15 @@ export default function DonatePage({
                     onClick={() => setNonCashType(id)}
                     className={`w-full flex items-center justify-between gap-3 p-3 rounded-xl border-2 text-left transition-all ${
                       nonCashType === id
-                        ? "border-purple-400 bg-purple-500/20 text-white"
-                        : "border-white/20 bg-white/5 text-white hover:border-white/30"
+                        ? "border-purple-400 bg-purple-500/20 text-slate-900 dark:text-white"
+                        : "border-slate-200/80 bg-white/75 text-slate-800 hover:bg-white/90 hover:border-purple-400/50 dark:border-white/20 dark:bg-white/5 dark:text-white dark:hover:border-white/30"
                     }`}
                   >
                     <span className="flex items-center gap-2">
                       <Icon className="h-4 w-4 shrink-0" />
                       {label}
                     </span>
-                    <span className="text-xs font-medium text-white/70">Donate</span>
+                    <span className="text-xs font-medium text-slate-600/70 dark:text-white/70">Donate</span>
                   </button>
                 ))}
               </div>
@@ -765,52 +764,52 @@ export default function DonatePage({
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.1 }}
-              className="rounded-2xl border border-white/10 bg-purple-950/40 backdrop-blur-xl shadow-xl shadow-black/20 overflow-hidden"
+              className="rounded-2xl border border-slate-200/80 bg-white/75 backdrop-blur-xl shadow-xl shadow-black/10 overflow-hidden text-slate-900 dark:text-white dark:border-white/10 dark:bg-purple-950/40"
             >
-              <div className="px-5 py-4 flex items-center gap-2 border-b border-white/10">
+              <div className="px-5 py-4 flex items-center gap-2 border-b border-slate-200/80 dark:border-white/10">
                 <FileText className="h-5 w-5 text-purple-300 shrink-0" />
-                <h2 className="text-lg font-bold text-white">Donate a Non-Cash Asset</h2>
+                <h2 className="text-lg font-bold text-slate-900 dark:text-white">Donate a Non-Cash Asset</h2>
               </div>
               <div className="p-5 space-y-4">
                 <div>
-                  <Label className="text-sm text-white/80 mb-1 block">Donation Item</Label>
+                  <Label className="text-sm text-slate-700/80 dark:text-white/80 mb-1 block">Donation Item</Label>
                   <Input
                     placeholder="e.g. Office furniture, laptops..."
                     value={nonCashItemName}
                     onChange={(e) => setNonCashItemName(e.target.value)}
-                    className="rounded-lg border-white/20 bg-white/5 text-white placeholder:text-white/40 focus-visible:ring-purple-400/50"
+                    className="rounded-lg border-slate-200/60 bg-white/60 text-slate-900 placeholder:text-slate-500 focus-visible:ring-purple-400/50 dark:border-white/20 dark:bg-white/5 dark:text-white dark:placeholder:text-white/40"
                   />
                 </div>
                 <div>
-                  <Label className="text-sm text-white/80 mb-1 block">Estimated Fair Market Value</Label>
+                  <Label className="text-sm text-slate-700/80 dark:text-white/80 mb-1 block">Estimated Fair Market Value</Label>
                   <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-white/60">$</span>
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-600/70 dark:text-white/60">$</span>
                     <Input
                       type="number"
                       step="0.01"
                       placeholder="0.00"
                       value={nonCashEstimatedValue}
                       onChange={(e) => setNonCashEstimatedValue(e.target.value)}
-                      className="pl-8 rounded-lg border-white/20 bg-white/5 text-white placeholder:text-white/40 focus-visible:ring-purple-400/50"
+                      className="pl-8 rounded-lg border-slate-200/60 bg-white/60 text-slate-900 placeholder:text-slate-500 focus-visible:ring-purple-400/50 dark:border-white/20 dark:bg-white/5 dark:text-white dark:placeholder:text-white/40"
                     />
                   </div>
                 </div>
                 <div>
-                  <Label className="text-sm text-white/80 mb-1 block">Condition</Label>
+                  <Label className="text-sm text-slate-700/80 dark:text-white/80 mb-1 block">Condition</Label>
                   <select
                     value={nonCashCondition}
                     onChange={(e) => setNonCashCondition(e.target.value)}
-                    className="w-full h-10 rounded-lg border border-white/20 bg-white/5 text-white px-3 focus:ring-2 focus:ring-purple-400/50 focus:border-purple-400/50"
+                    className="w-full h-10 rounded-lg border border-slate-200/60 bg-white/60 text-slate-900 px-3 focus:ring-2 focus:ring-purple-400/50 focus:border-purple-400/50 dark:border-white/20 dark:bg-white/5 dark:text-white"
                   >
                     {CONDITION_OPTIONS.map((opt) => (
-                      <option key={opt} value={opt} className="bg-purple-950 text-white">{opt}</option>
+                      <option key={opt} value={opt} className="bg-white text-slate-900 dark:bg-purple-950 dark:text-white">{opt}</option>
                     ))}
                   </select>
                 </div>
                 <div className="relative" ref={nonCashOrgSearchRef}>
-                  <Label className="text-sm text-white/80 mb-1 block">Preferred Receiving Organization</Label>
+                  <Label className="text-sm text-slate-700/80 dark:text-white/80 mb-1 block">Preferred Receiving Organization</Label>
                   <div className="relative">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-white/50" />
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500 dark:text-white/50" />
                     <Input
                       type="text"
                       placeholder="Select an organization"
@@ -825,7 +824,7 @@ export default function DonatePage({
                         if (nonCashPreferredOrgId) setNonCashPreferredOrgId(null)
                       }}
                       onFocus={() => setNonCashSearchFocused(true)}
-                      className="pl-10 pr-9 rounded-lg border-white/20 bg-white/5 text-white placeholder:text-white/40 focus-visible:ring-purple-400/50"
+                      className="pl-10 pr-9 rounded-lg border-slate-200/60 bg-white/60 text-slate-900 placeholder:text-slate-500 focus-visible:ring-purple-400/50 dark:border-white/20 dark:bg-white/5 dark:text-white dark:placeholder:text-white/40"
                     />
                     {nonCashPreferredOrgId ? (
                       <button
@@ -834,7 +833,7 @@ export default function DonatePage({
                           setNonCashPreferredOrgId(null)
                           setNonCashSearchQuery("")
                         }}
-                        className="absolute right-2 top-1/2 -translate-y-1/2 text-white/60 hover:text-white p-1"
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-600/70 hover:text-slate-900 dark:text-white/60 dark:hover:text-white p-1"
                         aria-label="Clear organization"
                       >
                         <X className="h-4 w-4" />
@@ -842,7 +841,7 @@ export default function DonatePage({
                     ) : null}
                   </div>
                   {nonCashSearchFocused && (
-                    <div className="absolute z-20 w-full mt-1 rounded-lg border border-white/20 bg-purple-950/95 backdrop-blur-xl shadow-xl max-h-48 overflow-y-auto">
+                    <div className="absolute z-20 w-full mt-1 rounded-lg border border-slate-200/70 bg-white/90 backdrop-blur-xl shadow-xl max-h-48 overflow-y-auto dark:border-white/20 dark:bg-purple-950/95">
                       {initialOrganizations
                         .filter((o) => !nonCashSearchQuery || o.name.toLowerCase().includes(nonCashSearchQuery.toLowerCase()))
                         .slice(0, 8)
@@ -850,7 +849,7 @@ export default function DonatePage({
                           <button
                             key={org.id}
                             type="button"
-                            className="w-full p-3 text-left hover:bg-white/10 flex items-center gap-3 text-white"
+                            className="w-full p-3 text-left hover:bg-white/80 flex items-center gap-3 text-slate-900 dark:hover:bg-white/10 dark:text-white"
                             onClick={() => {
                               setNonCashPreferredOrgId(org.id)
                               setNonCashSearchQuery("")
@@ -864,18 +863,18 @@ export default function DonatePage({
                     </div>
                   )}
                 </div>
-                <label className="flex items-center gap-2 cursor-pointer text-white/80 text-sm">
+                <label className="flex items-center gap-2 cursor-pointer text-slate-700/80 dark:text-white/80 text-sm">
                   <input
                     type="checkbox"
                     checked={nonCashUploadPhotos}
                     onChange={(e) => setNonCashUploadPhotos(e.target.checked)}
-                    className="rounded border-white/20 bg-white/5 text-purple-500 focus:ring-purple-400/50"
+                    className="rounded border-slate-200/60 bg-white/60 text-purple-600 focus:ring-purple-400/50 dark:border-white/20 dark:bg-white/5 dark:text-purple-500"
                   />
                   <Camera className="h-4 w-4 shrink-0" />
                   Upload Photos
                 </label>
                 {submissionError && (
-                  <div className="rounded-lg border border-red-400/30 bg-red-500/20 p-3 text-sm text-red-200">
+                  <div className="rounded-lg border border-red-300/60 bg-red-50/80 dark:border-red-400/30 dark:bg-red-500/20 p-3 text-sm text-red-800 dark:text-red-200">
                     {submissionError}
                   </div>
                 )}
@@ -891,7 +890,7 @@ export default function DonatePage({
                   <button
                     type="button"
                     onClick={() => setDonationMode("cash_points")}
-                    className="text-sm text-white/60 hover:text-white transition-colors"
+                    className="text-sm text-slate-600/70 hover:text-slate-900 dark:text-white/60 dark:hover:text-white transition-colors"
                   >
                     Cancel
                   </button>
@@ -904,10 +903,10 @@ export default function DonatePage({
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.2 }}
-              className="rounded-2xl border border-white/10 bg-purple-950/40 backdrop-blur-xl shadow-xl shadow-black/20 overflow-hidden"
+              className="rounded-2xl border border-slate-200/80 bg-white/75 backdrop-blur-xl shadow-xl shadow-black/10 overflow-hidden text-slate-900 dark:text-white dark:border-white/10 dark:bg-purple-950/40"
             >
-              <div className="px-5 py-4 border-b border-white/10">
-                <h2 className="text-lg font-bold text-white">Donate a Non-Cash Asset</h2>
+              <div className="px-5 py-4 border-b border-slate-200/80 dark:border-white/10">
+                <h2 className="text-lg font-bold text-slate-900 dark:text-white">Donate a Non-Cash Asset</h2>
               </div>
               <div className="p-5 space-y-3">
                 {NON_CASH_TYPES.map(({ id, label, icon: Icon }) => (
@@ -915,21 +914,21 @@ export default function DonatePage({
                     key={id}
                     type="button"
                     onClick={() => setNonCashType(id)}
-                    className="w-full flex items-center justify-between gap-3 p-3 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 text-white text-sm transition-colors"
+                    className="w-full flex items-center justify-between gap-3 p-3 rounded-xl border border-slate-200/80 bg-white/75 hover:bg-white/90 text-slate-800 text-sm transition-colors dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10 dark:text-white"
                   >
                     <span className="flex items-center gap-2">
                       <Icon className="h-4 w-4 shrink-0" />
                       {label}
                     </span>
-                    <ChevronRight className="h-4 w-4 text-white/50" />
+                    <ChevronRight className="h-4 w-4 text-slate-600/50 dark:text-white/50" />
                   </button>
                 ))}
-                <div className="pt-4 border-t border-white/10">
-                  <div className="text-lg font-bold text-white">
+                <div className="pt-4 border-t border-slate-200/80 dark:border-white/10">
+                  <div className="text-lg font-bold text-slate-900 dark:text-white">
                     ${typeof thisYearDonated === "number" ? thisYearDonated.toLocaleString("en-US", { maximumFractionDigits: 0 }) : 0}
                   </div>
-                  <div className="text-sm text-white/60">/ ${givingGoal.toLocaleString()} Goal</div>
-                  <div className="h-2 rounded-full bg-white/20 mt-2 overflow-hidden">
+                  <div className="text-sm text-slate-600/70 dark:text-white/60">/ ${givingGoal.toLocaleString()} Goal</div>
+                  <div className="h-2 rounded-full bg-slate-200/50 mt-2 overflow-hidden dark:bg-white/20">
                     <div
                       className="h-full rounded-full bg-gradient-to-r from-purple-500 to-pink-500 transition-all"
                       style={{ width: `${givingProgress}%` }}
@@ -937,7 +936,7 @@ export default function DonatePage({
                   </div>
                   <Link
                     href={route("profile.donations")}
-                    className="inline-flex items-center justify-center w-full py-2.5 rounded-xl border border-white/20 bg-white/10 hover:bg-white/20 hover:border-purple-400/50 text-white font-medium text-sm mt-3 transition-all"
+                    className="inline-flex items-center justify-center w-full py-2.5 rounded-xl border border-slate-200/70 bg-white/60 hover:bg-white/80 hover:border-purple-400/50 text-slate-900 font-medium text-sm mt-3 transition-all dark:border-white/20 dark:bg-white/10 dark:hover:bg-white/20 dark:hover:border-purple-400/50 dark:text-white"
                   >
                     View Giving Dashboard
                   </Link>
@@ -951,14 +950,14 @@ export default function DonatePage({
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            className="mt-8 flex flex-wrap items-center justify-center gap-6 text-sm text-white/70"
+            className="mt-8 flex flex-wrap items-center justify-center gap-6 text-sm text-slate-600/70 dark:text-white/70"
           >
             <span className="flex items-center gap-1.5">
               <Shield className="h-4 w-4 text-green-400" /> 100% Secure Donations
             </span>
             <span className="flex items-center gap-1.5">501(c)(3) EIN: 12-3456789</span>
             <span>IRS Compliant</span>
-            <span className="flex items-center gap-1 text-white/60">secure by stripe</span>
+            <span className="flex items-center gap-1 text-slate-600/70 dark:text-white/60">secure by stripe</span>
           </motion.div>
         </div>
 
