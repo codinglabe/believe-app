@@ -4,26 +4,333 @@ namespace App\Http\Controllers;
 
 use App\Models\MerchantHubOffer;
 use App\Models\MerchantHubOfferRedemption;
+use App\Models\MerchantHubReferralReward;
+use App\Models\Transaction;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Inertia\Inertia;
+use Laravel\Cashier\Cashier;
 use SimpleSoftwareIO\QrCode\Facades\QrCode;
 
 class MerchantRedemptionController extends Controller
 {
+    private const REFERRAL_POINTS = 500;
+
     /**
-     * Process redemption request
+     * Ensure redemption has a share_token (for post-purchase share link).
+     * Same person + same product = same link: reuse existing token if they already have one for this offer.
+     */
+    private function ensureShareToken(MerchantHubOfferRedemption $redemption): void
+    {
+        if (!empty($redemption->share_token)) {
+            return;
+        }
+        $existing = MerchantHubOfferRedemption::where('user_id', $redemption->user_id)
+            ->where('merchant_hub_offer_id', $redemption->merchant_hub_offer_id)
+            ->whereNotNull('share_token')
+            ->where('id', '!=', $redemption->id)
+            ->first();
+        $token = $existing ? $existing->share_token : strtoupper(Str::random(12));
+        $redemption->update(['share_token' => $token]);
+    }
+
+    /**
+     * If visitor came via referral link, credit referrer 500 points once per referred purchase.
+     * Sharer gets points only one time for each separate purchase made through their link.
+     * Sharer must NEVER get points when they are the purchaser (same person buying = no reward).
+     */
+    private function awardReferralIfApplicable(int $newRedemptionId, int $buyerUserId): void
+    {
+        $refToken = session('merchant_hub_ref');
+        if (empty($refToken)) {
+            return;
+        }
+        $referrerRedemption = MerchantHubOfferRedemption::where('share_token', $refToken)
+            ->whereIn('status', ['approved', 'fulfilled'])
+            ->first();
+        // Same person (sharer) purchasing through their own link = no points for anyone
+        if (!$referrerRedemption || (int) $referrerRedemption->user_id === (int) $buyerUserId) {
+            session()->forget('merchant_hub_ref');
+            return;
+        }
+        // Buyer already purchased this same product before = referrer gets no points (first-time purchase only)
+        $newRedemption = MerchantHubOfferRedemption::find($newRedemptionId);
+        if ($newRedemption && MerchantHubOfferRedemption::where('user_id', $buyerUserId)
+            ->where('merchant_hub_offer_id', $newRedemption->merchant_hub_offer_id)
+            ->where('id', '!=', $newRedemptionId)
+            ->whereIn('status', ['approved', 'fulfilled'])
+            ->exists()) {
+            session()->forget('merchant_hub_ref');
+            return;
+        }
+        $referrer = $referrerRedemption->user;
+        if (!$referrer) {
+            session()->forget('merchant_hub_ref');
+            return;
+        }
+        // One reward per referred purchase: create only if not already awarded for this redemption
+        $reward = MerchantHubReferralReward::firstOrCreate(
+            ['referral_redemption_id' => $newRedemptionId],
+            [
+                'referrer_user_id' => $referrer->id,
+                'points_awarded' => self::REFERRAL_POINTS,
+            ]
+        );
+        if ($reward->wasRecentlyCreated) {
+            $referrer->addRewardPoints(
+                self::REFERRAL_POINTS,
+                'merchant_hub_referral',
+                $newRedemptionId,
+                'Referral reward: someone purchased via your share link',
+                ['referral_redemption_id' => $newRedemptionId]
+            );
+            Transaction::create([
+                'user_id' => $referrer->id,
+                'related_id' => $reward->id,
+                'related_type' => MerchantHubReferralReward::class,
+                'type' => 'referral_reward',
+                'status' => 'completed',
+                'amount' => 0,
+                'fee' => 0,
+                'currency' => 'USD',
+                'payment_method' => 'referral',
+                'meta' => [
+                    'points_awarded' => self::REFERRAL_POINTS,
+                    'referral_redemption_id' => $newRedemptionId,
+                    'description' => 'Referral reward: someone purchased via your share link',
+                ],
+                'processed_at' => now(),
+            ]);
+        }
+        session()->forget('merchant_hub_ref');
+    }
+
+    /**
+     * SEO-friendly referral link: /merchant-hub/offers/{id}/ref/{refCode}
+     * Returns 200 with product image, title, description for social preview (og/twitter).
+     * Stores ref in session for non-own links and redirects users to offer page.
+     */
+    public function offerRefRedirect(Request $request, $id, $refCode)
+    {
+        $offer = MerchantHubOffer::with('merchant')->find($id);
+        if (!$offer) {
+            return redirect()->route('merchant-hub.index');
+        }
+        $redemption = MerchantHubOfferRedemption::where('share_token', $refCode)
+            ->whereIn('status', ['approved', 'fulfilled'])
+            ->first();
+        if ($redemption) {
+            $isOwnLink = Auth::check() && (int) $redemption->user_id === (int) Auth::id();
+            if (!$isOwnLink) {
+                session(['merchant_hub_ref' => $refCode]);
+            }
+        }
+        $imageUrl = $offer->image_url;
+        if ($imageUrl && !filter_var($imageUrl, FILTER_VALIDATE_URL)) {
+            $imageUrl = asset('storage/' . ltrim($imageUrl, '/'));
+        }
+        if (empty($imageUrl) || $imageUrl === '/storage/') {
+            $imageUrl = asset('placeholder.jpg');
+        }
+        $shareUrl = url()->current();
+        $redirectUrl = route('merchant-hub.offer.show', $id);
+        $title = $offer->title . ' - ' . ($offer->merchant->name ?? config('app.name'));
+        $description = $offer->short_description ?: \Illuminate\Support\Str::limit(strip_tags($offer->description ?? ''), 160);
+        if (empty($description)) {
+            $description = 'Check out this offer on ' . config('app.name');
+        }
+        return response()->view('merchant-hub.share-ref', [
+            'title' => $title,
+            'description' => $description,
+            'imageUrl' => $imageUrl,
+            'shareUrl' => $shareUrl,
+            'redirectUrl' => $redirectUrl,
+        ], 200)->header('Cache-Control', 'public, max-age=3600');
+    }
+
+    /**
+     * My Purchases: list all merchant-hub redemptions for the current user.
+     */
+    public function myPurchases(Request $request)
+    {
+        $user = Auth::user();
+        if (!$user) {
+            return redirect()->route('login', ['redirect' => route('merchant-hub.my-purchases')]);
+        }
+        $query = MerchantHubOfferRedemption::with(['offer.merchant'])
+            ->where('user_id', $user->id)
+            ->orderBy('created_at', 'desc');
+        $redemptions = $query->paginate(12)->withQueryString();
+        $purchases = $redemptions->through(function ($r) {
+            $imageUrl = $r->offer->image_url ?? null;
+            if ($imageUrl && !filter_var($imageUrl, FILTER_VALIDATE_URL)) {
+                $imageUrl = asset('storage/' . ltrim($imageUrl, '/'));
+            }
+            return [
+                'id' => (string) $r->id,
+                'receipt_code' => $r->receipt_code,
+                'offer_title' => $r->offer->title ?? 'N/A',
+                'offer_image' => $imageUrl ?: '/placeholder.jpg',
+                'merchant_name' => $r->offer->merchant->name ?? 'N/A',
+                'points_used' => (int) $r->points_spent,
+                'cash_paid' => $r->cash_spent ? (float) $r->cash_spent : null,
+                'status' => $r->status,
+                'purchased_at' => $r->created_at->toIso8601String(),
+                'confirmed_url' => route('merchant-hub.redemption.confirmed', $r->receipt_code),
+            ];
+        });
+        return Inertia::render('frontend/merchant-hub/MyPurchases', [
+            'purchases' => $purchases,
+        ]);
+    }
+
+    /**
+     * Show checkout (shipping address) page before pay with cash.
+     */
+    public function checkoutShow(Request $request, $id)
+    {
+        $user = Auth::user();
+        if (!$user) {
+            return redirect()->route('login', ['redirect' => route('merchant-hub.offer.checkout', $id)]);
+        }
+        $offer = MerchantHubOffer::with(['merchant', 'category'])->where('id', $id)->where('status', 'active')->firstOrFail();
+        if (!$offer->isAvailable()) {
+            return redirect()->route('merchant-hub.offer.show', $id)->with('error', 'This offer is no longer available.');
+        }
+        $referencePrice = (float) ($offer->reference_price ?? 0);
+        if ($referencePrice <= 0 && $offer->points_required > 0 && $offer->discount_percentage > 0) {
+            $referencePrice = ($offer->points_required / 1000) * 100 / (float) $offer->discount_percentage;
+        }
+        $communityCashPrice = $referencePrice > 0 ? round($referencePrice, 2) : 0; // Full amount when paying with cash (no points)
+        $imageUrl = $offer->image_url;
+        if ($imageUrl && !filter_var($imageUrl, FILTER_VALIDATE_URL)) {
+            $imageUrl = asset('storage/' . ltrim($imageUrl, '/'));
+        }
+        return Inertia::render('frontend/merchant-hub/CheckoutShipping', [
+            'offer' => [
+                'id' => (string) $offer->id,
+                'title' => $offer->title,
+                'image' => $imageUrl ?: '/placeholder.jpg',
+                'merchantName' => $offer->merchant->name,
+                'amount' => $communityCashPrice,
+                'currency' => $offer->currency ?? 'USD',
+            ],
+        ]);
+    }
+
+    /**
+     * Submit shipping address and create Stripe checkout for pay with cash.
+     */
+    public function checkoutStore(Request $request)
+    {
+        $request->validate([
+            'offer_id' => 'required|integer|exists:merchant_hub_offers,id',
+            'shipping_name' => 'required|string|max:255',
+            'shipping_line1' => 'required|string|max:255',
+            'shipping_line2' => 'nullable|string|max:255',
+            'shipping_city' => 'required|string|max:100',
+            'shipping_state' => 'nullable|string|max:100',
+            'shipping_postal_code' => 'required|string|max:20',
+            'shipping_country' => 'required|string|size:2',
+        ]);
+        $user = Auth::user();
+        if (!$user) {
+            return back()->withErrors(['error' => 'You must be logged in.']);
+        }
+        $offer = MerchantHubOffer::with('merchant')->findOrFail($request->offer_id);
+        if (!$offer->isAvailable()) {
+            return back()->withErrors(['error' => 'This offer is no longer available.']);
+        }
+        $referencePrice = (float) ($offer->reference_price ?? 0);
+        if ($referencePrice <= 0 && $offer->points_required > 0 && $offer->discount_percentage > 0) {
+            $referencePrice = ($offer->points_required / 1000) * 100 / (float) $offer->discount_percentage;
+        }
+        if ($referencePrice <= 0) {
+            return back()->withErrors(['error' => 'This offer does not support cash purchase.']);
+        }
+        $cashAmount = round($referencePrice, 2); // Full amount when paying with cash (no points)
+        $receiptCode = 'RED-' . strtoupper(Str::random(8));
+        if (!config('cashier.secret')) {
+            return back()->withErrors(['error' => 'Stripe is not configured. Set STRIPE_SECRET in your .env file.']);
+        }
+        DB::beginTransaction();
+        try {
+            $redemption = MerchantHubOfferRedemption::create([
+                'merchant_hub_offer_id' => $offer->id,
+                'user_id' => $user->id,
+                'points_spent' => 0,
+                'cash_spent' => $cashAmount,
+                'status' => 'pending',
+                'receipt_code' => $receiptCode,
+                'shipping_name' => $request->shipping_name,
+                'shipping_line1' => $request->shipping_line1,
+                'shipping_line2' => $request->shipping_line2,
+                'shipping_city' => $request->shipping_city,
+                'shipping_state' => $request->shipping_state,
+                'shipping_postal_code' => $request->shipping_postal_code,
+                'shipping_country' => strtoupper($request->shipping_country),
+            ]);
+            $amountCents = (int) round($cashAmount * 100);
+            if ($amountCents < 50) {
+                return back()->withErrors(['error' => 'Minimum charge amount is 0.50. This offer cannot be purchased with cash.']);
+            }
+            $currency = strtolower($offer->currency ?? 'usd');
+            $merchantName = $offer->merchant ? $offer->merchant->name : 'Merchant';
+            $checkout = $user->checkout([
+                [
+                    'price_data' => [
+                        'currency' => $currency,
+                        'product_data' => [
+                            'name' => $offer->title,
+                            'description' => 'Pay with cash (full amount) - ' . $merchantName,
+                        ],
+                        'unit_amount' => $amountCents,
+                    ],
+                    'quantity' => 1,
+                ],
+            ], [
+                'success_url' => route('merchant-hub.redemption.stripe-success') . '?session_id={CHECKOUT_SESSION_ID}',
+                'cancel_url' => route('merchant-hub.offer.checkout', $offer->id),
+                'payment_method_types' => ['card'],
+                'metadata' => [
+                    'redemption_id' => (string) $redemption->id,
+                    'user_id' => (string) $user->id,
+                    'offer_id' => (string) $offer->id,
+                    'type' => 'merchant_hub_redemption',
+                    'payment_method' => 'cash',
+                    'cash_amount' => (string) $cashAmount,
+                    'receipt_code' => $receiptCode,
+                    'currency' => $currency,
+                ],
+            ]);
+            DB::commit();
+            return Inertia::location($checkout->url);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Merchant hub checkout error: ' . $e->getMessage(), [
+                'exception' => $e,
+                'trace' => $e->getTraceAsString(),
+            ]);
+            $message = config('app.debug') ? $e->getMessage() : 'Could not start checkout. Please try again.';
+            return back()->withErrors(['error' => $message]);
+        }
+    }
+
+    /**
+     * Process redemption request (points or pay with cash).
      */
     public function redeem(Request $request)
     {
         $request->validate([
             'offer_id' => 'required|integer|exists:merchant_hub_offers,id',
+            'payment_method' => 'nullable|in:points,cash',
         ]);
 
         $user = Auth::user();
+        $paymentMethod = $request->input('payment_method', 'points');
 
         if (!$user) {
             return back()->withErrors(['error' => 'You must be logged in to redeem offers.']);
@@ -35,76 +342,78 @@ class MerchantRedemptionController extends Controller
             $offer = MerchantHubOffer::with(['merchant', 'category'])->findOrFail($request->offer_id);
             $merchantId = $offer->merchant_hub_merchant_id;
 
-            // Validate offer is available
             if (!$offer->isAvailable()) {
                 return back()->withErrors(['error' => 'This offer is no longer available.']);
             }
 
-            // Check user has enough points
-            // Use only reward_points for merchant hub redemptions
             $user->refresh();
             $userPoints = (float) ($user->reward_points ?? 0);
+
+            // Pay with cash: no points required, create redemption and Stripe session
+            if ($paymentMethod === 'cash') {
+                $referencePrice = (float) ($offer->reference_price ?? 0);
+                if ($referencePrice <= 0 && $offer->points_required > 0 && $offer->discount_percentage > 0) {
+                    $referencePrice = ($offer->points_required / 1000) * 100 / (float) $offer->discount_percentage;
+                }
+                if ($referencePrice <= 0) {
+                    DB::rollBack();
+                    return back()->withErrors(['error' => 'This offer does not support cash purchase.']);
+                }
+                $cashAmount = round($referencePrice, 2); // Full amount when paying with cash (no points)
+
+                $receiptCode = 'RED-' . strtoupper(Str::random(8));
+
+                $amountCents = (int) round($cashAmount * 100);
+                $currency = strtolower($offer->currency ?? 'usd');
+                $checkout = $user->checkout([
+                    [
+                        'price_data' => [
+                            'currency' => $currency,
+                            'product_data' => [
+                                'name' => $offer->title,
+                                'description' => 'Pay with cash (full amount) - ' . $offer->merchant->name,
+                            ],
+                            'unit_amount' => $amountCents,
+                        ],
+                        'quantity' => 1,
+                    ],
+                ], [
+                    'success_url' => route('merchant-hub.redemption.stripe-success') . '?session_id={CHECKOUT_SESSION_ID}',
+                    'cancel_url' => route('merchant-hub.offer.show', $offer->id),
+                    'payment_method_types' => ['card'],
+                    'metadata' => [
+                        'user_id' => (string) $user->id,
+                        'offer_id' => (string) $offer->id,
+                        'type' => 'merchant_hub_redemption',
+                        'payment_method' => 'cash',
+                        'cash_amount' => (string) $cashAmount,
+                        'receipt_code' => $receiptCode,
+                        'currency' => $currency,
+                    ],
+                ]);
+
+                DB::commit();
+                return Inertia::location($checkout->url);
+            }
+
+            // Pay with points
             if ($userPoints < $offer->points_required) {
-                return back()->withErrors([
-                    'error' => 'You do not have enough points. You need ' . number_format($offer->points_required) . ' points, but you only have ' . number_format($userPoints) . ' points.'
-                ]);
-            }
-
-            // ===== 10% DISCOUNT HUB RULES =====
-            
-            // Rule 1: Check if user already redeemed from this merchant this month
-            $currentMonth = now()->startOfMonth();
-            $existingRedemption = MerchantHubOfferRedemption::where('user_id', $user->id)
-                ->whereHas('offer', function($q) use ($merchantId) {
-                    $q->where('merchant_hub_merchant_id', $merchantId);
-                })
-                ->where('status', '!=', 'canceled')
-                ->where('created_at', '>=', $currentMonth)
-                ->first();
-
-            if ($existingRedemption) {
                 DB::rollBack();
                 return back()->withErrors([
-                    'error' => 'You have already redeemed from this merchant this month. One redemption per merchant per month.'
+                    'error' => 'You do not have enough points. You need ' . number_format($offer->points_required) . ' points, but you only have ' . number_format($userPoints) . '. Use "Pay with cash" to pay the full amount instead.'
                 ]);
             }
 
-            // Rule 2: Check if points exceed 100 per merchant per month
-            $monthlyPointsRedeemed = MerchantHubOfferRedemption::where('user_id', $user->id)
-                ->whereHas('offer', function($q) use ($merchantId) {
-                    $q->where('merchant_hub_merchant_id', $merchantId);
-                })
-                ->where('status', '!=', 'canceled')
-                ->where('created_at', '>=', $currentMonth)
-                ->sum('points_spent');
-
-            if ($monthlyPointsRedeemed + $offer->points_required > 100) {
-                DB::rollBack();
-                $remainingPoints = 100 - $monthlyPointsRedeemed;
-                return back()->withErrors([
-                    'error' => 'You can only redeem up to 100 points per merchant per month. You have already redeemed ' . $monthlyPointsRedeemed . ' points this month. You can redeem up to ' . $remainingPoints . ' more points.'
-                ]);
-            }
-
-            // Rule 3: For standard 10% discount offers, must be exactly 100 points
             if ($offer->is_standard_discount && $offer->points_required != 100) {
                 DB::rollBack();
-                return back()->withErrors([
-                    'error' => 'Standard 10% discount offers require exactly 100 points.'
-                ]);
+                return back()->withErrors(['error' => 'Standard 10% discount offers require exactly 100 points.']);
             }
 
-            // Generate unique receipt code
             $receiptCode = 'RED-' . strtoupper(Str::random(8));
-
-            // For standard 10% discount offers, no cash is required
-            // Only non-standard offers can have cash requirements
             $cashRequired = 0;
             if (!$offer->is_standard_discount && $offer->cash_required) {
                 $cashRequired = (float) $offer->cash_required;
             }
-
-            // Create redemption record (pending status if cash required, approved if not)
             $status = $cashRequired > 0 ? 'pending' : 'approved';
 
             $redemption = MerchantHubOfferRedemption::create([
@@ -115,11 +424,9 @@ class MerchantRedemptionController extends Controller
                 'status' => $status,
                 'receipt_code' => $receiptCode,
             ]);
+            $this->ensureShareToken($redemption);
 
-            // Deduct points immediately from reward_points only
             $user->decrement('reward_points', $offer->points_required);
-            
-            // Create ledger entry for the redemption
             \App\Models\RewardPointLedger::createDebit(
                 $user->id,
                 'merchant_hub_redemption',
@@ -134,21 +441,18 @@ class MerchantRedemptionController extends Controller
                     'redemption_id' => $redemption->id,
                 ]
             );
- 
-            // If cash is required (only for non-standard offers), show error
-            // Standard 10% discount offers are points-only
-            if ($cashRequired > 0) {
-                // For now, we'll mark as pending and redirect to payment
-                // In production, you'd create a Stripe checkout session here
-                DB::commit();
 
+            if ($cashRequired > 0) {
+                DB::commit();
                 return redirect()->route('merchant-hub.offer.show', $offer->id)
                     ->with('error', 'Cash payment processing not yet implemented. Please contact support.');
             }
 
             DB::commit();
-
-            // Return back to offer page with success data (no redirect to confirmation page)
+            $this->awardReferralIfApplicable((int) $redemption->id, (int) $user->id);
+            $shareLink = $redemption->share_token
+                ? url()->route('merchant-hub.offer.show.ref', ['id' => $offer->id, 'refCode' => $redemption->share_token])
+                : null;
             return redirect()->route('merchant-hub.offer.show', $offer->id)
                 ->with('redemption_success', [
                     'id' => $redemption->id,
@@ -163,12 +467,108 @@ class MerchantRedemptionController extends Controller
                     'status' => $status,
                     'redeemed_at' => $redemption->created_at->toIso8601String(),
                     'qr_code_url' => route('merchant-hub.redemption.qr-code', ['code' => $receiptCode]),
+                    'share_link' => $shareLink,
+                    'share_token' => $redemption->share_token,
                 ]);
 
         } catch (\Exception $e) {
             DB::rollBack();
             Log::error('Redemption failed: ' . $e->getMessage());
             return back()->withErrors(['error' => 'An error occurred during redemption. Please try again.']);
+        }
+    }
+
+    /**
+     * Handle Stripe checkout success for main app merchant-hub (pay with cash).
+     * Uses Laravel Cashier to retrieve the session.
+     */
+    public function stripeSuccess(Request $request)
+    {
+        $sessionId = $request->get('session_id');
+        if (!$sessionId) {
+            return redirect()->route('merchant-hub.index')->with('error', 'Invalid session.');
+        }
+
+        DB::beginTransaction();
+        try {
+            $session = Cashier::stripe()->checkout->sessions->retrieve($sessionId);
+            if ($session->payment_status !== 'paid') {
+                return redirect()->route('merchant-hub.index')->with('error', 'Payment was not completed.');
+            }
+            $metadata = $session->metadata ?? (object) [];
+            $redemptionId = $metadata->redemption_id ?? null;
+
+            if ($redemptionId) {
+                // Shipping flow: redemption was created with address before Stripe
+                $redemption = MerchantHubOfferRedemption::with(['offer'])->findOrFail($redemptionId);
+                $redemption->update(['status' => 'approved']);
+                $this->ensureShareToken($redemption);
+                Transaction::create([
+                    'user_id' => $redemption->user_id,
+                    'related_id' => $redemption->id,
+                    'related_type' => MerchantHubOfferRedemption::class,
+                    'type' => 'purchase',
+                    'status' => 'completed',
+                    'amount' => $redemption->cash_spent,
+                    'fee' => 0,
+                    'currency' => $redemption->offer->currency ?? 'USD',
+                    'payment_method' => 'stripe',
+                    'transaction_id' => $session->payment_intent ?? null,
+                    'meta' => [
+                        'stripe_session_id' => $sessionId,
+                        'points_spent' => 0,
+                        'offer_id' => $redemption->offer->id,
+                        'receipt_code' => $redemption->receipt_code,
+                    ],
+                    'processed_at' => now(),
+                ]);
+            } else {
+                // Legacy: create redemption from metadata (no shipping)
+                $offerId = $metadata->offer_id ?? null;
+                $userId = $metadata->user_id ?? null;
+                $cashAmount = isset($metadata->cash_amount) ? (float) $metadata->cash_amount : 0;
+                $receiptCode = $metadata->receipt_code ?? 'RED-' . strtoupper(Str::random(8));
+                $currency = $metadata->currency ?? 'usd';
+                if (!$offerId || !$userId || $cashAmount <= 0) {
+                    return redirect()->route('merchant-hub.index')->with('error', 'Invalid payment session.');
+                }
+                $offer = MerchantHubOffer::with('merchant')->findOrFail($offerId);
+                $redemption = MerchantHubOfferRedemption::create([
+                    'merchant_hub_offer_id' => $offer->id,
+                    'user_id' => $userId,
+                    'points_spent' => 0,
+                    'cash_spent' => $cashAmount,
+                    'status' => 'approved',
+                    'receipt_code' => $receiptCode,
+                ]);
+                $this->ensureShareToken($redemption);
+                Transaction::create([
+                    'user_id' => $redemption->user_id,
+                    'related_id' => $redemption->id,
+                    'related_type' => MerchantHubOfferRedemption::class,
+                    'type' => 'purchase',
+                    'status' => 'completed',
+                    'amount' => $redemption->cash_spent,
+                    'fee' => 0,
+                    'currency' => strtoupper($offer->currency ?? $currency),
+                    'payment_method' => 'stripe',
+                    'transaction_id' => $session->payment_intent ?? null,
+                    'meta' => [
+                        'stripe_session_id' => $sessionId,
+                        'points_spent' => 0,
+                        'offer_id' => $redemption->offer->id,
+                        'receipt_code' => $redemption->receipt_code,
+                    ],
+                    'processed_at' => now(),
+                ]);
+            }
+            DB::commit();
+            $this->awardReferralIfApplicable((int) $redemption->id, (int) $redemption->user_id);
+            return redirect()->route('merchant-hub.redemption.confirmed', $redemption->receipt_code);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Merchant hub Stripe success error: ' . $e->getMessage());
+            return redirect()->route('merchant-hub.index')->with('error', 'An error occurred. Please contact support.');
         }
     }
 
@@ -183,20 +583,26 @@ class MerchantRedemptionController extends Controller
             $redemption = MerchantHubOfferRedemption::with(['offer', 'user'])
                 ->where('receipt_code', $code)
                 ->firstOrFail();
-
+            $this->ensureShareToken($redemption);
+            $offer = $redemption->offer;
+            $shareLink = $redemption->share_token
+                ? url()->route('merchant-hub.offer.show.ref', ['id' => $offer->id, 'refCode' => $redemption->share_token])
+                : null;
             $redemptionData = [
                 'id' => $redemption->id,
                 'code' => $redemption->receipt_code,
                 'offer' => [
-                    'id' => $redemption->offer->id,
-                    'title' => $redemption->offer->title,
-                    'image' => $redemption->offer->image_url ?: '/placeholder.jpg',
+                    'id' => $offer->id,
+                    'title' => $offer->title,
+                    'image' => $offer->image_url ?: '/placeholder.jpg',
                 ],
                 'points_spent' => $redemption->points_spent,
                 'cash_spent' => $redemption->cash_spent,
                 'status' => $redemption->status,
                 'redeemed_at' => $redemption->created_at->toIso8601String(),
                 'qr_code_url' => route('merchant-hub.redemption.qr-code', ['code' => $redemption->receipt_code]),
+                'share_token' => $redemption->share_token,
+                'share_link' => $shareLink,
             ];
         }
 
@@ -250,7 +656,7 @@ class MerchantRedemptionController extends Controller
                 'points_spent' => $redemption->points_spent,
                 'created_at' => $redemption->created_at->toIso8601String(),
             ]);
-            
+
             Log::info('QR Code JSON data generated', ['code' => $code, 'data' => $qrData]);
 
             // Generate QR code as SVG with JSON data
@@ -340,7 +746,7 @@ class MerchantRedemptionController extends Controller
         if (Auth::guard('merchant')->check()) {
             $merchant = Auth::guard('merchant')->user();
             $merchantHubMerchant = $this->getOrCreateMerchantHubMerchant($merchant);
-            
+
             if ($redemption->offer->merchant_hub_merchant_id !== $merchantHubMerchant->id) {
                 return Inertia::render('merchant/RedemptionVerify', [
                     'code' => $code,
@@ -420,7 +826,7 @@ class MerchantRedemptionController extends Controller
         if (Auth::guard('merchant')->check()) {
             $merchant = Auth::guard('merchant')->user();
             $merchantHubMerchant = $this->getOrCreateMerchantHubMerchant($merchant);
-            
+
             if ($redemption->offer->merchant_hub_merchant_id !== $merchantHubMerchant->id) {
                 return response()->json([
                     'error' => 'This redemption is not for your merchant.',

@@ -87,15 +87,7 @@ export default function CreatedCardsPage({ giftCards, organization, isAdmin = fa
         gift_card_terms_approved: organization?.gift_card_terms_approved || false,
     })
 
-    // Show success message if redirected from successful creation
-    useEffect(() => {
-        if (flash.success) {
-            toast.success(flash.success)
-        }
-        if (flash.error) {
-            toast.error(flash.error)
-        }
-    }, [flash.success, flash.error])
+    // Flash toasts shown by app-layout; do not duplicate here.
 
     const handleTermsSubmit = (e: React.FormEvent) => {
         e.preventDefault()

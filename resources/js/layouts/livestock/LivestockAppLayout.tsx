@@ -34,12 +34,10 @@ export default function LivestockAppLayout({ children, breadcrumbs = [] }: Lives
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
     useEffect(() => {
-        if (page.props?.success) {
-            toast.success(page.props?.success as string)
-        }
-        if (page.props?.error) {
-            toast.error(page.props?.error as string)
-        }
+        const success = page.props?.success
+        const error = page.props?.error
+        if (typeof success === "string" && success.trim() !== "") toast.success(success)
+        if (typeof error === "string" && error.trim() !== "") toast.error(error)
     }, [page.props?.success, page.props?.error])
 
     return (

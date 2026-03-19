@@ -91,7 +91,7 @@ export default function CommunityVideoShowYouTube({ seo, video: initialVideo, mo
 
   useEffect(() => {
     if (!auth?.user?.id) return
-    axios.post(route("community-videos.engagement.view"), {
+    axios.post(route("unity-videos.engagement.view"), {
       video_id: video.id,
       source: "yt",
       channel_slug: video.channel_slug ?? undefined,
@@ -107,7 +107,7 @@ export default function CommunityVideoShowYouTube({ seo, video: initialVideo, mo
     }
     setLikeLoading(true)
     try {
-      const { data } = await axios.post(route("community-videos.engagement.like"), {
+      const { data } = await axios.post(route("unity-videos.engagement.like"), {
         video_id: video.id,
         source: "yt",
         channel_slug: video.channel_slug ?? undefined,
@@ -132,9 +132,9 @@ export default function CommunityVideoShowYouTube({ seo, video: initialVideo, mo
   }
 
   const handleShare = async () => {
-    const url = `${window.location.origin}/community-videos/watch/yt/${video.id}${video.channel_slug ? `?channel_slug=${encodeURIComponent(video.channel_slug)}&creator=${encodeURIComponent(video.creator ?? "")}` : ""}`
+    const url = `${window.location.origin}/unity-videos/watch/yt/${video.id}${video.channel_slug ? `?channel_slug=${encodeURIComponent(video.channel_slug)}&creator=${encodeURIComponent(video.creator ?? "")}` : ""}`
     try {
-      await axios.post(route("community-videos.engagement.share"), {
+      await axios.post(route("unity-videos.engagement.share"), {
         video_id: video.id,
         source: "yt",
         channel_slug: video.channel_slug ?? undefined,
@@ -156,7 +156,7 @@ export default function CommunityVideoShowYouTube({ seo, video: initialVideo, mo
     if (!auth?.user?.id || !commentBody.trim()) return
     setCommentSubmitting(true)
     try {
-      const { data } = await axios.post(route("community-videos.engagement.comment"), {
+      const { data } = await axios.post(route("unity-videos.engagement.comment"), {
         video_id: video.id,
         source: "yt",
         body: commentBody.trim(),
@@ -179,7 +179,7 @@ export default function CommunityVideoShowYouTube({ seo, video: initialVideo, mo
     if (item.channel_slug) q.set("channel_slug", item.channel_slug)
     if (item.creator) q.set("creator", item.creator)
     if (item.creatorAvatar) q.set("creator_avatar", item.creatorAvatar)
-    return `/community-videos/watch/yt/${item.slug}${q.toString() ? `?${q.toString()}` : ""}`
+    return `/unity-videos/watch/yt/${item.slug}${q.toString() ? `?${q.toString()}` : ""}`
   }
 
   return (
@@ -189,11 +189,11 @@ export default function CommunityVideoShowYouTube({ seo, video: initialVideo, mo
         <div className="max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <div className="mb-4">
             <Link
-              href="/community-videos"
+              href="/unity-videos"
               className="inline-flex items-center gap-2 text-sm font-medium text-gray-600 dark:text-gray-400 hover:text-purple-600 dark:hover:text-purple-400"
             >
               <ArrowLeft className="w-4 h-4 shrink-0" />
-              Back to Community Videos
+              Back to Unity Videos
             </Link>
           </div>
           <div className="flex flex-col lg:flex-row gap-6 lg:gap-8">
@@ -240,7 +240,7 @@ export default function CommunityVideoShowYouTube({ seo, video: initialVideo, mo
                 <div className="flex items-center justify-between gap-4 py-4 border-t border-b border-gray-200 dark:border-gray-700">
                   <div className="flex items-center gap-4 min-w-0">
                     <Link
-                      href={video.channel_slug ? `/community-videos/channel/${video.channel_slug}` : "#"}
+                      href={video.channel_slug ? `/unity-videos/channel/${video.channel_slug}` : "#"}
                       className="shrink-0"
                     >
                       <Avatar className="h-12 w-12 rounded-full">
@@ -254,7 +254,7 @@ export default function CommunityVideoShowYouTube({ seo, video: initialVideo, mo
                     </Link>
                     <div className="min-w-0">
                       <Link
-                        href={video.channel_slug ? `/community-videos/channel/${video.channel_slug}` : "#"}
+                        href={video.channel_slug ? `/unity-videos/channel/${video.channel_slug}` : "#"}
                         className="font-medium text-gray-900 dark:text-white hover:text-purple-600 dark:hover:text-purple-400 block truncate"
                       >
                         {video.creator ?? "Channel"}
@@ -414,7 +414,7 @@ export default function CommunityVideoShowYouTube({ seo, video: initialVideo, mo
                         </a>
                         {item.channel_slug ? (
                           <Link
-                            href={`/community-videos/channel/${item.channel_slug}`}
+                            href={`/unity-videos/channel/${item.channel_slug}`}
                             className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 truncate block hover:text-purple-600 dark:hover:text-purple-400 transition-colors"
                             onClick={(e) => e.stopPropagation()}
                           >
@@ -434,11 +434,11 @@ export default function CommunityVideoShowYouTube({ seo, video: initialVideo, mo
                 </div>
               ) : (
                 <Link
-                  href="/community-videos"
+                  href="/unity-videos"
                   className="block p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
                 >
                   <p className="text-sm font-medium text-gray-900 dark:text-white">Browse all videos</p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Back to Community Videos</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Back to Unity Videos</p>
                 </Link>
               )}
             </aside>

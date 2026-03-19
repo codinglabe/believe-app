@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useMemo } from "react"
 import { Link, usePage } from "@inertiajs/react"
 import { route } from "ziggy-js"
 import axios from "axios"
@@ -51,6 +51,7 @@ export interface ShortItem {
   thumbnail_url: string
   views: number
   views_formatted: string
+  duration?: string
   channel_slug?: string
   creator?: string
   creatorAvatar?: string | null
@@ -90,6 +91,16 @@ export function ChannelPageContent({
   const [likeLoadingId, setLikeLoadingId] = useState<string | null>(null)
   const isDashboard = variant === "dashboard"
 
+  // Only show real videos/shorts: exclude duration "0:00" or empty (placeholder/invalid)
+  const filteredYoutubeVideos = useMemo(
+    () => youtube_videos.filter((v) => (v.duration ?? "") !== "" && (v.duration ?? "") !== "0:00"),
+    [youtube_videos]
+  )
+  const filteredShorts = useMemo(
+    () => shorts.filter((s) => (s.duration ?? "") !== "" && (s.duration ?? "") !== "0:00"),
+    [shorts]
+  )
+
   const handleYoutubeLike = async (e: React.MouseEvent, yt: YouTubeVideoItem) => {
     e.preventDefault()
     e.stopPropagation()
@@ -99,7 +110,7 @@ export function ChannelPageContent({
     }
     setLikeLoadingId(yt.id)
     try {
-      const { data } = await axios.post(route("community-videos.engagement.like"), {
+      const { data } = await axios.post(route("unity-videos.engagement.like"), {
         video_id: yt.id,
         source: "yt",
         channel_slug: channel.slug ?? undefined,
@@ -125,9 +136,9 @@ export function ChannelPageContent({
   }
 
   const handleYoutubeShare = async (yt: YouTubeVideoItem) => {
-    const url = `${window.location.origin}/community-videos/watch/yt/${yt.id}${channel.slug ? `?channel_slug=${encodeURIComponent(channel.slug)}&creator=${encodeURIComponent(channel.name)}` : ""}`
+    const url = `${window.location.origin}/unity-videos/watch/yt/${yt.id}${channel.slug ? `?channel_slug=${encodeURIComponent(channel.slug)}&creator=${encodeURIComponent(channel.name)}` : ""}`
     try {
-      await axios.post(route("community-videos.engagement.share"), {
+      await axios.post(route("unity-videos.engagement.share"), {
         video_id: yt.id,
         source: "yt",
         channel_slug: channel.slug ?? undefined,
@@ -253,19 +264,19 @@ export function ChannelPageContent({
       <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 pt-1 pb-8">
         {activeTab === "videos" && (
           <>
-            {shorts.length > 0 && (
+            {filteredShorts.length > 0 && (
               <section className="mb-6">
                 <h2 className={`text-base font-semibold mb-3 px-0.5 flex items-center gap-2 ${isDashboard ? "text-foreground" : "text-gray-900 dark:text-white"}`}>
                   <Clapperboard className="w-5 h-5 text-purple-500 dark:text-purple-400" aria-hidden />
                   Shorts
                 </h2>
                 <div className="flex gap-3 overflow-x-auto pb-2 -mx-0.5 scrollbar-none">
-                  {shorts.map((short) => {
+                  {filteredShorts.map((short) => {
                     const params = new URLSearchParams()
                     if (short.channel_slug) params.set("channel_slug", short.channel_slug)
                     if (short.creator) params.set("creator", short.creator)
                     if (short.creatorAvatar) params.set("creator_avatar", short.creatorAvatar)
-                    const watchHref = `/community-videos/shorts/yt/${short.slug}${params.toString() ? `?${params.toString()}` : ""}`
+                    const watchHref = `/unity-videos/shorts/yt/${short.slug}${params.toString() ? `?${params.toString()}` : ""}`
                     return (
                       <a
                         key={short.id}
@@ -297,12 +308,12 @@ export function ChannelPageContent({
                 </div>
               </section>
             )}
-            {videos.length === 0 && youtube_videos.length === 0 ? (
+            {videos.length === 0 && filteredYoutubeVideos.length === 0 && filteredShorts.length === 0 ? (
               <div className={`text-center py-20 rounded-xl border ${isDashboard ? "bg-card border-border" : "bg-white dark:bg-gray-800/50 border-gray-200 dark:border-gray-700"}`}>
                 <p className={`mb-2 ${isDashboard ? "text-muted-foreground" : "text-gray-600 dark:text-gray-400"}`}>No videos yet</p>
                 <p className={`text-sm mb-6 ${isDashboard ? "text-muted-foreground" : "text-gray-500 dark:text-gray-500"}`}>This channel hasn't uploaded any videos.</p>
                 <Button className="bg-purple-600 hover:bg-purple-500 text-white border-0 rounded-lg" asChild>
-                  <Link href="/community-videos">Browse Community Videos</Link>
+                  <Link href="/unity-videos">Browse Unity Videos</Link>
                 </Button>
               </div>
             ) : null}
@@ -311,7 +322,7 @@ export function ChannelPageContent({
                 {videos.map((video) => (
                   <Link
                     key={video.id}
-                    href={`/community-videos/watch/${video.slug}`}
+                    href={`/unity-videos/watch/${video.slug}`}
                     className="group"
                   >
                     <div className={`relative aspect-video w-full rounded-lg overflow-hidden ${isDashboard ? "bg-muted" : "bg-gray-200 dark:bg-gray-800"}`}>
@@ -345,7 +356,7 @@ export function ChannelPageContent({
               </div>
             ) : null}
 
-            {youtube_videos.length > 0 && (
+            {filteredYoutubeVideos.length > 0 && (
               <div className={videos.length > 0 ? "mt-10" : "mt-2"}>
                 <h2 className={`text-lg font-semibold mb-4 flex items-center gap-2 ${isDashboard ? "text-foreground" : "text-gray-900 dark:text-white"}`}>
                   <Youtube className="w-5 h-5 text-red-500" />
@@ -355,12 +366,12 @@ export function ChannelPageContent({
                   Click a video to watch on our site.
                 </p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
-                  {youtube_videos.map((yt) => {
+                  {filteredYoutubeVideos.map((yt) => {
                     const q = new URLSearchParams()
                     if (channel.slug) q.set("channel_slug", channel.slug)
                     if (channel.name) q.set("creator", channel.name)
                     if (channel.avatar) q.set("creator_avatar", channel.avatar)
-                    const watchHref = `/community-videos/watch/yt/${yt.id}${q.toString() ? `?${q.toString()}` : ""}`
+                    const watchHref = `/unity-videos/watch/yt/${yt.id}${q.toString() ? `?${q.toString()}` : ""}`
                     return (
                       <div key={yt.id} className="group block">
                         <a
@@ -395,7 +406,7 @@ export function ChannelPageContent({
                             </h3>
                           </a>
                           <Link
-                            href={`/community-videos/channel/${channel.slug}`}
+                            href={`/unity-videos/channel/${channel.slug}`}
                             className="text-xs text-gray-500 dark:text-gray-400 mt-1 block truncate hover:text-purple-600 dark:hover:text-purple-400 transition-colors"
                           >
                             {channel.name}

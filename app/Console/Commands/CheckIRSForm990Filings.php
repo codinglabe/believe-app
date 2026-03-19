@@ -45,7 +45,8 @@ class CheckIRSForm990Filings extends Command
     {
         $this->info('Starting IRS Form 990 filing check...');
 
-        $taxYear = $this->option('year') ?? (string) Carbon::now()->year;
+        // Default to previous year: IRS bulk data for current year is not available yet
+        $taxYear = $this->option('year') ?? \App\Services\IRSForm990Service::defaultTaxYearForIrsData();
 
         // Download IRS data if requested
         if ($this->option('download')) {

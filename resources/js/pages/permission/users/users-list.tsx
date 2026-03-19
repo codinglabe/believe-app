@@ -24,6 +24,7 @@ interface User {
   lastLogin: string
   customPermissions: string[]
   joinedDate: string
+  organization_name?: string | null
 }
 
 interface UsersPaginator {
@@ -63,12 +64,7 @@ export default function UsersList({ allRoles, allPermissions, filters = {} }: Us
 
   // Show flash messages
   React.useEffect(() => {
-    if (flash?.success) {
-      showSuccessToast(flash.success)
-    }
-    if (flash?.error) {
-      showErrorToast(flash.error)
-    }
+    // Flash toasts shown by app-layout; skip to avoid duplicate
   }, [flash])
 
   // Debounce search
@@ -253,7 +249,10 @@ export default function UsersList({ allRoles, allPermissions, filters = {} }: Us
                     </Avatar>
                     <div>
                       <CardTitle className="text-lg">{user.name}</CardTitle>
-                      <div className="flex items-center gap-2">
+                      {user.organization_name && (
+                        <p className="text-sm text-slate-600 dark:text-slate-400 mt-0.5">{user.organization_name}</p>
+                      )}
+                      <div className="flex items-center gap-2 mt-1.5">
                         <Badge variant={user.status === "active" ? "default" : "secondary"} className="text-xs">
                           {user.status}
                         </Badge>

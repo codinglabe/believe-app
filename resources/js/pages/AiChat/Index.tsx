@@ -96,7 +96,7 @@ const StreamingText: React.FC<{
         delay = currentSpeed * 1.1
       }
       
-      // Add small random variation for natural feel (±15%)
+      // Add small random variation for natural feel (Â±15%)
       const variation = delay * 0.15
       const randomVariation = (Math.random() - 0.5) * 2 * variation
       delay = Math.max(3, delay + randomVariation) // Minimum 3ms
@@ -149,6 +149,10 @@ const AiChatIndex: React.FC<AiChatIndexProps> = ({
 }) => {
   const { auth } = usePage<SharedData>().props
   const currentCredits = auth.user.credits ?? 0
+  const aiTokensUsed = (auth.user as { ai_tokens_used?: number }).ai_tokens_used ?? 0
+  const aiTokensIncluded = (auth.user as { ai_tokens_included?: number }).ai_tokens_included ?? 0
+  // AI chat is token-based: allow send when no limit (ai_tokens_included === 0) or when used < included
+  const hasAiTokensLeft = aiTokensIncluded === 0 || aiTokensUsed < aiTokensIncluded
   
   // Sidebar state
   const [conversations, setConversations] = useState<Conversation[]>(initialConversations?.data || [])
@@ -528,6 +532,8 @@ const AiChatIndex: React.FC<AiChatIndexProps> = ({
       if (!response.ok) {
         if (data.error === 'insufficient_credits') {
           setError('insufficient_credits')
+        } else if (data.error === 'insufficient_tokens') {
+          setError('insufficient_tokens')
         } else {
           setError(data.message || 'Failed to get response')
         }
@@ -606,7 +612,7 @@ const AiChatIndex: React.FC<AiChatIndexProps> = ({
       // Scroll to bottom to show the form (force scroll)
       setTimeout(() => scrollToBottom(true, true), 100)
       
-      // Reload auth to update credits
+      // Reload auth to update token usage (ai_tokens_used / ai_tokens_included)
       router.reload({ only: ['auth'] })
 
       // Auto-scroll during typing, but less aggressive and only if near bottom
@@ -923,39 +929,35 @@ const AiChatIndex: React.FC<AiChatIndexProps> = ({
               <div className="flex items-center gap-2 sm:gap-4 flex-shrink-0">
                 {auth.user.role === 'organization' && (
                   <div className="flex items-center gap-1.5 sm:gap-2 rounded-full bg-primary/10 px-2.5 sm:px-4 py-1.5 sm:py-2 border border-primary/20">
-                    <Coins className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-primary" />
+                    <Sparkles className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-primary" />
                     <span className="text-xs sm:text-sm font-semibold text-primary">
-                      <span className="hidden sm:inline">{currentCredits.toLocaleString()} Credits</span>
-                      <span className="sm:hidden">{currentCredits.toLocaleString()}</span>
+                      {aiTokensIncluded > 0 ? (
+                        <><span className="hidden sm:inline">AI: </span>{aiTokensUsed.toLocaleString()} / {aiTokensIncluded.toLocaleString()} tokens</>
+                      ) : (
+                        <span className="hidden sm:inline">AI tokens</span>
+                      )}
                     </span>
                   </div>
                 )}
               </div>
             </div>
 
-            {/* Low Credits Warning (Red) - when credits <= 1000 */}
-            {auth.user.role === 'organization' && currentCredits <= 1000 && currentCredits > 0 && (
-              <div className="mb-4 p-4 bg-red-50 dark:bg-red-950/20 border-2 border-red-500 rounded-lg flex-shrink-0">
+            {/* Low AI tokens warning - when plan has a limit and most are used */}
+            {auth.user.role === 'organization' && aiTokensIncluded > 0 && aiTokensUsed >= aiTokensIncluded * 0.9 && aiTokensUsed < aiTokensIncluded && (
+              <div className="mb-4 p-4 bg-amber-50 dark:bg-amber-950/20 border-2 border-amber-500 rounded-lg flex-shrink-0">
                 <div className="flex items-center gap-3">
-                  <AlertCircle className="h-5 w-5 text-red-600 dark:text-red-400 flex-shrink-0" />
+                  <AlertCircle className="h-5 w-5 text-amber-600 dark:text-amber-400 flex-shrink-0" />
                   <div className="flex-1">
-                    <div className="font-semibold text-red-900 dark:text-red-300 mb-1">Low Credits Warning</div>
-                    <p className="text-sm text-red-800 dark:text-red-400">
-                      You have <strong>{currentCredits.toLocaleString()}</strong> credits remaining. Top up now to continue using AI features.
+                    <div className="font-semibold text-amber-900 dark:text-amber-300 mb-1">AI tokens running low</div>
+                    <p className="text-sm text-amber-800 dark:text-amber-400">
+                      You have used <strong>{aiTokensUsed.toLocaleString()} of {aiTokensIncluded.toLocaleString()}</strong> AI tokens. Upgrade your plan for more.
                     </p>
                   </div>
-                  <button
-                    onClick={handleBuyCredits}
-                    className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium text-sm flex items-center gap-2 cursor-pointer flex-shrink-0"
-                  >
-                    <Coins className="h-4 w-4" />
-                    TopUp
-                  </button>
                 </div>
               </div>
             )}
 
-            {/* Insufficient Credits Alert */}
+            {/* Insufficient Credits Alert (legacy / other features) */}
             {error === 'insufficient_credits' && (
               <div className="mb-4 p-4 bg-destructive/10 border-2 border-destructive/20 rounded-lg flex-shrink-0">
                 <div className="flex items-start gap-3">
@@ -963,7 +965,7 @@ const AiChatIndex: React.FC<AiChatIndexProps> = ({
                   <div className="flex-1">
                     <div className="font-semibold text-destructive mb-1">Insufficient Credits</div>
                     <p className="text-sm text-destructive/90 mb-3">
-                      You don't have enough credits to send a message. Each message costs 1 credit.
+                      You don't have enough credits for this action. Top up to continue.
                     </p>
                     <button
                       onClick={handleBuyCredits}
@@ -972,6 +974,21 @@ const AiChatIndex: React.FC<AiChatIndexProps> = ({
                       <Coins className="h-4 w-4" />
                       TopUp
                     </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Insufficient AI tokens alert */}
+            {error === 'insufficient_tokens' && (
+              <div className="mb-4 p-4 bg-destructive/10 border-2 border-destructive/20 rounded-lg flex-shrink-0">
+                <div className="flex items-start gap-3">
+                  <AlertCircle className="h-5 w-5 text-destructive flex-shrink-0 mt-0.5" />
+                  <div className="flex-1">
+                    <div className="font-semibold text-destructive mb-1">AI token limit reached</div>
+                    <p className="text-sm text-destructive/90">
+                      You have used all your AI tokens for this period. Each message uses tokens based on the actual AI usage. Upgrade your plan or wait for your next allocation to continue.
+                    </p>
                   </div>
                 </div>
               </div>
@@ -1143,15 +1160,13 @@ const AiChatIndex: React.FC<AiChatIndexProps> = ({
                 
                 {/* Bottom - Upgrade Button */}
                 <div className="p-3 border-t border-border flex-shrink-0">
-                  <p className="text-xs text-muted-foreground mb-2">1 credit per message</p>
-                  {currentCredits < 1 && (
-                    <button
-                      onClick={handleBuyCredits}
-                      className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors font-medium text-sm cursor-pointer"
-                    >
-                      <Coins className="h-4 w-4" />
-                      <span>TopUp</span>
-                    </button>
+                  <p className="text-xs text-muted-foreground mb-2">
+                    {aiTokensIncluded > 0
+                      ? `${aiTokensUsed.toLocaleString()} / ${aiTokensIncluded.toLocaleString()} AI tokens used`
+                      : 'Uses your AI token balance'}
+                  </p>
+                  {!hasAiTokensLeft && aiTokensIncluded > 0 && (
+                    <p className="text-xs text-amber-600 dark:text-amber-400">Upgrade plan for more tokens</p>
                   )}
                 </div>
               </div>
@@ -1234,10 +1249,10 @@ const AiChatIndex: React.FC<AiChatIndexProps> = ({
                       </div>
                     </div>
 
-                    {/* Credit Info */}
+                    {/* Token usage info */}
                     <div className="mt-8 p-3 rounded-lg bg-muted/50 border border-border">
                       <p className="text-sm text-muted-foreground">
-                        💡 Each message costs <strong className="text-foreground">1 credit</strong>
+                        ðŸ’¡ Each reply uses <strong className="text-foreground">AI tokens</strong> based on actual usage (prompt + response). Your balance is shown above.
                       </p>
                     </div>
                   </div>
@@ -1436,7 +1451,7 @@ const AiChatIndex: React.FC<AiChatIndexProps> = ({
 
                 {/* Input Area */}
                 <div className="p-2 sm:p-3 md:p-4 border-t border-border flex-shrink-0">
-                {error && error !== 'insufficient_credits' && (
+                {error && error !== 'insufficient_credits' && error !== 'insufficient_tokens' && (
                   <div className="mb-3 p-3 bg-destructive/10 border border-destructive/20 rounded-lg text-sm text-destructive">
                     {error}
                   </div>
@@ -1454,7 +1469,7 @@ const AiChatIndex: React.FC<AiChatIndexProps> = ({
                       rows={1}
                       className="w-full px-4 py-3 pr-12 border border-border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary resize-none transition-all overflow-hidden"
                       style={{ minHeight: '52px', maxHeight: '200px', height: '52px' }}
-                      disabled={isLoading || currentCredits < 1}
+                      disabled={isLoading || !hasAiTokensLeft}
                     />
                     <div className="absolute right-2 bottom-2 text-xs text-muted-foreground">
                       {input.length}/2000

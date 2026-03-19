@@ -107,24 +107,22 @@ export default function MeetingsIndex({ meetings, userRole, filters }: Props) {
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
-                  {userRole === "organization" ? "My Meetings" : "Course Meetings"}
+                  {userRole === "organization" ? "My Meetings" : "Meetings"}
                 </h1>
                 <p className="mt-2 text-gray-600 dark:text-gray-400">
                   {userRole === "organization"
                     ? "Manage and host your course meetings"
-                    : "Join meetings for your enrolled courses"}
+                    : "Create, schedule, and join meetings"}
                 </p>
               </div>
-              {userRole === "organization" && (
-                <div className="mt-4 sm:mt-0">
-                  <Link href="/meetings/create">
-                    <Button className="inline-flex items-center bg-purple-600 hover:bg-purple-700 dark:bg-purple-600 dark:hover:bg-purple-700">
-                      <Plus className="w-4 h-4 mr-2" />
-                      Create Meeting
-                    </Button>
-                  </Link>
-                </div>
-              )}
+              <div className="mt-4 sm:mt-0">
+                <Link href="/meetings/create">
+                  <Button className="inline-flex items-center bg-purple-600 hover:bg-purple-700 dark:bg-purple-600 dark:hover:bg-purple-700">
+                    <Plus className="w-4 h-4 mr-2" />
+                    Create Meeting
+                  </Button>
+                </Link>
+              </div>
             </div>
           </div>
 
@@ -247,7 +245,7 @@ export default function MeetingsIndex({ meetings, userRole, filters }: Props) {
 
                       <div className="pt-4 border-t border-gray-200 dark:border-gray-700">
                         <div className="flex gap-2">
-                          {userRole === "organization" ? (
+                          {(userRole === "organization" || userRole === "user") ? (
                             <>
                               <Link href={`/meetings/${meeting.id}`} className="flex-1">
                                 <Button
@@ -326,16 +324,14 @@ export default function MeetingsIndex({ meetings, userRole, filters }: Props) {
                 <p className="text-gray-600 dark:text-gray-400 mb-6">
                   {userRole === "organization"
                     ? "You haven't created any meetings yet."
-                    : "No meetings available for your enrolled courses."}
+                    : "You haven't created any meetings yet. Create one to get started."}
                 </p>
-                {userRole === "organization" && (
-                  <Link href="/meetings/create">
-                    <Button className="bg-purple-600 hover:bg-purple-700 dark:bg-purple-600 dark:hover:bg-purple-700">
-                      <Plus className="w-4 h-4 mr-2" />
-                      Create Your First Meeting
-                    </Button>
-                  </Link>
-                )}
+                <Link href="/meetings/create">
+                  <Button className="bg-purple-600 hover:bg-purple-700 dark:bg-purple-600 dark:hover:bg-purple-700">
+                    <Plus className="w-4 h-4 mr-2" />
+                    Create Your First Meeting
+                  </Button>
+                </Link>
               </CardContent>
             </Card>
           )}

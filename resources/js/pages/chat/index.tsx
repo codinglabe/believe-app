@@ -72,13 +72,10 @@ export default function ChatPage() {
 
     const props = usePage();
     useEffect(() => {
-        console.log("RootLayout props:", props);
-        if(props.props?.success) {
-            toast.success(props.props?.success)
-        }
-        if(props.props?.error) {
-            toast.error(props.props?.error)
-        }
+        const success = props.props?.success;
+        const error = props.props?.error;
+        if (typeof success === 'string' && success.trim() !== '') toast.success(success);
+        if (typeof error === 'string' && error.trim() !== '') toast.error(error);
     }, [props.props?.success, props.props?.error])
 
     return (

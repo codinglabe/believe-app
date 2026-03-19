@@ -5,6 +5,8 @@ namespace App\Http\Controllers;
 use Inertia\Inertia;
 use Inertia\Response;
 use App\Models\User; // Assuming your User model is in App\Models
+use App\Models\Organization;
+use App\Models\BoardMember;
 use Illuminate\Http\Request;
 use Spatie\Permission\Models\Role;
 use Spatie\Permission\Models\Permission; // Import Spatie's Permission model
@@ -133,9 +135,28 @@ class RolePermissionController extends BaseController
 
         $users = $query->latest()->paginate(12);
 
+        $userIds = $users->getCollection()->pluck('id')->all();
+        $ownerOrgNames = Organization::query()
+            ->whereIn('user_id', $userIds)
+            ->get(['user_id', 'name'])
+            ->keyBy('user_id');
+        $boardMemberOrgNames = collect();
+        if (! empty($userIds)) {
+            $boardMemberOrgNames = BoardMember::query()
+                ->whereIn('user_id', $userIds)
+                ->with('organization:id,name')
+                ->get()
+                ->mapWithKeys(function ($bm) {
+                    return [$bm->user_id => $bm->organization?->name];
+                })
+                ->filter();
+        }
+
         // Transform the paginator's collection:
-        $users->getCollection()->transform(function ($user) {
+        $users->getCollection()->transform(function ($user) use ($ownerOrgNames, $boardMemberOrgNames) {
             $primaryRole = $user->roles->first();
+            $organizationName = $ownerOrgNames->get($user->id)?->name
+                ?? $boardMemberOrgNames->get($user->id);
 
             return [
                 'id' => (string) $user->id,
@@ -150,6 +171,7 @@ class RolePermissionController extends BaseController
                 'customPermissions' => $user->permissions->pluck('name')->toArray(),
                 'joinedDate' => $user->created_at->toDateString(),
                 'emailVerifiedAt' => $user->email_verified_at ? $user->email_verified_at->toISOString() : null,
+                'organization_name' => $organizationName,
             ];
         });
 

@@ -58,11 +58,16 @@ class AiCampaignController extends Controller
                 'type' => $validated['content_type'],
             ]);
 
-            $generatedContent = $this->openAiService->generateContent(
+            $result = $this->openAiService->generateContent(
                 $validated['prompt'],
                 $validated['content_count'],
                 $validated['content_type']
             );
+            $generatedContent = $result['items'] ?? $result;
+            $totalTokens = (int) ($result['total_tokens'] ?? 0);
+            if ($totalTokens > 0 && auth()->check()) {
+                auth()->user()->increment('ai_tokens_used', $totalTokens);
+            }
 
             Log::info('Content generated successfully', [
                 'count' => count($generatedContent),

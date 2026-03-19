@@ -128,10 +128,10 @@ export default function MerchantOffersIndex({ offers, filters: initialFilters }:
 
     const getStatusBadge = (status: string) => {
         const statusConfig = {
-            active: { label: 'Active', className: 'bg-gradient-to-r from-[#FF1493] via-[#DC143C] to-[#E97451] shadow-lg shadow-[#FF1493]/50' },
-            draft: { label: 'Draft', className: 'bg-gray-500' },
-            paused: { label: 'Paused', className: 'bg-yellow-500' },
-            expired: { label: 'Expired', className: 'bg-red-500' },
+            active: { label: 'Active', className: 'bg-gradient-to-r from-[#FF1493] via-[#DC143C] to-[#E97451] shadow-none' },
+            draft: { label: 'Draft', className: 'bg-gray-500 shadow-none' },
+            paused: { label: 'Paused', className: 'bg-yellow-500 shadow-none' },
+            expired: { label: 'Expired', className: 'bg-red-500 shadow-none' },
         }
         const config = statusConfig[status as keyof typeof statusConfig] || statusConfig.draft
         return (
@@ -204,76 +204,77 @@ export default function MerchantOffersIndex({ offers, filters: initialFilters }:
 
                     {/* Offers Grid */}
                     {offers.data.length > 0 ? (
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
                             {offers.data.map((offer, index) => (
                                 <motion.div
                                     key={offer.id}
                                     initial={{ opacity: 0, y: 20 }}
                                     animate={{ opacity: 1, y: 0 }}
                                     transition={{ duration: 0.3, delay: index * 0.05 }}
+                                    className="flex flex-col h-full"
                                 >
-                                    <MerchantCard className="transition-all duration-300 hover:scale-105 shadow-2xl">
-                                        <div className="relative h-48 w-full bg-gray-800 rounded-t-lg overflow-hidden">
-                                            {offer.image_url ? (
-                                                <img
-                                                    src={offer.image_url}
-                                                    alt={offer.title}
-                                                    className="w-full h-full object-cover"
-                                                    onError={(e) => {
-                                                        (e.target as HTMLImageElement).src = '/placeholder.jpg'
-                                                    }}
-                                                />
-                                            ) : (
-                                                <div className="w-full h-full flex items-center justify-center bg-gray-800">
-                                                    <Gift className="w-16 h-16 text-gray-600" />
-                                                </div>
-                                            )}
-                                            <div className="absolute top-2 right-2">
-                                                {getStatusBadge(offer.status)}
+                                    {/* Top: Image (outside card) */}
+                                    <div className="relative w-full aspect-square sm:aspect-[4/3] bg-gray-800 overflow-hidden rounded-t-lg">
+                                        {offer.image_url ? (
+                                            <img
+                                                src={offer.image_url}
+                                                alt={offer.title}
+                                                className="w-full h-full object-cover"
+                                                onError={(e) => {
+                                                    (e.target as HTMLImageElement).src = '/placeholder.jpg'
+                                                }}
+                                            />
+                                        ) : (
+                                            <div className="w-full h-full flex items-center justify-center bg-gray-800">
+                                                <Gift className="w-8 h-8 text-gray-600" />
                                             </div>
+                                        )}
+                                        <div className="absolute top-1 right-1">
+                                            {getStatusBadge(offer.status)}
                                         </div>
-                                        <MerchantCardContent className="p-4">
-                                            <h3 className="font-semibold text-lg text-white mb-2 line-clamp-2">
+                                    </div>
+                                    {/* Bottom: Card with info only - no extra card padding so content sits flush */}
+                                    <MerchantCard className="rounded-t-none rounded-b-lg flex-1 shadow-lg transition-all duration-300 hover:shadow-[#FF1493]/20 !p-0 !gap-0">
+                                        <MerchantCardContent className="pt-3 pb-3 px-3">
+                                            <h3 className="font-semibold text-sm text-white mb-1 line-clamp-2">
                                                 {offer.title}
                                             </h3>
                                             {offer.short_description && (
-                                                <p className="text-sm text-gray-400 mb-3 line-clamp-2">
+                                                <p className="text-xs text-gray-400 mb-2 line-clamp-2">
                                                     {offer.short_description}
                                                 </p>
                                             )}
                                             {offer.category && (
-                                                <p className="text-xs text-gray-500 mb-3">
+                                                <MerchantBadge className="w-fit text-xs mb-2 shadow-none bg-slate-600/80 text-slate-200 border border-slate-500/50">
                                                     {offer.category.name}
-                                                </p>
+                                                </MerchantBadge>
                                             )}
-                                            <div className="space-y-2 mb-4">
-                                                <p className="text-sm text-gray-300">
-                                                    <span className="font-semibold text-[#FF1493]">{offer.points_required.toLocaleString()}</span> Points
-                                                    {offer.cash_required && (
-                                                        <span> + ${typeof offer.cash_required === 'number' ? offer.cash_required.toFixed(2) : parseFloat(offer.cash_required).toFixed(2)} {offer.currency}</span>
-                                                    )}
-                                                </p>
-                                            </div>
-                                            <div className="flex gap-2">
-                                                <Link href={`/offers/${offer.id}`} className="flex-1">
-                                                    <MerchantButton variant="outline" size="sm" className="w-full">
-                                                        <Eye className="w-4 h-4 mr-2" />
+                                            <p className="text-xs text-gray-300 mb-2">
+                                                <span className="font-semibold text-[#FF1493]">{offer.points_required.toLocaleString()}</span> pts
+                                                {offer.cash_required && (
+                                                    <span> + ${typeof offer.cash_required === 'number' ? offer.cash_required.toFixed(2) : parseFloat(offer.cash_required).toFixed(2)}</span>
+                                                )}
+                                            </p>
+                                            <div className="flex gap-1.5">
+                                                <Link href={`/offers/${offer.id}`} className="flex-1 min-w-0">
+                                                    <MerchantButton variant="outline" size="sm" className="w-full text-xs h-8 px-2">
+                                                        <Eye className="w-3.5 h-3.5 mr-1" />
                                                         View
                                                     </MerchantButton>
                                                 </Link>
-                                                <Link href={`/offers/${offer.id}/edit`} className="flex-1">
-                                                    <MerchantButton variant="outline" size="sm" className="w-full">
-                                                        <Edit className="w-4 h-4 mr-2" />
+                                                <Link href={`/offers/${offer.id}/edit`} className="flex-1 min-w-0">
+                                                    <MerchantButton variant="outline" size="sm" className="w-full text-xs h-8 px-2">
+                                                        <Edit className="w-3.5 h-3.5 mr-1" />
                                                         Edit
                                                     </MerchantButton>
                                                 </Link>
                                                 <MerchantButton
                                                     variant="outline"
                                                     size="sm"
-                                                    className="text-red-400 hover:text-red-300 hover:border-red-400"
+                                                    className="text-red-400 hover:text-red-300 hover:border-red-400 text-xs h-8 px-2 shrink-0"
                                                     onClick={() => handleDeleteClick(offer)}
                                                 >
-                                                    <Trash2 className="w-4 h-4" />
+                                                    <Trash2 className="w-3.5 h-3.5" />
                                                 </MerchantButton>
                                             </div>
                                         </MerchantCardContent>

@@ -36,6 +36,7 @@ class Organization extends Model
         'contact_name',
         'contact_title',
         'website',
+        'wefunder_project_url',
         'youtube_channel_url',
         'youtube_access_token',
         'youtube_refresh_token',
@@ -55,6 +56,14 @@ class Organization extends Model
         'is_compliance_locked',
         'gift_card_terms_approved',
         'gift_card_terms_approved_at',
+        'dropbox_folder_name',
+    ];
+
+    protected $hidden = [
+        'youtube_access_token',
+        'youtube_refresh_token',
+        'dropbox_access_token',
+        'dropbox_refresh_token',
     ];
 
     protected $casts = [
@@ -68,6 +77,7 @@ class Organization extends Model
         'gift_card_terms_approved' => 'boolean',
         'gift_card_terms_approved_at' => 'datetime',
         'youtube_token_expires_at' => 'datetime',
+        'dropbox_token_expires_at' => 'datetime',
     ];
 
     public function user()
@@ -93,6 +103,11 @@ class Organization extends Model
     public function activeMembers()
     {
         return $this->users()->where('login_status', true);
+    }
+
+    public function nonprofitCompliance(): HasOne
+    {
+        return $this->hasOne(NonprofitCompliance::class);
     }
 
     public function form990Filings()

@@ -1,6 +1,6 @@
 "use client";
 
-import { Head, Link, router, usePage } from "@inertiajs/react";
+import { Head, Link, usePage } from "@inertiajs/react";
 import FrontendLayout from "@/layouts/frontend/frontend-layout";
 import { Button } from "@/components/frontend/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/frontend/ui/card";
@@ -13,6 +13,8 @@ import { useState, useEffect } from "react";
 
 interface CampaignPayload {
   id: number;
+  organization_id?: number;
+  can_edit?: boolean;
   title: string;
   slug: string;
   goal_amount_dollars: number;
@@ -122,24 +124,26 @@ export default function FundMeShow({ campaign }: Props) {
             )}
             <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
             <div className="absolute bottom-0 left-0 right-0 p-4 md:p-8 text-white">
-              <p className="text-sm font-medium uppercase tracking-wider text-white/90">
-                {campaign.category?.name ?? "Campaign"}
-              </p>
-              <h1 className="text-2xl md:text-4xl font-bold mt-1 drop-shadow-md">
-                {campaign.title}
-              </h1>
-              <div className="flex items-center gap-2 mt-2">
-                {campaign.organization?.image ? (
-                  <img
-                    src={campaign.organization.image}
-                    alt=""
-                    className="w-8 h-8 rounded-full border-2 border-white/80 object-cover"
-                  />
-                ) : (
-                  <Building2 className="w-8 h-8 text-white/80" />
-                )}
-                <span className="font-medium">{campaign.organization?.name ?? "Nonprofit"}</span>
-                <BadgeCheck className="w-5 h-5 text-primary fill-primary" />
+              <div className="container mx-auto px-4">
+                <p className="text-sm font-medium uppercase tracking-wider text-white/90">
+                  {campaign.category?.name ?? "Campaign"}
+                </p>
+                <h1 className="text-2xl md:text-4xl font-bold mt-1 drop-shadow-md">
+                  {campaign.title}
+                </h1>
+                <div className="flex items-center gap-2 mt-2">
+                  {campaign.organization?.image ? (
+                    <img
+                      src={campaign.organization.image}
+                      alt=""
+                      className="w-8 h-8 rounded-full border-2 border-white/80 object-cover"
+                    />
+                  ) : (
+                    <Building2 className="w-8 h-8 text-white/80" />
+                  )}
+                  <span className="font-medium">{campaign.organization?.name ?? "Nonprofit"}</span>
+                  <BadgeCheck className="w-5 h-5 text-primary fill-primary" />
+                </div>
               </div>
             </div>
           </div>

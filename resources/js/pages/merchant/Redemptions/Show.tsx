@@ -4,9 +4,19 @@ import { MerchantCard, MerchantCardContent, MerchantCardHeader, MerchantCardTitl
 import { MerchantButton } from '@/components/merchant-ui'
 import { MerchantBadge } from '@/components/merchant-ui'
 import { MerchantDashboardLayout } from '@/components/merchant'
-import { ArrowLeft, CheckCircle2, Clock, XCircle, Calendar, Gift, DollarSign, User, Mail, Hash, Download, Share2, QrCode, Camera } from 'lucide-react'
+import { ArrowLeft, CheckCircle2, Clock, XCircle, Calendar, Gift, DollarSign, User, Mail, Hash, Download, Share2, QrCode, Camera, MapPin } from 'lucide-react'
 import { motion } from 'framer-motion'
 import QRCodeScannerSimple from '@/components/merchant/QRCodeScannerSimple'
+
+interface ShippingAddress {
+  name?: string | null
+  line1?: string | null
+  line2?: string | null
+  city?: string | null
+  state?: string | null
+  postalCode?: string | null
+  country?: string | null
+}
 
 interface Redemption {
   id: string
@@ -23,12 +33,16 @@ interface Redemption {
   updatedAt?: string
   usedAt?: string | null
   qrCodeUrl: string
+  currency?: string
   pricingBreakdown?: {
     regularPrice: number
     discountPercentage: number
     discountAmount: number
     discountPrice: number
+    communityCashPrice?: number
+    currency?: string
   } | null
+  shippingAddress?: ShippingAddress | null
 }
 
 interface Props {
@@ -161,52 +175,76 @@ export default function RedemptionShow({ redemption }: Props) {
                     </div>
                   )}
 
-                  <div className={`grid grid-cols-1 sm:grid-cols-2 ${redemption.pricingBreakdown ? 'lg:grid-cols-4' : ''} gap-3 sm:gap-4 pt-4 border-t border-[#FF1493]/20`}>
-                    <div className="flex items-center gap-3 p-3 sm:p-4 bg-gradient-to-br from-[#FF1493]/10 via-[#DC143C]/10 to-[#E97451]/10 rounded-lg border border-[#FF1493]/20">
-                      <Gift className="w-4 h-4 sm:w-5 sm:h-5 text-[#FF1493] flex-shrink-0" />
-                      <div className="min-w-0">
-                        <p className="text-xs text-gray-400">Points Used</p>
-                        <p className="text-base sm:text-lg font-bold text-white break-words">{redemption.pointsUsed.toLocaleString()}</p>
+                  {/* Both calculations + which way supporter paid */}
+                  {redemption.pricingBreakdown && (
+                    <div className="space-y-4 pt-4 border-t border-[#FF1493]/20">
+                      <p className="text-xs text-gray-400 uppercase tracking-wide">Retail price</p>
+                      <p className="text-lg font-semibold text-gray-300 line-through">
+                        {redemption.pricingBreakdown.currency || redemption.currency || 'USD'} {redemption.pricingBreakdown.regularPrice.toFixed(2)}
+                      </p>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div className="rounded-lg border border-blue-500/30 bg-blue-950/20 p-4 space-y-2">
+                          <p className="text-xs font-medium text-blue-400 uppercase tracking-wide">Use points</p>
+                          <div className="flex justify-between text-sm">
+                            <span className="text-gray-400">Discount ({redemption.pricingBreakdown.discountPercentage}%)</span>
+                            <span className="text-green-400">−{redemption.pricingBreakdown.currency || redemption.currency || 'USD'} {redemption.pricingBreakdown.discountAmount.toFixed(2)}</span>
+                          </div>
+                          <div className="flex justify-between pt-1 border-t border-gray-700">
+                            <span className="text-gray-400">You pay</span>
+                            <span className="font-semibold text-blue-400">{redemption.pricingBreakdown.currency || redemption.currency || 'USD'} {redemption.pricingBreakdown.discountPrice.toFixed(2)}</span>
+                          </div>
+                        </div>
+                        <div className="rounded-lg border border-green-500/30 bg-green-950/20 p-4 space-y-2">
+                          <p className="text-xs font-medium text-green-400 uppercase tracking-wide">Pay with cash</p>
+                          {(() => {
+                            const curr = redemption.pricingBreakdown.currency || redemption.currency || 'USD'
+                            const cashPrice = redemption.pricingBreakdown.communityCashPrice ?? redemption.pricingBreakdown.regularPrice
+                            return (
+                              <div className="flex justify-between text-sm pt-1 border-t border-gray-700">
+                                <span className="text-gray-400">You pay</span>
+                                <span className="font-semibold text-green-400">{curr} {cashPrice.toFixed(2)}</span>
+                              </div>
+                            )
+                          })()}
+                        </div>
+                      </div>
+
+                      <div className="pt-4 border-t border-gray-700 rounded-lg bg-gray-800/50 p-4">
+                        <h4 className="text-sm font-semibold text-white mb-1">How the supporter paid</h4>
+                        <p className="text-xs text-gray-400 mb-3">This customer used the following to redeem this offer:</p>
+                        <div className="flex flex-col sm:flex-row gap-3">
+                          {redemption.pointsUsed > 0 ? (
+                            <div className="flex items-center gap-3 px-4 py-3 bg-[#FF1493]/15 rounded-lg border border-[#FF1493]/40 flex-1">
+                              <div className="w-10 h-10 rounded-full bg-[#FF1493]/30 flex items-center justify-center">
+                                <Gift className="w-5 h-5 text-[#FF1493]" />
+                              </div>
+                              <div>
+                                <p className="text-xs text-gray-400">Paid with points</p>
+                                <p className="text-lg font-bold text-[#FF1493]">{redemption.pointsUsed.toLocaleString()} points</p>
+                              </div>
+                            </div>
+                          ) : null}
+                          {redemption.cashPaid != null && redemption.cashPaid > 0 ? (
+                            <div className="flex items-center gap-3 px-4 py-3 bg-green-500/15 rounded-lg border border-green-500/40 flex-1">
+                              <div className="w-10 h-10 rounded-full bg-green-500/30 flex items-center justify-center">
+                                <DollarSign className="w-5 h-5 text-green-400" />
+                              </div>
+                              <div>
+                                <p className="text-xs text-gray-400">Paid with cash</p>
+                                <p className="text-lg font-bold text-green-400">
+                                  {redemption.currency || redemption.pricingBreakdown?.currency || 'USD'} {redemption.cashPaid.toFixed(2)}
+                                </p>
+                              </div>
+                            </div>
+                          ) : null}
+                          {redemption.pointsUsed === 0 && (redemption.cashPaid == null || redemption.cashPaid === 0) && (
+                            <p className="text-sm text-gray-500 py-2">No payment recorded.</p>
+                          )}
+                        </div>
                       </div>
                     </div>
-                    {redemption.pricingBreakdown ? (
-                      <>
-                        <div className="flex items-center gap-3 p-3 sm:p-4 bg-gradient-to-br from-[#FF1493]/10 via-[#DC143C]/10 to-[#E97451]/10 rounded-lg border border-[#FF1493]/20">
-                          <DollarSign className="w-4 h-4 sm:w-5 sm:h-5 text-[#FF1493] flex-shrink-0" />
-                          <div className="min-w-0">
-                            <p className="text-xs text-gray-400">Regular Price</p>
-                            <p className="text-base sm:text-lg font-bold text-white break-words line-through">${redemption.pricingBreakdown.regularPrice.toFixed(2)}</p>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-3 p-3 sm:p-4 bg-gradient-to-br from-[#FF1493]/10 via-[#DC143C]/10 to-[#E97451]/10 rounded-lg border border-[#FF1493]/20">
-                          <DollarSign className="w-4 h-4 sm:w-5 sm:h-5 text-green-400 flex-shrink-0" />
-                          <div className="min-w-0">
-                            <p className="text-xs text-gray-400">Discount ({redemption.pricingBreakdown.discountPercentage}%)</p>
-                            <p className="text-base sm:text-lg font-bold text-green-400 break-words">-${redemption.pricingBreakdown.discountAmount.toFixed(2)}</p>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-3 p-3 sm:p-4 bg-gradient-to-br from-[#FF1493]/10 via-[#DC143C]/10 to-[#E97451]/10 rounded-lg border border-[#FF1493]/20">
-                          <DollarSign className="w-4 h-4 sm:w-5 sm:h-5 text-[#FF1493] flex-shrink-0" />
-                          <div className="min-w-0">
-                            <p className="text-xs text-gray-400">
-                              {redemption.status === 'fulfilled' || redemption.usedAt ? 'You Paid' : 'Discounted Price'}
-                            </p>
-                            <p className="text-base sm:text-lg font-bold text-white break-words">${redemption.pricingBreakdown.discountPrice.toFixed(2)}</p>
-                          </div>
-                        </div>
-                      </>
-                    ) : redemption.cashPaid ? (
-                      <div className="flex items-center gap-3 p-3 sm:p-4 bg-gradient-to-br from-[#FF1493]/10 via-[#DC143C]/10 to-[#E97451]/10 rounded-lg border border-[#FF1493]/20">
-                        <DollarSign className="w-4 h-4 sm:w-5 sm:h-5 text-[#FF1493] flex-shrink-0" />
-                        <div className="min-w-0">
-                          <p className="text-xs text-gray-400">
-                            {redemption.status === 'fulfilled' || redemption.usedAt ? 'You Paid' : 'Cash Paid'}
-                          </p>
-                          <p className="text-base sm:text-lg font-bold text-white break-words">${redemption.cashPaid.toFixed(2)}</p>
-                        </div>
-                      </div>
-                    ) : null}
-                  </div>
+                  )}
 
                   {redemption.code && (
                     <div className="p-3 sm:p-4 bg-black/30 rounded-lg border border-[#FF1493]/20">
@@ -320,6 +358,40 @@ export default function RedemptionShow({ redemption }: Props) {
                       </p>
                     </div>
                   </div>
+                  {redemption.shippingAddress && (redemption.shippingAddress.line1 || redemption.shippingAddress.city) && (
+                    <div className="pt-4 mt-4 border-t border-[#FF1493]/20">
+                      <div className="flex items-center gap-2 mb-3">
+                        <div className="w-8 h-8 rounded-lg bg-[#FF1493]/20 flex items-center justify-center shrink-0">
+                          <MapPin className="w-4 h-4 text-[#FF1493]" />
+                        </div>
+                        <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Shipping address</span>
+                      </div>
+                      <div className="rounded-xl bg-white/5 border border-white/10 p-4 space-y-3">
+                        {redemption.shippingAddress.name && (
+                          <p className="text-white font-semibold text-sm leading-tight">{redemption.shippingAddress.name}</p>
+                        )}
+                        <div className="space-y-1.5 text-sm text-gray-300 leading-relaxed">
+                          {redemption.shippingAddress.line1 && (
+                            <p className="break-words">{redemption.shippingAddress.line1}</p>
+                          )}
+                          {redemption.shippingAddress.line2 && (
+                            <p className="break-words text-gray-400">{redemption.shippingAddress.line2}</p>
+                          )}
+                          <p className="break-words">
+                            {[redemption.shippingAddress.city, redemption.shippingAddress.state].filter(Boolean).join(', ')}
+                            {redemption.shippingAddress.postalCode && (
+                              <span className="text-gray-400"> {redemption.shippingAddress.postalCode}</span>
+                            )}
+                          </p>
+                          {redemption.shippingAddress.country && (
+                            <span className="inline-block mt-2 px-2.5 py-1 rounded-md bg-[#FF1493]/15 text-[#FF1493] text-xs font-medium uppercase tracking-wide">
+                              {redemption.shippingAddress.country}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </MerchantCardContent>
               </MerchantCard>
 

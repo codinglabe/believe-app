@@ -28,6 +28,9 @@ class TempOrder extends Model
         'total_amount',
         'shipping_methods',
         'selected_shipping_method',
+        'shippo_rate_object_id',
+        'shippo_carrier',
+        'shippo_rate_amount',
         'status',
     ];
 
@@ -39,6 +42,7 @@ class TempOrder extends Model
         'shipping_cost' => 'float',
         'tax_amount' => 'float',
         'total_amount' => 'float',
+        'shippo_rate_amount' => 'float',
     ];
 
     public function user()

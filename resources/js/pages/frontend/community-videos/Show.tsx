@@ -102,7 +102,7 @@ export default function CommunityVideoShow({ seo, video, relatedVideos = [] }: P
                 <div className="flex items-center justify-between gap-4 py-4 border-t border-b border-gray-200 dark:border-gray-700">
                   <div className="flex items-center gap-4 min-w-0">
                     <Link
-                      href={video.channel_slug ? `/community-videos/channel/${video.channel_slug}` : "#"}
+                      href={video.channel_slug ? `/unity-videos/channel/${video.channel_slug}` : "#"}
                       className="shrink-0"
                     >
                       <Avatar className="h-12 w-12 rounded-full">
@@ -114,7 +114,7 @@ export default function CommunityVideoShow({ seo, video, relatedVideos = [] }: P
                     </Link>
                     <div className="min-w-0">
                       <Link
-                        href={video.channel_slug ? `/community-videos/channel/${video.channel_slug}` : "#"}
+                        href={video.channel_slug ? `/unity-videos/channel/${video.channel_slug}` : "#"}
                         className="font-medium text-gray-900 dark:text-white hover:text-purple-600 dark:hover:text-purple-400 block truncate"
                       >
                         {video.creator}
@@ -164,7 +164,7 @@ export default function CommunityVideoShow({ seo, video, relatedVideos = [] }: P
                 relatedVideos.map((related) => (
                   <Link
                     key={related.id}
-                    href={`/community-videos/watch/${related.slug}`}
+                    href={`/unity-videos/watch/${related.slug}`}
                     className="flex gap-3 p-1 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800/50 group"
                   >
                     <div className="relative w-[168px] h-[94px] shrink-0 rounded-lg overflow-hidden bg-gray-200 dark:bg-gray-800">

@@ -8,7 +8,7 @@ const merchantBadgeVariants = cva(
     variants: {
       variant: {
         default:
-          "border-transparent bg-gradient-to-r from-[#FF1493] via-[#DC143C] to-[#E97451] text-white shadow-lg shadow-[#FF1493]/50",
+          "border-transparent bg-gradient-to-r from-[#FF1493] via-[#DC143C] to-[#E97451] text-white shadow-none",
         secondary:
           "border-transparent bg-gradient-to-r from-[#FF1493]/30 via-[#DC143C]/30 to-[#E97451]/30 text-white border border-[#FF1493]/30",
         destructive:

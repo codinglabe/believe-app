@@ -26,7 +26,7 @@ export default function CommunityVideosChannel({ seo, channel, videos, youtube_v
   return (
     <FrontendLayout>
       <PageHead
-        title={seo?.title ?? `${channel.name} - Community Videos`}
+        title={seo?.title ?? `${channel.name} - Unity Videos`}
         description={seo?.description}
       />
       <ChannelPageContent
@@ -34,7 +34,7 @@ export default function CommunityVideosChannel({ seo, channel, videos, youtube_v
         videos={videos}
         youtube_videos={youtube_videos}
         shorts={shorts}
-        backLink={{ href: "/community-videos", label: "Back to Community Videos" }}
+        backLink={{ href: "/unity-videos", label: "Back to Unity Videos" }}
       />
     </FrontendLayout>
   )

@@ -63,6 +63,8 @@ return [
 
     'openai' => [
         'api_key' => env('OPENAI_API_KEY'),
+        // Set to false only on local/dev if you get "SSL certificate problem: unable to get local issuer certificate"
+        'verify_ssl' => env('OPENAI_VERIFY_SSL', true),
     ],
 
     'gmail' => [
@@ -107,6 +109,37 @@ return [
         'gift_card_platform_commission_percentage' => env('GIFT_CARD_PLATFORM_COMMISSION_PERCENTAGE', 8), // Platform commission percentage (8% default)
         // Note: webhook_api_key is now stored in database (phaze_webhooks table)
         // No need to set PHAZE_WEBHOOK_API_KEY in .env anymore
+    ],
+
+    'mediamtx' => [
+        // Public URL where users open the browser publish page (e.g. https://stream.yourapp.com). Required for "Go Live from browser" (no OBS).
+        'publish_url' => env('MEDIAMTX_PUBLISH_URL', ''),
+        // Internal RTMP URL for FFmpeg to pull from (e.g. rtmp://127.0.0.1:1935). Same server as MediaMTX.
+        'rtmp_internal' => env('MEDIAMTX_RTMP_INTERNAL', 'rtmp://127.0.0.1:1935'),
+    ],
+
+    'dropbox' => [
+        'client_id' => env('DROPBOX_CLIENT_ID'),
+        'client_secret' => env('DROPBOX_CLIENT_SECRET'),
+        'redirect_uri' => env('DROPBOX_REDIRECT_URI', env('APP_URL') . '/integrations/dropbox/callback'),
+        'access_token' => env('DROPBOX_ACCESS_TOKEN'), // optional: app-level token for legacy use
+        // SSL: set DROPBOX_SSL_VERIFY=false on Windows/local if you get "cURL error 60: unable to get local issuer certificate"
+        'verify' => filter_var(env('DROPBOX_SSL_VERIFY', true), FILTER_VALIDATE_BOOLEAN),
+    ],
+
+    'shippo' => [
+        'api_key' => env('SHIPPO_API_KEY'),
+        'api_base' => env('SHIPPO_API_BASE', 'https://api.goshippo.com'),
+    ],
+
+    'irs' => [
+        'download_timeout' => (int) env('IRS_DOWNLOAD_TIMEOUT', 900), // seconds per ZIP (15 min default)
+        'download_retries' => (int) env('IRS_DOWNLOAD_RETRIES', 3),
+        // Job timeout: large ZIPs may need 2–4 hours. Set IRS_JOB_TIMEOUT=14400 for 4 hours.
+        'job_timeout' => (int) env('IRS_JOB_TIMEOUT', 7200), // seconds per ProcessIrsZipJob (2 hours default)
+        // SSL: set IRS_SSL_VERIFY=false on Windows/local if you get "cURL error 60: unable to get local issuer certificate"
+        'ssl_verify' => env('IRS_SSL_VERIFY', true),
+        'cafile' => env('IRS_CAFILE', null), // optional: path to cacert.pem (e.g. from https://curl.se/ca/cacert.pem)
     ],
 
 ];

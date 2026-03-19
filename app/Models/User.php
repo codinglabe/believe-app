@@ -64,6 +64,8 @@ class User extends Authenticatable implements MustVerifyEmail
         'referred_by',
         "is_verified",
         "email_verified_at",
+        "two_fa_enabled",
+        "biometric_enabled",
         "ownership_verified_at",
         "verification_status",
         'primary_bank_account_id',
@@ -84,6 +86,14 @@ class User extends Authenticatable implements MustVerifyEmail
         'city',
         'state',
         'zipcode',
+        'youtube_channel_url',
+        'youtube_access_token',
+        'youtube_refresh_token',
+        'youtube_token_expires_at',
+        'dropbox_refresh_token',
+        'dropbox_access_token',
+        'dropbox_token_expires_at',
+        'dropbox_folder_name',
     ];
 
     /**
@@ -94,6 +104,8 @@ class User extends Authenticatable implements MustVerifyEmail
     protected $hidden = [
         'password',
         'remember_token',
+        'youtube_access_token',
+        'youtube_refresh_token',
     ];
 
     /**
@@ -116,6 +128,8 @@ class User extends Authenticatable implements MustVerifyEmail
             'ai_tokens_included' => 'integer',
             'ai_tokens_used' => 'integer',
             'believe_points' => 'decimal:2',
+            'youtube_token_expires_at' => 'datetime',
+            'dropbox_token_expires_at' => 'datetime',
         ];
     }
 
@@ -419,10 +433,14 @@ class User extends Authenticatable implements MustVerifyEmail
     public function organization()
     {
         // Use hasOneThrough relationship but fix ambiguous column issue.
-        // Only include youtube_channel_url if the column exists (migration may not be run yet).
+        // Only include youtube columns if they exist (migrations may not be run yet).
         $base = 'organizations.id, organizations.name, organizations.user_id, organizations.ein, organizations.description, organizations.mission, organizations.website, organizations.email, organizations.phone, organizations.contact_name, organizations.contact_title, organizations.city, organizations.state, organizations.zip, organizations.registration_status, organizations.created_at, organizations.updated_at';
         $youtube = Schema::hasColumn('organizations', 'youtube_channel_url') ? ', organizations.youtube_channel_url' : '';
-        $select = $base . $youtube . ', board_members.user_id as laravel_through_key';
+        $youtubeOAuth = '';
+        if (Schema::hasColumn('organizations', 'youtube_access_token')) {
+            $youtubeOAuth .= ', organizations.youtube_access_token, organizations.youtube_refresh_token, organizations.youtube_token_expires_at';
+        }
+        $select = $base . $youtube . $youtubeOAuth . ', board_members.user_id as laravel_through_key';
 
         return $this->hasOneThrough(
             Organization::class,
@@ -572,6 +590,14 @@ class User extends Authenticatable implements MustVerifyEmail
     public function bankAccounts(): HasMany
     {
         return $this->hasMany(BankAccount::class);
+    }
+
+    /**
+     * Livestreams created by this user (supporter meetings — VDO.Ninja).
+     */
+    public function userLivestreams(): HasMany
+    {
+        return $this->hasMany(UserLivestream::class);
     }
 
 

@@ -19,7 +19,17 @@ return [
 
     'allowed_methods' => ['*'],
 
-    'allowed_origins' => ['*', 'https://believeinunity.test', 'http://believeinunity.test'],
+    // When supports_credentials is true, '*' is not allowed; list explicit origins.
+    'allowed_origins' => [
+        'https://believeinunity.test',
+        'http://believeinunity.test',
+        'https://wallet.test',
+        'http://wallet.test',
+        'http://localhost:3000',
+        'https://localhost:3000',
+        'http://127.0.0.1:3000',
+        'https://127.0.0.1:3000',
+    ],
 
     'allowed_origins_patterns' => [],
 

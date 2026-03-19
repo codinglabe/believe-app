@@ -9,7 +9,7 @@ export default function DonationCancelPage() {
     const cancellationDetails = {
         reason: "Payment processing failed due to insufficient funds.",
         transactionId: "TXN-123456789", // Could be null if transaction never started
-        contactEmail: "support@example.com",
+        contactEmail: "wendhi@stuttiegroup.com",
         contactPhone: "+1 (800) 123-4567",
     }
 

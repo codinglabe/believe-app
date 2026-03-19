@@ -4,7 +4,7 @@ import { MerchantCard, MerchantCardContent, MerchantCardHeader, MerchantCardTitl
 import { MerchantButton } from '@/components/merchant-ui'
 import { MerchantBadge } from '@/components/merchant-ui'
 import { MerchantDashboardLayout } from '@/components/merchant'
-import { Search, Filter, CheckCircle2, Clock, XCircle, Eye, Download, Gift, QrCode } from 'lucide-react'
+import { Search, Filter, CheckCircle2, Clock, XCircle, Eye, Download, Gift, QrCode, Coins, DollarSign, Wallet } from 'lucide-react'
 import { motion } from 'framer-motion'
 import QRCodeScannerSimple from '@/components/merchant/QRCodeScannerSimple'
 
@@ -15,15 +15,19 @@ interface Redemption {
   customerEmail: string
   pointsUsed: number
   cashPaid?: number
+  paymentMethod?: 'points' | 'cash' | 'points_and_cash'
   status: 'pending' | 'approved' | 'fulfilled' | 'canceled'
   redeemedAt: string
   usedAt?: string | null
   code?: string
+  currency?: string
   pricingBreakdown?: {
     regularPrice: number
     discountPercentage: number
     discountAmount: number
     discountPrice: number
+    communityCashPrice?: number
+    currency?: string
   } | null
 }
 
@@ -110,6 +114,32 @@ export default function RedemptionsIndex({ redemptions, stats, filters: initialF
       default:
         return null
     }
+  }
+
+  const getPaymentBadge = (redemption: Redemption) => {
+    const method = redemption.paymentMethod ?? (redemption.pointsUsed > 0 ? (redemption.cashPaid ? 'points_and_cash' : 'points') : 'cash')
+    if (method === 'points') {
+      return (
+        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#FF1493]/20 text-[#FF1493] border border-[#FF1493]/30 text-xs font-medium">
+          <Coins className="w-3.5 h-3.5" />
+          Points
+        </span>
+      )
+    }
+    if (method === 'cash') {
+      return (
+        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-xs font-medium">
+          <DollarSign className="w-3.5 h-3.5" />
+          Cash
+        </span>
+      )
+    }
+    return (
+      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-500/20 text-amber-400 border border-amber-500/30 text-xs font-medium">
+        <Wallet className="w-3.5 h-3.5" />
+        Points + Cash
+      </span>
+    )
   }
 
   // Use stats from props
@@ -252,9 +282,8 @@ export default function RedemptionsIndex({ redemptions, stats, filters: initialF
                       <th className="text-left py-3 px-4 text-sm font-semibold text-gray-400">Offer</th>
                       <th className="text-left py-3 px-4 text-sm font-semibold text-gray-400">Customer</th>
                       <th className="text-left py-3 px-4 text-sm font-semibold text-gray-400">Points</th>
-                      <th className="text-left py-3 px-4 text-sm font-semibold text-gray-400">
-                        {redemptions.data.some(r => r.pricingBreakdown) ? 'Discounted Price' : 'Cash'}
-                      </th>
+                      <th className="text-left py-3 px-4 text-sm font-semibold text-gray-400">Discounted price</th>
+                      <th className="text-left py-3 px-4 text-sm font-semibold text-gray-400">Payment</th>
                       <th className="text-left py-3 px-4 text-sm font-semibold text-gray-400">Status</th>
                       <th className="text-left py-3 px-4 text-sm font-semibold text-gray-400">Date</th>
                       <th className="text-left py-3 px-4 text-sm font-semibold text-gray-400">Actions</th>
@@ -284,15 +313,32 @@ export default function RedemptionsIndex({ redemptions, stats, filters: initialF
                           <p className="text-[#FF1493] font-semibold">{redemption.pointsUsed.toLocaleString()}</p>
                         </td>
                         <td className="py-4 px-4">
-                          {redemption.pricingBreakdown ? (
-                            <p className="text-white font-semibold">
-                              ${redemption.pricingBreakdown.discountPrice.toFixed(2)}
-                            </p>
-                          ) : redemption.cashPaid ? (
-                            <p className="text-white font-semibold">${redemption.cashPaid.toFixed(2)}</p>
+                          {redemption.cashPaid ? (
+                            <div className="space-y-0.5">
+                              {redemption.pricingBreakdown && (
+                                <p className="text-xs text-gray-400 line-through">
+                                  {redemption.pricingBreakdown.currency ?? 'USD'} {redemption.pricingBreakdown.regularPrice.toFixed(2)}
+                                </p>
+                              )}
+                              <p className="text-white font-semibold">
+                                {redemption.currency ?? redemption.pricingBreakdown?.currency ?? 'USD'} {redemption.cashPaid.toFixed(2)}
+                              </p>
+                            </div>
+                          ) : redemption.pricingBreakdown ? (
+                            <div className="space-y-0.5">
+                              <p className="text-xs text-gray-400 line-through">
+                                {redemption.pricingBreakdown.currency ?? 'USD'} {redemption.pricingBreakdown.regularPrice.toFixed(2)}
+                              </p>
+                              <p className="text-white font-semibold">
+                                {redemption.pricingBreakdown.currency ?? 'USD'} {redemption.pricingBreakdown.discountPrice.toFixed(2)}
+                              </p>
+                            </div>
                           ) : (
                             <p className="text-gray-500">-</p>
                           )}
+                        </td>
+                        <td className="py-4 px-4">
+                          {getPaymentBadge(redemption)}
                         </td>
                         <td className="py-4 px-4">
                           <MerchantBadge className={getStatusBadge(redemption.status)}>
@@ -321,7 +367,7 @@ export default function RedemptionsIndex({ redemptions, stats, filters: initialF
                       ))
                     ) : (
                       <tr>
-                        <td colSpan={7} className="py-12 text-center">
+                        <td colSpan={8} className="py-12 text-center">
                           <div className="flex flex-col items-center justify-center">
                             <Gift className="w-16 h-16 text-gray-500 mb-4 opacity-50" />
                             <p className="text-gray-400 text-lg font-medium mb-2">

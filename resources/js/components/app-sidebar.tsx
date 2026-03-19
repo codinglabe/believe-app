@@ -63,7 +63,9 @@ import {
     ShoppingBag,
     Search,
     Youtube,
-    Video
+    Video,
+    TrendingUp,
+    Cloud
 } from 'lucide-react';
 import SiteTitle from './site-title';
 import { Button } from '@/components/ui/button';
@@ -90,7 +92,7 @@ const mainNavItems: (NavItem | NavGroup)[] = [
 
     // Nonprofit Barter Network (organization only)
     {
-        title: 'Nonprofit Barter Network',
+        title: 'Barter Network',
         href: '/barter',
         icon: Handshake,
         role: 'organization',
@@ -104,9 +106,17 @@ const mainNavItems: (NavItem | NavGroup)[] = [
         role: "organization",
     },
 
-    // Livestreams (organization only)
+    // Project Applications (organization / admin — applications they submitted)
     {
-        title: 'Livestreams',
+        title: 'Project Applications',
+        href: '/dashboard/project-applications',
+        icon: FileText,
+        role: ['organization', 'organization_pending', 'admin'],
+    },
+
+    // Unity Meet (organization only)
+    {
+        title: 'Unity Meet',
         href: '/livestreams',
         icon: Video,
         role: "organization",
@@ -130,6 +140,12 @@ const mainNavItems: (NavItem | NavGroup)[] = [
                 title: 'Board of Directors',
                 href: '/board-members',
                 icon: Users,
+                role: "organization"
+            },
+            {
+                title: 'Compliance',
+                href: '/compliance',
+                icon: Shield,
                 role: "organization"
             },
         ],
@@ -715,6 +731,12 @@ const mainNavItems: (NavItem | NavGroup)[] = [
                 role: "admin"
             },
             {
+                title: 'IRS Members',
+                href: '/admin/irs-members',
+                icon: FileText,
+                role: "admin"
+            },
+            {
                 title: 'Compliance / Logs',
                 icon: ClipboardList,
                 items: [
@@ -766,6 +788,12 @@ const mainNavItems: (NavItem | NavGroup)[] = [
                         title: 'YouTube',
                         href: route('integrations.youtube'),
                         icon: Youtube,
+                        role: "organization"
+                    },
+                    {
+                        title: 'Dropbox (recordings)',
+                        href: route('integrations.dropbox'),
+                        icon: Cloud,
                         role: "organization"
                     },
                 ],
@@ -844,6 +872,12 @@ const mainNavItems: (NavItem | NavGroup)[] = [
                 title: 'Contact Submissions',
                 href: '/admin/contact-submissions',
                 icon: Mail,
+                role: "admin"
+            },
+            {
+                title: 'Fundraise Leads',
+                href: '/admin/fundraise-leads',
+                icon: TrendingUp,
                 role: "admin"
             },
             {

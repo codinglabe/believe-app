@@ -12,6 +12,9 @@ use App\Models\RaffleTicket;
 use App\Models\SupporterPosition;
 use App\Models\VolunteerTimesheet;
 use App\Models\JobApplication;
+use App\Models\FundraiseLead;
+use App\Models\Bid;
+use App\Models\Product;
 use App\Models\RewardPointLedger;
 use App\Models\MerchantHubOfferRedemption;
 use App\Models\User;
@@ -84,7 +87,39 @@ class UserProfileController extends Controller
         ]);
     }
 
+    /**
+     * Profile Integrations page (supporters only – YouTube connect/disconnect).
+     */
+    public function integrations(Request $request): Response
+    {
+        $user = $request->user();
+        $youtubeChannelUrl = $user->youtube_channel_url ?? null;
+        $myChannel = null;
 
+        if ($youtubeChannelUrl) {
+            try {
+                $youtubeService = app(\App\Services\YouTubeService::class);
+                $details = $youtubeService->getChannelDetails($youtubeChannelUrl);
+                if ($details) {
+                    $myChannel = [
+                        'name' => $details['name'] ?? $user->name,
+                        'avatar' => $details['avatar_url'] ?? null,
+                        'subscriber_count' => $details['subscriber_count'] ?? 0,
+                        'subscriber_count_formatted' => $details['subscriber_count_formatted'] ?? '0',
+                        'channel_slug' => $user->slug ?? null,
+                    ];
+                }
+            } catch (\Throwable $e) {
+                // Leave myChannel null on failure
+            }
+        }
+
+        return Inertia::render('frontend/user-profile/Integrations', [
+            'youtube_channel_url' => $youtubeChannelUrl,
+            'myChannel' => $myChannel,
+            'dropboxLinked' => ! empty($user->dropbox_refresh_token),
+        ]);
+    }
 
     public function edit()
     {
@@ -258,6 +293,119 @@ class UserProfileController extends Controller
 
         return Inertia::render('frontend/user-profile/favorites', [
             'favoriteOrganizations' => $favoriteOrganizations,
+        ]);
+    }
+
+    /**
+     * Project applications — for supporters: show all projects so they can browse and invest.
+     * Each lead includes is_own so the UI can highlight applications the supporter submitted.
+     */
+    public function profileProjectApplications(Request $request)
+    {
+        $user = $request->user();
+        $query = FundraiseLead::query()->orderByDesc('created_at');
+
+        $leads = $query->paginate(15)->withQueryString();
+
+        $leads->getCollection()->transform(function (FundraiseLead $lead) use ($user) {
+            return [
+                'id' => $lead->id,
+                'name' => $lead->name,
+                'company' => $lead->company,
+                'email' => $lead->email,
+                'project_summary' => $lead->project_summary,
+                'wefunder_project_url' => $lead->wefunder_project_url,
+                'created_at' => $lead->created_at->toIso8601String(),
+                'is_own' => strcasecmp((string) $lead->email, (string) $user->email) === 0,
+            ];
+        });
+
+        return Inertia::render('frontend/user-profile/project-applications', [
+            'projectApplicationsLeads' => $leads,
+            'projectApplicationsTotal' => $leads->total(),
+        ]);
+    }
+
+    /**
+     * Show a single project application — any supporter can view any project (to browse and invest).
+     */
+    public function profileProjectApplicationShow(Request $request, FundraiseLead $lead)
+    {
+        $user = $request->user();
+        $isOwn = strcasecmp((string) $lead->email, (string) $user->email) === 0;
+
+        return Inertia::render('frontend/user-profile/project-application-show', [
+            'lead' => [
+                'id' => $lead->id,
+                'name' => $lead->name,
+                'company' => $lead->company,
+                'email' => $lead->email,
+                'project_summary' => $lead->project_summary,
+                'wefunder_project_url' => $lead->wefunder_project_url,
+                'created_at' => $lead->created_at->toIso8601String(),
+                'is_own' => $isOwn,
+            ],
+        ]);
+    }
+
+    /**
+     * List current user's bids (supporters see their own bids; status can be active, winning, cancelled, etc.).
+     */
+    public function bids(Request $request)
+    {
+        $user = $request->user();
+        $bids = Bid::query()
+            ->where('user_id', $user->id)
+            ->with(['product:id,name,pricing_model'])
+            ->orderByDesc('submitted_at')
+            ->orderByDesc('created_at')
+            ->paginate(15)
+            ->through(function (Bid $bid) {
+                return [
+                    'id' => $bid->id,
+                    'bid_amount' => (float) $bid->bid_amount,
+                    'bid_amount_formatted' => '$' . number_format((float) $bid->bid_amount, 2),
+                    'status' => $bid->status,
+                    'submitted_at' => optional($bid->submitted_at ?? $bid->created_at)->toIso8601String(),
+                    'product' => $bid->product ? [
+                        'id' => $bid->product->id,
+                        'name' => $bid->product->name,
+                        'pricing_model' => $bid->product->pricing_model,
+                    ] : null,
+                ];
+            });
+
+        return Inertia::render('frontend/user-profile/bids', [
+            'bids' => $bids,
+        ]);
+    }
+
+    /**
+     * Products the current user won (pending payment). Winner can pay from here.
+     */
+    public function bidWins(Request $request)
+    {
+        $user = $request->user();
+        $products = Product::query()
+            ->where('winner_user_id', $user->id)
+            ->where('winner_status', 'pending_payment')
+            ->with('winningBid')
+            ->orderByDesc('winner_payment_deadline')
+            ->get()
+            ->map(function (Product $p) {
+                $bid = $p->winningBid;
+                return [
+                    'id' => $p->id,
+                    'name' => $p->name,
+                    'image' => $p->image,
+                    'amount' => $bid ? (float) $bid->bid_amount : 0,
+                    'amount_formatted' => $bid ? '$' . number_format((float) $bid->bid_amount, 2) : '$0.00',
+                    'payment_deadline' => $p->winner_payment_deadline?->toIso8601String(),
+                ];
+            });
+
+        return Inertia::render('frontend/user-profile/bid-wins', [
+            'products' => $products,
         ]);
     }
 
@@ -2090,15 +2238,7 @@ class UserProfileController extends Controller
         $user = Auth::user();
         $targetUser = User::findOrFail($id);
 
-        // Only supporter (personal) accounts can follow; organization accounts cannot
-        if (in_array($user->role ?? '', ['organization', 'organization_pending'], true)) {
-            $message = 'Following is for supporter accounts only. Please log in with your personal (supporter) account to follow people and organizations.';
-            if ($request->wantsJson() || $request->header('X-Requested-With') === 'XMLHttpRequest') {
-                return response()->json(['success' => false, 'message' => $message], 403);
-            }
-            return redirect()->back()->with('error', $message);
-        }
-
+        // Supporters and organization users can both follow people and organizations
         // Prevent users from following themselves
         if ($user->id === $targetUser->id) {
             return response()->json(['error' => 'You cannot follow yourself'], 400);

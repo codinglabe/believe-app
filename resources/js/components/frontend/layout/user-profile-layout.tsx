@@ -35,6 +35,8 @@ import {
   Briefcase,
   QrCode,
   Globe,
+  Youtube,
+  Gavel,
 } from "lucide-react"
 import { Button } from "@/components/frontend/ui/button"
 import { Card, CardContent } from "@/components/frontend/ui/card"
@@ -102,6 +104,13 @@ const navigationItems = [
     color: "from-red-500 to-pink-600",
   },
   {
+    name: "Project Applications",
+    href: "/profile/project-applications",
+    icon: TrendingUp,
+    description: "Project applications requested",
+    color: "from-violet-500 to-purple-600",
+  },
+  {
     name: "Donations",
     href: "/profile/donations",
     icon: CreditCard,
@@ -114,6 +123,20 @@ const navigationItems = [
     icon: ShoppingBag,
     description: "Purchase history",
     color: "from-orange-500 to-amber-600",
+  },
+  {
+    name: "My Bids",
+    href: "/profile/bids",
+    icon: Gavel,
+    description: "Your bids on auction & blind-bid products",
+    color: "from-violet-500 to-purple-600",
+  },
+  {
+    name: "Winning Bids",
+    href: "/profile/bid-wins",
+    icon: Award,
+    description: "Pay for products you won",
+    color: "from-amber-500 to-yellow-600",
   },
   {
     name: "Course",
@@ -205,6 +228,13 @@ const navigationItems = [
     icon: CreditCard,
     description: "Billing & wallet",
     color: "from-indigo-500 to-purple-600",
+  },
+  {
+    name: "Integrations",
+    href: route("user.profile.integrations"),
+    icon: Youtube,
+    description: "YouTube channel connect / disconnect",
+    color: "from-red-500 to-red-600",
   },
   {
     name: "Security",

@@ -47,7 +47,7 @@ export default function LoginPage({ seo, status, canResetPassword }: LoginProps)
       <PageHead title={seo?.title ?? "Log In"} description={seo?.description} />
     <div className="min-h-screen relative overflow-hidden bg-gradient-to-br from-purple-600 via-blue-600 to-purple-700 dark:from-gray-900 dark:via-gray-800 dark:to-purple-900">
       {/* Background Image Overlay */}
-      <div 
+      <div
         className="absolute inset-0 bg-cover bg-center bg-no-repeat opacity-20"
         style={{
           backgroundImage: 'url(/images/believe-hero.png)'
@@ -157,9 +157,9 @@ export default function LoginPage({ seo, status, canResetPassword }: LoginProps)
                   )}
                 </div>
 
-                <Button 
-                  type="submit" 
-                  className="w-full h-12 sm:h-14 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-bold text-base sm:text-lg rounded-lg shadow-lg hover:shadow-xl transform hover:scale-[1.02] transition-all duration-300" 
+                <Button
+                  type="submit"
+                  className="w-full h-12 sm:h-14 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-bold text-base sm:text-lg rounded-lg shadow-lg hover:shadow-xl transform hover:scale-[1.02] transition-all duration-300"
                   disabled={processing}
                 >
                   {processing ? (
@@ -173,12 +173,18 @@ export default function LoginPage({ seo, status, canResetPassword }: LoginProps)
                 </Button>
               </form>
 
-              <div className="text-center pt-4 border-t border-gray-200 dark:border-gray-700">
+              <div className="text-center pt-4 border-t border-gray-200 dark:border-gray-700 space-y-3">
                 <p className="text-sm text-gray-600 dark:text-gray-300">
                   Don't have an account?{" "}
                   <Link href="/register" className="text-blue-600 hover:text-blue-700 hover:underline font-medium transition-colors">
                     Sign up
                   </Link>
+                </p>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  By signing in, you agree to our{" "}
+                  <Link href="/terms-of-service" className="text-blue-600 dark:text-blue-400 hover:underline">Terms of Service</Link>
+                  {" "}and{" "}
+                  <Link href="/privacy-policy" className="text-blue-600 dark:text-blue-400 hover:underline font-medium">Privacy Policy</Link>.
                 </p>
               </div>
             </CardContent>

@@ -108,30 +108,30 @@ class HandleInertiaRequests extends Middleware
                     ->first();
 
                 $hasActiveSubscription = false;
-                
+
                 if ($subscription) {
                     // Real-time check: Refresh subscription status from Stripe
                     try {
                         if ($subscription->stripe_id) {
                             $stripe = \Laravel\Cashier\Cashier::stripe();
                             $stripeSubscription = $stripe->subscriptions->retrieve($subscription->stripe_id);
-                            
+
                             // Update local subscription with latest data from Stripe
                             $subscription->stripe_status = $stripeSubscription->status;
-                            $subscription->ends_at = $stripeSubscription->cancel_at ? 
+                            $subscription->ends_at = $stripeSubscription->cancel_at ?
                                 \Carbon\Carbon::createFromTimestamp($stripeSubscription->cancel_at) : null;
-                            $subscription->trial_ends_at = $stripeSubscription->trial_end ? 
+                            $subscription->trial_ends_at = $stripeSubscription->trial_end ?
                                 \Carbon\Carbon::createFromTimestamp($stripeSubscription->trial_end) : null;
-                            
+
                             // If cancel_at is set, mark as canceled even if status is still 'active'
                             if ($stripeSubscription->cancel_at) {
                                 $subscription->stripe_status = 'canceled';
                             }
-                            
+
                             $subscription->save();
-                            
+
                             // Check if subscription is truly active (not canceled)
-                            $hasActiveSubscription = in_array($stripeSubscription->status, ['active', 'trialing']) 
+                            $hasActiveSubscription = in_array($stripeSubscription->status, ['active', 'trialing'])
                                 && $stripeSubscription->cancel_at === null;
                         }
                     } catch (\Exception $e) {
@@ -140,9 +140,9 @@ class HandleInertiaRequests extends Middleware
                             'subscription_id' => $subscription->id,
                             'error' => $e->getMessage(),
                         ]);
-                        
+
                         // Fallback: check local status
-                        $hasActiveSubscription = in_array($subscription->stripe_status, ['active', 'trialing']) 
+                        $hasActiveSubscription = in_array($subscription->stripe_status, ['active', 'trialing'])
                             && $subscription->ends_at === null;
                     }
                 }
@@ -206,6 +206,8 @@ class HandleInertiaRequests extends Middleware
                         'reward_points' => $user->reward_points ?? 0,
                         'believe_points' => $user->believe_points ?? 0,
                         'credits' => $user->credits ?? 0,
+                        'ai_tokens_used' => $user->ai_tokens_used ?? 0,
+                        'ai_tokens_included' => $user->ai_tokens_included ?? 0,
                         'current_plan_id' => $user->current_plan_id ?? null,
                         'current_plan_details' => $user->current_plan_details ?? null,
                         "image" => $user->role !== "organization" ? ($user->image ? '/storage/' . $user->image : null) :  ($user->organization?->user->image ? '/storage/' . $user->organization?->user->image : null),
@@ -220,14 +222,21 @@ class HandleInertiaRequests extends Middleware
                         'timezone' => $user->timezone ?? 'UTC',
                         "organization" => $user->organization ? [
                             'id' => $user->organization->id,
+                            'ein' => $user->organization->ein ?? null,
                             'name' => $user->organization->name,
                             "registered_user_image" => $user->organization->registered_user_image ? '/storage/' . $user->organization->registered_user_image : null,
                             'contact_title' => $user->organization->contact_title,
                             'website' => $user->organization->website,
+                            'wefunder_project_url' => $user->organization->wefunder_project_url ?? null,
                             'youtube_channel_url' => $user->organization->youtube_channel_url ?? null,
                             'description' => $user->organization->description,
                             'mission' => $user->organization->mission,
-                            'address' => $user->organization->street . ', ' . $user->organization->city .  ', ' .  $user->organization->state . ', ' .  $user->organization->zip,
+                            'address' => implode(', ', array_filter([
+                                $user->organization->street,
+                                $user->organization->city,
+                                $user->organization->state,
+                                $user->organization->zip,
+                            ])),
                             'joined' => $user->created_at->format('F Y'),
                             'gift_card_terms_approved' => $user->organization->gift_card_terms_approved ?? false,
                             'gift_card_terms_approved_at' => $user->organization->gift_card_terms_approved_at ? $user->organization->gift_card_terms_approved_at->toISOString() : null,
@@ -255,6 +264,12 @@ class HandleInertiaRequests extends Middleware
         $seoCanonical = (!$isLivestockDomain && !$isMerchantDomain) ? $request->url() : null;
         $seoDefaultImage = (!$isLivestockDomain && !$isMerchantDomain) ? \App\Services\SeoService::getDefaultShareImage() : null;
 
+        // Consume flash messages so they are only sent once (not on every reload/page switch)
+        $success = $request->session()->pull('success');
+        $error = $request->session()->pull('error');
+        $info = $request->session()->pull('info');
+        $warning = $request->session()->pull('warning');
+
         return [
             ...parent::share($request),
             'name' => config('app.name'),
@@ -273,11 +288,21 @@ class HandleInertiaRequests extends Middleware
             ],
             'csrf_token' => csrf_token(),
             'sidebarOpen' => ! $request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',
-            'flash' => fn() => $request->session()->get('flash') ?? null,
-            'success' => fn() => $request->session()->get('success'),
-            'error' => fn() => $request->session()->get('error'),
-            'info' => fn() => $request->session()->get('info'),
-            'warning' => fn() => $request->session()->get('warning'),
+            'flash' => fn() => array_merge(
+                is_array($request->session()->get('flash')) ? $request->session()->get('flash') : [],
+                array_filter([
+                    'inviteUrl' => $request->session()->get('inviteUrl'),
+                    'success' => $success,
+                    'error' => $error,
+                    'info' => $info,
+                    'warning' => $warning,
+                ])
+            ),
+            'browser_publish_url' => fn() => $request->session()->pull('browser_publish_url'),
+            'success' => fn() => $success,
+            'error' => fn() => $error,
+            'info' => fn() => $info,
+            'warning' => fn() => $warning,
             'isImpersonating' => $request->session()->has('impersonate_user_id'),
             'originalUserId' => $request->session()->get('impersonate_user_id'),
             'livestockDomain' => config('livestock.domain'),

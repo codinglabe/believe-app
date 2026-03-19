@@ -1,10 +1,8 @@
 import AppLayoutTemplate from '@/layouts/app/app-sidebar-layout';
 import { type BreadcrumbItem, PageProps } from '@/types';
-import { type ReactNode } from 'react';
+import { type ReactNode, useRef, useEffect } from 'react';
 import { Toaster } from 'react-hot-toast';
-import { useFlashMessage } from '@/hooks/use-flash-message';
 import { usePage } from '@inertiajs/react';
-import { useEffect } from 'react';
 import { CsrfTokenSync } from '@/components/CsrfTokenSync';
 import { showSuccessToast, showErrorToast } from '@/lib/toast';
 import { NotificationProvider } from '@/pages/Contexts/NotificationContext';
@@ -62,9 +60,15 @@ export default ({ children, breadcrumbs, ...props }: AppLayoutProps) => {
         }
       }, [])
 
+    const authUserId = auth?.user?.id;
+    const fcmTokenSavedForUser = useRef<number | null>(null);
+
     useEffect(() => {
-    const saveFCMTokenAfterLogin = async () => {
-        if (auth?.user?.id) {
+        const saveFCMTokenAfterLogin = async () => {
+            if (!authUserId) return;
+            if (fcmTokenSavedForUser.current === authUserId) return;
+            fcmTokenSavedForUser.current = authUserId;
+
             const fcmToken = await requestNotificationPermission();
             const deviceInfo = getDeviceInfo();
 
@@ -75,37 +79,37 @@ export default ({ children, breadcrumbs, ...props }: AppLayoutProps) => {
                 });
                 console.log("Token saved after login");
             }
-        }
-    };
+        };
 
-    saveFCMTokenAfterLogin();
-    }, [auth?.user?.id]);
+        saveFCMTokenAfterLogin();
+    }, [authUserId]);
 
-    // Handle flash messages
-    useFlashMessage();
-
-    // Handle Laravel session flash messages
+    // Single place for Laravel session flash toasts – use primitives + ref so deps don't churn every render
     const { props: pageProps } = usePage();
-        useEffect(() => {        // Handle success messages from Laravel session
-        if (pageProps.success && typeof pageProps.success === 'string') {
-            showSuccessToast(pageProps.success);
-        }
+    const success = typeof pageProps.success === 'string' ? pageProps.success : '';
+    const error = typeof pageProps.error === 'string' ? pageProps.error : '';
+    const info = typeof pageProps.info === 'string' ? pageProps.info : '';
+    const warning = typeof pageProps.warning === 'string' ? pageProps.warning : '';
+    const lastFlashRef = useRef({ success: '', error: '', info: '', warning: '' });
 
-        // Handle error messages from Laravel session
-        if (pageProps.error && typeof pageProps.error === 'string') {
-            showErrorToast(pageProps.error);
+    useEffect(() => {
+        if (success.trim() !== '' && lastFlashRef.current.success !== success) {
+            lastFlashRef.current.success = success;
+            showSuccessToast(success);
         }
-
-        // Handle info messages from Laravel session
-        if (pageProps.info && typeof pageProps.info === 'string') {
-            showSuccessToast(pageProps.info);
+        if (error.trim() !== '' && lastFlashRef.current.error !== error) {
+            lastFlashRef.current.error = error;
+            showErrorToast(error);
         }
-
-        // Handle warning messages from Laravel session
-        if (pageProps.warning && typeof pageProps.warning === 'string') {
-            showErrorToast(pageProps.warning);
+        if (info.trim() !== '' && lastFlashRef.current.info !== info) {
+            lastFlashRef.current.info = info;
+            showSuccessToast(info);
         }
-    }, [pageProps.success, pageProps.error, pageProps.info, pageProps.warning]);
+        if (warning.trim() !== '' && lastFlashRef.current.warning !== warning) {
+            lastFlashRef.current.warning = warning;
+            showErrorToast(warning);
+        }
+    }, [success, error, info, warning]);
 
     return (
             <NotificationProvider user={auth.user}>

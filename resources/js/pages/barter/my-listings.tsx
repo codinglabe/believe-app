@@ -23,31 +23,63 @@ declare global {
   function route(name: string, params?: Record<string, unknown>): string;
 }
 
+interface BarterSubcategory {
+  id: number;
+  name: string;
+  slug: string;
+  barter_category_id: number;
+}
+
+interface BarterCategory {
+  id: number;
+  name: string;
+  slug: string;
+  subcategories: BarterSubcategory[];
+}
+
+interface BarterBenefitGroup {
+  id: number;
+  name: string;
+  slug: string;
+}
+
 interface Listing {
   id: number;
   title: string;
-  description?: string;
+  description?: string | null;
   points_value: number;
   barter_allowed: boolean;
   status: string;
   image_url?: string | null;
+  category?: { id: number; name: string } | null;
+  subcategory?: { id: number; name: string } | null;
+  benefit_groups?: { id: number; name: string }[];
+  benefitGroups?: { id: number; name: string }[];
 }
 
 interface MyListingsProps {
   listings: { data: Listing[]; links: any[] };
+  barterCategories: BarterCategory[];
+  barterBenefitGroups: BarterBenefitGroup[];
 }
 
-export default function BarterMyListings({ listings }: MyListingsProps) {
+export default function BarterMyListings({ listings, barterCategories = [], barterBenefitGroups = [] }: MyListingsProps) {
   const [createOpen, setCreateOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { data: items } = listings;
   const form = useForm({
     title: "",
     description: "",
+    barter_category_id: "" as number | "",
+    barter_subcategory_id: "" as number | "",
+    benefit_group_ids: [] as number[],
     points_value: 0,
     barter_allowed: true,
     image: null as File | null,
   });
+
+  const selectedCategory = barterCategories.find((c) => c.id === form.data.barter_category_id);
+  const subcategories = selectedCategory?.subcategories ?? [];
 
   const imagePreviewUrl = form.data.image
     ? URL.createObjectURL(form.data.image)
@@ -122,6 +154,15 @@ export default function BarterMyListings({ listings }: MyListingsProps) {
                             <Coins className="h-4 w-4 shrink-0" />
                             {listing.points_value} Believe Points · {listing.barter_allowed ? "Barter allowed" : "Points only"}
                           </p>
+                          {(listing.category || ((listing.benefit_groups || listing.benefitGroups)?.length)) && (
+                            <p className="mt-1 text-xs text-muted-foreground">
+                              {listing.category?.name}
+                              {listing.subcategory && ` → ${listing.subcategory.name}`}
+                              {((listing.benefit_groups || listing.benefitGroups) ?? []).length > 0 && (
+                                <> · Benefits: {(listing.benefit_groups || listing.benefitGroups)!.map((b) => b.name).join(", ")}</>
+                              )}
+                            </p>
+                          )}
                         </div>
                       </Link>
                       <div className="flex flex-wrap items-center gap-2">
@@ -192,6 +233,59 @@ export default function BarterMyListings({ listings }: MyListingsProps) {
                   className="mt-1 min-h-[80px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                   rows={3}
                 />
+              </div>
+              <div>
+                <Label>Category</Label>
+                <select
+                  value={form.data.barter_category_id || ""}
+                  onChange={(e) => {
+                    const val = e.target.value ? Number(e.target.value) : "";
+                    form.setData("barter_category_id", val);
+                    form.setData("barter_subcategory_id", "");
+                  }}
+                  className="mt-1 min-h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                >
+                  <option value="">Select category</option>
+                  {barterCategories.map((c) => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+              </div>
+              {subcategories.length > 0 && (
+                <div>
+                  <Label>Subcategory</Label>
+                  <select
+                    value={form.data.barter_subcategory_id || ""}
+                    onChange={(e) => form.setData("barter_subcategory_id", e.target.value ? Number(e.target.value) : "")}
+                    className="mt-1 min-h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  >
+                    <option value="">Select subcategory</option>
+                    {subcategories.map((s) => (
+                      <option key={s.id} value={s.id}>{s.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              <div>
+                <Label>Which group does it benefit?</Label>
+                <div className="mt-2 flex flex-wrap gap-3">
+                  {barterBenefitGroups.map((g) => (
+                    <label key={g.id} className="flex cursor-pointer items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={form.data.benefit_group_ids.includes(g.id)}
+                        onChange={(e) => {
+                          const ids = e.target.checked
+                            ? [...form.data.benefit_group_ids, g.id]
+                            : form.data.benefit_group_ids.filter((id) => id !== g.id);
+                          form.setData("benefit_group_ids", ids);
+                        }}
+                        className="h-4 w-4 rounded border-input"
+                      />
+                      <span className="text-sm">{g.name}</span>
+                    </label>
+                  ))}
+                </div>
               </div>
               <div>
                 <Label>Image (optional)</Label>

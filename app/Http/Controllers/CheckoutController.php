@@ -11,6 +11,8 @@ use App\Models\TempOrder;
 use App\Models\Transaction;
 use App\Models\StateSalesTax;
 use App\Services\PrintifyService;
+use App\Services\ShippoService;
+use App\Services\StripeConfigService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -22,10 +24,12 @@ use Illuminate\Support\Facades\DB;
 class CheckoutController extends Controller
 {
     protected $printifyService;
+    protected $shippoService;
 
-    public function __construct(PrintifyService $printifyService)
+    public function __construct(PrintifyService $printifyService, ShippoService $shippoService)
     {
         $this->printifyService = $printifyService;
+        $this->shippoService = $shippoService;
         Stripe::setApiKey(config('services.stripe.secret'));
     }
 
@@ -71,7 +75,8 @@ class CheckoutController extends Controller
             'platform_fee' => 0, // Platform fee removed from customer payment
             // 'donation_percentage' => config('printify.optional_donation_percentage', 10), // Commented out - removed donation for Printify products
             'donation_percentage' => 0, // Set to 0 to disable donation
-            'stripePublishableKey' => config('services.stripe.key'),
+            // Prefer Stripe publishable key from database (payment_methods), fall back to .env
+            'stripePublishableKey' => StripeConfigService::getPublishableKey() ?? config('services.stripe.key') ?? '',
         ]);
     }
 
@@ -140,6 +145,9 @@ class CheckoutController extends Controller
             $printifyOrderId = null;
             $shippingData = [];
             $taxAmount = 0;
+            $shippoRateObjectId = null;
+            $shippoCarrier = null;
+            $shippoRateAmount = null;
 
             if ($hasPrintifyProducts) {
                 // Create Printify order only if there are Printify products
@@ -187,22 +195,122 @@ class CheckoutController extends Controller
                     ];
                 }
             } else {
-                // For manual products, use shipping_charge from product
+                // For manual products: calculate shipping with Shippo (cheapest rate)
                 $manualProduct = $cart->items->first()?->product;
-                $shippingCost = $manualProduct && $manualProduct->isManualProduct()
-                    ? ($manualProduct->shipping_charge ?? 0)
-                    : config('app.manual_product_shipping_cost', 9.99);
+                $shippingCost = config('app.manual_product_shipping_cost', 9.99);
 
-                $shippingData = [
-                    'cost' => $shippingCost,
-                    'methods' => [
+                $shippingMethods = [
+                    [
+                        'id' => 'standard',
+                        'name' => 'Standard Shipping',
+                        'cost' => $shippingCost,
+                        'estimated_days' => '5-10 business days',
+                    ],
+                ];
+
+                if ($manualProduct && $this->shippoService->isConfigured() && $validated['country'] && $validated['zip']) {
+                    $org = $manualProduct->organization;
+
+                    $shipFrom = [
+                        'name' => $manualProduct->ship_from_name ?: ($org?->contact_name ?: ($org?->name ?? 'Seller')),
+                        'street1' => $manualProduct->ship_from_street1 ?: ($org?->street ?? ''),
+                        'city' => $manualProduct->ship_from_city ?: ($org?->city ?? ''),
+                        'state' => $manualProduct->ship_from_state ?: ($org?->state ?? ''),
+                        'zip' => $manualProduct->ship_from_zip ?: ($org?->zip ?? ''),
+                        'country' => $manualProduct->ship_from_country ?: 'US',
+                        'phone' => '',
+                        'email' => '',
+                    ];
+
+                    $shipTo = [
+                        'name' => trim(($firstName ?? 'Customer') . ' ' . ($lastName ?? '')),
+                        'street1' => $validated['address'],
+                        'city' => $validated['city'],
+                        'state' => $validated['state'],
+                        'zip' => $validated['zip'],
+                        'country' => $validated['country'],
+                        'phone' => $validated['phone'],
+                        'email' => $validated['email'],
+                    ];
+
+                    $length = $manualProduct->parcel_length_in !== null ? (float) $manualProduct->parcel_length_in : 10.0;
+                    $width = $manualProduct->parcel_width_in !== null ? (float) $manualProduct->parcel_width_in : 8.0;
+                    $height = $manualProduct->parcel_height_in !== null ? (float) $manualProduct->parcel_height_in : 4.0;
+                    $weight = $manualProduct->parcel_weight_oz !== null ? (float) $manualProduct->parcel_weight_oz : 16.0;
+                    if ($weight < 0.1) {
+                        $weight = 16.0;
+                    }
+
+                    $parcel = [
+                        'length' => (string) $length,
+                        'width' => (string) $width,
+                        'height' => (string) $height,
+                        'distance_unit' => 'in',
+                        'weight' => (string) $weight,
+                        'mass_unit' => 'oz',
+                    ];
+
+                    try {
+                        $ratesResult = $this->shippoService->getRatesForAddresses($shipFrom, $shipTo, $parcel);
+                        if (!empty($ratesResult['success']) && !empty($ratesResult['rates'])) {
+                            $cheapest = null;
+                            foreach ($ratesResult['rates'] as $rate) {
+                                if (!isset($rate['amount'])) continue;
+                                $amt = (float) $rate['amount'];
+                                if ($cheapest === null || $amt < (float) $cheapest['amount']) {
+                                    $cheapest = $rate;
+                                }
+                            }
+
+                            if ($cheapest && !empty($cheapest['object_id'])) {
+                                $shippingCost = (float) $cheapest['amount'];
+                                $shippoRateObjectId = (string) $cheapest['object_id'];
+                                $shippoCarrier = $cheapest['provider'] ?? null;
+                                $shippoRateAmount = (float) $cheapest['amount'];
+                                $shippingMethods = [
+                                    [
+                                        'id' => 'shippo_cheapest',
+                                        'name' => $cheapest['provider'] ? ('Shippo: ' . $cheapest['provider']) : 'Shippo Shipping',
+                                        'cost' => $shippingCost,
+                                        'estimated_days' => $cheapest['estimated_days'] ? (string) $cheapest['estimated_days'] : '—',
+                                    ],
+                                ];
+                            }
+                        }
+                    } catch (\Exception $e) {
+                        // Shippo failure should not block checkout; fall back to static shipping_charge.
+                        $shippingCost = $manualProduct->shipping_charge ?? config('app.manual_product_shipping_cost', 9.99);
+                        $shippingMethods = [
+                            [
+                                'id' => 'standard',
+                                'name' => 'Standard Shipping',
+                                'cost' => $shippingCost,
+                                'estimated_days' => '5-10 business days',
+                            ],
+                        ];
+                        \Log::warning('Shippo rates failed in checkout step1 (manual products)', [
+                            'error' => $e->getMessage(),
+                        ]);
+                    }
+                } else {
+                    // Fallback to manual shipping_charge (old behavior)
+                    $shippingCost = $manualProduct && $manualProduct->isManualProduct()
+                        ? ($manualProduct->shipping_charge ?? 0)
+                        : config('app.manual_product_shipping_cost', 9.99);
+
+                    $shippingMethods = [
                         [
                             'id' => 'standard',
                             'name' => 'Standard Shipping',
                             'cost' => $shippingCost,
                             'estimated_days' => '5-10 business days',
-                        ]
-                    ],
+                        ],
+                    ];
+                }
+
+                $shippingData = [
+                    'cost' => $shippingCost,
+                    'methods' => $shippingMethods,
                 ];
 
                 // Calculate state-wise sales tax for manual products
@@ -225,6 +333,9 @@ class CheckoutController extends Controller
                 'shipping_cost' => $shippingData['cost'] ?? 0,
                 'tax_amount' => $taxAmount,
                 'total_amount' => $subtotal + ($shippingData['cost'] ?? 0) + $taxAmount, // Platform fee removed from customer total
+                'shippo_rate_object_id' => $shippoRateObjectId,
+                'shippo_carrier' => $shippoCarrier,
+                'shippo_rate_amount' => $shippoRateAmount,
                 'status' => 'shipping_calculated',
             ]);
 
@@ -752,6 +863,33 @@ class CheckoutController extends Controller
             $tempOrder->update(['status' => 'payment_completed']);
 
             DB::commit();
+
+            // Post-commit: for manual-only orders, auto-create Shippo label/tracking
+            // (Printify orders are handled via Printify webhooks + OrderController UI.)
+            try {
+                if ($this->shippoService->isConfigured() && empty($order->printify_order_id) && !empty($tempOrder->shippo_rate_object_id)) {
+                    $purchase = $this->shippoService->purchaseLabel((string) $tempOrder->shippo_rate_object_id);
+
+                    if (($purchase['success'] ?? false) === true) {
+                        $order->update([
+                            'shippo_shipment_id' => null, // Not required for label creation; can be added later if needed
+                            'shippo_transaction_id' => $purchase['transaction_id'] ?? null,
+                            'tracking_number' => $purchase['tracking_number'] ?? null,
+                            'tracking_url' => $purchase['tracking_url'] ?? null,
+                            'label_url' => $purchase['label_url'] ?? null,
+                            'carrier' => $purchase['carrier'] ?? null,
+                            'shipping_status' => 'label_created',
+                            'shipped_at' => now(),
+                        ]);
+                    }
+                }
+            } catch (\Exception $e) {
+                // Shipping label failure should not break the purchase completion.
+                \Log::error('Auto Shippo label failed (checkout confirmPayment)', [
+                    'order_id' => $order->id ?? null,
+                    'error' => $e->getMessage(),
+                ]);
+            }
 
             return response()->json([
                 'success' => true,

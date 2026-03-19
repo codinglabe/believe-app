@@ -30,7 +30,7 @@ interface SearchPageProps {
 
 export default function SearchPage() {
   const page = usePage<SearchPageProps>()
-  const { 
+  const {
     seo,
     userStats = {},
     peopleYouMayKnow = [],
@@ -60,18 +60,18 @@ export default function SearchPage() {
     if (!user.id || user.id === currentUser.id) return
 
     setLoadingFollow(prev => ({ ...prev, [`user_${user.id}`]: true }))
-    
+
     // Optimistically update state
     const newFollowingState = !followingStates[`user_${user.id}`]
     setFollowingStates(prev => ({
       ...prev,
       [`user_${user.id}`]: newFollowingState
     }))
-    
+
     // Update search results optimistically
     setSearchResults(prev => ({
       ...prev,
-      users: prev.users.map(u => 
+      users: prev.users.map(u =>
         u.id === user.id ? { ...u, is_following: newFollowingState } : u
       )
     }))
@@ -83,7 +83,7 @@ export default function SearchPage() {
       onSuccess: () => {
         // Reload search results to get updated following status
         if (searchQuery && searchQuery.length >= 2) {
-          router.reload({ 
+          router.reload({
             only: ['searchResults'],
             preserveState: true,
             preserveScroll: true,
@@ -116,7 +116,7 @@ export default function SearchPage() {
         }))
         setSearchResults(prev => ({
           ...prev,
-          users: prev.users.map(u => 
+          users: prev.users.map(u =>
             u.id === user.id ? { ...u, is_following: !newFollowingState } : u
           )
         }))
@@ -130,7 +130,7 @@ export default function SearchPage() {
 
   // Use useRef to store the latest search function to avoid dependency issues
   const handleSearchRef = React.useRef<(query: string) => void>()
-  
+
   const handleSearch = React.useCallback((query: string) => {
     if (!query.trim() || query.length < 1) {
       setSearchResults({ users: [], organizations: [] })
@@ -150,7 +150,7 @@ export default function SearchPage() {
         // Update local state from Inertia response (raw Inertia)
         const results = (page.props as any).searchResults || { users: [], organizations: [] }
         setSearchResults(results)
-        
+
         // Initialize following states
         const newFollowingStates: Record<number | string, boolean> = {}
         if (Array.isArray(results.users)) {
@@ -180,7 +180,7 @@ export default function SearchPage() {
       }
     })
   }, [searchType])
-  
+
   // Update ref when handleSearch changes
   React.useEffect(() => {
     handleSearchRef.current = handleSearch
@@ -208,18 +208,18 @@ export default function SearchPage() {
       setFollowingStates(newFollowingStates)
     }
   }, [initialSearchResults])
-  
+
   // Sync search results when props change (from Inertia updates after search)
   const prevResultsRef = React.useRef<string>('')
   React.useEffect(() => {
     // Create a string representation of results to detect changes
     const resultsKey = JSON.stringify(initialSearchResults)
-    
+
     // Only update if results actually changed
     if (resultsKey !== prevResultsRef.current && initialSearchResults) {
       prevResultsRef.current = resultsKey
       setSearchResults(initialSearchResults)
-      
+
       // Update following states from props
       const newFollowingStates: Record<number | string, boolean> = {}
       if (Array.isArray(initialSearchResults.users)) {
@@ -245,7 +245,7 @@ export default function SearchPage() {
   const isMountedRef = React.useRef(false)
   const prevQueryRef = React.useRef<string>(initialSearchQuery)
   const prevTypeRef = React.useRef<string>(initialSearchType)
-  
+
   // Debounce search - only trigger when searchQuery or searchType changes from USER INPUT
   React.useEffect(() => {
     // On initial mount, just set the refs and don't search (results already in props)
@@ -260,15 +260,15 @@ export default function SearchPage() {
       }
       return
     }
-    
+
     // Skip if query and type haven't actually changed (prevent loops)
     if (searchQuery === prevQueryRef.current && searchType === prevTypeRef.current) {
       return
     }
-    
+
     prevQueryRef.current = searchQuery
     prevTypeRef.current = searchType
-    
+
     // Don't search if query is empty - clear results
     if (!searchQuery || searchQuery.trim().length === 0) {
       setSearchResults({ users: [], organizations: [] })
@@ -279,7 +279,7 @@ export default function SearchPage() {
 
     // Set loading state
     setSearchLoading(true)
-    
+
     // Debounce the search request
     const timer = setTimeout(() => {
       // Double check query hasn't changed during debounce
@@ -482,6 +482,7 @@ export default function SearchPage() {
                                       auth={auth}
                                       initialIsFollowing={org.is_following || false}
                                       initialNotifications={false}
+                                      isOwnOrganization={!!(auth?.user?.organization?.id && auth.user.organization.id === org.id)}
                                     />
                                   </div>
                                 </div>
@@ -493,8 +494,8 @@ export default function SearchPage() {
                     )}
 
                     {/* No Results */}
-                    {searchQuery.length >= 2 && 
-                     !searchLoading && 
+                    {searchQuery.length >= 2 &&
+                     !searchLoading &&
                      (searchType === 'all' ? (searchResults.users.length === 0 && searchResults.organizations.length === 0) :
                       searchType === 'users' ? searchResults.users.length === 0 :
                       searchResults.organizations.length === 0) && (

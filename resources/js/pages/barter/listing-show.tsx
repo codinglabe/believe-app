@@ -21,6 +21,10 @@ interface Listing {
   barter_allowed: boolean;
   image_url?: string | null;
   nonprofit?: { id: number; name: string };
+  category?: { id: number; name: string } | null;
+  subcategory?: { id: number; name: string } | null;
+  benefit_groups?: { id: number; name: string }[];
+  benefitGroups?: { id: number; name: string }[];
 }
 
 interface ListingShowProps {
@@ -62,6 +66,18 @@ export default function BarterListingShow({ listing, isOwner, myListings = [] }:
               <Coins className="h-5 w-5 shrink-0" />
               {listing.points_value} Believe Points {listing.barter_allowed ? "or Barter" : ""}
             </p>
+            {(listing.category || ((listing.benefit_groups || listing.benefitGroups)?.length)) && (
+              <div className="rounded-lg border border-border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+                <span className="font-medium text-foreground">Category:</span> {listing.category?.name ?? "—"}
+                {listing.subcategory && <> → {listing.subcategory.name}</>}
+                {((listing.benefit_groups || listing.benefitGroups) ?? []).length > 0 && (
+                  <>
+                    {" "}
+                    <span className="font-medium text-foreground">Benefits:</span> {(listing.benefit_groups || listing.benefitGroups)!.map((b) => b.name).join(", ")}
+                  </>
+                )}
+              </div>
+            )}
             {listing.description && (
               <p className="whitespace-pre-wrap text-sm text-muted-foreground">{listing.description}</p>
             )}

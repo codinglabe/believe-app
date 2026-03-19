@@ -35,6 +35,7 @@ class ProfileUpdateRequest extends FormRequest
             $rules = array_merge($rules, [
                 'contact_title' => ['required', 'string'],
                 'website' => ['nullable', 'string', 'url'],
+                'wefunder_project_url' => ['nullable', 'string', 'url', 'max:500'],
                 'description' => ['required', 'string'],
                 'mission' => ['required', 'string'],
                 'gift_card_terms_approved' => ['nullable', 'boolean'],

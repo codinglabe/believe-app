@@ -9,8 +9,8 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Switch } from "@/components/admin/ui/switch"
-import { 
-    Save, 
+import {
+    Save,
     ArrowLeft,
     Plus,
     Trash2,
@@ -30,7 +30,7 @@ const breadcrumbs: BreadcrumbItem[] = [
 
 export default function AdminContactPageEdit({ section, content }: EditProps) {
     const isArraySection = ['contact_methods', 'faq'].includes(section)
-    const initialContent = isArraySection 
+    const initialContent = isArraySection
         ? (Array.isArray(content) ? content : [])
         : (content || { content: {} })
 
@@ -49,7 +49,7 @@ export default function AdminContactPageEdit({ section, content }: EditProps) {
         if (isArraySection) {
             const newItem = {
                 id: null,
-                content: section === 'contact_methods' 
+                content: section === 'contact_methods'
                     ? { title: '', description: '', contact: '', action: '', color: 'from-blue-500 to-blue-600', bgColor: 'bg-blue-50 dark:bg-blue-900/20', iconColor: 'text-blue-600 dark:text-blue-400' }
                     : { question: '', answer: '' },
                 sort_order: data.items.length,
@@ -96,7 +96,7 @@ export default function AdminContactPageEdit({ section, content }: EditProps) {
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
             <Head title={`Edit ${sectionTitles[section] || section}`} />
-            
+
             <div className="space-y-6 p-4 sm:p-6">
                 {/* Header */}
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -208,7 +208,7 @@ export default function AdminContactPageEdit({ section, content }: EditProps) {
                                                         <Input
                                                             value={item.content.contact || ''}
                                                             onChange={(e) => updateItem(index, 'contact', e.target.value)}
-                                                            placeholder="support@example.com"
+                                                            placeholder="wendhi@stuttiegroup.com"
                                                             required
                                                         />
                                                     </div>
@@ -228,7 +228,7 @@ export default function AdminContactPageEdit({ section, content }: EditProps) {
                                                     <Input
                                                         value={item.content.action || ''}
                                                         onChange={(e) => updateItem(index, 'action', e.target.value)}
-                                                        placeholder="mailto:support@example.com"
+                                                        placeholder="mailto:wendhi@stuttiegroup.com"
                                                     />
                                                 </div>
                                             </div>

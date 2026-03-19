@@ -98,12 +98,16 @@ class MerchantHubOfferController extends Controller
                 ];
             });
 
-        // Transform offers for frontend
+        // Transform offers for frontend (image URL same-origin so it works locally and on live)
         $transformedOffers = $offers->through(function ($offer) {
+            $imageUrl = $offer->image_url;
+            if ($imageUrl && !filter_var($imageUrl, FILTER_VALIDATE_URL)) {
+                $imageUrl = asset('storage/' . ltrim($imageUrl, '/'));
+            }
             return [
                 'id' => (string) $offer->id,
                 'title' => $offer->title,
-                'image' => $offer->image_url ?: '/placeholder.jpg',
+                'image' => $imageUrl ?: '/placeholder.jpg',
                 'pointsRequired' => $offer->points_required,
                 'cashRequired' => $offer->cash_required ? (float) $offer->cash_required : null,
                 'merchantName' => $offer->merchant->name,
@@ -132,6 +136,18 @@ class MerchantHubOfferController extends Controller
      */
     public function show(Request $request, $id): Response
     {
+        if ($request->has('ref')) {
+            $refRedemption = \App\Models\MerchantHubOfferRedemption::where('share_token', $request->get('ref'))
+                ->whereIn('status', ['approved', 'fulfilled'])
+                ->first();
+            if ($refRedemption) {
+                $isOwnLink = \Illuminate\Support\Facades\Auth::check()
+                    && (int) $refRedemption->user_id === (int) \Illuminate\Support\Facades\Auth::id();
+                if (!$isOwnLink) {
+                    session(['merchant_hub_ref' => $request->get('ref')]);
+                }
+            }
+        }
         $offer = MerchantHubOffer::with(['merchant', 'category'])
             ->findOrFail($id);
 
@@ -153,10 +169,14 @@ class MerchantHubOfferController extends Controller
             ->limit(6)
             ->get()
             ->map(function ($relatedOffer) {
+                $relImage = $relatedOffer->image_url;
+                if ($relImage && !filter_var($relImage, FILTER_VALIDATE_URL)) {
+                    $relImage = asset('storage/' . ltrim($relImage, '/'));
+                }
                 return [
                     'id' => (string) $relatedOffer->id,
                     'title' => $relatedOffer->title,
-                    'image' => $relatedOffer->image_url ?: '/placeholder.jpg',
+                    'image' => $relImage ?: '/placeholder.jpg',
                     'pointsRequired' => $relatedOffer->points_required,
                     'cashRequired' => $relatedOffer->cash_required ? (float) $relatedOffer->cash_required : null,
                     'merchantName' => $relatedOffer->merchant->name,
@@ -165,10 +185,10 @@ class MerchantHubOfferController extends Controller
                 ];
             });
 
-        // Convert image_url to full URL
+        // Convert image_url to same-origin URL (works locally and on live)
         $imageUrl = $offer->image_url;
         if ($imageUrl && !filter_var($imageUrl, FILTER_VALIDATE_URL)) {
-            $imageUrl = \Illuminate\Support\Facades\Storage::disk('public')->url($imageUrl);
+            $imageUrl = asset('storage/' . ltrim($imageUrl, '/'));
         }
 
         // Get eligible items for this merchant
@@ -190,9 +210,10 @@ class MerchantHubOfferController extends Controller
         // Check redemption eligibility for authenticated users
         $redemptionEligibility = [
             'canRedeem' => true,
+            'canPayWithCash' => false,
             'reason' => null,
             'userPoints' => 0,
-            'monthlyPointsRedeemed' => 0,
+            'monthlyPointsRedeemed' => 0, // kept for backward compatibility (no longer enforced)
             'hasExistingRedemption' => false,
         ];
 
@@ -201,60 +222,43 @@ class MerchantHubOfferController extends Controller
             // Refresh user to get latest points from database
             $user->refresh();
             $userPoints = (float) ($user->reward_points ?? 0);
-            $merchantId = $offer->merchant_hub_merchant_id;
-            $currentMonth = now()->startOfMonth();
-
-            // Check if user already redeemed from this merchant this month
-            $existingRedemption = \App\Models\MerchantHubOfferRedemption::where('user_id', $user->id)
-                ->whereHas('offer', function($q) use ($merchantId) {
-                    $q->where('merchant_hub_merchant_id', $merchantId);
-                })
-                ->where('status', '!=', 'canceled')
-                ->where('created_at', '>=', $currentMonth)
-                ->first();
-
-            // Check monthly points redeemed
-            $monthlyPointsRedeemed = \App\Models\MerchantHubOfferRedemption::where('user_id', $user->id)
-                ->whereHas('offer', function($q) use ($merchantId) {
-                    $q->where('merchant_hub_merchant_id', $merchantId);
-                })
-                ->where('status', '!=', 'canceled')
-                ->where('created_at', '>=', $currentMonth)
-                ->sum('points_spent');
 
             $redemptionEligibility['userPoints'] = $userPoints;
-            $redemptionEligibility['monthlyPointsRedeemed'] = (int) $monthlyPointsRedeemed;
-            $redemptionEligibility['hasExistingRedemption'] = $existingRedemption !== null;
+            $redemptionEligibility['monthlyPointsRedeemed'] = 0;
+            $redemptionEligibility['hasExistingRedemption'] = false;
 
-            // Check eligibility
+            // Check eligibility (can still pay with cash if not enough points)
             if (!$offer->isAvailable()) {
                 $redemptionEligibility['canRedeem'] = false;
                 $redemptionEligibility['reason'] = 'This offer is no longer available.';
             } elseif ($userPoints < $offer->points_required) {
-                $redemptionEligibility['canRedeem'] = false;
-                $redemptionEligibility['reason'] = "You need " . number_format($offer->points_required) . " points, but you only have " . number_format($userPoints) . " points.";
-            } elseif ($existingRedemption) {
-                $redemptionEligibility['canRedeem'] = false;
-                $redemptionEligibility['reason'] = 'You have already redeemed from this merchant this month. One redemption per merchant per month.';
-            } elseif ($monthlyPointsRedeemed + $offer->points_required > 100) {
-                $remainingPoints = 100 - $monthlyPointsRedeemed;
-                $redemptionEligibility['canRedeem'] = false;
-                $redemptionEligibility['reason'] = "You can only redeem up to 100 points per merchant per month. You have already redeemed {$monthlyPointsRedeemed} points this month.";
+                $cashAvailable = ((float) ($offer->cash_required ?? 0) > 0) || ((float) ($offer->reference_price ?? 0) > 0);
+
+                if ($cashAvailable) {
+                    // Allow redeem via cash even when not enough points (reason explains points shortfall)
+                    $redemptionEligibility['canRedeem'] = true;
+                    $redemptionEligibility['canPayWithCash'] = true;
+                    $redemptionEligibility['reason'] = "You need " . number_format($offer->points_required) . " points to redeem with points, but you have " . number_format($userPoints) . ". You can pay with cash below (full amount).";
+                } else {
+                    // Points-only offer: no monthly cap anymore, but still require enough points.
+                    $redemptionEligibility['canRedeem'] = false;
+                    $redemptionEligibility['reason'] = "You need " . number_format($offer->points_required) . " points to redeem this offer.";
+                }
             }
         }
 
         // Calculate pricing breakdown - ALWAYS show if cash_required exists
         $pricingBreakdown = null;
-        
+
         // Determine discount percentage (default 10% for merchant hub)
         $discountPercentage = 10.0;
         if ($offer->discount_percentage !== null && $offer->discount_percentage > 0) {
             $discountPercentage = (float) $offer->discount_percentage;
         }
-        
+
         $discountCap = $offer->discount_cap;
         $regularPrice = null;
-        
+
         // ALWAYS use cash_required as regular price if it exists (this is what user wants)
         if ($offer->cash_required && $offer->cash_required > 0) {
             $regularPrice = (float) $offer->cash_required;
@@ -266,20 +270,20 @@ class MerchantHubOfferController extends Controller
                 $regularPrice = (float) $firstItem['price'];
             }
         }
-        
+
         // ALWAYS create pricing breakdown if we have cash_required or regular price
         if ($regularPrice !== null && $regularPrice > 0) {
             // Calculate discount amount (10% by default)
             $discountAmount = ($regularPrice * $discountPercentage) / 100;
-            
+
             // Apply discount cap if set
             if ($discountCap !== null && $discountAmount > $discountCap) {
                 $discountAmount = (float) $discountCap;
             }
-            
+
             // Calculate discount price (price after discount)
             $discountPrice = $regularPrice - $discountAmount;
-            
+
             $pricingBreakdown = [
                 'regularPrice' => round($regularPrice, 2),
                 'discountPercentage' => round($discountPercentage, 2),
@@ -289,12 +293,28 @@ class MerchantHubOfferController extends Controller
             ];
         }
 
+        // BIU: reference price and cash option (full amount when paying with cash, no points)
+        $referencePrice = (float) ($offer->reference_price ?? 0);
+        if ($referencePrice <= 0 && $offer->points_required > 0 && $offer->discount_percentage > 0) {
+            $referencePrice = ($offer->points_required / 1000) * 100 / (float) $offer->discount_percentage;
+        }
+        $refDiscountAmount = $referencePrice > 0 && $offer->discount_percentage
+            ? round($referencePrice * ((float) $offer->discount_percentage / 100), 2)
+            : 0.0;
+        $customerPriceWithPoints = $referencePrice > 0 ? round($referencePrice - $refDiscountAmount, 2) : 0.0;
+        $communityCashPrice = $referencePrice > 0 ? round($referencePrice, 2) : 0.0;
+
         $transformedOffer = [
             'id' => (string) $offer->id,
             'title' => $offer->title,
             'image' => $imageUrl ?: '/placeholder.jpg',
             'pointsRequired' => $offer->points_required,
             'cashRequired' => $offer->cash_required ? (float) $offer->cash_required : null,
+            'referencePrice' => $referencePrice > 0 ? round($referencePrice, 2) : null,
+            'discountAmount' => $refDiscountAmount,
+            'customerPriceWithPoints' => $customerPriceWithPoints,
+            'communityCashPrice' => $communityCashPrice,
+            'currency' => $offer->currency ?? 'USD',
             'merchantName' => $offer->merchant->name,
             'merchantWebsite' => $merchantWebsite,
             'category' => $offer->category->name,

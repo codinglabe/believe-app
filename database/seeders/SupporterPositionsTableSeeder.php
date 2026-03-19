@@ -235,7 +235,7 @@ class SupporterPositionsTableSeeder extends Seeder
                 'sort_order' => 27,
             ],
             [
-                'name' => 'Livestream / Tech Ministry Lead',
+                'name' => 'Unity Meet / Tech Ministry Lead',
                 'slug' => 'livestream-tech-ministry-lead',
                 'description' => 'Manages online streaming and technology services',
                 'category' => 'church_ministry',

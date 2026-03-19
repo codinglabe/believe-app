@@ -48,6 +48,7 @@ class ProfileController extends Controller
                 'contact_name' => $request->input('name'),
                 'contact_title' => $request->input('contact_title'),
                 'website' => $request->input('website') ?? null,
+                'wefunder_project_url' => $request->input('wefunder_project_url') ? trim($request->input('wefunder_project_url')) : null,
                 'description' => $request->input('description'),
                 'mission' => $request->input('mission'),
                 'email' => $request->input('email'),

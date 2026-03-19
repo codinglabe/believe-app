@@ -25,7 +25,7 @@ interface FooterSettings {
 }
 
 export default function Footer() {
-  const { merchantDomain, footerSettings } = usePage().props as { 
+  const { merchantDomain, footerSettings } = usePage().props as {
     merchantDomain?: string
     footerSettings?: FooterSettings
   }
@@ -46,7 +46,7 @@ export default function Footer() {
       { title: "Contact", url: route("contact") },
       { title: "Register Organization", url: route("register.organization") }
     ],
-    contact_email: "support@believeinunity.org",
+    contact_email: "wendhi@stuttiegroup.com",
     contact_phone: "+1 (555) 123-4567",
     contact_address: "123 Charity Lane\nNew York, NY 10001",
     copyright_text: `${new Date().getFullYear()} ${import.meta.env.VITE_APP_NAME}. All rights reserved.`,
@@ -117,15 +117,15 @@ export default function Footer() {
                 {settings.quick_links.map((link, index) => (
                   <li key={index}>
                     {link.url.startsWith('http') || link.url.startsWith('//') ? (
-                      <a 
+                      <a
                         href={link.url}
                         className="text-gray-400 hover:text-white transition-colors"
                       >
                         {link.title}
                       </a>
                     ) : (
-                      <Link 
-                        href={link.url} 
+                      <Link
+                        href={link.url}
                         className="text-gray-400 hover:text-white transition-colors"
                       >
                         {link.title}
@@ -135,7 +135,7 @@ export default function Footer() {
                 ))}
                 {merchantDomain && (
                   <li>
-                    <a 
+                    <a
                       href={`//${merchantDomain || import.meta.env.VITE_MERCHANT_DOMAIN || 'merchant.believeinunity.org'}`}
                       className="text-gray-400 hover:text-white transition-colors"
                     >
@@ -185,9 +185,9 @@ export default function Footer() {
             {settings.legal_links && settings.legal_links.length > 0 && (
               <div className="flex space-x-6 mt-4 md:mt-0">
                 {settings.legal_links.map((link, index) => (
-                  <Link 
+                  <Link
                     key={index}
-                    href={link.url} 
+                    href={link.url}
                     className="text-gray-400 hover:text-white text-sm transition-colors"
                   >
                     {link.title}

@@ -19,6 +19,7 @@ class MerchantHubOffer extends Model
         'slug',
         'short_description',
         'description',
+        'reference_price',
         'image_url',
         'points_required',
         'cash_required',
@@ -33,6 +34,7 @@ class MerchantHubOffer extends Model
     ];
 
     protected $casts = [
+        'reference_price' => 'decimal:2',
         'points_required' => 'integer',
         'cash_required' => 'decimal:2',
         'inventory_qty' => 'integer',
@@ -138,11 +140,14 @@ class MerchantHubOffer extends Model
         return $query->where('status', 'active')
             ->where(function ($q) {
                 $q->whereNull('starts_at')
-                    ->orWhere('starts_at', '<=', now());
+                    // Treat starts_at as date-only so an offer becomes visible immediately on the start date
+                    // (datetime-local inputs are commonly saved with timezone offsets).
+                    ->orWhereDate('starts_at', '<=', now());
             })
             ->where(function ($q) {
                 $q->whereNull('ends_at')
-                    ->orWhere('ends_at', '>=', now());
+                    // Treat ends_at as date-only so it stays visible through the end date.
+                    ->orWhereDate('ends_at', '>=', now());
             });
     }
 
@@ -171,11 +176,13 @@ class MerchantHubOffer extends Model
             return false;
         }
 
-        if ($this->starts_at && $this->starts_at->isFuture()) {
+        // Treat starts_at as date-only so the offer is visible immediately on the selected day.
+        if ($this->starts_at && $this->starts_at->toDateString() > now()->toDateString()) {
             return false;
         }
 
-        if ($this->ends_at && $this->ends_at->isPast()) {
+        // Treat ends_at as date-only so it stays visible through the end date.
+        if ($this->ends_at && $this->ends_at->toDateString() < now()->toDateString()) {
             return false;
         }
 
@@ -189,5 +196,58 @@ class MerchantHubOffer extends Model
         }
 
         return true;
+    }
+
+    /**
+     * BIU Unity Points: $1 discount = 1,000 points.
+     * discount_amount = reference_price * (discount_percentage/100)
+     * points_required = discount_amount * 1000
+     */
+    public function getDiscountAmount(): float
+    {
+        $price = (float) ($this->reference_price ?? 0);
+        $pct = (float) ($this->discount_percentage ?? 0);
+        if ($price <= 0 || $pct <= 0) {
+            return 0.0;
+        }
+        $amount = $price * ($pct / 100);
+        if ($this->discount_cap !== null && (float) $this->discount_cap > 0 && $amount > (float) $this->discount_cap) {
+            return (float) $this->discount_cap;
+        }
+        return round($amount, 2);
+    }
+
+    /**
+     * Customer price when using Unity Points (retail minus discount).
+     */
+    public function getCustomerPriceWithPoints(): float
+    {
+        $price = (float) ($this->reference_price ?? 0);
+        return round($price - $this->getDiscountAmount(), 2);
+    }
+
+    /**
+     * Cash price when user has no points: full reference price.
+     */
+    public function getCommunityCashPrice(): float
+    {
+        $price = (float) ($this->reference_price ?? 0);
+        return round($price, 2);
+    }
+
+    /**
+     * Calculate points required from reference_price and discount_percentage.
+     * Points are auto-calculated; merchants cannot edit.
+     */
+    public static function calculatePointsRequired(float $referencePrice, float $discountPercent, ?float $discountCap = null): int
+    {
+        if ($referencePrice <= 0 || $discountPercent <= 0) {
+            return 0;
+        }
+        $discountAmount = $referencePrice * ($discountPercent / 100);
+        if ($discountCap !== null && $discountCap > 0 && $discountAmount > $discountCap) {
+            $discountAmount = $discountCap;
+        }
+        return (int) round($discountAmount * 1000);
     }
 }

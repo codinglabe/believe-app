@@ -39,6 +39,11 @@ import {
   HeartHandshake,
   UserPlus,
   Video,
+  Radio,
+  Handshake,
+  Globe,
+  Heart,
+  TrendingUp,
 } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 import { ThemeToggle } from "@/components/frontend/theme-toggle"
@@ -94,14 +99,14 @@ export default function Navbar() {
   const coreNavItems = [
     { name: "Home", href: "/" },
     { name: "About", href: "/about" },
-    { name: "Believe FundMe", href: "/believe-fundme" },
     { name: "Donate", href: "/donate" },
   ]
 
   // Community dropdown items
   const communityItems = [
+    { name: "Unity Live & Meet", href: "/unity-live", icon: Radio },
     { name: "News", href: "/nonprofit-news", icon: Newspaper },
-    { name: "Community Videos", href: "/community-videos", icon: Video },
+    { name: "Unity Videos", href: "/unity-videos", icon: Video },
     ...(isLoggedIn ? [
       { name: "Social Feed", href: route("social-feed.index"), icon: Users },
       { name: "Find Supporters", href: route("find-supporters.index"), icon: UserPlus },
@@ -109,8 +114,12 @@ export default function Navbar() {
     ] : []),
   ]
 
-  // Services dropdown items
+  // Services dropdown items (Nonprofit Barter only when organization is logged in)
+  const isOrgUser = auth?.user?.role === "organization" || auth?.user?.role === "organization_pending"
   const servicesItems = [
+    { name: "Support a Project", href: route("support-a-project"), icon: Heart },
+    ...(isOrgUser ? [{ name: "Community Projects", href: "/fundraise/community-projects", icon: Building2 }] : []),
+    ...(isOrgUser ? [{ name: "Nonprofit Barter", href: route("barter.index"), icon: Handshake }] : []),
     { name: "Service Hub", href: "/service-hub", icon: Sparkles },
     { name: "Merchant Hub", href: "/merchant-hub", icon: ShoppingBag },
     { name: "Marketplace", href: "/marketplace", icon: Store },
@@ -436,7 +445,7 @@ export default function Navbar() {
                                                       </div>
                                                   </div>
                                               )}
-                                              
+
                                               {/* Believe Points */}
                                               {auth?.user?.believe_points !== undefined && (
                                                   <div className="flex items-center justify-between p-2 rounded-lg bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-950/20 dark:to-pink-950/20 border border-purple-200 dark:border-purple-800">
@@ -492,6 +501,16 @@ export default function Navbar() {
                                           <Link href={auth?.user?.role === 'user' ? route('user.profile.index') : route('profile.edit')}>
                                               <User className="mr-2 h-4 w-4" />
                                               <span>Profile</span>
+                                          </Link>
+                                      </DropdownMenuItem>
+                                      <DropdownMenuItem asChild>
+                                          <Link href={
+                                              (auth?.user?.role === 'organization' || auth?.user?.role === 'organization_pending')
+                                                  ? route('organizations.show', (auth?.user as any)?.organization?.public_view_slug ?? (auth?.user as any)?.slug ?? auth?.user?.id)
+                                                  : route('users.show', (auth?.user as any)?.slug ?? auth?.user?.id)
+                                          }>
+                                              <Globe className="mr-2 h-4 w-4" />
+                                              <span>Public View</span>
                                           </Link>
                                       </DropdownMenuItem>
                                       {auth?.user?.role === 'user' && (
@@ -660,7 +679,7 @@ export default function Navbar() {
                                                   <p className="text-muted-foreground text-xs">{auth?.user?.email ?? 'john@example.com'}</p>
                                               </div>
                                           </div>
-                                          
+
                                           {/* Points Display for Mobile - Shows Reward Points and Believe Points (hidden for admin) */}
                                           {auth?.user?.role !== 'admin' && (auth?.user?.reward_points !== undefined || auth?.user?.believe_points !== undefined) && (
                                               <div className="px-3 py-2 space-y-2">
@@ -680,7 +699,7 @@ export default function Navbar() {
                                                           </div>
                                                       </div>
                                                   )}
-                                                  
+
                                                   {/* Believe Points */}
                                                   {auth?.user?.believe_points !== undefined && (
                                                       <div className="flex items-center justify-between p-2 rounded-lg bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-950/20 dark:to-pink-950/20 border border-purple-200 dark:border-purple-800">
@@ -699,7 +718,7 @@ export default function Navbar() {
                                                   )}
                                               </div>
                                           )}
-                                          
+
                                           {/* Wallet section for mobile - Hide for admin users */}
                                           {isLoggedIn && auth?.user?.role !== 'admin' && (
                                               <Button
@@ -749,6 +768,16 @@ export default function Navbar() {
                                               <Button variant="ghost" className="w-full justify-start">
                                                   <User className="mr-2 h-4 w-4" />
                                                   Profile
+                                              </Button>
+                                          </Link>
+                                          <Link href={
+                                              (auth?.user?.role === 'organization' || auth?.user?.role === 'organization_pending')
+                                                  ? route('organizations.show', (auth?.user as any)?.organization?.public_view_slug ?? (auth?.user as any)?.slug ?? auth?.user?.id)
+                                                  : route('users.show', (auth?.user as any)?.slug ?? auth?.user?.id)
+                                          }>
+                                              <Button variant="ghost" className="w-full justify-start">
+                                                  <Globe className="mr-2 h-4 w-4" />
+                                                  Public View
                                               </Button>
                                           </Link>
 

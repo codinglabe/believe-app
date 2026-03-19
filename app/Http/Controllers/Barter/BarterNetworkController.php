@@ -3,6 +3,8 @@
 namespace App\Http\Controllers\Barter;
 
 use App\Http\Controllers\Controller;
+use App\Models\BarterBenefitGroup;
+use App\Models\BarterCategory;
 use App\Models\NonprofitBarterListing;
 use App\Models\NonprofitBarterTransaction;
 use App\Services\BarterPointSettlementService;
@@ -33,7 +35,7 @@ class BarterNetworkController extends Controller
 
         $currentListings = NonprofitBarterListing::where('nonprofit_id', $org->id)
             ->active()
-            ->with('nonprofit:id,name')
+            ->with(['nonprofit:id,name', 'category:id,name', 'subcategory:id,name', 'benefitGroups:id,name'])
             ->latest()
             ->limit(6)
             ->get();
@@ -59,6 +61,9 @@ class BarterNetworkController extends Controller
             ->limit(5)
             ->get(['id', 'title', 'status']);
 
+        $barterCategories = BarterCategory::with('subcategories')->orderBy('sort_order')->get();
+        $barterBenefitGroups = BarterBenefitGroup::orderBy('sort_order')->get();
+
         return Inertia::render('barter/index', [
             'balance' => $balance,
             'organizationName' => $org->name,
@@ -66,21 +71,25 @@ class BarterNetworkController extends Controller
             'incomingRequests' => $incomingRequests,
             'recentTrades' => $recentTrades,
             'recentListings' => $recentListings,
+            'barterCategories' => $barterCategories,
+            'barterBenefitGroups' => $barterBenefitGroups,
         ]);
     }
 
     /**
-     * Marketplace: browse listings (filter by category), view points value.
+     * Marketplace: browse listings (filter by category / benefit), view points value.
      */
     public function marketplace(Request $request)
     {
         $org = $request->attributes->get('barter_organization');
 
         $listings = NonprofitBarterListing::query()
-            ->with('nonprofit:id,name')
+            ->with(['nonprofit:id,name', 'category:id,name', 'subcategory:id,name', 'benefitGroups:id,name'])
             ->active()
             ->where('nonprofit_id', '!=', $org->id)
-            ->when($request->input('category'), fn ($q) => $q->whereJsonContains('requested_services', $request->input('category')))
+            ->when($request->input('category'), fn ($q) => $q->where('barter_category_id', $request->input('category')))
+            ->when($request->input('subcategory'), fn ($q) => $q->where('barter_subcategory_id', $request->input('subcategory')))
+            ->when($request->input('benefit'), fn ($q) => $q->whereHas('benefitGroups', fn ($b) => $b->where('barter_benefit_groups.id', $request->input('benefit'))))
             ->latest()
             ->paginate(12);
 
@@ -89,9 +98,14 @@ class BarterNetworkController extends Controller
             ->orderBy('title')
             ->get(['id', 'title', 'points_value']);
 
+        $barterCategories = BarterCategory::with('subcategories')->orderBy('sort_order')->get();
+        $barterBenefitGroups = BarterBenefitGroup::orderBy('sort_order')->get();
+
         return Inertia::render('barter/marketplace', [
             'listings' => $listings,
             'myListings' => $myListings,
+            'barterCategories' => $barterCategories,
+            'barterBenefitGroups' => $barterBenefitGroups,
         ]);
     }
 
@@ -103,11 +117,17 @@ class BarterNetworkController extends Controller
         $org = $request->attributes->get('barter_organization');
 
         $listings = NonprofitBarterListing::where('nonprofit_id', $org->id)
+            ->with(['category:id,name', 'subcategory:id,name', 'benefitGroups:id,name'])
             ->latest()
             ->paginate(20);
 
+        $barterCategories = BarterCategory::with('subcategories')->orderBy('sort_order')->get();
+        $barterBenefitGroups = BarterBenefitGroup::orderBy('sort_order')->get();
+
         return Inertia::render('barter/my-listings', [
             'listings' => $listings,
+            'barterCategories' => $barterCategories,
+            'barterBenefitGroups' => $barterBenefitGroups,
         ]);
     }
 
@@ -116,7 +136,7 @@ class BarterNetworkController extends Controller
      */
     public function showListing(Request $request, NonprofitBarterListing $listing)
     {
-        $listing->load('nonprofit:id,name');
+        $listing->load(['nonprofit:id,name', 'category:id,name', 'subcategory:id,name', 'benefitGroups:id,name']);
         $org = $request->attributes->get('barter_organization');
         $isOwner = $listing->nonprofit_id === $org->id;
         $myListings = $isOwner
@@ -141,6 +161,10 @@ class BarterNetworkController extends Controller
             'title' => 'required|string|max:255',
             'description' => 'nullable|string',
             'image' => 'nullable|image|mimes:jpeg,jpg,png,webp|max:5120',
+            'barter_category_id' => 'nullable|exists:barter_categories,id',
+            'barter_subcategory_id' => 'nullable|exists:barter_subcategories,id',
+            'benefit_group_ids' => 'nullable|array',
+            'benefit_group_ids.*' => 'exists:barter_benefit_groups,id',
             'points_value' => 'required|integer|min:0',
             'barter_allowed' => 'boolean',
             'requested_services' => 'nullable|array',
@@ -152,16 +176,22 @@ class BarterNetworkController extends Controller
             $imagePath = $request->file('image')->store('barter/listings', 'public');
         }
 
-        NonprofitBarterListing::create([
+        $listing = NonprofitBarterListing::create([
             'nonprofit_id' => $org->id,
             'title' => $validated['title'],
             'description' => $validated['description'] ?? null,
             'image' => $imagePath,
+            'barter_category_id' => $validated['barter_category_id'] ?? null,
+            'barter_subcategory_id' => $validated['barter_subcategory_id'] ?? null,
             'points_value' => $validated['points_value'],
             'barter_allowed' => $validated['barter_allowed'] ?? true,
             'requested_services' => $validated['requested_services'] ?? null,
             'status' => NonprofitBarterListing::STATUS_ACTIVE,
         ]);
+
+        if (!empty($validated['benefit_group_ids'])) {
+            $listing->benefitGroups()->sync($validated['benefit_group_ids']);
+        }
 
         return redirect()->route('barter.my-listings')->with('success', 'Listing created.');
     }
@@ -177,6 +207,10 @@ class BarterNetworkController extends Controller
             'title' => 'sometimes|string|max:255',
             'description' => 'nullable|string',
             'image' => 'nullable|image|mimes:jpeg,jpg,png,webp|max:5120',
+            'barter_category_id' => 'nullable|exists:barter_categories,id',
+            'barter_subcategory_id' => 'nullable|exists:barter_subcategories,id',
+            'benefit_group_ids' => 'nullable|array',
+            'benefit_group_ids.*' => 'exists:barter_benefit_groups,id',
             'points_value' => 'sometimes|integer|min:0',
             'barter_allowed' => 'boolean',
             'requested_services' => 'nullable|array',
@@ -196,14 +230,19 @@ class BarterNetworkController extends Controller
             $listing->image = $request->file('image')->store('barter/listings', 'public');
         }
 
-        $listing->fill(collect($validated)->except(['image', 'remove_image'])->all());
+        $listing->fill(collect($validated)->except(['image', 'remove_image', 'benefit_group_ids'])->all());
         $listing->save();
+
+        if (array_key_exists('benefit_group_ids', $validated)) {
+            $listing->benefitGroups()->sync($validated['benefit_group_ids'] ?? []);
+        }
 
         return redirect()->route('barter.my-listings')->with('success', 'Listing updated.');
     }
 
     /**
-     * Request Trade: A selects B's listing and one of A's listings (optional extra points).
+     * Request Trade: A either (1) offers one of A's listings in trade (+ optional extra points)
+     * or (2) offers points only (pay listing's points_value) when they have nothing to trade.
      */
     public function requestTrade(Request $request)
     {
@@ -211,26 +250,52 @@ class BarterNetworkController extends Controller
 
         $validated = $request->validate([
             'requested_listing_id' => 'required|exists:nonprofit_barter_listings,id',
-            'return_listing_id' => 'required|exists:nonprofit_barter_listings,id',
+            'return_listing_id' => 'nullable|exists:nonprofit_barter_listings,id',
             'extra_points' => 'nullable|integer|min:0',
+            'points_offer' => 'nullable|integer|min:0',
         ]);
 
         $requestedListing = NonprofitBarterListing::findOrFail($validated['requested_listing_id']);
-        $returnListing = NonprofitBarterListing::findOrFail($validated['return_listing_id']);
-
-        if ($requestedListing->nonprofit_id === $org->id || $returnListing->nonprofit_id !== $org->id) {
-            abort(403, 'Invalid listing selection.');
+        if ($requestedListing->nonprofit_id === $org->id) {
+            abort(403, 'You cannot request your own listing.');
         }
 
-        $delta = $this->settlementService->computeDelta($requestedListing, $returnListing);
-        $extra = (int) ($validated['extra_points'] ?? 0);
-        $pointsDelta = $delta + $extra;
+        $returnListingId = null;
+        $pointsDelta = 0;
+
+        if (! empty($validated['return_listing_id'])) {
+            // Trade: offer one of your listings (optional extra points)
+            $returnListing = NonprofitBarterListing::findOrFail($validated['return_listing_id']);
+            if ($returnListing->nonprofit_id !== $org->id) {
+                abort(403, 'Return listing must be one of your listings.');
+            }
+            $returnListingId = $returnListing->id;
+            $delta = $this->settlementService->computeDelta($requestedListing, $returnListing);
+            $extra = (int) ($validated['extra_points'] ?? 0);
+            $pointsDelta = $delta + $extra;
+        } else {
+            // Points only: pay the listing's points value (no trade)
+            $pointsOffer = (int) ($validated['points_offer'] ?? 0);
+            $required = (int) $requestedListing->points_value;
+            if ($pointsOffer < $required) {
+                return redirect()->back()->withErrors([
+                    'points_offer' => "This listing requires {$required} Believe Points. Enter at least {$required} to pay with points only.",
+                ]);
+            }
+            $pointsDelta = $required;
+            $user = $org->user;
+            if (! $user || $user->currentBelievePoints() < $pointsDelta) {
+                return redirect()->back()->withErrors([
+                    'points_offer' => 'Insufficient Believe Points balance to complete this request.',
+                ]);
+            }
+        }
 
         NonprofitBarterTransaction::create([
             'requesting_nonprofit_id' => $org->id,
             'responding_nonprofit_id' => $requestedListing->nonprofit_id,
             'requested_listing_id' => $requestedListing->id,
-            'return_listing_id' => $returnListing->id,
+            'return_listing_id' => $returnListingId,
             'points_delta' => $pointsDelta,
             'status' => NonprofitBarterTransaction::STATUS_PENDING,
         ]);

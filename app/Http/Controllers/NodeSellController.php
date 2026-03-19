@@ -51,7 +51,7 @@ class NodeSellController extends Controller
         return Inertia::render('frontend/nodeboss/buy-nodeboss', [
             'nodeBoss' => $nodeBoss,
             'openShares' => $openShares,
-            'stripeKey' => config('cashier.key'),
+            'stripeKey' => \App\Services\StripeConfigService::getPublishableKey() ?? config('cashier.key'),
             'statistics' => [
                 'total_target_amount' => $totalTargetAmount,
                 'total_sold_amount' => $totalSoldAmount,

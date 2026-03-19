@@ -3,10 +3,9 @@
 import { useEffect, useState } from "react"
 import AppLayout from "@/layouts/app-layout"
 import { Head, Link, router, usePage } from "@inertiajs/react"
-import { route } from "ziggy-js"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Youtube, ExternalLink, ArrowLeft, ThumbsUp, MessageCircle, Share2, Eye } from "lucide-react"
+import { Youtube, ExternalLink, ArrowLeft, ThumbsUp, MessageCircle, Share2, Eye, Cloud } from "lucide-react"
 import { toast } from "react-hot-toast"
 import { ChannelPageContent } from "@/components/frontend/ChannelPageContent"
 
@@ -70,15 +69,15 @@ interface Props {
   youtube_channel_url: string | null
   youtube_redirect_uri?: string | null
   channel_page?: ChannelPageData | null
+  is_supporter?: boolean
 }
 
-export default function IntegrationsYouTube({ youtube_channel_url, youtube_redirect_uri, channel_page }: Props) {
+export default function IntegrationsYouTube({ youtube_channel_url, youtube_redirect_uri, channel_page, is_supporter = false }: Props) {
   const { flash } = usePage().props as { flash?: { success?: string; error?: string } }
+  const youtubePageRoute = is_supporter ? route("integrations.youtube.connect") : route("integrations.youtube")
+  const ownerLabel = is_supporter ? "your" : "your organization's"
 
-  useEffect(() => {
-    if (flash?.success) toast.success(flash.success)
-    if (flash?.error) toast.error(flash.error)
-  }, [flash?.success, flash?.error])
+  // Flash toasts shown by app-layout; do not duplicate here.
 
   const isConnected = !!youtube_channel_url
   const showChannelFull = isConnected && channel_page
@@ -90,7 +89,7 @@ export default function IntegrationsYouTube({ youtube_channel_url, youtube_redir
         <div className="w-full bg-background min-h-screen">
           <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 py-3 flex flex-wrap items-center justify-between gap-3 border-b border-border">
             <Link
-              href={route("integrations.youtube")}
+              href={youtubePageRoute}
               className="inline-flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
             >
               <ArrowLeft className="w-4 h-4 shrink-0" />
@@ -98,7 +97,7 @@ export default function IntegrationsYouTube({ youtube_channel_url, youtube_redir
             </Link>
             <div className="flex items-center gap-3">
               <a
-                href={`/community-videos/channel/${channel_page.channel.slug}`}
+                href={`/unity-videos/channel/${channel_page.channel.slug}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-sm font-medium text-primary hover:underline inline-flex items-center gap-1.5"
@@ -167,17 +166,28 @@ export default function IntegrationsYouTube({ youtube_channel_url, youtube_redir
           <div>
             <h1 className="text-2xl font-bold text-foreground">YouTube Integration</h1>
             <p className="text-muted-foreground text-sm">
-              Connect your YouTube channel so your videos appear on Community Videos
+              Connect your YouTube channel so your videos appear on Unity Videos
             </p>
           </div>
+        </div>
+
+        <div className="mb-6 flex items-center gap-2 text-sm text-muted-foreground">
+          <span>Integrations:</span>
+          <Link href={youtubePageRoute} className="font-medium text-foreground hover:underline">YouTube</Link>
+          <span>·</span>
+          <Link href={route("integrations.dropbox")} className="font-medium text-foreground hover:underline inline-flex items-center gap-1">
+            <Cloud className="w-4 h-4" />
+            Dropbox (recordings)
+          </Link>
         </div>
 
         {isConnected ? (
           <Card className="border-border bg-card">
             <CardHeader>
               <CardTitle className="text-lg">Channel connected</CardTitle>
-              <CardDescription>
-                      Your YouTube channel is linked. Videos from this channel are shown on your organization’s Community Videos page.
+<CardDescription>
+                Your YouTube channel is linked. Videos from this channel are shown on {is_supporter ? "your" : "your organization's"} Unity Videos page.
+                {is_supporter && " You can disconnect your channel below at any time."}
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -192,7 +202,7 @@ export default function IntegrationsYouTube({ youtube_channel_url, youtube_redir
                 Connect your channel
               </CardTitle>
               <CardDescription>
-                Click the button below to sign in with Google and connect your YouTube channel. Your channel’s videos will then appear on your organization’s Community Videos page.
+                Click the button below to sign in with Google and connect your YouTube channel. Your channel's videos will then appear on {is_supporter ? "your" : "your organization's"} Unity Videos page.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
@@ -204,6 +214,10 @@ export default function IntegrationsYouTube({ youtube_channel_url, youtube_redir
                 <a
                   href={route("integrations.youtube.redirect")}
                   className="inline-flex items-center gap-2"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    window.location.href = route("integrations.youtube.redirect");
+                  }}
                 >
                   <Youtube className="w-5 h-5" />
                   Connect with YouTube
@@ -235,7 +249,7 @@ function DisconnectButton() {
   const [disconnecting, setDisconnecting] = useState(false)
 
   const handleDisconnect = () => {
-    if (!confirm("Disconnect your YouTube channel? Your videos will no longer appear on Community Videos.")) return
+    if (!confirm("Disconnect your YouTube channel? Your videos will no longer appear on Unity Videos.")) return
     setDisconnecting(true)
     router.put(route("integrations.youtube.update"), { youtube_channel_url: null }, {
       preserveScroll: true,

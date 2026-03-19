@@ -96,11 +96,7 @@ export default function AdminExemptionCertificateShow({ certificate }: PageProps
   const [rejectNotes, setRejectNotes] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
 
-  React.useEffect(() => {
-    if (flash?.success) {
-      showSuccessToast(flash.success)
-    }
-  }, [flash])
+  // Flash toasts shown by app-layout; do not duplicate here.
 
   const handleApprove = () => {
     setIsSubmitting(true)

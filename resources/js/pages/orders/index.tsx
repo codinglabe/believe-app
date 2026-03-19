@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import axios from 'axios';
-import { Plus, Edit, Trash2, LayoutGrid, Search, X, Eye, CreditCard, Package } from 'lucide-react';
+import { Plus, Edit, Trash2, LayoutGrid, Search, X, Eye, CreditCard, Package, Truck, FileDown, ExternalLink } from 'lucide-react';
 import { showErrorToast, showSuccessToast } from '@/lib/toast';
 import AppLayout from "@/layouts/app-layout"
 import type { BreadcrumbItem } from "@/types"
@@ -19,6 +19,16 @@ const breadcrumbs: BreadcrumbItem[] = [
     },
 ]
 
+interface ShippoRate {
+    object_id: string;
+    provider: string;
+    servicelevel: { name?: string };
+    amount: string;
+    currency: string;
+    estimated_days: number | null;
+    duration_terms?: string;
+}
+
 interface Category {
     id: number;
     reference_number: string;
@@ -30,6 +40,12 @@ interface Category {
     product_type?: string;
     has_manual_product?: boolean;
     is_printify_order?: boolean;
+    can_create_shippo_label?: boolean;
+    tracking_number?: string | null;
+    tracking_url?: string | null;
+    label_url?: string | null;
+    shipping_status?: string | null;
+    carrier?: string | null;
 }
 
 interface Props {
@@ -59,6 +75,15 @@ export default function Index({ orders, filters, allowedPerPage }: Props) {
     const [searchTerm, setSearchTerm] = useState(filters.search);
     const [searchTimeout, setSearchTimeout] = useState<NodeJS.Timeout | null>(null);
     const [updatingStatus, setUpdatingStatus] = useState<number | null>(null);
+
+    const [shippoModalOpen, setShippoModalOpen] = useState(false);
+    const [shippoOrder, setShippoOrder] = useState<Category | null>(null);
+    const [shippoRates, setShippoRates] = useState<ShippoRate[]>([]);
+    const [shippoRatesLoading, setShippoRatesLoading] = useState(false);
+    const [shippoPurchaseLoading, setShippoPurchaseLoading] = useState(false);
+    const [selectedRateId, setSelectedRateId] = useState<string | null>(null);
+    const [shippoError, setShippoError] = useState<string | null>(null);
+    const [purchaseResult, setPurchaseResult] = useState<{ label_url: string; tracking_number: string; tracking_url: string | null; carrier: string | null } | null>(null);
 
     const handleDelete = (item: Category) => {
         setItemToDelete(item);
@@ -168,6 +193,61 @@ export default function Index({ orders, filters, allowedPerPage }: Props) {
                 onFinish: () => setLoading(false),
             },
         );
+    };
+
+    const openShippoModal = async (order: Category) => {
+        setShippoOrder(order);
+        setShippoModalOpen(true);
+        setShippoRates([]);
+        setSelectedRateId(null);
+        setShippoError(null);
+        setPurchaseResult(null);
+        setShippoRatesLoading(true);
+        try {
+            const { data } = await axios.get(route('orders.shippo.rates', { order: order.id }));
+            setShippoRates(data.rates || []);
+            if ((data.rates?.length ?? 0) === 0) {
+                setShippoError('No shipping rates available for this address.');
+            }
+        } catch (err: any) {
+            setShippoError(err.response?.data?.error || 'Failed to load shipping rates.');
+            setShippoRates([]);
+        } finally {
+            setShippoRatesLoading(false);
+        }
+    };
+
+    const closeShippoModal = () => {
+        setShippoModalOpen(false);
+        setShippoOrder(null);
+        setShippoRates([]);
+        setSelectedRateId(null);
+        setShippoError(null);
+        setPurchaseResult(null);
+        router.reload({ only: ['orders'] });
+    };
+
+    const purchaseShippoLabel = async () => {
+        if (!shippoOrder || !selectedRateId) return;
+        setShippoPurchaseLoading(true);
+        setShippoError(null);
+        try {
+            const { data } = await axios.post(route('orders.shippo.purchase-label', { order: shippoOrder.id }), {
+                rate_object_id: selectedRateId,
+            });
+            setPurchaseResult({
+                label_url: data.label_url || '',
+                tracking_number: data.tracking_number || '',
+                tracking_url: data.tracking_url || null,
+                carrier: data.carrier || null,
+            });
+            showSuccessToast('Shipping label created successfully.');
+        } catch (err: any) {
+            setShippoError(err.response?.data?.error || 'Failed to purchase label.');
+            showErrorToast(err.response?.data?.error || 'Failed to purchase label.');
+        } finally {
+            setShippoPurchaseLoading(false);
+        }
     };
 
     return (
@@ -316,7 +396,26 @@ export default function Index({ orders, filters, allowedPerPage }: Props) {
                                             </td>
 
                                             <td className="px-4 py-3 min-w-28 text-right w-[1%] whitespace-nowrap">
-                                                <div className="flex justify-end gap-2">
+                                                <div className="flex justify-end gap-2 flex-wrap">
+                                                    {item.tracking_number && (
+                                                        <a
+                                                            href={item.tracking_url || '#'}
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
+                                                        >
+                                                            <Truck className="h-4 w-4" />
+                                                            Track
+                                                        </a>
+                                                    )}
+                                                    {item.can_create_shippo_label && (
+                                                        <PermissionButton permission="ecommerce.update">
+                                                            <Button variant="secondary" size="sm" onClick={() => openShippoModal(item)}>
+                                                                <FileDown className="mr-2 h-4 w-4" />
+                                                                Create label
+                                                            </Button>
+                                                        </PermissionButton>
+                                                    )}
                                                     <PermissionButton permission="ecommerce.read">
                                                         <Link href={route('orders.show', item.id)}>
                                                             <Button variant="outline" size="sm">
@@ -415,7 +514,131 @@ export default function Index({ orders, filters, allowedPerPage }: Props) {
                             </Button>
                         </DialogFooter>
                     </DialogContent>
-                </Dialog> */}
+                                </Dialog> */}
+
+                {/* Shippo: Create shipping label */}
+                <Dialog open={shippoModalOpen} onOpenChange={(open) => !open && closeShippoModal()}>
+                    <DialogContent className="max-w-lg">
+                        <DialogHeader>
+                            <DialogTitle>Create shipping label</DialogTitle>
+                            <DialogDescription>
+                                {shippoOrder && (
+                                    <>Order <strong>{shippoOrder.reference_number}</strong></>
+                                )}
+                            </DialogDescription>
+                        </DialogHeader>
+                        <div className="space-y-4 py-2">
+                            {shippoError && (
+                                <p className="text-sm text-destructive bg-destructive/10 px-3 py-2 rounded">{shippoError}</p>
+                            )}
+                            {purchaseResult ? (
+                                <div className="space-y-3 rounded-lg border p-4 bg-muted/30">
+                                    <p className="font-medium text-green-600 dark:text-green-400">Label created successfully</p>
+                                    {purchaseResult.tracking_number && (
+                                        <p className="text-sm">Tracking: <strong>{purchaseResult.tracking_number}</strong></p>
+                                    )}
+                                    {purchaseResult.carrier && (
+                                        <p className="text-sm text-muted-foreground">Carrier: {purchaseResult.carrier}</p>
+                                    )}
+                                    <div className="flex gap-2 flex-wrap">
+                                        {purchaseResult.label_url && (
+                                            <a
+                                                href={purchaseResult.label_url}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
+                                            >
+                                                <FileDown className="h-4 w-4" /> Download label
+                                            </a>
+                                        )}
+                                        {purchaseResult.tracking_url && (
+                                            <a
+                                                href={purchaseResult.tracking_url}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
+                                            >
+                                                <ExternalLink className="h-4 w-4" /> Track shipment
+                                            </a>
+                                        )}
+                                    </div>
+                                </div>
+                            ) : (
+                                <>
+                                    {shippoRatesLoading ? (
+                                        <div className="flex items-center gap-2 py-4 text-muted-foreground">
+                                            <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                                            Loading rates…
+                                        </div>
+                                    ) : (
+                                        <>
+                                            <div className="space-y-2 max-h-60 overflow-y-auto">
+                                            {shippoRates.map((rate) => {
+                                                const name = typeof rate.servicelevel === 'object' && rate.servicelevel?.name
+                                                    ? rate.servicelevel.name
+                                                    : `${rate.provider} rate`;
+                                                const isSelected = selectedRateId === rate.object_id;
+                                                return (
+                                                    <label
+                                                        key={rate.object_id}
+                                                        className={`flex items-center justify-between gap-4 p-3 rounded-lg border cursor-pointer transition ${
+                                                            isSelected ? 'border-primary bg-primary/5' : 'hover:bg-muted/50'
+                                                        }`}
+                                                    >
+                                                        <input
+                                                            type="radio"
+                                                            name="shippo_rate"
+                                                            checked={isSelected}
+                                                            onChange={() => setSelectedRateId(rate.object_id)}
+                                                            className="sr-only"
+                                                        />
+                                                        <div>
+                                                            <span className="font-medium">{name}</span>
+                                                            {rate.estimated_days != null && (
+                                                                <span className="text-muted-foreground text-sm ml-2">
+                                                                    {rate.estimated_days} day(s)
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                        <span className="font-medium">
+                                                            ${Number(rate.amount).toFixed(2)} {rate.currency}
+                                                        </span>
+                                                    </label>
+                                                );
+                                            })}
+                                        </div>
+                                        {shippoRates.length > 0 && (
+                                            <DialogFooter>
+                                                <Button variant="outline" onClick={closeShippoModal}>
+                                                    Cancel
+                                                </Button>
+                                                <Button
+                                                    onClick={purchaseShippoLabel}
+                                                    disabled={!selectedRateId || shippoPurchaseLoading}
+                                                >
+                                                    {shippoPurchaseLoading ? (
+                                                        <>
+                                                            <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent inline-block mr-2" />
+                                                            Purchasing…
+                                                        </>
+                                                    ) : (
+                                                        'Buy label'
+                                                    )}
+                                                </Button>
+                                            </DialogFooter>
+                                        )}
+                                            </>
+                                    )}
+                                </>
+                            )}
+                        </div>
+                        {purchaseResult && (
+                            <DialogFooter>
+                                <Button onClick={closeShippoModal}>Done</Button>
+                            </DialogFooter>
+                        )}
+                    </DialogContent>
+                </Dialog>
             </div>
         </AppLayout>
     );

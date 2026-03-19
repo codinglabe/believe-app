@@ -129,7 +129,7 @@ const TermsOfService = () => {
                                     If you have any questions about these Terms, please contact us at:
                                 </p>
                                 <p className="text-lg font-semibold text-gray-900 dark:text-white mt-2">
-                                    legal@501c3ers.com
+                                    wendhi@stuttiegroup.com
                                 </p>
                             </div>
                         </section>

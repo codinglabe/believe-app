@@ -86,7 +86,7 @@ export default function ApplicationSettings({ cache_stats, storage_stats, footer
   const [terminalLines, setTerminalLines] = useState<TerminalLine[]>([])
   const [showTerminal, setShowTerminal] = useState(false)
   const [clearType, setClearType] = useState<'all' | 'cache' | 'config' | 'route' | 'view'>('all')
-  
+
   // Footer settings form
   const { data: footerData, setData: setFooterData, post: postFooter, processing: isSavingFooter, errors: footerErrors } = useForm<FooterSettings>({
     description: footer_settings?.description || '',
@@ -184,7 +184,7 @@ export default function ApplicationSettings({ cache_stats, storage_stats, footer
           }
         })
         addTerminalLine('success', 'Cache cleared successfully!')
-        
+
         // Refresh page to update stats
         setTimeout(() => {
           router.reload({ only: ['cache_stats', 'storage_stats'] })
@@ -205,7 +205,7 @@ export default function ApplicationSettings({ cache_stats, storage_stats, footer
 
   const handleFooterSave = (e: React.FormEvent) => {
     e.preventDefault()
-    
+
     postFooter(route('application.footer.update'), {
       preserveScroll: true,
       onSuccess: () => {
@@ -226,7 +226,7 @@ export default function ApplicationSettings({ cache_stats, storage_stats, footer
   }
 
   const updateQuickLink = (index: number, field: 'title' | 'url', value: string) => {
-    const updatedLinks = footerData.quick_links?.map((link, i) => 
+    const updatedLinks = footerData.quick_links?.map((link, i) =>
       i === index ? { ...link, [field]: value } : link
     ) || []
     setFooterData('quick_links', updatedLinks)
@@ -241,7 +241,7 @@ export default function ApplicationSettings({ cache_stats, storage_stats, footer
   }
 
   const updateLegalLink = (index: number, field: 'title' | 'url', value: string) => {
-    const updatedLinks = footerData.legal_links?.map((link, i) => 
+    const updatedLinks = footerData.legal_links?.map((link, i) =>
       i === index ? { ...link, [field]: value } : link
     ) || []
     setFooterData('legal_links', updatedLinks)
@@ -543,7 +543,7 @@ export default function ApplicationSettings({ cache_stats, storage_stats, footer
           <Alert className="border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/20">
             <Sparkles className="h-4 w-4 text-blue-600 dark:text-blue-400" />
             <AlertDescription className="text-blue-800 dark:text-blue-200">
-              <strong>Tip:</strong> Optimize your application regularly to maintain peak performance. 
+              <strong>Tip:</strong> Optimize your application regularly to maintain peak performance.
               Clear caches when you make configuration changes or after deployments.
             </AlertDescription>
           </Alert>
@@ -678,7 +678,7 @@ export default function ApplicationSettings({ cache_stats, storage_stats, footer
                         type="email"
                         value={footerData.contact_email || ''}
                         onChange={(e) => setFooterData(prev => ({ ...prev, contact_email: e.target.value }))}
-                        placeholder="support@example.com"
+                        placeholder="wendhi@stuttiegroup.com"
                       />
                     </div>
                     <div className="space-y-2">

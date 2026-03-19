@@ -18,6 +18,9 @@ Schedule::command('irs:bmf:import --update-only --chunk=1000')
 
 Schedule::command('rss:warm-nonprofit')->everyFifteenMinutes();
 
+// Warm Unity Videos cache so /unity-videos loads quickly on first visit
+Schedule::command('unity-videos:warm-cache')->everyFiveMinutes();
+
 Schedule::command("model:prune", ['--model' => [\App\Models\SendJob::class]])->daily()->at("03:00")->withoutOverlapping()->runInBackground();
 
 
@@ -58,7 +61,8 @@ Schedule::command('irs:check-form990-filings --notify')
     ->runInBackground();
 
 // Sync IRS Form 990 board/officer members (for org claim matching). Monthly is enough — IRS data updates annually.
-Schedule::command('irs:sync-board-members')
+// Uses --queue so it only dispatches jobs; a queue worker (--queue=irs-import) must be running to process them.
+Schedule::command('irs:sync-board-members --queue')
     ->monthly()
     ->at('04:00')
     ->withoutOverlapping()

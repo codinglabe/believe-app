@@ -13,8 +13,6 @@ import {
   Gift,
   Star,
   Check,
-  Share2,
-  Heart,
   ShoppingBag,
   DollarSign,
   TrendingUp,
@@ -23,7 +21,8 @@ import {
   CheckCircle2,
   X,
   QrCode,
-  Globe
+  Globe,
+  Copy
 } from 'lucide-react'
 import { usePage } from '@inertiajs/react'
 import QRCodeModal from '@/components/frontend/QRCodeModal'
@@ -45,6 +44,11 @@ interface Offer {
   images?: string[]
   pointsRequired: number
   cashRequired?: number
+  referencePrice?: number | null
+  discountAmount?: number
+  customerPriceWithPoints?: number
+  communityCashPrice?: number | null
+  currency?: string
   merchantName: string
   merchantWebsite?: string | null
   merchantId?: string
@@ -64,6 +68,7 @@ interface Offer {
 
 interface RedemptionEligibility {
   canRedeem: boolean
+  canPayWithCash?: boolean
   reason: string | null
   userPoints: number
   monthlyPointsRedeemed: number
@@ -80,11 +85,11 @@ interface Props {
 export default function OfferDetail({ offerId, offer: initialOffer, relatedOffers: initialRelatedOffers = [], redemptionEligibility: initialRedemptionEligibility }: Props) {
   const { auth, errors, redemption_success } = usePage().props as any
   const [selectedImageIndex, setSelectedImageIndex] = useState(0)
-  const [isFavorite, setIsFavorite] = useState(false)
   const [isRedeeming, setIsRedeeming] = useState(false)
   const [showSuccessModal, setShowSuccessModal] = useState(false)
   const [redemptionData, setRedemptionData] = useState<any>(null)
   const [showQRModal, setShowQRModal] = useState(false)
+  const [shareLinkCopied, setShareLinkCopied] = useState(false)
   
   const redemptionEligibility: RedemptionEligibility = initialRedemptionEligibility || {
     canRedeem: true,
@@ -92,6 +97,13 @@ export default function OfferDetail({ offerId, offer: initialOffer, relatedOffer
     userPoints: 0,
     monthlyPointsRedeemed: 0,
     hasExistingRedemption: false,
+  }
+
+  // Normalize image URL so storage paths work locally
+  const offerImageSrc = (src: string | undefined): string => {
+    if (!src || src === '/placeholder.jpg') return src || '/placeholder.jpg'
+    if (src.startsWith('http') || src.startsWith('//') || src.startsWith('/storage')) return src
+    return '/storage/' + src.replace(/^\//, '')
   }
 
   // Use real offer data from props
@@ -171,46 +183,32 @@ export default function OfferDetail({ offerId, offer: initialOffer, relatedOffer
     }
   }, [redemption_success, showSuccessModal])
 
-  const handleRedeem = async () => {
+  const handleRedeem = async (paymentMethod: 'points' | 'cash' = 'points') => {
     if (!auth?.user) {
       router.visit('/login')
       return
     }
-
-    // Don't proceed if not eligible
-    if (!canRedeem) {
+    if (paymentMethod === 'points' && !canRedeem) {
       return
     }
 
     setIsRedeeming(true)
     router.post('/merchant-hub/redeem', {
       offer_id: offer.id,
+      payment_method: paymentMethod,
     }, {
       preserveScroll: true,
       onSuccess: () => {
         setIsRedeeming(false)
-        // Success will be handled by useEffect when redemption_success is available
+        // For cash, server redirects to Stripe; browser follows. For points, redemption_success may be set.
       },
-      onError: (errors) => {
+      onError: () => {
         setIsRedeeming(false)
-        // Error will be displayed via Inertia error handling
       },
       onFinish: () => {
         setIsRedeeming(false)
       }
     })
-  }
-
-  const handleShare = () => {
-    if (navigator.share) {
-      navigator.share({
-        title: offer.title,
-        text: offer.description,
-        url: window.location.href,
-      })
-    } else {
-      navigator.clipboard.writeText(window.location.href)
-    }
   }
 
   const metaDescription = offer.description ? String(offer.description).slice(0, 160) : undefined;
@@ -241,7 +239,7 @@ export default function OfferDetail({ offerId, offer: initialOffer, relatedOffer
               <Card className="overflow-hidden">
                 <div className="relative aspect-[4/3] w-full bg-muted max-h-[500px]">
                   <img
-                    src={images[selectedImageIndex] || offer.image}
+                    src={offerImageSrc(images[selectedImageIndex] || offer.image)}
                     alt={offer.title}
                     className="w-full h-full object-contain"
                     onError={(e) => {
@@ -268,24 +266,6 @@ export default function OfferDetail({ offerId, offer: initialOffer, relatedOffer
                       </Button>
                     </>
                   )}
-                  <div className="absolute top-4 right-4 flex gap-2">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="bg-black/50 hover:bg-black/70 text-white"
-                      onClick={() => setIsFavorite(!isFavorite)}
-                    >
-                      <Heart className={`h-4 w-4 ${isFavorite ? 'fill-red-500 text-red-500' : ''}`} />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="bg-black/50 hover:bg-black/70 text-white"
-                      onClick={handleShare}
-                    >
-                      <Share2 className="h-4 w-4" />
-                    </Button>
-                  </div>
                 </div>
               </Card>
 
@@ -380,46 +360,60 @@ export default function OfferDetail({ offerId, offer: initialOffer, relatedOffer
                       </div>
                     </div>
 
-                    {/* Pricing Breakdown - ALWAYS show if cashRequired exists */}
-                    {(offer.pricingBreakdown || offer.cashRequired) && (() => {
-                      // Use pricingBreakdown if available, otherwise calculate from cashRequired
-                      const regularPrice = offer.pricingBreakdown?.regularPrice ?? offer.cashRequired ?? 0;
-                      const discountPercentage = offer.pricingBreakdown?.discountPercentage ?? offer.discountPercentage ?? 10;
-                      const discountAmount = offer.pricingBreakdown?.discountAmount ?? (regularPrice * discountPercentage / 100);
-                      const discountPrice = offer.pricingBreakdown?.discountPrice ?? (regularPrice - discountAmount);
+                    {/* Pricing Breakdown - organized card with both percentage calculations */}
+                    {(offer.pricingBreakdown || offer.cashRequired || (offer.referencePrice != null && offer.referencePrice > 0) || (offer.communityCashPrice != null && offer.communityCashPrice > 0)) && (() => {
+                      const currency = offer.currency || 'USD';
+                      const regularPrice = offer.pricingBreakdown?.regularPrice ?? offer.cashRequired ?? offer.referencePrice ?? 0;
+                      const pointsDiscountPct = offer.pricingBreakdown?.discountPercentage ?? offer.discountPercentage ?? 10;
+                      const pointsDiscountAmount = offer.pricingBreakdown?.discountAmount ?? offer.discountAmount ?? (regularPrice * pointsDiscountPct / 100);
+                      const youPayWithPoints = offer.pricingBreakdown?.discountPrice ?? offer.customerPriceWithPoints ?? (regularPrice - pointsDiscountAmount);
+                      const showPayWithCash = offer.communityCashPrice != null && offer.communityCashPrice > 0;
+                      const youPayWithCash = offer.communityCashPrice ?? 0;
                       
                       return (
-                        <div className="bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 rounded-xl p-4 border border-green-100 dark:border-green-800 space-y-3">
-                          <div className="flex items-center justify-between mb-3">
-                            <span className="text-sm font-medium text-muted-foreground">Regular Price</span>
-                            <DollarSign className="h-4 w-4 text-green-600 dark:text-green-400" />
+                        <div className="rounded-xl border border-green-200 dark:border-green-800 overflow-hidden bg-card">
+                          <div className="px-4 py-3 bg-green-50 dark:bg-green-900/20 border-b border-green-200 dark:border-green-800">
+                            <h4 className="text-sm font-semibold text-green-800 dark:text-green-200">Price breakdown</h4>
                           </div>
-                          <div className="text-2xl font-bold text-gray-900 dark:text-white line-through">
-                            ${regularPrice.toFixed(2)}
-                          </div>
-
-                          <div className="pt-3 border-t border-green-200 dark:border-green-700 space-y-2">
-                            <div className="flex items-center justify-between">
-                              <span className="text-sm font-medium text-muted-foreground">Discount ({discountPercentage}%)</span>
-                              <span className="text-lg font-bold text-green-600 dark:text-green-400">
-                                -${discountAmount.toFixed(2)}
+                          <div className="p-4 space-y-4">
+                            {/* Retail */}
+                            <div className="flex justify-between items-baseline">
+                              <span className="text-sm text-muted-foreground">Retail price</span>
+                              <span className="text-lg font-semibold text-muted-foreground line-through">
+                                {currency} {regularPrice.toFixed(2)}
                               </span>
                             </div>
-                            {offer.pricingBreakdown?.discountCap && (
-                              <p className="text-xs text-muted-foreground">
-                                Max discount: ${offer.pricingBreakdown.discountCap.toFixed(2)}
-                              </p>
-                            )}
-                          </div>
 
-                          <div className="pt-3 border-t border-green-200 dark:border-green-700">
-                            <div className="flex items-center justify-between mb-1">
-                              <span className="text-sm font-medium text-muted-foreground">You Pay</span>
-                              <DollarSign className="h-4 w-4 text-green-600 dark:text-green-400" />
+                            {/* Use points — percentage calculation */}
+                            <div className="rounded-lg bg-blue-50 dark:bg-blue-900/20 p-3 space-y-2 border border-blue-100 dark:border-blue-800/50">
+                              <p className="text-xs font-medium text-blue-700 dark:text-blue-300 uppercase tracking-wide">Use points</p>
+                              <div className="space-y-1.5 text-sm">
+                                <div className="flex justify-between">
+                                  <span className="text-muted-foreground">Discount ({pointsDiscountPct}%)</span>
+                                  <span className="font-medium text-green-600 dark:text-green-400">−{currency} {pointsDiscountAmount.toFixed(2)}</span>
+                                </div>
+                                <div className="flex justify-between pt-1.5 border-t border-blue-200 dark:border-blue-700">
+                                  <span className="font-medium text-foreground">You pay</span>
+                                  <span className="font-bold text-blue-600 dark:text-blue-400">{currency} {youPayWithPoints.toFixed(2)}</span>
+                                </div>
+                              </div>
+                              {offer.pricingBreakdown?.discountCap && (
+                                <p className="text-xs text-muted-foreground pt-1">Max discount: {currency} {offer.pricingBreakdown.discountCap.toFixed(2)}</p>
+                              )}
                             </div>
-                            <div className="text-3xl font-bold text-green-600 dark:text-green-400">
-                              ${discountPrice.toFixed(2)}
-                            </div>
+
+                            {/* Pay with cash — full amount, no discount */}
+                            {showPayWithCash && (
+                              <div className="rounded-lg bg-emerald-50 dark:bg-emerald-900/20 p-3 space-y-2 border border-emerald-100 dark:border-emerald-800/50">
+                                <p className="text-xs font-medium text-emerald-700 dark:text-emerald-300 uppercase tracking-wide">Pay with cash</p>
+                                <div className="space-y-1.5 text-sm">
+                                  <div className="flex justify-between pt-1.5">
+                                    <span className="font-medium text-foreground">You pay</span>
+                                    <span className="font-bold text-emerald-600 dark:text-emerald-400">{currency} {youPayWithCash.toFixed(2)}</span>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
                           </div>
                         </div>
                       );
@@ -436,22 +430,53 @@ export default function OfferDetail({ offerId, offer: initialOffer, relatedOffer
                     </div>
                   )}
 
-                  {/* Redeem Button */}
-                  <Button
-                    onClick={handleRedeem}
-                    disabled={isRedeeming || !canRedeem}
-                    className="w-full h-12 text-lg bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                    size="lg"
-                  >
-                    {isRedeeming ? (
-                      <>Processing...</>
-                    ) : (
-                      <>
-                        <Gift className="h-5 w-5 mr-2" />
-                        Redeem Offer
-                      </>
-                    )}
-                  </Button>
+                  {/* Redeem: points and/or pay with cash (amounts shown in calculation card above) */}
+                  {((offer.referencePrice != null && offer.referencePrice > 0) || (offer.communityCashPrice != null && offer.communityCashPrice > 0)) ? (
+                    <div className="space-y-3">
+                      {redemptionEligibility.userPoints < offer.pointsRequired && (offer.communityCashPrice ?? 0) > 0 && (
+                        <p className="text-sm text-amber-600 dark:text-amber-400">
+                          You have {redemptionEligibility.userPoints.toLocaleString()} points (need {offer.pointsRequired.toLocaleString()}). You can pay the full amount with cash.
+                        </p>
+                      )}
+                      <div className="flex flex-col sm:flex-row gap-2">
+                        <Button
+                          onClick={() => handleRedeem('points')}
+                          disabled={isRedeeming || redemptionEligibility.userPoints < offer.pointsRequired}
+                          className="flex-1 h-12 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 disabled:opacity-50"
+                          size="lg"
+                        >
+                          {isRedeeming ? 'Processing...' : redemptionEligibility.userPoints >= offer.pointsRequired ? `Use ${offer.pointsRequired.toLocaleString()} points` : `Need ${offer.pointsRequired.toLocaleString()} points`}
+                        </Button>
+                        {(offer.communityCashPrice ?? 0) > 0 && (
+                          <Link href={`/merchant-hub/offers/${offer.id}/checkout`}>
+                            <Button
+                              variant="outline"
+                              className="flex-1 h-12 w-full border-green-500 text-green-600 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20"
+                              size="lg"
+                            >
+                              Pay with cash
+                            </Button>
+                          </Link>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    <Button
+                      onClick={() => handleRedeem('points')}
+                      disabled={isRedeeming || !canRedeem}
+                      className="w-full h-12 text-lg bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                      size="lg"
+                    >
+                      {isRedeeming ? (
+                        <>Processing...</>
+                      ) : (
+                        <>
+                          <Gift className="h-5 w-5 mr-2" />
+                          Redeem Offer
+                        </>
+                      )}
+                    </Button>
+                  )}
 
                   {/* Error Messages from Server */}
                   {errors?.error && (
@@ -548,7 +573,7 @@ export default function OfferDetail({ offerId, offer: initialOffer, relatedOffer
                     <Card className="h-full hover:shadow-lg transition-all duration-300 cursor-pointer group">
                       <div className="relative h-48 w-full overflow-hidden rounded-t-lg bg-muted">
                         <img
-                          src={relatedOffer.image || '/placeholder.jpg'}
+                          src={offerImageSrc(relatedOffer.image)}
                           alt={relatedOffer.title}
                           className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
                           onError={(e) => {
@@ -669,6 +694,37 @@ export default function OfferDetail({ offerId, offer: initialOffer, relatedOffer
                     </div>
                   </div>
 
+                  {redemptionData.share_link && (
+                    <div className="rounded-lg border border-emerald-200 dark:border-emerald-800 bg-emerald-50/50 dark:bg-emerald-900/20 p-3">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Gift className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                        <span className="text-sm font-medium text-foreground">Share & earn 500 points</span>
+                      </div>
+                      <p className="text-xs text-muted-foreground mb-2">When someone buys through your link, you get 500 points.</p>
+                      <div className="flex gap-2">
+                        <input
+                          readOnly
+                          value={redemptionData.share_link}
+                          className="flex-1 text-xs px-2 py-1.5 rounded border bg-background"
+                        />
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => {
+                            if (redemptionData.share_link) {
+                              navigator.clipboard.writeText(redemptionData.share_link)
+                              setShareLinkCopied(true)
+                              setTimeout(() => setShareLinkCopied(false), 2000)
+                            }
+                          }}
+                        >
+                          <Copy className="w-3 h-3 mr-1" />
+                          {shareLinkCopied ? 'Copied!' : 'Copy'}
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+
                   <div className="flex gap-3">
                     <Button
                       onClick={() => {
@@ -684,7 +740,7 @@ export default function OfferDetail({ offerId, offer: initialOffer, relatedOffer
                       onClick={() => {
                         setShowSuccessModal(false)
                         // Clear session data after closing modal
-                        router.reload({ 
+                        router.reload({
                           only: [],
                           preserveState: true,
                           preserveScroll: true,

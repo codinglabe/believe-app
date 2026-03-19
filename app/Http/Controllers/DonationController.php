@@ -60,6 +60,33 @@ class DonationController extends Controller
             ];
         });
 
+        // Year-to-date giving and top 3 organizations for logged-in users
+        $thisYearDonated = 0.0;
+        $givingGoal = 1000; // default goal for progress bar
+        $topOrganizations = [];
+        if ($user) {
+            $thisYearDonated = (float) Donation::where('user_id', $user->id)
+                ->whereIn('status', ['completed', 'active'])
+                ->whereYear('donation_date', now()->year)
+                ->sum('amount');
+            $topOrganizations = Donation::where('user_id', $user->id)
+                ->whereIn('status', ['completed', 'active'])
+                ->selectRaw('organization_id, SUM(amount) as total')
+                ->groupBy('organization_id')
+                ->orderByDesc('total')
+                ->take(3)
+                ->with('organization:id,name')
+                ->get()
+                ->map(function ($row) {
+                    return [
+                        'name' => $row->organization?->name ?? 'Unknown',
+                        'total' => (float) $row->total,
+                    ];
+                })
+                ->values()
+                ->all();
+        }
+
         return Inertia::render('frontend/donate', [
             'seo' => SeoService::forPage('donate'),
             'organizations' => $organizations->values(),
@@ -69,7 +96,47 @@ class DonationController extends Controller
                 'email' => $user->email,
             ] : null,
             'searchQuery' => $request->input('search', ''),
+            'thisYearDonated' => $thisYearDonated,
+            'givingGoal' => $givingGoal,
+            'topOrganizations' => $topOrganizations,
         ]);
+    }
+
+    /**
+     * Store a non-cash (in-kind) donation request.
+     * Admin reviews and approves before it becomes official.
+     */
+    public function storeNonCash(Request $request)
+    {
+        $validated = $request->validate([
+            'non_cash_type' => 'required|in:goods,services,stocks_crypto,vehicle,other',
+            'item_name' => 'required|string|max:500',
+            'estimated_fair_market_value' => 'required|numeric|min:0',
+            'condition' => 'nullable|string|max:50',
+            'organization_id' => 'required|exists:organizations,id',
+            'upload_photos' => 'boolean',
+        ]);
+
+        $user = $request->user();
+        $organization = Organization::findOrFail($validated['organization_id']);
+
+        if ($organization->registration_status !== 'approved') {
+            return redirect()->back()->withErrors([
+                'organization_id' => 'The selected organization is not approved for donations.',
+            ]);
+        }
+
+        // TODO: Create NonCashDonationRequest model and store when ready.
+        // For now we acknowledge the request and redirect with success.
+        Log::info('Non-cash donation request received', [
+            'user_id' => $user->id,
+            'organization_id' => $organization->id,
+            'type' => $validated['non_cash_type'],
+            'item_name' => $validated['item_name'],
+            'estimated_value' => $validated['estimated_fair_market_value'],
+        ]);
+
+        return redirect()->back()->with('success', 'Your non-cash donation request has been submitted. We\'ll be in touch shortly.');
     }
 
     /**
@@ -79,7 +146,7 @@ class DonationController extends Controller
     {
         return Inertia::render('Donations/Create', [
             'organization' => $organization,
-            'stripeKey' => config('cashier.key'),
+            'stripeKey' => \App\Services\StripeConfigService::getPublishableKey() ?? config('cashier.key'),
             'user' => $request->user() ? [
                 'name' => $request->user()->name,
                 'email' => $request->user()->email,
@@ -131,8 +198,15 @@ class DonationController extends Controller
         $user = $request->user();
         $amountInCents = (int) ($validated['amount'] * 100);
         $organizationName = $organization->name;
-        if ($user->hasRole(['organization', 'admin'])) {
-            return redirect()->back()->with('warning', 'Please log in with a supporter account to make a donation.');
+        // Supporters and organization users can donate; block admin
+        if ($user->hasRole('admin')) {
+            return redirect()->back()->with('warning', 'Please use a supporter or organization account to make a donation.');
+        }
+
+        // Prevent organization from donating to itself
+        $donorOrg = $user->organization ?? null;
+        if ($donorOrg && (int) $donorOrg->id === (int) $organization->id) {
+            return redirect()->back()->with('warning', 'You cannot donate to your own organization.');
         }
 
         $paymentMethod = $validated['payment_method'] ?? 'stripe';
@@ -295,7 +369,7 @@ class DonationController extends Controller
             $donation = Donation::with(['organization', 'user'])->findOrFail($session->metadata->donation_id);
 
             $user = $donation->user;
-            
+
             // Check payment status from Stripe session
             if ($session->payment_status === 'paid') {
                 if ($session->payment_intent) {
@@ -338,21 +412,21 @@ class DonationController extends Controller
                         // If subscription doesn't exist, retrieve from Stripe and sync using Cashier
                         if (!$subscription->exists) {
                             $stripeSubscription = Cashier::stripe()->subscriptions->retrieve($session->subscription);
-                            
+
                             // Get the price ID from the subscription
                             $priceId = $stripeSubscription->items->data[0]->price->id ?? null;
-                            
+
                             // Use Cashier's subscription model properties
                             $subscription->type = 'donation';
                             $subscription->stripe_id = $stripeSubscription->id;
                             $subscription->stripe_status = $stripeSubscription->status;
                             $subscription->stripe_price = $priceId;
                             $subscription->quantity = $stripeSubscription->items->data[0]->quantity ?? 1;
-                            $subscription->trial_ends_at = $stripeSubscription->trial_end ? 
+                            $subscription->trial_ends_at = $stripeSubscription->trial_end ?
                                 \Carbon\Carbon::createFromTimestamp($stripeSubscription->trial_end) : null;
-                            $subscription->ends_at = $stripeSubscription->cancel_at ? 
+                            $subscription->ends_at = $stripeSubscription->cancel_at ?
                                 \Carbon\Carbon::createFromTimestamp($stripeSubscription->cancel_at) : null;
-                            
+
                             $subscription->save();
 
                             Log::info('Donation subscription stored using Cashier', [
@@ -368,9 +442,9 @@ class DonationController extends Controller
                             $subscription->stripe_status = $stripeSubscription->status;
                             $subscription->stripe_price = $priceId;
                             $subscription->quantity = $stripeSubscription->items->data[0]->quantity ?? 1;
-                            $subscription->trial_ends_at = $stripeSubscription->trial_end ? 
+                            $subscription->trial_ends_at = $stripeSubscription->trial_end ?
                                 \Carbon\Carbon::createFromTimestamp($stripeSubscription->trial_end) : null;
-                            $subscription->ends_at = $stripeSubscription->cancel_at ? 
+                            $subscription->ends_at = $stripeSubscription->cancel_at ?
                                 \Carbon\Carbon::createFromTimestamp($stripeSubscription->cancel_at) : null;
                             $subscription->save();
 

@@ -175,11 +175,7 @@ export default function AdminComplianceShow({ application }: ApplicationProps) {
   const [isUpdatingFee, setIsUpdatingFee] = useState(false)
   const [copiedField, setCopiedField] = useState<string | null>(null)
 
-  React.useEffect(() => {
-    if (flash?.success) {
-      showSuccessToast(flash.success)
-    }
-  }, [flash])
+  // Flash toasts shown by app-layout; do not duplicate here.
 
   const handleCopy = async (text: string, fieldName: string) => {
     if (!text || text === "—" || text === "N/A") return

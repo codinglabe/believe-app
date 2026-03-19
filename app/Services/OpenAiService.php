@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Log;
 class OpenAiService
 {
     protected $apiKey;
+
     protected $apiUrl = 'https://api.openai.com/v1/chat/completions';
 
     public function __construct()
@@ -15,18 +16,28 @@ class OpenAiService
         $this->apiKey = config('services.openai.api_key');
     }
 
+    /**
+     * Base HTTP client for OpenAI requests (respects verify_ssl for local dev SSL issues).
+     */
+    protected function httpClient(): \Illuminate\Http\Client\PendingRequest
+    {
+        $verify = config('services.openai.verify_ssl', true);
+
+        return Http::withOptions(['verify' => $verify])
+            ->withHeaders([
+                'Authorization' => 'Bearer ' . $this->apiKey,
+                'Content-Type' => 'application/json',
+            ])
+            ->timeout(120)
+            ->connectTimeout(30);
+    }
+
     public function generateContent(string $prompt, int $count, string $type): array
     {
         $systemPrompt = $this->buildSystemPrompt($type, $count);
 
         try {
-            $response = Http::withHeaders([
-                'Authorization' => 'Bearer ' . $this->apiKey,
-                'Content-Type' => 'application/json',
-            ])
-                ->timeout(120)
-                ->connectTimeout(30)
-                ->post($this->apiUrl, [
+            $response = $this->httpClient()->post($this->apiUrl, [
                     'model' => 'gpt-3.5-turbo',
                     'messages' => [
                         [
@@ -54,6 +65,7 @@ class OpenAiService
             }
 
             $content = $response->json('choices.0.message.content');
+            $usage = $response->json('usage') ?? [];
 
             if (empty($content)) {
                 throw new \Exception('Empty response from OpenAI');
@@ -68,7 +80,10 @@ class OpenAiService
                 ]);
             }
 
-            return $parsed;
+            return [
+                'items' => $parsed,
+                'total_tokens' => (int) ($usage['total_tokens'] ?? 0),
+            ];
         } catch (\Exception $e) {
             Log::error('OpenAI Service Error', [
                 'message' => $e->getMessage(),
@@ -201,22 +216,21 @@ PROMPT;
         return $validatedItems;
     }
 
-    public function chatCompletion(array $messages): string
+    /**
+     * Chat completion; returns content and actual token usage from the API.
+     *
+     * @return array{content: string, total_tokens: int}
+     */
+    public function chatCompletion(array $messages): array
     {
         try {
-            $response = Http::withHeaders([
-                'Authorization' => 'Bearer ' . $this->apiKey,
-                'Content-Type' => 'application/json',
-            ])
-                ->timeout(120)
-                ->connectTimeout(30)
-                ->post($this->apiUrl, [
-                    'model' => 'gpt-3.5-turbo',
-                    'messages' => $messages,
-                    'temperature' => 0.7,
-                    'max_tokens' => 2000,
-                    'top_p' => 0.9,
-                ]);
+            $response = $this->httpClient()->post($this->apiUrl, [
+                'model' => 'gpt-3.5-turbo',
+                'messages' => $messages,
+                'temperature' => 0.7,
+                'max_tokens' => 2000,
+                'top_p' => 0.9,
+            ]);
 
             if ($response->failed()) {
                 $errorBody = $response->body();
@@ -228,12 +242,17 @@ PROMPT;
             }
 
             $content = $response->json('choices.0.message.content');
+            $usage = $response->json('usage') ?? [];
+            $totalTokens = (int) ($usage['total_tokens'] ?? 0);
 
             if (empty($content)) {
                 throw new \Exception('Empty response from OpenAI');
             }
 
-            return trim($content);
+            return [
+                'content' => trim($content),
+                'total_tokens' => $totalTokens,
+            ];
         } catch (\Exception $e) {
             Log::error('OpenAI Chat Service Error', [
                 'message' => $e->getMessage(),

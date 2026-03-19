@@ -6,6 +6,7 @@ use App\Http\Controllers\AboutPageController;
 use App\Http\Controllers\AdminAboutPageController;
 use App\Http\Controllers\Admin\SeoController as AdminSeoController;
 use App\Http\Controllers\BoardMemberController;
+use App\Http\Controllers\GovernanceComplianceController;
 use App\Http\Controllers\CampaignController;
 use App\Http\Controllers\CartController;
 use App\Http\Controllers\ExcelDataController;
@@ -79,6 +80,8 @@ use App\Http\Controllers\MeetingController;
 use App\Http\Controllers\NonprofitNewsController;
 use App\Http\Controllers\CommunityVideosController;
 use App\Http\Controllers\CommunityVideoEngagementController;
+use App\Http\Controllers\UnityLiveController;
+use App\Http\Controllers\LiveViewController;
 use App\Http\Controllers\SavedNewsController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\OwnershipVerificationController;
@@ -203,19 +206,48 @@ Route::post('/nonprofit-news/save/{article}', [SavedNewsController::class, 'togg
     ->name('nonprofit.news.save.toggle')
     ->middleware('auth');
 
-Route::get('/community-videos', [CommunityVideosController::class, 'index'])->name('community-videos.index');
-Route::get('/community-videos/channel/{slug}', [CommunityVideosController::class, 'channel'])->name('community-videos.channel');
-Route::get('/community-videos/upload', [CommunityVideosController::class, 'upload'])->name('community-videos.upload')->middleware('auth');
+Route::get('/unity-videos', [CommunityVideosController::class, 'index'])->name('unity-videos.index');
+Route::get('/unity-videos/organizations', [CommunityVideosController::class, 'organizations'])->name('unity-videos.organizations');
+Route::get('/unity-videos/channel/{slug}', [CommunityVideosController::class, 'channel'])->name('unity-videos.channel');
+Route::get('/unity-videos/upload', [CommunityVideosController::class, 'upload'])->name('unity-videos.upload')->middleware('auth');
 // More specific route first so /watch/yt/{id} is not matched by /watch/{slug}
-Route::get('/community-videos/watch/yt/{id}', [CommunityVideosController::class, 'showYouTube'])->name('community-videos.show-youtube');
-Route::get('/community-videos/shorts/yt/{id}', [CommunityVideosController::class, 'showShort'])->name('community-videos.show-short');
-Route::get('/community-videos/watch/{slug}', [CommunityVideosController::class, 'show'])->name('community-videos.show');
+Route::get('/unity-videos/watch/yt/{id}', [CommunityVideosController::class, 'showYouTube'])->name('unity-videos.show-youtube');
+Route::get('/unity-videos/shorts/yt/{id}', [CommunityVideosController::class, 'showShort'])->name('unity-videos.show-short');
+Route::get('/unity-videos/watch/{slug}', [CommunityVideosController::class, 'show'])->name('unity-videos.show');
 
-Route::post('/community-videos/engagement/like', [CommunityVideoEngagementController::class, 'like'])->name('community-videos.engagement.like')->middleware('auth');
-Route::post('/community-videos/engagement/view', [CommunityVideoEngagementController::class, 'view'])->name('community-videos.engagement.view')->middleware('auth');
-Route::post('/community-videos/engagement/share', [CommunityVideoEngagementController::class, 'share'])->name('community-videos.engagement.share');
-Route::get('/community-videos/engagement/comments', [CommunityVideoEngagementController::class, 'comments'])->name('community-videos.engagement.comments');
-Route::post('/community-videos/engagement/comments', [CommunityVideoEngagementController::class, 'comment'])->name('community-videos.engagement.comment')->middleware('auth');
+Route::post('/unity-videos/engagement/like', [CommunityVideoEngagementController::class, 'like'])->name('unity-videos.engagement.like')->middleware('auth');
+Route::post('/unity-videos/engagement/view', [CommunityVideoEngagementController::class, 'view'])->name('unity-videos.engagement.view')->middleware('auth');
+Route::post('/unity-videos/engagement/share', [CommunityVideoEngagementController::class, 'share'])->name('unity-videos.engagement.share');
+Route::get('/unity-videos/engagement/comments', [CommunityVideoEngagementController::class, 'comments'])->name('unity-videos.engagement.comments');
+Route::post('/unity-videos/engagement/comments', [CommunityVideoEngagementController::class, 'comment'])->name('unity-videos.engagement.comment')->middleware('auth');
+
+Route::get('/unity-live', [UnityLiveController::class, 'index'])->name('unity-live.index');
+Route::get('/unity-live/{slug}', [UnityLiveController::class, 'show'])->name('unity-live.show')->where('slug', '[a-zA-Z0-9_]+');
+
+// Supporter meeting: same as organization — index, create, edit, delete, room page (VDO.Ninja)
+Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:user'])->group(function () {
+    Route::get('/livestreams/supporter', [\App\Http\Controllers\SupporterLivestreamController::class, 'index'])->name('livestreams.supporter.index');
+    Route::get('/livestreams/supporter/create', [\App\Http\Controllers\SupporterLivestreamController::class, 'create'])->name('livestreams.supporter.create');
+    Route::post('/livestreams/supporter', [\App\Http\Controllers\SupporterLivestreamController::class, 'store'])->name('livestreams.supporter.store');
+    Route::get('/livestreams/supporter/ready/{id}', [\App\Http\Controllers\SupporterLivestreamController::class, 'ready'])->name('livestreams.supporter.ready')->where('id', '[0-9]+');
+    Route::get('/livestreams/supporter/join', [\App\Http\Controllers\SupporterLivestreamController::class, 'joinPage'])->name('livestreams.supporter.join');
+    Route::post('/livestreams/supporter/join', [\App\Http\Controllers\SupporterLivestreamController::class, 'joinWithPasscode'])->name('livestreams.supporter.join.submit');
+    Route::get('/livestreams/supporter/{id}/edit', [\App\Http\Controllers\SupporterLivestreamController::class, 'edit'])->name('livestreams.supporter.edit')->where('id', '[0-9]+');
+    Route::put('/livestreams/supporter/{id}', [\App\Http\Controllers\SupporterLivestreamController::class, 'update'])->name('livestreams.supporter.update')->where('id', '[0-9]+');
+    Route::delete('/livestreams/supporter/{id}', [\App\Http\Controllers\SupporterLivestreamController::class, 'destroy'])->name('livestreams.supporter.destroy')->where('id', '[0-9]+');
+    Route::get('/livestreams/supporter/{id}', [\App\Http\Controllers\SupporterLivestreamController::class, 'show'])->name('livestreams.supporter.show')->where('id', '[0-9]+');
+    Route::post('/livestreams/supporter/{id}/start-meeting', [\App\Http\Controllers\SupporterLivestreamController::class, 'startMeeting'])->name('livestreams.supporter.start-meeting')->where('id', '[0-9]+');
+    Route::post('/livestreams/supporter/{id}/set-live', [\App\Http\Controllers\SupporterLivestreamController::class, 'setLive'])->name('livestreams.supporter.set-live')->where('id', '[0-9]+');
+    Route::post('/livestreams/supporter/{id}/end-stream', [\App\Http\Controllers\SupporterLivestreamController::class, 'endStream'])->name('livestreams.supporter.end-stream')->where('id', '[0-9]+');
+    Route::patch('/livestreams/supporter/{id}/visibility', [\App\Http\Controllers\SupporterLivestreamController::class, 'updateVisibility'])->name('livestreams.supporter.update-visibility')->where('id', '[0-9]+');
+    Route::patch('/livestreams/supporter/{id}/stream-key', [\App\Http\Controllers\SupporterLivestreamController::class, 'updateStreamKey'])->name('livestreams.supporter.update-stream-key')->where('id', '[0-9]+');
+    Route::post('/livestreams/supporter/{id}/go-live-obs-auto', [\App\Http\Controllers\SupporterLivestreamController::class, 'goLiveOBSAuto'])->name('livestreams.supporter.go-live-obs-auto')->where('id', '[0-9]+');
+});
+
+// VDO.Ninja meeting: guest join by secure token (public)
+Route::get('/join/{token}', [\App\Http\Controllers\Organization\LivestreamController::class, 'guestJoinByToken'])->name('livestreams.guest-join-by-token')->where('token', '[a-zA-Z0-9_-]+');
+// Viewer page: /live/{slug} — view-only with Mute + Volume (public, when stream is live)
+Route::get('/live/{slug}', [LiveViewController::class, 'show'])->name('live.show')->where('slug', '[a-zA-Z0-9_]+');
 
 Route::get("/jobs", [JobsController::class, 'index'])->name('jobs.index');
 Route::get("/volunteer-opportunities", [JobsController::class, 'volunteerOpportunities'])->name('volunteer-opportunities.index');
@@ -231,6 +263,24 @@ Route::get('/nodeboss/{id}/buy', [NodeBossController::class, 'frontendShow'])->n
 
 Route::get('/donate', [DonationController::class, 'index'])->name('donate');
 
+Route::get('/pricing', [App\Http\Controllers\PlansController::class, 'pricing'])->name('pricing');
+
+// Support a Project — public landing: Give (FundMe) or Grow (Invest / Wefunder)
+Route::get('/support-a-project', [App\Http\Controllers\FundraiseController::class, 'supportAProject'])->name('support-a-project');
+
+// Public branded funnel: explain → qualify form → redirect to Wefunder (lead capture)
+Route::get('/fundraise', [App\Http\Controllers\FundraiseController::class, 'index'])->name('fundraise');
+Route::post('/fundraise', [App\Http\Controllers\FundraiseController::class, 'store'])->name('fundraise.store');
+// Project applications requested (authenticated supporters can view)
+Route::get('/fundraise/applications', [App\Http\Controllers\FundraiseController::class, 'projectApplications'])->name('fundraise.applications')
+    ->middleware(['auth']);
+// Invest redirect: log click then redirect to Wefunder project URL (auth optional so we can track guest clicks too)
+Route::get('/invest/redirect/{lead}', [App\Http\Controllers\InvestController::class, 'redirect'])->name('invest.redirect')
+    ->where('lead', '[0-9]+');
+// Org-only: Support Community Projects (Donation vs Investment / Wefunder)
+Route::get('/fundraise/community-projects', [App\Http\Controllers\FundraiseController::class, 'communityProjects'])->name('fundraise.community-projects')
+    ->middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|organization_pending']);
+
 // Believe FundMe – public listing and campaign pages
 Route::get('/believe-fundme', [FundMeController::class, 'index'])->name('fundme.index');
 // Thank-you route must come before {slug} to avoid route conflict
@@ -244,6 +294,7 @@ Route::get('/believe-fundme/{slug}', [FundMeController::class, 'show'])->name('f
 /* marketplace */
 Route::get('/marketplace', [MarketplaceController::class, 'index'])->name('marketplace.index');
 Route::get('/product/{product}', [ProductController::class, 'show'])->name('product.show');
+Route::post('/product/{product}/bid', [ProductController::class, 'placeBid'])->name('product.bid')->middleware(['auth', 'EnsureEmailIsVerified']);
 // Note: Public route for products moved after resource routes to avoid conflict with /products/create
 
 /* Service Hub - Fiverr-like service marketplace */
@@ -340,13 +391,18 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin|use
 // Merchant Hub Routes (Public - for viewing offers)
 Route::prefix('merchant-hub')->name('merchant-hub.')->group(function () {
     Route::get('/', [App\Http\Controllers\MerchantHubOfferController::class, 'index'])->name('index');
-
+    // SEO-friendly referral: /merchant-hub/offers/8/ref/ABC123 — stores ref in session, redirects to offer
+    Route::get('/offers/{id}/ref/{refCode}', [App\Http\Controllers\MerchantRedemptionController::class, 'offerRefRedirect'])->name('offer.show.ref');
     Route::get('/offers/{id}', [App\Http\Controllers\MerchantHubOfferController::class, 'show'])->name('offer.show');
 });
 
 // Merchant Hub Redemption Routes (Requires auth)
 Route::middleware(['auth', 'EnsureEmailIsVerified'])->prefix('merchant-hub')->name('merchant-hub.')->group(function () {
+    Route::get('/my-purchases', [App\Http\Controllers\MerchantRedemptionController::class, 'myPurchases'])->name('my-purchases');
+    Route::get('/offers/{id}/checkout', [App\Http\Controllers\MerchantRedemptionController::class, 'checkoutShow'])->name('offer.checkout');
+    Route::post('/checkout', [App\Http\Controllers\MerchantRedemptionController::class, 'checkoutStore'])->name('checkout.store');
     Route::post('/redeem', [App\Http\Controllers\MerchantRedemptionController::class, 'redeem'])->name('redeem');
+    Route::get('/redemption/stripe-success', [App\Http\Controllers\MerchantRedemptionController::class, 'stripeSuccess'])->name('redemption.stripe-success');
     Route::get('/redemption/confirmed/{code?}', [App\Http\Controllers\MerchantRedemptionController::class, 'confirmed'])->name('redemption.confirmed');
     Route::get('/redemption/verify/{code}', [App\Http\Controllers\MerchantRedemptionController::class, 'verify'])->name('redemption.verify');
 });
@@ -478,8 +534,10 @@ Route::get('/organizations/{slug}/impact', [OrganizationController::class, 'impa
 Route::get('/organizations/{slug}/details', [OrganizationController::class, 'details'])->name('organizations.details');
 Route::get('/organizations/{slug}/contact', [OrganizationController::class, 'contact'])->name('organizations.contact');
 
-// Public livestream guest join (no auth required)
-Route::get('/livestreams/join/{roomName}', [\App\Http\Controllers\Organization\LivestreamController::class, 'guestJoin'])->name('livestreams.guest-join');
+// Public livestream guest join (no auth) — registered first so /livestreams/join/{roomName} is not matched by /livestreams/{id}
+Route::get('/livestreams/join/{roomName}', [\App\Http\Controllers\Organization\LivestreamController::class, 'guestJoin'])
+    ->where('roomName', '[a-zA-Z0-9_]+')
+    ->name('livestreams.guest-join');
 
 // API route for inviting unregistered organizations (requires auth)
 Route::middleware(['auth', 'web'])->post('/api/organizations/invite', [OrganizationController::class, 'inviteOrganization'])->name('api.organizations.invite');
@@ -488,6 +546,11 @@ Route::post('/organizations/{id}/generate-mission', [OrganizationController::cla
 
 // API route for dynamic city loading
 Route::get('/api/cities-by-state', [OrganizationController::class, 'getCitiesByState']);
+
+// Giving dashboard (donation history) - available to both supporters and organizations
+Route::middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected'])->group(function () {
+    Route::get('/profile/donations', [UserProfileController::class, 'donations'])->name('profile.donations');
+});
 
 // Profile routes
 Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:user'])->name('user.')->group(function () {
@@ -500,10 +563,13 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:user'])->name('user.')
 
     Route::get('/profile/following', [UserProfileController::class, 'favorites'])->name('profile.favorites');
     Route::delete("/profile/following/{id}", [UserProfileController::class, 'removeFavorite'])->name('profile.favorites.remove');
+    Route::get('/profile/project-applications', [UserProfileController::class, 'profileProjectApplications'])->name('profile.project-applications');
+    Route::get('/profile/project-applications/{lead}', [UserProfileController::class, 'profileProjectApplicationShow'])->name('profile.project-applications.show')->where('lead', '[0-9]+');
 
-    Route::get('/profile/donations', [UserProfileController::class, 'donations'])->name('profile.donations');
     Route::get('/profile/orders', [UserProfileController::class, 'orders'])->name('profile.orders');
     Route::get('/profile/orders/{order}', [UserProfileController::class, 'orderDetails'])->name('profile.order-details');
+    Route::get('/profile/bids', [UserProfileController::class, 'bids'])->name('profile.bids');
+    Route::get('/profile/bid-wins', [UserProfileController::class, 'bidWins'])->name('profile.bid-wins');
     Route::get('/profile/job-applications', [UserProfileController::class, 'jobApplications'])->name('profile.job-applications');
     Route::get('/profile/job-applications/{id}', [UserProfileController::class, 'showJobApplication'])->name('profile.job-applications.show');
     Route::get('/profile/job-applications/{id}/timesheets', [UserProfileController::class, 'getJobApplicationTimesheets'])->name('profile.job-applications.timesheets');
@@ -528,6 +594,8 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:user'])->name('user.')
 
     Route::get("/profile/topics/select", [UsersInterestedTopicsController::class, 'userSelect'])
         ->name('topics.select');
+
+    Route::get('/profile/integrations', [UserProfileController::class, 'integrations'])->name('profile.integrations');
 });
 
 Route::post('/user/topics/store', [UsersInterestedTopicsController::class, 'store'])
@@ -865,15 +933,26 @@ Route::middleware(["auth", 'EnsureEmailIsVerified', 'role:organization', 'topics
 
 Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin|organization_pending', 'topics.selected'])->group(function () {
     Route::get('dashboard', [DashboardController::class, "index"])->name('dashboard');
+    Route::get('dashboard/project-applications', [App\Http\Controllers\FundraiseController::class, 'dashboardProjectApplications'])->name('dashboard.project-applications');
+    Route::put('dashboard/project-applications/{lead}', [App\Http\Controllers\FundraiseController::class, 'updateProjectApplication'])->name('dashboard.project-applications.update')->where('lead', '[0-9]+');
 
     // Organization Livestreams
     Route::prefix('livestreams')->name('organization.livestreams.')->group(function () {
         Route::get('/', [\App\Http\Controllers\Organization\LivestreamController::class, 'index'])->name('index');
         Route::get('/create', [\App\Http\Controllers\Organization\LivestreamController::class, 'create'])->name('create');
         Route::post('/', [\App\Http\Controllers\Organization\LivestreamController::class, 'store'])->name('store');
+        Route::get('/{id}/ready', [\App\Http\Controllers\Organization\LivestreamController::class, 'ready'])->name('ready');
         Route::get('/{id}', [\App\Http\Controllers\Organization\LivestreamController::class, 'show'])->name('show');
+        Route::post('/{id}/start-meeting', [\App\Http\Controllers\Organization\LivestreamController::class, 'startMeeting'])->name('start-meeting');
+        Route::post('/{id}/generate-invite', [\App\Http\Controllers\Organization\LivestreamController::class, 'generateInviteToken'])->name('generate-invite');
+        Route::post('/{id}/go-live', [\App\Http\Controllers\Organization\LivestreamController::class, 'goLive'])->name('go-live');
+        Route::post('/{id}/set-live', [\App\Http\Controllers\Organization\LivestreamController::class, 'setLive'])->name('set-live');
+        Route::post('/{id}/go-live-obs-auto', [\App\Http\Controllers\Organization\LivestreamController::class, 'goLiveOBSAuto'])->name('go-live-obs-auto');
+        Route::post('/{id}/go-live-browser', [\App\Http\Controllers\Organization\LivestreamController::class, 'goLiveBrowser'])->name('go-live-browser');
+        Route::post('/{id}/end-stream', [\App\Http\Controllers\Organization\LivestreamController::class, 'endStream'])->name('end-stream');
         Route::patch('/{id}/status', [\App\Http\Controllers\Organization\LivestreamController::class, 'updateStatus'])->name('update-status');
         Route::patch('/{id}/stream-key', [\App\Http\Controllers\Organization\LivestreamController::class, 'updateStreamKey'])->name('update-stream-key');
+        Route::patch('/{id}/visibility', [\App\Http\Controllers\Organization\LivestreamController::class, 'updateVisibility'])->name('update-visibility');
         Route::delete('/{id}', [\App\Http\Controllers\Organization\LivestreamController::class, 'destroy'])->name('destroy');
     });
 
@@ -915,6 +994,7 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin|org
     });
 
     Route::middleware("role:organization")->group(function () {
+        Route::get('/compliance', [GovernanceComplianceController::class, 'index'])->name('governance.compliance');
         Route::resource('board-members', BoardMemberController::class)
             ->only(['index', 'store', 'update', 'destroy'])
             ->shallow();
@@ -1002,9 +1082,31 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin|org
         'destroy' => 'permission:product.delete'
     ]);
 
+    // Seller / admin: view and manage bids for a product
+    Route::get('/products/{product}/bids', [ProductController::class, 'bidsIndex'])
+        ->name('products.bids.index')
+        ->middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected', 'permission:product.read']);
+    Route::post('/products/{product}/bids/{bid}/cancel', [ProductController::class, 'cancelBid'])
+        ->name('products.bids.cancel')
+        ->middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected', 'permission:product.update']);
+    Route::post('/products/{product}/close-bidding', [ProductController::class, 'closeBidding'])
+        ->name('products.bids.close')
+        ->middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected', 'permission:product.update']);
+    Route::post('/products/{product}/bids/{bid}/pick-winner', [ProductController::class, 'pickWinner'])
+        ->name('products.bids.pick-winner')
+        ->middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected', 'permission:product.update']);
+
     // Admin/Organization show route for managing their products (must come after public route)
     // This route will only be used when user is authenticated and has permission
     Route::get('/products/{id}/manage', [ProductController::class, 'show'])->name('products.show.manage')->middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected', 'permission:product.read']);
+});
+
+// Winner pay flow (auth only; controller checks winner)
+Route::middleware(['auth', 'EnsureEmailIsVerified'])->group(function () {
+    Route::post('/products/{product}/pay-winning-bid', [ProductController::class, 'createWinningBidCheckout'])
+        ->name('products.winning-bid.checkout');
+    Route::get('/products/{product}/winning-bid-success', [ProductController::class, 'winningBidPaymentSuccess'])
+        ->name('products.winning-bid.success');
 });
 
 // Public route for products (plural) - must come AFTER resource routes to avoid conflict with /products/create
@@ -1202,6 +1304,13 @@ Route::get('/products/{id}', [ProductController::class, 'show'])->name('products
     Route::get('/orders/{order}/items-by-organization', [OrderController::class, 'itemsByOrganization'])
         ->name('orders.items-by-organization')
         ->middleware('permission:ecommerce.read');
+
+    Route::get('/orders/{order}/shippo/rates', [OrderController::class, 'getShippoRates'])
+        ->name('orders.shippo.rates')
+        ->middleware('permission:ecommerce.read');
+    Route::post('/orders/{order}/shippo/purchase-label', [OrderController::class, 'purchaseShippoLabel'])
+        ->name('orders.shippo.purchase-label')
+        ->middleware('permission:ecommerce.update');
 
     /* Order Items Routes */
     // Route::resource('order-items', OrderItemController::class)->middleware([
@@ -1550,20 +1659,35 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected'])->group(f
         Route::get('/accounts/{account}/posts', [SocialMediaController::class, 'getPostsByAccount'])->name('accounts.posts');
         Route::get('/posts/{post}/analytics', [SocialMediaController::class, 'getPostAnalytics'])->name('posts.analytics');
     });
-
-    // Integrations (organization only)
-    Route::prefix('integrations')->name('integrations.')->middleware('role:organization')->group(function () {
-        Route::get('/youtube', [IntegrationsController::class, 'youtube'])->name('youtube');
-        Route::get('/youtube/redirect', [IntegrationsController::class, 'redirectToYouTube'])->name('youtube.redirect');
-        Route::get('/youtube/callback', [IntegrationsController::class, 'youtubeCallback'])->name('youtube.callback');
-        Route::put('/youtube', [IntegrationsController::class, 'updateYoutube'])->name('youtube.update');
-    });
 });
 
+// Integrations – Dropbox (organization + supporter)
+Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin|organization_pending|user', 'topics.selected'])->prefix('integrations')->name('integrations.')->group(function () {
+    Route::get('/dropbox', [IntegrationsController::class, 'dropbox'])->name('dropbox');
+    Route::get('/dropbox/search', [IntegrationsController::class, 'searchDropbox'])->name('dropbox.search');
+    Route::get('/dropbox/redirect', [IntegrationsController::class, 'redirectToDropbox'])->name('dropbox.redirect');
+    Route::get('/dropbox/callback', [IntegrationsController::class, 'dropboxCallback'])->name('dropbox.callback');
+    Route::post('/dropbox/disconnect', [IntegrationsController::class, 'disconnectDropbox'])->name('dropbox.disconnect');
+    Route::put('/dropbox/folder', [IntegrationsController::class, 'updateDropboxFolder'])->name('dropbox.folder.update');
+    Route::post('/dropbox/move-recordings', [IntegrationsController::class, 'moveRecordingsToFolder'])->name('dropbox.move-recordings');
+    Route::get('/dropbox/download', [IntegrationsController::class, 'downloadFile'])->name('dropbox.download');
+    Route::delete('/dropbox/file', [IntegrationsController::class, 'deleteFile'])->name('dropbox.file.delete');
+    Route::put('/dropbox/file', [IntegrationsController::class, 'renameFile'])->name('dropbox.file.rename');
+});
+
+// YouTube integration: organization + supporter (outside dashboard group so role:user can access)
+Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|user', 'topics.selected'])->prefix('integrations')->name('integrations.')->group(function () {
+    Route::get('/youtube/connect', [IntegrationsController::class, 'youtubeConnect'])->name('youtube.connect'); // supporter (normal user) only
+    Route::get('/youtube', [IntegrationsController::class, 'youtube'])->name('youtube'); // organization only
+    Route::get('/youtube/redirect', [IntegrationsController::class, 'redirectToYouTube'])->name('youtube.redirect');
+    Route::get('/youtube/callback', [IntegrationsController::class, 'youtubeCallback'])->name('youtube.callback');
+    Route::put('/youtube', [IntegrationsController::class, 'updateYoutube'])->name('youtube.update');
+});
 
 // route for donation
 Route::middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected'])->group(function () {
     Route::post('/donate', [DonationController::class, 'store'])->name('donations.store');
+    Route::post('/donate/non-cash', [DonationController::class, 'storeNonCash'])->name('donations.non-cash.store');
     Route::get('/donations/success', [DonationController::class, 'success'])->name('donations.success');
     Route::get('/donations/cancel', [DonationController::class, 'cancel'])->name('donations.cancel');
 });
@@ -1723,6 +1847,7 @@ Route::prefix('admin/promotional-banners')
         Route::get('/', [App\Http\Controllers\Admin\PromotionalBannerController::class, 'index'])->name('index');
         Route::get('/create', [App\Http\Controllers\Admin\PromotionalBannerController::class, 'create'])->name('create');
         Route::post('/', [App\Http\Controllers\Admin\PromotionalBannerController::class, 'store'])->name('store');
+        Route::patch('/show-on-dashboard', [App\Http\Controllers\Admin\PromotionalBannerController::class, 'toggleShowOnDashboard'])->name('toggle-dashboard');
         Route::get('/{promotionalBanner}/edit', [App\Http\Controllers\Admin\PromotionalBannerController::class, 'edit'])->name('edit');
         Route::put('/{promotionalBanner}', [App\Http\Controllers\Admin\PromotionalBannerController::class, 'update'])->name('update');
         Route::delete('/{promotionalBanner}', [App\Http\Controllers\Admin\PromotionalBannerController::class, 'destroy'])->name('destroy');
@@ -1748,7 +1873,23 @@ Route::prefix('admin/contact-submissions')
         Route::get('/{contactSubmission}', [App\Http\Controllers\Admin\ContactSubmissionController::class, 'show'])->name('show');
         Route::put('/{contactSubmission}/status', [App\Http\Controllers\Admin\ContactSubmissionController::class, 'updateStatus'])->name('update-status');
         Route::delete('/{contactSubmission}', [App\Http\Controllers\Admin\ContactSubmissionController::class, 'destroy'])->name('destroy');
-});
+    });
+
+// Admin IRS Board Members (System Management)
+Route::prefix('admin/irs-members')
+    ->middleware(['auth', 'EnsureEmailIsVerified', 'role:admin', 'topics.selected'])
+    ->name('admin.irs-members.')
+    ->group(function () {
+        Route::get('/', [App\Http\Controllers\Admin\IrsBoardMemberController::class, 'index'])->name('index');
+    });
+
+// Admin Fundraise Leads (qualified leads from /fundraise funnel → Wefunder)
+Route::prefix('admin/fundraise-leads')
+    ->middleware(['auth', 'EnsureEmailIsVerified', 'role:admin', 'topics.selected'])
+    ->name('admin.fundraise-leads.')
+    ->group(function () {
+        Route::get('/', [App\Http\Controllers\Admin\FundraiseLeadController::class, 'index'])->name('index');
+    });
 
 // Admin Plans Management
 Route::prefix('admin/plans')
