@@ -20,8 +20,6 @@ class KioskServiceRequestController extends Controller
     public function store(Request $request): JsonResponse
     {
         $validated = $request->validate([
-            'requester_name' => 'nullable|string|max:120',
-            'requester_email' => 'nullable|email|max:190',
             'state' => 'nullable|string|max:64',
             'city' => 'nullable|string|max:128',
             'category_slug' => 'required|string|max:64|exists:kiosk_categories,slug',
@@ -30,6 +28,14 @@ class KioskServiceRequestController extends Controller
             'url' => 'nullable|string|max:500',
             'details' => 'nullable|string|max:2000',
         ]);
+
+        $user = $request->user();
+        if (! $user) {
+            return response()->json(['ok' => false, 'message' => 'Login required.'], 401);
+        }
+
+        $validated['requester_name'] = $user->name ?? null;
+        $validated['requester_email'] = $user->email ?? null;
 
         $validated['market_code'] = $this->buildMarketCode(
             $validated['state'] ?? null,

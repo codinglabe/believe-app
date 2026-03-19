@@ -192,7 +192,9 @@ Route::post('/contact', [App\Http\Controllers\ContactController::class, 'store']
 
 Route::get('/kiosk', [App\Http\Controllers\KioskController::class, 'index'])->name('kiosk.index');
 Route::get('/kiosk/services', [App\Http\Controllers\KioskController::class, 'services'])->name('kiosk.services');
-Route::post('/kiosk/service-requests', [App\Http\Controllers\KioskServiceRequestController::class, 'store'])->name('kiosk.service-requests.store');
+Route::middleware('auth')->group(function () {
+    Route::post('/kiosk/service-requests', [App\Http\Controllers\KioskServiceRequestController::class, 'store'])->name('kiosk.service-requests.store');
+});
 Route::patch('/kiosk/service-requests/{serviceRequest}/link', [App\Http\Controllers\KioskServiceRequestController::class, 'updateLink'])->name('kiosk.service-requests.update-link');
 
 Route::middleware(['auth', 'EnsureEmailIsVerified'])->prefix('kiosk/dashboard')->name('kiosk.dashboard.')->group(function () {

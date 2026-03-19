@@ -2,7 +2,7 @@
 
 import FrontendLayout from "@/layouts/frontend/frontend-layout"
 import { PageHead } from "@/components/frontend/PageHead"
-import { Link, router } from "@inertiajs/react"
+import { Link, router, usePage } from "@inertiajs/react"
 import { useCallback, useState, useEffect, useRef } from "react"
 import {
   Monitor,
@@ -122,8 +122,6 @@ export default function KioskServices({
 
   const [searchInput, setSearchInput] = useState(filters.search ?? "")
   const [requestForm, setRequestForm] = useState({
-    requester_name: "",
-    requester_email: "",
     display_name: "",
     category_slug: filters.category ?? "",
     subcategory: filters.subcategory ?? "",
@@ -152,6 +150,8 @@ export default function KioskServices({
   const [correctedUrl, setCorrectedUrl] = useState("")
   const [showRequestForm, setShowRequestForm] = useState(false)
   const requestSectionRef = useRef<HTMLDivElement | null>(null)
+  const page = usePage<{ auth?: { user?: { id: number } | null } }>()
+  const isLoggedIn = Boolean(page.props?.auth?.user)
 
   useEffect(() => {
     setSearchInput(filters.search ?? "")
@@ -312,6 +312,10 @@ export default function KioskServices({
             <button
               type="button"
               onClick={() => {
+                if (!isLoggedIn) {
+                  router.visit(route("login"))
+                  return
+                }
                 setShowRequestForm(true)
                 setTimeout(() => {
                   requestSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
@@ -320,7 +324,7 @@ export default function KioskServices({
               className="inline-flex items-center gap-2 rounded-md bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 text-sm font-medium"
             >
               <Send className="h-4 w-4" />
-              Request service
+              {isLoggedIn ? "Request service" : "Login to request"}
             </button>
           </div>
 
@@ -589,18 +593,6 @@ export default function KioskServices({
             </p>
 
             <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              <input
-                className="rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm"
-                placeholder="Your name (optional)"
-                value={requestForm.requester_name}
-                onChange={(e) => setRequestForm((p) => ({ ...p, requester_name: e.target.value }))}
-              />
-              <input
-                className="rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm"
-                placeholder="Your email (optional)"
-                value={requestForm.requester_email}
-                onChange={(e) => setRequestForm((p) => ({ ...p, requester_email: e.target.value }))}
-              />
               <input
                 className="rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm"
                 placeholder="Service name *"
