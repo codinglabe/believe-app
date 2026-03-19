@@ -65,6 +65,7 @@ use App\Http\Controllers\CourseController;
 use App\Http\Controllers\EnrollmentController;
 use App\Http\Controllers\JobApplicationController;
 use App\Http\Controllers\VolunteerController;
+use App\Http\Controllers\SupporterActivityController;
 use App\Http\Controllers\VolunteerTimesheetController;
 use App\Http\Controllers\JobsController;
 use App\Http\Controllers\NodeSellController;
@@ -1190,6 +1191,13 @@ Route::get('/products/{id}', [ProductController::class, 'show'])->name('products
         ->middleware(['role:organization', 'permission:job.posts.read']);
 
     // Volunteers Routes
+    Route::get('supporter-activity', [SupporterActivityController::class, 'index'])
+        ->name('supporter-activity.index')
+        ->middleware(['role:organization|admin', 'permission:dashboard.read']);
+    Route::get('supporter-activity/supporters/{supporter}', [SupporterActivityController::class, 'show'])
+        ->name('supporter-activity.show')
+        ->middleware(['role:organization|admin', 'permission:dashboard.read']);
+
     Route::get('volunteers', [VolunteerController::class, 'index'])
         ->name('volunteers.index')
         ->middleware(['role:organization', 'permission:volunteer.read']);
