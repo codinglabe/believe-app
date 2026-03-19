@@ -213,7 +213,7 @@ class MerchantHubOfferController extends Controller
             'canPayWithCash' => false,
             'reason' => null,
             'userPoints' => 0,
-            'monthlyPointsRedeemed' => 0,
+            'monthlyPointsRedeemed' => 0, // kept for backward compatibility (no longer enforced)
             'hasExistingRedemption' => false,
         ];
 
@@ -222,18 +222,9 @@ class MerchantHubOfferController extends Controller
             // Refresh user to get latest points from database
             $user->refresh();
             $userPoints = (float) ($user->reward_points ?? 0);
-            $merchantId = $offer->merchant_hub_merchant_id;
-            $currentMonth = now()->startOfMonth();
-            $monthlyPointsRedeemed = \App\Models\MerchantHubOfferRedemption::where('user_id', $user->id)
-                ->whereHas('offer', function($q) use ($merchantId) {
-                    $q->where('merchant_hub_merchant_id', $merchantId);
-                })
-                ->where('status', '!=', 'canceled')
-                ->where('created_at', '>=', $currentMonth)
-                ->sum('points_spent');
 
             $redemptionEligibility['userPoints'] = $userPoints;
-            $redemptionEligibility['monthlyPointsRedeemed'] = (int) $monthlyPointsRedeemed;
+            $redemptionEligibility['monthlyPointsRedeemed'] = 0;
             $redemptionEligibility['hasExistingRedemption'] = false;
 
             // Check eligibility (can still pay with cash if not enough points)
@@ -241,30 +232,33 @@ class MerchantHubOfferController extends Controller
                 $redemptionEligibility['canRedeem'] = false;
                 $redemptionEligibility['reason'] = 'This offer is no longer available.';
             } elseif ($userPoints < $offer->points_required) {
-                // Allow redeem via cash even when not enough points (reason explains points shortfall)
-                $redemptionEligibility['canRedeem'] = true;
-                $redemptionEligibility['canPayWithCash'] = true;
-                $redemptionEligibility['reason'] = "You need " . number_format($offer->points_required) . " points for points redemption, but you have " . number_format($userPoints) . ". You can pay with cash below (full amount).";
-            } elseif ($monthlyPointsRedeemed + $offer->points_required > 100) {
-                $remainingPoints = 100 - $monthlyPointsRedeemed;
-                $redemptionEligibility['canRedeem'] = true;
-                $redemptionEligibility['canPayWithCash'] = true;
-                $redemptionEligibility['reason'] = "You can only use up to {$remainingPoints} more points this month at this merchant. You can pay with cash below (full amount).";
+                $cashAvailable = ((float) ($offer->cash_required ?? 0) > 0) || ((float) ($offer->reference_price ?? 0) > 0);
+
+                if ($cashAvailable) {
+                    // Allow redeem via cash even when not enough points (reason explains points shortfall)
+                    $redemptionEligibility['canRedeem'] = true;
+                    $redemptionEligibility['canPayWithCash'] = true;
+                    $redemptionEligibility['reason'] = "You need " . number_format($offer->points_required) . " points to redeem with points, but you have " . number_format($userPoints) . ". You can pay with cash below (full amount).";
+                } else {
+                    // Points-only offer: no monthly cap anymore, but still require enough points.
+                    $redemptionEligibility['canRedeem'] = false;
+                    $redemptionEligibility['reason'] = "You need " . number_format($offer->points_required) . " points to redeem this offer.";
+                }
             }
         }
 
         // Calculate pricing breakdown - ALWAYS show if cash_required exists
         $pricingBreakdown = null;
-        
+
         // Determine discount percentage (default 10% for merchant hub)
         $discountPercentage = 10.0;
         if ($offer->discount_percentage !== null && $offer->discount_percentage > 0) {
             $discountPercentage = (float) $offer->discount_percentage;
         }
-        
+
         $discountCap = $offer->discount_cap;
         $regularPrice = null;
-        
+
         // ALWAYS use cash_required as regular price if it exists (this is what user wants)
         if ($offer->cash_required && $offer->cash_required > 0) {
             $regularPrice = (float) $offer->cash_required;
@@ -276,20 +270,20 @@ class MerchantHubOfferController extends Controller
                 $regularPrice = (float) $firstItem['price'];
             }
         }
-        
+
         // ALWAYS create pricing breakdown if we have cash_required or regular price
         if ($regularPrice !== null && $regularPrice > 0) {
             // Calculate discount amount (10% by default)
             $discountAmount = ($regularPrice * $discountPercentage) / 100;
-            
+
             // Apply discount cap if set
             if ($discountCap !== null && $discountAmount > $discountCap) {
                 $discountAmount = (float) $discountCap;
             }
-            
+
             // Calculate discount price (price after discount)
             $discountPrice = $regularPrice - $discountAmount;
-            
+
             $pricingBreakdown = [
                 'regularPrice' => round($regularPrice, 2),
                 'discountPercentage' => round($discountPercentage, 2),

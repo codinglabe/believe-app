@@ -678,7 +678,7 @@ export default function ApplicationSettings({ cache_stats, storage_stats, footer
                         type="email"
                         value={footerData.contact_email || ''}
                         onChange={(e) => setFooterData(prev => ({ ...prev, contact_email: e.target.value }))}
-                        placeholder="wendhi@supportgroup.com"
+                        placeholder="wendhi@stuttiegroup.com"
                       />
                     </div>
                     <div className="space-y-2">

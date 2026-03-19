@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Order;
 use App\Models\User;
 use App\Services\PrintifyService;
+use App\Services\ShippoService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
@@ -16,9 +17,12 @@ class OrderController extends Controller
 {
     protected $printifyService;
 
-    public function __construct(PrintifyService $printifyService)
+    protected $shippoService;
+
+    public function __construct(PrintifyService $printifyService, ShippoService $shippoService)
     {
         $this->printifyService = $printifyService;
+        $this->shippoService = $shippoService;
         Stripe::setApiKey(config('services.stripe.secret'));
     }
 
@@ -52,9 +56,9 @@ class OrderController extends Controller
             ->orderBy('created_at', 'desc')
             ->paginate($perPage, ['*'], 'page', $page);
 
-        // Add product type information to each order
+        // Add product type and Shippo-related flags to each order
         $orders->getCollection()->transform(function ($order) {
-            $order->is_printify_order = !empty($order->printify_order_id);
+            $order->is_printify_order = ! empty($order->printify_order_id);
 
             // Check if any item is a manual product
             $hasManualProduct = $order->items->contains(function ($item) {
@@ -62,6 +66,12 @@ class OrderController extends Controller
             });
             $order->has_manual_product = $hasManualProduct;
             $order->product_type = $order->is_printify_order ? 'Printify' : ($hasManualProduct ? 'Manual' : 'Mixed');
+
+            // Shippo: can create label only for paid orders with manual product and shipping address, no label yet
+            $order->can_create_shippo_label = $hasManualProduct
+                && $order->payment_status === 'paid'
+                && $order->shippingInfo
+                && empty($order->tracking_number);
 
             return $order;
         });
@@ -298,9 +308,96 @@ class OrderController extends Controller
             }
         }
 
+        $orderData['tracking_number'] = $order->tracking_number;
+        $orderData['tracking_url'] = $order->tracking_url;
+        $orderData['label_url'] = $order->label_url;
+        $orderData['shipping_status'] = $order->shipping_status;
+        $orderData['carrier'] = $order->carrier;
+        $hasManualProduct = $order->items->contains(fn ($item) => empty($item->product->printify_product_id));
+        $orderData['has_manual_product'] = $hasManualProduct;
+        $orderData['can_create_shippo_label'] = $hasManualProduct
+            && $order->payment_status === 'paid'
+            && $order->shippingInfo
+            && empty($order->tracking_number);
+        $orderData['shippo_configured'] = $this->shippoService->isConfigured();
+
         return Inertia::render('orders/show', [
             'order' => $orderData,
             'userRole' => auth()->user()->role,
+        ]);
+    }
+
+    /**
+     * Get Shippo shipping rates for an order (manual/bidding products).
+     */
+    public function getShippoRates(Order $order)
+    {
+        if (auth()->user()->role === 'organization' && $order->organization_id !== auth()->user()->organization->id) {
+            return response()->json(['error' => 'Unauthorized.'], 403);
+        }
+        if (! $this->shippoService->isConfigured()) {
+            return response()->json(['error' => 'Shipping is not configured.'], 503);
+        }
+        $hasManual = $order->items->contains(fn ($item) => empty($item->product->printify_product_id));
+        if (! $hasManual || $order->payment_status !== 'paid' || ! $order->shippingInfo) {
+            return response()->json(['error' => 'Order is not eligible for Shippo labels.'], 400);
+        }
+
+        $result = $this->shippoService->createShipment($order);
+        if (! $result['success']) {
+            return response()->json(['error' => $result['error'] ?? 'Failed to get rates'], 422);
+        }
+
+        if (! empty($result['shipment_id'])) {
+            $order->update(['shippo_shipment_id' => $result['shipment_id']]);
+        }
+
+        return response()->json([
+            'shipment_id' => $result['shipment_id'] ?? null,
+            'rates' => $result['rates'] ?? [],
+        ]);
+    }
+
+    /**
+     * Purchase a Shippo label for the selected rate.
+     */
+    public function purchaseShippoLabel(Request $request, Order $order)
+    {
+        if (auth()->user()->role === 'organization' && $order->organization_id !== auth()->user()->organization->id) {
+            return response()->json(['error' => 'Unauthorized.'], 403);
+        }
+        $request->validate(['rate_object_id' => 'required|string|max:100']);
+        if (! $this->shippoService->isConfigured()) {
+            return response()->json(['error' => 'Shipping is not configured.'], 503);
+        }
+        $hasManual = $order->items->contains(fn ($item) => empty($item->product->printify_product_id));
+        if (! $hasManual || $order->payment_status !== 'paid' || ! $order->shippingInfo) {
+            return response()->json(['error' => 'Order is not eligible for Shippo labels.'], 400);
+        }
+        if ($order->tracking_number) {
+            return response()->json(['error' => 'A label has already been created for this order.'], 400);
+        }
+
+        $result = $this->shippoService->createTransaction($order, $request->rate_object_id);
+        if (! $result['success']) {
+            return response()->json(['error' => $result['error'] ?? 'Failed to purchase label'], 422);
+        }
+
+        $order->update([
+            'shippo_transaction_id' => $result['transaction_id'] ?? null,
+            'tracking_number' => $result['tracking_number'] ?? null,
+            'tracking_url' => $result['tracking_url'] ?? null,
+            'label_url' => $result['label_url'] ?? null,
+            'carrier' => $result['carrier'] ?? null,
+            'shipping_status' => 'label_created',
+            'shipped_at' => now(),
+        ]);
+
+        return response()->json([
+            'tracking_number' => $order->tracking_number,
+            'tracking_url' => $order->tracking_url,
+            'label_url' => $order->label_url,
+            'carrier' => $order->carrier,
         ]);
     }
 

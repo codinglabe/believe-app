@@ -404,23 +404,6 @@ class MerchantRedemptionController extends Controller
                 ]);
             }
 
-            $currentMonth = now()->startOfMonth();
-            $monthlyPointsRedeemed = MerchantHubOfferRedemption::where('user_id', $user->id)
-                ->whereHas('offer', function ($q) use ($merchantId) {
-                    $q->where('merchant_hub_merchant_id', $merchantId);
-                })
-                ->where('status', '!=', 'canceled')
-                ->where('created_at', '>=', $currentMonth)
-                ->sum('points_spent');
-
-            if ($monthlyPointsRedeemed + $offer->points_required > 100) {
-                DB::rollBack();
-                $remainingPoints = 100 - $monthlyPointsRedeemed;
-                return back()->withErrors([
-                    'error' => 'You can only redeem up to 100 points per merchant per month. You have already redeemed ' . $monthlyPointsRedeemed . ' points this month. You can redeem up to ' . $remainingPoints . ' more points.'
-                ]);
-            }
-
             if ($offer->is_standard_discount && $offer->points_required != 100) {
                 DB::rollBack();
                 return back()->withErrors(['error' => 'Standard 10% discount offers require exactly 100 points.']);
@@ -673,7 +656,7 @@ class MerchantRedemptionController extends Controller
                 'points_spent' => $redemption->points_spent,
                 'created_at' => $redemption->created_at->toIso8601String(),
             ]);
-            
+
             Log::info('QR Code JSON data generated', ['code' => $code, 'data' => $qrData]);
 
             // Generate QR code as SVG with JSON data
@@ -763,7 +746,7 @@ class MerchantRedemptionController extends Controller
         if (Auth::guard('merchant')->check()) {
             $merchant = Auth::guard('merchant')->user();
             $merchantHubMerchant = $this->getOrCreateMerchantHubMerchant($merchant);
-            
+
             if ($redemption->offer->merchant_hub_merchant_id !== $merchantHubMerchant->id) {
                 return Inertia::render('merchant/RedemptionVerify', [
                     'code' => $code,
@@ -843,7 +826,7 @@ class MerchantRedemptionController extends Controller
         if (Auth::guard('merchant')->check()) {
             $merchant = Auth::guard('merchant')->user();
             $merchantHubMerchant = $this->getOrCreateMerchantHubMerchant($merchant);
-            
+
             if ($redemption->offer->merchant_hub_merchant_id !== $merchantHubMerchant->id) {
                 return response()->json([
                     'error' => 'This redemption is not for your merchant.',

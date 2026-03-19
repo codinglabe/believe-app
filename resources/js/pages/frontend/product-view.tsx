@@ -124,6 +124,10 @@ export default function ProductView({
   const [bidAmount, setBidAmount] = useState('');
   const [bidCity, setBidCity] = useState('');
   const [bidState, setBidState] = useState('');
+  const [bidAddressLine1, setBidAddressLine1] = useState('');
+  const [bidAddressLine2, setBidAddressLine2] = useState('');
+  const [bidZip, setBidZip] = useState('');
+  const [bidCountry, setBidCountry] = useState('US');
   const [isBidSubmitting, setIsBidSubmitting] = useState(false);
   const [bidEndCountdown, setBidEndCountdown] = useState<string>('');
 
@@ -160,9 +164,25 @@ export default function ProductView({
       return;
     }
     setIsBidSubmitting(true);
-    const payload: { bid_amount: number; city?: string; state?: string } = { bid_amount: parseFloat(bidAmount) };
+    const payload: {
+      bid_amount: number;
+      address_line1: string;
+      address_line2?: string;
+      zip: string;
+      country: string;
+      city?: string;
+      state?: string;
+    } = {
+      bid_amount: parseFloat(bidAmount),
+      address_line1: bidAddressLine1.trim(),
+      address_line2: bidAddressLine2.trim() ? bidAddressLine2.trim() : undefined,
+      zip: bidZip.trim(),
+      country: bidCountry,
+    };
+
     if (bidCity.trim()) payload.city = bidCity.trim();
     if (bidState.trim()) payload.state = bidState.trim();
+
     router.post(route('product.bid', { product: product.id }), payload, {
       preserveScroll: true,
       onFinish: () => setIsBidSubmitting(false),
@@ -171,6 +191,10 @@ export default function ProductView({
         setBidAmount('');
         setBidCity('');
         setBidState('');
+        setBidAddressLine1('');
+        setBidAddressLine2('');
+        setBidZip('');
+        setBidCountry('US');
         router.reload();
       },
       onError: (errors) => {
@@ -649,8 +673,35 @@ export default function ProductView({
                         </button>
                       </div>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div className="sm:col-span-2">
+                          <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
+                            Street Address *
+                          </label>
+                          <input
+                            type="text"
+                            value={bidAddressLine1}
+                            onChange={(e) => setBidAddressLine1(e.target.value)}
+                            placeholder="123 Main St"
+                            maxLength={255}
+                            required
+                            className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm"
+                          />
+                        </div>
+                        <div className="sm:col-span-2">
+                          <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
+                            Apt / Suite (optional)
+                          </label>
+                          <input
+                            type="text"
+                            value={bidAddressLine2}
+                            onChange={(e) => setBidAddressLine2(e.target.value)}
+                            placeholder="Apt, Suite, etc."
+                            maxLength={255}
+                            className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm"
+                          />
+                        </div>
                         <div>
-                          <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">City (optional)</label>
+                          <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">City *</label>
                           <input
                             type="text"
                             value={bidCity}
@@ -661,13 +712,36 @@ export default function ProductView({
                           />
                         </div>
                         <div>
-                          <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">State (optional)</label>
+                          <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">State *</label>
                           <input
                             type="text"
                             value={bidState}
                             onChange={(e) => setBidState(e.target.value)}
                             placeholder="State / Region"
                             maxLength={50}
+                            className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">ZIP *</label>
+                          <input
+                            type="text"
+                            value={bidZip}
+                            onChange={(e) => setBidZip(e.target.value)}
+                            placeholder="12345"
+                            maxLength={20}
+                            required
+                            className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Country *</label>
+                          <input
+                            type="text"
+                            value={bidCountry}
+                            onChange={(e) => setBidCountry(e.target.value.toUpperCase().slice(0, 2))}
+                            maxLength={2}
+                            required
                             className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm"
                           />
                         </div>

@@ -20,16 +20,20 @@ use App\Notifications\BidLostNotification;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\OrderShippingInfo;
+use App\Models\StateSalesTax;
 use Laravel\Cashier\Cashier;
 use Illuminate\Support\Str;
+use App\Services\ShippoService;
 
 class ProductController extends BaseController
 {
     protected $printifyService;
+    protected ShippoService $shippoService;
 
-    public function __construct(PrintifyService $printifyService)
+    public function __construct(PrintifyService $printifyService, ShippoService $shippoService)
     {
         $this->printifyService = $printifyService;
+        $this->shippoService = $shippoService;
     }
 
     /**
@@ -1345,6 +1349,10 @@ class ProductController extends BaseController
     {
         $request->validate([
             'bid_amount' => 'required|numeric|min:0',
+            'address_line1' => 'required|string|max:255',
+            'address_line2' => 'nullable|string|max:255',
+            'zip' => 'required|string|max:20',
+            'country' => 'required|string|size:2',
             'city' => 'nullable|string|max:100',
             'state' => 'nullable|string|max:50',
         ]);
@@ -1400,6 +1408,14 @@ class ProductController extends BaseController
 
         $city = $request->filled('city') ? $request->city : $user->city;
         $state = $request->filled('state') ? $request->state : $user->state;
+        $country = strtoupper($request->country);
+        $zip = $request->zip;
+
+        if (empty($city) || empty($state) || empty($zip)) {
+            return back()->withErrors([
+                'bid' => 'Please provide a complete shipping location (city/state/zip).',
+            ])->withInput();
+        }
         Bid::create([
             'product_id' => $product->id,
             'user_id' => $user->id,
@@ -1407,6 +1423,10 @@ class ProductController extends BaseController
             'status' => 'active',
             'city' => $city,
             'state' => $state,
+            'address_line1' => $request->address_line1,
+            'address_line2' => $request->address_line2,
+            'zip' => $zip,
+            'country' => $country,
         ]);
 
         return back()->with('success', 'Your bid has been placed.');
@@ -1640,10 +1660,113 @@ class ProductController extends BaseController
         if (! $winningBid) {
             abort(404, 'Winning bid not found.');
         }
-        $amountCents = (int) round((float) $winningBid->bid_amount * 100);
+
+        // Option A: collect full shipping address at bid time and use Shippo rates for checkout.
+        if (empty($winningBid->address_line1) || empty($winningBid->zip) || empty($winningBid->country)) {
+            abort(422, 'Shipping address is missing for this bid.');
+        }
+
+        $organization = $product->organization;
+        if (! $organization) {
+            abort(422, 'Product organization is missing.');
+        }
+
+        // Build ship-from (seller/organization) address
+        $shipFrom = [
+            'name' => $product->ship_from_name ?: ($organization->contact_name ?: $organization->name ?: 'Seller'),
+            'street1' => $product->ship_from_street1 ?: $organization->street,
+            'city' => $product->ship_from_city ?: $organization->city,
+            'state' => $product->ship_from_state ?: $organization->state,
+            'zip' => $product->ship_from_zip ?: $organization->zip,
+            'country' => $product->ship_from_country ?: 'US',
+            'phone' => '',
+            'email' => '',
+        ];
+
+        // Build ship-to (winner) address from bid
+        $shipTo = [
+            'name' => $user->name ?: 'Customer',
+            'street1' => $winningBid->address_line1,
+            'street2' => $winningBid->address_line2 ?: '',
+            'city' => $winningBid->city ?: ($user->city ?? ''),
+            'state' => $winningBid->state ?: ($user->state ?? ''),
+            'zip' => $winningBid->zip,
+            'country' => strtoupper($winningBid->country ?: 'US'),
+            'phone' => $user->contact_number ?: '',
+            'email' => $user->email ?: '',
+        ];
+
+        if (empty($shipTo['city']) || empty($shipTo['state']) || empty($shipTo['zip'])) {
+            abort(422, 'Bid location is incomplete (city/state/zip).');
+        }
+
+        // Parcel defaults (override with product-specific values)
+        $length = $product->parcel_length_in !== null ? (float) $product->parcel_length_in : 10.0;
+        $width = $product->parcel_width_in !== null ? (float) $product->parcel_width_in : 8.0;
+        $height = $product->parcel_height_in !== null ? (float) $product->parcel_height_in : 4.0;
+        $weight = $product->parcel_weight_oz !== null ? (float) $product->parcel_weight_oz : 16.0;
+        if ($weight < 0.1) {
+            $weight = 16.0;
+        }
+
+        if (! $this->shippoService->isConfigured()) {
+            abort(503, 'Shippo is not configured.');
+        }
+
+        $parcel = [
+            'length' => (string) $length,
+            'width' => (string) $width,
+            'height' => (string) $height,
+            'distance_unit' => 'in',
+            'weight' => (string) $weight,
+            'mass_unit' => 'oz',
+        ];
+
+        $ratesResult = $this->shippoService->getRatesForAddresses($shipFrom, $shipTo, $parcel);
+        if (! ($ratesResult['success'] ?? false) || empty($ratesResult['rates'])) {
+            abort(422, 'Could not retrieve shipping rates from Shippo.');
+        }
+
+        // Pick cheapest rate
+        $cheapest = null;
+        foreach ($ratesResult['rates'] as $rate) {
+            if (! isset($rate['amount'])) {
+                continue;
+            }
+            $amt = (float) $rate['amount'];
+            if ($cheapest === null || $amt < (float) $cheapest['amount']) {
+                $cheapest = $rate;
+            }
+        }
+
+        if (! $cheapest || empty($cheapest['object_id'])) {
+            abort(422, 'No valid Shippo rate found.');
+        }
+
+        $bidAmount = (float) $winningBid->bid_amount;
+        $shippingCost = (float) $cheapest['amount'];
+
+        // Calculate tax using your existing state-wise tax table.
+        $stateCode = strtoupper(trim((string) $shipTo['state']));
+        $taxRow = StateSalesTax::where('state_code', $stateCode)->first();
+        $taxRate = $taxRow ? (float) $taxRow->base_sales_tax_rate : 0.0;
+        $taxAmount = $taxRow ? round(($bidAmount * $taxRate) / 100, 2) : 0.0;
+
+        $totalAmount = $bidAmount + $shippingCost + $taxAmount;
+        $amountCents = (int) round($totalAmount * 100);
         if ($amountCents < 50) {
             $amountCents = 50;
         }
+
+        // Persist selected Shippo rate so success callback can purchase the same label
+        $winningBid->update([
+            'shippo_rate_object_id' => (string) $cheapest['object_id'],
+            'shippo_shipping_cost' => $shippingCost,
+            'shippo_tax_amount' => $taxAmount,
+            'shippo_carrier' => $cheapest['provider'] ?? null,
+            'shippo_currency' => $cheapest['currency'] ?? 'USD',
+        ]);
+
         $checkoutOptions = [
             'success_url' => route('products.winning-bid.success', ['product' => $product->id]) . '?session_id={CHECKOUT_SESSION_ID}',
             'cancel_url' => route('user.profile.bid-wins'),
@@ -1652,6 +1775,9 @@ class ProductController extends BaseController
                 'winning_bid_id' => (string) $winningBid->id,
                 'user_id' => (string) $user->id,
                 'type' => 'winning_bid',
+                'shippo_rate_object_id' => (string) $cheapest['object_id'],
+                'shipping_cost' => (string) $shippingCost,
+                'tax_amount' => (string) $taxAmount,
             ],
             'payment_method_types' => ['card'],
         ];
@@ -1689,15 +1815,23 @@ class ProductController extends BaseController
         \DB::beginTransaction();
         try {
             $amount = (float) $winningBid->bid_amount;
+            $shippingCost = (float) ($winningBid->shippo_shipping_cost ?? 0);
+            $taxAmount = (float) ($winningBid->shippo_tax_amount ?? 0);
+            $totalAmount = $amount + $shippingCost + $taxAmount;
+
+            if (empty($winningBid->address_line1) || empty($winningBid->zip) || empty($winningBid->country)) {
+                abort(422, 'Winner shipping address is missing.');
+            }
+
             $ref = 'ORD-BID-' . $product->id . '-' . strtoupper(Str::random(6));
             $order = Order::create([
                 'user_id' => $user->id,
                 'organization_id' => $product->organization_id,
                 'reference_number' => $ref,
                 'subtotal' => $amount,
-                'total_amount' => $amount,
-                'shipping_cost' => 0,
-                'tax_amount' => 0,
+                'total_amount' => $totalAmount,
+                'shipping_cost' => $shippingCost,
+                'tax_amount' => $taxAmount,
                 'platform_fee' => 0,
                 'donation_amount' => 0,
                 'status' => 'processing',
@@ -1705,6 +1839,29 @@ class ProductController extends BaseController
                 'payment_method' => 'stripe',
                 'stripe_payment_intent_id' => $session->payment_intent ?? null,
             ]);
+
+            // Create shipping info for Shippo label generation
+            $nameParts = explode(' ', trim((string) $user->name));
+            $firstName = $nameParts[0] ?? 'Customer';
+            $lastName = count($nameParts) > 1 ? implode(' ', array_slice($nameParts, 1)) : '';
+            $shippingAddress = (string) $winningBid->address_line1;
+            if (! empty($winningBid->address_line2)) {
+                $shippingAddress .= ', ' . (string) $winningBid->address_line2;
+            }
+
+            OrderShippingInfo::create([
+                'order_id' => $order->id,
+                'first_name' => $firstName,
+                'last_name' => $lastName,
+                'email' => $user->email,
+                'phone' => $user->contact_number,
+                'shipping_address' => $shippingAddress,
+                'city' => $winningBid->city,
+                'state' => $winningBid->state,
+                'zip' => $winningBid->zip,
+                'country' => strtoupper($winningBid->country),
+            ]);
+
             OrderItem::create([
                 'order_id' => $order->id,
                 'product_id' => $product->id,
@@ -1714,6 +1871,22 @@ class ProductController extends BaseController
                 'subtotal' => $amount,
                 'primary_image' => $product->image,
             ]);
+
+            // Auto-create Shippo label immediately after payment success
+            if ($this->shippoService->isConfigured() && ! empty($winningBid->shippo_rate_object_id)) {
+                $shippoResult = $this->shippoService->purchaseLabel((string) $winningBid->shippo_rate_object_id);
+                if (($shippoResult['success'] ?? false) === true) {
+                    $order->update([
+                        'shippo_transaction_id' => $shippoResult['transaction_id'] ?? null,
+                        'tracking_number' => $shippoResult['tracking_number'] ?? null,
+                        'tracking_url' => $shippoResult['tracking_url'] ?? null,
+                        'label_url' => $shippoResult['label_url'] ?? null,
+                        'carrier' => $shippoResult['carrier'] ?? null,
+                        'shipping_status' => 'label_created',
+                    ]);
+                }
+            }
+
             $product->update([
                 'winner_status' => 'paid',
                 'quantity_ordered' => $product->quantity_ordered + 1,

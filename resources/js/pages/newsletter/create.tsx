@@ -120,7 +120,7 @@ export default function NewsletterCreate({ templates, previewData }: NewsletterC
     // Ensure all properties have fallback values to prevent undefined errors
     const sampleData: PreviewData = {
         organization_name: previewData?.organization_name || 'Your Organization',
-        organization_email: previewData?.organization_email || 'wendhi@supportgroup.com',
+        organization_email: previewData?.organization_email || 'wendhi@stuttiegroup.com',
         organization_phone: previewData?.organization_phone || '+1 (555) 000-0000',
         organization_address: previewData?.organization_address || 'Your Organization Address',
         recipient_name: previewData?.recipient_name || 'Recipient Name',

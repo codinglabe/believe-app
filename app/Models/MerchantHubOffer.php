@@ -140,11 +140,14 @@ class MerchantHubOffer extends Model
         return $query->where('status', 'active')
             ->where(function ($q) {
                 $q->whereNull('starts_at')
-                    ->orWhere('starts_at', '<=', now());
+                    // Treat starts_at as date-only so an offer becomes visible immediately on the start date
+                    // (datetime-local inputs are commonly saved with timezone offsets).
+                    ->orWhereDate('starts_at', '<=', now());
             })
             ->where(function ($q) {
                 $q->whereNull('ends_at')
-                    ->orWhere('ends_at', '>=', now());
+                    // Treat ends_at as date-only so it stays visible through the end date.
+                    ->orWhereDate('ends_at', '>=', now());
             });
     }
 
@@ -173,11 +176,13 @@ class MerchantHubOffer extends Model
             return false;
         }
 
-        if ($this->starts_at && $this->starts_at->isFuture()) {
+        // Treat starts_at as date-only so the offer is visible immediately on the selected day.
+        if ($this->starts_at && $this->starts_at->toDateString() > now()->toDateString()) {
             return false;
         }
 
-        if ($this->ends_at && $this->ends_at->isPast()) {
+        // Treat ends_at as date-only so it stays visible through the end date.
+        if ($this->ends_at && $this->ends_at->toDateString() < now()->toDateString()) {
             return false;
         }
 

@@ -75,8 +75,15 @@ export default function MerchantHubIndex({ offers: initialOffers, categories: in
   const isInitialMount = useRef(true)
 
   // Use real data from backend (already filtered by backend)
-  const offersData: Offer[] = initialOffers?.data || []
-  
+  const offersTotal =
+    (initialOffers as any)?.total ??
+    (initialOffers as any)?.data?.length ??
+    (Array.isArray(initialOffers) ? (initialOffers as any[]).length : 0)
+
+  const offersData: Offer[] = Array.isArray(initialOffers)
+    ? (initialOffers as unknown as Offer[])
+    : (((initialOffers as any)?.data || (initialOffers as any)?.items || []) as Offer[])
+
   // Build categories list dynamically from backend data
   const allCategoriesList = ['All', ...(initialCategories.map(cat => cat.name))]
   const categories = initialCategories.length > 0 ? allCategoriesList : ['All']
@@ -273,7 +280,7 @@ export default function MerchantHubIndex({ offers: initialOffers, categories: in
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center gap-2">
               <h2 className="text-2xl font-bold">Available Offers</h2>
-              <Badge variant="secondary">{initialOffers?.total || 0} offers</Badge>
+              <Badge variant="secondary">{offersTotal} offers</Badge>
             </div>
           </div>
 
@@ -297,17 +304,17 @@ export default function MerchantHubIndex({ offers: initialOffers, categories: in
                 </CardHeader>
                 <CardContent className="relative space-y-2">
                   {categories.map((category) => {
-                    const categoryData = category === 'All' 
-                      ? null 
+                    const categoryData = category === 'All'
+                      ? null
                       : initialCategories.find(cat => cat.name === category)
-                    const offersCount = category === 'All' 
-                      ? (initialOffers?.total || 0)
+                    const offersCount = category === 'All'
+                      ? offersTotal
                       : (categoryData?.offers_count || 0)
-                    
-                    const isSelected = category === 'All' 
+
+                    const isSelected = category === 'All'
                       ? !selectedCategorySlug
                       : categoryData?.slug === selectedCategorySlug
-                    
+
                     return (
                       <Button
                         key={category}
@@ -358,7 +365,7 @@ export default function MerchantHubIndex({ offers: initialOffers, categories: in
                               (e.target as HTMLImageElement).src = '/placeholder.jpg'
                             }}
                           />
-                          <Badge 
+                          <Badge
                             className={`absolute top-2 right-2 ${getCategoryColor(offer.category)}`}
                           >
                             {offer.category}

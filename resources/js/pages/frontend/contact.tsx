@@ -59,7 +59,7 @@ interface ContactPageProps {
   }
 }
 
-// Contact is form-only. Technical help: wendhi@supportgroup.com
+// Contact is form-only. Technical help: wendhi@stuttiegroup.com
 
 const defaultFaqItems = [
   {
@@ -331,10 +331,10 @@ export default function ContactPage({
                       <div className="pt-2 border-t border-gray-200 dark:border-gray-700">
                         <p className="text-sm font-semibold text-gray-900 dark:text-white mb-1">Technical help</p>
                         <a
-                          href="mailto:wendhi@supportgroup.com"
+                          href="mailto:wendhi@stuttiegroup.com"
                           className="text-sm font-medium text-blue-600 dark:text-blue-400 hover:underline"
                         >
-                          wendhi@supportgroup.com
+                          wendhi@stuttiegroup.com
                         </a>
                       </div>
                     </CardContent>

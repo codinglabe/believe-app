@@ -127,6 +127,11 @@ return [
         'verify' => filter_var(env('DROPBOX_SSL_VERIFY', true), FILTER_VALIDATE_BOOLEAN),
     ],
 
+    'shippo' => [
+        'api_key' => env('SHIPPO_API_KEY'),
+        'api_base' => env('SHIPPO_API_BASE', 'https://api.goshippo.com'),
+    ],
+
     'irs' => [
         'download_timeout' => (int) env('IRS_DOWNLOAD_TIMEOUT', 900), // seconds per ZIP (15 min default)
         'download_retries' => (int) env('IRS_DOWNLOAD_RETRIES', 3),

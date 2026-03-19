@@ -3,12 +3,12 @@ import { Head, Link } from '@inertiajs/react'
 import { MerchantButton } from '@/components/merchant-ui'
 import { MerchantCard, MerchantCardContent } from '@/components/merchant-ui'
 import { MerchantHeader, MerchantFooter } from '@/components/merchant'
-import { 
-  TrendingUp, 
-  Shield, 
-  CheckCircle2, 
-  ArrowRight, 
-  Zap, 
+import {
+  TrendingUp,
+  Shield,
+  CheckCircle2,
+  ArrowRight,
+  Zap,
   Store,
   BarChart3,
   X,
@@ -57,15 +57,15 @@ export default function MerchantLanding() {
                   The 10% Discount Merchant Hub
                 </span>
               </h1>
-              
+
               <p className="text-xl sm:text-2xl md:text-3xl lg:text-4xl text-gray-200 mb-4 sm:mb-6 max-w-4xl mx-auto font-light leading-relaxed px-2">
                 Turn Community Service Into New Customers
               </p>
-              
+
               <p className="text-base sm:text-lg md:text-xl text-gray-300 mb-8 sm:mb-10 max-w-3xl mx-auto leading-relaxed px-2">
                 <span className="text-white font-semibold">On Your Terms</span> — Partner with nonprofits and churches to reward verified volunteers with a simple 10% discount, while staying in full control of what's offered, how often it's redeemed, and how much it costs.
               </p>
-              
+
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -155,14 +155,13 @@ export default function MerchantLanding() {
             </h2>
                 <p className="text-lg sm:text-xl md:text-2xl lg:text-3xl text-gray-300 font-medium px-2">How the Discount Works</p>
               </div>
-              
+
               {/* Rules List */}
               <div className="space-y-4 sm:space-y-5 md:space-y-6 mb-8 sm:mb-10 md:mb-12">
                 {[
                   { text: 'Volunteers earn points by serving nonprofits and churches', highlight: false, icon: CheckCircle2 },
-                  { text: 'Each volunteer may redeem up to 100 points per merchant, per month', highlight: true, icon: CheckCircle2 },
                   { text: '100 points = 10% off one eligible purchase', highlight: true, icon: CheckCircle2 },
-                  { text: 'One redemption per volunteer, per merchant, per month', highlight: false, icon: CheckCircle2 },
+                  { text: 'Redemptions follow the offer limits set by each merchant', highlight: false, icon: CheckCircle2 },
                 ].map((item, index) => {
                   const Icon = item.icon
                   return (
@@ -173,22 +172,22 @@ export default function MerchantLanding() {
                       viewport={{ once: true }}
                       transition={{ duration: 0.6, delay: 0.3 + index * 0.1, type: "spring" }}
                       className={`relative group ${
-                        item.highlight 
-                          ? 'bg-gradient-to-r from-[#FF1493]/20 via-[#DC143C]/20 to-[#E97451]/20 border-l-4 border-[#FF1493]' 
+                        item.highlight
+                          ? 'bg-gradient-to-r from-[#FF1493]/20 via-[#DC143C]/20 to-[#E97451]/20 border-l-4 border-[#FF1493]'
                           : 'bg-gray-900/40 border-l-4 border-gray-700'
                       } rounded-r-xl sm:rounded-r-2xl p-4 sm:p-5 md:p-6 backdrop-blur-sm hover:scale-[1.02] transition-all duration-300`}
                     >
                       <div className="flex items-start gap-3 sm:gap-4 md:gap-6">
                         <div className={`shrink-0 mt-1 ${
-                          item.highlight 
-                            ? 'w-8 h-8 sm:w-9 sm:h-9 md:w-10 md:h-10 rounded-lg sm:rounded-xl bg-gradient-to-br from-[#FF1493] to-[#DC143C] shadow-lg shadow-[#FF1493]/50' 
+                          item.highlight
+                            ? 'w-8 h-8 sm:w-9 sm:h-9 md:w-10 md:h-10 rounded-lg sm:rounded-xl bg-gradient-to-br from-[#FF1493] to-[#DC143C] shadow-lg shadow-[#FF1493]/50'
                             : 'w-8 h-8 sm:w-9 sm:h-9 md:w-10 md:h-10 rounded-lg sm:rounded-xl bg-gray-800 border border-gray-700'
                         } flex items-center justify-center group-hover:scale-110 transition-transform duration-300`}>
                           <Icon className={`w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 ${item.highlight ? 'text-white' : 'text-gray-400'}`} />
                         </div>
                         <p className={`text-base sm:text-lg md:text-xl lg:text-2xl leading-relaxed pt-1 ${
-                          item.highlight 
-                            ? 'text-white font-bold' 
+                          item.highlight
+                            ? 'text-white font-bold'
                             : 'text-gray-300'
                         }`}>
                           {item.text}
@@ -200,7 +199,7 @@ export default function MerchantLanding() {
                     </motion.div>
                   )
                 })}
-                
+
                 <motion.div
                   initial={{ opacity: 0, x: -40 }}
                   whileInView={{ opacity: 1, x: 0 }}
@@ -659,8 +658,8 @@ export default function MerchantLanding() {
                   transition={{ duration: 0.6, delay: index * 0.15 }}
                 >
                   <MerchantCard className={`h-full flex flex-col relative overflow-hidden transition-all duration-500 hover:scale-105 hover:shadow-2xl ${
-                    plan.popular 
-                      ? 'border-2 border-[#FF1493]/60 bg-gradient-to-br from-gray-900/95 to-gray-800/95 shadow-2xl shadow-[#FF1493]/30' 
+                    plan.popular
+                      ? 'border-2 border-[#FF1493]/60 bg-gradient-to-br from-gray-900/95 to-gray-800/95 shadow-2xl shadow-[#FF1493]/30'
                       : 'border border-gray-700/50 bg-gradient-to-br from-gray-900/80 to-gray-800/80'
                   }`}>
                     {plan.popular && (
@@ -680,8 +679,8 @@ export default function MerchantLanding() {
                           {plan.period}
                     </h3>
                         <div className="flex items-baseline justify-center gap-2 mb-2 sm:mb-3">
-                          <span className={plan.popular 
-                            ? 'text-5xl sm:text-6xl md:text-7xl font-extrabold bg-gradient-to-r from-[#FF1493] via-[#DC143C] to-[#E97451] bg-clip-text text-transparent' 
+                          <span className={plan.popular
+                            ? 'text-5xl sm:text-6xl md:text-7xl font-extrabold bg-gradient-to-r from-[#FF1493] via-[#DC143C] to-[#E97451] bg-clip-text text-transparent'
                             : 'text-5xl sm:text-6xl md:text-7xl font-extrabold text-white'
                           }>
                             {plan.price}
@@ -958,9 +957,9 @@ export default function MerchantLanding() {
                   <p>Stay in control.</p>
                 </div>
                 <Link href="/register" className="inline-block w-full sm:w-auto">
-                  <MerchantButton 
-                    size="lg" 
-                    variant="secondary" 
+                  <MerchantButton
+                    size="lg"
+                    variant="secondary"
                     className="w-full sm:w-auto text-base sm:text-lg md:text-xl px-6 sm:px-8 md:px-10 py-4 sm:py-5 md:py-7 bg-white/20 hover:bg-white/30 text-white border-2 border-white/40 shadow-xl hover:shadow-2xl transition-all duration-300"
                   >
                     <span className="block sm:inline">Join for $9/month or $100/year</span>

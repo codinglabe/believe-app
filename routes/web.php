@@ -1305,6 +1305,13 @@ Route::get('/products/{id}', [ProductController::class, 'show'])->name('products
         ->name('orders.items-by-organization')
         ->middleware('permission:ecommerce.read');
 
+    Route::get('/orders/{order}/shippo/rates', [OrderController::class, 'getShippoRates'])
+        ->name('orders.shippo.rates')
+        ->middleware('permission:ecommerce.read');
+    Route::post('/orders/{order}/shippo/purchase-label', [OrderController::class, 'purchaseShippoLabel'])
+        ->name('orders.shippo.purchase-label')
+        ->middleware('permission:ecommerce.update');
+
     /* Order Items Routes */
     // Route::resource('order-items', OrderItemController::class)->middleware([
     //     'index' => 'permission:ecommerce.read',

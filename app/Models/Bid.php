@@ -15,6 +15,15 @@ class Bid extends Model
         'submitted_at',
         'city',
         'state',
+        'address_line1',
+        'address_line2',
+        'zip',
+        'country',
+        'shippo_rate_object_id',
+        'shippo_shipping_cost',
+        'shippo_tax_amount',
+        'shippo_carrier',
+        'shippo_currency',
     ];
 
     public function getLocationDisplayAttribute(): string
