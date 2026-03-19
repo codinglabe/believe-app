@@ -22,9 +22,29 @@ type PageProps = {
 const isGroup = (item: NavEntry): item is NavGroup => 'items' in item;
 const isNavItem = (item: NavEntry): item is NavItem => 'href' in item;
 
+/** True if this href matches the current URL (exact, /create, /:id/edit, or prefix with /) */
+function itemMatchesUrl(href: string, url: string): boolean {
+    if (url === href) return true;
+    if (url.startsWith(href + '/create')) return true;
+    const escaped = href.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    if (url.match(new RegExp(`^${escaped}/\\d+/edit$`))) return true;
+    if (url.startsWith(href + '/')) return true;
+    return false;
+}
+
+/** Among sibling nav items, return the href of the one that should be active (longest matching href). */
+function getActiveChildHref(entries: NavEntry[], currentUrl: string): string | null {
+    const navItems = entries.filter((e): e is NavItem => isNavItem(e) && !!e.href);
+    const matching = navItems.filter((n) => itemMatchesUrl(n.href, currentUrl));
+    if (matching.length === 0) return null;
+    return matching.reduce((best, n) => (n.href.length > (best?.length ?? 0) ? n.href : best), null as string | null);
+}
+
 export function NavMain({ items = [] }: NavMainProps) {
     const page = usePage<PageProps>();
     const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+    /** Path only (no query or hash) so /admin/kiosk/items matches even with ?page=2 */
+    const pathname = page.url.split('?')[0].split('#')[0];
 
     const userPermissions = page.props.auth.permissions ?? [];
     const userRoles = page.props.auth.roles ?? [];
@@ -117,21 +137,17 @@ export function NavMain({ items = [] }: NavMainProps) {
             } else {
                 const basePath = entry.href;
                 if (!basePath) return false;
-                if (entry.href === currentPath) return true;
-                if (currentPath.startsWith(`${basePath}/create`)) return true;
-                if (currentPath.startsWith(basePath)) return true;
-                if (currentPath.match(new RegExp(`^${basePath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/\\d+/edit$`))) return true;
-                return false;
+                return itemMatchesUrl(basePath, currentPath);
             }
         };
 
         accessibleItems.forEach((item) => {
-            checkItem(item, page.url);
+            checkItem(item, pathname);
         });
 
         setExpandedGroups(activeGroups);
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [page.url, items, userPermissions, userRoles]);
+    }, [pathname, items, userPermissions, userRoles]);
 
     const toggleGroup = (groupTitle: string) => {
         setExpandedGroups(prev => {
@@ -152,46 +168,30 @@ export function NavMain({ items = [] }: NavMainProps) {
             {visibleItems.map((item) => {
                 if (isGroup(item)) {
                     const isExpanded = expandedGroups.has(item.title);
-                    const hasActiveChild = item.items.some(subItem => {
-                        // If subItem is a group, recursively check its children
-                        if (isGroup(subItem)) {
-                            return subItem.items.some(subSubItem => {
-                                if (isGroup(subSubItem)) {
-                                    return subSubItem.items.some(ssItem => {
-                                        if (!isNavItem(ssItem)) return false;
-                                        const basePath = ssItem.href;
-                                        if (!basePath) return false;
-                                        return ssItem.href === page.url ||
-                                            page.url.startsWith(`${basePath}/create`) ||
-                                            !!page.url.match(new RegExp(`^${basePath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/\\d+/edit$`)) ||
-                                            page.url.startsWith(basePath);
-                                    });
-                                }
-                                if (!isNavItem(subSubItem)) return false;
-                                const basePath = subSubItem.href;
-                                if (!basePath) return false;
-                                return subSubItem.href === page.url ||
-                                    page.url.startsWith(`${basePath}/create`) ||
-                                    !!page.url.match(new RegExp(`^${basePath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/\\d+/edit$`)) ||
-                                    page.url.startsWith(basePath);
-                            });
-                        }
-                        // If subItem is a regular item, check its href
-                        if (!isNavItem(subItem)) return false;
-                        const isExactMatch = subItem.href === page.url;
-                        const isCreatePage = page.url.startsWith(subItem.href + '/create');
-                        const isEditPage = !!page.url.match(new RegExp(`^${subItem.href.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/\\d+/edit$`));
-                        // Special handling for volunteers/timesheet - only match timesheet routes
-                        if (subItem.href === '/volunteers/timesheet') {
-                            return page.url.startsWith('/volunteers/timesheet');
-                        }
-                        // Special handling for volunteers - match volunteers routes but NOT timesheet routes
-                        if (subItem.href === '/volunteers') {
-                            return page.url.startsWith('/volunteers') && !page.url.startsWith('/volunteers/timesheet');
-                        }
-                        // Default behavior for other routes
-                        return isExactMatch || isCreatePage || isEditPage || page.url.startsWith(subItem.href);
-                    });
+                    const hasActiveChild = (() => {
+                        const activeHref = getActiveChildHref(item.items, pathname);
+                        if (activeHref) return true;
+                        return item.items.some(subItem => {
+                            if (isGroup(subItem)) {
+                                return subItem.items.some(subSubItem => {
+                                    if (isGroup(subSubItem)) {
+                                        return subSubItem.items.some(ssItem => {
+                                            if (!isNavItem(ssItem)) return false;
+                                            const basePath = ssItem.href;
+                                            if (!basePath) return false;
+                                            return itemMatchesUrl(basePath, pathname);
+                                        });
+                                    }
+                                    if (!isNavItem(subSubItem)) return false;
+                                    return itemMatchesUrl(subSubItem.href, pathname);
+                                });
+                            }
+                            if (!isNavItem(subItem)) return false;
+                            if (subItem.href === '/volunteers/timesheet') return pathname.startsWith('/volunteers/timesheet');
+                            if (subItem.href === '/volunteers') return pathname.startsWith('/volunteers') && !pathname.startsWith('/volunteers/timesheet');
+                            return itemMatchesUrl(subItem.href, pathname);
+                        });
+                    })();
 
                     return (
                         <SidebarGroup key={item.title} className="px-0 py-0">
@@ -420,8 +420,13 @@ export function NavMain({ items = [] }: NavMainProps) {
                                                     </motion.div>
                                                 );
                                             }
-                                            // Regular item at 2nd level
+                                            // Regular item at 2nd level — use pathname so only the matching item is active (e.g. /admin/kiosk/items, not /admin/kiosk)
                                             if (!isNavItem(subItem)) return null;
+                                            const activeChildHref = getActiveChildHref(item.items, pathname);
+                                            const isActiveSecondLevel =
+                                                subItem.href === activeChildHref ||
+                                                (subItem.href === '/volunteers/timesheet' && pathname.startsWith('/volunteers/timesheet')) ||
+                                                (subItem.href === '/volunteers' && pathname.startsWith('/volunteers') && !pathname.startsWith('/volunteers/timesheet'));
                                             return (
                                                 <motion.div
                                                     key={subItem.title}
@@ -432,28 +437,14 @@ export function NavMain({ items = [] }: NavMainProps) {
                                                         delay: index * 0.05,
                                                         ease: [0.4, 0, 0.2, 1]
                                                     }}
+                                                    data-active={isActiveSecondLevel}
+                                                    className={isActiveSecondLevel ? 'rounded-md bg-sidebar-accent font-medium text-sidebar-accent-foreground [&_a]:text-sidebar-accent-foreground' : undefined}
                                                 >
                                                     <SidebarMenu>
                                                 <SidebarMenuItem>
                                                     <SidebarMenuButton
                                                         asChild
-                                                        isActive={
-                                                            (() => {
-                                                                // Special handling for timesheet - only match timesheet routes
-                                                                if (subItem.href === '/volunteers/timesheet') {
-                                                                    return page.url.startsWith('/volunteers/timesheet');
-                                                                }
-                                                                // Special handling for volunteers - match volunteers routes but NOT timesheet routes
-                                                                if (subItem.href === '/volunteers') {
-                                                                    return page.url.startsWith('/volunteers') && !page.url.startsWith('/volunteers/timesheet');
-                                                                }
-                                                                // Default behavior for other routes
-                                                                return subItem.href === page.url ||
-                                                            page.url.startsWith(subItem.href + '/create') ||
-                                                            !!page.url.match(new RegExp(`^${subItem.href.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/\\d+/edit$`)) ||
-                                                                    page.url.startsWith(subItem.href);
-                                                            })()
-                                                        }
+                                                        isActive={false}
                                                         tooltip={{ children: subItem.title }}
                                                         title={subItem.title}
                                                                 className="flex items-center gap-2.5 w-full rounded-md px-2.5 py-2 text-sm transition-all duration-200 hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground data-[active=true]:bg-sidebar-accent data-[active=true]:text-sidebar-accent-foreground data-[active=true]:font-medium data-[active=true]:shadow-sm"

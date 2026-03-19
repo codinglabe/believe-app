@@ -44,6 +44,7 @@ import {
   Globe,
   Heart,
   TrendingUp,
+  Monitor,
 } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 import { ThemeToggle } from "@/components/frontend/theme-toggle"
@@ -104,6 +105,7 @@ export default function Navbar() {
 
   // Community dropdown items
   const communityItems = [
+    { name: "Kiosk", href: "/kiosk", icon: Monitor },
     { name: "Unity Live & Meet", href: "/unity-live", icon: Radio },
     { name: "News", href: "/nonprofit-news", icon: Newspaper },
     { name: "Unity Videos", href: "/unity-videos", icon: Video },
