@@ -233,7 +233,6 @@ export default function KioskSubcategoriesIndex(props: PageProps) {
               aria-label="Search subcategories"
             />
           </div>
-          <span className="text-xs text-muted-foreground hidden sm:inline">Updates as you type</span>
         </div>
 
         <div className="rounded-lg border bg-card overflow-hidden">

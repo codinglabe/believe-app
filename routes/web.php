@@ -225,6 +225,11 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:admin'])->group(functi
     Route::put('/admin/kiosk/items/{item}', [App\Http\Controllers\Admin\KioskItemsController::class, 'update'])->name('admin.kiosk.items.update');
     Route::delete('/admin/kiosk/items/{item}', [App\Http\Controllers\Admin\KioskItemsController::class, 'destroy'])->name('admin.kiosk.items.destroy');
     Route::get('/admin/kiosk/requests', [App\Http\Controllers\Admin\KioskServiceRequestsController::class, 'index'])->name('admin.kiosk.requests.index');
+    Route::get('/admin/kiosk/requests/{id}', [App\Http\Controllers\Admin\KioskServiceRequestsController::class, 'show'])->whereNumber('id')->name('admin.kiosk.requests.show');
+    Route::get('/admin/kiosk/requests/{id}/edit', [App\Http\Controllers\Admin\KioskServiceRequestsController::class, 'edit'])->whereNumber('id')->name('admin.kiosk.requests.edit');
+    Route::put('/admin/kiosk/requests/{id}', [App\Http\Controllers\Admin\KioskServiceRequestsController::class, 'update'])->whereNumber('id')->name('admin.kiosk.requests.update');
+    Route::patch('/admin/kiosk/requests/{id}/status', [App\Http\Controllers\Admin\KioskServiceRequestsController::class, 'updateStatus'])->whereNumber('id')->name('admin.kiosk.requests.update-status');
+    Route::delete('/admin/kiosk/requests/{id}', [App\Http\Controllers\Admin\KioskServiceRequestsController::class, 'destroy'])->whereNumber('id')->name('admin.kiosk.requests.destroy');
 
     Route::get('/admin/kiosk/subcategories', [App\Http\Controllers\Admin\KioskSubcategoryController::class, 'index'])->name('admin.kiosk.subcategories.index');
     Route::get('/admin/kiosk/subcategories/create', [App\Http\Controllers\Admin\KioskSubcategoryController::class, 'create'])->name('admin.kiosk.subcategories.create');
