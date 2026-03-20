@@ -138,7 +138,8 @@ class UserProfileController extends Controller
                 'name' => $user->name,
                 'email' => $user->email,
                 'phone' => $user->contact_number,
-                'dob' => $user->dob ? (is_string($user->dob) ? $user->dob : \Carbon\Carbon::parse($user->dob)->format('Y-m-d')) : null,
+                // UI shows DOB as MM/DD (year hidden for supporters)
+                'dob' => $user->dob ? Carbon::parse($user->dob)->format('m/d') : null,
                 'image' => $user->image ? Storage::url($user->image) : null,
                 'positions' => $userPositions, // current selected
                 'city' => $user->city,
@@ -153,18 +154,33 @@ class UserProfileController extends Controller
     public function update(Request $request)
     {
         $user = $request->user();
+        $isSupporter = ($user->role ?? null) === 'user';
 
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'string', 'email', 'max:255', 'unique:users,email,' . $user->id],
             'phone' => ['nullable', 'string', 'max:20'],
-            'dob' => ['nullable', 'date'],
+            'dob' => [
+                Rule::requiredIf($isSupporter),
+                'nullable',
+                'string',
+                'regex:/^(0[1-9]|1[0-2])\/(0[1-9]|[12][0-9]|3[01])$/',
+                function ($attribute, $value, $fail) {
+                    if (!is_string($value) || !preg_match('/^(0[1-9]|1[0-2])\/(0[1-9]|[12][0-9]|3[01])$/', $value)) {
+                        return;
+                    }
+                    [$month, $day] = explode('/', $value);
+                    if (!checkdate((int) $month, (int) $day, 2000)) {
+                        $fail('The date of birth is not a valid month/day.');
+                    }
+                },
+            ],
             'image' => ['nullable', 'image', 'mimes:jpeg,png,jpg,gif', 'max:2048'],
             'positions' => ['sometimes', 'array'],
             'positions.*' => ['exists:supporter_positions,id'],
             'timezone' => ['nullable', 'string', 'max:255'],
-            'city' => ['nullable', 'string', 'max:255'],
-            'state' => ['nullable', 'string', 'max:2'],
+            'city' => [Rule::requiredIf($isSupporter), 'nullable', 'string', 'max:255'],
+            'state' => [Rule::requiredIf($isSupporter), 'nullable', 'string', 'max:2'],
             'zipcode' => ['nullable', 'string', 'max:10'],
         ]);
 
@@ -190,7 +206,11 @@ class UserProfileController extends Controller
             'name' => $validated['name'],
             'email' => $validated['email'],
             'contact_number' => $validated['phone'] ?? null,
-            'dob' => $validated['dob'] ?? null,
+            // Persist MM/DD as a valid date using a fixed year.
+            // This keeps DB compatibility while hiding year in supporter UI.
+            'dob' => !empty($validated['dob'])
+                ? Carbon::createFromFormat('m/d/Y', $validated['dob'] . '/2000')->format('Y-m-d')
+                : null,
             'image' => $validated['image'] ?? $user->image,
             'city' => $validated['city'] ?? null,
             'state' => $validated['state'] ?? null,

@@ -66,7 +66,11 @@ import {
     Youtube,
     Video,
     TrendingUp,
-    Cloud
+    Cloud,
+    Monitor,
+    List,
+    LayoutGrid,
+    Layers
 } from 'lucide-react';
 import SiteTitle from './site-title';
 import { Button } from '@/components/ui/button';
@@ -861,6 +865,37 @@ const mainNavItems: (NavItem | NavGroup)[] = [
                 href: '/settings/service-hub',
                 icon: ShoppingBag,
                 role: "admin"
+            },
+            {
+                title: 'Kiosk Management',
+                icon: Monitor,
+                role: "admin",
+                items: [
+                    {
+                        title: 'Categories',
+                        href: '/admin/kiosk',
+                        icon: LayoutGrid,
+                        role: "admin"
+                    },
+                    {
+                        title: 'Subcategories',
+                        href: '/admin/kiosk/subcategories',
+                        icon: Layers,
+                        role: "admin"
+                    },
+                    {
+                        title: 'Kiosk Items',
+                        href: '/admin/kiosk/items',
+                        icon: List,
+                        role: "admin"
+                    },
+                    {
+                        title: 'Kiosk Requests',
+                        href: '/admin/kiosk/requests',
+                        icon: ClipboardList,
+                        role: "admin"
+                    },
+                ],
             },
             {
                 title: 'Promotional Banners',
