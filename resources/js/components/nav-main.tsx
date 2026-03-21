@@ -25,6 +25,10 @@ const isNavItem = (item: NavEntry): item is NavItem => 'href' in item;
 /** True if this href matches the current URL (exact, /create, /:id/edit, or prefix with /) */
 function itemMatchesUrl(href: string, url: string): boolean {
     if (url === href) return true;
+    // Categories landing: only index + /categories/* — not sibling apps (items, subcategories, requests)
+    if (href === '/admin/kiosk') {
+        return url.startsWith('/admin/kiosk/categories');
+    }
     if (url.startsWith(href + '/create')) return true;
     const escaped = href.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     if (url.match(new RegExp(`^${escaped}/\\d+/edit$`))) return true;
