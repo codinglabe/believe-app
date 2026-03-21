@@ -10,6 +10,8 @@ interface TimelineRow {
     id: number;
     event_type: string;
     created_at: string;
+    money_display: string;
+    believe_points: number | null;
 }
 
 interface Props {
@@ -17,16 +19,27 @@ interface Props {
     supporter: { id: number; name: string };
     timeline: TimelineRow[];
     isAdmin: boolean;
+    dashboardPeriod: '7' | '30' | 'all';
+    periodLabels: Record<'7' | '30' | 'all', string>;
 }
 
-export default function SupporterActivityShow({ organization, supporter, timeline, isAdmin }: Props) {
-    const activityIndexHref =
-        isAdmin ? `/supporter-activity?organization_id=${organization.id}` : '/supporter-activity';
+export default function SupporterActivityShow({
+    organization,
+    supporter,
+    timeline,
+    isAdmin,
+    dashboardPeriod,
+    periodLabels,
+}: Props) {
+    const indexQuery = new URLSearchParams();
+    indexQuery.set('period', dashboardPeriod);
+    if (isAdmin) {
+        indexQuery.set('organization_id', String(organization.id));
+    }
+    const activityIndexHref = `/supporter-activity?${indexQuery.toString()}`;
 
-    const supporterProfileHref =
-        isAdmin
-            ? `/supporter-activity/supporters/${supporter.id}?organization_id=${organization.id}`
-            : `/supporter-activity/supporters/${supporter.id}`;
+    const profileQuery = new URLSearchParams(indexQuery);
+    const supporterProfileHref = `/supporter-activity/supporters/${supporter.id}?${profileQuery.toString()}`;
 
     const breadcrumbs: BreadcrumbItem[] = [
         { title: 'Dashboard', href: '/dashboard' },
@@ -52,14 +65,17 @@ export default function SupporterActivityShow({ organization, supporter, timelin
                         {supporter.name}
                     </h1>
                     <p className="text-muted-foreground mt-1">
-                        Activity timeline · {organization.name}
+                        Activity timeline · {organization.name} · list uses {periodLabels[dashboardPeriod]} context for navigation
+                        only
                     </p>
                 </div>
 
                 <Card>
                     <CardHeader>
                         <CardTitle>Activity timeline</CardTitle>
-                        <CardDescription>All recorded events for this supporter with your organization</CardDescription>
+                        <CardDescription>
+                            All recorded events for this supporter with your organization (all time)
+                        </CardDescription>
                     </CardHeader>
                     <CardContent>
                         <Table>
@@ -67,12 +83,14 @@ export default function SupporterActivityShow({ organization, supporter, timelin
                                 <TableRow>
                                     <TableHead>Date</TableHead>
                                     <TableHead>Event</TableHead>
+                                    <TableHead className="text-right">Money</TableHead>
+                                    <TableHead className="text-right">Believe Points</TableHead>
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
                                 {timeline.length === 0 ? (
                                     <TableRow>
-                                        <TableCell colSpan={2} className="text-muted-foreground text-center py-8">
+                                        <TableCell colSpan={4} className="text-muted-foreground text-center py-8">
                                             No events.
                                         </TableCell>
                                     </TableRow>
@@ -80,13 +98,21 @@ export default function SupporterActivityShow({ organization, supporter, timelin
                                     timeline.map((row) => (
                                         <TableRow key={row.id}>
                                             <TableCell className="whitespace-nowrap text-muted-foreground">
-                                                {new Date(row.created_at).toLocaleDateString(undefined, {
+                                                {new Date(row.created_at).toLocaleString(undefined, {
                                                     month: 'short',
                                                     day: 'numeric',
                                                     year: 'numeric',
+                                                    hour: 'numeric',
+                                                    minute: '2-digit',
                                                 })}
                                             </TableCell>
                                             <TableCell className="font-mono text-sm">{row.event_type}</TableCell>
+                                            <TableCell className="text-right tabular-nums">{row.money_display}</TableCell>
+                                            <TableCell className="text-right tabular-nums">
+                                                {row.believe_points != null && row.believe_points > 0
+                                                    ? row.believe_points
+                                                    : '—'}
+                                            </TableCell>
                                         </TableRow>
                                     ))
                                 )}

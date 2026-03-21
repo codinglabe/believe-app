@@ -26,7 +26,9 @@ class SupporterActivityService
         int $organizationId,
         string $eventType,
         ?int $referenceId = null,
-        ?\DateTimeInterface $at = null
+        ?\DateTimeInterface $at = null,
+        ?int $amountCents = null,
+        ?int $believePoints = null
     ): ?SupporterActivity {
         if (!in_array($eventType, SupporterActivity::EVENT_TYPES, true)) {
             return null;
@@ -40,6 +42,8 @@ class SupporterActivityService
                 'organization_id' => $organizationId,
                 'event_type' => $eventType,
                 'reference_id' => $referenceId,
+                'amount_cents' => $amountCents,
+                'believe_points' => $believePoints,
                 'created_at' => $timestamp,
             ]);
         } catch (QueryException $e) {
@@ -69,7 +73,10 @@ class SupporterActivityService
             $donation->user_id,
             $donation->organization_id,
             SupporterActivity::EVENT_DONATION_COMPLETED,
-            $donation->id
+            $donation->id,
+            null,
+            $donation->amount,
+            null
         );
     }
 
@@ -83,11 +90,15 @@ class SupporterActivityService
 
         if ($order->items->isEmpty()) {
             if ($order->organization_id) {
+                $cents = (int) round(((float) $order->total_amount) * 100);
                 $this->record(
                     $order->user_id,
                     $order->organization_id,
                     SupporterActivity::EVENT_PURCHASE_COMPLETED,
-                    $order->id
+                    $order->id,
+                    null,
+                    $cents > 0 ? $cents : null,
+                    null
                 );
             }
 
@@ -98,11 +109,15 @@ class SupporterActivityService
             if (!$item->organization_id) {
                 continue;
             }
+            $lineCents = (int) round(((float) $item->subtotal) * 100);
             $this->record(
                 $order->user_id,
                 $item->organization_id,
                 SupporterActivity::EVENT_PURCHASE_COMPLETED,
-                $item->id
+                $item->id,
+                null,
+                $lineCents > 0 ? $lineCents : null,
+                null
             );
         }
     }

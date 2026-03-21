@@ -35,11 +35,15 @@ class SupporterActivity extends Model
         'organization_id',
         'event_type',
         'reference_id',
+        'amount_cents',
+        'believe_points',
         'created_at',
     ];
 
     protected $casts = [
         'created_at' => 'datetime',
+        'amount_cents' => 'integer',
+        'believe_points' => 'integer',
     ];
 
     public function supporter(): BelongsTo

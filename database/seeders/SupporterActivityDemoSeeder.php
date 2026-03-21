@@ -40,17 +40,17 @@ class SupporterActivityDemoSeeder extends Seeder
         $rows = [];
         $u = $supporters->values();
 
-        // Spread events across supporters and last ~30 days
+        // Spread events across supporters and last ~30 days (amount_cents / believe_points for UI demos)
         $defs = [
-            [$u[0] ?? null, SupporterActivity::EVENT_DONATION_COMPLETED, 0],
-            [$u[0] ?? null, SupporterActivity::EVENT_PURCHASE_COMPLETED, 1],
-            [$u[1] ?? $u[0], SupporterActivity::EVENT_COURSES_COMPLETED, 2],
-            [$u[1] ?? $u[0], SupporterActivity::EVENT_EVENTS_COMPLETED, 3],
-            [$u[2] ?? $u[0], SupporterActivity::EVENT_VOLUNTEER_SIGNUP, 4],
-            [$u[0] ?? null, SupporterActivity::EVENT_DONATION_COMPLETED, 5],
+            [$u[0] ?? null, SupporterActivity::EVENT_DONATION_COMPLETED, 0, 25_00, null],
+            [$u[0] ?? null, SupporterActivity::EVENT_PURCHASE_COMPLETED, 1, 18_50, null],
+            [$u[1] ?? $u[0], SupporterActivity::EVENT_COURSES_COMPLETED, 2, null, null],
+            [$u[1] ?? $u[0], SupporterActivity::EVENT_EVENTS_COMPLETED, 3, null, null],
+            [$u[2] ?? $u[0], SupporterActivity::EVENT_VOLUNTEER_SIGNUP, 4, null, null],
+            [$u[0] ?? null, SupporterActivity::EVENT_DONATION_COMPLETED, 5, 10_00, 10],
         ];
 
-        foreach ($defs as $i => [$user, $eventType, $refOffset]) {
+        foreach ($defs as $i => [$user, $eventType, $refOffset, $amountCents, $believePoints]) {
             if (!$user) {
                 continue;
             }
@@ -59,6 +59,8 @@ class SupporterActivityDemoSeeder extends Seeder
                 'organization_id' => $org->id,
                 'event_type' => $eventType,
                 'reference_id' => $baseRef + $refOffset,
+                'amount_cents' => $amountCents,
+                'believe_points' => $believePoints,
                 'created_at' => $now->copy()->subDays(30 - $i * 5),
             ];
         }
