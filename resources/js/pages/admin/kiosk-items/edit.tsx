@@ -31,6 +31,7 @@ interface PageProps {
   item: ItemData
   categories: { value: string; label: string }[]
   subcategories: SubcategoryOption[]
+  usStates: { value: string; label: string }[]
 }
 
 const OTHER_VALUE = "__other__"
@@ -41,7 +42,7 @@ function getInitialSubcategory(subcategory: string | null, subcategoriesForCateg
   return inList ? { subcategory, subcategory_other: "" } : { subcategory: OTHER_VALUE, subcategory_other: subcategory }
 }
 
-export default function KioskItemsEdit({ item, categories, subcategories }: PageProps) {
+export default function KioskItemsEdit({ item, categories, subcategories, usStates = [] }: PageProps) {
   const subcategoriesForInitialCategory = subcategories.filter((s) => s.category_slug === item.category_slug)
   const initial = getInitialSubcategory(item.subcategory ?? null, subcategoriesForInitialCategory)
 
@@ -60,6 +61,9 @@ export default function KioskItemsEdit({ item, categories, subcategories }: Page
   const subcategoriesForCategory = subcategories.filter((s) => s.category_slug === data.category_slug)
   const isOther = data.subcategory === OTHER_VALUE
   const effectiveSubcategory = isOther ? data.subcategory_other : data.subcategory
+
+  const stateInList = data.state && usStates.some((s) => s.value === data.state)
+  const stateSelectValue = stateInList || !data.state ? (data.state ?? "") : "__legacy__"
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -195,11 +199,35 @@ export default function KioskItemsEdit({ item, categories, subcategories }: Page
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="state">State</Label>
-                  <Input
+                  <select
                     id="state"
-                    value={data.state}
-                    onChange={(e) => setData("state", e.target.value)}
-                  />
+                    value={stateSelectValue}
+                    onChange={(e) => {
+                      const v = e.target.value
+                      if (v === "__legacy__") return
+                      setData("state", v)
+                    }}
+                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm h-9"
+                  >
+                    <option value="">— None —</option>
+                    {!stateInList && data.state ? (
+                      <option value="__legacy__" disabled>
+                        Current: {data.state} (pick a US state below to replace)
+                      </option>
+                    ) : null}
+                    {usStates.map((s) => (
+                      <option key={s.value} value={s.value}>
+                        {s.label}
+                      </option>
+                    ))}
+                  </select>
+                  {usStates.length === 0 ? (
+                    <p className="text-xs text-muted-foreground">
+                      Run <code className="rounded bg-muted px-1">php artisan db:seed --class=UsStatesSeeder</code> for the
+                      state list.
+                    </p>
+                  ) : null}
+                  {errors.state && <p className="text-sm text-destructive">{errors.state}</p>}
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="city">City</Label>

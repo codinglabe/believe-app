@@ -66,6 +66,7 @@ class DatabaseSeeder extends Seeder
         $this->call(FundMeCategorySeeder::class);
 
         // Step 5: Seed organization-related data
+        $this->call(PrimaryActionCategoriesSeeder::class);
         $this->call(OrganizationBoardMembersSeeder::class);
         $this->call(OrganizationRoleSeeder::class);
 
@@ -88,6 +89,7 @@ class DatabaseSeeder extends Seeder
 
         // Kiosk data (idempotent: safe to re-run without duplicates)
         $this->call(KioskCategoriesSeeder::class);
+        $this->call(UsStatesSeeder::class);
         $this->call(KioskServicesSeeder::class);
         $this->call(KioskSubcategoriesSeeder::class);
     }

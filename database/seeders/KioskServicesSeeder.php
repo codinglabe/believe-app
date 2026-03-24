@@ -61,7 +61,7 @@ class KioskServicesSeeder extends Seeder
                     'service_slug' => $serviceSlug,
                 ],
                 [
-                    'state' => (string) ($row['state'] ?? 'Louisiana'),
+                    'state' => (string) ($row['state'] ?? 'LA'),
                     'parish' => $this->nullableString($row['parish'] ?? null),
                     'city' => (string) ($row['city'] ?? 'Jeanerette'),
                     'category_slug' => $categorySlug,

@@ -193,6 +193,7 @@ Route::post('/contact', [App\Http\Controllers\ContactController::class, 'store']
 
 Route::get('/kiosk', [App\Http\Controllers\KioskController::class, 'index'])->name('kiosk.index');
 Route::get('/kiosk/services', [App\Http\Controllers\KioskController::class, 'services'])->name('kiosk.services');
+Route::post('/kiosk/services/geo', [App\Http\Controllers\KioskController::class, 'updateServicesGeo'])->name('kiosk.services.geo');
 Route::middleware('auth')->group(function () {
     Route::post('/kiosk/service-requests', [App\Http\Controllers\KioskServiceRequestController::class, 'store'])->name('kiosk.service-requests.store');
 });
@@ -1828,6 +1829,17 @@ Route::prefix('admin/service-categories')
         Route::get('/{serviceCategory}/edit', [App\Http\Controllers\Admin\ServiceCategoryController::class, 'edit'])->name('edit');
         Route::put('/{serviceCategory}', [App\Http\Controllers\Admin\ServiceCategoryController::class, 'update'])->name('update');
         Route::delete('/{serviceCategory}', [App\Http\Controllers\Admin\ServiceCategoryController::class, 'destroy'])->name('destroy');
+    });
+
+// Org registration: Category Grid (Primary Action) — lookup table managed by admins
+Route::prefix('admin/primary-action-categories')
+    ->middleware(['auth', 'EnsureEmailIsVerified', 'role:admin', 'topics.selected'])
+    ->name('admin.primary-action-categories.')
+    ->group(function () {
+        Route::get('/', [App\Http\Controllers\Admin\PrimaryActionCategoryController::class, 'index'])->name('index');
+        Route::post('/', [App\Http\Controllers\Admin\PrimaryActionCategoryController::class, 'store'])->name('store');
+        Route::put('/{primaryActionCategory}', [App\Http\Controllers\Admin\PrimaryActionCategoryController::class, 'update'])->name('update');
+        Route::delete('/{primaryActionCategory}', [App\Http\Controllers\Admin\PrimaryActionCategoryController::class, 'destroy'])->name('destroy');
     });
 
 // Admin Merchant Hub Categories Management

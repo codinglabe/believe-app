@@ -3,11 +3,14 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\Country;
 use App\Models\KioskCategory;
 use App\Models\KioskService;
 use App\Models\KioskSubcategory;
+use App\Models\State;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -16,6 +19,76 @@ class KioskItemsController extends Controller
     public function __construct()
     {
         $this->middleware(['auth', 'EnsureEmailIsVerified', 'role:admin']);
+    }
+
+    /**
+     * @return list<array{value: string, label: string}>
+     */
+    protected function usStatesForInertia(): array
+    {
+        $usId = Country::where('code', 'US')->value('id');
+        if (! $usId) {
+            return [];
+        }
+
+        return State::query()
+            ->where('country_id', $usId)
+            ->orderBy('name')
+            ->get(['name', 'abbr'])
+            ->map(fn (State $s) => [
+                'value' => $s->abbr,
+                'label' => $s->name.' ('.$s->abbr.')',
+            ])
+            ->all();
+    }
+
+    /**
+     * @return array<int, \Illuminate\Contracts\Validation\ValidationRule|string>
+     */
+    protected function kioskStateValidationRules(): array
+    {
+        $usId = Country::where('code', 'US')->value('id');
+        $rules = ['nullable', 'string'];
+        if ($usId) {
+            $rules[] = 'size:2';
+            $rules[] = Rule::exists('states', 'abbr')->where(fn ($q) => $q->where('country_id', $usId));
+        } else {
+            $rules[] = 'max:64';
+        }
+
+        return $rules;
+    }
+
+    /** Normalize to 2-letter `states.abbr` when possible (handles legacy full names on edit). */
+    protected function normalizeKioskStateInput(Request $request): void
+    {
+        $raw = $request->input('state');
+        if (! filled($raw)) {
+            $request->merge(['state' => null]);
+
+            return;
+        }
+        $raw = trim((string) $raw);
+        $usId = Country::where('code', 'US')->value('id');
+        if (strlen($raw) === 2) {
+            $request->merge(['state' => strtoupper($raw)]);
+
+            return;
+        }
+        if ($usId) {
+            $found = State::query()
+                ->where('country_id', $usId)
+                ->where(function ($q) use ($raw) {
+                    $q->where('name', $raw)->orWhere('abbr', strtoupper($raw));
+                })
+                ->first();
+            if ($found) {
+                $request->merge(['state' => $found->abbr]);
+
+                return;
+            }
+        }
+        $request->merge(['state' => strtoupper($raw)]);
     }
 
     public function index(Request $request): Response
@@ -78,11 +151,14 @@ class KioskItemsController extends Controller
         return Inertia::render('admin/kiosk-items/create', [
             'categories' => $categories,
             'subcategories' => $subcategories,
+            'usStates' => $this->usStatesForInertia(),
         ]);
     }
 
     public function store(Request $request): RedirectResponse
     {
+        $this->normalizeKioskStateInput($request);
+
         $validated = $request->validate([
             'display_name' => 'required|string|max:255',
             'category_slug' => 'required|string|max:64|exists:kiosk_categories,slug',
@@ -90,7 +166,7 @@ class KioskItemsController extends Controller
             'url' => 'nullable|string|max:500',
             'is_active' => 'boolean',
             'market_code' => 'nullable|string|max:64',
-            'state' => 'nullable|string|max:64',
+            'state' => $this->kioskStateValidationRules(),
             'city' => 'nullable|string|max:128',
         ]);
 
@@ -152,11 +228,14 @@ class KioskItemsController extends Controller
             ],
             'categories' => $categories,
             'subcategories' => $subcategories,
+            'usStates' => $this->usStatesForInertia(),
         ]);
     }
 
     public function update(Request $request, KioskService $item): RedirectResponse
     {
+        $this->normalizeKioskStateInput($request);
+
         $validated = $request->validate([
             'display_name' => 'required|string|max:255',
             'category_slug' => 'required|string|max:64|exists:kiosk_categories,slug',
@@ -164,7 +243,7 @@ class KioskItemsController extends Controller
             'url' => 'nullable|string|max:500',
             'is_active' => 'boolean',
             'market_code' => 'nullable|string|max:64',
-            'state' => 'nullable|string|max:64',
+            'state' => $this->kioskStateValidationRules(),
             'city' => 'nullable|string|max:128',
         ]);
 

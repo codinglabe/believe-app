@@ -861,6 +861,12 @@ const mainNavItems: (NavItem | NavGroup)[] = [
                 role: "admin"
             },
             {
+                title: 'Org Primary Action Categories',
+                href: '/admin/primary-action-categories',
+                icon: LayoutGrid,
+                role: "admin"
+            },
+            {
                 title: 'Service Hub Settings',
                 href: '/settings/service-hub',
                 icon: ShoppingBag,

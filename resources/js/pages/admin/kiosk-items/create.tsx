@@ -17,11 +17,13 @@ interface SubcategoryOption {
 interface PageProps {
   categories: { value: string; label: string }[]
   subcategories: SubcategoryOption[]
+  /** US states from `states` table (abbr = value); empty until migration + UsStatesSeeder */
+  usStates: { value: string; label: string }[]
 }
 
 const OTHER_VALUE = "__other__"
 
-export default function KioskItemsCreate({ categories, subcategories }: PageProps) {
+export default function KioskItemsCreate({ categories, subcategories, usStates = [] }: PageProps) {
   const { data, setData, post, processing, errors } = useForm({
     display_name: "",
     category_slug: categories.length > 0 ? categories[0].value : "",
@@ -171,12 +173,26 @@ export default function KioskItemsCreate({ categories, subcategories }: PageProp
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="state">State</Label>
-                  <Input
+                  <select
                     id="state"
                     value={data.state}
                     onChange={(e) => setData("state", e.target.value)}
-                    placeholder="Louisiana"
-                  />
+                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm h-9"
+                  >
+                    <option value="">— None —</option>
+                    {usStates.map((s) => (
+                      <option key={s.value} value={s.value}>
+                        {s.label}
+                      </option>
+                    ))}
+                  </select>
+                  {usStates.length === 0 ? (
+                    <p className="text-xs text-muted-foreground">
+                      No US states in the database. Run migrations and{" "}
+                      <code className="rounded bg-muted px-1">php artisan db:seed --class=UsStatesSeeder</code>.
+                    </p>
+                  ) : null}
+                  {errors.state && <p className="text-sm text-destructive">{errors.state}</p>}
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="city">City</Label>

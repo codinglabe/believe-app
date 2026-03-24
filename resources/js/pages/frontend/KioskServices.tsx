@@ -24,6 +24,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Send,
+  MapPin,
   type LucideIcon,
 } from "lucide-react"
 import { Label } from "@/components/ui/label"
@@ -79,11 +80,27 @@ interface PaginatedServices {
   path: string
 }
 
+interface SupporterLocationPayload {
+  city: string
+  state: string
+  zipcode: string | null
+  label: string
+}
+
 interface KioskServicesProps {
   seo?: { title?: string; description?: string }
   hero?: { title: string; subtitle: string }
   services: PaginatedServices
-  filters: { state: string | null; city: string | null; category: string | null; subcategory: string | null; search: string | null }
+  supporterLocation?: SupporterLocationPayload | null
+  supporterNeedsLocation?: boolean
+  filters: {
+    state: string | null
+    city: string | null
+    category: string | null
+    subcategory: string | null
+    search: string | null
+    all_locations: boolean
+  }
   filterOptions: {
     states: FilterOption[]
     cities: FilterOption[]
@@ -96,20 +113,24 @@ export default function KioskServices({
   seo,
   hero,
   services,
+  supporterLocation = null,
+  supporterNeedsLocation = false,
   filters,
   filterOptions,
 }: KioskServicesProps) {
+  /** Category / subcategory / search / page only — city & state live in session (see POST /kiosk/services/geo). */
   const buildUrl = useCallback(
-    (f: { state?: string | null; city?: string | null; category?: string | null; subcategory?: string | null; search?: string | null; page?: number | null }) => {
+    (f: {
+      category?: string | null
+      subcategory?: string | null
+      search?: string | null
+      page?: number | null
+    }) => {
       const q = new URLSearchParams()
-      const state = f.state !== undefined ? f.state : filters.state
-      const city = f.city !== undefined ? f.city : filters.city
       const category = f.category !== undefined ? f.category : filters.category
       const subcategory = f.subcategory !== undefined ? f.subcategory : filters.subcategory
       const search = f.search !== undefined ? f.search : filters.search
       const page = f.page !== undefined ? f.page : null
-      if (state) q.set("state", state)
-      if (city) q.set("city", city)
       if (category) q.set("category", category)
       if (subcategory) q.set("subcategory", subcategory)
       if (search) q.set("search", search)
@@ -117,7 +138,35 @@ export default function KioskServices({
       const query = q.toString()
       return route("kiosk.services") + (query ? `?${query}` : "")
     },
-    [filters]
+    [filters.category, filters.subcategory, filters.search]
+  )
+
+  const postGeo = useCallback(
+    (body: { state?: string; city?: string; all_locations?: boolean; use_profile?: boolean }) => {
+      router.post("/kiosk/services/geo", {
+        state: body.state ?? "",
+        city: body.city ?? "",
+        all_locations: body.all_locations ?? false,
+        use_profile: body.use_profile ?? false,
+        category: filters.category ?? "",
+        subcategory: filters.subcategory ?? "",
+        search: filters.search ?? "",
+      })
+    },
+    [filters.category, filters.subcategory, filters.search]
+  )
+
+  const hrefWithAllLocations = useCallback(
+    (extra?: { category?: string | null; subcategory?: string | null; search?: string | null }) => {
+      const base = buildUrl({
+        category: extra?.category !== undefined ? extra.category : filters.category,
+        subcategory: extra?.subcategory !== undefined ? extra.subcategory : filters.subcategory,
+        search: extra?.search !== undefined ? extra.search : filters.search,
+        page: 1,
+      })
+      return base.includes("?") ? `${base}&all_locations=1` : `${base}?all_locations=1`
+    },
+    [buildUrl, filters.category, filters.subcategory, filters.search]
   )
 
   const [searchInput, setSearchInput] = useState(filters.search ?? "")
@@ -181,12 +230,25 @@ export default function KioskServices({
 
   const handleFilterChange = useCallback(
     (key: "state" | "city" | "category" | "subcategory", value: string) => {
-      const next = { ...filters, [key]: value || null }
-      if (key === "state") next.city = null
-      if (key === "category") next.subcategory = null
-      router.get(buildUrl({ ...next, page: 1 }))
+      if (key === "state") {
+        if (!value) {
+          postGeo({ all_locations: true })
+          return
+        }
+        postGeo({ state: value, city: "" })
+        return
+      }
+      if (key === "city") {
+        postGeo({ state: filters.state ?? "", city: value })
+        return
+      }
+      if (key === "category") {
+        router.get(buildUrl({ category: value || null, subcategory: null, page: 1 }))
+        return
+      }
+      router.get(buildUrl({ subcategory: value || null, page: 1 }))
     },
-    [filters, buildUrl]
+    [filters.state, buildUrl, postGeo]
   )
 
   const submitServiceRequest = async () => {
@@ -308,6 +370,83 @@ export default function KioskServices({
         </section>
 
         <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          {supporterNeedsLocation && (
+            <div className="mb-6 rounded-2xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-950/30">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-sm text-amber-950 dark:text-amber-100">
+                  <span className="font-semibold">Add city and state in your supporter profile</span> so this page can open
+                  with resources for your area. Open your profile and complete the location fields.
+                </p>
+                <Link
+                  href="/profile"
+                  className="inline-flex shrink-0 items-center justify-center rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm font-medium text-amber-900 hover:bg-amber-100 dark:border-amber-700 dark:bg-amber-900/40 dark:text-amber-100 dark:hover:bg-amber-900/60"
+                >
+                  Open profile
+                </Link>
+              </div>
+            </div>
+          )}
+
+          {!supporterNeedsLocation && !filters.all_locations && (filters.state || filters.city) ? (
+            <div className="mb-6 rounded-2xl border border-purple-200 bg-gradient-to-r from-purple-50 to-blue-50 p-4 dark:border-purple-800/60 dark:from-purple-950/40 dark:to-blue-950/40">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex gap-3 min-w-0">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-r from-purple-600 to-blue-600 text-white">
+                    <MapPin className="h-5 w-5" aria-hidden />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-gray-900 dark:text-white">Location filter</p>
+                    <p className="text-sm text-gray-700 dark:text-gray-300 mt-0.5">
+                      Showing kiosk services for{" "}
+                      <span className="font-medium text-gray-900 dark:text-white">
+                        {[filters.city, filters.state].filter(Boolean).join(", ")}
+                      </span>
+                      {supporterLocation &&
+                      supporterLocation.state === filters.state &&
+                      supporterLocation.city === filters.city ? (
+                        <span className="text-muted-foreground"> (matches your supporter profile)</span>
+                      ) : null}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-2 shrink-0">
+                  <Link
+                    href={hrefWithAllLocations()}
+                    className="inline-flex items-center justify-center rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-800 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 dark:hover:bg-gray-700"
+                  >
+                    Show all locations
+                  </Link>
+                  {supporterLocation ? (
+                    <Link
+                      href="/profile"
+                      className="inline-flex items-center justify-center rounded-lg bg-gradient-to-r from-purple-600 to-blue-600 px-3 py-2 text-sm font-semibold text-white hover:opacity-95"
+                    >
+                      Open profile
+                    </Link>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          {filters.all_locations && supporterLocation ? (
+            <div className="mb-6 rounded-2xl border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800/80">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-sm text-muted-foreground">
+                  You are viewing <span className="font-medium text-foreground">all locations</span>. Your profile location is{" "}
+                  <span className="font-medium text-foreground">{supporterLocation.label}</span>.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => postGeo({ use_profile: true })}
+                  className="inline-flex shrink-0 items-center justify-center rounded-lg bg-gradient-to-r from-purple-600 to-blue-600 px-3 py-2 text-sm font-semibold text-white hover:opacity-95"
+                >
+                  Use my profile location
+                </button>
+              </div>
+            </div>
+          ) : null}
+
           <div className="mb-4 flex justify-end">
             <button
               type="button"
@@ -433,7 +572,7 @@ export default function KioskServices({
               <div className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-8 text-center text-muted-foreground">
                 <p>No services match your filters.</p>
                 <Link
-                  href={route("kiosk.services")}
+                  href={`${route("kiosk.services")}?all_locations=1`}
                   className="mt-2 inline-block text-sm font-medium text-purple-600 dark:text-purple-400 hover:underline"
                 >
                   Clear filters
