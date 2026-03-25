@@ -90,7 +90,6 @@ class DatabaseSeeder extends Seeder
         // Kiosk data (idempotent: safe to re-run without duplicates)
         $this->call(KioskCategoriesSeeder::class);
         $this->call(UsStatesSeeder::class);
-        $this->call(KioskServicesSeeder::class);
         $this->call(KioskSubcategoriesSeeder::class);
     }
 }

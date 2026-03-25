@@ -220,12 +220,6 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:admin'])->group(functi
     Route::patch('/admin/kiosk/categories/{kiosk}/toggle-active', [App\Http\Controllers\Admin\KioskManagementController::class, 'toggleActive'])->name('admin.kiosk.toggle-active');
     Route::delete('/admin/kiosk/categories/{kiosk}', [App\Http\Controllers\Admin\KioskManagementController::class, 'destroy'])->name('admin.kiosk.destroy');
 
-    Route::get('/admin/kiosk/items', [App\Http\Controllers\Admin\KioskItemsController::class, 'index'])->name('admin.kiosk.items.index');
-    Route::get('/admin/kiosk/items/create', [App\Http\Controllers\Admin\KioskItemsController::class, 'create'])->name('admin.kiosk.items.create');
-    Route::post('/admin/kiosk/items', [App\Http\Controllers\Admin\KioskItemsController::class, 'store'])->name('admin.kiosk.items.store');
-    Route::get('/admin/kiosk/items/{item}/edit', [App\Http\Controllers\Admin\KioskItemsController::class, 'edit'])->name('admin.kiosk.items.edit');
-    Route::put('/admin/kiosk/items/{item}', [App\Http\Controllers\Admin\KioskItemsController::class, 'update'])->name('admin.kiosk.items.update');
-    Route::delete('/admin/kiosk/items/{item}', [App\Http\Controllers\Admin\KioskItemsController::class, 'destroy'])->name('admin.kiosk.items.destroy');
     Route::get('/admin/kiosk/requests', [App\Http\Controllers\Admin\KioskServiceRequestsController::class, 'index'])->name('admin.kiosk.requests.index');
     // More specific route first so {id} never competes with the static "edit" segment
     Route::get('/admin/kiosk/requests/{id}/edit', [App\Http\Controllers\Admin\KioskServiceRequestsController::class, 'edit'])->whereNumber('id')->name('admin.kiosk.requests.edit');
@@ -240,6 +234,13 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:admin'])->group(functi
     Route::get('/admin/kiosk/subcategories/{subcategory}/edit', [App\Http\Controllers\Admin\KioskSubcategoryController::class, 'edit'])->name('admin.kiosk.subcategories.edit');
     Route::put('/admin/kiosk/subcategories/{subcategory}', [App\Http\Controllers\Admin\KioskSubcategoryController::class, 'update'])->name('admin.kiosk.subcategories.update');
     Route::delete('/admin/kiosk/subcategories/{subcategory}', [App\Http\Controllers\Admin\KioskSubcategoryController::class, 'destroy'])->name('admin.kiosk.subcategories.destroy');
+
+    Route::get('/admin/kiosk/providers', [App\Http\Controllers\Admin\KioskProviderController::class, 'index'])->name('admin.kiosk.providers.index');
+    Route::get('/admin/kiosk/providers/create', [App\Http\Controllers\Admin\KioskProviderController::class, 'create'])->name('admin.kiosk.providers.create');
+    Route::post('/admin/kiosk/providers', [App\Http\Controllers\Admin\KioskProviderController::class, 'store'])->name('admin.kiosk.providers.store');
+    Route::get('/admin/kiosk/providers/{kioskProvider}/edit', [App\Http\Controllers\Admin\KioskProviderController::class, 'edit'])->name('admin.kiosk.providers.edit');
+    Route::put('/admin/kiosk/providers/{kioskProvider}', [App\Http\Controllers\Admin\KioskProviderController::class, 'update'])->name('admin.kiosk.providers.update');
+    Route::delete('/admin/kiosk/providers/{kioskProvider}', [App\Http\Controllers\Admin\KioskProviderController::class, 'destroy'])->name('admin.kiosk.providers.destroy');
 });
 
 Route::get('/nonprofit-news', [NonprofitNewsController::class, 'index'])

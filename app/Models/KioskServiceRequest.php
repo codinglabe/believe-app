@@ -24,21 +24,20 @@ class KioskServiceRequest extends Model
         'ai_suggested_url',
         'ai_tokens_used',
         'edit_token',
-        'approved_service_id',
+        'approved_kiosk_provider_id',
         'approved_at',
         'resolved_at',
     ];
 
     protected $casts = [
         'ai_tokens_used' => 'integer',
-        'approved_service_id' => 'integer',
+        'approved_kiosk_provider_id' => 'integer',
         'approved_at' => 'datetime',
         'resolved_at' => 'datetime',
     ];
 
-    public function approvedService(): BelongsTo
+    public function approvedKioskProvider(): BelongsTo
     {
-        return $this->belongsTo(KioskService::class, 'approved_service_id');
+        return $this->belongsTo(KioskProvider::class, 'approved_kiosk_provider_id');
     }
 }
-

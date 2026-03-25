@@ -25,6 +25,8 @@ import {
   ChevronRight,
   Send,
   MapPin,
+  CreditCard,
+  LogIn,
   type LucideIcon,
 } from "lucide-react"
 import { Label } from "@/components/ui/label"
@@ -50,14 +52,22 @@ interface FilterOption {
   label: string
 }
 
-interface ServiceItem {
+interface RequestSubcategoryOption {
   id: number
-  display_name: string
-  subcategory: string | null
   category_slug: string
-  category_title: string
-  url: string | null
-  launch_type: string | null
+  value: string
+  label: string
+}
+
+interface KioskProviderItem {
+  id: number
+  name: string
+  category_slug: string
+  subcategory_slug: string
+  website: string | null
+  payment_url: string | null
+  login_url: string | null
+  account_link_supported: boolean
 }
 
 interface PaginationLink {
@@ -66,8 +76,8 @@ interface PaginationLink {
   active: boolean
 }
 
-interface PaginatedServices {
-  data: ServiceItem[]
+interface PaginatedProviders {
+  data: KioskProviderItem[]
   current_page: number
   last_page: number
   per_page: number
@@ -87,10 +97,29 @@ interface SupporterLocationPayload {
   label: string
 }
 
+interface KioskServiceRequestFlash {
+  ok: boolean
+  status: string
+  reason: string | null
+  suggested_url: string | null
+  request_id: number
+  edit_token: string
+}
+
+function formatValidationErrors(errors: Record<string, string | string[] | undefined>): string {
+  const parts: string[] = []
+  for (const v of Object.values(errors)) {
+    if (v == null) continue
+    parts.push(...(Array.isArray(v) ? v : [v]))
+  }
+  return parts.join(" ") || "Please check the form."
+}
+
 interface KioskServicesProps {
   seo?: { title?: string; description?: string }
   hero?: { title: string; subtitle: string }
-  services: PaginatedServices
+  /** Paginated `kiosk_providers` only (AI ingest + approved requests). */
+  providers: PaginatedProviders
   supporterLocation?: SupporterLocationPayload | null
   supporterNeedsLocation?: boolean
   filters: {
@@ -107,16 +136,19 @@ interface KioskServicesProps {
     categories: FilterOption[]
     subcategories: FilterOption[]
   }
+  /** Subcategory rows from `kiosk_subcategories` for the “request a service” form dropdowns. */
+  requestSubcategoryOptions?: RequestSubcategoryOption[]
 }
 
 export default function KioskServices({
   seo,
   hero,
-  services,
+  providers,
   supporterLocation = null,
   supporterNeedsLocation = false,
   filters,
   filterOptions,
+  requestSubcategoryOptions = [],
 }: KioskServicesProps) {
   /** Category / subcategory / search / page only — city & state live in session (see POST /kiosk/services/geo). */
   const buildUrl = useCallback(
@@ -199,8 +231,19 @@ export default function KioskServices({
   const [correctedUrl, setCorrectedUrl] = useState("")
   const [showRequestForm, setShowRequestForm] = useState(false)
   const requestSectionRef = useRef<HTMLDivElement | null>(null)
-  const page = usePage<{ auth?: { user?: { id: number } | null } }>()
+  const page = usePage<{
+    auth?: { user?: { id: number } | null }
+    error?: string | null
+    kiosk_service_request?: KioskServiceRequestFlash | null
+  }>()
   const isLoggedIn = Boolean(page.props?.auth?.user)
+
+  useEffect(() => {
+    const err = page.props.error
+    if (err) {
+      setRequestState((s) => ({ ...s, message: err, loading: false }))
+    }
+  }, [page.props.error])
 
   useEffect(() => {
     setSearchInput(filters.search ?? "")
@@ -216,13 +259,37 @@ export default function KioskServices({
     }))
   }, [filters.category, filters.subcategory, filters.state, filters.city])
 
+  const [loadingRequestSubcategories, setLoadingRequestSubcategories] = useState(false)
+
+  /** Inertia partial visit: server returns `requestSubcategoryOptions` for `kiosk_request_category`. */
+  const loadRequestFormSubcategories = useCallback((categorySlug: string) => {
+    setRequestForm((p) => ({ ...p, category_slug: categorySlug, subcategory: "" }))
+    setLoadingRequestSubcategories(true)
+    const params = new URLSearchParams(typeof window !== "undefined" ? window.location.search : "")
+    if (categorySlug) {
+      params.set("kiosk_request_category", categorySlug)
+    } else {
+      params.set("kiosk_request_category", "")
+    }
+    const qs = params.toString()
+    const base = route("kiosk.services")
+    const url = qs ? `${base}?${qs}` : base
+    router.get(url, {}, {
+      preserveState: true,
+      preserveScroll: true,
+      replace: true,
+      only: ["requestSubcategoryOptions"],
+      onFinish: () => setLoadingRequestSubcategories(false),
+    })
+  }, [])
+
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const handleSearchChange = useCallback(
     (value: string) => {
       setSearchInput(value)
       if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current)
       searchDebounceRef.current = setTimeout(() => {
-        router.get(buildUrl({ search: value.trim() || null, page: 1 }))
+        router.get(buildUrl({ search: value.trim() || null, page: 1 }), {}, { preserveState: false })
       }, 350)
     },
     [buildUrl]
@@ -243,100 +310,103 @@ export default function KioskServices({
         return
       }
       if (key === "category") {
-        router.get(buildUrl({ category: value || null, subcategory: null, page: 1 }))
+        router.get(
+          buildUrl({ category: value || null, subcategory: null, page: 1 }),
+          {},
+          { preserveState: false }
+        )
         return
       }
-      router.get(buildUrl({ subcategory: value || null, page: 1 }))
+      router.get(buildUrl({ subcategory: value || null, page: 1 }), {}, { preserveState: false })
     },
     [filters.state, buildUrl, postGeo]
   )
 
-  const submitServiceRequest = async () => {
-    setRequestState((s) => ({ ...s, loading: true, message: null }))
-    try {
-      const res = await fetch(route("kiosk.service-requests.store"), {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Requested-With": "XMLHttpRequest",
-          "X-CSRF-TOKEN": (document.querySelector('meta[name="csrf-token"]') as HTMLMetaElement | null)?.content ?? "",
-        },
-        body: JSON.stringify(requestForm),
-      })
-      const data = await res.json()
-      if (!res.ok || !data?.ok) {
-        throw new Error(data?.message ?? "Request failed")
-      }
-      setRequestState({
-        loading: false,
-        status: data.status ?? null,
-        reason: data.reason ?? null,
-        requestId: data.request_id ?? null,
-        editToken: data.edit_token ?? null,
-        suggestedUrl: data.suggested_url ?? null,
-        message:
-          data.status === "approved"
-            ? "Approved and added to kiosk services."
-            : data.status === "pending"
-              ? "Pending: please provide a better matching link."
-              : "Rejected by validation.",
-      })
-      setCorrectedUrl(data.suggested_url ?? "")
-      if (data.status === "approved") {
-        router.reload({ only: ["services", "filterOptions"] })
-      }
-    } catch (e) {
-      setRequestState((s) => ({
-        ...s,
-        loading: false,
-        message: e instanceof Error ? e.message : "Unable to submit request",
-      }))
-    }
+  const applyKioskRequestFlash = (data: KioskServiceRequestFlash) => {
+    const status = (data.status ?? "").toLowerCase() as "approved" | "pending" | "rejected" | string
+    setRequestState({
+      loading: false,
+      status: status === "approved" || status === "pending" || status === "rejected" ? status : null,
+      reason: data.reason ?? null,
+      requestId: data.request_id ?? null,
+      editToken: data.edit_token ?? null,
+      suggestedUrl: data.suggested_url ?? null,
+      message:
+        status === "approved"
+          ? "Approved and added to kiosk providers."
+          : status === "pending"
+            ? "Pending: please provide a better matching link."
+            : "Rejected by validation.",
+    })
+    setCorrectedUrl(data.suggested_url ?? "")
   }
 
-  const submitCorrectedLink = async () => {
+  const submitServiceRequest = () => {
+    setRequestState((s) => ({ ...s, loading: true, message: null }))
+    router.post(route("kiosk.service-requests.store"), requestForm, {
+      preserveScroll: true,
+      onSuccess: (p) => {
+        const data = (p.props as typeof p.props & { kiosk_service_request?: KioskServiceRequestFlash | null })
+          .kiosk_service_request
+        if (data?.ok) {
+          applyKioskRequestFlash(data)
+        } else {
+          setRequestState((s) => ({ ...s, loading: false, message: "Unexpected response from server." }))
+        }
+      },
+      onError: (errors) => {
+        setRequestState((s) => ({
+          ...s,
+          loading: false,
+          message: formatValidationErrors(errors as Record<string, string | string[] | undefined>),
+        }))
+      },
+    })
+  }
+
+  const submitCorrectedLink = () => {
     if (!requestState.requestId || !requestState.editToken) return
     setRequestState((s) => ({ ...s, loading: true, message: null }))
-    try {
-      const res = await fetch(route("kiosk.service-requests.update-link", requestState.requestId), {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Requested-With": "XMLHttpRequest",
-          "X-CSRF-TOKEN": (document.querySelector('meta[name="csrf-token"]') as HTMLMetaElement | null)?.content ?? "",
+    router.patch(
+      route("kiosk.service-requests.update-link", requestState.requestId),
+      {
+        edit_token: requestState.editToken,
+        url: correctedUrl,
+      },
+      {
+        preserveScroll: true,
+        onSuccess: (p) => {
+          const data = (p.props as typeof p.props & { kiosk_service_request?: KioskServiceRequestFlash | null })
+            .kiosk_service_request
+          if (data?.ok) {
+            const status = (data.status ?? "").toLowerCase()
+            setRequestState((s) => ({
+              ...s,
+              loading: false,
+              status: status === "approved" || status === "pending" || status === "rejected" ? (status as "approved" | "pending" | "rejected") : s.status,
+              reason: data.reason ?? s.reason,
+              suggestedUrl: data.suggested_url ?? s.suggestedUrl,
+              message:
+                status === "approved"
+                  ? "Approved and added to kiosk providers."
+                  : status === "pending"
+                    ? "Still pending. Please refine the URL."
+                    : "Rejected by validation.",
+            }))
+            setCorrectedUrl(data.suggested_url ?? "")
+          } else {
+            setRequestState((s) => ({ ...s, loading: false, message: "Unexpected response from server." }))
+          }
         },
-        body: JSON.stringify({
-          edit_token: requestState.editToken,
-          url: correctedUrl,
-        }),
-      })
-      const data = await res.json()
-      if (!res.ok || !data?.ok) {
-        throw new Error(data?.message ?? "Update failed")
+        onError: (errors) => {
+          setRequestState((s) => ({
+            ...s,
+            loading: false,
+            message: formatValidationErrors(errors as Record<string, string | string[] | undefined>),
+          }))
+        },
       }
-      setRequestState((s) => ({
-        ...s,
-        loading: false,
-        status: data.status ?? s.status,
-        reason: data.reason ?? s.reason,
-        suggestedUrl: data.suggested_url ?? s.suggestedUrl,
-        message:
-          data.status === "approved"
-            ? "Approved and added to kiosk services."
-            : data.status === "pending"
-              ? "Still pending. Please refine the URL."
-              : "Rejected by validation.",
-      }))
-      if (data.status === "approved") {
-        router.reload({ only: ["services", "filterOptions"] })
-      }
-    } catch (e) {
-      setRequestState((s) => ({
-        ...s,
-        loading: false,
-        message: e instanceof Error ? e.message : "Unable to update link",
-      }))
-    }
+    )
   }
 
   return (
@@ -397,7 +467,7 @@ export default function KioskServices({
                   <div className="min-w-0">
                     <p className="text-sm font-semibold text-gray-900 dark:text-white">Location filter</p>
                     <p className="text-sm text-gray-700 dark:text-gray-300 mt-0.5">
-                      Showing kiosk services for{" "}
+                      Showing providers for{" "}
                       <span className="font-medium text-gray-900 dark:text-white">
                         {[filters.city, filters.state].filter(Boolean).join(", ")}
                       </span>
@@ -546,14 +616,19 @@ export default function KioskServices({
             </div>
           </div>
 
-          {/* Results — services count + search on same row, then cards */}
+          {/* Kiosk providers only (`kiosk_providers`: AI ingest + approved requests) */}
           <div>
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
               <h2 className="text-sm font-semibold text-foreground">
-                {services.total} {filters.category ? (filterOptions.categories.find((c) => c.value === filters.category)?.label ?? "services") : (services.total === 1 ? "service" : "services")}
-                {services.data.length > 0 && services.from != null && services.to != null && services.last_page > 1 && (
+                {providers.total}{" "}
+                {filters.category
+                  ? (filterOptions.categories.find((c) => c.value === filters.category)?.label ?? "providers")
+                  : providers.total === 1
+                    ? "provider"
+                    : "providers"}
+                {providers.data.length > 0 && providers.from != null && providers.to != null && providers.last_page > 1 && (
                   <span className="text-muted-foreground font-normal ml-1">
-                    (showing {services.from}–{services.to})
+                    (showing {providers.from}–{providers.to})
                   </span>
                 )}
               </h2>
@@ -561,116 +636,120 @@ export default function KioskServices({
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
                 <input
                   type="search"
-                  placeholder="Search services..."
+                  placeholder="Search providers..."
                   value={searchInput}
                   onChange={(e) => handleSearchChange(e.target.value)}
                   className="w-full pl-10 pr-4 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
                 />
               </div>
             </div>
-            {services.data.length === 0 ? (
+            {providers.data.length === 0 ? (
               <div className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-8 text-center text-muted-foreground">
-                <p>No services match your filters.</p>
+                <p>No providers match your filters.</p>
+                <p className="text-sm mt-2">
+                  Data comes from AI ingest for your profile location or approved requests. Update your profile or choose
+                  &quot;all locations&quot; to browse globally.
+                </p>
                 <Link
                   href={`${route("kiosk.services")}?all_locations=1`}
                   className="mt-2 inline-block text-sm font-medium text-purple-600 dark:text-purple-400 hover:underline"
                 >
-                  Clear filters
+                  Show all locations
                 </Link>
               </div>
             ) : (
               <>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-                {services.data.map((s, index) => {
-                  const meta = [s.subcategory, s.category_title].filter(Boolean).join(" · ")
-                  const style = categoryIconMap[s.category_slug] ?? {
+                {providers.data.map((p, index) => {
+                  const style = categoryIconMap[p.category_slug] ?? {
                     icon: ExternalLink,
                     iconColor: "text-gray-600 dark:text-gray-400",
                     iconBg: "bg-gray-100 dark:bg-gray-700/50",
                   }
                   const Icon = style.icon
+                  const catLabel =
+                    filterOptions.categories.find((c) => c.value === p.category_slug)?.label ?? p.category_slug
+                  const meta = [p.subcategory_slug, catLabel].filter(Boolean).join(" · ")
                   const cardVariants = {
                     hidden: { opacity: 0, y: 16 },
                     visible: (i: number) => ({
                       opacity: 1,
                       y: 0,
-                      transition: { duration: 0.4, delay: i * 0.04, ease: [0.25, 0.46, 0.45, 0.94] },
+                      transition: { duration: 0.4, delay: i * 0.04, ease: [0.25, 0.46, 0.45, 0.94] as const },
                     }),
-                  }
-                  if (s.url) {
-                    return (
-                      <motion.a
-                        key={s.id}
-                        href={s.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        variants={cardVariants}
-                        initial="hidden"
-                        animate="visible"
-                        custom={index}
-                        whileHover={{ y: -6, scale: 1.02, transition: { duration: 0.2 } }}
-                        whileTap={{ scale: 0.98, transition: { duration: 0.1 } }}
-                        className="group rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4 shadow-sm hover:shadow-xl hover:shadow-purple-500/10 hover:border-purple-300 dark:hover:border-purple-600 flex gap-3 cursor-pointer overflow-hidden transition-shadow duration-200"
-                      >
-                        <motion.div
-                          className={`flex items-center justify-center w-10 h-10 rounded-lg shrink-0 ${style.iconBg}`}
-                          whileHover={{ scale: 1.08 }}
-                          transition={{ type: "spring", stiffness: 400, damping: 17 }}
-                        >
-                          <Icon className={`h-5 w-5 ${style.iconColor}`} aria-hidden />
-                        </motion.div>
-                        <div className="min-w-0 flex-1">
-                          <p className="font-medium text-foreground text-sm line-clamp-2 transition-colors duration-200 group-hover:text-purple-600 dark:group-hover:text-purple-400">
-                            {s.display_name}
-                          </p>
-                          {meta && (
-                            <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">{meta}</p>
-                          )}
-                          <span className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-purple-600 dark:text-purple-400 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-                            Open
-                            <ExternalLink className="h-3 w-3" />
-                          </span>
-                        </div>
-                      </motion.a>
-                    )
                   }
                   return (
                     <motion.div
-                      key={s.id}
+                      key={p.id}
                       variants={cardVariants}
                       initial="hidden"
                       animate="visible"
                       custom={index}
-                      whileHover={{ y: -2, transition: { duration: 0.2 } }}
-                      className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4 shadow-sm hover:shadow-md flex gap-3 transition-shadow duration-200"
+                      className="rounded-xl border border-emerald-200/80 dark:border-emerald-800/60 bg-white dark:bg-gray-800 p-4 shadow-sm flex flex-col gap-3"
                     >
-                      <div className={`flex items-center justify-center w-10 h-10 rounded-lg shrink-0 ${style.iconBg}`}>
-                        <Icon className={`h-5 w-5 ${style.iconColor}`} aria-hidden />
+                      <div className="flex gap-3 min-w-0">
+                        <div className={`flex items-center justify-center w-10 h-10 rounded-lg shrink-0 ${style.iconBg}`}>
+                          <Icon className={`h-5 w-5 ${style.iconColor}`} aria-hidden />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="font-medium text-foreground text-sm line-clamp-2">{p.name}</p>
+                          {meta ? <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{meta}</p> : null}
+                          {p.account_link_supported ? (
+                            <span className="mt-1 inline-block rounded-md bg-emerald-100 text-emerald-900 dark:bg-emerald-900/40 dark:text-emerald-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide">
+                              Account link supported
+                            </span>
+                          ) : null}
+                        </div>
                       </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="font-medium text-foreground text-sm line-clamp-2">{s.display_name}</p>
-                        {meta && (
-                          <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">{meta}</p>
-                        )}
-                        <span className="mt-2 inline-block text-xs text-muted-foreground">
-                          {s.launch_type ?? "Internal"}
-                        </span>
+                      <div className="flex flex-wrap gap-1.5">
+                        {p.payment_url ? (
+                          <a
+                            href={p.payment_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 rounded-md bg-amber-100 text-amber-950 dark:bg-amber-900/50 dark:text-amber-100 px-2 py-1 text-xs font-medium hover:opacity-90"
+                          >
+                            <CreditCard className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                            Pay
+                          </a>
+                        ) : null}
+                        {p.login_url ? (
+                          <a
+                            href={p.login_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 rounded-md bg-slate-200 text-slate-900 dark:bg-slate-600 dark:text-slate-100 px-2 py-1 text-xs font-medium hover:opacity-90"
+                          >
+                            <LogIn className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                            Sign in
+                          </a>
+                        ) : null}
+                        {p.website ? (
+                          <a
+                            href={p.website}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 rounded-md border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 px-2 py-1 text-xs font-medium text-purple-700 dark:text-purple-300 hover:bg-gray-50 dark:hover:bg-gray-700"
+                          >
+                            <ExternalLink className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                            Website
+                          </a>
+                        ) : null}
                       </div>
                     </motion.div>
                   )
                 })}
               </div>
 
-              {/* Pagination */}
-              {services.last_page > 1 && (
+              {providers.last_page > 1 && (
                 <nav className="mt-6 flex flex-wrap items-center justify-between gap-4" aria-label="Pagination">
                   <p className="text-sm text-muted-foreground">
-                    Page {services.current_page} of {services.last_page}
+                    Page {providers.current_page} of {providers.last_page}
                   </p>
                   <div className="flex items-center gap-1">
-                    {services.prev_page_url ? (
+                    {providers.prev_page_url ? (
                       <Link
-                        href={services.prev_page_url}
+                        href={providers.prev_page_url}
                         className="inline-flex items-center gap-1 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm font-medium text-foreground hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
                       >
                         <ChevronLeft className="h-4 w-4" />
@@ -683,7 +762,7 @@ export default function KioskServices({
                       </span>
                     )}
                     <div className="flex items-center gap-0.5 mx-1">
-                      {services.links.slice(1, -1).map((link) =>
+                      {providers.links.slice(1, -1).map((link) =>
                         link.url ? (
                           <Link
                             key={link.label}
@@ -703,9 +782,9 @@ export default function KioskServices({
                         )
                       )}
                     </div>
-                    {services.next_page_url ? (
+                    {providers.next_page_url ? (
                       <Link
-                        href={services.next_page_url}
+                        href={providers.next_page_url}
                         className="inline-flex items-center gap-1 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm font-medium text-foreground hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
                       >
                         Next
@@ -732,28 +811,65 @@ export default function KioskServices({
             </p>
 
             <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-              <input
-                className="rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm"
-                placeholder="Service name *"
-                value={requestForm.display_name}
-                onChange={(e) => setRequestForm((p) => ({ ...p, display_name: e.target.value }))}
-              />
-              <select
-                className="rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm"
-                value={requestForm.category_slug}
-                onChange={(e) => setRequestForm((p) => ({ ...p, category_slug: e.target.value }))}
-              >
-                <option value="">Select category *</option>
-                {filterOptions.categories.map((o) => (
-                  <option key={o.value} value={o.value}>{o.label}</option>
-                ))}
-              </select>
-              <input
-                className="rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm"
-                placeholder="Subcategory"
-                value={requestForm.subcategory}
-                onChange={(e) => setRequestForm((p) => ({ ...p, subcategory: e.target.value }))}
-              />
+              <div className="space-y-1.5">
+                <Label htmlFor="kiosk-request-display-name" className="text-xs text-muted-foreground">
+                  Service name *
+                </Label>
+                <input
+                  id="kiosk-request-display-name"
+                  className="w-full rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm"
+                  placeholder="e.g. City water utility"
+                  value={requestForm.display_name}
+                  onChange={(e) => setRequestForm((p) => ({ ...p, display_name: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="kiosk-request-category" className="text-xs text-muted-foreground">
+                  Category *
+                </Label>
+                <select
+                  id="kiosk-request-category"
+                  className="w-full rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm"
+                  value={requestForm.category_slug}
+                  onChange={(e) => loadRequestFormSubcategories(e.target.value)}
+                  disabled={loadingRequestSubcategories}
+                  aria-label="Category"
+                >
+                  <option value="">Select category</option>
+                  {filterOptions.categories.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="kiosk-request-subcategory" className="text-xs text-muted-foreground">
+                  Subcategory
+                  {loadingRequestSubcategories ? (
+                    <span className="ml-2 font-normal text-muted-foreground">(loading…)</span>
+                  ) : null}
+                </Label>
+                <select
+                  id="kiosk-request-subcategory"
+                  className="w-full rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm disabled:opacity-60"
+                  value={requestForm.subcategory}
+                  onChange={(e) => setRequestForm((p) => ({ ...p, subcategory: e.target.value }))}
+                  disabled={!requestForm.category_slug || loadingRequestSubcategories}
+                  aria-label="Subcategory"
+                  aria-busy={loadingRequestSubcategories}
+                >
+                  <option value="">
+                    {loadingRequestSubcategories ? "Loading subcategories…" : "General (optional)"}
+                  </option>
+                  {!loadingRequestSubcategories &&
+                    requestSubcategoryOptions.map((o) => (
+                      <option key={o.id} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                </select>
+              </div>
               <input
                 className="rounded-md border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm"
                 placeholder="URL"

@@ -44,6 +44,8 @@ interface KioskPageProps {
   supporterLocation?: SupporterLocationPayload | null
   /** Logged-in supporter missing city or state on profile */
   supporterNeedsLocation?: boolean
+  /** Count of AI-ingested `kiosk_providers` rows for the resolved session/profile geo */
+  localProviderCount?: number
 }
 
 /** Category only — city/state filtering uses session + profile on the server (no geo in the URL). */
@@ -130,6 +132,7 @@ export default function Kiosk({
   categories = [],
   supporterLocation = null,
   supporterNeedsLocation = false,
+  localProviderCount = 0,
 }: KioskPageProps) {
   const displayCategories = categories
     .filter((c) => slugToStyle[c.slug])
@@ -197,7 +200,14 @@ export default function Kiosk({
                         {supporterLocation.zipcode ? (
                           <span className="text-muted-foreground"> · ZIP {supporterLocation.zipcode}</span>
                         ) : null}
-                        . Category links below open the services list already filtered by this city and state.
+                        . Category links below open the provider list already filtered by this city and state.
+                        {localProviderCount > 0 ? (
+                          <span className="block mt-2 text-purple-800 dark:text-purple-200/90">
+                            {localProviderCount === 1
+                              ? "There is 1 local provider entry for your area (pay, login, and links)."
+                              : `There are ${localProviderCount} local provider entries for your area (pay, login, and links).`}
+                          </span>
+                        ) : null}
                       </p>
                     ) : (
                       <p className="text-sm text-amber-900/90 dark:text-amber-100/90 mt-0.5">

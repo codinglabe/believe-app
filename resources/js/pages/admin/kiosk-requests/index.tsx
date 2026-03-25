@@ -34,7 +34,7 @@ interface RequestRow {
   ai_decision: string | null
   ai_reason: string | null
   ai_suggested_url: string | null
-  approved_service_id: number | null
+  approved_kiosk_provider_id: number | null
   created_at: string | null
 }
 
@@ -335,7 +335,7 @@ export default function KioskRequestsIndex({ requests, filters = {} }: PageProps
                           <p className="text-muted-foreground">
                             Item ID:{" "}
                             <span className="font-medium text-foreground tabular-nums">
-                              {row.approved_service_id ?? "—"}
+                              {row.approved_kiosk_provider_id ?? "—"}
                             </span>
                           </p>
                         </div>
