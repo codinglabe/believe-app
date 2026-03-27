@@ -30,6 +30,21 @@ import {
     ChevronUp
 } from "lucide-react"
 
+interface PoolListing {
+    id: number;
+    name: string;
+    description: string;
+    price: number;
+    price_display: string;
+    image_url: string;
+    organization: {
+        id: number;
+        name: string;
+    };
+    listing_type: string;
+    url: string;
+}
+
 interface Product {
     id: number;
     name: string;
@@ -85,6 +100,7 @@ const toNumber = (value: number | string): number => {
 
 export default function Marketplace({
     products,
+    poolListings = [],
     categories,
     organizations,
     selectedCategories,
@@ -107,6 +123,7 @@ export default function Marketplace({
 
 
     // Calculate pagination for products
+    const totalPool = poolListings?.length || 0
     const totalProducts = products?.length || 0
     const totalProductPages = Math.ceil(totalProducts / productsPerPage)
     const startProductIndex = (currentProductPage - 1) * productsPerPage
@@ -381,7 +398,12 @@ export default function Marketplace({
                                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-3 pb-4 border-b border-gray-200 dark:border-gray-700">
                                     <div>
                                         <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white">
-                                            Products {totalProducts > 0 && <span className="text-purple-600 dark:text-purple-400">({totalProducts})</span>}
+                                            Marketplace
+                                            {(totalPool > 0 || totalProducts > 0) && (
+                                                <span className="text-purple-600 dark:text-purple-400 text-lg font-semibold ml-2">
+                                                    ({totalPool > 0 ? `${totalPool} pool` : ''}{totalPool > 0 && totalProducts > 0 ? ', ' : ''}{totalProducts > 0 ? `${totalProducts} catalog` : ''})
+                                                </span>
+                                            )}
                                         </h2>
                                         {filters.search && (
                                             <p className="text-gray-600 dark:text-gray-400 mt-2 text-sm">
@@ -390,9 +412,67 @@ export default function Marketplace({
                                         )}
                                     </div>
                                     <div className="text-sm text-gray-600 dark:text-gray-400 font-medium">
-                                        Showing {startProductIndex + 1}-{endProductIndex} of {totalProducts} products
+                                        {totalProducts > 0
+                                            ? `Showing ${startProductIndex + 1}-${endProductIndex} of ${totalProducts} catalog products`
+                                            : totalPool > 0
+                                                ? `${totalPool} pool listing${totalPool === 1 ? '' : 's'}`
+                                                : 'No listings'}
                                     </div>
                                 </div>
+
+                                {totalPool > 0 && (
+                                    <div className="mb-10">
+                                        <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">
+                                            Merchant pool
+                                        </h3>
+                                        <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                                            Fulfilled by partner merchants; listed by nonprofits you support.
+                                        </p>
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6">
+                                            {poolListings.map((listing) => (
+                                                <Link href={listing.url} key={listing.id}>
+                                                    <Card className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 hover:shadow-xl transition-all duration-300 group hover:border-purple-300 dark:hover:border-purple-600 overflow-hidden h-full">
+                                                        <div className="relative overflow-hidden">
+                                                            <img
+                                                                src={listing.image_url || '/placeholder.svg'}
+                                                                alt={listing.name}
+                                                                className="w-full h-56 object-cover group-hover:scale-110 transition-transform duration-500"
+                                                            />
+                                                            <Badge
+                                                                variant="secondary"
+                                                                className="absolute top-3 left-3 bg-emerald-600/95 text-white text-xs font-medium border-0 shadow-md"
+                                                            >
+                                                                Pool product
+                                                            </Badge>
+                                                            <Badge
+                                                                variant="outline"
+                                                                className="absolute bottom-3 left-3 bg-white/95 dark:bg-gray-800/95 backdrop-blur-sm text-gray-800 dark:text-gray-200 text-xs font-medium border-0 shadow-md max-w-[90%] truncate"
+                                                            >
+                                                                Sold by {listing.organization.name}
+                                                            </Badge>
+                                                        </div>
+                                                        <CardContent className="p-5 sm:p-6">
+                                                            <div className="flex justify-between items-start mb-2 gap-2">
+                                                                <h4 className="text-lg font-bold text-gray-900 dark:text-white group-hover:text-purple-600 dark:group-hover:text-purple-400 transition-colors line-clamp-2 flex-1">
+                                                                    {listing.name}
+                                                                </h4>
+                                                                <span className="text-xl font-bold text-purple-600 dark:text-purple-400 whitespace-nowrap">
+                                                                    {listing.price_display}
+                                                                </span>
+                                                            </div>
+                                                            <p className="text-gray-600 dark:text-gray-300 text-sm line-clamp-2 mb-4">
+                                                                {listing.description}
+                                                            </p>
+                                                            <Button className="w-full h-11 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-semibold shadow-md">
+                                                                View listing
+                                                            </Button>
+                                                        </CardContent>
+                                                    </Card>
+                                                </Link>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
 
                                 {totalProducts > 0 ? (
                                     <>
@@ -534,7 +614,7 @@ export default function Marketplace({
                                             </div>
                                         )}
                                     </>
-                                ) : (
+                                ) : totalPool === 0 ? (
                                     <div className="text-center py-16 sm:py-20">
                                         <div className="inline-flex items-center justify-center w-20 h-20 bg-gray-100 dark:bg-gray-800 rounded-full mb-6">
                                             <ShoppingCart className="h-10 w-10 text-gray-400" />
@@ -553,6 +633,10 @@ export default function Marketplace({
                                             Clear all filters
                                         </Button>
                                     </div>
+                                ) : (
+                                    <p className="text-sm text-gray-600 dark:text-gray-400 py-4">
+                                        No catalog products match your filters. Browse pool listings above or clear filters.
+                                    </p>
                                 )}
                             </motion.div>
                         </div>

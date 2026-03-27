@@ -1,9 +1,10 @@
 <?php
 
-use Illuminate\Support\Facades\Route;
-use Illuminate\Http\Request;
-use Inertia\Inertia;
 use App\Http\Controllers\Merchant\Auth\MerchantAuthController;
+use App\Http\Controllers\Merchant\MerchantMarketplaceProductController;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Route;
+use Inertia\Inertia;
 
 // ============================================
 // MERCHANT PROGRAM ROUTES
@@ -43,7 +44,7 @@ Route::middleware('guest:merchant')->group(function () {
 Route::middleware(['auth:merchant'])->group(function () {
     // Dashboard (no subscription required)
     Route::get('/dashboard', [App\Http\Controllers\Merchant\MerchantDashboardController::class, 'index'])->name('merchant.dashboard');
-    
+
     // Subscription routes (no subscription required to view/subscribe)
     Route::prefix('subscription')->name('merchant.subscription.')->group(function () {
         Route::get('/', [App\Http\Controllers\Merchant\MerchantSubscriptionController::class, 'index'])->name('index');
@@ -81,6 +82,15 @@ Route::middleware(['auth:merchant'])->group(function () {
 
         Route::patch('/settings/profile', [App\Http\Controllers\Merchant\MerchantSettingsController::class, 'updateProfile'])->name('merchant.settings.profile');
         Route::patch('/settings/business', [App\Http\Controllers\Merchant\MerchantSettingsController::class, 'updateBusiness'])->name('merchant.settings.business');
+
+        Route::prefix('marketplace-products')->name('marketplace-products.')->group(function () {
+            Route::get('/', [MerchantMarketplaceProductController::class, 'index'])->name('index');
+            Route::get('/create', [MerchantMarketplaceProductController::class, 'create'])->name('create');
+            Route::post('/', [MerchantMarketplaceProductController::class, 'store'])->name('store');
+            Route::get('/{marketplace_product}/edit', [MerchantMarketplaceProductController::class, 'edit'])->name('edit');
+            Route::put('/{marketplace_product}', [MerchantMarketplaceProductController::class, 'update'])->name('update');
+            Route::delete('/{marketplace_product}', [MerchantMarketplaceProductController::class, 'destroy'])->name('destroy');
+        });
     });
 
     // Logout
@@ -103,4 +113,3 @@ Route::prefix('hub')->name('hub.')->group(function () {
     // Offer detail route (must be last to avoid matching "success" as slug)
     Route::get('/offers/{slug}', [App\Http\Controllers\Merchant\HubOfferController::class, 'show'])->name('offer.show');
 });
-

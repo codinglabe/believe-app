@@ -4,7 +4,6 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 
@@ -169,7 +168,7 @@ class Organization extends Model
 
     public function getFormattedEinAttribute()
     {
-        return substr($this->ein, 0, 2) . '-' . substr($this->ein, 2);
+        return substr($this->ein, 0, 2).'-'.substr($this->ein, 2);
     }
 
     /**
@@ -208,11 +207,6 @@ class Organization extends Model
 
     /**
      * Add funds to the organization's balance.
-     *
-     * @param float $amount
-     * @param string $method
-     * @param array $meta
-     * @return void
      */
     public function addFund(float $amount, string $method = 'raffle_sales', array $meta = []): void
     {
@@ -231,8 +225,6 @@ class Organization extends Model
 
     /**
      * Get the current balance of the organization.
-     *
-     * @return float
      */
     public function currentBalance(): float
     {
@@ -253,6 +245,11 @@ class Organization extends Model
     public function products()
     {
         return $this->hasMany(Product::class, 'organization_id');
+    }
+
+    public function organizationProducts()
+    {
+        return $this->hasMany(OrganizationProduct::class);
     }
 
     public function jobPosts()

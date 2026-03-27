@@ -68,4 +68,9 @@ class Order extends Model
     {
         return $this->hasOne(OrderShippingInfo::class, 'order_id');
     }
+
+    public function orderSplit(): HasOne
+    {
+        return $this->hasOne(OrderSplit::class);
+    }
 }

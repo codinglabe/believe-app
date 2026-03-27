@@ -10,6 +10,7 @@ class OrderItem extends Model
     protected $fillable = [
         'order_id',
         'product_id',
+        'organization_product_id',
         'organization_id',
         'per_organization_donation_amount',
         'quantity',
@@ -38,6 +39,11 @@ class OrderItem extends Model
     public function product(): BelongsTo
     {
         return $this->belongsTo(Product::class);
+    }
+
+    public function organizationProduct(): BelongsTo
+    {
+        return $this->belongsTo(OrganizationProduct::class);
     }
 
     public function organization(): BelongsTo

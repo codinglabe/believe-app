@@ -3,7 +3,9 @@ namespace App\Http\Controllers;
 
 use App\Models\Category;
 use App\Models\Organization;
+use App\Models\OrganizationProduct;
 use App\Models\Product;
+use Illuminate\Support\Str;
 use App\Services\PrintifyService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -79,6 +81,72 @@ class MarketplaceController extends Controller
             ->orderBy('created_at', 'desc')
             ->get();
 
+        $poolListingsQuery = OrganizationProduct::query()
+            ->with(['organization', 'marketplaceProduct.merchant'])
+            ->where('status', 'active')
+            ->whereHas('marketplaceProduct', function ($q) {
+                $q->where('status', 'active')
+                    ->where('nonprofit_marketplace_enabled', true)
+                    ->where(function ($qq) {
+                        $qq->whereNull('inventory_quantity')
+                            ->orWhere('inventory_quantity', '>', 0);
+                    });
+            })
+            ->when($search, function ($query, $search) {
+                $query->where(function ($q) use ($search) {
+                    $q->whereHas('marketplaceProduct', function ($mq) use ($search) {
+                        $mq->where('name', 'like', '%'.$search.'%')
+                            ->orWhere('description', 'like', '%'.$search.'%');
+                    })->orWhereHas('organization', function ($oq) use ($search) {
+                        $oq->where('name', 'like', '%'.$search.'%');
+                    });
+                });
+            })
+            ->when(! empty($organizationIds), function ($query) use ($organizationIds) {
+                $query->whereIn('organization_id', $organizationIds);
+            })
+            ->when(! empty($categoryIds), function ($query) use ($categoryIds) {
+                $names = Category::whereIn('id', $categoryIds)->pluck('name')->filter()->values();
+                if ($names->isNotEmpty()) {
+                    $query->whereHas('marketplaceProduct', function ($mq) use ($names) {
+                        $mq->whereIn('category', $names);
+                    });
+                }
+            })
+            ->when($user && ! empty($allowedOrganizationIds), function ($query) use ($allowedOrganizationIds) {
+                $query->whereIn('organization_id', $allowedOrganizationIds);
+            });
+
+        $poolListings = $poolListingsQuery
+            ->orderByDesc('is_featured')
+            ->orderByDesc('updated_at')
+            ->get()
+            ->map(function (OrganizationProduct $op) {
+                $mp = $op->marketplaceProduct;
+                $images = $mp->images ?? [];
+                $first = is_array($images) && count($images) > 0 ? $images[0] : null;
+                $imageUrl = $first
+                    ? (filter_var($first, FILTER_VALIDATE_URL) ? $first : asset('storage/'.ltrim((string) $first, '/')))
+                    : '';
+
+                return [
+                    'id' => $op->id,
+                    'name' => $mp->name,
+                    'description' => Str::limit((string) ($mp->description ?? ''), 160),
+                    'price' => (float) $op->custom_price,
+                    'price_display' => '$'.number_format((float) $op->custom_price, 2),
+                    'image_url' => $imageUrl,
+                    'organization' => [
+                        'id' => $op->organization->id,
+                        'name' => $op->organization->name,
+                    ],
+                    'listing_type' => 'merchant_pool',
+                    'url' => route('marketplace.pool.show', $op),
+                ];
+            })
+            ->values()
+            ->all();
+
         // Process products with cached Printify images
         $processedProducts = $this->processProductsWithImagesNDVariantsPrice($products);
 
@@ -93,6 +161,7 @@ class MarketplaceController extends Controller
         return Inertia::render('frontend/marketplace', [
             'seo' => \App\Services\SeoService::forPage('marketplace'),
             'products' => $processedProducts,
+            'poolListings' => $poolListings,
             'categories' => $categories,
             'organizations' => $organizations,
             'selectedCategories' => $categoryIds,

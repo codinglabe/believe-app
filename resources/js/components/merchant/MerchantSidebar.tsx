@@ -8,9 +8,9 @@ import {
   Menu, 
   X,
   Plus,
-  FileText,
   ShoppingBag,
-  TrendingUp
+  TrendingUp,
+  Package,
 } from 'lucide-react'
 import { MerchantButton } from '@/components/merchant-ui'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -29,6 +29,7 @@ interface NavItem {
 const navigation: NavItem[] = [
   { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
   { name: 'Offers', href: '/offers', icon: Gift },
+  { name: 'Marketplace products', href: '/marketplace-products', icon: Package },
   { name: 'Create Offer', href: '/offers/create', icon: Plus },
   { name: 'Redemptions', href: '/redemptions', icon: ShoppingBag },
   { name: 'Analytics', href: '/analytics', icon: BarChart3 },
