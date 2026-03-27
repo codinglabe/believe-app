@@ -50,7 +50,7 @@ interface RequestRecord {
   ai_decision: string | null
   ai_reason: string
   ai_suggested_url: string | null
-  approved_service_id: number | null
+  approved_kiosk_provider_id: number | null
   market_code: string | null
   created_at: string | null
   updated_at: string | null
@@ -285,16 +285,12 @@ export default function KioskRequestShow({ requestRecord }: PageProps) {
                 </div>
                 <Separator />
                 <div>
-                  <dt className="text-xs text-muted-foreground mb-1">Kiosk item</dt>
+                  <dt className="text-xs text-muted-foreground mb-1">Kiosk provider row</dt>
                   <dd>
-                    {requestRecord.approved_service_id ? (
-                      <Link
-                        href={route("admin.kiosk.items.edit", requestRecord.approved_service_id)}
-                        className="inline-flex items-center gap-1.5 font-medium text-primary hover:underline"
-                      >
-                        Open item #{requestRecord.approved_service_id}
-                        <ExternalLink className="h-3.5 w-3.5" />
-                      </Link>
+                    {requestRecord.approved_kiosk_provider_id ? (
+                      <span className="font-medium text-foreground">
+                        #{requestRecord.approved_kiosk_provider_id} (table <code className="text-xs">kiosk_providers</code>)
+                      </span>
                     ) : (
                       <span className="text-muted-foreground">Not linked</span>
                     )}

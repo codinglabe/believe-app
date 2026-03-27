@@ -9,6 +9,7 @@ use App\Models\BridgeIntegration;
 use App\Models\IrsBoardMember;
 use App\Models\Organization;
 use App\Models\OrganizationInvite;
+use App\Models\PrimaryActionCategory;
 use App\Models\User;
 use App\Services\BridgeService;
 use App\Services\EINLookupService;
@@ -22,6 +23,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Illuminate\Support\Str;
 use Spatie\Permission\Models\Role;
@@ -49,6 +51,7 @@ class OrganizationRegisterController extends Controller
     public function create(Request $request)
     {
         $seo = SeoService::forPage('register_organization');
+        $primaryActionCategories = $this->primaryActionCategoriesForRegister();
 
         // Handle invite token
         if ($request->has('invite')) {
@@ -67,6 +70,7 @@ class OrganizationRegisterController extends Controller
                 'inviteToken' => $invite->token,
                 'organizationName' => $invite->organization_name,
                 'officers_for_ein_url' => route('register.organization.officers-for-ein'),
+                'primaryActionCategories' => $primaryActionCategories,
             ]);
         }
 
@@ -83,13 +87,30 @@ class OrganizationRegisterController extends Controller
                 'ein' => $request->query('ein'),
                 'referralCode' => $user->referral_code,
                 'officers_for_ein_url' => route('register.organization.officers-for-ein'),
+                'primaryActionCategories' => $primaryActionCategories,
             ]);
         }
 
         return Inertia::render('frontend/register/organization', [
             'seo' => $seo,
             'officers_for_ein_url' => route('register.organization.officers-for-ein'),
+            'primaryActionCategories' => $primaryActionCategories,
         ]);
+    }
+
+    /**
+     * @return list<array{id: int, name: string}>
+     */
+    private function primaryActionCategoriesForRegister(): array
+    {
+        return PrimaryActionCategory::query()
+            ->where('is_active', true)
+            ->orderBy('sort_order')
+            ->orderBy('name')
+            ->get(['id', 'name'])
+            ->map(fn (PrimaryActionCategory $c) => ['id' => $c->id, 'name' => $c->name])
+            ->values()
+            ->all();
     }
 
     /**
@@ -184,6 +205,14 @@ class OrganizationRegisterController extends Controller
                     : null,
             ]);
 
+            $pacIds = $request->input('primary_action_category_ids');
+            if (! is_array($pacIds)) {
+                $pacIds = $pacIds !== null && $pacIds !== '' ? [$pacIds] : [];
+            }
+            $request->merge([
+                'primary_action_category_ids' => array_values(array_unique(array_filter(array_map('intval', $pacIds)))),
+            ]);
+
             // Manual validation
             $validator = Validator::make($request->all(), [
                 'ein' => 'required|string|size:9|unique:organizations,ein',
@@ -224,6 +253,8 @@ class OrganizationRegisterController extends Controller
                 'agree_to_terms' => 'required|accepted',
                 'attestation_officer_on_990' => 'required|accepted', // "I certify I am a current officer of this organization."
                 'selected_irs_board_member_id' => 'nullable|integer|exists:irs_board_members,id', // When multiple matches, user selects one
+                'primary_action_category_ids' => ['required', 'array', 'min:1'],
+                'primary_action_category_ids.*' => ['integer', 'distinct', Rule::exists('primary_action_categories', 'id')->where('is_active', true)],
             ]);
 
             if ($validator->fails()) {
@@ -417,6 +448,10 @@ class OrganizationRegisterController extends Controller
                 'tax_compliance_meta' => $taxEvaluation['meta'],
                 'is_compliance_locked' => $taxEvaluation['should_lock'],
             ]);
+
+            $organization->primaryActionCategories()->sync(
+                array_values(array_unique(array_map('intval', $validated['primary_action_category_ids'])))
+            );
 
             $this->syncOrganizationUserRole($user, $organization);
 

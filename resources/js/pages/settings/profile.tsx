@@ -4,7 +4,7 @@ import type React from "react"
 import type { SharedData } from "@/types"
 import { Transition } from "@headlessui/react"
 import { router, useForm, usePage } from "@inertiajs/react"
-import { type FormEventHandler, useState, useRef, useCallback } from "react"
+import { type FormEventHandler, useState, useRef, useCallback, useMemo } from "react"
 import SettingsLayout from "@/layouts/settings/layout"
 import { Button } from "@/components/frontend/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/frontend/ui/card"
@@ -32,11 +32,19 @@ import {
   Check,
   Image as ImageIcon,
   Gift,
+  X,
 } from "lucide-react"
 import InputError from "@/components/input-error"
 import Cropper from "react-easy-crop"
 import type { Area, Point } from "react-easy-crop/types"
 import { TextArea } from "@/components/ui/textarea"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/frontend/ui/select"
 // import { TextArea } from "@/components/ui/textarea"
 
 type ProfileForm = {
@@ -50,9 +58,20 @@ type ProfileForm = {
     description?: string
     mission?: string
     gift_card_terms_approved?: boolean
+    primary_action_category_ids: number[]
 }
 
-export default function ProfileEdit({ mustVerifyEmail, status }: { mustVerifyEmail: boolean; status?: string }) {
+export default function ProfileEdit({
+  mustVerifyEmail,
+  status,
+  primaryActionCategories = [],
+  organizationPrimaryActionCategoryIds = [],
+}: {
+  mustVerifyEmail: boolean
+  status?: string
+  primaryActionCategories?: { id: number; name: string }[]
+  organizationPrimaryActionCategoryIds?: number[]
+}) {
   const { auth } = usePage<SharedData>().props
 
   // Profile photo upload states
@@ -92,7 +111,32 @@ export default function ProfileEdit({ mustVerifyEmail, status }: { mustVerifyEma
     description: auth.user?.organization?.description || "",
     mission: auth.user?.organization?.mission || "",
     gift_card_terms_approved: auth.user?.organization?.gift_card_terms_approved || false,
+    primary_action_category_ids: organizationPrimaryActionCategoryIds ?? [],
   })
+
+  const selectedPrimaryCategories = useMemo(
+    () =>
+      primaryActionCategories.filter((c) => data.primary_action_category_ids.includes(c.id)),
+    [primaryActionCategories, data.primary_action_category_ids],
+  )
+
+  const remainingPrimaryCategories = useMemo(
+    () =>
+      primaryActionCategories.filter((c) => !data.primary_action_category_ids.includes(c.id)),
+    [primaryActionCategories, data.primary_action_category_ids],
+  )
+
+  const addPrimaryCategoryTag = (id: number) => {
+    if (data.primary_action_category_ids.includes(id)) return
+    setData("primary_action_category_ids", [...data.primary_action_category_ids, id])
+  }
+
+  const removePrimaryCategoryTag = (id: number) => {
+    setData(
+      "primary_action_category_ids",
+      data.primary_action_category_ids.filter((x) => x !== id),
+    )
+  }
 
   const submit: FormEventHandler = (e) => {
     e.preventDefault()
@@ -858,6 +902,78 @@ const getCroppedImage = async (
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-6">
+              <div className="space-y-2 min-w-0">
+                <Label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  Category Grid (Primary Action) *
+                </Label>
+                {primaryActionCategories.length === 0 ? (
+                  <Alert className="border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950">
+                    <AlertCircle className="h-4 w-4 text-amber-600" />
+                    <AlertDescription className="text-amber-800 dark:text-amber-200 text-sm">
+                      No categories are available yet. An administrator must add them under Admin → Org Primary Action
+                      Categories, or run the database seeder.
+                    </AlertDescription>
+                  </Alert>
+                ) : (
+                  <div
+                    role="group"
+                    aria-label="Primary action categories"
+                    className="flex min-h-[2.375rem] w-full flex-wrap items-center gap-1 rounded-md border border-[#DDD] bg-white px-2 py-1 text-sm shadow-[inset_0_1px_0_0_rgba(255,255,255,0.9)] transition-[border-color,box-shadow] focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/25 dark:border-gray-600 dark:bg-[hsl(210_12%_10%)] dark:shadow-none"
+                  >
+                    {selectedPrimaryCategories.map((c) => (
+                      <span
+                        key={c.id}
+                        className="tagify-tag inline-flex max-w-full items-center gap-0.5 rounded-md border border-white/25 bg-gradient-to-r from-purple-600 to-blue-600 px-1.5 py-0.5 text-[13px] leading-tight text-white shadow-sm"
+                      >
+                        <span className="truncate">{c.name}</span>
+                        <button
+                          type="button"
+                          onClick={() => removePrimaryCategoryTag(c.id)}
+                          className="tagify-tag__removeBtn ml-0.5 inline-flex size-[14px] shrink-0 cursor-pointer items-center justify-center rounded-sm text-white/85 transition-colors hover:bg-white/20 hover:text-white focus:outline-none focus:ring-2 focus:ring-white/50"
+                          aria-label={`Remove ${c.name}`}
+                        >
+                          <X className="h-2.5 w-2.5" strokeWidth={2.5} />
+                        </button>
+                      </span>
+                    ))}
+                    {remainingPrimaryCategories.length > 0 ? (
+                      <>
+                        <label className="sr-only" htmlFor="primary-action-category-add">
+                          Add category
+                        </label>
+                        <Select
+                          key={data.primary_action_category_ids.join(",")}
+                          onValueChange={(v) => {
+                            if (v) addPrimaryCategoryTag(Number(v))
+                          }}
+                        >
+                          <SelectTrigger
+                            id="primary-action-category-add"
+                            className="tagify__input h-7 min-w-[7rem] flex-1 justify-start border-0 bg-transparent px-1 py-0.5 text-sm text-muted-foreground shadow-none ring-0 ring-offset-0 hover:bg-transparent focus:ring-0 focus:ring-offset-0 data-[placeholder]:text-muted-foreground [&_svg]:hidden"
+                          >
+                            <SelectValue placeholder="Add category…" />
+                          </SelectTrigger>
+                          <SelectContent className="max-h-60 border border-border bg-popover text-popover-foreground shadow-md">
+                            {remainingPrimaryCategories.map((c) => (
+                              <SelectItem
+                                key={c.id}
+                                value={String(c.id)}
+                                className="cursor-pointer focus:bg-accent focus:text-accent-foreground"
+                              >
+                                {c.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </>
+                    ) : selectedPrimaryCategories.length > 0 ? (
+                      <span className="px-1 text-xs text-muted-foreground">All categories selected</span>
+                    ) : null}
+                  </div>
+                )}
+                <InputError message={errors.primary_action_category_ids} className="mt-1" />
+              </div>
+
               {/* Website */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="sm:col-span-2">

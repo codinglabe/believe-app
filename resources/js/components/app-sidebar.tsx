@@ -68,7 +68,6 @@ import {
     TrendingUp,
     Cloud,
     Monitor,
-    List,
     LayoutGrid,
     Layers
 } from 'lucide-react';
@@ -861,6 +860,12 @@ const mainNavItems: (NavItem | NavGroup)[] = [
                 role: "admin"
             },
             {
+                title: 'Org Primary Action Categories',
+                href: '/admin/primary-action-categories',
+                icon: LayoutGrid,
+                role: "admin"
+            },
+            {
                 title: 'Service Hub Settings',
                 href: '/settings/service-hub',
                 icon: ShoppingBag,
@@ -884,15 +889,15 @@ const mainNavItems: (NavItem | NavGroup)[] = [
                         role: "admin"
                     },
                     {
-                        title: 'Kiosk Items',
-                        href: '/admin/kiosk/items',
-                        icon: List,
-                        role: "admin"
-                    },
-                    {
                         title: 'Kiosk Requests',
                         href: '/admin/kiosk/requests',
                         icon: ClipboardList,
+                        role: "admin"
+                    },
+                    {
+                        title: 'Providers',
+                        href: '/admin/kiosk/providers',
+                        icon: Store,
                         role: "admin"
                     },
                 ],

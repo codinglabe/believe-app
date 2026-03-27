@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 
 class Country extends Model
@@ -35,5 +36,10 @@ class Country extends Model
     public function scopeOrdered($query)
     {
         return $query->orderBy('display_order')->orderBy('name');
+    }
+
+    public function states(): HasMany
+    {
+        return $this->hasMany(State::class);
     }
 }

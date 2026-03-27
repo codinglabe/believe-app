@@ -260,4 +260,64 @@ PROMPT;
             throw $e;
         }
     }
+
+    /**
+     * Chat completion with JSON object response (structured output).
+     *
+     * @return array{content: string, total_tokens: int, finish_reason: ?string}
+     */
+    public function chatCompletionJson(array $messages, ?string $model = null): array
+    {
+        $model = $model ?: config('services.kiosk_provider_ingest.model', 'gpt-3.5-turbo');
+        $maxTokens = (int) config('services.kiosk_provider_ingest.max_output_tokens', 4096);
+        if ($maxTokens < 256) {
+            $maxTokens = 4096;
+        }
+
+        try {
+            $response = $this->httpClient()->post($this->apiUrl, [
+                'model' => $model,
+                'messages' => $messages,
+                'temperature' => 0.35,
+                'max_tokens' => $maxTokens,
+                'response_format' => ['type' => 'json_object'],
+            ]);
+
+            if ($response->failed()) {
+                $errorBody = $response->body();
+                Log::error('OpenAI Chat JSON API Error', [
+                    'status' => $response->status(),
+                    'body' => $errorBody,
+                ]);
+                throw new \Exception('OpenAI API Error: '.$response->status().' - '.$errorBody);
+            }
+
+            $content = $response->json('choices.0.message.content');
+            $usage = $response->json('usage') ?? [];
+            $totalTokens = (int) ($usage['total_tokens'] ?? 0);
+            $finishReason = $response->json('choices.0.finish_reason');
+
+            if ($finishReason === 'length') {
+                Log::warning('OpenAI JSON response hit max_tokens; kiosk ingest JSON may be incomplete.', [
+                    'model' => $model,
+                    'max_tokens' => $maxTokens,
+                ]);
+            }
+
+            if (empty($content)) {
+                throw new \Exception('Empty response from OpenAI');
+            }
+
+            return [
+                'content' => trim($content),
+                'total_tokens' => $totalTokens,
+                'finish_reason' => is_string($finishReason) ? $finishReason : null,
+            ];
+        } catch (\Exception $e) {
+            Log::error('OpenAI Chat JSON Service Error', [
+                'message' => $e->getMessage(),
+            ]);
+            throw $e;
+        }
+    }
 }

@@ -68,6 +68,14 @@ Schedule::command('irs:sync-board-members --queue')
     ->withoutOverlapping()
     ->runInBackground();
 
+// Kiosk: forced AI re-ingest per geo (updated links + new providers). Requires queue worker + OPENAI_API_KEY.
+if (config('services.kiosk_provider_ingest.monthly_refresh_enabled', true)) {
+    Schedule::command('kiosk:refresh-provider-ingest')
+        ->monthlyOn(1, '5:00')
+        ->withoutOverlapping()
+        ->runInBackground();
+}
+
 // Clean Laravel log file when it exceeds 10MB (runs hourly)
 Schedule::command('log:clean --size=10')
     ->hourly()

@@ -4,7 +4,7 @@ namespace App\Http\Controllers\Settings;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Settings\ProfileUpdateRequest;
-use App\Models\Organization;
+use App\Models\PrimaryActionCategory;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -19,9 +19,34 @@ class ProfileController extends Controller
      */
     public function edit(Request $request): Response
     {
+        $primaryActionCategories = [];
+        $organizationPrimaryActionCategoryIds = [];
+
+        if ($request->user()?->role === 'organization') {
+            $request->user()->load('organization.primaryActionCategories');
+            $primaryActionCategories = PrimaryActionCategory::query()
+                ->where('is_active', true)
+                ->orderBy('sort_order')
+                ->orderBy('name')
+                ->get(['id', 'name'])
+                ->map(fn ($c) => ['id' => $c->id, 'name' => $c->name])
+                ->values()
+                ->all();
+
+            if ($request->user()->organization) {
+                $organizationPrimaryActionCategoryIds = $request->user()->organization
+                    ->primaryActionCategories
+                    ->pluck('id')
+                    ->values()
+                    ->all();
+            }
+        }
+
         return Inertia::render('settings/profile', [
             'mustVerifyEmail' => $request->user() instanceof MustVerifyEmail,
             'status' => $request->session()->get('status'),
+            'primaryActionCategories' => $primaryActionCategories,
+            'organizationPrimaryActionCategoryIds' => $organizationPrimaryActionCategoryIds,
         ]);
     }
 
@@ -67,6 +92,11 @@ class ProfileController extends Controller
 
             // Refresh the organization relationship to ensure updated data is available
             $request->user()->load('organization');
+
+            $pacIds = $request->validated('primary_action_category_ids');
+            $request->user()->organization->primaryActionCategories()->sync(
+                array_values(array_unique(array_map('intval', $pacIds)))
+            );
         }
 
         return to_route('profile.edit');

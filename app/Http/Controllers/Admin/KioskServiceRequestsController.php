@@ -58,7 +58,7 @@ class KioskServiceRequestsController extends Controller
                 'ai_decision' => $row->ai_decision,
                 'ai_reason' => $row->ai_reason,
                 'ai_suggested_url' => $row->ai_suggested_url,
-                'approved_service_id' => $row->approved_service_id,
+                'approved_kiosk_provider_id' => $row->approved_kiosk_provider_id,
                 'created_at' => optional($row->created_at)->toDateTimeString(),
             ]);
 
@@ -122,7 +122,7 @@ class KioskServiceRequestsController extends Controller
             'ai_decision' => $r->ai_decision,
             'ai_reason' => $r->ai_reason ?? '',
             'ai_suggested_url' => $r->ai_suggested_url,
-            'approved_service_id' => $r->approved_service_id,
+            'approved_kiosk_provider_id' => $r->approved_kiosk_provider_id,
             'market_code' => $r->market_code,
             'created_at' => optional($r->created_at)->toDateTimeString(),
         ];
@@ -192,6 +192,7 @@ class KioskServiceRequestsController extends Controller
     public function destroy(int $id): RedirectResponse
     {
         $kioskServiceRequest = KioskServiceRequest::findOrFail($id);
+        $this->publisher->unpublishLinkedService($kioskServiceRequest->approved_kiosk_provider_id);
         $kioskServiceRequest->delete();
 
         return redirect()->route('admin.kiosk.requests.index')->with('success', 'Request deleted.');
@@ -200,15 +201,16 @@ class KioskServiceRequestsController extends Controller
     protected function syncPublishingForRequest(KioskServiceRequest $row): void
     {
         if ($row->status === 'approved') {
-            $service = $this->publisher->publish($row);
+            $provider = $this->publisher->publish($row);
             $row->update([
-                'approved_service_id' => $service->id,
+                'approved_kiosk_provider_id' => $provider->id,
                 'approved_at' => now(),
                 'resolved_at' => now(),
             ]);
         } else {
-            $this->publisher->unpublishLinkedService($row->approved_service_id);
+            $this->publisher->unpublishLinkedService($row->approved_kiosk_provider_id);
             $row->update([
+                'approved_kiosk_provider_id' => null,
                 'approved_at' => null,
                 'resolved_at' => $row->status === 'rejected' ? now() : null,
             ]);

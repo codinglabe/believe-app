@@ -5,7 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\KioskServiceRequest;
 use App\Services\KioskRequestApprovedServicePublisher;
 use App\Services\KioskServiceRequestAiValidator;
-use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 
@@ -16,7 +16,7 @@ class KioskServiceRequestController extends Controller
         protected KioskRequestApprovedServicePublisher $publisher
     ) {}
 
-    public function store(Request $request): JsonResponse
+    public function store(Request $request): RedirectResponse
     {
         $validated = $request->validate([
             'state' => 'nullable|string|max:64',
@@ -30,7 +30,7 @@ class KioskServiceRequestController extends Controller
 
         $user = $request->user();
         if (! $user) {
-            return response()->json(['ok' => false, 'message' => 'Login required.'], 401);
+            return redirect()->back()->with('error', 'Please sign in to request a service.');
         }
 
         $validated['requester_name'] = $user->name ?? null;
@@ -63,14 +63,14 @@ class KioskServiceRequestController extends Controller
         ]);
 
         if ($status === 'approved') {
-            $service = $this->publisher->publish($requestRow->fresh());
+            $provider = $this->publisher->publish($requestRow->fresh());
             $requestRow->update([
-                'approved_service_id' => $service->id,
+                'approved_kiosk_provider_id' => $provider->id,
                 'approved_at' => now(),
             ]);
         }
 
-        return response()->json([
+        return redirect()->back()->with('kiosk_service_request', [
             'ok' => true,
             'status' => $status,
             'reason' => $requestRow->ai_reason,
@@ -80,7 +80,7 @@ class KioskServiceRequestController extends Controller
         ]);
     }
 
-    public function updateLink(Request $request, KioskServiceRequest $serviceRequest): JsonResponse
+    public function updateLink(Request $request, KioskServiceRequest $serviceRequest): RedirectResponse
     {
         $validated = $request->validate([
             'edit_token' => 'required|string|max:64',
@@ -88,11 +88,11 @@ class KioskServiceRequestController extends Controller
         ]);
 
         if (! hash_equals((string) $serviceRequest->edit_token, (string) $validated['edit_token'])) {
-            return response()->json(['ok' => false, 'message' => 'Invalid token.'], 403);
+            return redirect()->back()->with('error', 'Invalid or expired edit link.');
         }
 
         if ($serviceRequest->status !== 'pending') {
-            return response()->json(['ok' => false, 'message' => 'This request is already resolved.'], 422);
+            return redirect()->back()->with('error', 'This request is already resolved.');
         }
 
         $serviceRequest->update(['url' => $this->normalizeUrl($validated['url'])]);
@@ -113,14 +113,14 @@ class KioskServiceRequestController extends Controller
         ]);
 
         if ($status === 'approved') {
-            $service = $this->publisher->publish($serviceRequest->fresh());
+            $provider = $this->publisher->publish($serviceRequest->fresh());
             $serviceRequest->update([
-                'approved_service_id' => $service->id,
+                'approved_kiosk_provider_id' => $provider->id,
                 'approved_at' => now(),
             ]);
         }
 
-        return response()->json([
+        return redirect()->back()->with('kiosk_service_request', [
             'ok' => true,
             'status' => $status,
             'reason' => $serviceRequest->ai_reason,
