@@ -52,9 +52,14 @@ interface Paginated {
   links: { url: string | null; label: string; active: boolean }[]
 }
 
+interface PoolCategoryOption {
+  id: number
+  name: string
+}
+
 interface Props {
   products: Paginated
-  categories: string[]
+  categories: PoolCategoryOption[]
   filters: { search: string; category: string }
 }
 
@@ -157,8 +162,8 @@ export default function MarketplaceProductPoolIndex({ products, categories, filt
             >
               <option value="">All categories</option>
               {categories.map((c) => (
-                <option key={c} value={c}>
-                  {c}
+                <option key={c.id} value={String(c.id)}>
+                  {c.name}
                 </option>
               ))}
             </select>

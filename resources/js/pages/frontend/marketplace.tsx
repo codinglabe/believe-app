@@ -27,7 +27,8 @@ import {
     Minus,
     Loader2,
     ChevronDown,
-    ChevronUp
+    ChevronUp,
+    Store
 } from "lucide-react"
 
 interface PoolListing {
@@ -41,9 +42,15 @@ interface PoolListing {
         id: number;
         name: string;
     };
+    merchant?: {
+        id?: number;
+        name?: string | null;
+    };
     listing_type: string;
     url: string;
 }
+
+type SellerType = "all" | "organization" | "merchant"
 
 interface Product {
     id: number;
@@ -82,10 +89,14 @@ interface Cart {
 
 interface PageProps {
     products: Product[];
+    poolListings?: PoolListing[];
     categories: any[];
     organizations: any[];
+    merchants?: { id: number; name: string }[];
     selectedCategories: number[];
     selectedOrganizations: number[];
+    selectedMerchants?: number[];
+    sellerType?: SellerType;
     search: string;
     cart?: Cart;
     total?: number;
@@ -103,8 +114,11 @@ export default function Marketplace({
     poolListings = [],
     categories,
     organizations,
+    merchants = [],
     selectedCategories,
     selectedOrganizations,
+    selectedMerchants = [],
+    sellerType: sellerTypeProp = "all",
     search
 }: PageProps) {
     const [isFavorite, setIsFavorite] = useState(false)
@@ -114,7 +128,9 @@ export default function Marketplace({
     const [isLoading, setIsLoading] = useState(false)
     const [cartLoading, setCartLoading] = useState(false)
     const [cartModalLoading, setCartModalLoading] = useState(false)
+    const [isSellerTypeExpanded, setIsSellerTypeExpanded] = useState(true)
     const [isOrganizationsExpanded, setIsOrganizationsExpanded] = useState(true)
+    const [isMerchantsExpanded, setIsMerchantsExpanded] = useState(true)
     const [isCategoriesExpanded, setIsCategoriesExpanded] = useState(true)
     const productsPerPage = 6
 
@@ -134,10 +150,14 @@ export default function Marketplace({
         search: string
         categories: number[]
         organizations: number[]
+        merchants: number[]
+        sellerType: SellerType
     }>({
         search: search || '',
-        categories: selectedCategories || [],
-        organizations: selectedOrganizations || []
+        categories: (selectedCategories || []).map(Number),
+        organizations: (selectedOrganizations || []).map(Number),
+        merchants: (selectedMerchants || []).map(Number),
+        sellerType: sellerTypeProp,
     })
 
     const toggleCategory = (categoryId: number) => {
@@ -158,6 +178,20 @@ export default function Marketplace({
         }))
     }
 
+    const toggleMerchant = (merchantId: number) => {
+        setFilters((prev) => ({
+            ...prev,
+            merchants: prev.merchants.includes(merchantId)
+                ? prev.merchants.filter(id => id !== merchantId)
+                : [...prev.merchants, merchantId]
+        }))
+    }
+
+    const setSellerType = (value: SellerType) => {
+        setFilters((prev) => ({ ...prev, sellerType: value }))
+        setCurrentProductPage(1)
+    }
+
     const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         setFilters((prev) => ({
             ...prev,
@@ -169,13 +203,15 @@ export default function Marketplace({
         setFilters({
             search: '',
             categories: [],
-            organizations: []
+            organizations: [],
+            merchants: [],
+            sellerType: 'all',
         })
         setCurrentProductPage(1)
     }
 
     const debouncedFilter = useCallback(
-        debounce((query) => {
+        debounce((query: Record<string, string>) => {
             router.get('/marketplace', pickBy(query), {
                 preserveState: true,
                 replace: true
@@ -185,20 +221,37 @@ export default function Marketplace({
     )
 
     useEffect(() => {
-        const query = {
-            ...filters,
+        const query: Record<string, string> = {
+            search: filters.search,
             categories: filters.categories.length > 0 ? filters.categories.join(',') : '',
             organizations: filters.organizations.length > 0 ? filters.organizations.join(',') : '',
+            merchants: filters.merchants.length > 0 ? filters.merchants.join(',') : '',
         }
-        debouncedFilter(query)
+        if (filters.sellerType !== 'all') {
+            query.seller_type = filters.sellerType
+        }
+        debouncedFilter(pickBy(query))
     }, [filters])
 
     const handleProductPageChange = (page: number) => {
         setCurrentProductPage(page);
     }
 
+    // Organizations: catalog (org / all) and pool (merchant / all) — listing nonprofit
+    const showOrganizationFilter =
+        filters.sellerType === 'all' ||
+        filters.sellerType === 'organization' ||
+        filters.sellerType === 'merchant'
+    // Merchants: pool only — hide when catalog-only mode
+    const showMerchantFilter = filters.sellerType === 'all' || filters.sellerType === 'merchant'
+
     // Active filter count for badge
-    const activeFilterCount = filters.categories.length + filters.organizations.length + (filters.search ? 1 : 0);
+    const activeFilterCount =
+        filters.categories.length +
+        filters.organizations.length +
+        filters.merchants.length +
+        (filters.sellerType !== 'all' ? 1 : 0) +
+        (filters.search ? 1 : 0)
 
     return (
         <FrontendLayout>
@@ -288,21 +341,78 @@ export default function Marketplace({
                                     )}
                                 </div>
 
-                                {/* Organizations Filter */}
+                                {/* Sold by — seller type (requirement: above org / merchant lists) */}
                                 <Card className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 shadow-md">
                                     <CardHeader className="pb-3 bg-gradient-to-r from-purple-50 to-blue-50 dark:from-gray-700 dark:to-gray-700 rounded-t-lg">
                                         <button
+                                            type="button"
+                                            onClick={() => setIsSellerTypeExpanded(!isSellerTypeExpanded)}
+                                            className="w-full flex items-center justify-between text-left"
+                                        >
+                                            <CardTitle className="text-base font-semibold text-gray-900 dark:text-white">
+                                                Sold by
+                                            </CardTitle>
+                                            {isSellerTypeExpanded ? (
+                                                <ChevronUp className="h-4 w-4 text-gray-600 dark:text-gray-300 shrink-0" />
+                                            ) : (
+                                                <ChevronDown className="h-4 w-4 text-gray-600 dark:text-gray-300 shrink-0" />
+                                            )}
+                                        </button>
+                                    </CardHeader>
+                                    <AnimatePresence>
+                                        {isSellerTypeExpanded && (
+                                            <motion.div
+                                                initial={{ height: 0, opacity: 0 }}
+                                                animate={{ height: 'auto', opacity: 1 }}
+                                                exit={{ height: 0, opacity: 0 }}
+                                                transition={{ duration: 0.3 }}
+                                                className="overflow-hidden"
+                                            >
+                                                <CardContent className="space-y-2 pt-2 pb-4">
+                                                    {([
+                                                        { value: 'all' as const, label: 'All sellers' },
+                                                        { value: 'organization' as const, label: 'Organizations' },
+                                                        { value: 'merchant' as const, label: 'Merchants' },
+                                                    ]).map(({ value, label }) => (
+                                                        <label
+                                                            key={value}
+                                                            className="flex items-center gap-3 cursor-pointer group p-2 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+                                                        >
+                                                            <input
+                                                                type="radio"
+                                                                name="seller_type"
+                                                                checked={filters.sellerType === value}
+                                                                onChange={() => setSellerType(value)}
+                                                                className="h-4 w-4 text-purple-600 border-gray-300 focus:ring-purple-500 focus:ring-2"
+                                                            />
+                                                            <span className="text-sm text-gray-700 dark:text-gray-300 group-hover:text-gray-900 dark:group-hover:text-white">
+                                                                {label}
+                                                            </span>
+                                                        </label>
+                                                    ))}
+                                                </CardContent>
+                                            </motion.div>
+                                        )}
+                                    </AnimatePresence>
+                                </Card>
+
+                                {/* Organizations — catalog nonprofits; shown above Merchants per spec */}
+                                {showOrganizationFilter && (
+                                <Card className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 shadow-md">
+                                    <CardHeader className="pb-3 bg-gradient-to-r from-purple-50 to-blue-50 dark:from-gray-700 dark:to-gray-700 rounded-t-lg">
+                                        <button
+                                            type="button"
                                             onClick={() => setIsOrganizationsExpanded(!isOrganizationsExpanded)}
-                                            className="w-full flex items-center justify-between"
+                                            className="w-full flex items-center justify-between text-left"
                                         >
                                             <CardTitle className="text-base font-semibold text-gray-900 dark:text-white flex items-center gap-2">
-                                                <Building className="h-4 w-4 text-purple-600" />
+                                                <Building className="h-4 w-4 text-purple-600 shrink-0" />
                                                 Organizations
                                             </CardTitle>
                                             {isOrganizationsExpanded ? (
-                                                <ChevronUp className="h-4 w-4 text-gray-600 dark:text-gray-300" />
+                                                <ChevronUp className="h-4 w-4 text-gray-600 dark:text-gray-300 shrink-0" />
                                             ) : (
-                                                <ChevronDown className="h-4 w-4 text-gray-600 dark:text-gray-300" />
+                                                <ChevronDown className="h-4 w-4 text-gray-600 dark:text-gray-300 shrink-0" />
                                             )}
                                         </button>
                                     </CardHeader>
@@ -321,9 +431,9 @@ export default function Marketplace({
                                                             <label key={organization.id} className="flex items-center space-x-3 cursor-pointer group p-2 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
                                                                 <input
                                                                     type="checkbox"
-                                                                    checked={filters.organizations.includes(organization.id)}
-                                                                    onChange={() => toggleOrganization(organization.id)}
-                                                                    className="h-4 w-4 text-purple-600 border-gray-300 rounded focus:ring-purple-500 focus:ring-2"
+                                                                    checked={filters.organizations.includes(Number(organization.id))}
+                                                                    onChange={() => toggleOrganization(Number(organization.id))}
+                                                                    className="h-4 w-4 text-purple-600 border-gray-300 rounded focus:ring-purple-500 focus:ring-2 shrink-0"
                                                                 />
                                                                 <span className="text-sm text-gray-700 dark:text-gray-300 group-hover:text-gray-900 dark:group-hover:text-white transition-colors truncate">
                                                                     {organization.name}
@@ -336,6 +446,65 @@ export default function Marketplace({
                                         )}
                                     </AnimatePresence>
                                 </Card>
+                                )}
+
+                                {/* Merchants — pool / partner merchants */}
+                                {showMerchantFilter && (
+                                <Card className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 shadow-md">
+                                    <CardHeader className="pb-3 bg-gradient-to-r from-purple-50 to-blue-50 dark:from-gray-700 dark:to-gray-700 rounded-t-lg">
+                                        <button
+                                            type="button"
+                                            onClick={() => setIsMerchantsExpanded(!isMerchantsExpanded)}
+                                            className="w-full flex items-center justify-between text-left"
+                                        >
+                                            <CardTitle className="text-base font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+                                                <Store className="h-4 w-4 text-purple-600 shrink-0" />
+                                                Merchants
+                                            </CardTitle>
+                                            {isMerchantsExpanded ? (
+                                                <ChevronUp className="h-4 w-4 text-gray-600 dark:text-gray-300 shrink-0" />
+                                            ) : (
+                                                <ChevronDown className="h-4 w-4 text-gray-600 dark:text-gray-300 shrink-0" />
+                                            )}
+                                        </button>
+                                    </CardHeader>
+                                    <AnimatePresence>
+                                        {isMerchantsExpanded && (
+                                            <motion.div
+                                                initial={{ height: 0, opacity: 0 }}
+                                                animate={{ height: 'auto', opacity: 1 }}
+                                                exit={{ height: 0, opacity: 0 }}
+                                                transition={{ duration: 0.3 }}
+                                                className="overflow-hidden"
+                                            >
+                                                <CardContent className="space-y-3 pt-4" style={{ height: '240px', maxHeight: '240px' }}>
+                                                    <div className="overflow-y-auto h-full pr-2" style={{ maxHeight: '240px' }}>
+                                                        {merchants.length === 0 ? (
+                                                            <p className="text-sm text-gray-500 dark:text-gray-400 px-2">
+                                                                No merchant pool listings match your account scope.
+                                                            </p>
+                                                        ) : (
+                                                            merchants.map((m) => (
+                                                                <label key={m.id} className="flex items-center space-x-3 cursor-pointer group p-2 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
+                                                                    <input
+                                                                        type="checkbox"
+                                                                        checked={filters.merchants.includes(m.id)}
+                                                                        onChange={() => toggleMerchant(m.id)}
+                                                                        className="h-4 w-4 text-purple-600 border-gray-300 rounded focus:ring-purple-500 focus:ring-2 shrink-0"
+                                                                    />
+                                                                    <span className="text-sm text-gray-700 dark:text-gray-300 group-hover:text-gray-900 dark:group-hover:text-white transition-colors truncate">
+                                                                        {m.name}
+                                                                    </span>
+                                                                </label>
+                                                            ))
+                                                        )}
+                                                    </div>
+                                                </CardContent>
+                                            </motion.div>
+                                        )}
+                                    </AnimatePresence>
+                                </Card>
+                                )}
 
                                 {/* Categories Filter */}
                                 <Card className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 shadow-md">
@@ -369,8 +538,8 @@ export default function Marketplace({
                                                             <label key={category.id} className="flex items-center space-x-3 cursor-pointer group p-2 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
                                                                 <input
                                                                     type="checkbox"
-                                                                    checked={filters.categories.includes(category.id)}
-                                                                    onChange={() => toggleCategory(category.id)}
+                                                                    checked={filters.categories.includes(Number(category.id))}
+                                                                    onChange={() => toggleCategory(Number(category.id))}
                                                                     className="h-4 w-4 text-purple-600 border-gray-300 rounded focus:ring-purple-500 focus:ring-2"
                                                                 />
                                                                 <span className="text-sm text-gray-700 dark:text-gray-300 group-hover:text-gray-900 dark:group-hover:text-white transition-colors">
@@ -429,7 +598,7 @@ export default function Marketplace({
                                             Fulfilled by partner merchants; listed by nonprofits you support.
                                         </p>
                                         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6">
-                                            {poolListings.map((listing) => (
+                                            {poolListings.map((listing: PoolListing) => (
                                                 <Link href={listing.url} key={listing.id}>
                                                     <Card className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 hover:shadow-xl transition-all duration-300 group hover:border-purple-300 dark:hover:border-purple-600 overflow-hidden h-full">
                                                         <div className="relative overflow-hidden">
@@ -438,18 +607,27 @@ export default function Marketplace({
                                                                 alt={listing.name}
                                                                 className="w-full h-56 object-cover group-hover:scale-110 transition-transform duration-500"
                                                             />
+                                                        <div className="absolute top-3 left-3 flex flex-col gap-1.5 items-start max-w-[85%]">
                                                             <Badge
                                                                 variant="secondary"
-                                                                className="absolute top-3 left-3 bg-emerald-600/95 text-white text-xs font-medium border-0 shadow-md"
+                                                                className="bg-emerald-600/95 text-white text-xs font-medium border-0 shadow-md"
                                                             >
                                                                 Pool product
                                                             </Badge>
                                                             <Badge
-                                                                variant="outline"
-                                                                className="absolute bottom-3 left-3 bg-white/95 dark:bg-gray-800/95 backdrop-blur-sm text-gray-800 dark:text-gray-200 text-xs font-medium border-0 shadow-md max-w-[90%] truncate"
+                                                                variant="secondary"
+                                                                className="bg-amber-600/95 text-white text-xs font-medium border-0 shadow-md"
                                                             >
-                                                                Sold by {listing.organization.name}
+                                                                Merchant
                                                             </Badge>
+                                                        </div>
+                                                        <Badge
+                                                            variant="outline"
+                                                            className="absolute bottom-3 left-3 bg-white/95 dark:bg-gray-800/95 backdrop-blur-sm text-gray-800 dark:text-gray-200 text-xs font-medium border-0 shadow-md max-w-[90%] truncate"
+                                                        >
+                                                            Listed by {listing.organization.name}
+                                                            {listing.merchant?.name ? ` · ${listing.merchant.name}` : ''}
+                                                        </Badge>
                                                         </div>
                                                         <CardContent className="p-5 sm:p-6">
                                                             <div className="flex justify-between items-start mb-2 gap-2">
@@ -494,16 +672,24 @@ export default function Marketplace({
                                                                 Out of Stock
                                                             </div>
                                                         )}
-                                                        <Badge
-                                                            variant="secondary"
-                                                            className="absolute top-3 left-3 bg-white/95 dark:bg-gray-800/95 backdrop-blur-sm text-gray-800 dark:text-gray-200 text-xs font-medium border-0 shadow-md"
-                                                        >
-                                                            {product.category?.name || 'Uncategorized'}
-                                                        </Badge>
+                                                        <div className="absolute top-3 left-3 flex flex-col gap-1.5 items-start max-w-[85%]">
+                                                            <Badge
+                                                                variant="secondary"
+                                                                className="bg-slate-700/90 text-white text-xs font-medium border-0 shadow-md"
+                                                            >
+                                                                Organization
+                                                            </Badge>
+                                                            <Badge
+                                                                variant="secondary"
+                                                                className="bg-white/95 dark:bg-gray-800/95 backdrop-blur-sm text-gray-800 dark:text-gray-200 text-xs font-medium border-0 shadow-md"
+                                                            >
+                                                                {product.category?.name || 'Uncategorized'}
+                                                            </Badge>
+                                                        </div>
                                                         {product.organization && (
                                                             <Badge
                                                                 variant="outline"
-                                                                className="absolute bottom-3 left-3 bg-purple-100 dark:bg-purple-900/80 text-purple-800 dark:text-purple-200 text-xs font-medium border-0 shadow-md"
+                                                                className="absolute bottom-3 left-3 bg-purple-100 dark:bg-purple-900/80 text-purple-800 dark:text-purple-200 text-xs font-medium border-0 shadow-md max-w-[90%] truncate"
                                                             >
                                                                 {product.organization.name}
                                                             </Badge>

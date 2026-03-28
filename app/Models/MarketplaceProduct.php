@@ -12,7 +12,7 @@ class MarketplaceProduct extends Model
         'merchant_id',
         'name',
         'description',
-        'category',
+        'category_id',
         'base_price',
         'cost',
         'inventory_quantity',
@@ -48,6 +48,14 @@ class MarketplaceProduct extends Model
     public function merchant(): BelongsTo
     {
         return $this->belongsTo(Merchant::class);
+    }
+
+    /**
+     * Named productCategory so it does not collide with a legacy `category` string column on the same table.
+     */
+    public function productCategory(): BelongsTo
+    {
+        return $this->belongsTo(Category::class, 'category_id');
     }
 
     public function organizationProducts(): HasMany

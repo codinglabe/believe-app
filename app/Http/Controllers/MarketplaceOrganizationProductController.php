@@ -11,7 +11,7 @@ class MarketplaceOrganizationProductController extends Controller
 {
     public function show(Request $request, OrganizationProduct $organization_product): Response
     {
-        $organization_product->load(['organization', 'marketplaceProduct.merchant']);
+        $organization_product->load(['organization', 'marketplaceProduct.merchant', 'marketplaceProduct.productCategory']);
 
         if ($organization_product->status !== 'active' || ! $organization_product->marketplaceProduct?->inPool()) {
             abort(404);
@@ -36,7 +36,7 @@ class MarketplaceOrganizationProductController extends Controller
                     'id' => $mp->id,
                     'name' => $mp->name,
                     'description' => $mp->description,
-                    'category' => $mp->category,
+                    'category' => $mp->productCategory?->name,
                     'product_type' => $mp->product_type,
                     'images' => $imageUrls,
                 ],

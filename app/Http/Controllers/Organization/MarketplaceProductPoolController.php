@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Organization;
 
 use App\Http\Controllers\Controller;
+use App\Models\Category;
 use App\Models\MarketplaceProduct;
 use App\Models\OrganizationProduct;
 use Illuminate\Http\Request;
@@ -24,7 +25,7 @@ class MarketplaceProductPoolController extends Controller
             ->all();
 
         $query = MarketplaceProduct::query()
-            ->with('merchant:id,business_name,name')
+            ->with(['merchant:id,business_name,name', 'productCategory:id,name'])
             ->where('status', 'active')
             ->where('nonprofit_marketplace_enabled', true)
             ->where(function ($q) {
@@ -33,7 +34,7 @@ class MarketplaceProductPoolController extends Controller
             });
 
         if ($request->filled('category')) {
-            $query->where('category', $request->string('category'));
+            $query->where('category_id', (int) $request->input('category'));
         }
         if ($request->filled('search')) {
             $s = $request->string('search');
@@ -45,16 +46,23 @@ class MarketplaceProductPoolController extends Controller
 
         $products = $query->orderByDesc('created_at')->paginate(24)->withQueryString();
 
-        $categories = MarketplaceProduct::query()
+        $categoryIdsInPool = MarketplaceProduct::query()
             ->where('status', 'active')
             ->where('nonprofit_marketplace_enabled', true)
-            ->whereNotNull('category')
+            ->whereNotNull('category_id')
             ->distinct()
-            ->orderBy('category')
-            ->pluck('category');
+            ->pluck('category_id');
+
+        $categories = Category::query()
+            ->whereIn('id', $categoryIdsInPool)
+            ->where('status', 'active')
+            ->orderBy('name')
+            ->get(['id', 'name']);
 
         $products->getCollection()->transform(function (MarketplaceProduct $p) use ($adoptedIds) {
             $row = $p->toArray();
+            $row['category'] = $p->productCategory?->name
+                ?? (isset($row['category']) && is_string($row['category']) ? $row['category'] : null);
             $row['already_adopted'] = in_array($p->id, $adoptedIds, true);
             if (! empty($row['images']) && is_array($row['images'])) {
                 $row['images'] = array_map(

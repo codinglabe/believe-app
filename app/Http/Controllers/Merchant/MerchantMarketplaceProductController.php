@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Merchant;
 
 use App\Http\Controllers\Controller;
+use App\Models\Category;
 use App\Models\MarketplaceProduct;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -28,7 +29,7 @@ class MerchantMarketplaceProductController extends Controller
             $query->where('status', $request->string('status'));
         }
 
-        $products = $query->orderByDesc('created_at')->paginate(20)->withQueryString();
+        $products = $query->with('productCategory:id,name')->orderByDesc('created_at')->paginate(20)->withQueryString();
 
         $products->getCollection()->transform(fn (MarketplaceProduct $p) => $this->transformForFrontend($p));
 
@@ -45,6 +46,10 @@ class MerchantMarketplaceProductController extends Controller
     {
         return Inertia::render('merchant/MarketplaceProducts/Create', [
             'product' => null,
+            'categories' => Category::query()
+                ->where('status', 'active')
+                ->orderBy('name')
+                ->get(['id', 'name']),
         ]);
     }
 
@@ -79,6 +84,10 @@ class MerchantMarketplaceProductController extends Controller
 
         return Inertia::render('merchant/MarketplaceProducts/Create', [
             'product' => $this->transformForFrontend($marketplace_product),
+            'categories' => Category::query()
+                ->where('status', 'active')
+                ->orderBy('name')
+                ->get(['id', 'name']),
         ]);
     }
 
@@ -125,12 +134,16 @@ class MerchantMarketplaceProductController extends Controller
 
     private function validatePayload(Request $request): array
     {
+        if ($request->has('category_id') && $request->input('category_id') === '') {
+            $request->merge(['category_id' => null]);
+        }
+
         $poolOn = $request->boolean('nonprofit_marketplace_enabled');
 
         $rules = [
             'name' => ['required', 'string', 'max:255'],
             'description' => ['nullable', 'string'],
-            'category' => ['nullable', 'string', 'max:255'],
+            'category_id' => ['nullable', 'integer', 'exists:categories,id'],
             'base_price' => ['required', 'numeric', 'min:0'],
             'cost' => ['nullable', 'numeric', 'min:0'],
             'inventory_quantity' => ['nullable', 'integer', 'min:0'],
@@ -175,12 +188,20 @@ class MerchantMarketplaceProductController extends Controller
             $validated['suggested_retail_price'] = $validated['suggested_retail_price'] ?? null;
         }
 
+        if (array_key_exists('category_id', $validated)) {
+            $v = $validated['category_id'];
+            $validated['category_id'] = ($v === null || $v === '') ? null : (int) $v;
+        }
+
         return $validated;
     }
 
     private function transformForFrontend(MarketplaceProduct $p): array
     {
+        $p->loadMissing('productCategory:id,name');
         $data = $p->toArray();
+        $data['category'] = $p->productCategory?->name
+            ?? (isset($data['category']) && is_string($data['category']) ? $data['category'] : null);
         if (! empty($data['images']) && is_array($data['images'])) {
             $data['images'] = array_map(
                 fn ($path) => filter_var($path, FILTER_VALIDATE_URL) ? $path : asset('storage/'.ltrim($path, '/')),

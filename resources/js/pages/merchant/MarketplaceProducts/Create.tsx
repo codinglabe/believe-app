@@ -16,7 +16,8 @@ interface ProductRow {
   id: number
   name: string
   description: string | null
-  category: string | null
+  category_id?: number | null
+  category?: string | null
   base_price: string | number
   cost: string | number | null
   inventory_quantity: number | null
@@ -34,18 +35,24 @@ interface ProductRow {
   status: string
 }
 
-interface Props {
-  product: ProductRow | null
+interface CategoryOption {
+  id: number
+  name: string
 }
 
-export default function MerchantMarketplaceProductForm({ product }: Props) {
+interface Props {
+  product: ProductRow | null
+  categories?: CategoryOption[]
+}
+
+export default function MerchantMarketplaceProductForm({ product, categories = [] }: Props) {
   const isEdit = !!product
   const unlimited = product?.inventory_quantity == null && isEdit
 
   const { data, setData, errors, processing } = useForm({
     name: product?.name ?? "",
     description: product?.description ?? "",
-    category: product?.category ?? "",
+    category_id: product?.category_id != null ? String(product.category_id) : "",
     base_price: product ? String(product.base_price) : "",
     cost: product?.cost != null ? String(product.cost) : "",
     inventory_quantity: product && product.inventory_quantity != null ? String(product.inventory_quantity) : "",
@@ -121,6 +128,7 @@ export default function MerchantMarketplaceProductForm({ product }: Props) {
       if (v === "" && k !== "name" && k !== "base_price" && k !== "product_type" && k !== "status" && k !== "nonprofit_marketplace_enabled" && k !== "unlimited_inventory") return
       formData.append(k, typeof v === "boolean" ? (v ? "1" : "0") : String(v))
     })
+    formData.append("category_id", data.category_id === "" ? "" : String(data.category_id))
     imageFiles.forEach((f) => formData.append("images[]", f))
     return formData
   }
@@ -180,7 +188,25 @@ export default function MerchantMarketplaceProductForm({ product }: Props) {
               </div>
               <div>
                 <MerchantLabel>Category</MerchantLabel>
-                <MerchantInput value={data.category} onChange={(e) => setData("category", e.target.value)} placeholder="e.g. Apparel" />
+                <select
+                  value={data.category_id}
+                  onChange={(e) => setData("category_id", e.target.value)}
+                  className="w-full rounded-lg border border-[#FF1493]/30 bg-black/40 text-white px-3 py-2"
+                >
+                  <option value="">Select a category</option>
+                  {categories.map((c) => (
+                    <option key={c.id} value={String(c.id)}>
+                      {c.name}
+                    </option>
+                  ))}
+                  {product?.category_id != null &&
+                    !categories.some((c) => c.id === product.category_id) && (
+                      <option value={String(product.category_id)}>
+                        {product.category ?? "Category"} (current)
+                      </option>
+                    )}
+                </select>
+                {err("category_id") && <p className="text-red-400 text-sm mt-1">{err("category_id")}</p>}
               </div>
               <div className="grid sm:grid-cols-2 gap-4">
                 <div>
