@@ -17,7 +17,6 @@ use App\Notifications\BidLostNotification;
 use App\Notifications\BidWonNotification;
 use App\Services\PrintifyService;
 use App\Services\ShippoService;
-<<<<<<< HEAD
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Notification;
@@ -26,9 +25,7 @@ use Illuminate\Support\Str;
 use Inertia\Inertia;
 use Inertia\Response;
 use Laravel\Cashier\Cashier;
-=======
 use App\Services\SupporterActivityService;
->>>>>>> 0cd89607976477ba399bba112d9ecb75ed16c96d
 
 class ProductController extends BaseController
 {
@@ -1944,8 +1941,6 @@ class ProductController extends BaseController
             ]);
             \DB::commit();
 
-<<<<<<< HEAD
-=======
             try {
                 $order->load('items');
                 app(SupporterActivityService::class)->recordPurchasesForOrder($order);
@@ -1956,7 +1951,6 @@ class ProductController extends BaseController
                 ]);
             }
 
->>>>>>> 0cd89607976477ba399bba112d9ecb75ed16c96d
             return redirect()->route('user.profile.orders')->with('success', 'Payment complete. Your order has been placed.');
         } catch (\Exception $e) {
             \DB::rollBack();

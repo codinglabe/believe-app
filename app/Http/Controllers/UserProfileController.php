@@ -21,22 +21,8 @@ use App\Models\User;
 use App\Models\UserFavoriteOrganization;
 use App\Models\UserFollow;
 use App\Models\VolunteerTimesheet;
-<<<<<<< HEAD
-=======
-use App\Models\JobApplication;
-use App\Models\FundraiseLead;
-use App\Models\Bid;
-use App\Models\Product;
-use App\Models\RewardPointLedger;
-use App\Models\MerchantHubOfferRedemption;
-use App\Models\User;
-use App\Models\Post;
-use App\Models\PostReaction;
-use App\Models\PostComment;
 use App\Jobs\IngestKioskProvidersForGeoJob;
 use App\Services\KioskProviderAiIngestService;
-use App\Services\ImpactScoreService;
->>>>>>> 0cd89607976477ba399bba112d9ecb75ed16c96d
 use App\Services\ExcelDataTransformer;
 use App\Services\ImpactScoreService;
 use App\Services\PrintifyService;

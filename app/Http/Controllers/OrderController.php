@@ -57,33 +57,8 @@ class OrderController extends Controller
             ->orderBy('created_at', 'desc')
             ->paginate($perPage, ['*'], 'page', $page);
 
-        // Add product type and Shippo-related flags to each order
-        $orders->getCollection()->transform(function ($order) {
-            $order->is_printify_order = ! empty($order->printify_order_id);
-
-            // Check if any item is a manual product
-            $hasManualProduct = $order->items->contains(function ($item) {
-                return empty($item->product->printify_product_id);
-            });
-            $order->has_manual_product = $hasManualProduct;
-            $order->product_type = $order->is_printify_order ? 'Printify' : ($hasManualProduct ? 'Manual' : 'Mixed');
-
-            // Shippo: can create label only for paid orders with manual product and shipping address, no label yet
-            $order->can_create_shippo_label = $hasManualProduct
-                && $order->payment_status === 'paid'
-                && $order->shippingInfo
-                && empty($order->tracking_number);
-
-            // Human-readable delivery pipeline (Shippo webhook updates shipping_status)
-            $order->delivery_status_label = match ($order->shipping_status) {
-                'label_created' => 'Label created',
-                'shipped' => 'In transit',
-                'completed' => 'Delivered',
-                default => $order->shipping_status ? ucfirst(str_replace('_', ' ', (string) $order->shipping_status)) : null,
-            };
-
-            return $order;
-        });
+        // delivery_status_label, product_type, can_create_shippo_label, etc. come from Order $appends accessors
+        // so they are included in Inertia/JSON (dynamic ->property assignments are NOT serialized).
 
         return Inertia::render('orders/index', [
             'orders' => $orders,
