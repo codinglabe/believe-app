@@ -20,6 +20,10 @@ interface OrgFollowButtonProps {
   initialNotifications?: boolean
   /** When true, do not render (e.g. viewing own organization) */
   isOwnOrganization?: boolean
+  /** Logged-in creator viewing their own Care Alliance public page — disabled hub label instead of Follow. */
+  allianceHubOwner?: boolean
+  /** Care Alliance primary key from page props — fallback when organization ids are missing client-side. */
+  careAlliancePublicId?: number | null
 }
 
 export default function OrgFollowButton({
@@ -27,9 +31,27 @@ export default function OrgFollowButton({
   auth,
   initialIsFollowing = false,
   initialNotifications = false,
-  isOwnOrganization = false
+  isOwnOrganization = false,
+  allianceHubOwner = false,
+  careAlliancePublicId = null,
 }: OrgFollowButtonProps) {
   if (isOwnOrganization) return null
+
+  if (allianceHubOwner) {
+    return (
+      <Button
+        type="button"
+        disabled
+        variant="outline"
+        size="lg"
+        className="min-w-[40px] sm:min-w-0 h-9 sm:h-10 md:h-11 flex-shrink-0 justify-center sm:justify-start px-2 sm:px-3 md:px-4 border-2 opacity-80 cursor-not-allowed border-indigo-500/40 text-indigo-900 dark:text-indigo-100 bg-indigo-500/10"
+        title="You manage this Care Alliance. Supporters and other organizations can follow this page."
+      >
+        <UserCheck className="h-4 w-4 sm:mr-1.5 md:mr-2 shrink-0" />
+        <span className="hidden sm:inline whitespace-nowrap truncate">Your alliance hub</span>
+      </Button>
+    )
+  }
   // Use props directly as source of truth, only maintain local state for optimistic updates
   const [localIsFollowing, setLocalIsFollowing] = useState<boolean | null>(null)
   const [localNotifications, setLocalNotifications] = useState<boolean | null>(null)
@@ -38,113 +60,166 @@ export default function OrgFollowButton({
   // Track if we're in the middle of an update to prevent loops
   const updateInProgressRef = useRef(false)
 
-  // Memoize organization ID to prevent unnecessary re-renders (define first!)
-  const organizationId = useMemo(() => organization?.id, [organization?.id])
+  // Prefer explicit toggle id (Care Alliance); else same as nonprofit profiles (excel / org id on organization.id).
+  const favoriteId = useMemo(() => {
+    const raw =
+      organization?.toggle_favorite_id ??
+      organization?.registered_organization?.id ??
+      organization?.id ??
+      careAlliancePublicId
+    if (raw === null || raw === undefined || raw === "") {
+      return null
+    }
+    const n = Number(raw)
+    return Number.isFinite(n) ? n : null
+  }, [
+    organization?.toggle_favorite_id,
+    organization?.registered_organization?.id,
+    organization?.id,
+    careAlliancePublicId,
+  ])
+  const canToggleFollow = favoriteId !== null
 
   // Derive current state: use local if set, otherwise use props
   const isFollowing = localIsFollowing !== null ? localIsFollowing : initialIsFollowing
   const notifications = localNotifications !== null ? localNotifications : initialNotifications
 
-  // Reset local state when props change (after page reload)
-  // When the page reloads after follow/unfollow, the prop will have the correct value from backend
+  // Reset local state when props change (after Inertia visit / reload)
   useEffect(() => {
-    // Reset local state to use the authoritative backend value
-    // This happens after a page reload when new props arrive
     setLocalIsFollowing(null)
     setLocalNotifications(null)
   }, [initialIsFollowing, initialNotifications])
 
+  const followErrorToast = useCallback(() => {
+    toast.error(
+      "Could not update follow. Sign in with a supporter or organization account, or you may be viewing your own hub."
+    )
+  }, [])
+
+  const inertiaPostOptions = useMemo(
+    () => ({
+      preserveScroll: true,
+      preserveState: false,
+    }),
+    []
+  )
+
+  /** Care Alliance sends this so the id is not mistaken for an unrelated excel_data row. */
+  const toggleFavoriteBody = useMemo(() => {
+    const ctx =
+      organization?.toggle_favorite_context ?? organization?.toggleFavoriteContext
+    if (ctx === "excel" || ctx === "organization" || ctx === "alliance") {
+      return { toggle_favorite_context: ctx }
+    }
+    return {}
+  }, [organization?.toggle_favorite_context, organization?.toggleFavoriteContext])
+
   const handleToggleFollow = useCallback(() => {
-    if (!auth?.user || isLoading || updateInProgressRef.current || !organizationId) {
-      if (!auth?.user) {
-        window.location.href = route('login')
-      }
+    if (isLoading || updateInProgressRef.current) return
+
+    if (!auth?.user) {
+      window.location.href = route("login")
+      return
+    }
+
+    if (!canToggleFollow || favoriteId === null) {
+      followErrorToast()
       return
     }
 
     updateInProgressRef.current = true
     setIsLoading(true)
+    setLocalIsFollowing(true)
 
-    // Optimistically update state - show following immediately when clicking follow
-    const newFollowingState = true // When clicking follow, we're always following
-    setLocalIsFollowing(newFollowingState)
-
-    router.post(route("organizations.toggle-favorite", organizationId), {}, {
-      preserveScroll: false,
-      preserveState: false,
-      onSuccess: () => {
-        setIsLoading(false)
-        updateInProgressRef.current = false
-        // Keep the optimistic update until the page reloads with new data
-        // The redirect will cause Inertia to reload the page with updated props
-      },
+    router.post(route("organizations.toggle-favorite", favoriteId), toggleFavoriteBody, {
+      ...inertiaPostOptions,
       onError: () => {
-        toast.error('Following is for supporter accounts only. Please log in with your personal (supporter) account to follow organizations.')
+        followErrorToast()
         setLocalIsFollowing(null)
+      },
+      onFinish: () => {
         setIsLoading(false)
         updateInProgressRef.current = false
       },
     })
-  }, [auth?.user, organizationId, isLoading, isFollowing])
+  }, [
+    auth?.user,
+    canToggleFollow,
+    favoriteId,
+    followErrorToast,
+    inertiaPostOptions,
+    isLoading,
+    toggleFavoriteBody,
+  ])
 
   const handleToggleNotifications = useCallback(() => {
-    if (!auth?.user || !isFollowing || isLoading || updateInProgressRef.current || !organizationId) return
+    if (isLoading || updateInProgressRef.current) return
+    if (!auth?.user || !isFollowing || !canToggleFollow || favoriteId === null) return
 
     updateInProgressRef.current = true
     setIsLoading(true)
 
-    // Don't update optimistically - wait for API response to prevent ref conflicts
-    const newNotificationsState = !notifications
+    const nextNotifications = !notifications
 
-    router.post(route("user.organizations.toggle-notifications", organizationId), {}, {
-      preserveScroll: true,
+    router.post(route("organizations.toggle-notifications", favoriteId), toggleFavoriteBody, {
+      ...inertiaPostOptions,
       onSuccess: () => {
-        // Update state after successful API call
-        setLocalNotifications(newNotificationsState)
-        setIsLoading(false)
-        updateInProgressRef.current = false
-        // Reload to sync with backend
-        router.reload({ only: ['organization'] })
-      },
-      onError: (errors) => {
-        console.error("Error toggling notifications:", errors)
-        setIsLoading(false)
-        updateInProgressRef.current = false
-      },
-    })
-  }, [auth?.user, organizationId, isFollowing, isLoading, notifications])
-
-  const handleUnfollow = useCallback(() => {
-    if (!auth?.user || !isFollowing || isLoading || updateInProgressRef.current || !organizationId) return
-
-    updateInProgressRef.current = true
-    setIsLoading(true)
-
-    // Optimistically update state - show not following immediately
-    setLocalIsFollowing(false)
-
-    router.post(route("organizations.toggle-favorite", organizationId), {}, {
-      preserveScroll: false,
-      preserveState: false,
-      onSuccess: () => {
-        setIsLoading(false)
-        updateInProgressRef.current = false
-        // Keep the optimistic update until the page reloads with new data
-        // The redirect will cause Inertia to reload the page with updated props
+        setLocalNotifications(nextNotifications)
       },
       onError: () => {
-        toast.error('Following is for supporter accounts only. Please log in with your personal (supporter) account to follow organizations.')
-        setLocalIsFollowing(null)
+        toast.error("Could not update notifications.")
+      },
+      onFinish: () => {
         setIsLoading(false)
         updateInProgressRef.current = false
       },
     })
-  }, [auth?.user, organizationId, isFollowing, isLoading])
+  }, [
+    auth?.user,
+    canToggleFollow,
+    favoriteId,
+    inertiaPostOptions,
+    isFollowing,
+    isLoading,
+    notifications,
+    toggleFavoriteBody,
+  ])
+
+  const handleUnfollow = useCallback(() => {
+    if (isLoading || updateInProgressRef.current) return
+    if (!auth?.user || !isFollowing || !canToggleFollow || favoriteId === null) return
+
+    updateInProgressRef.current = true
+    setIsLoading(true)
+    setLocalIsFollowing(false)
+
+    router.post(route("organizations.toggle-favorite", favoriteId), toggleFavoriteBody, {
+      ...inertiaPostOptions,
+      onError: () => {
+        followErrorToast()
+        setLocalIsFollowing(null)
+      },
+      onFinish: () => {
+        setIsLoading(false)
+        updateInProgressRef.current = false
+      },
+    })
+  }, [
+    auth?.user,
+    canToggleFollow,
+    favoriteId,
+    followErrorToast,
+    inertiaPostOptions,
+    isFollowing,
+    isLoading,
+    toggleFavoriteBody,
+  ])
 
   if (!isFollowing) {
     // Subscribe Button (Not Following) - visible in both light and dark mode
     return (
       <Button
+        type="button"
         onClick={handleToggleFollow}
         variant="outline"
         size="lg"
@@ -162,6 +237,7 @@ export default function OrgFollowButton({
     <DropdownMenu modal={false}>
       <DropdownMenuTrigger asChild>
         <Button
+          type="button"
           disabled={isLoading}
           variant="outline"
           className="bg-gray-200 hover:bg-gray-300 text-gray-800 dark:bg-white/15 dark:hover:bg-white/25 dark:text-white dark:border-white/30 px-2 sm:px-3 md:px-4 py-2 font-medium text-xs sm:text-sm md:text-base border-gray-300 dark:border-white/30 h-9 sm:h-10 md:h-11 min-w-[40px] sm:min-w-0 flex-shrink-0 justify-center sm:justify-start"

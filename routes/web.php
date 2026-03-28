@@ -1,111 +1,107 @@
 <?php
 
+use App\Http\Controllers\Admin\ComplianceApplicationController as AdminComplianceApplicationController;
+use App\Http\Controllers\Admin\FeesController;
+use App\Http\Controllers\Admin\Form1023ApplicationController as AdminForm1023ApplicationController;
+use App\Http\Controllers\Admin\RewardPointController;
+use App\Http\Controllers\Admin\SeoController as AdminSeoController;
+use App\Http\Controllers\Admin\ServiceSellerController;
+use App\Http\Controllers\AdminAboutPageController;
 use App\Http\Controllers\AiCampaignController;
 use App\Http\Controllers\AiChatController;
-use App\Http\Controllers\AboutPageController;
-use App\Http\Controllers\AdminAboutPageController;
-use App\Http\Controllers\Admin\SeoController as AdminSeoController;
 use App\Http\Controllers\BoardMemberController;
-use App\Http\Controllers\GovernanceComplianceController;
 use App\Http\Controllers\CampaignController;
+use App\Http\Controllers\CareAlliance\CareAllianceCampaignManageController;
+use App\Http\Controllers\CareAlliance\CareAllianceDashboardController;
+use App\Http\Controllers\CareAlliance\CareAllianceDonationController;
+use App\Http\Controllers\CareAlliance\CareAllianceInvitationController;
+use App\Http\Controllers\CareAlliance\CareAllianceJoinRequestReviewController;
+use App\Http\Controllers\CareAlliance\CareAllianceOrgInvitationController;
+use App\Http\Controllers\CareAlliance\CareAllianceOrgJoinRequestController;
+use App\Http\Controllers\CareAlliance\CareAllianceOrgMembershipController;
+use App\Http\Controllers\CareAlliance\CareAlliancePublicController;
 use App\Http\Controllers\CartController;
-use App\Http\Controllers\ExcelDataController;
-use App\Http\Controllers\ExcelDataExportController;
-use App\Http\Controllers\Facebook\PostController;
-use App\Http\Controllers\PaymentMethodSettingController;
-use App\Http\Controllers\JobPositionController;
-use App\Http\Controllers\JobPostController;
-use App\Http\Controllers\NodeBossController;
-use App\Http\Controllers\NodeReferralController;
-use App\Http\Controllers\PositionCategoryController;
-use App\Http\Controllers\PurchaseController;
-use App\Http\Controllers\PwaInstallController;
-use App\Http\Controllers\TestMeetingController;
-use App\Http\Controllers\WalletController;
-use App\Http\Controllers\UsersInterestedTopicsController;
-use App\Http\Controllers\ComplianceApplicationController;
-use App\Http\Controllers\Form1023ApplicationController;
-use App\Http\Controllers\Admin\ComplianceApplicationController as AdminComplianceApplicationController;
-use App\Http\Controllers\Admin\Form1023ApplicationController as AdminForm1023ApplicationController;
-use App\Http\Controllers\Admin\FeesController;
-use App\Http\Controllers\Admin\RewardPointController;
-use App\Http\Controllers\Admin\ServiceSellerController;
-use Inertia\Inertia;
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\HomeController;
-use App\Http\Controllers\SitemapController;
-use App\Http\Controllers\OrderController;
-use App\Http\Controllers\ProductController;
-use PhpOffice\PhpSpreadsheet\Worksheet\Row;
 use App\Http\Controllers\CategoryController;
 use App\Http\Controllers\ChatController;
 use App\Http\Controllers\ChatTopicController;
 use App\Http\Controllers\CheckoutController;
+use App\Http\Controllers\ChunkedUploadController;
+use App\Http\Controllers\ClassificationCodeController;
+use App\Http\Controllers\CommunityVideoEngagementController;
+use App\Http\Controllers\CommunityVideosController;
+use App\Http\Controllers\ComplianceApplicationController;
+use App\Http\Controllers\ContentItemController;
+use App\Http\Controllers\CourseController;
+use App\Http\Controllers\CreditPurchaseController;
+use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\DeductibilityCodeController;
 use App\Http\Controllers\DonationController;
+use App\Http\Controllers\EnrollmentController;
+use App\Http\Controllers\EventController;
+use App\Http\Controllers\ExcelDataController;
+use App\Http\Controllers\Facebook\AuthController;
+use App\Http\Controllers\Facebook\ConfigurationController;
+use App\Http\Controllers\Facebook\PostController;
+use App\Http\Controllers\FollowerController;
+use App\Http\Controllers\Form1023ApplicationController;
+use App\Http\Controllers\FrontendCourseController;
 use App\Http\Controllers\FundMeCampaignController;
 use App\Http\Controllers\FundMeController;
 use App\Http\Controllers\FundMeDonationController;
-use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\GovernanceComplianceController;
+use App\Http\Controllers\HomeController;
+use App\Http\Controllers\IntegrationsController;
+use App\Http\Controllers\JobApplicationController;
+use App\Http\Controllers\JobPositionController;
+use App\Http\Controllers\JobPostController;
+use App\Http\Controllers\JobsController;
+use App\Http\Controllers\LiveViewController;
 use App\Http\Controllers\ManageDataController;
-use App\Http\Controllers\StatusCodeController;
-use App\Http\Controllers\UploadDataController;
+use App\Http\Controllers\ManageDatasetController;
 use App\Http\Controllers\MarketplaceController;
 use App\Http\Controllers\MarketplaceOrganizationProductController;
-use App\Http\Controllers\UserProfileController;
-use App\Http\Controllers\OrganizationController;
-use App\Http\Controllers\ChunkedUploadController;
-use App\Http\Controllers\ManageDatasetController;
-use App\Http\Controllers\PurchaseOrderController;
-use App\Http\Controllers\RolePermissionController;
-use App\Http\Controllers\DeductibilityCodeController;
-use App\Http\Controllers\ClassificationCodeController;
-use App\Http\Controllers\ContentItemController;
-use App\Http\Controllers\NteeCodeController;
-use App\Http\Controllers\CourseController;
-use App\Http\Controllers\EnrollmentController;
-use App\Http\Controllers\JobApplicationController;
-use App\Http\Controllers\VolunteerController;
-use App\Http\Controllers\SupporterActivityController;
-use App\Http\Controllers\VolunteerTimesheetController;
-use App\Http\Controllers\JobsController;
+use App\Http\Controllers\NewsletterController;
+use App\Http\Controllers\NodeBossController;
+use App\Http\Controllers\NodeReferralController;
 use App\Http\Controllers\NodeSellController;
 use App\Http\Controllers\NodeShareController;
-use App\Http\Controllers\TransactionController;
-use App\Http\Controllers\WithdrawalController;
-use App\Http\Controllers\EventController;
-use App\Http\Controllers\NewsletterController;
-use App\Http\Controllers\FrontendCourseController;
-use App\Http\Controllers\GoogleAuthController;
-use App\Http\Controllers\MeetingChatMessageController;
-use App\Http\Controllers\MeetingController;
 use App\Http\Controllers\NonprofitNewsController;
-use App\Http\Controllers\CommunityVideosController;
-use App\Http\Controllers\CommunityVideoEngagementController;
-use App\Http\Controllers\UnityLiveController;
-use App\Http\Controllers\LiveViewController;
-use App\Http\Controllers\SavedNewsController;
 use App\Http\Controllers\NotificationController;
-use App\Http\Controllers\OwnershipVerificationController;
-use App\Http\Controllers\PlaidVerificationController;
-use App\Http\Controllers\PushTokenController;
-use App\Http\Controllers\RecordingController;
-use App\Http\Controllers\TopicController;
-use App\Http\Controllers\SocialMediaController;
-use App\Http\Controllers\IntegrationsController;
-use App\Http\Controllers\RaffleController;
-use App\Http\Controllers\CreditPurchaseController;
-use App\Http\Controllers\Facebook\AuthController;
-use App\Http\Controllers\Facebook\ConfigurationController;
-use App\Http\Controllers\FacebookAppController;
+use App\Http\Controllers\NteeCodeController;
+use App\Http\Controllers\OrderController;
 use App\Http\Controllers\OrderItemController;
-use App\Http\Controllers\FollowerController;
+use App\Http\Controllers\OrganizationController;
+use App\Http\Controllers\OwnershipVerificationController;
+use App\Http\Controllers\PaymentMethodSettingController;
+use App\Http\Controllers\PlaidVerificationController;
+use App\Http\Controllers\PositionCategoryController;
 use App\Http\Controllers\PrintifyProductController;
 use App\Http\Controllers\PrintifyWebhookController;
+use App\Http\Controllers\ProductController;
+use App\Http\Controllers\PurchaseController;
+use App\Http\Controllers\PushTokenController;
+use App\Http\Controllers\PwaInstallController;
+use App\Http\Controllers\RaffleController;
+use App\Http\Controllers\RolePermissionController;
+use App\Http\Controllers\SavedNewsController;
 use App\Http\Controllers\ServiceHubController;
+use App\Http\Controllers\SitemapController;
+use App\Http\Controllers\SocialMediaController;
+use App\Http\Controllers\StatusCodeController;
+use App\Http\Controllers\SupporterActivityController;
+use App\Http\Controllers\TopicController;
+use App\Http\Controllers\TransactionController;
+use App\Http\Controllers\UnityLiveController;
+use App\Http\Controllers\UserProfileController;
+use App\Http\Controllers\UsersInterestedTopicsController;
+use App\Http\Controllers\VolunteerController;
+use App\Http\Controllers\VolunteerTimesheetController;
+use App\Http\Controllers\WalletController;
 use App\Http\Controllers\WebhookManagementController;
+use App\Http\Controllers\WithdrawalController;
 use Illuminate\Support\Facades\Broadcast;
-use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Route;
+use Inertia\Inertia;
 
 // ============================================
 // MERCHANT DOMAIN ROUTES - MUST BE FIRST
@@ -113,7 +109,7 @@ use Illuminate\Support\Facades\Http;
 // Load merchant routes only when accessing merchant domain
 // This must be before all other routes to take precedence
 Route::domain(config('merchant.domain'))->group(function () {
-    require __DIR__ . '/merchant.php';
+    require __DIR__.'/merchant.php';
 });
 
 // ============================================
@@ -121,7 +117,7 @@ Route::domain(config('merchant.domain'))->group(function () {
 // ============================================
 // Load livestock routes only when accessing livestock domain
 Route::domain(config('livestock.domain'))->group(function () {
-    require __DIR__ . '/livestock.php';
+    require __DIR__.'/livestock.php';
 });
 
 // Route::get('/test-broadcast', function () {
@@ -138,12 +134,13 @@ Broadcast::routes(['middleware' => ['auth']]);
 // These routes are automatically excluded from livestock domain because
 // livestock routes are defined with Route::domain() above.
 // Routes without Route::domain() only work on the main domain.
-Route::get('/', [HomeController::class, "index"])->name('home');
+Route::get('/', [HomeController::class, 'index'])->name('home');
 
 // SEO: sitemap and robots
 Route::get('/sitemap.xml', [SitemapController::class, 'index'])->name('sitemap');
 Route::get('/robots.txt', function () {
     $url = rtrim(config('app.url'), '/');
+
     return response("User-agent: *\nDisallow:\n\nSitemap: {$url}/sitemap.xml\n", 200, [
         'Content-Type' => 'text/plain',
     ]);
@@ -155,10 +152,11 @@ Route::middleware(['auth', 'EnsureEmailIsVerified'])->group(function () {
     Route::get('/find-supporters', [\App\Http\Controllers\FindSupportersController::class, 'index'])->name('find-supporters.index');
     Route::get('/search', [\App\Http\Controllers\PostController::class, 'searchPage'])->name('search.index');
     Route::get('/social-feed/search', [\App\Http\Controllers\PostController::class, 'search'])->name('social-feed.search');
-    // Toggle favorite organization - allow any authenticated user (controller rejects org role with friendly message)
+    // Toggle favorite organization — authenticated supporters and organization/care_alliance users (same UserFavoriteOrganization flow)
     Route::post('/organizations/{id}/toggle-favorite', [\App\Http\Controllers\OrganizationController::class, 'toggleFavorite'])->name('organizations.toggle-favorite-search');
     Route::post('/organizations/{id}/toggle-favorite', [\App\Http\Controllers\OrganizationController::class, 'toggleFavorite'])->name('user.organizations.toggle-favorite');
     Route::post('/organizations/{id}/toggle-favorite', [\App\Http\Controllers\OrganizationController::class, 'toggleFavorite'])->name('organizations.toggle-favorite');
+    Route::post('/organizations/{id}/toggle-notifications', [OrganizationController::class, 'toggleNotifications'])->name('organizations.toggle-notifications');
     // GET fallback: if user hits toggle-favorite with GET (e.g. refresh/back), redirect to organization page
     Route::get('/organizations/{id}/toggle-favorite', function (string $id) {
         return redirect()->route('organizations.show', $id);
@@ -174,7 +172,7 @@ Route::middleware(['auth', 'EnsureEmailIsVerified'])->group(function () {
     Route::delete('/comments/{comment}', [\App\Http\Controllers\PostController::class, 'deleteComment'])->name('comments.destroy');
 });
 
-Route::get("pwa-setup", function () {
+Route::get('pwa-setup', function () {
     return Inertia::render('pwa-setup/page');
 })->name('pwa.install');
 Route::get('/pwa/install-qr', [PwaInstallController::class, 'installQr'])->name('pwa.install-qr');
@@ -296,19 +294,41 @@ Route::get('/join/{token}', [\App\Http\Controllers\Organization\LivestreamContro
 // Viewer page: /live/{slug} — view-only with Mute + Volume (public, when stream is live)
 Route::get('/live/{slug}', [LiveViewController::class, 'show'])->name('live.show')->where('slug', '[a-zA-Z0-9_]+');
 
-Route::get("/jobs", [JobsController::class, 'index'])->name('jobs.index');
-Route::get("/volunteer-opportunities", [JobsController::class, 'volunteerOpportunities'])->name('volunteer-opportunities.index');
-Route::get("/jobs/{id}", [JobsController::class, 'show'])->name('jobs.show');
-Route::get('/get-job-positions', [JobsController::class, "getJobPositions"])->name('jobs.positions.by-category');
+Route::get('/jobs', [JobsController::class, 'index'])->name('jobs.index');
+Route::get('/volunteer-opportunities', [JobsController::class, 'volunteerOpportunities'])->name('volunteer-opportunities.index');
+Route::get('/jobs/{id}', [JobsController::class, 'show'])->name('jobs.show');
+Route::get('/get-job-positions', [JobsController::class, 'getJobPositions'])->name('jobs.positions.by-category');
 
-Route::get("/jobs/{id}/apply", [JobsController::class, 'applyShow'])->name('jobs.apply.show');
-Route::post("/jobs/{id}/apply", [JobsController::class, 'applyStore'])->name('jobs.apply.store');
+Route::get('/jobs/{id}/apply', [JobsController::class, 'applyShow'])->name('jobs.apply.show');
+Route::post('/jobs/{id}/apply', [JobsController::class, 'applyStore'])->name('jobs.apply.store');
 
 Route::get('/nodeboss', [NodeBossController::class, 'frontendIndex'])->name('nodeboss.index');
 
 Route::get('/nodeboss/{id}/buy', [NodeBossController::class, 'frontendShow'])->name('buy.nodeboss');
 
 Route::get('/donate', [DonationController::class, 'index'])->name('donate');
+
+// Care Alliance — public campaign donation + preview (no auth)
+Route::get('/care-alliance/{allianceSlug}/campaigns/{campaign}/donate', [CareAllianceDonationController::class, 'donatePage'])
+    ->name('care-alliance.campaigns.donate')
+    ->where('campaign', '[0-9]+');
+Route::post('/care-alliance/{allianceSlug}/campaigns/{campaign}/preview', [CareAllianceDonationController::class, 'preview'])
+    ->name('care-alliance.campaigns.preview')
+    ->where('campaign', '[0-9]+');
+
+// Care Alliance — public hub (must stay before any conflicting /care-alliance/* catch-alls)
+Route::prefix('alliances/{allianceSlug}')
+    ->where(['allianceSlug' => '[a-zA-Z0-9][a-zA-Z0-9-]*'])
+    ->group(function () {
+        Route::get('/', [CareAlliancePublicController::class, 'show'])->name('alliances.show');
+        Route::get('/products', [CareAlliancePublicController::class, 'products'])->name('alliances.products');
+        Route::get('/jobs', [CareAlliancePublicController::class, 'jobs'])->name('alliances.jobs');
+        Route::get('/events', [CareAlliancePublicController::class, 'events'])->name('alliances.events');
+        Route::get('/about', [CareAlliancePublicController::class, 'about'])->name('alliances.about');
+        Route::get('/contact', [CareAlliancePublicController::class, 'contact'])->name('alliances.contact');
+        Route::get('/members', [CareAlliancePublicController::class, 'members'])->name('alliances.members');
+        Route::get('/supporters', [CareAlliancePublicController::class, 'supporters'])->name('alliances.supporters');
+    });
 
 Route::get('/pricing', [App\Http\Controllers\PlansController::class, 'pricing'])->name('pricing');
 
@@ -326,7 +346,7 @@ Route::get('/invest/redirect/{lead}', [App\Http\Controllers\InvestController::cl
     ->where('lead', '[0-9]+');
 // Org-only: Support Community Projects (Donation vs Investment / Wefunder)
 Route::get('/fundraise/community-projects', [App\Http\Controllers\FundraiseController::class, 'communityProjects'])->name('fundraise.community-projects')
-    ->middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|organization_pending']);
+    ->middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|organization_pending|care_alliance']);
 
 // Believe FundMe – public listing and campaign pages
 Route::get('/believe-fundme', [FundMeController::class, 'index'])->name('fundme.index');
@@ -428,7 +448,7 @@ Route::get('/service-hub/chat/{chatId}', [App\Http\Controllers\ServiceHubControl
 
 // Cart routes (protected)
 // Believe Points Routes (organization_pending cannot access until onboarding complete)
-Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin|user'])->prefix('believe-points')->name('believe-points.')->group(function () {
+Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin|user|care_alliance'])->prefix('believe-points')->name('believe-points.')->group(function () {
     Route::get('/', [App\Http\Controllers\BelievePointController::class, 'index'])->name('index');
     Route::post('/purchase', [App\Http\Controllers\BelievePointController::class, 'purchase'])->name('purchase');
     Route::get('/success', [App\Http\Controllers\BelievePointController::class, 'success'])->name('success');
@@ -489,7 +509,7 @@ Route::middleware(['auth', 'EnsureEmailIsVerified'])->prefix('merchant')->name('
 
     Route::get('/offers/{id}', function ($id) {
         return Inertia::render('merchant/OfferDetail', [
-            'offer' => null // Replace with actual offer data from backend
+            'offer' => null, // Replace with actual offer data from backend
         ]);
     })->name('offers.show');
 
@@ -532,7 +552,6 @@ Route::middleware(['auth', 'EnsureEmailIsVerified'])->group(function () {
     // Route::post('/checkout/payment-intent', [CheckoutController::class, 'createPaymentIntent'])->name('checkout.payment-intent');
     // Route::post('/checkout/confirm', [CheckoutController::class, 'confirmPayment'])->name('checkout.confirm');
 
-
     Route::get('/checkout', [CheckoutController::class, 'show'])->name('checkout.show');
     Route::post('/checkout/shipping-calculation', [CheckoutController::class, 'calculateShipping'])->name('checkout.shipping');
     Route::post('/checkout/update-tax', [CheckoutController::class, 'updateTax'])->name('checkout.update-tax');
@@ -555,7 +574,6 @@ Route::get('/fractional/certificate/{order}/download-pdf', [\App\Http\Controller
 /* events */
 Route::get('/all-events', [EventController::class, 'alleventsPage'])->name('alleventsPage');
 Route::get('/events/{id}/view', [EventController::class, 'viewEvent'])->name('viewEvent');
-
 
 // User public routes
 Route::get('/users/{slug}', [UserProfileController::class, 'show'])->name('users.show');
@@ -611,7 +629,7 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:user'])->name('user.')
     Route::get('/profile/change-password', [UserProfileController::class, 'changePasswordForm'])->name('profile.change-password');
 
     Route::get('/profile/following', [UserProfileController::class, 'favorites'])->name('profile.favorites');
-    Route::delete("/profile/following/{id}", [UserProfileController::class, 'removeFavorite'])->name('profile.favorites.remove');
+    Route::delete('/profile/following/{id}', [UserProfileController::class, 'removeFavorite'])->name('profile.favorites.remove');
     Route::get('/profile/project-applications', [UserProfileController::class, 'profileProjectApplications'])->name('profile.project-applications');
     Route::get('/profile/project-applications/{lead}', [UserProfileController::class, 'profileProjectApplicationShow'])->name('profile.project-applications.show')->where('lead', '[0-9]+');
 
@@ -632,23 +650,21 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:user'])->name('user.')
     Route::get('/api/impact-score', [\App\Http\Controllers\ImpactScoreController::class, 'index'])->name('api.impact-score');
     Route::get('/profile/fractional-ownership', [\App\Http\Controllers\FractionalOwnershipController::class, 'myPurchases'])->name('profile.fractional-ownership');
     Route::get('nodeboss/shares', [NodeShareController::class, 'index'])->name('nodeboss.sahres');
-    // Toggle favorite moved to auth-only group so org users get friendly message instead of permission-denied
-    Route::post('/organizations/{id}/toggle-notifications', [OrganizationController::class, 'toggleNotifications'])->name('organizations.toggle-notifications');
 
-     Route::post('/organizations/{orgId}/save-positions-follow', [OrganizationController::class, 'savePositionsAndFollow'])
+    Route::post('/organizations/{orgId}/save-positions-follow', [OrganizationController::class, 'savePositionsAndFollow'])
         ->name('organizations.save-positions-and-follow');
 
     Route::get('/user/positions/for-selection', [OrganizationController::class, 'getPositionsForSelection'])
         ->name('positions.get-for-selection');
 
-    Route::get("/profile/topics/select", [UsersInterestedTopicsController::class, 'userSelect'])
+    Route::get('/profile/topics/select', [UsersInterestedTopicsController::class, 'userSelect'])
         ->name('topics.select');
 
     Route::get('/profile/integrations', [UserProfileController::class, 'integrations'])->name('profile.integrations');
 });
 
 Route::post('/user/topics/store', [UsersInterestedTopicsController::class, 'store'])
-    ->middleware(['auth', 'EnsureEmailIsVerified', 'role:user|organization|organization_pending']);
+    ->middleware(['auth', 'EnsureEmailIsVerified', 'role:user|organization|organization_pending|care_alliance']);
 
 Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:user'])->get('/profile-old', function () {
     return Inertia::render('frontend/profile');
@@ -658,41 +674,41 @@ Route::resource('/chat-group-topics', ChatTopicController::class)->only(['index'
     'index' => 'permission:communication.read',
     'store' => 'permission:communication.create',
     'update' => 'permission:communication.update',
-    'destroy' => 'permission:communication.delete'
+    'destroy' => 'permission:communication.delete',
 ]);
 
-Route::get("group-topics/select", [UsersInterestedTopicsController::class, 'orgSelect'])->middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin|organization_pending'])
+Route::get('group-topics/select', [UsersInterestedTopicsController::class, 'orgSelect'])->middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin|organization_pending|care_alliance'])
     ->name('auth.topics.select');
 
-Route::prefix("chat")->middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected'])->name("chat.")->group(function () {
-    Route::get("/", [ChatController::class, 'index'])->name('index');
-    Route::get("/rooms/{chatRoom}/messages", [ChatController::class, 'getMessages'])->name('messages');
-    Route::post("/rooms/{chatRoom}/messages", [ChatController::class, 'sendMessage'])->name('send-message');
-    Route::delete("/messages/{message}", [ChatController::class, 'deleteMessage'])->name('delete-message');
-    Route::post("/rooms", [ChatController::class, 'createRoom'])->name('create-room');
-    Route::post("/direct-chat", [ChatController::class, 'createDirectChat'])->name('create-direct-chat'); // Corrected route name
-    Route::post("/rooms/{chatRoom}/join", [ChatController::class, 'joinRoom'])->name('join-room');
-    Route::post("/rooms/{chatRoom}/leave", [ChatController::class, 'leaveRoom'])->name('leave-room');
-    Route::post("/rooms/{chatRoom}/typing", [ChatController::class, 'setTypingStatus'])->name('typing'); // Renamed function
-    Route::post("/rooms/{chatRoom}/mark-as-read", [ChatController::class, 'markRoomAsRead'])->name('mark-as-read'); // Renamed function
-    Route::post("/rooms/{chatRoom}/members", [ChatController::class, 'addMembers'])->name('add-members');
+Route::prefix('chat')->middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected'])->name('chat.')->group(function () {
+    Route::get('/', [ChatController::class, 'index'])->name('index');
+    Route::get('/rooms/{chatRoom}/messages', [ChatController::class, 'getMessages'])->name('messages');
+    Route::post('/rooms/{chatRoom}/messages', [ChatController::class, 'sendMessage'])->name('send-message');
+    Route::delete('/messages/{message}', [ChatController::class, 'deleteMessage'])->name('delete-message');
+    Route::post('/rooms', [ChatController::class, 'createRoom'])->name('create-room');
+    Route::post('/direct-chat', [ChatController::class, 'createDirectChat'])->name('create-direct-chat'); // Corrected route name
+    Route::post('/rooms/{chatRoom}/join', [ChatController::class, 'joinRoom'])->name('join-room');
+    Route::post('/rooms/{chatRoom}/leave', [ChatController::class, 'leaveRoom'])->name('leave-room');
+    Route::post('/rooms/{chatRoom}/typing', [ChatController::class, 'setTypingStatus'])->name('typing'); // Renamed function
+    Route::post('/rooms/{chatRoom}/mark-as-read', [ChatController::class, 'markRoomAsRead'])->name('mark-as-read'); // Renamed function
+    Route::post('/rooms/{chatRoom}/members', [ChatController::class, 'addMembers'])->name('add-members');
     Route::get('/topics', [ChatController::class, 'getTopics'])->name('get-topics');
 
     Route::get('/user/topics', [DashboardController::class, 'getUserTopic']);
     Route::delete('/user/topics/{topic}', [DashboardController::class, 'destroyUserTopic']);
 });
 
-    // Wallet Routes
-Route::prefix('wallet')->middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected'])->name('wallet.')->group(function () {
-        Route::post('/connect', [WalletController::class, 'connect'])->name('connect');
-        Route::get('/balance', [WalletController::class, 'getBalance'])->name('balance');
-        Route::get('/status', [WalletController::class, 'status'])->name('status');
-        Route::get('/activity', [WalletController::class, 'getActivity'])->name('activity');
-        Route::get('/activity/all', [WalletController::class, 'getAllActivity'])->name('activity.all');
-        Route::get('/search-recipients', [WalletController::class, 'searchRecipients'])->name('search-recipients');
-        Route::post('/send', [WalletController::class, 'send'])->name('send');
+// Wallet Routes
+Route::prefix('wallet')->middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected', 'care_alliance.wallet'])->name('wallet.')->group(function () {
+    Route::post('/connect', [WalletController::class, 'connect'])->name('connect');
+    Route::get('/balance', [WalletController::class, 'getBalance'])->name('balance');
+    Route::get('/status', [WalletController::class, 'status'])->name('status');
+    Route::get('/activity', [WalletController::class, 'getActivity'])->name('activity');
+    Route::get('/activity/all', [WalletController::class, 'getAllActivity'])->name('activity.all');
+    Route::get('/search-recipients', [WalletController::class, 'searchRecipients'])->name('search-recipients');
+    Route::post('/send', [WalletController::class, 'send'])->name('send');
     Route::post('/deposit', [WalletController::class, 'deposit'])->name('deposit');
-        Route::post('/disconnect', [WalletController::class, 'disconnect'])->name('disconnect');
+    Route::post('/disconnect', [WalletController::class, 'disconnect'])->name('disconnect');
 
     // Bridge Wallet Routes
     Route::post('/bridge/initialize', [App\Http\Controllers\BridgeWalletController::class, 'initializeBridge'])->name('bridge.initialize');
@@ -734,17 +750,17 @@ Route::prefix('wallet')->middleware(['auth', 'EnsureEmailIsVerified', 'topics.se
     Route::get('/bridge/webhooks/{webhookId}/events', [App\Http\Controllers\BridgeWalletController::class, 'getWebhookEvents'])->name('bridge.webhooks.events');
     Route::get('/bridge/webhooks/{webhookId}/events/{eventId}', [App\Http\Controllers\BridgeWalletController::class, 'getWebhookEvent'])->name('bridge.webhooks.event');
 
-        // User Rewards Routes
-        Route::get('/rewards/balance', [WalletController::class, 'getRewardBalance'])->name('rewards.balance');
-        Route::get('/rewards/history', [WalletController::class, 'getRewardTransactionHistory'])->name('rewards.history');
-        Route::post('/rewards/credit-hours', [WalletController::class, 'creditVolunteerHours'])->name('rewards.credit-hours');
+    // User Rewards Routes
+    Route::get('/rewards/balance', [WalletController::class, 'getRewardBalance'])->name('rewards.balance');
+    Route::get('/rewards/history', [WalletController::class, 'getRewardTransactionHistory'])->name('rewards.history');
+    Route::post('/rewards/credit-hours', [WalletController::class, 'creditVolunteerHours'])->name('rewards.credit-hours');
 
-        // Token Balance Route
-        Route::get('/tokens/balance', [WalletController::class, 'getTokenBalance'])->name('tokens.balance');
-    });
+    // Token Balance Route
+    Route::get('/tokens/balance', [WalletController::class, 'getTokenBalance'])->name('tokens.balance');
+});
 
-    // AI Chat (Public) - Needs to be outside auth middleware
-    // Route::get('/ai-chat/context', [AiChatController::class, 'getContext'])->name('ai-chat.context');
+// AI Chat (Public) - Needs to be outside auth middleware
+// Route::get('/ai-chat/context', [AiChatController::class, 'getContext'])->name('ai-chat.context');
 
 // KYC/KYB Callback Routes (after verification completion - no auth required for redirect)
 Route::get('/wallet/kyc-callback', [App\Http\Controllers\BridgeWalletController::class, 'kycCallback'])->name('bridge.kyc-callback');
@@ -752,7 +768,6 @@ Route::get('/wallet/kyb-callback', [App\Http\Controllers\BridgeWalletController:
 // TOS callback - GET doesn't require auth (Bridge redirect), POST requires auth (from frontend)
 Route::get('/wallet/tos-callback', [App\Http\Controllers\BridgeWalletController::class, 'tosCallback'])->name('bridge.tos-callback');
 Route::post('/wallet/tos-callback', [App\Http\Controllers\BridgeWalletController::class, 'tosCallback'])->middleware('auth')->name('bridge.tos-callback.post');
-
 
 // Raffle Payment Routes (must come before admin routes to avoid conflicts)
 // Stop impersonation route (must be accessible to any authenticated user, including impersonated users)
@@ -830,37 +845,36 @@ Route::prefix('admin/fractional')
         Route::put('/assets/{asset}', [\App\Http\Controllers\Admin\FractionalAssetController::class, 'update'])->name('assets.update');
         Route::delete('/assets/{asset}', [\App\Http\Controllers\Admin\FractionalAssetController::class, 'destroy'])->name('assets.destroy');
 
-            // Offerings routes
-            Route::get('/offerings', [\App\Http\Controllers\Admin\FractionalOfferingController::class, 'index'])->name('offerings.index');
-            Route::get('/offerings/create', [\App\Http\Controllers\Admin\FractionalOfferingController::class, 'create'])->name('offerings.create');
-            Route::post('/offerings', [\App\Http\Controllers\Admin\FractionalOfferingController::class, 'store'])->name('offerings.store');
-            Route::get('/offerings/{offering}', [\App\Http\Controllers\Admin\FractionalOfferingController::class, 'show'])->name('offerings.show');
-            Route::get('/offerings/{offering}/edit', [\App\Http\Controllers\Admin\FractionalOfferingController::class, 'edit'])->name('offerings.edit');
-            Route::put('/offerings/{offering}', [\App\Http\Controllers\Admin\FractionalOfferingController::class, 'update'])->name('offerings.update');
-            Route::delete('/offerings/{offering}', [\App\Http\Controllers\Admin\FractionalOfferingController::class, 'destroy'])->name('offerings.destroy');
+        // Offerings routes
+        Route::get('/offerings', [\App\Http\Controllers\Admin\FractionalOfferingController::class, 'index'])->name('offerings.index');
+        Route::get('/offerings/create', [\App\Http\Controllers\Admin\FractionalOfferingController::class, 'create'])->name('offerings.create');
+        Route::post('/offerings', [\App\Http\Controllers\Admin\FractionalOfferingController::class, 'store'])->name('offerings.store');
+        Route::get('/offerings/{offering}', [\App\Http\Controllers\Admin\FractionalOfferingController::class, 'show'])->name('offerings.show');
+        Route::get('/offerings/{offering}/edit', [\App\Http\Controllers\Admin\FractionalOfferingController::class, 'edit'])->name('offerings.edit');
+        Route::put('/offerings/{offering}', [\App\Http\Controllers\Admin\FractionalOfferingController::class, 'update'])->name('offerings.update');
+        Route::delete('/offerings/{offering}', [\App\Http\Controllers\Admin\FractionalOfferingController::class, 'destroy'])->name('offerings.destroy');
 
-            // Orders routes
-            Route::get('/orders', [\App\Http\Controllers\Admin\FractionalOrderController::class, 'index'])->name('orders.index');
-            Route::get('/orders/{order}', [\App\Http\Controllers\Admin\FractionalOrderController::class, 'show'])->name('orders.show');
-        });
+        // Orders routes
+        Route::get('/orders', [\App\Http\Controllers\Admin\FractionalOrderController::class, 'index'])->name('orders.index');
+        Route::get('/orders/{order}', [\App\Http\Controllers\Admin\FractionalOrderController::class, 'show'])->name('orders.show');
+    });
 
-Route::middleware(["auth", 'EnsureEmailIsVerified'])->group(function (){
+Route::middleware(['auth', 'EnsureEmailIsVerified'])->group(function () {
     Route::get('/notifications', [NotificationController::class, 'index']);
     Route::post('/notifications/{notification}/read', [NotificationController::class, 'markAsRead']);
     Route::post('/notifications/mark-all-read', [NotificationController::class, 'markAllAsRead']);
     Route::post('/notifications/clear-all', [NotificationController::class, 'clearAll']);
 
-    Route::get("/notifications/content/{content_item}", [NotificationController::class, 'show'])->name('notifications.content.show');
+    Route::get('/notifications/content/{content_item}', [NotificationController::class, 'show'])->name('notifications.content.show');
 });
 
 // Push notification routes
-Route::middleware(["auth", 'EnsureEmailIsVerified'])->group(function () {
+Route::middleware(['auth', 'EnsureEmailIsVerified'])->group(function () {
     Route::post('/push-token', [PushTokenController::class, 'store']);
     Route::delete('/push-token', [PushTokenController::class, 'destroy']);
 });
 
-
-Route::middleware(["auth", 'EnsureEmailIsVerified', 'role:organization', 'topics.selected'])->group(function (){
+Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|care_alliance', 'topics.selected'])->group(function () {
     Route::get('/content', [ContentItemController::class, 'index'])->name('content.items.index');
     Route::get('/content/create', [ContentItemController::class, 'create'])->name('content.items.create');
     Route::post('/content', [ContentItemController::class, 'store'])->name('content.items.store');
@@ -887,8 +901,6 @@ Route::middleware(["auth", 'EnsureEmailIsVerified', 'role:organization', 'topics
     Route::post('/fundme/{fundme_campaign}/submit', [FundMeCampaignController::class, 'submit'])->name('fundme.campaigns.submit');
     Route::delete('/fundme/{fundme_campaign}', [FundMeCampaignController::class, 'destroy'])->name('fundme.campaigns.destroy');
 
-
-
     // AI Chat
     // AI Chat (Authenticated)
     Route::get('/ai-chat', [AiChatController::class, 'index'])->name('ai-chat.index');
@@ -903,7 +915,6 @@ Route::middleware(["auth", 'EnsureEmailIsVerified', 'role:organization', 'topics
     Route::post('/credits/checkout', [CreditPurchaseController::class, 'checkout'])->name('credits.checkout');
     Route::get('/credits/success', [CreditPurchaseController::class, 'success'])->name('credits.success');
     Route::get('/credits/cancel', [CreditPurchaseController::class, 'cancel'])->name('credits.cancel');
-
 
     // Organization routes follwers
     Route::prefix('organization')->group(function () {
@@ -935,7 +946,6 @@ Route::middleware(["auth", 'EnsureEmailIsVerified', 'role:organization', 'topics
         )
             ->name('organization.followers.bulk-destroy');
     });
-
 
     // old Facebook Integration Routes
     // Route::prefix('facebook')->group(function () {
@@ -980,8 +990,8 @@ Route::middleware(["auth", 'EnsureEmailIsVerified', 'role:organization', 'topics
     });
 });
 
-Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin|organization_pending', 'topics.selected'])->group(function () {
-    Route::get('dashboard', [DashboardController::class, "index"])->name('dashboard');
+Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin|organization_pending|care_alliance', 'topics.selected'])->group(function () {
+    Route::get('dashboard', [DashboardController::class, 'index'])->name('dashboard');
     Route::get('dashboard/project-applications', [App\Http\Controllers\FundraiseController::class, 'dashboardProjectApplications'])->name('dashboard.project-applications');
     Route::put('dashboard/project-applications/{lead}', [App\Http\Controllers\FundraiseController::class, 'updateProjectApplication'])->name('dashboard.project-applications.update')->where('lead', '[0-9]+');
 
@@ -1031,7 +1041,7 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin|org
     });
 
     // Form 1023 Application Routes - Only for organization users (not admins)
-    Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|organization_pending', 'topics.selected'])->group(function () {
+    Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|organization_pending|care_alliance', 'topics.selected'])->group(function () {
         Route::get('/dashboard/form1023/apply', [Form1023ApplicationController::class, 'show'])->name('form1023.apply.show');
         Route::post('/dashboard/form1023/apply', [Form1023ApplicationController::class, 'store'])->name('form1023.apply.store');
         Route::put('/dashboard/form1023/apply/{application}', [Form1023ApplicationController::class, 'update'])->name('form1023.apply.update');
@@ -1042,7 +1052,7 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin|org
         Route::get('/dashboard/form1023/apply/{application}/cancel', [Form1023ApplicationController::class, 'cancel'])->name('form1023.apply.cancel');
     });
 
-    Route::middleware("role:organization")->group(function () {
+    Route::middleware('role:organization|care_alliance')->group(function () {
         Route::get('/compliance', [GovernanceComplianceController::class, 'index'])->name('governance.compliance');
         Route::resource('board-members', BoardMemberController::class)
             ->only(['index', 'store', 'update', 'destroy'])
@@ -1088,7 +1098,7 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin|org
         'store' => 'permission:classification.code.create',
         'edit' => 'permission:classification.code.edit',
         'update' => 'permission:classification.code.update',
-        'destroy' => 'permission:classification.code.delete'
+        'destroy' => 'permission:classification.code.delete',
     ]);
 
     // NTEE Codes Routes
@@ -1098,7 +1108,7 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin|org
         'store' => 'permission:ntee.code.create',
         'edit' => 'permission:ntee.code.edit',
         'update' => 'permission:ntee.code.update',
-        'destroy' => 'permission:ntee.code.delete'
+        'destroy' => 'permission:ntee.code.delete',
     ]);
 
     // Status Codes Routes
@@ -1108,7 +1118,7 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin|org
         'store' => 'permission:status.code.create',
         'edit' => 'permission:status.code.edit',
         'update' => 'permission:status.code.update',
-        'destroy' => 'permission:status.code.delete'
+        'destroy' => 'permission:status.code.delete',
     ]);
 
     // Deductibility Codes Routes
@@ -1118,7 +1128,7 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin|org
         'store' => 'permission:deductibility.code.create',
         'edit' => 'permission:deductibility.code.edit',
         'update' => 'permission:deductibility.code.update',
-        'destroy' => 'permission:deductibility.code.delete'
+        'destroy' => 'permission:deductibility.code.delete',
     ]);
 
     /* Product Routes */
@@ -1128,7 +1138,7 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin|org
         'store' => 'permission:product.create',
         'edit' => 'permission:product.edit',
         'update' => 'permission:product.update',
-        'destroy' => 'permission:product.delete'
+        'destroy' => 'permission:product.delete',
     ]);
 
     // Seller / admin: view and manage bids for a product
@@ -1162,301 +1172,297 @@ Route::middleware(['auth', 'EnsureEmailIsVerified'])->group(function () {
 // This route is for marketplace viewing (no auth required)
 Route::get('/products/{id}', [ProductController::class, 'show'])->name('products.show.public');
 
-    // Printify Integration Routes
-    Route::middleware(['auth', 'topics.selected', 'role:admin|organization'])->group(function () {
-        Route::get('/printify/providers', [PrintifyProductController::class, 'getProviders'])->name('printify.providers');
-        Route::get('/printify/variants', [PrintifyProductController::class, 'getVariants'])->name('printify.variants');
-        Route::get('/printify/shipping', [PrintifyProductController::class, 'getShipping'])->name('printify.shipping');
-        // Route::post('/printify/products/sync', [ProductController::class, 'syncFromPrintify'])->name('printify.products.sync');
-    });
+// Printify Integration Routes
+Route::middleware(['auth', 'topics.selected', 'role:admin|organization|care_alliance'])->group(function () {
+    Route::get('/printify/providers', [PrintifyProductController::class, 'getProviders'])->name('printify.providers');
+    Route::get('/printify/variants', [PrintifyProductController::class, 'getVariants'])->name('printify.variants');
+    Route::get('/printify/shipping', [PrintifyProductController::class, 'getShipping'])->name('printify.shipping');
+    // Route::post('/printify/products/sync', [ProductController::class, 'syncFromPrintify'])->name('printify.products.sync');
+});
 
-    /* Category Routes */
-    Route::resource('categories', CategoryController::class)->except(['show'])->middleware([
-        'index' => 'permission:category.read',
-        'create' => 'permission:category.create',
-        'store' => 'permission:category.create',
-        'edit' => 'permission:category.edit',
-        'update' => 'permission:category.update',
-        'destroy' => 'permission:category.delete'
-    ]);
+/* Category Routes */
+Route::resource('categories', CategoryController::class)->except(['show'])->middleware([
+    'index' => 'permission:category.read',
+    'create' => 'permission:category.create',
+    'store' => 'permission:category.create',
+    'edit' => 'permission:category.edit',
+    'update' => 'permission:category.update',
+    'destroy' => 'permission:category.delete',
+]);
 
-    /* Raffle Routes */
-    Route::resource('raffles', RaffleController::class)->middleware([
-        'index' => 'permission:raffle.read',
-        'create' => 'permission:raffle.create',
-        'store' => 'permission:raffle.create',
-        'show' => 'permission:raffle.read',
-        'edit' => 'permission:raffle.edit',
-        'update' => 'permission:raffle.edit',
-        'destroy' => 'permission:raffle.delete'
-    ]);
+/* Raffle Routes */
+Route::resource('raffles', RaffleController::class)->middleware([
+    'index' => 'permission:raffle.read',
+    'create' => 'permission:raffle.create',
+    'store' => 'permission:raffle.create',
+    'show' => 'permission:raffle.read',
+    'edit' => 'permission:raffle.edit',
+    'update' => 'permission:raffle.edit',
+    'destroy' => 'permission:raffle.delete',
+]);
 
-    Route::post('raffles/{raffle}/purchase', [RaffleController::class, 'purchaseTickets'])->name('raffles.purchase')->middleware('permission:raffle.purchase');
-    Route::post('raffles/{raffle}/draw', [RaffleController::class, 'drawWinners'])->name('raffles.draw')->middleware('permission:raffle.draw');
-    Route::get('raffles/tickets/{ticket}/qr-code', [RaffleController::class, 'generateTicketQrCode'])->name('raffles.ticket.qr-code')->middleware('permission:raffle.read');
-    Route::get('raffles/tickets/{ticket}/verify', [RaffleController::class, 'verifyTicket'])->name('raffles.verify-ticket')->middleware('permission:raffle.read');
+Route::post('raffles/{raffle}/purchase', [RaffleController::class, 'purchaseTickets'])->name('raffles.purchase')->middleware('permission:raffle.purchase');
+Route::post('raffles/{raffle}/draw', [RaffleController::class, 'drawWinners'])->name('raffles.draw')->middleware('permission:raffle.draw');
+Route::get('raffles/tickets/{ticket}/qr-code', [RaffleController::class, 'generateTicketQrCode'])->name('raffles.ticket.qr-code')->middleware('permission:raffle.read');
+Route::get('raffles/tickets/{ticket}/verify', [RaffleController::class, 'verifyTicket'])->name('raffles.verify-ticket')->middleware('permission:raffle.read');
 
-    Route::resource("position-categories", PositionCategoryController::class)->except(['show'])->middleware([
-        'index' => 'permission:job.position.categories.read',
-        'create' => 'permission:job.position.categories.create',
-        'store' => 'permission:job.position.categories.create',
-        'edit' => 'permission:job.position.categories.edit',
-        'update' => 'permission:job.position.categories.update',
-        'destroy' => 'permission:job.position.categories.delete'
-    ]);
+Route::resource('position-categories', PositionCategoryController::class)->except(['show'])->middleware([
+    'index' => 'permission:job.position.categories.read',
+    'create' => 'permission:job.position.categories.create',
+    'store' => 'permission:job.position.categories.create',
+    'edit' => 'permission:job.position.categories.edit',
+    'update' => 'permission:job.position.categories.update',
+    'destroy' => 'permission:job.position.categories.delete',
+]);
 
-    Route::resource("job-positions", JobPositionController::class)->except(['show'])->middleware([
-        'index' => 'permission:job.positions.read',
-        'create' => 'permission:job.positions.create',
-        'store' => 'permission:job.positions.create',
-        'edit' => 'permission:job.positions.edit',
-        'update' => 'permission:job.positions.update',
-        'destroy' => 'permission:job.positions.delete'
-    ]);
+Route::resource('job-positions', JobPositionController::class)->except(['show'])->middleware([
+    'index' => 'permission:job.positions.read',
+    'create' => 'permission:job.positions.create',
+    'store' => 'permission:job.positions.create',
+    'edit' => 'permission:job.positions.edit',
+    'update' => 'permission:job.positions.update',
+    'destroy' => 'permission:job.positions.delete',
+]);
 
-    Route::resource('job-posts', JobPostController::class)->middleware([
-        'index' => 'permission:job.posts.read',
-        'create' => 'permission:job.posts.create',
-        'store' => 'permission:job.posts.create',
-        'show' => 'permission:job.posts.read',
-        'edit' => 'permission:job.posts.edit',
-        'update' => 'permission:job.posts.update',
-        'destroy' => 'permission:job.posts.delete'
-    ]);
+Route::resource('job-posts', JobPostController::class)->middleware([
+    'index' => 'permission:job.posts.read',
+    'create' => 'permission:job.posts.create',
+    'store' => 'permission:job.posts.create',
+    'show' => 'permission:job.posts.read',
+    'edit' => 'permission:job.posts.edit',
+    'update' => 'permission:job.posts.update',
+    'destroy' => 'permission:job.posts.delete',
+]);
 
-    // job applications routes
-    Route::resource('job-applications', JobApplicationController::class)->middleware([
-        'index' => 'permission:job.posts.read',
-        'create' => 'permission:job.posts.read',
-        'store' => 'permission:job.posts.read',
-        'show' => 'permission:job.posts.read',
-        'edit' => 'permission:job.posts.read',
-        'update' => 'permission:job.posts.read',
-        'destroy' => 'permission:job.posts.read'
-    ]);
-    Route::put('job-applications/{jobApplication}/update-status', [JobApplicationController::class, 'updateStatus'])
-        ->name('job-applications.update-status')
-        ->middleware(['role:organization', 'permission:job.posts.read']);
+// job applications routes
+Route::resource('job-applications', JobApplicationController::class)->middleware([
+    'index' => 'permission:job.posts.read',
+    'create' => 'permission:job.posts.read',
+    'store' => 'permission:job.posts.read',
+    'show' => 'permission:job.posts.read',
+    'edit' => 'permission:job.posts.read',
+    'update' => 'permission:job.posts.read',
+    'destroy' => 'permission:job.posts.read',
+]);
+Route::put('job-applications/{jobApplication}/update-status', [JobApplicationController::class, 'updateStatus'])
+    ->name('job-applications.update-status')
+    ->middleware(['role:organization|care_alliance', 'permission:job.posts.read']);
 
-    // Volunteers Routes
-    Route::get('supporter-activity', [SupporterActivityController::class, 'index'])
-        ->name('supporter-activity.index')
-        ->middleware(['role:organization|admin', 'permission:dashboard.read']);
-    Route::get('supporter-activity/supporters/{supporter}', [SupporterActivityController::class, 'show'])
-        ->name('supporter-activity.show')
-        ->middleware(['role:organization|admin', 'permission:dashboard.read']);
+// Volunteers Routes
+Route::get('supporter-activity', [SupporterActivityController::class, 'index'])
+    ->name('supporter-activity.index')
+    ->middleware(['role:organization|admin|care_alliance', 'permission:dashboard.read']);
+Route::get('supporter-activity/supporters/{supporter}', [SupporterActivityController::class, 'show'])
+    ->name('supporter-activity.show')
+    ->middleware(['role:organization|admin|care_alliance', 'permission:dashboard.read']);
 
-    Route::get('volunteers', [VolunteerController::class, 'index'])
-        ->name('volunteers.index')
-        ->middleware(['role:organization', 'permission:volunteer.read']);
+Route::get('volunteers', [VolunteerController::class, 'index'])
+    ->name('volunteers.index')
+    ->middleware(['role:organization|care_alliance', 'permission:volunteer.read']);
 
-    // Volunteer Time Sheet Routes (must come before volunteers/{volunteer} to avoid route conflicts)
-    // IMPORTANT: Specific routes (like fetch-volunteers) must come BEFORE parameterized routes ({timesheet})
-    Route::get('volunteers/timesheet', [VolunteerTimesheetController::class, 'index'])
-        ->name('volunteers.timesheet.index')
-        ->middleware(['role:organization', 'permission:volunteer.timesheet.read']);
-    Route::get('volunteers/timesheet/create', [VolunteerTimesheetController::class, 'create'])
-        ->name('volunteers.timesheet.create')
-        ->middleware(['role:organization', 'permission:volunteer.timesheet.create']);
-    Route::get('volunteers/timesheet/fetch-volunteers', [VolunteerTimesheetController::class, 'fetchVolunteers'])
-        ->name('volunteers.timesheet.fetch-volunteers')
-        ->middleware(['role:organization', 'permission:volunteer.timesheet.create']);
-    Route::post('volunteers/timesheet', [VolunteerTimesheetController::class, 'store'])
-        ->name('volunteers.timesheet.store')
-        ->middleware(['role:organization', 'permission:volunteer.timesheet.create']);
-    Route::get('volunteers/timesheet/{timesheet}', [VolunteerTimesheetController::class, 'show'])
-        ->name('volunteers.timesheet.show')
-        ->middleware(['role:organization', 'permission:volunteer.timesheet.read']);
-    Route::get('volunteers/timesheet/{timesheet}/edit', [VolunteerTimesheetController::class, 'edit'])
-        ->name('volunteers.timesheet.edit')
-        ->middleware(['role:organization', 'permission:volunteer.timesheet.edit']);
-    Route::put('volunteers/timesheet/{timesheet}', [VolunteerTimesheetController::class, 'update'])
-        ->name('volunteers.timesheet.update')
-        ->middleware(['role:organization', 'permission:volunteer.timesheet.update']);
-    Route::put('volunteers/timesheet/{timesheet}/status', [VolunteerTimesheetController::class, 'updateStatus'])
-        ->name('volunteers.timesheet.update-status')
-        ->middleware(['role:organization', 'permission:volunteer.timesheet.update']);
-    Route::delete('volunteers/timesheet/{timesheet}', [VolunteerTimesheetController::class, 'destroy'])
-        ->name('volunteers.timesheet.destroy')
-        ->middleware(['role:organization', 'permission:volunteer.timesheet.delete']);
+// Volunteer Time Sheet Routes (must come before volunteers/{volunteer} to avoid route conflicts)
+// IMPORTANT: Specific routes (like fetch-volunteers) must come BEFORE parameterized routes ({timesheet})
+Route::get('volunteers/timesheet', [VolunteerTimesheetController::class, 'index'])
+    ->name('volunteers.timesheet.index')
+    ->middleware(['role:organization|care_alliance', 'permission:volunteer.timesheet.read']);
+Route::get('volunteers/timesheet/create', [VolunteerTimesheetController::class, 'create'])
+    ->name('volunteers.timesheet.create')
+    ->middleware(['role:organization|care_alliance', 'permission:volunteer.timesheet.create']);
+Route::get('volunteers/timesheet/fetch-volunteers', [VolunteerTimesheetController::class, 'fetchVolunteers'])
+    ->name('volunteers.timesheet.fetch-volunteers')
+    ->middleware(['role:organization|care_alliance', 'permission:volunteer.timesheet.create']);
+Route::post('volunteers/timesheet', [VolunteerTimesheetController::class, 'store'])
+    ->name('volunteers.timesheet.store')
+    ->middleware(['role:organization|care_alliance', 'permission:volunteer.timesheet.create']);
+Route::get('volunteers/timesheet/{timesheet}', [VolunteerTimesheetController::class, 'show'])
+    ->name('volunteers.timesheet.show')
+    ->middleware(['role:organization|care_alliance', 'permission:volunteer.timesheet.read']);
+Route::get('volunteers/timesheet/{timesheet}/edit', [VolunteerTimesheetController::class, 'edit'])
+    ->name('volunteers.timesheet.edit')
+    ->middleware(['role:organization|care_alliance', 'permission:volunteer.timesheet.edit']);
+Route::put('volunteers/timesheet/{timesheet}', [VolunteerTimesheetController::class, 'update'])
+    ->name('volunteers.timesheet.update')
+    ->middleware(['role:organization|care_alliance', 'permission:volunteer.timesheet.update']);
+Route::put('volunteers/timesheet/{timesheet}/status', [VolunteerTimesheetController::class, 'updateStatus'])
+    ->name('volunteers.timesheet.update-status')
+    ->middleware(['role:organization|care_alliance', 'permission:volunteer.timesheet.update']);
+Route::delete('volunteers/timesheet/{timesheet}', [VolunteerTimesheetController::class, 'destroy'])
+    ->name('volunteers.timesheet.destroy')
+    ->middleware(['role:organization|care_alliance', 'permission:volunteer.timesheet.delete']);
 
-    Route::get('volunteers/{volunteer}', [VolunteerController::class, 'show'])
-        ->name('volunteers.show')
-        ->middleware(['role:organization', 'permission:volunteer.read']);
+Route::get('volunteers/{volunteer}', [VolunteerController::class, 'show'])
+    ->name('volunteers.show')
+    ->middleware(['role:organization|care_alliance', 'permission:volunteer.read']);
 
-    // Events Routes
-    Route::resource('events', EventController::class)->middleware([
-        'index' => 'permission:event.read',
-        'create' => 'permission:event.create',
-        'store' => 'permission:event.create',
-        'show' => 'permission:event.read',
-        'edit' => 'permission:event.edit',
-        'update' => 'permission:event.update',
-        'destroy' => 'permission:event.delete'
-    ]);
-    Route::get('/events/{event}/update-status', [EventController::class, 'updateStatus'])
-        ->name('events.update-status')
-        ->middleware('permission:event.update');
-    Route::get('/api/events/dashboard', [EventController::class, 'dashboard'])
-        ->name('events.dashboard')
-        ->middleware('permission:event.read');
+// Events Routes
+Route::resource('events', EventController::class)->middleware([
+    'index' => 'permission:event.read',
+    'create' => 'permission:event.create',
+    'store' => 'permission:event.create',
+    'show' => 'permission:event.read',
+    'edit' => 'permission:event.edit',
+    'update' => 'permission:event.update',
+    'destroy' => 'permission:event.delete',
+]);
+Route::get('/events/{event}/update-status', [EventController::class, 'updateStatus'])
+    ->name('events.update-status')
+    ->middleware('permission:event.update');
+Route::get('/api/events/dashboard', [EventController::class, 'dashboard'])
+    ->name('events.dashboard')
+    ->middleware('permission:event.read');
 
-    //role and permission routes
-    Route::get('/permission-management', [RolePermissionController::class, 'index']);
-    Route::get('/role-management', [RolePermissionController::class, 'roleManagement']);
-    Route::get('/user-permission', [RolePermissionController::class, 'userPermission']);
+// role and permission routes
+Route::get('/permission-management', [RolePermissionController::class, 'index']);
+Route::get('/role-management', [RolePermissionController::class, 'roleManagement']);
+Route::get('/user-permission', [RolePermissionController::class, 'userPermission']);
 
-    Route::prefix('permissions')->group(function () {
-        Route::get('/', [RolePermissionController::class, 'index'])->name('permissions.overview');
+Route::prefix('permissions')->group(function () {
+    Route::get('/', [RolePermissionController::class, 'index'])->name('permissions.overview');
 
-        // Role Management
-        Route::get('/roles', [RolePermissionController::class, 'roleManagement'])->name('roles.list');
-        Route::get('/roles/create', [RolePermissionController::class, 'createRole'])->name('roles.create');
-        Route::post('/roles', [RolePermissionController::class, 'storeRole'])->name('roles.store');
-        Route::get('/roles/{role}/edit', [RolePermissionController::class, 'editRole'])->name('roles.edit');
-        Route::put('/roles/{role}', [RolePermissionController::class, 'updateRole'])->name('roles.update');
-        Route::delete('/roles/{role}', [RolePermissionController::class, 'destroyRole'])->name('roles.destroy');
-    });
+    // Role Management
+    Route::get('/roles', [RolePermissionController::class, 'roleManagement'])->name('roles.list');
+    Route::get('/roles/create', [RolePermissionController::class, 'createRole'])->name('roles.create');
+    Route::post('/roles', [RolePermissionController::class, 'storeRole'])->name('roles.store');
+    Route::get('/roles/{role}/edit', [RolePermissionController::class, 'editRole'])->name('roles.edit');
+    Route::put('/roles/{role}', [RolePermissionController::class, 'updateRole'])->name('roles.update');
+    Route::delete('/roles/{role}', [RolePermissionController::class, 'destroyRole'])->name('roles.destroy');
+});
 
-    // User Management (separate from permissions)
-    Route::prefix('users')->middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected'])->group(function () {
-        Route::get('/', [RolePermissionController::class, 'userPermission'])->name('users.list');
-        Route::get('/create', [RolePermissionController::class, 'createUser'])->name('users.create');
-        Route::post('/', [RolePermissionController::class, 'storeUser'])->name('users.store');
-        Route::get('/{user}/edit', [RolePermissionController::class, 'editUser'])->name('users.edit');
-        Route::put('/{user}', [RolePermissionController::class, 'updateUser'])->name('users.update');
-        Route::delete('/{user}', [RolePermissionController::class, 'destroyUser'])->name('users.destroy');
-        Route::post('/{user}/impersonate', [RolePermissionController::class, 'impersonate'])->name('users.impersonate');
-        Route::post('/{user}/reset-password', [RolePermissionController::class, 'resetPassword'])->name('users.reset-password');
-        Route::post('/{user}/toggle-login-disable', [RolePermissionController::class, 'toggleLoginDisable'])->name('users.toggle-login-disable');
-        Route::post('/{user}/verify-email', [RolePermissionController::class, 'verifyEmail'])->name('users.verify-email');
-    });
-    Route::resource('deductibility-codes', DeductibilityCodeController::class)->except(['show'])->middleware([
-        'index' => 'permission:deductibility.code.read',
-        'create' => 'permission:deductibility.code.create',
-        'store' => 'permission:deductibility.code.create',
-        'edit' => 'permission:deductibility.code.edit',
-        'update' => 'permission:deductibility.code.update',
-        'destroy' => 'permission:deductibility.code.delete'
-    ]);
+// User Management (separate from permissions)
+Route::prefix('users')->middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected'])->group(function () {
+    Route::get('/', [RolePermissionController::class, 'userPermission'])->name('users.list');
+    Route::get('/create', [RolePermissionController::class, 'createUser'])->name('users.create');
+    Route::post('/', [RolePermissionController::class, 'storeUser'])->name('users.store');
+    Route::get('/{user}/edit', [RolePermissionController::class, 'editUser'])->name('users.edit');
+    Route::put('/{user}', [RolePermissionController::class, 'updateUser'])->name('users.update');
+    Route::delete('/{user}', [RolePermissionController::class, 'destroyUser'])->name('users.destroy');
+    Route::post('/{user}/impersonate', [RolePermissionController::class, 'impersonate'])->name('users.impersonate');
+    Route::post('/{user}/reset-password', [RolePermissionController::class, 'resetPassword'])->name('users.reset-password');
+    Route::post('/{user}/toggle-login-disable', [RolePermissionController::class, 'toggleLoginDisable'])->name('users.toggle-login-disable');
+    Route::post('/{user}/verify-email', [RolePermissionController::class, 'verifyEmail'])->name('users.verify-email');
+});
+Route::resource('deductibility-codes', DeductibilityCodeController::class)->except(['show'])->middleware([
+    'index' => 'permission:deductibility.code.read',
+    'create' => 'permission:deductibility.code.create',
+    'store' => 'permission:deductibility.code.create',
+    'edit' => 'permission:deductibility.code.edit',
+    'update' => 'permission:deductibility.code.update',
+    'destroy' => 'permission:deductibility.code.delete',
+]);
 
+/* orders Routes */
+Route::resource('orders', OrderController::class)->middleware([
+    'index' => 'permission:ecommerce.read',
+    'create' => 'permission:ecommerce.create',
+    'store' => 'permission:ecommerce.create',
+    'show' => 'permission:ecommerce.read',
+    'edit' => 'permission:ecommerce.edit',
+    'update' => 'permission:ecommerce.update',
+    'destroy' => 'permission:ecommerce.delete',
+]);
+Route::post('/orders/{order}/cancel', [OrderController::class, 'cancelOrder'])
+    ->name('orders.cancel')
+    ->middleware('permission:ecommerce.update');
 
+// Admin only route to view items by organization
+Route::get('/orders/{order}/items-by-organization', [OrderController::class, 'itemsByOrganization'])
+    ->name('orders.items-by-organization')
+    ->middleware('permission:ecommerce.read');
 
-    /* orders Routes */
-    Route::resource('orders', OrderController::class)->middleware([
-        'index' => 'permission:ecommerce.read',
-        'create' => 'permission:ecommerce.create',
-        'store' => 'permission:ecommerce.create',
-        'show' => 'permission:ecommerce.read',
-        'edit' => 'permission:ecommerce.edit',
-        'update' => 'permission:ecommerce.update',
-        'destroy' => 'permission:ecommerce.delete'
-    ]);
-    Route::post('/orders/{order}/cancel', [OrderController::class, 'cancelOrder'])
-        ->name('orders.cancel')
-        ->middleware('permission:ecommerce.update');
+Route::get('/orders/{order}/shippo/rates', [OrderController::class, 'getShippoRates'])
+    ->name('orders.shippo.rates')
+    ->middleware('permission:ecommerce.read');
+Route::post('/orders/{order}/shippo/purchase-label', [OrderController::class, 'purchaseShippoLabel'])
+    ->name('orders.shippo.purchase-label')
+    ->middleware('permission:ecommerce.update');
 
-        // Admin only route to view items by organization
-    Route::get('/orders/{order}/items-by-organization', [OrderController::class, 'itemsByOrganization'])
-        ->name('orders.items-by-organization')
-        ->middleware('permission:ecommerce.read');
+/* Order Items Routes */
+// Route::resource('order-items', OrderItemController::class)->middleware([
+//     'index' => 'permission:ecommerce.read',
+//     'show' => 'permission:ecommerce.read',
+// ]);
 
-    Route::get('/orders/{order}/shippo/rates', [OrderController::class, 'getShippoRates'])
-        ->name('orders.shippo.rates')
-        ->middleware('permission:ecommerce.read');
-    Route::post('/orders/{order}/shippo/purchase-label', [OrderController::class, 'purchaseShippoLabel'])
-        ->name('orders.shippo.purchase-label')
-        ->middleware('permission:ecommerce.update');
+// Purchase Order Routes
+Route::get('/purchase-orders', [PurchaseController::class, 'index'])->name('purchase-orders.index')->middleware('permission:ecommerce.read');
+Route::get('/purchase-orders/create', [PurchaseController::class, 'create'])->name('purchase-orders.create')->middleware('permission:ecommerce.create');
+Route::post('/purchase-orders', [PurchaseController::class, 'store'])->name('purchase-orders.store')->middleware('permission:ecommerce.create');
+Route::get('/purchase-orders/{id}/edit', [PurchaseController::class, 'edit'])->name('purchase-orders.edit')->middleware('permission:ecommerce.edit');
+Route::put('/purchase-orders/{id}', [PurchaseController::class, 'update'])->name('purchase-orders.update')->middleware('permission:ecommerce.update');
+Route::delete('/purchase-orders/{id}', [PurchaseController::class, 'destroy'])->name('purchase-orders.destroy')->middleware('permission:ecommerce.delete');
 
-    /* Order Items Routes */
-    // Route::resource('order-items', OrderItemController::class)->middleware([
-    //     'index' => 'permission:ecommerce.read',
-    //     'show' => 'permission:ecommerce.read',
-    // ]);
+// Node Boss Routes
+Route::get('/node-boss/create', [NodeBossController::class, 'create'])->name('node-boss.create')->middleware('permission:node.referral.create');
+Route::post('/node-boss/store', [NodeBossController::class, 'store'])->name('node-boss.store')->middleware('permission:node.referral.create');
+Route::get('/node-boss/{id}/edit', [NodeBossController::class, 'edit'])->name('node-boss.edit')->middleware('permission:node.referral.edit');
+Route::put('/node-boss/{id}', [NodeBossController::class, 'update'])->name('node-boss.update')->middleware('permission:node.referral.update');
+Route::delete('/node-boss/{id}', [NodeBossController::class, 'destroy'])->name('node-boss.destroy')->middleware('permission:node.referral.delete');
+Route::get('/node-boss', [NodeBossController::class, 'index'])->name('node-boss.index')->middleware('permission:node.referral.read');
+Route::get('/node-boss/{id}', [NodeBossController::class, 'show'])->name('node-boss.show')->middleware('permission:node.referral.read');
 
+// node boss referral
+Route::resource('node-referral', NodeReferralController::class)->middleware([
+    'index' => 'permission:node.referral.read',
+    'create' => 'permission:node.referral.create',
+    'store' => 'permission:node.referral.create',
+    'show' => 'permission:node.referral.read',
+    'edit' => 'permission:node.referral.edit',
+    'update' => 'permission:node.referral.update',
+    'destroy' => 'permission:node.referral.delete',
+]);
 
-    // Purchase Order Routes
-    Route::get('/purchase-orders', [PurchaseController::class, 'index'])->name('purchase-orders.index')->middleware('permission:ecommerce.read');
-    Route::get('/purchase-orders/create', [PurchaseController::class, 'create'])->name('purchase-orders.create')->middleware('permission:ecommerce.create');
-    Route::post('/purchase-orders', [PurchaseController::class, 'store'])->name('purchase-orders.store')->middleware('permission:ecommerce.create');
-    Route::get('/purchase-orders/{id}/edit', [PurchaseController::class, 'edit'])->name('purchase-orders.edit')->middleware('permission:ecommerce.edit');
-    Route::put('/purchase-orders/{id}', [PurchaseController::class, 'update'])->name('purchase-orders.update')->middleware('permission:ecommerce.update');
-    Route::delete('/purchase-orders/{id}', [PurchaseController::class, 'destroy'])->name('purchase-orders.destroy')->middleware('permission:ecommerce.delete');
+// New Withdrawal resource routes
+Route::resource('withdrawals', WithdrawalController::class)->middleware([
+    'index' => 'permission:withdrawal.read',
+    'create' => 'permission:withdrawal.create',
+    'store' => 'permission:withdrawal.create',
+    'show' => 'permission:withdrawal.read',
+    'edit' => 'permission:withdrawal.edit',
+    'update' => 'permission:withdrawal.update',
+    'destroy' => 'permission:withdrawal.delete',
+]);
 
-    // Node Boss Routes
-    Route::get('/node-boss/create', [NodeBossController::class, 'create'])->name('node-boss.create')->middleware('permission:node.referral.create');
-    Route::post('/node-boss/store', [NodeBossController::class, 'store'])->name('node-boss.store')->middleware('permission:node.referral.create');
-    Route::get('/node-boss/{id}/edit', [NodeBossController::class, 'edit'])->name('node-boss.edit')->middleware('permission:node.referral.edit');
-    Route::put('/node-boss/{id}', [NodeBossController::class, 'update'])->name('node-boss.update')->middleware('permission:node.referral.update');
-    Route::delete('/node-boss/{id}', [NodeBossController::class, 'destroy'])->name('node-boss.destroy')->middleware('permission:node.referral.delete');
-    Route::get('/node-boss', [NodeBossController::class, 'index'])->name('node-boss.index')->middleware('permission:node.referral.read');
-    Route::get('/node-boss/{id}', [NodeBossController::class, 'show'])->name('node-boss.show')->middleware('permission:node.referral.read');
+// Custom routes for withdrawal actions
+Route::post('withdrawals/{withdrawal}/accept', [WithdrawalController::class, 'accept'])->name('withdrawals.accept');
+Route::post('withdrawals/{withdrawal}/make-payment', [WithdrawalController::class, 'makePayment'])->name('withdrawals.makePayment');
 
-    //node boss referral
-    Route::resource('node-referral', NodeReferralController::class)->middleware([
-        'index' => 'permission:node.referral.read',
-        'create' => 'permission:node.referral.create',
-        'store' => 'permission:node.referral.create',
-        'show' => 'permission:node.referral.read',
-        'edit' => 'permission:node.referral.edit',
-        'update' => 'permission:node.referral.update',
-        'destroy' => 'permission:node.referral.delete'
-    ]);
+// Route::prefix('settings')->group(function () {
+//     Route::get('/payment-methods', [PaymentMethodSettingController::class, 'index'])->name('payment-methods.index');
+//     Route::post('/payment-methods', [PaymentMethodSettingController::class, 'update'])->name('payment-methods.update');
+// });
 
-    // New Withdrawal resource routes
-    Route::resource('withdrawals', WithdrawalController::class)->middleware([
-        'index' => 'permission:withdrawal.read',
-        'create' => 'permission:withdrawal.create',
-        'store' => 'permission:withdrawal.create',
-        'show' => 'permission:withdrawal.read',
-        'edit' => 'permission:withdrawal.edit',
-        'update' => 'permission:withdrawal.update',
-        'destroy' => 'permission:withdrawal.delete'
-    ]);
-
-    // Custom routes for withdrawal actions
-    Route::post('withdrawals/{withdrawal}/accept', [WithdrawalController::class, 'accept'])->name('withdrawals.accept');
-    Route::post('withdrawals/{withdrawal}/make-payment', [WithdrawalController::class, 'makePayment'])->name('withdrawals.makePayment');
-
-    // Route::prefix('settings')->group(function () {
-    //     Route::get('/payment-methods', [PaymentMethodSettingController::class, 'index'])->name('payment-methods.index');
-    //     Route::post('/payment-methods', [PaymentMethodSettingController::class, 'update'])->name('payment-methods.update');
-    // });
-
-    // Newsletter Routes
-    Route::prefix('newsletter')->name('newsletter.')->group(function () {
-        Route::get('/', [NewsletterController::class, 'index'])->name('index');
-        Route::get('/templates', [NewsletterController::class, 'templates'])->name('templates');
-        Route::get('/templates/create', [NewsletterController::class, 'createTemplate'])->name('templates.create');
-        Route::post('/templates', [NewsletterController::class, 'storeTemplate'])->name('templates.store');
-        Route::get('/templates/{id}', [NewsletterController::class, 'showTemplate'])->name('templates.show');
-        Route::get('/templates/{id}/edit', [NewsletterController::class, 'editTemplate'])->name('templates.edit');
-        Route::put('/templates/{id}', [NewsletterController::class, 'updateTemplate'])->name('templates.update');
-        Route::delete('/templates/{id}', [NewsletterController::class, 'destroyTemplate'])->name('templates.destroy');
-                Route::get('/recipients', [NewsletterController::class, 'recipients'])->name('recipients');
-                Route::post('/recipients', [NewsletterController::class, 'storeRecipient'])->name('recipients.store');
-                Route::post('/recipients/subscribe/{organizationId}', [NewsletterController::class, 'subscribeOrganization'])->name('recipients.subscribe');
-                Route::post('/recipients/unsubscribe/{organizationId}', [NewsletterController::class, 'unsubscribeOrganization'])->name('recipients.unsubscribe');
-                Route::post('/recipients/test-email', [NewsletterController::class, 'sendTestEmail'])->name('recipients.test-email');
-                Route::get('/recipients/export', [NewsletterController::class, 'exportRecipients'])->name('recipients.export');
-                Route::post('/recipients/import', [NewsletterController::class, 'importRecipients'])->name('recipients.import');
-                Route::post('/recipients/manual/{recipientId}/subscribe', [NewsletterController::class, 'subscribeManualRecipient'])->name('recipients.manual.subscribe');
-                Route::post('/recipients/manual/{recipientId}/unsubscribe', [NewsletterController::class, 'unsubscribeManualRecipient'])->name('recipients.manual.unsubscribe');
-        Route::get('/export', [NewsletterController::class, 'export'])->name('export');
-        Route::get('/create', [NewsletterController::class, 'create'])->name('create');
-        Route::get('/create-advanced', [NewsletterController::class, 'createAdvanced'])->name('create-advanced');
-        Route::post('/', [NewsletterController::class, 'store'])->name('store');
-        Route::get('/{id}', [NewsletterController::class, 'show'])->name('show');
-        Route::get('/{id}/edit', [NewsletterController::class, 'edit'])->name('edit');
-        Route::put('/{id}', [NewsletterController::class, 'update'])->name('update');
-        Route::put('/{id}/schedule', [NewsletterController::class, 'updateSchedule'])->name('update-schedule');
-        Route::post('/{id}/pause', [NewsletterController::class, 'pause'])->name('pause');
-        Route::post('/{id}/resume', [NewsletterController::class, 'resume'])->name('resume');
-        Route::post('/{id}/manual-send', [NewsletterController::class, 'manualSend'])->name('manual-send');
-        Route::delete('/{id}', [NewsletterController::class, 'destroy'])->name('destroy');
-        Route::post('/{id}/send', [NewsletterController::class, 'send'])->name('send');
-    });
-
+// Newsletter Routes
+Route::prefix('newsletter')->name('newsletter.')->group(function () {
+    Route::get('/', [NewsletterController::class, 'index'])->name('index');
+    Route::get('/templates', [NewsletterController::class, 'templates'])->name('templates');
+    Route::get('/templates/create', [NewsletterController::class, 'createTemplate'])->name('templates.create');
+    Route::post('/templates', [NewsletterController::class, 'storeTemplate'])->name('templates.store');
+    Route::get('/templates/{id}', [NewsletterController::class, 'showTemplate'])->name('templates.show');
+    Route::get('/templates/{id}/edit', [NewsletterController::class, 'editTemplate'])->name('templates.edit');
+    Route::put('/templates/{id}', [NewsletterController::class, 'updateTemplate'])->name('templates.update');
+    Route::delete('/templates/{id}', [NewsletterController::class, 'destroyTemplate'])->name('templates.destroy');
+    Route::get('/recipients', [NewsletterController::class, 'recipients'])->name('recipients');
+    Route::post('/recipients', [NewsletterController::class, 'storeRecipient'])->name('recipients.store');
+    Route::post('/recipients/subscribe/{organizationId}', [NewsletterController::class, 'subscribeOrganization'])->name('recipients.subscribe');
+    Route::post('/recipients/unsubscribe/{organizationId}', [NewsletterController::class, 'unsubscribeOrganization'])->name('recipients.unsubscribe');
+    Route::post('/recipients/test-email', [NewsletterController::class, 'sendTestEmail'])->name('recipients.test-email');
+    Route::get('/recipients/export', [NewsletterController::class, 'exportRecipients'])->name('recipients.export');
+    Route::post('/recipients/import', [NewsletterController::class, 'importRecipients'])->name('recipients.import');
+    Route::post('/recipients/manual/{recipientId}/subscribe', [NewsletterController::class, 'subscribeManualRecipient'])->name('recipients.manual.subscribe');
+    Route::post('/recipients/manual/{recipientId}/unsubscribe', [NewsletterController::class, 'unsubscribeManualRecipient'])->name('recipients.manual.unsubscribe');
+    Route::get('/export', [NewsletterController::class, 'export'])->name('export');
+    Route::get('/create', [NewsletterController::class, 'create'])->name('create');
+    Route::get('/create-advanced', [NewsletterController::class, 'createAdvanced'])->name('create-advanced');
+    Route::post('/', [NewsletterController::class, 'store'])->name('store');
+    Route::get('/{id}', [NewsletterController::class, 'show'])->name('show');
+    Route::get('/{id}/edit', [NewsletterController::class, 'edit'])->name('edit');
+    Route::put('/{id}', [NewsletterController::class, 'update'])->name('update');
+    Route::put('/{id}/schedule', [NewsletterController::class, 'updateSchedule'])->name('update-schedule');
+    Route::post('/{id}/pause', [NewsletterController::class, 'pause'])->name('pause');
+    Route::post('/{id}/resume', [NewsletterController::class, 'resume'])->name('resume');
+    Route::post('/{id}/manual-send', [NewsletterController::class, 'manualSend'])->name('manual-send');
+    Route::delete('/{id}', [NewsletterController::class, 'destroy'])->name('destroy');
+    Route::post('/{id}/send', [NewsletterController::class, 'send'])->name('send');
+});
 
 // Public Newsletter Routes
 Route::get('/newsletter/unsubscribe/{token}', [NewsletterController::class, 'unsubscribe'])->name('newsletter.unsubscribe');
@@ -1520,7 +1526,7 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected'])->group(f
         'index' => 'permission:topic.read',
         'store' => 'permission:topic.create',
         'update' => 'permission:topic.update',
-        'destroy' => 'permission:topic.delete'
+        'destroy' => 'permission:topic.delete',
     ]);
 });
 
@@ -1558,7 +1564,7 @@ Route::prefix('webhooks')->group(function () {
     Route::post('/phaze', [App\Http\Controllers\PhazeWebhookController::class, 'handle'])->name('webhooks.phaze');
 });
 
-Route::prefix('admin')->middleware(['auth', 'EnsureEmailIsVerified' , 'topics.selected', 'role:admin|'])->group(function () {
+Route::prefix('admin')->middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected', 'role:admin|'])->group(function () {
     // Wallet Fees Management
     Route::prefix('wallet-fees')->name('admin.wallet-fees.')->group(function () {
         Route::get('/', [App\Http\Controllers\Admin\WalletFeeController::class, 'index'])->name('index');
@@ -1657,8 +1663,6 @@ Route::prefix('admin/countries')
         Route::delete('/{country}', [\App\Http\Controllers\Admin\CountryController::class, 'destroy'])->name('destroy')->middleware('permission:admin.countries.delete');
     });
 
-
-
 Route::middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected'])->group(function () {
     // NodeShare routes
     Route::resource('node-shares', NodeShareController::class)->middleware([
@@ -1668,7 +1672,7 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected'])->group(f
         'show' => 'permission:node.referral.read',
         'edit' => 'permission:node.referral.edit',
         'update' => 'permission:node.referral.update',
-        'destroy' => 'permission:node.referral.delete'
+        'destroy' => 'permission:node.referral.delete',
     ]);
 
     // NodeSell routes
@@ -1679,7 +1683,7 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected'])->group(f
         'show' => 'permission:node.referral.read',
         'edit' => 'permission:node.referral.edit',
         'update' => 'permission:node.referral.update',
-        'destroy' => 'permission:node.referral.delete'
+        'destroy' => 'permission:node.referral.delete',
     ]);
 
     // Buy share routes
@@ -1699,8 +1703,8 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected'])->group(f
     // User shares
     Route::get('/my-shares', [NodeSellController::class, 'myShares'])->name('my-shares');
 
-    //comission withdrawls
-    Route::post('/withrawl/request', [WithdrawalController::class, 'store'])->name("withdrawl.request");
+    // comission withdrawls
+    Route::post('/withrawl/request', [WithdrawalController::class, 'store'])->name('withdrawl.request');
 
     // Social Media Management Routes
     Route::prefix('social-media')->name('social-media.')->group(function () {
@@ -1718,7 +1722,7 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected'])->group(f
 });
 
 // Integrations – Dropbox (organization + supporter)
-Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin|organization_pending|user', 'topics.selected'])->prefix('integrations')->name('integrations.')->group(function () {
+Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin|organization_pending|user|care_alliance', 'topics.selected'])->prefix('integrations')->name('integrations.')->group(function () {
     Route::get('/dropbox', [IntegrationsController::class, 'dropbox'])->name('dropbox');
     Route::get('/dropbox/search', [IntegrationsController::class, 'searchDropbox'])->name('dropbox.search');
     Route::get('/dropbox/redirect', [IntegrationsController::class, 'redirectToDropbox'])->name('dropbox.redirect');
@@ -1732,7 +1736,7 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin|org
 });
 
 // YouTube integration: organization + supporter (outside dashboard group so role:user can access)
-Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|user', 'topics.selected'])->prefix('integrations')->name('integrations.')->group(function () {
+Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|user|care_alliance', 'topics.selected'])->prefix('integrations')->name('integrations.')->group(function () {
     Route::get('/youtube/connect', [IntegrationsController::class, 'youtubeConnect'])->name('youtube.connect'); // supporter (normal user) only
     Route::get('/youtube', [IntegrationsController::class, 'youtube'])->name('youtube'); // organization only
     Route::get('/youtube/redirect', [IntegrationsController::class, 'redirectToYouTube'])->name('youtube.redirect');
@@ -1746,11 +1750,44 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected'])->group(f
     Route::post('/donate/non-cash', [DonationController::class, 'storeNonCash'])->name('donations.non-cash.store');
     Route::get('/donations/success', [DonationController::class, 'success'])->name('donations.success');
     Route::get('/donations/cancel', [DonationController::class, 'cancel'])->name('donations.cancel');
+
+    Route::post('/care-alliance/{allianceSlug}/campaigns/{campaign}/checkout', [CareAllianceDonationController::class, 'checkout'])
+        ->name('care-alliance.campaigns.checkout')
+        ->where('campaign', '[0-9]+');
+    Route::get('/care-alliance/donations/success', [CareAllianceDonationController::class, 'success'])
+        ->name('care-alliance.donations.success');
 });
 
 // Organization donations route
-Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization', 'topics.selected'])->group(function () {
+Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|care_alliance', 'topics.selected'])->group(function () {
     Route::get('/donations', [DonationController::class, 'organizationIndex'])->name('donations.index');
+});
+
+// Care Alliance — workspace & APIs (same app shell as organizations; requires topics.selected)
+Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|organization_pending|care_alliance', 'topics.selected'])->prefix('care-alliance')->name('care-alliance.')->group(function () {
+    Route::get('/dashboard', [CareAllianceDashboardController::class, 'index'])->name('dashboard');
+    Route::get('/workspace/overview', [CareAllianceDashboardController::class, 'workspaceOverview'])->name('workspace.overview');
+    Route::get('/workspace/members', [CareAllianceDashboardController::class, 'workspaceMembers'])->name('workspace.members');
+    Route::get('/workspace/campaigns', [CareAllianceDashboardController::class, 'workspaceCampaigns'])->name('workspace.campaigns');
+    Route::get('/workspace/settings', [CareAllianceDashboardController::class, 'workspaceSettings'])->name('workspace.settings');
+    Route::patch('/settings', [CareAllianceDashboardController::class, 'updateSettings'])->name('settings.update');
+    Route::get('/organizations/search', [CareAllianceInvitationController::class, 'searchOrganizations'])->name('organizations.search');
+    Route::post('/invitations', [CareAllianceInvitationController::class, 'store'])->name('invitations.store');
+    Route::post('/invitations/{invitation}/resend', [CareAllianceInvitationController::class, 'resend'])->name('invitations.resend');
+    Route::delete('/invitations/{invitation}', [CareAllianceInvitationController::class, 'destroy'])->name('invitations.destroy');
+    Route::post('/join-requests/{joinRequest}/approve', [CareAllianceJoinRequestReviewController::class, 'approve'])->name('join-requests.approve');
+    Route::post('/join-requests/{joinRequest}/decline', [CareAllianceJoinRequestReviewController::class, 'decline'])->name('join-requests.decline');
+    Route::post('/campaigns', [CareAllianceCampaignManageController::class, 'store'])->name('campaigns.store');
+});
+
+// Care Alliance — nonprofits accept/decline alliance invites (not Care Alliance hub users)
+Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|organization_pending', 'deny.care_alliance.hub'])->group(function () {
+    Route::get('/organization/alliance-membership', [CareAllianceOrgMembershipController::class, 'index'])->name('organization.alliance-membership');
+    Route::get('/organization/care-alliances/search', [CareAllianceOrgJoinRequestController::class, 'searchAlliances'])->name('organization.care-alliances.search');
+    Route::post('/organization/care-alliance-join-requests', [CareAllianceOrgJoinRequestController::class, 'store'])->name('organization.care-alliance-join-requests.store');
+    Route::get('/organization/care-alliance-invitations', [CareAllianceOrgInvitationController::class, 'pending'])->name('organization.care-alliance.invitations');
+    Route::post('/organization/care-alliance-invitations/{invitation}/accept', [CareAllianceOrgInvitationController::class, 'accept'])->name('organization.care-alliance.invitations.accept');
+    Route::post('/organization/care-alliance-invitations/{invitation}/decline', [CareAllianceOrgInvitationController::class, 'decline'])->name('organization.care-alliance.invitations.decline');
 });
 
 // Gift Cards routes
@@ -1759,7 +1796,7 @@ Route::get('/gift-cards', [App\Http\Controllers\GiftCardController::class, 'inde
 Route::get('/gift-cards/brands', [App\Http\Controllers\GiftCardController::class, 'getBrands'])->name('gift-cards.brands');
 
 // Organization routes (view purchased cards) - organization_pending cannot access until onboarding complete
-Route::middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected', 'role:organization|admin'])->group(function () {
+Route::middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected', 'role:organization|admin|care_alliance'])->group(function () {
     Route::get('/gift-cards/purchased', [App\Http\Controllers\GiftCardController::class, 'createdCards'])->name('gift-cards.created');
 });
 
@@ -1905,7 +1942,6 @@ Route::prefix('admin/exemption-certificates')
         Route::post('/{exemptionCertificate}/reject', [App\Http\Controllers\Admin\ExemptionCertificateController::class, 'reject'])->name('reject');
     });
 
-
 // Admin Promotional Banners Management
 Route::prefix('admin/promotional-banners')
     ->middleware(['auth', 'EnsureEmailIsVerified', 'role:admin', 'topics.selected', 'permission:promotional.banner.read'])
@@ -1992,7 +2028,7 @@ Route::prefix('admin/wallet-plans')
     });
 
 // IRS BMF Management Routes
-Route::prefix('irs-bmf')->name('irs-bmf.')->middleware(["auth", 'EnsureEmailIsVerified'])->group(function () {
+Route::prefix('irs-bmf')->name('irs-bmf.')->middleware(['auth', 'EnsureEmailIsVerified'])->group(function () {
     Route::get('/', [App\Http\Controllers\IrsBmfController::class, 'index'])->name('index');
     Route::get('/search', [App\Http\Controllers\IrsBmfController::class, 'search'])->name('search');
     Route::get('/{record}', [App\Http\Controllers\IrsBmfController::class, 'show'])->name('show');
@@ -2007,7 +2043,7 @@ Route::get('/raffles/tickets/{ticket}/qr-code', [App\Http\Controllers\RaffleCont
 Route::get('/raffles/tickets/{ticket}/verify', [App\Http\Controllers\RaffleController::class, 'verifyTicket'])->name('raffles.verify-ticket.public');
 
 // Test QR Code Route
-Route::get('/test-qr', function() {
+Route::get('/test-qr', function () {
     $qrCode = \SimpleSoftwareIO\QrCode\Facades\QrCode::format('png')
         ->size(200)
         ->margin(2)
@@ -2019,7 +2055,7 @@ Route::get('/test-qr', function() {
         'Content-Type' => 'image/png',
         'Cache-Control' => 'no-cache, no-store, must-revalidate',
         'Pragma' => 'no-cache',
-        'Expires' => '0'
+        'Expires' => '0',
     ]);
 });
 
@@ -2034,7 +2070,7 @@ Route::middleware(['web', 'auth', 'EnsureEmailIsVerified'])->prefix('frontend')-
 // The webhook will process checkout.session.completed events automatically
 
 // Email Invite Routes
-Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization', 'topics.selected'])->prefix('email-invite')->name('email-invite.')->group(function () {
+Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|care_alliance', 'topics.selected'])->prefix('email-invite')->name('email-invite.')->group(function () {
     Route::get('/', [App\Http\Controllers\EmailInviteController::class, 'index'])->name('index');
     Route::match(['get', 'post'], '/connect/gmail', [App\Http\Controllers\EmailInviteController::class, 'connectGmail'])->name('connect.gmail');
     Route::match(['get', 'post'], '/connect/outlook', [App\Http\Controllers\EmailInviteController::class, 'connectOutlook'])->name('connect.outlook');
@@ -2049,5 +2085,5 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization', 'topics
     Route::delete('/contacts/{contact}', [App\Http\Controllers\EmailInviteController::class, 'deleteContact'])->name('contacts.delete');
 });
 
-require __DIR__ . '/settings.php';
-require __DIR__ . '/auth.php';
+require __DIR__.'/settings.php';
+require __DIR__.'/auth.php';

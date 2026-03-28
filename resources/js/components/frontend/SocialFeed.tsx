@@ -94,7 +94,7 @@ interface Post {
     slug: string
     image?: string
   }
-  creator_type?: 'user' | 'organization'
+  creator_type?: 'user' | 'organization' | 'care_alliance'
   creator_name?: string
   creator_slug?: string
   creator_image?: string
@@ -980,9 +980,13 @@ export default function SocialFeed({ posts: initialPosts = [], next_page_url, ha
                   <div className="flex-1 min-w-0">
                     {post.creator_slug ? (
                       <Link
-                        href={post.creator_type === 'organization' 
-                          ? route('organizations.show', post.creator_slug)
-                          : route('users.show', post.creator_slug)}
+                        href={
+                          post.creator_type === 'care_alliance'
+                            ? route('alliances.show', post.creator_slug)
+                            : post.creator_type === 'organization'
+                              ? route('organizations.show', post.creator_slug)
+                              : route('users.show', post.creator_slug)
+                        }
                         className="font-semibold text-sm hover:underline text-gray-900 dark:text-white mb-0.5 block"
                       >
                         {post.creator_name || post.user?.name}

@@ -49,6 +49,7 @@ import {
 import { motion, AnimatePresence } from "framer-motion"
 import { ThemeToggle } from "@/components/frontend/theme-toggle"
 import { Link, router, usePage } from "@inertiajs/react"
+import toast from "react-hot-toast"
 import { useMobileNavigation } from "@/hooks/use-mobile-navigation"
 import { NotificationBell } from "@/components/notification-bell"
 import SiteTitle from "@/components/site-title"
@@ -76,11 +77,13 @@ interface SharedData extends Record<string, unknown> {
       believe_points?: number // Added believe_points
       role?: string // Ensure role is also present
       email_verified_at?: string | null // Email verification status
+      care_alliance?: { slug: string; name: string } | null
       service_seller_profile?: {
         id: number
         verification_status?: string
       } | null // Added service_seller_profile
     }
+    roles?: string[]
   }
 }
 
@@ -88,6 +91,18 @@ export default function Navbar() {
   const { auth } = usePage<SharedData>().props
   const [isOpen, setIsOpen] = useState(false)
   const [isLoggedIn, setIsLoggedIn] = useState(!!auth?.user)
+
+  const authRoles = (auth?.roles ?? []) as string[]
+  const hasCareAllianceRole = authRoles.some((r) => String(r).toLowerCase() === "care_alliance")
+  const u = auth?.user
+  const publicViewHref =
+    u && hasCareAllianceRole && u.care_alliance?.slug
+      ? route("alliances.show", u.care_alliance.slug)
+      : u && (u.role === "organization" || u.role === "organization_pending")
+        ? route("organizations.show", (u as { organization?: { public_view_slug?: string }; slug?: string }).organization?.public_view_slug ?? u.slug ?? u.id)
+        : u
+          ? route("users.show", u.slug ?? u.id)
+          : "/"
 
   // Wallet specific states
   const [showBalance, setShowBalance] = useState(false)
@@ -118,9 +133,10 @@ export default function Navbar() {
 
   // Services dropdown items (Nonprofit Barter only when organization is logged in)
   const isOrgUser = auth?.user?.role === "organization" || auth?.user?.role === "organization_pending"
+  const showCommunityProjects = isOrgUser || hasCareAllianceRole
   const servicesItems = [
     { name: "Support a Project", href: route("support-a-project"), icon: Heart },
-    ...(isOrgUser ? [{ name: "Community Projects", href: "/fundraise/community-projects", icon: Building2 }] : []),
+    ...(showCommunityProjects ? [{ name: "Community Projects", href: "/fundraise/community-projects", icon: Building2 }] : []),
     ...(isOrgUser ? [{ name: "Nonprofit Barter", href: route("barter.index"), icon: Handshake }] : []),
     { name: "Service Hub", href: "/service-hub", icon: Sparkles },
     { name: "Merchant Hub", href: "/merchant-hub", icon: ShoppingBag },
@@ -150,6 +166,11 @@ export default function Navbar() {
   // Fetch balance only when logged in (do not hit /wallet/balance on public pages)
   useEffect(() => {
     if (!isLoggedIn || !auth?.user?.id) {
+      setWalletBalance(null)
+      return
+    }
+
+    if (auth?.user?.care_alliance_wallet_eligible === false) {
       setWalletBalance(null)
       return
     }
@@ -203,11 +224,16 @@ export default function Navbar() {
     fetchBalance()
     const interval = setInterval(fetchBalance, 30000)
     return () => clearInterval(interval)
-  }, [isLoggedIn, auth?.user?.id, auth?.user?.balance])
+  }, [isLoggedIn, auth?.user?.id, auth?.user?.balance, auth?.user?.care_alliance_wallet_eligible])
 
   // Fetch balance function for manual refresh
   const fetchBalance = async () => {
     if (!isLoggedIn) {
+      setWalletBalance(null)
+      return
+    }
+
+    if (auth?.user?.care_alliance_wallet_eligible === false) {
       setWalletBalance(null)
       return
     }
@@ -261,6 +287,14 @@ export default function Navbar() {
 
   // Handle wallet button click - check subscription first
   const handleWalletClick = () => {
+    if (
+      (auth?.user?.role === "organization" || auth?.user?.role === "organization_pending") &&
+      auth?.user?.care_alliance_wallet_eligible === false
+    ) {
+      toast.error("Add a valid 9-digit EIN under Settings → Alliance Settings (profile) to use the wallet.")
+      return
+    }
+
     // Check if user is a regular user (supporter)
     const isRegularUser = auth?.user?.role === 'user' || !auth?.user?.role
 
@@ -506,11 +540,14 @@ export default function Navbar() {
                                           </Link>
                                       </DropdownMenuItem>
                                       <DropdownMenuItem asChild>
-                                          <Link href={
-                                              (auth?.user?.role === 'organization' || auth?.user?.role === 'organization_pending')
-                                                  ? route('organizations.show', (auth?.user as any)?.organization?.public_view_slug ?? (auth?.user as any)?.slug ?? auth?.user?.id)
-                                                  : route('users.show', (auth?.user as any)?.slug ?? auth?.user?.id)
-                                          }>
+                                          <Link
+                                              href={publicViewHref}
+                                              aria-label={
+                                                hasCareAllianceRole && u?.care_alliance?.slug
+                                                  ? `Public Care Alliance page: ${u.care_alliance.name}`
+                                                  : undefined
+                                              }
+                                          >
                                               <Globe className="mr-2 h-4 w-4" />
                                               <span>Public View</span>
                                           </Link>
@@ -530,6 +567,14 @@ export default function Navbar() {
                                               <Link href={route('dashboard')}>
                                                   <LayoutGrid className="mr-2 h-4 w-4" />
                                                   <span>Dashboard</span>
+                                              </Link>
+                                          </DropdownMenuItem>
+                                      )}
+                                      {hasCareAllianceRole && (
+                                          <DropdownMenuItem asChild>
+                                              <Link href={route('care-alliance.dashboard')}>
+                                                  <HeartHandshake className="mr-2 h-4 w-4" />
+                                                  <span>Care Alliance</span>
                                               </Link>
                                           </DropdownMenuItem>
                                       )}
@@ -772,11 +817,7 @@ export default function Navbar() {
                                                   Profile
                                               </Button>
                                           </Link>
-                                          <Link href={
-                                              (auth?.user?.role === 'organization' || auth?.user?.role === 'organization_pending')
-                                                  ? route('organizations.show', (auth?.user as any)?.organization?.public_view_slug ?? (auth?.user as any)?.slug ?? auth?.user?.id)
-                                                  : route('users.show', (auth?.user as any)?.slug ?? auth?.user?.id)
-                                          }>
+                                          <Link href={publicViewHref}>
                                               <Button variant="ghost" className="w-full justify-start">
                                                   <Globe className="mr-2 h-4 w-4" />
                                                   Public View
@@ -798,6 +839,14 @@ export default function Navbar() {
                                                   <Button variant="ghost" className="w-full justify-start">
                                                       <LayoutGrid className="mr-2 h-4 w-4" />
                                                       Dashboard
+                                                  </Button>
+                                              </Link>
+                                          )}
+                                          {hasCareAllianceRole && (
+                                              <Link href={route('care-alliance.dashboard')}>
+                                                  <Button variant="ghost" className="w-full justify-start">
+                                                      <HeartHandshake className="mr-2 h-4 w-4" />
+                                                      Care Alliance
                                                   </Button>
                                               </Link>
                                           )}

@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\CareAlliance;
+use App\Models\CareAllianceMembership;
 use App\Models\ExcelData;
 use App\Models\FollowerPosition;
 use App\Models\FollowingUserPosition;
@@ -17,6 +19,7 @@ use Illuminate\Support\Facades\Storage;
 use App\Jobs\SendOrganizationInviteJob;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\DB;
+use App\Services\CareAlliancePublicPageService;
 use App\Services\ExcelDataTransformer;
 
 class OrganizationController extends BaseController
@@ -785,6 +788,7 @@ public function index(Request $request)
             'believePointsSpent' => $believePointsSpent,
             'believePointsBalance' => $believePointsBalance,
             'postFilter' => $postFilter ?? 'organization', // Pass filter to frontend
+            'connectedCareAlliances' => $this->connectedCareAlliancesPayload($registeredOrg),
         ]);
     }
 
@@ -839,28 +843,85 @@ public function index(Request $request)
     {
         $user = Auth::user();
 
-        // Supporters and organization users can both follow organizations
-        // Get the ExcelData organization
-        $excelDataOrg = ExcelData::findOrFail($id);
+        $ctx = $request->input('toggle_favorite_context');
+        if (in_array($ctx, ['excel', 'organization', 'alliance'], true)) {
+            if ($ctx === 'organization') {
+                $org = Organization::query()
+                    ->whereKey($id)
+                    ->where('registration_status', 'approved')
+                    ->first();
+                if ($org === null) {
+                    abort(404);
+                }
 
-        // Find the registered organization by EIN (used for both self-check and favorite logic)
+                return $this->toggleFavoriteToggleRegisteredOrg($request, $user, $org);
+            }
+            if ($ctx === 'alliance') {
+                $alliance = CareAlliance::query()->whereKey($id)->where('status', 'active')->first();
+                if ($alliance === null) {
+                    abort(404);
+                }
+                $org = app(CareAlliancePublicPageService::class)->hubOrganizationForAlliance($alliance);
+                if ($org === null) {
+                    abort(404);
+                }
+
+                return $this->toggleFavoriteToggleRegisteredOrg($request, $user, $org);
+            }
+            $excelDataOrg = ExcelData::find($id);
+            if ($excelDataOrg === null) {
+                abort(404);
+            }
+
+            return $this->toggleFavoriteViaExcelRow($request, $user, $id, $excelDataOrg);
+        }
+
+        $excelDataOrg = ExcelData::find($id);
+        if ($excelDataOrg !== null) {
+            return $this->toggleFavoriteViaExcelRow($request, $user, $id, $excelDataOrg);
+        }
+
+        $org = Organization::query()
+            ->whereKey($id)
+            ->where('registration_status', 'approved')
+            ->first();
+
+        if ($org === null) {
+            $alliance = CareAlliance::query()->whereKey($id)->where('status', 'active')->first();
+            if ($alliance !== null) {
+                $org = app(CareAlliancePublicPageService::class)->hubOrganizationForAlliance($alliance);
+            }
+        }
+
+        if ($org === null) {
+            abort(404);
+        }
+
+        return $this->toggleFavoriteToggleRegisteredOrg($request, $user, $org);
+    }
+
+    /**
+     * Public nonprofit profile: toggle by IRS / Excel row id.
+     */
+    private function toggleFavoriteViaExcelRow(Request $request, $user, int $id, ExcelData $excelDataOrg)
+    {
         $org = Organization::where('ein', $excelDataOrg->ein)
             ->where('registration_status', 'approved')
             ->first();
 
-        // Organization cannot follow their own organization
         $userOrg = $user->organization ?? Organization::where('user_id', $user->id)->first();
         if ($userOrg) {
             $isOwnByEin = $userOrg->ein === $excelDataOrg->ein;
             $isOwnById = $org && $userOrg->id === $org->id;
             if ($isOwnByEin || $isOwnById) {
-                $isAjax = $request->header('X-Requested-With') === 'XMLHttpRequest' && !$request->header('X-Inertia');
+                $isAjax = $request->header('X-Requested-With') === 'XMLHttpRequest' && ! $request->header('X-Inertia');
                 if ($isAjax || $request->wantsJson() || $request->expectsJson()) {
                     return response()->json([
                         'success' => false,
                         'message' => __('You cannot follow your own organization.'),
                     ], 403);
                 }
+
                 return redirect()->back()->with('error', __('You cannot follow your own organization.'));
             }
         }
@@ -869,7 +930,6 @@ public function index(Request $request)
         $message = '';
 
         if ($org) {
-            // Registered organization - use organization_id
             $fav = UserFavoriteOrganization::where('user_id', $user->id)
                 ->where('organization_id', $org->id)
                 ->first();
@@ -882,15 +942,13 @@ public function index(Request $request)
                 UserFavoriteOrganization::create([
                     'user_id' => $user->id,
                     'organization_id' => $org->id,
-                    'excel_data_id' => $id, // Also store excel_data_id for consistency
-                    'notifications' => true
+                    'excel_data_id' => $id,
+                    'notifications' => true,
                 ]);
                 $isFollowing = true;
                 $message = 'Following organization with notifications';
             }
         } else {
-            // Unregistered organization - use excel_data_id
-            // Cast to int to ensure type matching
             $excelDataId = (int) $id;
             $fav = UserFavoriteOrganization::where('user_id', $user->id)
                 ->where('excel_data_id', $excelDataId)
@@ -903,24 +961,18 @@ public function index(Request $request)
             } else {
                 $createdFavorite = UserFavoriteOrganization::create([
                     'user_id' => $user->id,
-                    'organization_id' => null, // null for unregistered organizations
+                    'organization_id' => null,
                     'excel_data_id' => $excelDataId,
-                    'notifications' => true
+                    'notifications' => true,
                 ]);
-
-                // Refresh the model to ensure it has the latest data from database
                 $createdFavorite->refresh();
-
                 $isFollowing = true;
                 $message = 'Following organization with notifications';
             }
         }
 
-        // For API requests (axios/fetch), return JSON response
-        // Axios sends X-Requested-With: XMLHttpRequest header
-        // Check if it's an AJAX request (not Inertia)
         $isAjaxRequest = $request->header('X-Requested-With') === 'XMLHttpRequest'
-            && !$request->header('X-Inertia');
+            && ! $request->header('X-Inertia');
 
         if ($isAjaxRequest || $request->wantsJson() || $request->expectsJson()) {
             return response()->json([
@@ -930,14 +982,90 @@ public function index(Request $request)
             ]);
         }
 
-        // For Inertia requests, redirect back to reload the page with updated favorite status
         $referer = $request->header('Referer');
         if ($referer) {
             return redirect($referer);
         }
-        // Fallback to organization show page
+
         return redirect()->route('organizations.show', $id)
             ->with('success', $message);
+    }
+
+    /**
+     * Registered hub / org id or equivalent (after Care Alliance resolution).
+     */
+    private function toggleFavoriteToggleRegisteredOrg(Request $request, $user, Organization $org)
+    {
+        $userOrg = $user->organization ?? Organization::where('user_id', $user->id)->first();
+        if ($userOrg) {
+            $isOwnByEin = $org->ein && $userOrg->ein && $userOrg->ein === $org->ein;
+            $isOwnById = (int) $userOrg->id === (int) $org->id;
+            if ($isOwnByEin || $isOwnById) {
+                $isAjax = $request->header('X-Requested-With') === 'XMLHttpRequest' && ! $request->header('X-Inertia');
+                if ($isAjax || $request->wantsJson() || $request->expectsJson()) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => __('You cannot follow your own organization.'),
+                    ], 403);
+                }
+
+                return redirect()->back()->with('error', __('You cannot follow your own organization.'));
+            }
+        }
+
+        $excelDataIdForRow = null;
+        if ($org->ein) {
+            $excelDataIdForRow = ExcelData::query()
+                ->where('ein', $org->ein)
+                ->where('status', 'complete')
+                ->orderByDesc('id')
+                ->value('id');
+        }
+
+        $isFollowing = false;
+        $message = '';
+
+        $fav = UserFavoriteOrganization::where('user_id', $user->id)
+            ->where('organization_id', $org->id)
+            ->first();
+
+        if ($fav) {
+            $fav->delete();
+            $isFollowing = false;
+            $message = 'Unfollowed organization';
+        } else {
+            UserFavoriteOrganization::create([
+                'user_id' => $user->id,
+                'organization_id' => $org->id,
+                'excel_data_id' => $excelDataIdForRow,
+                'notifications' => true,
+            ]);
+            $isFollowing = true;
+            $message = 'Following organization with notifications';
+        }
+
+        $isAjaxRequest = $request->header('X-Requested-With') === 'XMLHttpRequest'
+            && ! $request->header('X-Inertia');
+
+        if ($isAjaxRequest || $request->wantsJson() || $request->expectsJson()) {
+            return response()->json([
+                'success' => true,
+                'is_following' => $isFollowing,
+                'message' => $message,
+            ]);
+        }
+
+        $referer = $request->header('Referer');
+        if ($referer) {
+            return redirect($referer);
+        }
+
+        $fallback = $excelDataIdForRow ?? $org->user?->slug;
+        if ($fallback !== null) {
+            return redirect()->route('organizations.show', $fallback);
+        }
+
+        return redirect()->back();
     }
 
     // public function toggleFavorite(Request $request, int $id)
@@ -1105,36 +1233,134 @@ public function index(Request $request)
     {
         $user = Auth::user();
 
-        // Get the ExcelData organization
-        $excelDataOrg = ExcelData::findOrFail($id);
+        $isAjaxRequest = $request->header('X-Requested-With') === 'XMLHttpRequest'
+            && ! $request->header('X-Inertia');
 
-        // Find the registered organization by EIN
-        $org = Organization::where('ein', $excelDataOrg->ein)
-            ->where('registration_status', 'approved')
-            ->first();
+        $ctx = $request->input('toggle_favorite_context');
+        $org = null;
+        $excelRowUsedForLookup = false;
 
-        if (!$org) {
-            return redirect()->route('organizations.show', $id)
-                ->with('error', 'Organization not found');
+        if (in_array($ctx, ['excel', 'organization', 'alliance'], true)) {
+            if ($ctx === 'organization') {
+                $org = Organization::query()
+                    ->whereKey($id)
+                    ->where('registration_status', 'approved')
+                    ->first();
+            } elseif ($ctx === 'alliance') {
+                $alliance = CareAlliance::query()->whereKey($id)->where('status', 'active')->first();
+                if ($alliance !== null) {
+                    $org = app(CareAlliancePublicPageService::class)->hubOrganizationForAlliance($alliance);
+                }
+            } else {
+                $excelDataOrg = ExcelData::find($id);
+                if ($excelDataOrg !== null) {
+                    $excelRowUsedForLookup = true;
+                    $org = Organization::where('ein', $excelDataOrg->ein)
+                        ->where('registration_status', 'approved')
+                        ->first();
+                }
+            }
+        } else {
+            $excelDataOrg = ExcelData::find($id);
+            if ($excelDataOrg !== null) {
+                $excelRowUsedForLookup = true;
+                $org = Organization::where('ein', $excelDataOrg->ein)
+                    ->where('registration_status', 'approved')
+                    ->first();
+            } else {
+                $org = Organization::query()
+                    ->whereKey($id)
+                    ->where('registration_status', 'approved')
+                    ->first();
+                if (! $org) {
+                    $alliance = CareAlliance::query()->whereKey($id)->where('status', 'active')->first();
+                    if ($alliance !== null) {
+                        $org = app(CareAlliancePublicPageService::class)->hubOrganizationForAlliance($alliance);
+                    }
+                }
+            }
+        }
+
+        if (! $org) {
+            if ($isAjaxRequest || $request->wantsJson() || $request->expectsJson()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Organization not found',
+                ], 404);
+            }
+
+            $referer = $request->header('Referer');
+            if ($referer) {
+                return redirect($referer)->with('error', 'Organization not found');
+            }
+            if ($excelRowUsedForLookup) {
+                return redirect()->route('organizations.show', $id)
+                    ->with('error', 'Organization not found');
+            }
+
+            return redirect()->back()->with('error', 'Organization not found');
         }
 
         $fav = UserFavoriteOrganization::where('user_id', $user->id)
             ->where('organization_id', $org->id)
             ->first();
 
-        if (!$fav) {
-            return redirect()->route('organizations.show', $id)
-                ->with('error', 'You are not following this organization');
+        if (! $fav) {
+            if ($isAjaxRequest || $request->wantsJson() || $request->expectsJson()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'You are not following this organization',
+                ], 400);
+            }
+
+            $referer = $request->header('Referer');
+            if ($referer) {
+                return redirect($referer)->with('error', 'You are not following this organization');
+            }
+
+            $fallback = ExcelData::query()
+                ->where('ein', $org->ein)
+                ->where('status', 'complete')
+                ->orderByDesc('id')
+                ->value('id') ?? $org->user?->slug;
+            if ($fallback !== null) {
+                return redirect()->route('organizations.show', $fallback)
+                    ->with('error', 'You are not following this organization');
+            }
+
+            return redirect()->back()->with('error', 'You are not following this organization');
         }
 
         $fav->update([
-            'notifications' => !$fav->notifications
+            'notifications' => ! $fav->notifications,
         ]);
 
         $message = $fav->notifications ? 'Notifications enabled' : 'Notifications disabled';
 
-        return redirect()->route('organizations.show', $id)
-            ->with('success', $message);
+        if ($isAjaxRequest || $request->wantsJson() || $request->expectsJson()) {
+            return response()->json([
+                'success' => true,
+                'notifications' => (bool) $fav->notifications,
+                'message' => $message,
+            ]);
+        }
+
+        $referer = $request->header('Referer');
+        if ($referer) {
+            return redirect($referer)->with('success', $message);
+        }
+
+        $fallback = ExcelData::query()
+            ->where('ein', $org->ein)
+            ->where('status', 'complete')
+            ->orderByDesc('id')
+            ->value('id') ?? $org->user?->slug;
+        if ($fallback !== null) {
+            return redirect()->route('organizations.show', $fallback)
+                ->with('success', $message);
+        }
+
+        return redirect()->back()->with('success', $message);
     }
 
     /**
@@ -1490,6 +1716,7 @@ public function index(Request $request)
             'supporters' => $supporters,
             'currentPage' => 'products',
             'auth' => Auth::user() ? ['user' => Auth::user()] : null,
+            'connectedCareAlliances' => $this->connectedCareAlliancesPayload($registeredOrg),
             ...$sidebarData,
         ]);
     }
@@ -1579,6 +1806,7 @@ public function index(Request $request)
             'supporters' => $supporters,
             'currentPage' => 'jobs',
             'auth' => Auth::user() ? ['user' => Auth::user()] : null,
+            'connectedCareAlliances' => $this->connectedCareAlliancesPayload($registeredOrg),
             ...$believePoints,
             ...$sidebarData,
         ]);
@@ -1631,6 +1859,7 @@ public function index(Request $request)
             'supporters' => $supporters,
             'currentPage' => 'events',
             'auth' => Auth::user() ? ['user' => Auth::user()] : null,
+            'connectedCareAlliances' => $this->connectedCareAlliancesPayload($registeredOrg),
             ...$sidebarData,
         ]);
     }
@@ -1714,6 +1943,7 @@ public function index(Request $request)
             'supporters' => $supporters,
             'currentPage' => 'about',
             'auth' => Auth::user() ? ['user' => Auth::user()] : null,
+            'connectedCareAlliances' => $this->connectedCareAlliancesPayload($registeredOrg),
             ...$believePoints,
             ...$sidebarData,
         ]);
@@ -1796,6 +2026,7 @@ public function index(Request $request)
             'supporters' => $supporters,
             'currentPage' => 'contact',
             'auth' => Auth::user() ? ['user' => Auth::user()] : null,
+            'connectedCareAlliances' => $this->connectedCareAlliancesPayload($registeredOrg),
             ...$sidebarData,
         ]);
     }
@@ -1903,9 +2134,42 @@ public function index(Request $request)
             'supporters' => $supporters,
             'currentPage' => 'supporters',
             'auth' => Auth::user() ? ['user' => Auth::user()] : null,
+            'connectedCareAlliances' => $this->connectedCareAlliancesPayload($registeredOrg),
             ...$believePoints,
             ...$sidebarData,
         ]);
+    }
+
+    /**
+     * Active Care Alliances this nonprofit is a member of (public profile).
+     *
+     * @return array<int, array{id: int, name: string, slug: string}>
+     */
+    private function connectedCareAlliancesPayload(?Organization $registeredOrg): array
+    {
+        if ($registeredOrg === null) {
+            return [];
+        }
+
+        return CareAllianceMembership::query()
+            ->where('organization_id', $registeredOrg->id)
+            ->where('status', 'active')
+            ->whereHas('careAlliance', fn ($q) => $q->where('status', 'active'))
+            ->with(['careAlliance:id,slug,name'])
+            ->get()
+            ->map(function (CareAllianceMembership $m) {
+                $alliance = $m->careAlliance;
+
+                return $alliance ? [
+                    'id' => (int) $alliance->id,
+                    'name' => $alliance->name,
+                    'slug' => $alliance->slug,
+                ] : null;
+            })
+            ->filter()
+            ->sortBy(fn (array $row) => strtolower($row['name']))
+            ->values()
+            ->all();
     }
 
     /**

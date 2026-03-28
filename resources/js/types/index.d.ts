@@ -2,6 +2,8 @@ import { LucideIcon } from 'lucide-react';
 
 export interface Auth {
     user: User;
+    roles?: string[];
+    permissions?: string[];
 }
 
 export interface BreadcrumbItem {
@@ -15,6 +17,10 @@ export interface NavGroup {
     icon?: LucideIcon | null;
     permission?: string,
     role?: string | string[],
+    /** Alliance-style links: show only for org/pending users who are not Care Alliance hub (no care_alliance role). */
+    organizationOnlyNav?: boolean;
+    /** Hide for users with Spatie role care_alliance (use separate Alliance Settings link). */
+    excludeCareAllianceHub?: boolean;
 }
 
 export interface NavItem {
@@ -24,6 +30,10 @@ export interface NavItem {
     isActive?: boolean;
     permission?: string | Array;
     role?: string | Array;
+    /** Alliance-style links: show only for org/pending users who are not Care Alliance hub (no care_alliance role). */
+    organizationOnlyNav?: boolean;
+    /** Hide for users with Spatie role care_alliance (use separate Alliance Settings link). */
+    excludeCareAllianceHub?: boolean;
 }
 
 export interface SharedData {
@@ -51,6 +61,8 @@ export interface User {
     whatsapp_opt_in: boolean;
     push_token?: string;
     login_status: boolean;
+    /** false when user is Care Alliance without a valid 9-digit EIN (wallet blocked) */
+    care_alliance_wallet_eligible?: boolean;
     [key: string]: unknown; // This allows for additional properties...
 }
 export interface DashboardProps {

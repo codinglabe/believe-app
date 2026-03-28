@@ -35,6 +35,9 @@ export default function SocialFeedLayout({
   const { auth } = usePage<{ auth?: { user?: any } }>().props
   const axios = useAxios()
   const currentUser = auth?.user
+  const careAllianceHub = currentUser?.care_alliance as { slug: string; name: string } | null | undefined
+  const showAllianceInUserCard = Boolean(careAllianceHub?.name)
+  const userCardDisplayName = careAllianceHub?.name ?? currentUser?.name
   const [followingStates, setFollowingStates] = useState<Record<number | string, boolean>>({})
   const [loadingFollow, setLoadingFollow] = useState<Record<number | string, boolean>>({})
 
@@ -100,20 +103,34 @@ export default function SocialFeedLayout({
                     </nav>
                   </div>
 
-                  {/* User Info Card */}
+                  {/* User Info Card — Care Alliance hubs see alliance name + public page link */}
                   <div className="bg-white dark:bg-[#111827] rounded-xl p-4 animate-in fade-in slide-in-from-left-4 duration-500 delay-100">
-                    <p className="text-xs text-gray-500 dark:text-gray-500 mb-3">User Info</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-500 mb-3">
+                      {showAllianceInUserCard ? 'Care Alliance' : 'User Info'}
+                    </p>
                     <div className="flex items-center gap-3 mb-4">
                       <Avatar className="w-10 h-10">
                         <AvatarImage src={currentUser.image} />
                         <AvatarFallback className="bg-emerald-600 text-sm">
-                          {currentUser.name?.charAt(0)?.toUpperCase()}
+                          {userCardDisplayName?.charAt(0)?.toUpperCase()}
                         </AvatarFallback>
                       </Avatar>
-                      <div>
-                        <p className="text-sm font-medium text-gray-900 dark:text-white">{currentUser.name}</p>
-                        {currentUser.email && (
-                          <p className="text-xs text-gray-600 dark:text-gray-400">{currentUser.email}</p>
+                      <div className="min-w-0">
+                        {showAllianceInUserCard && careAllianceHub?.slug ? (
+                          <Link
+                            href={route('alliances.show', careAllianceHub.slug)}
+                            className="text-sm font-medium text-gray-900 dark:text-white hover:text-indigo-600 dark:hover:text-indigo-400 truncate block"
+                          >
+                            {userCardDisplayName}
+                          </Link>
+                        ) : (
+                          <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{userCardDisplayName}</p>
+                        )}
+                        {!showAllianceInUserCard && currentUser.email && (
+                          <p className="text-xs text-gray-600 dark:text-gray-400 truncate">{currentUser.email}</p>
+                        )}
+                        {showAllianceInUserCard && (
+                          <p className="text-xs text-gray-500 dark:text-gray-400 truncate">Public alliance page</p>
                         )}
                       </div>
                     </div>

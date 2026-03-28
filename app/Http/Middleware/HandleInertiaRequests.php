@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Models\CareAlliance;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
@@ -199,6 +200,11 @@ class HandleInertiaRequests extends Middleware
             } else {
                 // Main app user data (only for regular User models)
                 if (! ($user instanceof \App\Models\LivestockUser) && ! ($user instanceof \App\Models\Merchant)) {
+                    $careAllianceHub = CareAlliance::query()
+                        ->where('creator_user_id', $user->id)
+                        ->where('status', 'active')
+                        ->first(['id', 'slug', 'name']);
+
                     $userData = [
                         'id' => $user->id,
                         'slug' => $user->slug ?? null,
@@ -225,6 +231,11 @@ class HandleInertiaRequests extends Middleware
                         'referral_link' => $user->referral_code ? url('/register?ref='.$user->referral_code) : null,
                         'push_token' => $user->push_token ?? null,
                         'timezone' => $user->timezone ?? 'UTC',
+                        'care_alliance_wallet_eligible' => $user->careAllianceWalletEligible(),
+                        'care_alliance' => $careAllianceHub ? [
+                            'slug' => $careAllianceHub->slug,
+                            'name' => $careAllianceHub->name,
+                        ] : null,
                         'organization' => $user->organization ? [
                             'id' => $user->organization->id,
                             'ein' => $user->organization->ein ?? null,

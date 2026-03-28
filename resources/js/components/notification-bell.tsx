@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, type MouseEvent } from "react"
 import { Bell } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/chat/ui/popover"
@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import { router } from "@inertiajs/react"
 import axios from "axios"
+import toast from "react-hot-toast"
 
 interface Notification {
   id: string
@@ -27,7 +28,8 @@ interface DatabaseNotification {
   type: string
   notifiable_type: string
   notifiable_id: number
-  data: string
+  /** Laravel JSON-encodes this; axios gives an object. Legacy rows may be a JSON string. */
+  data: string | Record<string, unknown>
   read_at: string | null
   created_at: string
   updated_at: string
@@ -39,11 +41,58 @@ interface NotificationBellProps {
   onNotificationClick?: (notification: Notification) => void
 }
 
+const CARE_ALLIANCE_INVITATION_TYPE = "care_alliance_invitation"
+
+function parseNotificationPayload(data: unknown): Record<string, any> {
+  if (data == null) {
+    return {}
+  }
+  if (typeof data === "string") {
+    try {
+      return JSON.parse(data) as Record<string, any>
+    } catch {
+      return {}
+    }
+  }
+  if (typeof data === "object") {
+    return data as Record<string, any>
+  }
+  return {}
+}
+
+/** Maps API / DB notification row to UI shape. Laravel casts `data` to array — JSON response is an object, not always a string. */
+function mapDatabaseNotification(dbNotif: DatabaseNotification): Notification {
+  const notificationData = parseNotificationPayload(dbNotif.data)
+  const type = notificationData.type || dbNotif.type || "notification"
+  const title =
+    notificationData.title ||
+    (type === CARE_ALLIANCE_INVITATION_TYPE ? "Care Alliance invitation" : "Notification")
+  const body = notificationData.body || notificationData.message || ""
+  const invitationId = notificationData.invitation_id ?? notificationData.meta?.invitation_id
+  const meta: Record<string, any> = {
+    ...(notificationData.meta || {}),
+    ...(invitationId != null ? { invitation_id: invitationId } : {}),
+  }
+
+  return {
+    id: String(dbNotif.id),
+    title,
+    body,
+    content_item_id: Number(notificationData.content_item_id) || 0,
+    type,
+    channel: notificationData.channel || "app",
+    meta,
+    timestamp: dbNotif.created_at,
+    read: !!dbNotif.read_at,
+  }
+}
+
 export function NotificationBell({ userId, emailVerified = true, onNotificationClick }: NotificationBellProps) {
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [unreadCount, setUnreadCount] = useState(0)
   const [isOpen, setIsOpen] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
+  const [careAllianceActionLoadingId, setCareAllianceActionLoadingId] = useState<string | null>(null)
   const audioRef = useRef<HTMLAudioElement | null>(null)
 
   useEffect(() => {
@@ -72,21 +121,7 @@ export function NotificationBell({ userId, emailVerified = true, onNotificationC
       const response = await axios.get("/notifications")
       const data = response.data.notifications || []
 
-      const formattedNotifications = data.map((dbNotif: DatabaseNotification) => {
-        const notificationData = typeof dbNotif.data === "string" ? JSON.parse(dbNotif.data) : dbNotif.data
-
-        return {
-          id: dbNotif.id,
-          title: notificationData.title || "Notification",
-          body: notificationData.body || "",
-          content_item_id: notificationData.content_item_id || 0,
-          type: notificationData.type || dbNotif.type,
-          channel: notificationData.channel || "app",
-          meta: notificationData.meta || {},
-          timestamp: dbNotif.created_at,
-          read: !!dbNotif.read_at,
-        }
-      })
+      const formattedNotifications = data.map((dbNotif: DatabaseNotification) => mapDatabaseNotification(dbNotif))
 
       setNotifications(formattedNotifications)
       setUnreadCount(formattedNotifications.filter((n: Notification) => !n.read).length)
@@ -105,9 +140,10 @@ export function NotificationBell({ userId, emailVerified = true, onNotificationC
       setNotifications((prev) => prev.map((n) => (n.id === notification.id ? { ...n, read: true } : n)))
       setUnreadCount((prev) => Math.max(0, prev - 1))
 
-      // Redirect to content page using Inertia router
       if (notification.content_item_id) {
         router.visit(`/notifications/content/${notification.content_item_id}`)
+      } else if (notification.type === CARE_ALLIANCE_INVITATION_TYPE) {
+        router.visit("/organization/alliance-membership?tab=invitations#care-alliance-invitations")
       }
 
       return true
@@ -188,16 +224,20 @@ export function NotificationBell({ userId, emailVerified = true, onNotificationC
         .listen(".Illuminate\\Notifications\\Events\\BroadcastNotificationCreated", (data: any) => {
           console.log("[v0] Received Laravel notification:", data)
 
-          const notificationData = typeof data.data === "string" ? JSON.parse(data.data) : data.data
+          const notificationData = parseNotificationPayload(data.data)
+          const invitationId = notificationData.invitation_id ?? notificationData.meta?.invitation_id
 
           const newNotification: Notification = {
             id: data.id || `laravel-${Date.now()}`,
             title: notificationData.title || "New Notification",
-            body: notificationData.body || "",
+            body: notificationData.body || notificationData.message || "",
             content_item_id: notificationData.content_item_id || 0,
             type: notificationData.type || data.type,
             channel: notificationData.channel || "app",
-            meta: notificationData.meta || {},
+            meta: {
+              ...(notificationData.meta || {}),
+              ...(invitationId != null ? { invitation_id: invitationId } : {}),
+            },
             timestamp: data.created_at || new Date().toISOString(),
             read: false,
           }
@@ -258,6 +298,50 @@ export function NotificationBell({ userId, emailVerified = true, onNotificationC
 
   const handleRefresh = () => {
     fetchNotifications()
+  }
+
+  /** Pending server-side invites show actions; legacy rows without the flag still get buttons if we have an id (API returns 422 if already handled). */
+  const showCareAllianceActions = (notification: Notification) =>
+    notification.type === CARE_ALLIANCE_INVITATION_TYPE &&
+    typeof notification.meta?.invitation_id === "number" &&
+    notification.meta?.show_care_alliance_actions !== false
+
+  const handleCareAllianceInvitationAction = async (
+    e: MouseEvent<HTMLButtonElement>,
+    notification: Notification,
+    action: "accept" | "decline",
+  ) => {
+    e.preventDefault()
+    e.stopPropagation()
+    const invitationId = notification.meta?.invitation_id as number
+    if (invitationId == null) return
+
+    setCareAllianceActionLoadingId(notification.id)
+    try {
+      await axios.post(`/organization/care-alliance-invitations/${invitationId}/${action}`)
+      toast.success(action === "accept" ? "You joined the Care Alliance." : "Invitation declined.")
+      await axios.post(`/notifications/${notification.id}/read`)
+      setNotifications((prev) =>
+        prev.map((n) =>
+          n.id === notification.id
+            ? {
+                ...n,
+                read: true,
+                meta: { ...n.meta, show_care_alliance_actions: false },
+              }
+            : n,
+        ),
+      )
+      setUnreadCount((prev) => Math.max(0, prev - (notification.read ? 0 : 1)))
+      if (action === "accept") {
+        router.visit("/organization/alliance-membership?tab=invitations#care-alliance-invitations")
+      }
+    } catch (err: any) {
+      const msg = err.response?.data?.message
+      toast.error(typeof msg === "string" ? msg : "Something went wrong. Try again.")
+    } finally {
+      setCareAllianceActionLoadingId(null)
+    }
   }
 
   return (
@@ -321,12 +405,42 @@ export function NotificationBell({ userId, emailVerified = true, onNotificationC
                   onClick={() => handleNotificationClick(notification)}
                 >
                   <div className="flex items-start justify-between gap-2">
-                    <div className="flex-1 space-y-1">
+                    <div className="flex-1 space-y-1 min-w-0">
                       <p className="font-medium text-sm leading-tight">{notification.title}</p>
-                      <p className="text-sm text-muted-foreground line-clamp-2">{notification.body}</p>
-                      <div className="flex items-center gap-2">
+                      <p
+                        className={cn(
+                          "text-sm text-muted-foreground",
+                          notification.type === CARE_ALLIANCE_INVITATION_TYPE ? "line-clamp-6" : "line-clamp-2",
+                        )}
+                      >
+                        {notification.body}
+                      </p>
+                      {showCareAllianceActions(notification) && (
+                        <div className="flex flex-wrap gap-2 pt-2">
+                          <Button
+                            type="button"
+                            size="sm"
+                            className="h-8"
+                            disabled={careAllianceActionLoadingId === notification.id}
+                            onClick={(e) => handleCareAllianceInvitationAction(e, notification, "accept")}
+                          >
+                            {careAllianceActionLoadingId === notification.id ? "…" : "Accept"}
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="h-8"
+                            disabled={careAllianceActionLoadingId === notification.id}
+                            onClick={(e) => handleCareAllianceInvitationAction(e, notification, "decline")}
+                          >
+                            Decline
+                          </Button>
+                        </div>
+                      )}
+                      <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-xs text-muted-foreground capitalize">
-                          {notification.type.replace(/_/g, " ")}
+                          {String(notification.type).replace(/_/g, " ")}
                         </span>
                         <span className="text-xs text-muted-foreground">
                           {new Date(notification.timestamp).toLocaleString()}

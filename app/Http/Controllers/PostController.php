@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\CareAlliance;
 use App\Models\Post;
 use App\Models\PostReaction;
 use App\Models\PostComment;
@@ -35,7 +36,11 @@ class PostController extends Controller
             ->toArray();
 
         // Get posts with unseen first, then seen posts
-        $posts = Post::with(['user.organization', 'reactions.user'])
+        $posts = Post::with([
+            'user.organization',
+            'user.createdCareAlliances' => fn ($q) => $q->where('status', 'active')->orderByDesc('id'),
+            'reactions.user',
+        ])
             ->withCount(['reactions', 'comments'])
             ->when(count($seenPostIds) > 0, function($query) use ($seenPostIds) {
                 return $query->orderByRaw('CASE WHEN id IN (' . implode(',', $seenPostIds) . ') THEN 1 ELSE 0 END');
@@ -53,28 +58,7 @@ class PostController extends Controller
             $post->comments = $comments;
             $post->has_more_comments = $post->comments_count > 5;
 
-            // Add creator info (organization if user has org, otherwise user)
-            if ($post->user) {
-                $post->creator = null;
-                $post->creator_type = 'user';
-                $post->creator_name = $post->user->name;
-                $post->creator_slug = $post->user->slug;
-                $post->creator_image = $post->user->image;
-                
-                // Check if user has an organization
-                if ($post->user->role === 'organization' && $post->user->organization) {
-                    $org = $post->user->organization;
-                    $post->creator = [
-                        'id' => $org->id,
-                        'name' => $org->name,
-                        'slug' => $post->user->slug,
-                        'image' => $post->user->image,
-                    ];
-                    $post->creator_type = 'organization';
-                    $post->creator_name = $org->name;
-                    $post->creator_slug = $post->user->slug;
-                }
-            }
+            $this->hydratePostCreatorForSocialFeed($post);
 
             return $post;
         });
@@ -218,7 +202,13 @@ class PostController extends Controller
             'images' => $images,
         ]);
 
-        $post->load(['user', 'reactions', 'comments']);
+        $post->load([
+            'user.organization',
+            'user.createdCareAlliances' => fn ($q) => $q->where('status', 'active')->orderByDesc('id'),
+            'reactions',
+            'comments',
+        ]);
+        $this->hydratePostCreatorForSocialFeed($post);
 
         return response()->json([
             'message' => 'Post created successfully',
@@ -281,7 +271,13 @@ class PostController extends Controller
             'is_edited' => true,
         ]);
 
-        $post->load(['user', 'reactions', 'comments']);
+        $post->load([
+            'user.organization',
+            'user.createdCareAlliances' => fn ($q) => $q->where('status', 'active')->orderByDesc('id'),
+            'reactions',
+            'comments',
+        ]);
+        $this->hydratePostCreatorForSocialFeed($post);
 
         return response()->json([
             'message' => 'Post updated successfully',
@@ -705,5 +701,61 @@ class PostController extends Controller
         }
 
         return $results;
+    }
+
+    /**
+     * Sets creator_name / creator_slug / creator_type for social feed (Care Alliance vs org vs user).
+     */
+    protected function hydratePostCreatorForSocialFeed(Post $post): void
+    {
+        if (! $post->user) {
+            return;
+        }
+
+        $user = $post->user;
+        $post->creator = null;
+        $post->creator_type = 'user';
+        $post->creator_name = $user->name;
+        $post->creator_slug = $user->slug;
+        $post->creator_image = $user->image;
+
+        $isCareAllianceAuthor = $user->role === 'care_alliance' || $user->hasRole('care_alliance');
+
+        if ($isCareAllianceAuthor) {
+            $alliance = $user->relationLoaded('createdCareAlliances')
+                ? $user->createdCareAlliances->first()
+                : CareAlliance::query()
+                    ->where('creator_user_id', $user->id)
+                    ->where('status', 'active')
+                    ->orderByDesc('id')
+                    ->first();
+            if ($alliance) {
+                $post->creator = [
+                    'id' => $alliance->id,
+                    'name' => $alliance->name,
+                    'slug' => $alliance->slug,
+                    'image' => $user->image,
+                ];
+                $post->creator_type = 'care_alliance';
+                $post->creator_name = $alliance->name;
+                $post->creator_slug = $alliance->slug;
+                $post->creator_image = $user->image;
+            }
+
+            return;
+        }
+
+        if ($user->role === 'organization' && $user->organization) {
+            $org = $user->organization;
+            $post->creator = [
+                'id' => $org->id,
+                'name' => $org->name,
+                'slug' => $user->slug,
+                'image' => $user->image,
+            ];
+            $post->creator_type = 'organization';
+            $post->creator_name = $org->name;
+            $post->creator_slug = $user->slug;
+        }
     }
 }

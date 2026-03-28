@@ -10,18 +10,17 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
-use Spatie\Permission\Traits\HasRoles;
 use Laravel\Cashier\Billable;
 use Laravel\Passport\HasApiTokens;
+use Spatie\Permission\Traits\HasRoles;
 
 class User extends Authenticatable implements MustVerifyEmail
 {
     /** @use HasFactory<\Database\Factories\UserFactory> */
-    use HasApiTokens, HasFactory, Notifiable, HasRoles, Billable;
+    use Billable, HasApiTokens, HasFactory, HasRoles, Notifiable;
 
     /**
      * The guard name for Spatie Permission
@@ -62,12 +61,12 @@ class User extends Authenticatable implements MustVerifyEmail
         'login_status',
         'referral_code',
         'referred_by',
-        "is_verified",
-        "email_verified_at",
-        "two_fa_enabled",
-        "biometric_enabled",
-        "ownership_verified_at",
-        "verification_status",
+        'is_verified',
+        'email_verified_at',
+        'two_fa_enabled',
+        'biometric_enabled',
+        'ownership_verified_at',
+        'verification_status',
         'primary_bank_account_id',
         'plaid_access_token',
         'verification_metadata',
@@ -147,13 +146,13 @@ class User extends Authenticatable implements MustVerifyEmail
             }
 
             // Auto-generate slug if not provided
-            if (empty($user->slug) && !empty($user->name)) {
+            if (empty($user->slug) && ! empty($user->name)) {
                 $baseSlug = Str::slug($user->name);
                 $slug = $baseSlug;
                 $counter = 1;
 
                 while (self::where('slug', $slug)->exists()) {
-                    $slug = $baseSlug . '-' . $counter;
+                    $slug = $baseSlug.'-'.$counter;
                     $counter++;
                 }
 
@@ -176,7 +175,7 @@ class User extends Authenticatable implements MustVerifyEmail
 
     public function receivesBroadcastNotificationsOn(): string
     {
-        return 'users.' . $this->id;
+        return 'users.'.$this->id;
     }
 
     public function user()
@@ -194,11 +193,11 @@ class User extends Authenticatable implements MustVerifyEmail
      */
     public function getProfilePhotoUrlAttribute(): ?string
     {
-        if (!$this->image) {
+        if (! $this->image) {
             return $this->defaultProfilePhotoUrl();
         }
 
-        return Storage::disk("public")->url($this->image);
+        return Storage::disk('public')->url($this->image);
     }
 
     /**
@@ -210,7 +209,7 @@ class User extends Authenticatable implements MustVerifyEmail
             return mb_substr($segment, 0, 1);
         })->join(' '));
 
-        return 'https://ui-avatars.com/api/?name=' . urlencode($name) . '&color=7F9CF5&background=EBF4FF';
+        return 'https://ui-avatars.com/api/?name='.urlencode($name).'&color=7F9CF5&background=EBF4FF';
     }
 
     /**
@@ -219,7 +218,7 @@ class User extends Authenticatable implements MustVerifyEmail
     public function deleteProfilePhoto(): void
     {
         if ($this->image) {
-            Storage::disk("public")->delete($this->image);
+            Storage::disk('public')->delete($this->image);
             $this->forceFill([
                 'image' => null,
             ])->save();
@@ -278,9 +277,6 @@ class User extends Authenticatable implements MustVerifyEmail
 
     /**
      * Record a transaction for the user.
-     *
-     * @param array $data
-     * @return Transaction
      */
     public function recordTransaction(array $data): Transaction
     {
@@ -293,16 +289,12 @@ class User extends Authenticatable implements MustVerifyEmail
             'related_type' => null,
             'processed_at' => now(), // Default processed_at
         ];
+
         return $this->transactions()->create(array_merge($defaultData, $data));
     }
 
     /**
      * Add funds to the user's balance and record a deposit transaction.
-     *
-     * @param float $amount
-     * @param string $method
-     * @param array $meta
-     * @return void
      */
     public function addFund(float $amount, string $method = 'wallet', array $meta = []): void
     {
@@ -317,14 +309,6 @@ class User extends Authenticatable implements MustVerifyEmail
 
     /**
      * Withdraw funds from the user's balance and record a withdrawal transaction.
-     *
-     * @param float $amount
-     * @param string $method
-     * @param array $meta
-     * @param int|null $relatedId
-     * @param string|null $relatedType
-     * @param string $status
-     * @return bool
      */
     public function withdrawFund(
         float $amount,
@@ -348,16 +332,12 @@ class User extends Authenticatable implements MustVerifyEmail
             'related_type' => $relatedType,
             'processed_at' => null, // Set to null initially for pending withdrawals
         ]);
+
         return true;
     }
 
     /**
      * Alias for addFund.
-     *
-     * @param float $amount
-     * @param string $method
-     * @param array $meta
-     * @return void
      */
     public function depositFund(float $amount, string $method = 'wallet', array $meta = []): void
     {
@@ -366,11 +346,6 @@ class User extends Authenticatable implements MustVerifyEmail
 
     /**
      * Refund funds to the user's balance and record a refund transaction.
-     *
-     * @param float $amount
-     * @param string $method
-     * @param array $meta
-     * @return void
      */
     public function refund(float $amount, string $method = 'wallet', array $meta = []): void
     {
@@ -385,10 +360,6 @@ class User extends Authenticatable implements MustVerifyEmail
 
     /**
      * Add commission to the user's balance and record a commission transaction.
-     *
-     * @param float $amount
-     * @param array $meta
-     * @return void
      */
     public function commissionAdd(float $amount, array $meta = []): void
     {
@@ -403,14 +374,11 @@ class User extends Authenticatable implements MustVerifyEmail
 
     /**
      * Get the current balance of the user.
-     *
-     * @return float
      */
     public function currentBalance(): float
     {
         return (float) $this->balance;
     }
-
 
     // Add these relationships to your existing User model
     public function chatRooms(): BelongsToMany
@@ -440,7 +408,7 @@ class User extends Authenticatable implements MustVerifyEmail
         if (Schema::hasColumn('organizations', 'youtube_access_token')) {
             $youtubeOAuth .= ', organizations.youtube_access_token, organizations.youtube_refresh_token, organizations.youtube_token_expires_at';
         }
-        $select = $base . $youtube . $youtubeOAuth . ', board_members.user_id as laravel_through_key';
+        $select = $base.$youtube.$youtubeOAuth.', board_members.user_id as laravel_through_key';
 
         return $this->hasOneThrough(
             Organization::class,
@@ -482,6 +450,31 @@ class User extends Authenticatable implements MustVerifyEmail
         return $this->hasMany(Campaign::class);
     }
 
+    public function createdCareAlliances(): HasMany
+    {
+        return $this->hasMany(CareAlliance::class, 'creator_user_id');
+    }
+
+    /**
+     * Care Alliance creators need a 9-digit EIN on their alliance record to use wallet / Bridge flows.
+     * Everyone else is unrestricted by this rule.
+     */
+    public function careAllianceWalletEligible(): bool
+    {
+        if (! $this->hasRole('care_alliance')) {
+            return true;
+        }
+
+        $alliance = CareAlliance::query()->where('creator_user_id', $this->id)->first();
+        if (! $alliance) {
+            return true;
+        }
+
+        $digits = $alliance->ein ? preg_replace('/\D/', '', $alliance->ein) : '';
+
+        return strlen($digits) === 9;
+    }
+
     public function sendJobs()
     {
         return $this->hasMany(SendJob::class);
@@ -499,12 +492,12 @@ class User extends Authenticatable implements MustVerifyEmail
     // Notification preferences
     public function shouldReceivePush()
     {
-        return !empty($this->push_token) && $this->login_status;
+        return ! empty($this->push_token) && $this->login_status;
     }
 
     public function shouldReceiveWhatsApp()
     {
-        return $this->whatsapp_opt_in && !empty($this->contact_number);
+        return $this->whatsapp_opt_in && ! empty($this->contact_number);
     }
 
     public function getLocalTimezone()
@@ -517,7 +510,7 @@ class User extends Authenticatable implements MustVerifyEmail
      */
     public function routeNotificationForTwilio()
     {
-        return $this->contact_number ? 'whatsapp:' . $this->contact_number : null;
+        return $this->contact_number ? 'whatsapp:'.$this->contact_number : null;
     }
 
     // public function organizations()
@@ -527,14 +520,13 @@ class User extends Authenticatable implements MustVerifyEmail
 
     public function getAvatarUrlAttribute(): string
     {
-        return $this->image ? asset('storage/' . $this->image) : 'https://ui-avatars.com/api/?name=' . urlencode($this->name) . '&background=random';
+        return $this->image ? asset('storage/'.$this->image) : 'https://ui-avatars.com/api/?name='.urlencode($this->name).'&background=random';
     }
 
     public function getIsOnlineAttribute(): bool
     {
         return $this->login_status == 1;
     }
-
 
     /**
      * Get the courses created by this user (as organization).
@@ -581,7 +573,6 @@ class User extends Authenticatable implements MustVerifyEmail
             ->exists();
     }
 
-
     // public function organizations(): HasMany
     // {
     //     return $this->hasMany(Organization::class);
@@ -599,7 +590,6 @@ class User extends Authenticatable implements MustVerifyEmail
     {
         return $this->hasMany(UserLivestream::class);
     }
-
 
     public function bankVerifications(): HasMany
     {
@@ -634,6 +624,7 @@ class User extends Authenticatable implements MustVerifyEmail
     public function getVerificationStatus(): string
     {
         $verification = $this->latestVerification;
+
         return $verification ? $verification->verification_status : 'not_started';
     }
 
@@ -658,7 +649,6 @@ class User extends Authenticatable implements MustVerifyEmail
     {
         return $this->hasMany(SocialMediaPost::class);
     }
-
 
     /**
      * Get the user's notifications with pagination
@@ -762,9 +752,6 @@ class User extends Authenticatable implements MustVerifyEmail
 
     /**
      * Add believe points to the user's balance.
-     *
-     * @param float $points
-     * @return void
      */
     public function addBelievePoints(float $points): void
     {
@@ -774,7 +761,6 @@ class User extends Authenticatable implements MustVerifyEmail
     /**
      * Deduct believe points from the user's balance.
      *
-     * @param float $points
      * @return bool Returns true if deduction was successful, false if insufficient points
      */
     public function deductBelievePoints(float $points): bool
@@ -783,13 +769,12 @@ class User extends Authenticatable implements MustVerifyEmail
             return false;
         }
         $this->decrement('believe_points', $points);
+
         return true;
     }
 
     /**
      * Get the current believe points balance of the user.
-     *
-     * @return float
      */
     public function currentBelievePoints(): float
     {
@@ -799,12 +784,8 @@ class User extends Authenticatable implements MustVerifyEmail
     /**
      * Add reward points to the user's balance and create a ledger entry.
      *
-     * @param int $points
-     * @param string $source (e.g., 'nonprofit_assessment')
-     * @param int|null $referenceId (e.g., assessment_id)
-     * @param string|null $description
-     * @param array|null $metadata
-     * @return void
+     * @param  string  $source  (e.g., 'nonprofit_assessment')
+     * @param  int|null  $referenceId  (e.g., assessment_id)
      */
     public function addRewardPoints(
         int $points,
@@ -828,11 +809,8 @@ class User extends Authenticatable implements MustVerifyEmail
     /**
      * Deduct reward points from the user's balance and create a ledger entry.
      *
-     * @param int $points
-     * @param string $source (e.g., 'merchant_reward_redemption')
-     * @param int|null $referenceId (e.g., redemption_id)
-     * @param string|null $description
-     * @param array|null $metadata
+     * @param  string  $source  (e.g., 'merchant_reward_redemption')
+     * @param  int|null  $referenceId  (e.g., redemption_id)
      * @return bool Returns true if deduction was successful, false if insufficient points
      */
     public function deductRewardPoints(
@@ -862,8 +840,6 @@ class User extends Authenticatable implements MustVerifyEmail
 
     /**
      * Get the current reward points balance of the user.
-     *
-     * @return int
      */
     public function currentRewardPoints(): int
     {
@@ -873,18 +849,18 @@ class User extends Authenticatable implements MustVerifyEmail
     /**
      * Send the email verification notification.
      *
-     * @param string|null $domain The domain from the request context (where user is accessing from)
+     * @param  string|null  $domain  The domain from the request context (where user is accessing from)
      * @return void
      */
     public function sendEmailVerificationNotification(?string $domain = null)
     {
         // Get domain from request if not provided
-        if (!$domain && request()) {
+        if (! $domain && request()) {
             // Use actual request host, not config value
             $scheme = request()->getScheme();
             $host = request()->getHost();
             $port = request()->getPort();
-            $domain = $scheme . '://' . $host . ($port && $port != 80 && $port != 443 ? ':' . $port : '');
+            $domain = $scheme.'://'.$host.($port && $port != 80 && $port != 443 ? ':'.$port : '');
         }
 
         $this->notify(new \App\Notifications\VerifyEmailNotification($domain));
