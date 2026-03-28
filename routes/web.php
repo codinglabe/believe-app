@@ -51,6 +51,7 @@ use App\Http\Controllers\ManageDataController;
 use App\Http\Controllers\StatusCodeController;
 use App\Http\Controllers\UploadDataController;
 use App\Http\Controllers\MarketplaceController;
+use App\Http\Controllers\MarketplaceOrganizationProductController;
 use App\Http\Controllers\UserProfileController;
 use App\Http\Controllers\OrganizationController;
 use App\Http\Controllers\ChunkedUploadController;
@@ -339,6 +340,8 @@ Route::get('/believe-fundme/{slug}', [FundMeController::class, 'show'])->name('f
 
 /* marketplace */
 Route::get('/marketplace', [MarketplaceController::class, 'index'])->name('marketplace.index');
+Route::get('/marketplace/pool/{organization_product}', [MarketplaceOrganizationProductController::class, 'show'])
+    ->name('marketplace.pool.show');
 Route::get('/product/{product}', [ProductController::class, 'show'])->name('product.show');
 Route::post('/product/{product}/bid', [ProductController::class, 'placeBid'])->name('product.bid')->middleware(['auth', 'EnsureEmailIsVerified']);
 // Note: Public route for products moved after resource routes to avoid conflict with /products/create

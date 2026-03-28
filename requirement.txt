@@ -1,167 +1,329 @@
-# Supporter Activity Tracking – Developer Specification
+Yes — you should add a *Merchant filter* now.
 
-## Purpose
+Right now your left filter only shows *Organizations, but the marketplace now has **two seller types*:
 
-Create a simple analytics system to track *supporter engagement* across the platform.
-The goal is to understand *which supporters are active and how they interact with organizations*.
+* Organizations
+* Merchants
 
-Only *five events* will be tracked across the entire system. These events will power the *Supporter Activity Dashboard*.
+So users need a way to narrow products by *seller type* and then by the specific seller.
 
----
+The cleanest setup is this:
 
-# 1. Events to Track
+# Best Filter Structure
 
-The platform should only record the following events:
+## 1. Seller Type
 
+Add a new filter block above Organizations:
 
-donation.completed
-purchase.completed
-courses.completed
-events.completed
-volunteer.signup
+* All Sellers
+* Organizations
+* Merchants
 
+When user selects:
 
-### Event Definitions
-
-*donation.completed*
-Triggered when a supporter successfully completes a donation.
-
-*purchase.completed*
-Triggered when a supporter purchases an item in the Marketplace.
-
-*courses.completed*
-Triggered when a supporter completes a course.
-
-*events.completed*
-Triggered when a supporter attends or completes an event.
-
-*volunteer.signup*
-Triggered when a supporter signs up for a volunteer opportunity.
+* *All Sellers* → show everything
+* *Organizations* → show only organization products
+* *Merchants* → show only merchant products
 
 ---
 
-# 2. Activity Tracking Table
+## 2. Seller List
 
-Create a single table that stores all supporter actions.
+Below that, the second filter changes dynamically.
 
-### Table Name
+### If “Organizations” is selected:
 
-supporter_activity
+show:
 
-### Columns
+* organization names
+* nonprofit names
+* causes if needed later
 
-| Column          | Type      | Description                                          |
-| --------------- | --------- | ---------------------------------------------------- |
-| id              | bigint    | Primary key                                          |
-| supporter_id    | bigint    | ID of the supporter performing the action            |
-| organization_id | bigint    | Organization involved                                |
-| event_type      | string    | One of the five events listed above                  |
-| reference_id    | bigint    | ID of related record (donation, event, course, etc.) |
-| created_at      | timestamp | Time the action occurred                             |
+### If “Merchants” is selected:
 
----
+show:
 
-# 3. Example Data
+* merchant names
+* merchant stores
+* brand names if applicable
 
-| id | supporter_id | organization_id | event_type         | created_at |
-| -- | ------------ | --------------- | ------------------ | ---------- |
-| 1  | 104          | 22              | donation.completed | 2026-05-18 |
-| 2  | 104          | 22              | events.completed   | 2026-05-15 |
-| 3  | 211          | 34              | purchase.completed | 2026-05-18 |
-| 4  | 315          | 22              | volunteer.signup   | 2026-05-14 |
+### If “All Sellers” is selected:
 
----
+you can either:
 
-# 4. Supporter Activity Dashboard
+* show both in one combined list, or
+* hide seller-specific list until type is chosen
 
-The dashboard should display *supporter engagement*, not just totals.
-
-## Section 1 – Active Supporters
-
-List supporters with recent activity.
-
-| Supporter     | Donation | Purchase | Course | Event | Volunteer | Last Activity |
-| ------------- | -------- | -------- | ------ | ----- | --------- | ------------- |
-| Maria Lopez   | ✓        |          | ✓      | ✓     |           | May 18        |
-| David Kim     |          | ✓        |        |       |           | May 18        |
-| Sarah Johnson | ✓        | ✓        |        | ✓     | ✓         | May 17        |
+I recommend hiding the detailed seller list until a type is chosen, to keep it clean.
 
 ---
 
-## Section 2 – Top Supporters
+# What the Left Panel Should Become
 
-Rank supporters by engagement.
+### Filters
 
-| Rank | Supporter     | Donations | Purchases | Courses | Events | Volunteers |
-| ---- | ------------- | --------- | --------- | ------- | ------ | ---------- |
-| 1    | Sarah Johnson | 3         | 2         | 1       | 2      | 1          |
-| 2    | Maria Lopez   | 2         | 0         | 3       | 1      | 0          |
-| 3    | David Kim     | 1         | 3         | 0       | 0      | 0          |
+*Seller Type*
+
+* All Sellers
+* Organizations
+* Merchants
+
+*Organizations*
+(show only if Organizations selected)
+
+*Merchants*
+(show only if Merchants selected)
+
+*Categories*
+
+* Shirts
+* Apparel & Accessories
+* Automotive & Tools
+* etc.
+
+*Price*
+
+* Min / Max
+
+*Availability*
+
+* In stock
+* Out of stock
+
+*Listing Type* later if needed:
+
+* Buy Now
+* Auction / Bid
+* Donation-linked products
 
 ---
 
-## Section 3 – Engagement Summary
+# Why This Matters
 
-| Metric              | Count |
-| ------------------- | ----- |
-| Active Supporters   | 248   |
-| Donors              | 142   |
-| Buyers              | 87    |
-| Course Participants | 95    |
-| Event Participants  | 133   |
-| Volunteers          | 41    |
+Without this, users cannot easily tell:
+
+* whether they are buying from a nonprofit
+* whether they are buying from a merchant
+* who fulfills the item
+* what kind of seller they are supporting
+
+That matters a lot for BIU because part of the value is:
+
+* *supporting organizations*
+* *shopping merchant products*
+* possibly showing which purchases generate nonprofit benefit
 
 ---
 
-# 5. Supporter Profile View
+# Recommended UI Label
 
-When clicking a supporter, show their activity timeline.
+Instead of only “Organizations,” use this wording:
+
+*Seller Type*
+*Seller*
 
 Example:
 
-### Sarah Johnson – Activity Timeline
+text
+Filters
 
-| Date   | Event              |
-| ------ | ------------------ |
-| May 18 | donation.completed |
-| May 17 | volunteer.signup   |
-| May 15 | events.completed   |
-| May 10 | purchase.completed |
-| May 8  | courses.completed  |
+Seller Type
+○ All Sellers
+○ Organizations
+○ Merchants
+
+Seller
+[ ] Stuttie Learning Inc
+[ ] Test Organization for Seeding
+[ ] Merchant A
+[ ] Merchant B
+
+Categories
+[ ] Shirts
+[ ] Apparel & Accessories
+...
+
+
+That is better than having separate permanent blocks for both because it keeps the sidebar shorter.
 
 ---
 
-# 6. Key Objective
+# Better Option for Your BIU Vision
 
-This system allows the platform to measure:
+Since BIU is mission-driven, you could also use:
 
-* Which supporters are most engaged
-* How supporters contribute (money, purchases, learning, volunteering)
-* Recent supporter activity
-* Overall supporter participation across organizations
+*Sold By*
 
-This activity data will power the *Supporter Engagement Dashboard* used by organizations.
+* All
+* Organizations
+* Merchants
+
+That sounds more marketplace-friendly.
 
 ---
 
-# Summary
+# Developer Direction
 
-Track only *five events* and store them in a single *supporter_activity* table.
+Tell your developer to add:
 
-Events:
+## Frontend
+
+Add a new filter group:
+
+* seller_type
+
+Values:
+
+* all
+* organization
+* merchant
+
+Add seller list filter:
+
+* seller_ids[]
+
+The seller list should refresh based on selected seller type.
+
+---
+
+## Backend logic
+
+Products table or listing query should support:
+
+* seller_type
+* organization_id nullable
+* merchant_id nullable
+
+Example logic:
+
+* if seller_type = organization → query organization products only
+* if seller_type = merchant → query merchant products only
+* if seller_ids[] present → filter by those sellers
+
+---
+
+## API / Query Params
+
+Example:
+
+php
+/products?seller_type=merchant&seller_ids[]=12&category_ids[]=3
 
 
-donation.completed
-purchase.completed
-courses.completed
-events.completed
-volunteer.signup
+or
+
+php
+/products?seller_type=organization&seller_ids[]=4
 
 
-From this data the system can generate:
+---
 
-* Active supporters
-* Top supporters
-* Supporter activity timeline
-* Engagement metrics
-* Organization supporter insights
+# Database Direction
+
+Each product should clearly carry:
+
+* seller_type = organization | merchant
+* seller_id
+* optional direct relation fields if needed:
+
+  * organization_id
+  * merchant_id
+
+Best long-term structure is:
+
+text
+products
+- id
+- seller_type
+- seller_id
+- title
+- slug
+- price
+- quantity
+- category_id
+- status
+
+
+This is cleaner than separate product systems.
+
+---
+
+# What I would change on this screen
+
+1. Replace *Organizations* filter with *Sold By*
+2. Under Sold By add:
+
+   * All
+   * Organizations
+   * Merchants
+3. Show seller names below based on selection
+4. Add badge on each product card:
+
+   * Organization
+   * Merchant
+
+Example on the card:
+
+* Organization
+* Merchant
+
+That way users know immediately what type of seller posted the item.
+
+---
+
+# My recommendation
+
+Do *not* just add a second accordion called “Merchants” under Organizations.
+
+Instead, restructure the filter into:
+
+* *Sold By / Seller Type*
+* *Seller Name*
+* *Categories*
+
+That is cleaner and more scalable.
+
+Here’s the exact note you can give your developer:
+
+Marketplace filter update
+
+Because the marketplace now includes both Organization Products and Merchant Products, update the product filter sidebar to support both seller types.
+
+Required changes:
+
+1. Replace the current “Organizations” filter section with a new top-level filter called “Sold By” or “Seller Type.”
+2. Add these options under Seller Type:
+
+   * All Sellers
+   * Organizations
+   * Merchants
+3. Add a second dynamic filter section called “Seller”:
+
+   * If Seller Type = Organizations, show organization names only
+   * If Seller Type = Merchants, show merchant names only
+   * If Seller Type = All Sellers, either hide the Seller list until a type is selected, or show a combined seller list grouped by type
+4. Keep Categories as a separate filter section
+5. Add optional future-ready filters for:
+
+   * Price range
+   * Availability
+   * Listing type (Buy Now / Bid)
+
+Backend requirements:
+
+* Products must support seller_type with values: organization or merchant
+* Products must support seller_id
+* Filtering should allow:
+
+  * seller_type only
+  * seller_type + seller_ids[]
+  * category_ids[]
+  * stock status
+
+UI requirements:
+
+* Add a visible badge on each product card showing whether the item is sold by an Organization or a Merchant
+* Keep the filter experience simple and mobile-friendly
+* Do not create two separate permanent filter accordions for Organizations and Merchants; use one scalable seller-type system instead
+
+If you want, I can turn this into a full Laravel developer spec with controller, query, migration, and Blade/Vue filter logic.
