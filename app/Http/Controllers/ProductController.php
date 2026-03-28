@@ -2,33 +2,35 @@
 
 namespace App\Http\Controllers;
 
-use Inertia\Inertia;
-use Inertia\Response;
-use App\Models\Product;
-use App\Models\Organization;
 use App\Models\Bid;
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Facades\Auth;
 use App\Models\Category;
-use App\Models\ProductVariant;
-use App\Services\PrintifyService;
-use Illuminate\Support\Facades\Notification;
-use App\Notifications\BidCancelledNotification;
-use App\Notifications\BidWonNotification;
-use App\Notifications\BidLostNotification;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\OrderShippingInfo;
+use App\Models\Organization;
+use App\Models\Product;
+use App\Models\ProductVariant;
+use App\Models\ShippoShipment;
 use App\Models\StateSalesTax;
-use Laravel\Cashier\Cashier;
-use Illuminate\Support\Str;
+use App\Notifications\BidCancelledNotification;
+use App\Notifications\BidLostNotification;
+use App\Notifications\BidWonNotification;
+use App\Services\PrintifyService;
 use App\Services\ShippoService;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Notification;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
+use Inertia\Inertia;
+use Inertia\Response;
+use Laravel\Cashier\Cashier;
 use App\Services\SupporterActivityService;
 
 class ProductController extends BaseController
 {
     protected $printifyService;
+
     protected ShippoService $shippoService;
 
     public function __construct(PrintifyService $printifyService, ShippoService $shippoService)
@@ -53,7 +55,7 @@ class ProductController extends BaseController
         $query = Product::query();
 
         // Only show products for current user
-        if (Auth::user()->role == "organization") {
+        if (Auth::user()->role == 'organization') {
             $query->where('organization_id', @$organization->id);
         }
 
@@ -93,7 +95,7 @@ class ProductController extends BaseController
 
         // Get Printify blueprints for product types
         $blueprints = [];
-        if (Auth::user()->role === "admin" || Auth::user()->role === "organization") {
+        if (Auth::user()->role === 'admin' || Auth::user()->role === 'organization') {
             try {
                 $blueprints = $this->printifyService->getBlueprints();
             } catch (\Exception $e) {
@@ -101,12 +103,11 @@ class ProductController extends BaseController
             }
         }
 
-
         return Inertia::render('products/create', [
             'categories' => $categories,
             'organizations' => $organizations,
             'blueprints' => $blueprints,
-            'printify_enabled' => !empty($blueprints),
+            'printify_enabled' => ! empty($blueprints),
         ]);
     }
 
@@ -122,7 +123,7 @@ class ProductController extends BaseController
             $product = Product::with([
                 'organization',
                 'categories',
-                'variants'
+                'variants',
             ])->findOrFail($id);
 
             return Inertia::render('products/show', [
@@ -135,7 +136,7 @@ class ProductController extends BaseController
             $product = Product::with([
                 'organization',
                 'categories',
-                'variants'
+                'variants',
             ])->findOrFail($id);
 
             // Check if product is available for marketplace
@@ -157,7 +158,7 @@ class ProductController extends BaseController
         $product = Product::with([
             'organization',
             'categories',
-            'variants'
+            'variants',
         ])->findOrFail($id);
 
         // Check if product is available for marketplace
@@ -185,7 +186,7 @@ class ProductController extends BaseController
                 }
 
             } catch (\Exception $e) {
-                \Log::error('Error fetching Printify product: ' . $e->getMessage());
+                \Log::error('Error fetching Printify product: '.$e->getMessage());
                 // Fallback: use database variants if available
                 $variantsWithImages = [];
                 if ($product->variants->isNotEmpty()) {
@@ -217,12 +218,12 @@ class ProductController extends BaseController
                     'attributes' => [],
                     'images' => $product->image ? [['src' => $product->image, 'position' => 'front', 'is_default' => true]] : [],
                     'primary_image' => $product->image,
-                ]
+                ],
             ];
         }
 
         // Get first available variant
-        $firstVariant = !empty($variantsWithImages) ? $variantsWithImages[0] : null;
+        $firstVariant = ! empty($variantsWithImages) ? $variantsWithImages[0] : null;
 
         // Bidding info for auction / blind bid (only when bidding is still open; no winner yet)
         $biddingInfo = null;
@@ -281,11 +282,11 @@ class ProductController extends BaseController
 
         foreach ($variants as $variant) {
             // শুধু available variants নিন
-            if (!empty($availableVariantIds) && !in_array($variant['id'], $availableVariantIds)) {
+            if (! empty($availableVariantIds) && ! in_array($variant['id'], $availableVariantIds)) {
                 continue;
             }
 
-            if (!$variant['is_available']) {
+            if (! $variant['is_available']) {
                 continue;
             }
 
@@ -296,7 +297,7 @@ class ProductController extends BaseController
                     $variantImages[] = [
                         'src' => $image['src'],
                         'position' => $image['position'],
-                        'is_default' => $image['is_default'] ?? false
+                        'is_default' => $image['is_default'] ?? false,
                     ];
                 }
             }
@@ -314,7 +315,7 @@ class ProductController extends BaseController
                 'grams' => $variant['grams'],
                 'attributes' => $attributes,
                 'images' => $variantImages,
-                'primary_image' => !empty($variantImages) ? $variantImages[0]['src'] : null,
+                'primary_image' => ! empty($variantImages) ? $variantImages[0]['src'] : null,
             ];
         }
 
@@ -325,17 +326,17 @@ class ProductController extends BaseController
     {
         $attributes = [];
         $attributes['size'] = $variant['title'];
+
         return $attributes;
     }
 
     /**
- * Get shipping costs from Printify API
- */
+     * Get shipping costs from Printify API
+     */
     // private function getProductMakingCosts($blueprintId, $providerId): array
     // {
     //     try {
     //         $response = $this->printifyService->getProductShippingCosts($blueprintId, $providerId);
-
 
     //         $profiles = $response['profiles'] ?? [];
 
@@ -432,7 +433,6 @@ class ProductController extends BaseController
 
     //         $categories = $validated['categories'] ?? [];
     //         unset($validated['categories']);
-
 
     //         // Handle Printify product creation
     //         $printifyProductId = null;
@@ -586,14 +586,14 @@ class ProductController extends BaseController
                             // If subscription check fails, log but don't block
                             \Log::warning('Failed to check subscription status', [
                                 'user_id' => $organization->user->id,
-                                'error' => $e->getMessage()
+                                'error' => $e->getMessage(),
                             ]);
                         }
                     }
 
-                    if (!$hasActiveSubscription) {
+                    if (! $hasActiveSubscription) {
                         return redirect()->back()->withErrors([
-                            'subscription' => 'An active subscription is required to create and sell products. Please subscribe to continue.'
+                            'subscription' => 'An active subscription is required to create and sell products. Please subscribe to continue.',
                         ])->with('subscription_required', true);
                     }
                 }
@@ -706,7 +706,7 @@ class ProductController extends BaseController
             $imagePath = null;
             if ($request->hasFile('image')) {
                 $image = $request->file('image');
-                $imageName = time() . '_' . $image->getClientOriginalName();
+                $imageName = time().'_'.$image->getClientOriginalName();
                 $imagePath = $image->storeAs('products', $imageName, 'public');
             }
 
@@ -725,15 +725,14 @@ class ProductController extends BaseController
                 // Step 1: Create product with selected variants
                 $printifyProductId = $this->createPrintifyProduct($request, $validated, $selectedVariantIds);
 
-                if (!$printifyProductId) {
+                if (! $printifyProductId) {
                     throw new \Exception('Failed to create Printify product');
                 }
 
                 // Step 2: Get product details to read real cost
                 $productDetails = $this->printifyService->getProduct($printifyProductId);
 
-
-                if (!$productDetails || !isset($productDetails['variants'])) {
+                if (! $productDetails || ! isset($productDetails['variants'])) {
                     throw new \Exception('Failed to fetch product details');
                 }
 
@@ -759,7 +758,7 @@ class ProductController extends BaseController
                     $updatedVariants[] = [
                         'id' => $variant['id'],
                         'price' => $sellingPriceInCents,
-                        'is_enabled' => $isSelected // Only enable selected variants
+                        'is_enabled' => $isSelected, // Only enable selected variants
                     ];
 
                     \Log::info('Prepared variant for update', [
@@ -782,11 +781,11 @@ class ProductController extends BaseController
                             'placeholders' => [
                                 [
                                     'position' => 'front',
-                                    'images' => $this->preparePrintifyImages($request->file('printify_images') ?? [])
-                                ]
-                            ]
-                        ]
-                    ]
+                                    'images' => $this->preparePrintifyImages($request->file('printify_images') ?? []),
+                                ],
+                            ],
+                        ],
+                    ],
                 ];
 
                 // Update the product
@@ -795,15 +794,15 @@ class ProductController extends BaseController
                 if (isset($updateResponse['status']) && $updateResponse['status'] === 'error') {
                     \Log::error('Printify update failed', [
                         'payload' => $updatePayload,
-                        'response' => $updateResponse
+                        'response' => $updateResponse,
                     ]);
-                    throw new \Exception('Printify update failed: ' . $updateResponse['message']);
+                    throw new \Exception('Printify update failed: '.$updateResponse['message']);
                 }
 
                 \Log::info('Printify product updated successfully', [
                     'product_id' => $printifyProductId,
                     'total_variants' => count($updatedVariants),
-                    'enabled_variants' => count($selectedVariantIds)
+                    'enabled_variants' => count($selectedVariantIds),
                 ]);
             }
 
@@ -856,7 +855,7 @@ class ProductController extends BaseController
             $product = Product::create($productData);
             $product->categories()->sync($categories);
 
-            if (Auth::user()->role == "organization") {
+            if (Auth::user()->role == 'organization') {
                 $organization = Organization::where('user_id', Auth::id())->first();
                 $product->update([
                     'owned_by' => 'organization',
@@ -884,11 +883,12 @@ class ProductController extends BaseController
             }
 
             $productType = $isPrintifyProduct ? 'Printify' : 'manual';
+
             return redirect()->route('products.index')
-                ->with('success', ucfirst($productType) . ' product created successfully' . ($printifyProductId ? ' in Printify' : ''));
+                ->with('success', ucfirst($productType).' product created successfully'.($printifyProductId ? ' in Printify' : ''));
 
         } catch (\Exception $e) {
-            return back()->withErrors(['printify_error' => 'Failed to create product: ' . $e->getMessage()]);
+            return back()->withErrors(['printify_error' => 'Failed to create product: '.$e->getMessage()]);
         }
     }
 
@@ -909,7 +909,7 @@ class ProductController extends BaseController
                 return [
                     'id' => (int) $variantId,
                     'price' => $tempPrice,
-                    'is_enabled' => true
+                    'is_enabled' => true,
                 ];
             }, $selectedVariantIds),
             'print_areas' => [
@@ -918,11 +918,11 @@ class ProductController extends BaseController
                     'placeholders' => [
                         [
                             'position' => 'front',
-                            'images' => $this->preparePrintifyImages($request->printify_images ?? [])
-                        ]
-                    ]
-                ]
-            ]
+                            'images' => $this->preparePrintifyImages($request->printify_images ?? []),
+                        ],
+                    ],
+                ],
+            ],
         ];
 
         $printifyProduct = $this->printifyService->createProduct($printifyData);
@@ -960,7 +960,6 @@ class ProductController extends BaseController
     //     return $printifyProduct['id'] ?? null;
     // }
 
-
     private function calculateSellingPrice(int $cost, int $profitPercentage)
     {
         return $cost + ($cost * $profitPercentage / 100);
@@ -992,10 +991,9 @@ class ProductController extends BaseController
                 continue;
             }
 
-            $filename = time() . '_' . uniqid() . '.' . $imageUrl->getClientOriginalExtension();
+            $filename = time().'_'.uniqid().'.'.$imageUrl->getClientOriginalExtension();
             $path = $imageUrl->storeAs('designs', $filename, 'public');
-            $fullUrl = asset('storage/' . $path);
-
+            $fullUrl = asset('storage/'.$path);
 
             try {
 
@@ -1007,7 +1005,7 @@ class ProductController extends BaseController
 
                     // গুরুত্বপূর্ণ: field name হবে "contents" (content না)
                     $payload = [
-                        'file_name' => $filename . '.' . $extension,
+                        'file_name' => $filename.'.'.$extension,
                         'contents' => $base64,  // এখানে contents হবে, content না
                     ];
 
@@ -1018,12 +1016,12 @@ class ProductController extends BaseController
                         ->post('https://api.printify.com/v1/uploads/images.json', $payload)
                         ->throw()
                         ->json();
-                }else{
+                } else {
                     // First upload the image to Printify
                     $uploadResult = $this->printifyService->uploadImage($fullUrl);
                 }
 
-                if (!isset($uploadResult['id'])) {
+                if (! isset($uploadResult['id'])) {
                     throw new \Exception('Failed to get image ID from Printify upload');
                 }
 
@@ -1033,15 +1031,15 @@ class ProductController extends BaseController
                     'y' => 0.5,
                     'scale' => 1,
                     'angle' => 0,
-                    'url' => $imageUrl
+                    'url' => $imageUrl,
                 ];
 
             } catch (\Exception $e) {
                 \Log::error('Failed to prepare Printify image', [
                     'image_url' => $imageUrl,
-                    'error' => $e->getMessage()
+                    'error' => $e->getMessage(),
                 ]);
-                throw new \Exception("Failed to process image: {$imageUrl}. " . $e->getMessage());
+                throw new \Exception("Failed to process image: {$imageUrl}. ".$e->getMessage());
             }
         }
 
@@ -1051,7 +1049,6 @@ class ProductController extends BaseController
 
         return $preparedImages;
     }
-
 
     /**
      * Show the form for editing the specified resource.
@@ -1071,7 +1068,6 @@ class ProductController extends BaseController
             try {
                 $printifyResponse = $this->printifyService->getProduct($product->printify_product_id);
 
-
                 if ($printifyResponse && isset($printifyResponse['id'])) { // Check if response has product data
                     $printifyData = $printifyResponse;
 
@@ -1084,7 +1080,7 @@ class ProductController extends BaseController
                     }
                 }
             } catch (\Exception $e) {
-                \Log::error('Failed to fetch Printify product data: ' . $e->getMessage());
+                \Log::error('Failed to fetch Printify product data: '.$e->getMessage());
             }
         }
 
@@ -1162,14 +1158,14 @@ class ProductController extends BaseController
             $successMessage = 'Product updated successfully';
             if ($quantityDifference != 0) {
                 $action = $quantityDifference > 0 ? 'increased' : 'decreased';
-                $successMessage .= ". Quantity {$action} by " . abs($quantityDifference);
+                $successMessage .= ". Quantity {$action} by ".abs($quantityDifference);
             }
 
             return redirect()->route('products.index')
                 ->with('success', $successMessage);
 
         } catch (\Exception $e) {
-            return back()->withErrors(['error' => 'Failed to update product: ' . $e->getMessage()]);
+            return back()->withErrors(['error' => 'Failed to update product: '.$e->getMessage()]);
         }
     }
 
@@ -1193,7 +1189,7 @@ class ProductController extends BaseController
                 'printify_product_id' => $product->printify_product_id,
                 'old_status' => $oldStatus,
                 'new_status' => $newStatus,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
 
             // Don't throw the error to prevent the whole update from failing
@@ -1212,7 +1208,7 @@ class ProductController extends BaseController
             if ($publishResult['success']) {
                 \Log::info('Printify product auto-published', [
                     'product_id' => $product->id,
-                    'printify_product_id' => $product->printify_product_id
+                    'printify_product_id' => $product->printify_product_id,
                 ]);
 
                 // Mark publishing as succeeded
@@ -1225,14 +1221,14 @@ class ProductController extends BaseController
                 \Log::warning('Printify product auto-publish failed', [
                     'product_id' => $product->id,
                     'printify_product_id' => $product->printify_product_id,
-                    'error' => $publishResult['error'] ?? 'Unknown error'
+                    'error' => $publishResult['error'] ?? 'Unknown error',
                 ]);
             }
         } catch (\Exception $e) {
             \Log::error('Auto-publish Printify product failed', [
                 'product_id' => $product->id,
                 'printify_product_id' => $product->printify_product_id,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
         }
     }
@@ -1248,20 +1244,20 @@ class ProductController extends BaseController
             if ($unpublishResult['success']) {
                 \Log::info('Printify product auto-unpublished', [
                     'product_id' => $product->id,
-                    'printify_product_id' => $product->printify_product_id
+                    'printify_product_id' => $product->printify_product_id,
                 ]);
             } else {
                 \Log::warning('Printify product auto-unpublish failed', [
                     'product_id' => $product->id,
                     'printify_product_id' => $product->printify_product_id,
-                    'error' => $unpublishResult['error'] ?? 'Unknown error'
+                    'error' => $unpublishResult['error'] ?? 'Unknown error',
                 ]);
             }
         } catch (\Exception $e) {
             \Log::error('Auto-unpublish Printify product failed', [
                 'product_id' => $product->id,
                 'printify_product_id' => $product->printify_product_id,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
         }
     }
@@ -1353,17 +1349,17 @@ class ProductController extends BaseController
             'address_line1' => 'required|string|max:255',
             'address_line2' => 'nullable|string|max:255',
             'zip' => 'required|string|max:20',
-            'country' => 'required|string|size:2',
-            'city' => 'nullable|string|max:100',
+            'country' => 'required|string|max:2',
+            'city' => 'required|string|max:100',
             'state' => 'nullable|string|max:50',
         ]);
 
         $user = $request->user();
-        if (!$user) {
+        if (! $user) {
             return redirect()->route('login')->with('error', 'Please log in to place a bid.');
         }
 
-        if (!$product->isBiddable()) {
+        if (! $product->isBiddable()) {
             return back()->withErrors(['bid' => 'This product does not accept bids.']);
         }
 
@@ -1386,12 +1382,12 @@ class ProductController extends BaseController
         $amount = (float) $request->bid_amount;
         if ($amount < $minBid) {
             return back()->withErrors([
-                'bid' => 'Your bid must be at least $' . number_format($minBid, 2) . '.',
+                'bid' => 'Your bid must be at least $'.number_format($minBid, 2).'.',
             ]);
         }
         if ($product->isAuction() && $increment > 0 && abs(($amount - $minBid) % $increment) > 0.001) {
             return back()->withErrors([
-                'bid' => 'Bid must be in increments of $' . number_format($increment, 2) . '.',
+                'bid' => 'Bid must be in increments of $'.number_format($increment, 2).'.',
             ]);
         }
 
@@ -1403,31 +1399,40 @@ class ProductController extends BaseController
             }
             if ($existing && $product->blind_bid_type === 'sealed_revisable') {
                 $existing->update(['bid_amount' => $amount]);
+
                 return back()->with('success', 'Your bid has been updated.');
             }
         }
 
-        $city = $request->filled('city') ? $request->city : $user->city;
-        $state = $request->filled('state') ? $request->state : $user->state;
-        $country = strtoupper($request->country);
-        $zip = $request->zip;
+        $city = trim((string) $request->city);
+        $state = trim((string) ($request->state ?? ''));
+        $countryIso = $this->shippoService->normalizeCountryToIso2(strtoupper((string) $request->country));
+        $zip = trim((string) $request->zip);
 
-        if (empty($city) || empty($state) || empty($zip)) {
+        if ($city === '' || $zip === '') {
             return back()->withErrors([
-                'bid' => 'Please provide a complete shipping location (city/state/zip).',
+                'bid' => 'Please provide city and postal/ZIP code for shipping.',
             ])->withInput();
         }
+
+        $needsState = in_array($countryIso, ['US', 'CA', 'AU'], true);
+        if ($needsState && $state === '') {
+            return back()->withErrors([
+                'bid' => 'Please provide state or province for this country.',
+            ])->withInput();
+        }
+
         Bid::create([
             'product_id' => $product->id,
             'user_id' => $user->id,
             'bid_amount' => $amount,
             'status' => 'active',
             'city' => $city,
-            'state' => $state,
+            'state' => $state !== '' ? $state : null,
             'address_line1' => $request->address_line1,
             'address_line2' => $request->address_line2,
             'zip' => $zip,
-            'country' => $country,
+            'country' => $countryIso,
         ]);
 
         return back()->with('success', 'Your bid has been placed.');
@@ -1453,12 +1458,12 @@ class ProductController extends BaseController
             ->through(function (Bid $bid) {
                 $city = $bid->city ?? $bid->user?->city;
                 $state = $bid->state ?? $bid->user?->state;
-                $location = trim(($city ?? '') . ($city && $state ? ', ' : '') . ($state ?? '')) ?: '—';
+                $location = trim(($city ?? '').($city && $state ? ', ' : '').($state ?? '')) ?: '—';
 
                 return [
                     'id' => $bid->id,
                     'bid_amount' => (float) $bid->bid_amount,
-                    'bid_amount_formatted' => '$' . number_format((float) $bid->bid_amount, 2),
+                    'bid_amount_formatted' => '$'.number_format((float) $bid->bid_amount, 2),
                     'status' => $bid->status,
                     'submitted_at' => optional($bid->submitted_at ?? $bid->created_at)->toIso8601String(),
                     'location' => $location,
@@ -1548,6 +1553,7 @@ class ProductController extends BaseController
 
         if (! $winningBid) {
             $product->bids()->whereIn('status', ['active', 'winning'])->update(['status' => 'lost']);
+
             return back()->with('info', 'No valid winning bid (none met reserve price if set). All bidders marked as lost.');
         }
 
@@ -1672,6 +1678,10 @@ class ProductController extends BaseController
             abort(422, 'Product organization is missing.');
         }
 
+        $organization->loadMissing('user');
+        $product->loadMissing('user');
+        $sellerContact = $this->shippoService->getSellerContactForShippo($organization, $product);
+
         // Build ship-from (seller/organization) address
         $shipFrom = [
             'name' => $product->ship_from_name ?: ($organization->contact_name ?: $organization->name ?: 'Seller'),
@@ -1679,12 +1689,14 @@ class ProductController extends BaseController
             'city' => $product->ship_from_city ?: $organization->city,
             'state' => $product->ship_from_state ?: $organization->state,
             'zip' => $product->ship_from_zip ?: $organization->zip,
-            'country' => $product->ship_from_country ?: 'US',
-            'phone' => '',
-            'email' => '',
+            'country' => $this->shippoService->normalizeCountryToIso2((string) ($product->ship_from_country ?: 'US')),
+            'phone' => $sellerContact['phone'],
+            'email' => $sellerContact['email'],
         ];
 
         // Build ship-to (winner) address from bid
+        $countryIso = $this->shippoService->normalizeCountryToIso2((string) ($winningBid->country ?: 'US'));
+
         $shipTo = [
             'name' => $user->name ?: 'Customer',
             'street1' => $winningBid->address_line1,
@@ -1692,13 +1704,18 @@ class ProductController extends BaseController
             'city' => $winningBid->city ?: ($user->city ?? ''),
             'state' => $winningBid->state ?: ($user->state ?? ''),
             'zip' => $winningBid->zip,
-            'country' => strtoupper($winningBid->country ?: 'US'),
+            'country' => $countryIso,
             'phone' => $user->contact_number ?: '',
             'email' => $user->email ?: '',
         ];
 
-        if (empty($shipTo['city']) || empty($shipTo['state']) || empty($shipTo['zip'])) {
-            abort(422, 'Bid location is incomplete (city/state/zip).');
+        if (empty($shipTo['city']) || empty($shipTo['zip'])) {
+            abort(422, 'Bid location is incomplete (city/zip).');
+        }
+
+        $needsState = in_array($countryIso, ['US', 'CA', 'AU'], true);
+        if ($needsState && trim((string) ($shipTo['state'] ?? '')) === '') {
+            abort(422, 'Bid location is incomplete (state/region required for this country).');
         }
 
         // Parcel defaults (override with product-specific values)
@@ -1769,7 +1786,7 @@ class ProductController extends BaseController
         ]);
 
         $checkoutOptions = [
-            'success_url' => route('products.winning-bid.success', ['product' => $product->id]) . '?session_id={CHECKOUT_SESSION_ID}',
+            'success_url' => route('products.winning-bid.success', ['product' => $product->id]).'?session_id={CHECKOUT_SESSION_ID}',
             'cancel_url' => route('user.profile.bid-wins'),
             'metadata' => [
                 'product_id' => (string) $product->id,
@@ -1784,10 +1801,11 @@ class ProductController extends BaseController
         ];
         $checkout = $user->checkoutCharge(
             $amountCents,
-            'Winning bid: ' . $product->name,
+            'Winning bid: '.$product->name,
             1,
             $checkoutOptions
         );
+
         return Inertia::location($checkout->url);
     }
 
@@ -1824,7 +1842,7 @@ class ProductController extends BaseController
                 abort(422, 'Winner shipping address is missing.');
             }
 
-            $ref = 'ORD-BID-' . $product->id . '-' . strtoupper(Str::random(6));
+            $ref = 'ORD-BID-'.$product->id.'-'.strtoupper(Str::random(6));
             $order = Order::create([
                 'user_id' => $user->id,
                 'organization_id' => $product->organization_id,
@@ -1847,7 +1865,7 @@ class ProductController extends BaseController
             $lastName = count($nameParts) > 1 ? implode(' ', array_slice($nameParts, 1)) : '';
             $shippingAddress = (string) $winningBid->address_line1;
             if (! empty($winningBid->address_line2)) {
-                $shippingAddress .= ', ' . (string) $winningBid->address_line2;
+                $shippingAddress .= ', '.(string) $winningBid->address_line2;
             }
 
             OrderShippingInfo::create([
@@ -1874,7 +1892,7 @@ class ProductController extends BaseController
             ]);
 
             // Auto-create Shippo label immediately after payment success
-            if ($this->shippoService->isConfigured() && ! empty($winningBid->shippo_rate_object_id)) {
+            if ($this->shippoService->isConfigured() && empty($order->printify_order_id) && ! empty($winningBid->shippo_rate_object_id)) {
                 $shippoResult = $this->shippoService->purchaseLabel((string) $winningBid->shippo_rate_object_id);
                 if (($shippoResult['success'] ?? false) === true) {
                     $order->update([
@@ -1885,6 +1903,34 @@ class ProductController extends BaseController
                         'carrier' => $shippoResult['carrier'] ?? null,
                         'shipping_status' => 'label_created',
                     ]);
+
+                    $order->load(['items.product', 'shippingInfo']);
+                    $parcel = $this->shippoService->getParcelSnapshot($order);
+                    $shippingInfo = $order->shippingInfo;
+                    $shipToName = trim(($shippingInfo?->first_name ?? '').' '.($shippingInfo?->last_name ?? ''));
+
+                    ShippoShipment::updateOrCreate(
+                        ['order_id' => $order->id, 'product_type' => 'manual'],
+                        [
+                            'shippo_shipment_id' => null,
+                            'selected_rate_object_id' => (string) $winningBid->shippo_rate_object_id,
+                            'shippo_transaction_id' => $shippoResult['transaction_id'] ?? null,
+                            'tracking_number' => $shippoResult['tracking_number'] ?? null,
+                            'label_url' => $shippoResult['label_url'] ?? null,
+                            'carrier' => $shippoResult['carrier'] ?? null,
+                            'ship_to_name' => $shipToName ?: null,
+                            'ship_to_street1' => (string) ($shippingInfo?->shipping_address ?? ''),
+                            'ship_to_city' => $shippingInfo?->city ?: null,
+                            'ship_to_state' => $shippingInfo?->state ?: null,
+                            'ship_to_zip' => $shippingInfo?->zip ?: null,
+                            'ship_to_country' => $shippingInfo?->country ?: null,
+                            'parcel_weight_oz' => $parcel['weight'] ?? null,
+                            'parcel_length_in' => $parcel['length'] ?? null,
+                            'parcel_width_in' => $parcel['width'] ?? null,
+                            'parcel_height_in' => $parcel['height'] ?? null,
+                            'status' => 'label_created',
+                        ]
+                    );
                 }
             }
 
@@ -1908,7 +1954,8 @@ class ProductController extends BaseController
             return redirect()->route('user.profile.orders')->with('success', 'Payment complete. Your order has been placed.');
         } catch (\Exception $e) {
             \DB::rollBack();
-            \Log::error('Winning bid payment success error: ' . $e->getMessage());
+            \Log::error('Winning bid payment success error: '.$e->getMessage());
+
             return redirect()->route('user.profile.bid-wins')->with('error', 'Failed to create order.');
         }
     }
@@ -1922,26 +1969,26 @@ class ProductController extends BaseController
 
         $product = Product::findOrFail($id);
 
-         if ($product->user_id !== Auth::id()) {
+        if ($product->user_id !== Auth::id()) {
             abort(403, 'Unauthorized action.');
         }
 
         try {
             // Delete from Printify if it exists
             if ($product->printify_product_id) {
-                    $this->printifyService->deleteProduct(
-                        $product->printify_product_id
-                    );
+                $this->printifyService->deleteProduct(
+                    $product->printify_product_id
+                );
             }
 
             $product->categories()->detach();
             $product->delete();
 
             return redirect()->route('products.index')
-                ->with('success', 'Product deleted successfully' . ($product->printify_product_id ? ' from Printify' : ''));
+                ->with('success', 'Product deleted successfully'.($product->printify_product_id ? ' from Printify' : ''));
 
         } catch (\Exception $e) {
-            return back()->withErrors(['printify_error' => 'Failed to delete product: ' . $e->getMessage()]);
+            return back()->withErrors(['printify_error' => 'Failed to delete product: '.$e->getMessage()]);
         }
     }
 }

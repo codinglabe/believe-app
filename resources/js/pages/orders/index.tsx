@@ -46,6 +46,7 @@ interface Category {
     label_url?: string | null;
     shipping_status?: string | null;
     carrier?: string | null;
+    delivery_status_label?: string | null;
 }
 
 interface Props {
@@ -368,6 +369,17 @@ export default function Index({ orders, filters, allowedPerPage }: Props) {
                                                     >
                                                         {item.status}
                                                     </Badge>
+                                                )}
+                                            </td>
+                                            <td className="px-4 py-3 min-w-36 text-sm">
+                                                {item.delivery_status_label ? (
+                                                    <span className="text-foreground" title={item.shipping_status || ''}>
+                                                        {item.delivery_status_label}
+                                                    </span>
+                                                ) : item.tracking_number ? (
+                                                    <span className="text-muted-foreground">Tracking active</span>
+                                                ) : (
+                                                    <span className="text-muted-foreground">—</span>
                                                 )}
                                             </td>
                                             <td className="px-4 py-3 min-w-32">

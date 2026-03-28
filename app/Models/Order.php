@@ -9,6 +9,18 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Order extends Model
 {
+    /**
+     * Included when the model is converted to an array / JSON (e.g. Inertia).
+     * Dynamic properties set only on the PHP object are NOT serialized — use accessors instead.
+     */
+    protected $appends = [
+        'delivery_status_label',
+        'is_printify_order',
+        'has_manual_product',
+        'product_type',
+        'can_create_shippo_label',
+    ];
+
     protected $fillable = [
         'user_id',
         'reference_number',
@@ -72,5 +84,62 @@ class Order extends Model
     public function orderSplit(): HasOne
     {
         return $this->hasOne(OrderSplit::class);
+    }
+
+    public function getIsPrintifyOrderAttribute(): bool
+    {
+        return ! empty($this->printify_order_id);
+    }
+
+    public function getHasManualProductAttribute(): bool
+    {
+        if (! $this->relationLoaded('items')) {
+            return false;
+        }
+
+        return $this->items->contains(function ($item) {
+            $product = $item->product ?? null;
+
+            return $product && empty($product->printify_product_id);
+        });
+    }
+
+    public function getProductTypeAttribute(): string
+    {
+        if ($this->is_printify_order) {
+            return 'Printify';
+        }
+        if ($this->has_manual_product) {
+            return 'Manual';
+        }
+
+        return 'Mixed';
+    }
+
+    public function getCanCreateShippoLabelAttribute(): bool
+    {
+        if (! $this->relationLoaded('items') || ! $this->relationLoaded('shippingInfo')) {
+            return false;
+        }
+
+        return $this->has_manual_product
+            && $this->payment_status === 'paid'
+            && $this->shippingInfo !== null
+            && empty($this->tracking_number);
+    }
+
+    public function getDeliveryStatusLabelAttribute(): ?string
+    {
+        $status = $this->shipping_status;
+        if ($status === null && ! empty($this->tracking_number)) {
+            return 'Label created';
+        }
+
+        return match ($status) {
+            'label_created' => 'Label created',
+            'shipped' => 'In transit',
+            'completed' => 'Delivered',
+            default => $status ? ucfirst(str_replace('_', ' ', (string) $status)) : null,
+        };
     }
 }

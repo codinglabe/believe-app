@@ -1,7 +1,7 @@
 "use client"
 
 import ProfileLayout from "@/components/frontend/layout/user-profile-layout"
-import { Package, Calendar, DollarSign, FileText, ArrowRight, CreditCard } from "lucide-react"
+import { Package, Calendar, DollarSign, FileText, ArrowRight, CreditCard, Truck } from "lucide-react"
 import { Button } from "@/components/frontend/ui/button"
 import { Badge } from "@/components/frontend/ui/badge"
 import { Card, CardContent } from "@/components/frontend/ui/card"
@@ -25,9 +25,14 @@ interface Order {
   payment_status: string
   payment_method?: string | null
   total_amount: number
+  shipping_cost?: number
+  tax_amount?: number
   item_count: number
   printify_order_id?: string
   printify_status?: string
+  tracking_number?: string | null
+  carrier?: string | null
+  shipping_status?: string | null
   items: OrderItem[]
 }
 
@@ -80,6 +85,14 @@ export default function ProfileOrders() {
       'refunded': 'Refunded',
     }
     return texts[status] || status
+  }
+
+  const deliverySummary = (o: Order) => {
+    if (o.shipping_status === 'completed') return 'Delivered'
+    if (o.shipping_status === 'shipped') return 'In transit'
+    if (o.shipping_status === 'label_created') return 'Label created'
+    if (o.tracking_number) return 'Tracking available'
+    return null
   }
 
   return (
@@ -149,7 +162,21 @@ export default function ProfileOrders() {
                           <div className="flex items-center gap-1">
                             <DollarSign className="h-4 w-4" />
                             <span>${order.total_amount}</span>
+                            {order.shipping_cost != null && order.shipping_cost > 0 && (
+                              <span className="text-gray-500 dark:text-gray-500">
+                                (incl. shipping ${Number(order.shipping_cost).toFixed(2)})
+                              </span>
+                            )}
                           </div>
+                          {deliverySummary(order) && (
+                            <div className="flex items-center gap-1 text-violet-700 dark:text-violet-300">
+                              <Truck className="h-4 w-4 shrink-0" />
+                              <span>{deliverySummary(order)}</span>
+                              {order.tracking_number && (
+                                <span className="font-mono text-xs truncate max-w-[140px]">{order.tracking_number}</span>
+                              )}
+                            </div>
+                          )}
                         </div>
                       </div>
                     </div>

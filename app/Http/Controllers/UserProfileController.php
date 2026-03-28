@@ -2,38 +2,36 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Bid;
 use App\Models\Donation;
 use App\Models\ExcelData;
+use App\Models\FundraiseLead;
+use App\Models\JobApplication;
+use App\Models\MerchantHubOfferRedemption;
 use App\Models\Order;
 use App\Models\Organization;
+use App\Models\Post;
+use App\Models\PostComment;
+use App\Models\PostReaction;
+use App\Models\Product;
+use App\Models\RaffleTicket;
+use App\Models\RewardPointLedger;
+use App\Models\SupporterPosition;
+use App\Models\User;
 use App\Models\UserFavoriteOrganization;
 use App\Models\UserFollow;
-use App\Models\RaffleTicket;
-use App\Models\SupporterPosition;
 use App\Models\VolunteerTimesheet;
-use App\Models\JobApplication;
-use App\Models\FundraiseLead;
-use App\Models\Bid;
-use App\Models\Product;
-use App\Models\RewardPointLedger;
-use App\Models\MerchantHubOfferRedemption;
-use App\Models\User;
-use App\Models\Post;
-use App\Models\PostReaction;
-use App\Models\PostComment;
 use App\Jobs\IngestKioskProvidersForGeoJob;
 use App\Services\KioskProviderAiIngestService;
-use App\Services\ImpactScoreService;
 use App\Services\ExcelDataTransformer;
-use Carbon\Carbon;
+use App\Services\ImpactScoreService;
 use App\Services\PrintifyService;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
-use Illuminate\Validation\Rules\Password;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -55,13 +53,13 @@ class UserProfileController extends Controller
         $recentDonations = collect([]); // Replace with actual donation query
 
         // Get wallet status
-        $walletConnected = !empty($user->wallet_access_token);
+        $walletConnected = ! empty($user->wallet_access_token);
         $walletExpired = $walletConnected && $user->wallet_token_expires_at && $user->wallet_token_expires_at->isPast();
 
         // Fetch actual wallet balance from WalletController
         $walletBalance = 0;
-        if ($walletConnected && !$walletExpired) {
-            $walletController = new \App\Http\Controllers\WalletController();
+        if ($walletConnected && ! $walletExpired) {
+            $walletController = new \App\Http\Controllers\WalletController;
             $balanceResponse = $walletController->getBalance($request);
             $balanceData = $balanceResponse->getData(true); // Get array from JSON response
             if ($balanceData['success']) {
@@ -76,7 +74,7 @@ class UserProfileController extends Controller
         return Inertia::render('frontend/user-profile/index', [
             'recentDonations' => $recentDonations,
             'wallet' => [
-                'connected' => $walletConnected && !$walletExpired,
+                'connected' => $walletConnected && ! $walletExpired,
                 'expired' => $walletExpired,
                 'connected_at' => $user->wallet_connected_at?->toIso8601String(),
                 'expires_at' => $user->wallet_token_expires_at?->toIso8601String(),
@@ -152,7 +150,6 @@ class UserProfileController extends Controller
         ]);
     }
 
-
     public function update(Request $request)
     {
         $user = $request->user();
@@ -160,7 +157,7 @@ class UserProfileController extends Controller
 
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255'],
-            'email' => ['required', 'string', 'email', 'max:255', 'unique:users,email,' . $user->id],
+            'email' => ['required', 'string', 'email', 'max:255', 'unique:users,email,'.$user->id],
             'phone' => ['nullable', 'string', 'max:20'],
             'dob' => [
                 Rule::requiredIf($isSupporter),
@@ -168,11 +165,11 @@ class UserProfileController extends Controller
                 'string',
                 'regex:/^(0[1-9]|1[0-2])\/(0[1-9]|[12][0-9]|3[01])$/',
                 function ($attribute, $value, $fail) {
-                    if (!is_string($value) || !preg_match('/^(0[1-9]|1[0-2])\/(0[1-9]|[12][0-9]|3[01])$/', $value)) {
+                    if (! is_string($value) || ! preg_match('/^(0[1-9]|1[0-2])\/(0[1-9]|[12][0-9]|3[01])$/', $value)) {
                         return;
                     }
                     [$month, $day] = explode('/', $value);
-                    if (!checkdate((int) $month, (int) $day, 2000)) {
+                    if (! checkdate((int) $month, (int) $day, 2000)) {
                         $fail('The date of birth is not a valid month/day.');
                     }
                 },
@@ -198,7 +195,7 @@ class UserProfileController extends Controller
                 Storage::disk('public')->delete($user->image);
             }
 
-            $filename = 'profile-' . $user->id . '-' . time() . '.' . $request->file('image')->extension();
+            $filename = 'profile-'.$user->id.'-'.time().'.'.$request->file('image')->extension();
             $path = $request->file('image')->storeAs('profile-photos', $filename, 'public');
             $validated['image'] = $path;
         }
@@ -218,8 +215,8 @@ class UserProfileController extends Controller
             'contact_number' => $validated['phone'] ?? null,
             // Persist MM/DD as a valid date using a fixed year.
             // This keeps DB compatibility while hiding year in supporter UI.
-            'dob' => !empty($validated['dob'])
-                ? Carbon::createFromFormat('m/d/Y', $validated['dob'] . '/2000')->format('Y-m-d')
+            'dob' => ! empty($validated['dob'])
+                ? Carbon::createFromFormat('m/d/Y', $validated['dob'].'/2000')->format('Y-m-d')
                 : null,
             'image' => $validated['image'] ?? $user->image,
             'city' => $geoAfterNorm['city'],
@@ -228,7 +225,7 @@ class UserProfileController extends Controller
         ];
 
         // Update timezone if provided and valid
-        if (isset($validated['timezone']) && !empty($validated['timezone'])) {
+        if (isset($validated['timezone']) && ! empty($validated['timezone'])) {
             if (in_array($validated['timezone'], timezone_identifiers_list())) {
                 $updateData['timezone'] = $validated['timezone'];
             }
@@ -299,7 +296,7 @@ class UserProfileController extends Controller
         ]);
 
         // Validate timezone
-        if (!in_array($validated['timezone'], timezone_identifiers_list())) {
+        if (! in_array($validated['timezone'], timezone_identifiers_list())) {
             return back()->with('error', 'Invalid timezone provided.');
         }
 
@@ -310,8 +307,6 @@ class UserProfileController extends Controller
 
         return back()->with('success', 'Timezone updated successfully!');
     }
-
-
 
     public function changePasswordForm()
     {
@@ -329,7 +324,7 @@ class UserProfileController extends Controller
                 'donations as total_donated' => function ($query) use ($user) {
                     $query->where('user_id', $user->id)
                         ->where('status', 'completed');
-                }
+                },
             ], 'amount')
             ->get()
             ->map(function ($org) use ($user) {
@@ -434,7 +429,7 @@ class UserProfileController extends Controller
                 return [
                     'id' => $bid->id,
                     'bid_amount' => (float) $bid->bid_amount,
-                    'bid_amount_formatted' => '$' . number_format((float) $bid->bid_amount, 2),
+                    'bid_amount_formatted' => '$'.number_format((float) $bid->bid_amount, 2),
                     'status' => $bid->status,
                     'submitted_at' => optional($bid->submitted_at ?? $bid->created_at)->toIso8601String(),
                     'product' => $bid->product ? [
@@ -464,12 +459,13 @@ class UserProfileController extends Controller
             ->get()
             ->map(function (Product $p) {
                 $bid = $p->winningBid;
+
                 return [
                     'id' => $p->id,
                     'name' => $p->name,
                     'image' => $p->image,
                     'amount' => $bid ? (float) $bid->bid_amount : 0,
-                    'amount_formatted' => $bid ? '$' . number_format((float) $bid->bid_amount, 2) : '$0.00',
+                    'amount_formatted' => $bid ? '$'.number_format((float) $bid->bid_amount, 2) : '$0.00',
                     'payment_deadline' => $p->winner_payment_deadline?->toIso8601String(),
                 ];
             });
@@ -495,7 +491,7 @@ class UserProfileController extends Controller
         // Apply search filter
         if ($search) {
             $query->whereHas('organization', function ($q) use ($search) {
-                $q->where('name', 'like', '%' . $search . '%');
+                $q->where('name', 'like', '%'.$search.'%');
             });
         }
 
@@ -518,7 +514,7 @@ class UserProfileController extends Controller
             if ($donation->status === 'active') {
                 // Recurring donations with 'active' status are successfully paid
                 $displayStatus = 'completed';
-            } elseif (!in_array($donation->status, ['completed', 'pending', 'failed', 'canceled', 'active'])) {
+            } elseif (! in_array($donation->status, ['completed', 'pending', 'failed', 'canceled', 'active'])) {
                 // If status is unknown or 'processing', check if payment was actually completed
                 // For now, if it's not pending/failed/canceled, assume it's completed
                 $displayStatus = 'completed';
@@ -582,16 +578,22 @@ class UserProfileController extends Controller
             ->map(function ($order) {
                 return [
                     'id' => $order->id,
-                    'order_number' => 'ORD-' . str_pad($order->id, 6, '0', STR_PAD_LEFT),
+                    'order_number' => 'ORD-'.str_pad($order->id, 6, '0', STR_PAD_LEFT),
                     'date' => $order->created_at->format('M d, Y'),
                     'datetime' => $order->created_at->toISOString(),
                     'status' => $order->status,
                     'payment_status' => $order->payment_status,
                     'payment_method' => $order->payment_method ?? null,
                     'total_amount' => $order->total_amount,
+                    'shipping_cost' => $order->shipping_cost,
+                    'tax_amount' => $order->tax_amount,
                     'item_count' => $order->items->count(),
                     'printify_order_id' => $order->printify_order_id,
                     'printify_status' => $order->printify_status,
+                    'tracking_number' => $order->tracking_number,
+                    'tracking_url' => $order->tracking_url,
+                    'carrier' => $order->carrier,
+                    'shipping_status' => $order->shipping_status,
                     'items' => $order->items->take(2)->map(function ($item) {
                         return [
                             'id' => $item->id,
@@ -609,6 +611,7 @@ class UserProfileController extends Controller
             'orders' => $orders,
         ]);
     }
+
     /**
      * Show user's job applications
      */
@@ -622,6 +625,7 @@ class UserProfileController extends Controller
             ->get()
             ->map(function ($application) {
                 $metadata = $application->metadata ?? [];
+
                 return [
                     'id' => $application->id,
                     'status' => $application->status,
@@ -724,7 +728,7 @@ class UserProfileController extends Controller
         ]);
 
         // Check if organization exists
-        if (!$application->jobPost || !$application->jobPost->organization_id) {
+        if (! $application->jobPost || ! $application->jobPost->organization_id) {
             return redirect()->back()->withErrors(['error' => 'Job post or organization not found.']);
         }
 
@@ -780,6 +784,7 @@ class UserProfileController extends Controller
             ->get()
             ->map(function ($timesheet) {
                 $assessment = $timesheet->assessment;
+
                 return [
                     'id' => $timesheet->id,
                     'work_date' => $timesheet->work_date->toDateString(),
@@ -852,9 +857,11 @@ class UserProfileController extends Controller
             ->with(['items.product', 'shippingInfo'])
             ->findOrFail($id);
 
+        $order->loadMissing('user');
+
         $orderData = [
             'id' => $order->id,
-            'order_number' => 'ORD-' . str_pad($order->id, 6, '0', STR_PAD_LEFT),
+            'order_number' => 'ORD-'.str_pad($order->id, 6, '0', STR_PAD_LEFT),
             'date' => $order->created_at->format('M d, Y'),
             'datetime' => $order->created_at->toISOString(),
             'status' => $order->status,
@@ -865,9 +872,21 @@ class UserProfileController extends Controller
             'platform_fee' => $order->platform_fee,
             'donation_amount' => $order->donation_amount,
             'total_amount' => $order->total_amount,
+            'printify_order_id' => $order->printify_order_id,
             'printify_status' => $order->printify_status,
             'paid_at' => $order->paid_at?->format('M d, Y h:i A'),
             'shipping_method' => $order->shipping_method,
+            'tracking_number' => $order->tracking_number,
+            'tracking_url' => $order->tracking_url,
+            'carrier' => $order->carrier,
+            'label_url' => $order->label_url,
+            'shipping_status' => $order->shipping_status,
+            'shipped_at' => $order->shipped_at?->format('M d, Y h:i A'),
+            'delivered_at' => $order->delivered_at?->format('M d, Y h:i A'),
+            'customer_account' => $order->user ? [
+                'name' => $order->user->name,
+                'email' => $order->user->email,
+            ] : null,
             'shipping_info' => $order->shippingInfo ? [
                 'first_name' => $order->shippingInfo->first_name,
                 'last_name' => $order->shippingInfo->last_name,
@@ -913,7 +932,7 @@ class UserProfileController extends Controller
                 $printifyOrder = (new PrintifyService)->getOrder($order->printify_order_id);
                 $orderData['printify_details'] = $printifyOrder;
             } catch (\Exception $e) {
-                \Log::error('Error fetching Printify order: ' . $e->getMessage());
+                \Log::error('Error fetching Printify order: '.$e->getMessage());
                 $orderData['printify_details'] = null;
             }
         }
@@ -922,7 +941,6 @@ class UserProfileController extends Controller
             'order' => $orderData,
         ]);
     }
-
 
     public function removeFavorite(int $id)
     {
@@ -942,11 +960,11 @@ class UserProfileController extends Controller
 
         $raffleTickets = RaffleTicket::with([
             'raffle.organization',
-            'raffle.winners.ticket'
+            'raffle.winners.ticket',
         ])
-        ->where('user_id', $user->id)
-        ->orderBy('created_at', 'desc')
-        ->get();
+            ->where('user_id', $user->id)
+            ->orderBy('created_at', 'desc')
+            ->get();
 
         return Inertia::render('frontend/user-profile/raffle-tickets', [
             'raffleTickets' => $raffleTickets,
@@ -966,7 +984,7 @@ class UserProfileController extends Controller
         // Fetch actual wallet balance
         $walletBalance = (float) ($user->balance ?? 0);
         try {
-            $walletController = new \App\Http\Controllers\WalletController();
+            $walletController = new \App\Http\Controllers\WalletController;
             $balanceResponse = $walletController->getBalance($request);
             $balanceData = $balanceResponse->getData(true);
             if (isset($balanceData['success']) && $balanceData['success']) {
@@ -1038,16 +1056,16 @@ class UserProfileController extends Controller
                 $q->where('user_id', $user->id);
             });
 
-        if (!empty($search)) {
+        if (! empty($search)) {
             $query->where(function ($q) use ($search) {
                 $q->whereHas('jobApplication.jobPost', function ($q) use ($search) {
-                    $q->where('title', 'LIKE', '%' . $search . '%');
+                    $q->where('title', 'LIKE', '%'.$search.'%');
                 })
-                    ->orWhere('description', 'LIKE', '%' . $search . '%');
+                    ->orWhere('description', 'LIKE', '%'.$search.'%');
             });
         }
 
-        if (!empty($workDate)) {
+        if (! empty($workDate)) {
             $query->where('work_date', $workDate);
         }
 
@@ -1224,7 +1242,7 @@ class UserProfileController extends Controller
             ->with(['supporterPositions'])
             ->first();
 
-        if (!$user) {
+        if (! $user) {
             abort(404, 'User not found');
         }
 
@@ -1233,7 +1251,7 @@ class UserProfileController extends Controller
 
         // Check if authenticated user is following this user
         $isFollowing = false;
-        if ($authUser && !$isOwnProfile) {
+        if ($authUser && ! $isOwnProfile) {
             $isFollowing = UserFollow::where('follower_id', $authUser->id)
                 ->where('following_id', $user->id)
                 ->exists();
@@ -1256,8 +1274,8 @@ class UserProfileController extends Controller
         $groupsCount = \App\Models\ChatRoom::whereHas('members', function ($query) use ($user) {
             $query->where('user_id', $user->id);
         })
-        ->where('is_active', true)
-        ->count();
+            ->where('is_active', true)
+            ->count();
 
         // Get recent donations for Activity tab
         $recentDonations = Donation::where('user_id', $user->id)
@@ -1334,13 +1352,14 @@ class UserProfileController extends Controller
         if ($postFilter === 'user') {
             // Only this user's posts
             $postsQuery->where('user_id', $user->id);
-        } else if ($postFilter === 'all' && $authUserId) {
+        } elseif ($postFilter === 'all' && $authUserId) {
             // Get followed organization user IDs (registered organizations)
             $followedOrgUserIds = UserFavoriteOrganization::where('user_id', $authUserId)
                 ->whereNotNull('organization_id')
                 ->pluck('organization_id')
                 ->map(function ($orgId) {
                     $org = \App\Models\Organization::find($orgId);
+
                     return $org ? $org->user_id : null;
                 })
                 ->filter()
@@ -1357,8 +1376,10 @@ class UserProfileController extends Controller
                         $org = \App\Models\Organization::where('ein', $excelData->ein)
                             ->where('registration_status', 'approved')
                             ->first();
+
                         return $org ? $org->user_id : null;
                     }
+
                     return null;
                 })
                 ->filter()
@@ -1379,7 +1400,7 @@ class UserProfileController extends Controller
             );
 
             $postsQuery->whereIn('user_id', array_unique($allowedUserIds));
-        } else if ($postFilter === 'all' && !$authUserId) {
+        } elseif ($postFilter === 'all' && ! $authUserId) {
             // If not authenticated, show only profile owner's posts
             $postsQuery->where('user_id', $user->id);
         }
@@ -1466,7 +1487,7 @@ class UserProfileController extends Controller
                     $creatorName = $org->name;
                     $creatorSlug = $post->user->slug;
                     $creatorImage = $post->user->image ? Storage::url($post->user->image) : null;
-                } else if ($post->user) {
+                } elseif ($post->user) {
                     $creator = [
                         'id' => $post->user->id,
                         'name' => $post->user->name,
@@ -1566,18 +1587,18 @@ class UserProfileController extends Controller
                     ->orderBy('id', 'desc')
                     ->get()
                     ->groupBy('ein')
-                    ->map(function($group) {
+                    ->map(function ($group) {
                         return $group->first()->id;
                     });
 
-                $peopleYouMayKnow = $suggestedOrgs->map(function($org) use ($excelDataMap) {
+                $peopleYouMayKnow = $suggestedOrgs->map(function ($org) use ($excelDataMap) {
                     return [
                         'id' => $org->id,
                         'excel_data_id' => $excelDataMap->get($org->ein) ?? null,
                         'slug' => $org->user?->slug ?? null,
                         'name' => $org->name,
                         'org' => $org->description ? \Illuminate\Support\Str::limit($org->description, 30) : 'Organization',
-                        'avatar' => $org->user?->image ? '/storage/' . $org->user->image : null,
+                        'avatar' => $org->user?->image ? '/storage/'.$org->user->image : null,
                     ];
                 })->toArray();
             }
@@ -1597,13 +1618,13 @@ class UserProfileController extends Controller
                     ->orderBy('id', 'desc')
                     ->get()
                     ->groupBy('ein')
-                    ->map(function($group) {
+                    ->map(function ($group) {
                         return $group->first()->id;
                     });
 
                 $colors = ['bg-rose-500', 'bg-cyan-500', 'bg-teal-500', 'bg-blue-500'];
 
-                $trendingOrganizations = $trendingOrgs->map(function($org, $index) use ($excelDataMap, $colors) {
+                $trendingOrganizations = $trendingOrgs->map(function ($org, $index) use ($excelDataMap, $colors) {
                     return [
                         'id' => $org->id,
                         'excel_data_id' => $excelDataMap->get($org->ein) ?? null,
@@ -1635,7 +1656,7 @@ class UserProfileController extends Controller
 
         $seoDescription = $user->bio
             ? \Illuminate\Support\Str::limit($user->bio, 160)
-            : 'View ' . $user->name . "'s profile on " . config('app.name');
+            : 'View '.$user->name."'s profile on ".config('app.name');
 
         return Inertia::render('frontend/user/user-show', [
             'seo' => [
@@ -1677,7 +1698,7 @@ class UserProfileController extends Controller
             ->with(['supporterPositions'])
             ->first();
 
-        if (!$user) {
+        if (! $user) {
             abort(404, 'User not found');
         }
 
@@ -1686,7 +1707,7 @@ class UserProfileController extends Controller
 
         // Check if authenticated user is following this user
         $isFollowing = false;
-        if ($authUser && !$isOwnProfile) {
+        if ($authUser && ! $isOwnProfile) {
             $isFollowing = UserFollow::where('follower_id', $authUser->id)
                 ->where('following_id', $user->id)
                 ->exists();
@@ -1748,18 +1769,18 @@ class UserProfileController extends Controller
                     ->orderBy('id', 'desc')
                     ->get()
                     ->groupBy('ein')
-                    ->map(function($group) {
+                    ->map(function ($group) {
                         return $group->first()->id;
                     });
 
-                $peopleYouMayKnow = $suggestedOrgs->map(function($org) use ($excelDataMap) {
+                $peopleYouMayKnow = $suggestedOrgs->map(function ($org) use ($excelDataMap) {
                     return [
                         'id' => $org->id,
                         'excel_data_id' => $excelDataMap->get($org->ein) ?? null,
                         'slug' => $org->user?->slug ?? null,
                         'name' => $org->name,
                         'org' => $org->description ? \Illuminate\Support\Str::limit($org->description, 30) : 'Organization',
-                        'avatar' => $org->user?->image ? '/storage/' . $org->user->image : null,
+                        'avatar' => $org->user?->image ? '/storage/'.$org->user->image : null,
                     ];
                 })->toArray();
             }
@@ -1778,13 +1799,13 @@ class UserProfileController extends Controller
                     ->orderBy('id', 'desc')
                     ->get()
                     ->groupBy('ein')
-                    ->map(function($group) {
+                    ->map(function ($group) {
                         return $group->first()->id;
                     });
 
                 $colors = ['bg-rose-500', 'bg-cyan-500', 'bg-teal-500', 'bg-blue-500'];
 
-                $trendingOrganizations = $trendingOrgs->map(function($org, $index) use ($excelDataMap, $colors) {
+                $trendingOrganizations = $trendingOrgs->map(function ($org, $index) use ($excelDataMap, $colors) {
                     return [
                         'id' => $org->id,
                         'excel_data_id' => $excelDataMap->get($org->ein) ?? null,
@@ -1799,8 +1820,8 @@ class UserProfileController extends Controller
 
         // Build location string from city, state, zipcode
         $locationParts = array_filter([$user->city, $user->state]);
-        $location = !empty($locationParts)
-            ? implode(', ', $locationParts) . ($user->zipcode ? ' ' . $user->zipcode : '')
+        $location = ! empty($locationParts)
+            ? implode(', ', $locationParts).($user->zipcode ? ' '.$user->zipcode : '')
             : ($user->location ?? null);
 
         $userData = [
@@ -1826,7 +1847,7 @@ class UserProfileController extends Controller
 
         $seoDescription = $user->bio
             ? \Illuminate\Support\Str::limit($user->bio, 160)
-            : 'View ' . $user->name . "'s profile on " . config('app.name');
+            : 'View '.$user->name."'s profile on ".config('app.name');
 
         return [
             'seo' => [
@@ -1871,13 +1892,14 @@ class UserProfileController extends Controller
         if ($filter === 'user') {
             // Only this user's posts
             $postsQuery->where('user_id', $user->id);
-        } else if ($filter === 'all' && $authUserId) {
+        } elseif ($filter === 'all' && $authUserId) {
             // Get followed organization user IDs (registered organizations)
             $followedOrgUserIds = UserFavoriteOrganization::where('user_id', $authUserId)
                 ->whereNotNull('organization_id')
                 ->pluck('organization_id')
                 ->map(function ($orgId) {
                     $org = \App\Models\Organization::find($orgId);
+
                     return $org ? $org->user_id : null;
                 })
                 ->filter()
@@ -1894,8 +1916,10 @@ class UserProfileController extends Controller
                         $org = \App\Models\Organization::where('ein', $excelData->ein)
                             ->where('registration_status', 'approved')
                             ->first();
+
                         return $org ? $org->user_id : null;
                     }
+
                     return null;
                 })
                 ->filter()
@@ -1916,7 +1940,7 @@ class UserProfileController extends Controller
             );
 
             $postsQuery->whereIn('user_id', array_unique($allowedUserIds));
-        } else if ($filter === 'all' && !$authUserId) {
+        } elseif ($filter === 'all' && ! $authUserId) {
             // If not authenticated, show only profile owner's posts
             $postsQuery->where('user_id', $user->id);
         }
@@ -2010,7 +2034,7 @@ class UserProfileController extends Controller
                             'image' => $post->user->image ? Storage::url($post->user->image) : null,
                         ];
                     }
-                } else if ($post->user) {
+                } elseif ($post->user) {
                     $creator = [
                         'id' => $post->user->id,
                         'name' => $post->user->name,
@@ -2060,6 +2084,7 @@ class UserProfileController extends Controller
     public function about(Request $request, string $slug)
     {
         $data = $this->getUserData($slug);
+
         return Inertia::render('frontend/user/user-show', array_merge($data, [
             'chatGroups' => [], // Groups loaded separately in groups tab
             'currentPage' => 'about',
@@ -2084,10 +2109,10 @@ class UserProfileController extends Controller
             ->get()
             ->map(function ($donation) {
                 return [
-                    'id' => 'donation_' . $donation->id,
+                    'id' => 'donation_'.$donation->id,
                     'type' => 'donation',
-                    'title' => 'Donated $' . number_format($donation->amount, 2) . ' to ' . ($donation->organization->name ?? 'Unknown Organization'),
-                    'description' => ($donation->frequency ?? 'one-time') !== 'one-time' ? ucfirst($donation->frequency) . ' donation' : null,
+                    'title' => 'Donated $'.number_format($donation->amount, 2).' to '.($donation->organization->name ?? 'Unknown Organization'),
+                    'description' => ($donation->frequency ?? 'one-time') !== 'one-time' ? ucfirst($donation->frequency).' donation' : null,
                     'date' => $donation->donation_date ?? $donation->created_at,
                     'data' => [
                         'id' => $donation->id,
@@ -2104,10 +2129,10 @@ class UserProfileController extends Controller
             ->get()
             ->map(function ($application) {
                 return [
-                    'id' => 'job_' . $application->id,
+                    'id' => 'job_'.$application->id,
                     'type' => 'job_application',
-                    'title' => 'Applied for ' . ($application->jobPost->title ?? 'Unknown Job'),
-                    'description' => 'Status: ' . ucfirst($application->status),
+                    'title' => 'Applied for '.($application->jobPost->title ?? 'Unknown Job'),
+                    'description' => 'Status: '.ucfirst($application->status),
                     'date' => $application->created_at,
                     'data' => [
                         'id' => $application->id,
@@ -2122,10 +2147,10 @@ class UserProfileController extends Controller
             ->get()
             ->map(function ($enrollment) {
                 return [
-                    'id' => 'enrollment_' . $enrollment->id,
+                    'id' => 'enrollment_'.$enrollment->id,
                     'type' => 'enrollment',
-                    'title' => 'Enrolled in ' . ($enrollment->course->title ?? 'Unknown Course'),
-                    'description' => 'Status: ' . ucfirst($enrollment->status),
+                    'title' => 'Enrolled in '.($enrollment->course->title ?? 'Unknown Course'),
+                    'description' => 'Status: '.ucfirst($enrollment->status),
                     'date' => $enrollment->enrolled_at ?? $enrollment->created_at,
                     'data' => [
                         'id' => $enrollment->id,
@@ -2139,7 +2164,7 @@ class UserProfileController extends Controller
             ->get()
             ->map(function ($post) {
                 return [
-                    'id' => 'post_' . $post->id,
+                    'id' => 'post_'.$post->id,
                     'type' => 'post',
                     'title' => 'Posted in community feed',
                     'description' => $post->content ? \Illuminate\Support\Str::limit($post->content, 100) : null,
@@ -2243,7 +2268,7 @@ class UserProfileController extends Controller
     {
         $data = $this->getUserData($slug);
         $user = User::where('slug', $slug)->orWhere('id', $slug)->first();
-        if (!$user) {
+        if (! $user) {
             abort(404, 'User not found');
         }
 
@@ -2258,41 +2283,41 @@ class UserProfileController extends Controller
             ->latest()
             ->limit(50)
             ->get()
-        ->map(function ($room) {
-            $latestMessage = $room->latestMessage()->with('user:id,name,image')->first();
+            ->map(function ($room) {
+                $latestMessage = $room->latestMessage()->with('user:id,name,image')->first();
 
-            return [
-                'id' => $room->id,
-                'name' => $room->name,
-                'description' => $room->description,
-                'type' => $room->type,
-                'image' => $room->image ? '/storage/' . $room->image : null,
-                'created_by' => $room->created_by,
-                'creator' => $room->creator ? [
-                    'id' => $room->creator->id,
-                    'name' => $room->creator->name,
-                    'image' => $room->creator->image ? '/storage/' . $room->creator->image : null,
-                ] : null,
-                'members_count' => $room->members_count,
-                'topics' => $room->topics->map(function ($topic) {
-                    return [
-                        'id' => $topic->id,
-                        'name' => $topic->name,
-                    ];
-                }),
-                'latest_message' => $latestMessage ? [
-                    'id' => $latestMessage->id,
-                    'content' => $latestMessage->message ?? '',
-                    'created_at' => $latestMessage->created_at,
-                    'user' => $latestMessage->user ? [
-                        'id' => $latestMessage->user->id,
-                        'name' => $latestMessage->user->name,
-                        'image' => $latestMessage->user->image ? '/storage/' . $latestMessage->user->image : null,
+                return [
+                    'id' => $room->id,
+                    'name' => $room->name,
+                    'description' => $room->description,
+                    'type' => $room->type,
+                    'image' => $room->image ? '/storage/'.$room->image : null,
+                    'created_by' => $room->created_by,
+                    'creator' => $room->creator ? [
+                        'id' => $room->creator->id,
+                        'name' => $room->creator->name,
+                        'image' => $room->creator->image ? '/storage/'.$room->creator->image : null,
                     ] : null,
-                ] : null,
-                'created_at' => $room->created_at,
-            ];
-        });
+                    'members_count' => $room->members_count,
+                    'topics' => $room->topics->map(function ($topic) {
+                        return [
+                            'id' => $topic->id,
+                            'name' => $topic->name,
+                        ];
+                    }),
+                    'latest_message' => $latestMessage ? [
+                        'id' => $latestMessage->id,
+                        'content' => $latestMessage->message ?? '',
+                        'created_at' => $latestMessage->created_at,
+                        'user' => $latestMessage->user ? [
+                            'id' => $latestMessage->user->id,
+                            'name' => $latestMessage->user->name,
+                            'image' => $latestMessage->user->image ? '/storage/'.$latestMessage->user->image : null,
+                        ] : null,
+                    ] : null,
+                    'created_at' => $room->created_at,
+                ];
+            });
 
         return Inertia::render('frontend/user/user-show', array_merge($data, [
             'chatGroups' => $chatGroups,
@@ -2334,7 +2359,7 @@ class UserProfileController extends Controller
         // For API requests (axios/fetch), return JSON response
         // Check if it's NOT an Inertia request (axios doesn't send X-Inertia header)
         $isAjaxRequest = $request->header('X-Requested-With') === 'XMLHttpRequest'
-            && !$request->header('X-Inertia');
+            && ! $request->header('X-Inertia');
 
         if ($isAjaxRequest || $request->wantsJson() || $request->expectsJson()) {
             return response()->json([
@@ -2349,6 +2374,7 @@ class UserProfileController extends Controller
         if ($referer) {
             return redirect($referer);
         }
+
         return redirect()->route('users.show', $targetUser->slug);
     }
 }

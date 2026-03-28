@@ -1,15 +1,15 @@
 <?php
 
-use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\AuthController;
-use App\Http\Controllers\Api\UserController;
-use App\Http\Controllers\Api\WalletController;
-use App\Http\Controllers\Api\TransactionController;
 use App\Http\Controllers\Api\CardController;
 use App\Http\Controllers\Api\KycController;
-use App\Http\Controllers\KnowledgeBaseController;
 use App\Http\Controllers\Api\OrganizationLookupController;
+use App\Http\Controllers\Api\ShippoWebhookController;
+use App\Http\Controllers\Api\TransactionController;
+use App\Http\Controllers\Api\UserController;
+use App\Http\Controllers\Api\WalletController;
+use App\Http\Controllers\KnowledgeBaseController;
+use Illuminate\Support\Facades\Route;
 
 // Public routes
 Route::get('/knowledge-base', [KnowledgeBaseController::class, 'index']);
@@ -19,6 +19,9 @@ Route::get('/organizations/lookup', [OrganizationLookupController::class, 'looku
 Route::get('/health', function () {
     return response()->json(['status' => 'ok', 'timestamp' => now()]);
 });
+
+// Shippo webhook (no auth; Shippo will call it directly)
+Route::post('/webhooks/shippo', [ShippoWebhookController::class, 'handle']);
 
 // Authentication routes
 Route::post('/auth/register', [AuthController::class, 'register']);
@@ -82,22 +85,22 @@ Route::middleware('auth:api')->group(function () {
             Route::get('/status', [KycController::class, 'status']);
             Route::post('/submit', [KycController::class, 'submit']);
         });
-        
+
         Route::prefix('crypto')->group(function () {
-            Route::get('/', function () { 
-                return response()->json(['message' => 'Crypto API endpoint']); 
+            Route::get('/', function () {
+                return response()->json(['message' => 'Crypto API endpoint']);
             });
         });
-        
+
         Route::prefix('p2p')->group(function () {
-            Route::get('/', function () { 
-                return response()->json(['message' => 'P2P API endpoint']); 
+            Route::get('/', function () {
+                return response()->json(['message' => 'P2P API endpoint']);
             });
         });
-        
+
         Route::prefix('nft')->group(function () {
-            Route::get('/', function () { 
-                return response()->json(['message' => 'NFT API endpoint']); 
+            Route::get('/', function () {
+                return response()->json(['message' => 'NFT API endpoint']);
             });
         });
     });

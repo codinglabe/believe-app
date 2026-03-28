@@ -3,9 +3,9 @@
 namespace App\Services;
 
 use App\Models\Order;
-use App\Models\OrderShippingInfo;
 use App\Models\Organization;
 use App\Models\Product;
+use App\Models\User;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -30,6 +30,124 @@ class ShippoService
     public function isConfigured(): bool
     {
         return ! empty($this->apiKey);
+    }
+
+    /**
+     * USPS and many carriers require ship-from email + phone.
+     * Prefer organization profile, then the org's linked User (seller account), then product owner User.
+     * Finally applies config fallbacks (MAIL_FROM_ADDRESS / SHIPPO_FALLBACK_*) so labels are not blocked.
+     *
+     * @return array{email: string, phone: string}
+     */
+    public function getSellerContactForShippo(?Organization $org, ?Product $product = null): array
+    {
+        if (! $org && $product) {
+            $product->loadMissing('organization.user');
+            $org = $product->organization;
+        }
+
+        $email = '';
+        $phone = '';
+
+        if ($org) {
+            $org->loadMissing('user');
+            $email = trim((string) ($org->email ?? ''));
+            if ($email === '') {
+                $email = trim((string) ($org->platform_email ?? ''));
+            }
+            $phone = trim((string) ($org->phone ?? ''));
+
+            $sellerUser = $org->user;
+            if ($email === '' && $sellerUser instanceof User) {
+                $email = trim((string) ($sellerUser->email ?? ''));
+            }
+            if ($phone === '' && $sellerUser instanceof User) {
+                $phone = trim((string) ($sellerUser->contact_number ?? ''));
+            }
+        }
+
+        if (($email === '' || $phone === '') && $product) {
+            $product->loadMissing('user');
+            $owner = $product->user;
+            if ($owner instanceof User) {
+                if ($email === '') {
+                    $email = trim((string) ($owner->email ?? ''));
+                }
+                if ($phone === '') {
+                    $phone = trim((string) ($owner->contact_number ?? ''));
+                }
+            }
+        }
+
+        $fallbackEmail = trim((string) config('services.shippo.fallback_seller_email', ''));
+        $fallbackPhone = trim((string) config('services.shippo.fallback_seller_phone', ''));
+
+        if ($email === '' && $fallbackEmail !== '') {
+            $email = $fallbackEmail;
+        }
+        if ($phone === '' && $fallbackPhone !== '') {
+            $phone = $fallbackPhone;
+        }
+
+        // config('services.shippo.*') can be empty if env omitted; always try Laravel mail "from" next.
+        if ($email === '') {
+            $email = trim((string) config('mail.from.address', ''));
+        }
+
+        return $this->finalizeSellerContactForUsps($email, $phone, $org?->id, $product?->id);
+    }
+
+    /**
+     * USPS requires both non-empty email and phone on ship-from. Never return blanks.
+     *
+     * @return array{email: string, phone: string}
+     */
+    protected function finalizeSellerContactForUsps(string $email, string $phone, ?int $organizationId, ?int $productId): array
+    {
+        $email = trim($email);
+        $phone = trim($phone);
+
+        if ($email === '') {
+            $domain = trim((string) config('app.platform_email_domain', 'example.com'));
+            $domain = $domain !== '' ? ltrim($domain, '@') : 'example.com';
+            $email = 'noreply@'.$domain;
+            Log::info('Shippo: using noreply@ platform domain for seller email (seller had no email)', [
+                'organization_id' => $organizationId,
+                'product_id' => $productId,
+            ]);
+        }
+
+        if ($phone === '') {
+            $phone = trim((string) config('services.shippo.fallback_seller_phone', ''));
+        }
+
+        if ($phone === '') {
+            $phone = '5555555555';
+            Log::warning('Shippo: using default seller phone placeholder — set SHIPPO_FALLBACK_SELLER_PHONE in .env for production', [
+                'organization_id' => $organizationId,
+                'product_id' => $productId,
+            ]);
+        }
+
+        $phone = $this->normalizePhoneForShippo($phone);
+
+        return ['email' => $email, 'phone' => $phone];
+    }
+
+    /**
+     * Prefer E.164 for US 10-digit numbers (Shippo/USPS are less flaky).
+     */
+    protected function normalizePhoneForShippo(string $phone): string
+    {
+        $digits = preg_replace('/\D+/', '', $phone);
+        if (strlen($digits) === 10) {
+            return '+1'.$digits;
+        }
+        if (strlen($digits) === 11 && str_starts_with($digits, '1')) {
+            return '+'.$digits;
+        }
+
+        return $phone;
     }
 
     /**
@@ -58,9 +176,9 @@ class ShippoService
 
         do {
             $response = Http::withHeaders([
-                'Authorization' => 'ShippoToken ' . $this->apiKey,
+                'Authorization' => 'ShippoToken '.$this->apiKey,
                 'Content-Type' => 'application/json',
-            ])->get($this->baseUrl . '/carrier_accounts', [
+            ])->get($this->baseUrl.'/carrier_accounts', [
                 'results' => $resultsPerPage,
                 'page' => $page,
             ]);
@@ -115,6 +233,7 @@ class ShippoService
                 // unknown provider token, keep (better than returning empty rates)
                 return true;
             }
+
             return isset($activeTokens[$provider]);
         }));
 
@@ -124,9 +243,9 @@ class ShippoService
     /**
      * Shippo: Create shipment rates from explicit payloads.
      *
-     * @param array $addressFrom Ship-from payload (Shippo format)
-     * @param array $addressTo   Ship-to payload (Shippo format)
-     * @param array $parcel      Parcel payload (Shippo format)
+     * @param  array  $addressFrom  Ship-from payload (Shippo format)
+     * @param  array  $addressTo  Ship-to payload (Shippo format)
+     * @param  array  $parcel  Parcel payload (Shippo format)
      * @return array{success: bool, shipment_id?: string, rates?: array, error?: string}
      */
     public function getRatesForAddresses(array $addressFrom, array $addressTo, array $parcel): array
@@ -136,16 +255,16 @@ class ShippoService
         }
 
         $payload = [
-            'address_from' => $addressFrom,
-            'address_to' => $addressTo,
+            'address_from' => $this->addressPayload($addressFrom),
+            'address_to' => $this->addressPayload($addressTo),
             'parcels' => [$parcel],
             'async' => false,
         ];
 
         $response = Http::withHeaders([
-            'Authorization' => 'ShippoToken ' . $this->apiKey,
+            'Authorization' => 'ShippoToken '.$this->apiKey,
             'Content-Type' => 'application/json',
-        ])->post($this->baseUrl . '/shipments', $payload);
+        ])->post($this->baseUrl.'/shipments', $payload);
 
         if (! $response->successful()) {
             Log::warning('Shippo getRatesForAddresses failed', [
@@ -155,7 +274,7 @@ class ShippoService
 
             return [
                 'success' => false,
-                'error' => $response->json('message') ?? $response->body() ?? 'Failed to get shipping rates.',
+                'error' => $this->shippoApiErrorMessage($response),
             ];
         }
 
@@ -194,9 +313,9 @@ class ShippoService
         }
 
         $response = Http::withHeaders([
-            'Authorization' => 'ShippoToken ' . $this->apiKey,
+            'Authorization' => 'ShippoToken '.$this->apiKey,
             'Content-Type' => 'application/json',
-        ])->post($this->baseUrl . '/transactions', [
+        ])->post($this->baseUrl.'/transactions', [
             'rate' => $rateObjectId,
             'label_file_type' => $labelFormat,
             'async' => false,
@@ -210,7 +329,7 @@ class ShippoService
 
             return [
                 'success' => false,
-                'error' => $response->json('message') ?? $response->body() ?? 'Failed to purchase label.',
+                'error' => $this->shippoApiErrorMessage($response),
             ];
         }
 
@@ -258,28 +377,151 @@ class ShippoService
     }
 
     /**
+     * Shippo → carrier APIs (e.g. USPS) reject empty XML elements: '' fails patterns like PhoneNumber.
+     * Omit keys rather than sending blank strings.
+     *
+     * @param  array<string, mixed>  $address
+     * @return array<string, mixed>
+     */
+    public function stripEmptyAddressFields(array $address): array
+    {
+        foreach ($address as $key => $value) {
+            if (is_string($value) && trim($value) === '') {
+                unset($address[$key]);
+            }
+        }
+
+        return $address;
+    }
+
+    /**
+     * Best-effort parse of Shippo error JSON (message, __all__, nested field errors).
+     */
+    protected function shippoApiErrorMessage(\Illuminate\Http\Client\Response $response): string
+    {
+        $json = $response->json();
+        if (! is_array($json)) {
+            $body = trim((string) $response->body());
+
+            return $body !== '' ? $body : 'Request failed.';
+        }
+        if (! empty($json['message']) && is_string($json['message'])) {
+            return $json['message'];
+        }
+        if (isset($json['__all__']) && is_array($json['__all__']) && isset($json['__all__'][0])) {
+            return (string) $json['__all__'][0];
+        }
+        foreach ($json as $v) {
+            if (is_array($v) && isset($v[0]) && is_string($v[0])) {
+                return $v[0];
+            }
+        }
+        if (! empty($json['messages']) && is_string($json['messages'])) {
+            return $json['messages'];
+        }
+
+        return 'Request failed.';
+    }
+
+    /**
+     * Map common country names / variants to ISO 3166-1 alpha-2 for Shippo.
+     * Previously any non-2-letter value was forced to US, which broke UK/CA/AU postcodes ("Postcode not found").
+     */
+    public function normalizeCountryToIso2(string $country): string
+    {
+        $c = trim(strtoupper($country));
+        if ($c === '') {
+            return 'US';
+        }
+
+        $aliases = [
+            'USA' => 'US', 'U.S.A.' => 'US', 'U.S.A' => 'US', 'UNITED STATES' => 'US', 'UNITED STATES OF AMERICA' => 'US',
+            'UK' => 'GB', 'UNITED KINGDOM' => 'GB', 'GREAT BRITAIN' => 'GB', 'ENGLAND' => 'GB', 'SCOTLAND' => 'GB', 'WALES' => 'GB',
+            'CANADA' => 'CA',
+            'AUSTRALIA' => 'AU',
+            'IRELAND' => 'IE', 'REPUBLIC OF IRELAND' => 'IE',
+        ];
+
+        if (isset($aliases[$c])) {
+            return $aliases[$c];
+        }
+
+        if (strlen($c) === 2 && ctype_alpha($c)) {
+            return $c;
+        }
+
+        return 'US';
+    }
+
+    /**
+     * Normalize postal codes so Shippo address validation can match (US ZIP, UK postcodes, CA postal codes).
+     */
+    protected function normalizePostalCodeForShippo(string $zip, string $countryIso2): string
+    {
+        $zip = trim($zip);
+        if ($zip === '') {
+            return '';
+        }
+
+        if ($countryIso2 === 'US') {
+            $digits = preg_replace('/\D/', '', $zip) ?? '';
+            if (strlen($digits) >= 9) {
+                return substr($digits, 0, 5).'-'.substr($digits, 5, 4);
+            }
+            if (strlen($digits) >= 5) {
+                return substr($digits, 0, 5);
+            }
+
+            return $zip;
+        }
+
+        if ($countryIso2 === 'GB') {
+            $clean = preg_replace('/\s+/', '', strtoupper($zip)) ?? '';
+            if (strlen($clean) >= 5 && strlen($clean) <= 12) {
+                $inward = substr($clean, -3);
+                $outward = substr($clean, 0, -3);
+
+                return $outward.' '.$inward;
+            }
+
+            return strtoupper($zip);
+        }
+
+        if ($countryIso2 === 'CA') {
+            $clean = preg_replace('/\s+/', '', strtoupper($zip)) ?? '';
+            if (strlen($clean) === 6 && ctype_alnum($clean)) {
+                return substr($clean, 0, 3).' '.substr($clean, 3, 3);
+            }
+
+            return strtoupper($zip);
+        }
+
+        return $zip;
+    }
+
+    /**
      * Build address array for Shippo API.
      *
      * @param  array{name?: string, street1?: string, street2?: string, city?: string, state?: string, zip?: string, country?: string, phone?: string, email?: string}  $data
      */
     protected function addressPayload(array $data): array
     {
-        $country = strtoupper($data['country'] ?? 'US');
-        if (strlen($country) > 2) {
-            $country = 'US';
-        }
+        $country = $this->normalizeCountryToIso2((string) ($data['country'] ?? 'US'));
+        $zip = $this->normalizePostalCodeForShippo((string) ($data['zip'] ?? ''), $country);
 
-        return [
+        $out = [
             'name' => $data['name'] ?? 'Recipient',
             'street1' => $data['street1'] ?? $data['shipping_address'] ?? $data['address'] ?? '',
             'street2' => $data['street2'] ?? '',
             'city' => $data['city'] ?? '',
             'state' => $data['state'] ?? '',
-            'zip' => $data['zip'] ?? '',
+            'zip' => $zip,
             'country' => $country,
             'phone' => $data['phone'] ?? '',
             'email' => $data['email'] ?? '',
         ];
+
+        return $this->stripEmptyAddressFields($out);
     }
 
     /**
@@ -287,9 +529,12 @@ class ShippoService
      */
     protected function getShipFrom(Order $order): array
     {
-        $org = $order->organization;
+        $order->loadMissing(['organization.user', 'items.product.organization.user', 'items.product.user']);
         $firstItem = $order->items->first();
         $product = $firstItem?->product;
+        // Order may not have organization loaded; product always belongs to an org for marketplace items.
+        $org = $order->organization ?? $product?->organization;
+        $contact = $this->getSellerContactForShippo($org, $product);
 
         if ($product && $this->productHasShipFrom($product)) {
             return $this->addressPayload([
@@ -299,6 +544,8 @@ class ShippoService
                 'state' => $product->ship_from_state,
                 'zip' => $product->ship_from_zip,
                 'country' => $product->ship_from_country ?? 'US',
+                'phone' => $contact['phone'],
+                'email' => $contact['email'],
             ]);
         }
 
@@ -310,6 +557,8 @@ class ShippoService
                 'state' => $org->state,
                 'zip' => $org->zip,
                 'country' => 'US',
+                'phone' => $contact['phone'],
+                'email' => $contact['email'],
             ]);
         }
 
@@ -320,6 +569,8 @@ class ShippoService
             'state' => '',
             'zip' => '',
             'country' => 'US',
+            'phone' => $contact['phone'],
+            'email' => $contact['email'],
         ]);
     }
 
@@ -362,6 +613,14 @@ class ShippoService
         ];
     }
 
+    /**
+     * Public wrapper so other controllers can snapshot parcel dimensions/weight.
+     */
+    public function getParcelSnapshot(Order $order): array
+    {
+        return $this->getParcel($order);
+    }
+
     protected function productHasParcel(Product $product): bool
     {
         return $product->parcel_length_in !== null && $product->parcel_width_in !== null
@@ -379,7 +638,7 @@ class ShippoService
             return ['success' => false, 'error' => 'Shippo is not configured.'];
         }
 
-        $order->load(['shippingInfo', 'organization', 'items.product']);
+        $order->load(['shippingInfo', 'organization.user', 'items.product.organization.user', 'items.product.user']);
         $shippingInfo = $order->shippingInfo;
         if (! $shippingInfo) {
             return ['success' => false, 'error' => 'Order has no shipping address.'];
@@ -387,7 +646,7 @@ class ShippoService
 
         $addressFrom = $this->getShipFrom($order);
         $addressTo = $this->addressPayload([
-            'name' => trim(($shippingInfo->first_name ?? '') . ' ' . ($shippingInfo->last_name ?? '')),
+            'name' => trim(($shippingInfo->first_name ?? '').' '.($shippingInfo->last_name ?? '')),
             'street1' => $shippingInfo->shipping_address,
             'city' => $shippingInfo->city,
             'state' => $shippingInfo->state,
@@ -407,9 +666,9 @@ class ShippoService
         ];
 
         $response = Http::withHeaders([
-            'Authorization' => 'ShippoToken ' . $this->apiKey,
+            'Authorization' => 'ShippoToken '.$this->apiKey,
             'Content-Type' => 'application/json',
-        ])->post($this->baseUrl . '/shipments', $payload);
+        ])->post($this->baseUrl.'/shipments', $payload);
 
         if (! $response->successful()) {
             Log::warning('Shippo create shipment failed', [
@@ -420,7 +679,7 @@ class ShippoService
 
             return [
                 'success' => false,
-                'error' => $response->json('message') ?? $response->body() ?? 'Failed to get shipping rates.',
+                'error' => $this->shippoApiErrorMessage($response),
             ];
         }
 

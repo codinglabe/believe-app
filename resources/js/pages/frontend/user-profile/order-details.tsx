@@ -49,10 +49,13 @@ interface PrintifyDetails {
   id?: string
   status?: string
   shipping_method?: string
-    estimated_delivery?: string
-    total_tax?: number
+  estimated_delivery?: string
+  total_tax?: number
+  tracking_number?: string
+  carrier?: string
+  tracking_url?: string
   printify_connect?: {
-      url?: string
+    url?: string
   }
 }
 
@@ -73,7 +76,15 @@ interface Order {
   printify_status?: string
   paid_at?: string
   shipping_method?: string
+  tracking_number?: string | null
+  tracking_url?: string | null
+  carrier?: string | null
+  label_url?: string | null
+  shipping_status?: string | null
+  shipped_at?: string | null
+  delivered_at?: string | null
   shipping_info: ShippingInfo | null
+  customer_account?: { name: string; email: string } | null
   items: OrderItem[]
   printify_details?: PrintifyDetails | null
 }
@@ -129,32 +140,58 @@ export default function OrderDetails() {
     return texts[status] || status
   }
 
-  const getTrackingUrl = (trackingNumber: string, carrier?: string) => {
-    // Default tracking URLs based on carrier
-    const carriers: { [key: string]: string } = {
-      'usps': `https://tools.usps.com/go/TrackConfirmAction?tLabels=${trackingNumber}`,
-      'ups': `https://www.ups.com/track?tracknum=${trackingNumber}`,
-      'fedex': `https://www.fedex.com/fedextrack/?trknbr=${trackingNumber}`,
-      'dhl': `https://www.dhl.com/us-en/home/tracking/tracking-parcel.html?submit=1&tracking-id=${trackingNumber}`,
-    }
-
-    // If carrier is specified and we have a URL for it
-    if (carrier && carriers[carrier.toLowerCase()]) {
-      return carriers[carrier.toLowerCase()]
-    }
-
-    // If Printify provides a tracking URL
-    if (order.printify_details?.tracking_url) {
-      return order.printify_details.tracking_url
-    }
-
-    // Default to USPS (most common for Printify)
-    return carriers.usps
+  const carriers: { [key: string]: string } = {
+    usps: (n: string) => `https://tools.usps.com/go/TrackConfirmAction?tLabels=${n}`,
+    ups: (n: string) => `https://www.ups.com/track?tracknum=${n}`,
+    fedex: (n: string) => `https://www.fedex.com/fedextrack/?trknbr=${n}`,
+    dhl: (n: string) =>
+      `https://www.dhl.com/us-en/home/tracking/tracking-parcel.html?submit=1&tracking-id=${n}`,
   }
 
+  const getTrackingUrl = (
+    trackingNumber: string,
+    carrier?: string | null,
+    explicitUrl?: string | null
+  ) => {
+    if (explicitUrl && explicitUrl.trim() !== "") return explicitUrl
+    const c = (carrier || "").toLowerCase().replace(/\s+/g, "_")
+    if (c && carriers[c]) return carriers[c](trackingNumber)
+    if (c.includes("usps")) return carriers.usps(trackingNumber)
+    if (c.includes("ups")) return carriers.ups(trackingNumber)
+    if (c.includes("fedex")) return carriers.fedex(trackingNumber)
+    if (c.includes("dhl")) return carriers.dhl(trackingNumber)
+    return carriers.usps(trackingNumber)
+  }
+
+  const effectiveTrackingNumber =
+    order.tracking_number || order.printify_details?.tracking_number || null
+  const effectiveCarrier = order.carrier || order.printify_details?.carrier || null
+  const effectiveTrackingUrl =
+    order.tracking_url || order.printify_details?.tracking_url || null
+
   const canTrackOrder = () => {
-    return order.printify_details?.tracking_number &&
-           ['shipped', 'delivered'].includes(order.status)
+    return (
+      !!effectiveTrackingNumber &&
+      order.status !== "cancelled" &&
+      order.payment_status !== "refunded"
+    )
+  }
+
+  const shippingStatusLabel = (code: string | null | undefined) => {
+    if (!code) return null
+    const map: Record<string, string> = {
+      label_created: "Label created — carrier has the package",
+      shipped: "In transit",
+      completed: "Delivered",
+    }
+    return map[code] || code.replace(/_/g, " ")
+  }
+
+  const formatCityLine = (info: ShippingInfo) => {
+    const parts = [info.city]
+    if (info.state?.trim()) parts.push(info.state)
+    parts.push(info.zip)
+    return parts.join(", ")
   }
 
   return (
@@ -184,18 +221,15 @@ export default function OrderDetails() {
 
           <div className="flex items-center gap-2">
             {/* Track Order Button - Show only when order is shipped/delivered */}
-            {canTrackOrder() && (
+            {canTrackOrder() && effectiveTrackingNumber && (
               <Button asChild className="bg-green-600 hover:bg-green-700">
                 <a
-                  href={getTrackingUrl(
-                    order.printify_details!.tracking_number!,
-                    order.printify_details!.carrier
-                  )}
+                  href={getTrackingUrl(effectiveTrackingNumber, effectiveCarrier, effectiveTrackingUrl)}
                   target="_blank"
                   rel="noopener noreferrer"
                 >
                   <Navigation className="h-4 w-4 mr-2" />
-                  Track Package
+                  Track package
                 </a>
               </Button>
             )}
@@ -220,10 +254,16 @@ export default function OrderDetails() {
                       <Badge className={getStatusColor(order.status)}>
                         {getStatusText(order.status)}
                       </Badge>
+                      {order.shipping_status && (
+                        <Badge variant="outline" className="border-violet-300 text-violet-800 dark:border-violet-700 dark:text-violet-200">
+                          Delivery: {shippingStatusLabel(order.shipping_status)}
+                        </Badge>
+                      )}
                       <span className="text-sm text-gray-600 dark:text-gray-400">
-                        Payment Status: <Badge variant="outline" className={getPaymentStatusColor(order.payment_status)}>
-                            {getPaymentStatusText(order.payment_status)}
-                          </Badge>
+                        Payment:{" "}
+                        <Badge variant="outline" className={getPaymentStatusColor(order.payment_status)}>
+                          {getPaymentStatusText(order.payment_status)}
+                        </Badge>
                       </span>
                       {order.paid_at && (
                         <span className="text-sm text-gray-600 dark:text-gray-400">
@@ -232,52 +272,66 @@ export default function OrderDetails() {
                       )}
                     </div>
 
-                    {/* Tracking Information */}
-                    {canTrackOrder() && (
+                    {!order.printify_order_id && order.shipping_status && (
+                      <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
+                        After the seller buys a shipping label, status updates here and via carrier tracking. When the carrier
+                        marks the package delivered, this page shows &quot;Delivered&quot;.
+                      </p>
+                    )}
+
+                    {/* Tracking (Printify or Shippo / manual) */}
+                    {canTrackOrder() && effectiveTrackingNumber && (
                       <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-4">
                         <div className="flex items-center gap-3 mb-2">
                           <Truck className="h-5 w-5 text-green-600 dark:text-green-400" />
                           <h4 className="font-medium text-green-800 dark:text-green-300">
-                            Package Shipped
+                            Tracking
                           </h4>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
                           <div>
-                            <span className="text-green-700 dark:text-green-400 font-medium">Tracking Number:</span>
-                            <p className="font-mono text-green-800 dark:text-green-300">
-                              {order.printify_details!.tracking_number}
-                            </p>
+                            <span className="text-green-700 dark:text-green-400 font-medium">Tracking number</span>
+                            <p className="font-mono text-green-800 dark:text-green-300">{effectiveTrackingNumber}</p>
                           </div>
-                          {order.printify_details!.carrier && (
+                          {effectiveCarrier && (
                             <div>
-                              <span className="text-green-700 dark:text-green-400 font-medium">Carrier:</span>
-                              <p className="text-green-800 dark:text-green-300 capitalize">
-                                {order.printify_details!.carrier}
+                              <span className="text-green-700 dark:text-green-400 font-medium">Carrier</span>
+                              <p className="text-green-800 dark:text-green-300 capitalize">{effectiveCarrier}</p>
+                            </div>
+                          )}
+                          {order.printify_details?.estimated_delivery && (
+                            <div className="md:col-span-2">
+                              <span className="text-green-700 dark:text-green-400 font-medium">Estimated delivery</span>
+                              <p className="text-green-800 dark:text-green-300">
+                                {order.printify_details.estimated_delivery}
                               </p>
                             </div>
                           )}
-                          {order.printify_details!.estimated_delivery && (
-                            <div className="md:col-span-2">
-                              <span className="text-green-700 dark:text-green-400 font-medium">Estimated Delivery:</span>
-                              <p className="text-green-800 dark:text-green-300">
-                                {order.printify_details!.estimated_delivery}
-                              </p>
+                          {order.shipped_at && (
+                            <div className="md:col-span-2 text-sm text-green-800 dark:text-green-300">
+                              Shipped / label created: {order.shipped_at}
+                            </div>
+                          )}
+                          {order.delivered_at && (
+                            <div className="md:col-span-2 text-sm text-green-800 dark:text-green-300">
+                              Delivered: {order.delivered_at}
                             </div>
                           )}
                         </div>
-                        <div className="mt-3">
+                        <div className="mt-3 flex flex-wrap gap-2">
                           <Button asChild size="sm" className="bg-green-600 hover:bg-green-700">
                             <a
                               href={getTrackingUrl(
-                                order.printify_details!.tracking_number!,
-                                order.printify_details!.carrier
+                                effectiveTrackingNumber,
+                                effectiveCarrier,
+                                effectiveTrackingUrl
                               )}
                               target="_blank"
                               rel="noopener noreferrer"
                               className="flex items-center"
                             >
                               <ExternalLink className="h-4 w-4 mr-2" />
-                              Track on Carrier Website
+                              Track on carrier site
                             </a>
                           </Button>
                         </div>
@@ -478,7 +532,7 @@ export default function OrderDetails() {
                           {order.shipping_info.address}
                         </p>
                         <p className="text-gray-600 dark:text-gray-400">
-                          {order.shipping_info.city}, {order.shipping_info.state} {order.shipping_info.zip}
+                          {formatCityLine(order.shipping_info)}
                         </p>
                         <p className="text-gray-600 dark:text-gray-400">
                           {order.shipping_info.country}
@@ -497,18 +551,19 @@ export default function OrderDetails() {
                   Quick Actions
                 </h3>
                 <div className="space-y-2">
-                  {canTrackOrder() && (
+                  {canTrackOrder() && effectiveTrackingNumber && (
                     <Button asChild variant="outline" className="w-full justify-start">
                       <a
                         href={getTrackingUrl(
-                          order.printify_details!.tracking_number!,
-                          order.printify_details!.carrier
+                          effectiveTrackingNumber,
+                          effectiveCarrier,
+                          effectiveTrackingUrl
                         )}
                         target="_blank"
                         rel="noopener noreferrer"
                       >
                         <Navigation className="h-4 w-4 mr-2" />
-                        Track Your Package
+                        Track your package
                       </a>
                     </Button>
                   )}
