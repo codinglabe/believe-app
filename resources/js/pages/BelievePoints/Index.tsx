@@ -303,7 +303,7 @@ export default function BelievePointsIndex({
                             setErrors({ ...errors, policyAccepted: '' })
                           }
                         }}
-                        className="mt-1"
+                        className="mt-1 size-5 min-h-5 min-w-5"
                       />
                       <div className="flex-1 space-y-2">
                         <Label htmlFor="policy-accept" className="text-sm font-medium cursor-pointer">

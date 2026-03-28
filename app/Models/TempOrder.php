@@ -30,6 +30,7 @@ class TempOrder extends Model
         'selected_shipping_method',
         'shippo_rate_object_id',
         'shippo_carrier',
+        'shippo_shipment_id',
         'shippo_rate_amount',
         'status',
     ];

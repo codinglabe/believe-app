@@ -419,6 +419,15 @@ export default function Show({ order, userRole }: Props) {
                                             ? 'Shippo is not configured. Add SHIPPO_API_KEY to enable labels.'
                                             : 'This order does not need a label or already has one.'}
                             </CardDescription>
+                            {order.shipping_status && (
+                                <p className="text-sm text-muted-foreground mt-2">
+                                    Carrier delivery status (from tracking):{' '}
+                                    <strong className="text-foreground capitalize">
+                                        {order.shipping_status.replace(/_/g, ' ')}
+                                    </strong>
+                                    . Updates when Shippo receives tracking events (configure webhook).
+                                </p>
+                            )}
                         </CardHeader>
                         <CardContent className="space-y-3">
                             {order.tracking_number && (

@@ -131,6 +131,8 @@ export default function ProductView({
   const [isBidSubmitting, setIsBidSubmitting] = useState(false);
   const [bidEndCountdown, setBidEndCountdown] = useState<string>('');
 
+  const bidCountryNeedsState = ['US', 'CA', 'AU'].includes(bidCountry);
+
   // Fetch cart data on component mount
   useEffect(() => {
     fetchCartData();
@@ -163,6 +165,14 @@ export default function ProductView({
       showErrorToast(`Minimum bid is $${biddingInfo?.min_bid?.toFixed(2) ?? '0.00'}`);
       return;
     }
+    if (!bidAddressLine1.trim() || !bidCity.trim() || !bidZip.trim()) {
+      showErrorToast('Please enter street address, city, and postal/ZIP code for shipping.');
+      return;
+    }
+    if (bidCountryNeedsState && !bidState.trim()) {
+      showErrorToast('Please enter state or province for this country.');
+      return;
+    }
     setIsBidSubmitting(true);
     const payload: {
       bid_amount: number;
@@ -180,7 +190,7 @@ export default function ProductView({
       country: bidCountry,
     };
 
-    if (bidCity.trim()) payload.city = bidCity.trim();
+    payload.city = bidCity.trim();
     if (bidState.trim()) payload.state = bidState.trim();
 
     router.post(route('product.bid', { product: product.id }), payload, {
@@ -708,27 +718,33 @@ export default function ProductView({
                             onChange={(e) => setBidCity(e.target.value)}
                             placeholder="Your city"
                             maxLength={100}
+                            required
                             className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm"
                           />
                         </div>
                         <div>
-                          <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">State *</label>
+                          <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
+                            {bidCountryNeedsState ? 'State / province *' : 'County / region (optional)'}
+                          </label>
                           <input
                             type="text"
                             value={bidState}
                             onChange={(e) => setBidState(e.target.value)}
-                            placeholder="State / Region"
+                            placeholder={bidCountryNeedsState ? 'e.g. CA' : 'Optional'}
                             maxLength={50}
+                            required={bidCountryNeedsState}
                             className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm"
                           />
                         </div>
                         <div>
-                          <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">ZIP *</label>
+                          <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
+                            {bidCountry === 'GB' ? 'Postcode *' : bidCountry === 'CA' ? 'Postal code *' : 'ZIP / postal code *'}
+                          </label>
                           <input
                             type="text"
                             value={bidZip}
                             onChange={(e) => setBidZip(e.target.value)}
-                            placeholder="12345"
+                            placeholder={bidCountry === 'GB' ? 'SW1A 1AA' : bidCountry === 'CA' ? 'K1A 0B1' : '12345'}
                             maxLength={20}
                             required
                             className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm"
@@ -736,19 +752,26 @@ export default function ProductView({
                         </div>
                         <div>
                           <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Country *</label>
-                          <input
-                            type="text"
+                          <select
                             value={bidCountry}
-                            onChange={(e) => setBidCountry(e.target.value.toUpperCase().slice(0, 2))}
-                            maxLength={2}
+                            onChange={(e) => {
+                              const v = e.target.value;
+                              setBidCountry(v);
+                              if (!['US', 'CA', 'AU'].includes(v)) setBidState('');
+                            }}
                             required
                             className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm"
-                          />
+                          >
+                            <option value="US">United States</option>
+                            <option value="CA">Canada</option>
+                            <option value="GB">United Kingdom</option>
+                            <option value="AU">Australia</option>
+                          </select>
                         </div>
                       </div>
                       <p className="text-xs text-gray-500 dark:text-gray-400">
                         {product.pricing_model === 'blind_bid' ? 'Bids are private. Winner notified after deadline.' : `Minimum bid $${biddingInfo.min_bid.toFixed(2)}`}
-                        {' '}Location is shown to the seller for fulfillment; if you win, they may use it for shipping.
+                        {' '}Full address is used if you win: shipping and tax are calculated at payment from this location.
                       </p>
                     </form>
                   )}

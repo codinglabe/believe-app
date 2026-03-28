@@ -628,13 +628,15 @@ export default function DonatePage({
                 </button>
                 <Link
                   href="/believe-points"
-                  className="flex items-center justify-between gap-3 p-3 rounded-xl border border-slate-200/70 bg-white/60 hover:border-purple-400/50 hover:bg-white/80 text-purple-700 dark:text-purple-300 font-medium text-sm transition-all"
+                  className="flex items-center justify-between gap-3 p-4 rounded-xl border-2 border-slate-200/60 bg-white/60 hover:border-purple-400/50 hover:bg-white/80 text-left text-slate-800 dark:border-white/20 dark:bg-white/5 dark:hover:bg-white/10 dark:text-white font-medium text-sm transition-all"
                 >
-                  <span className="flex items-center gap-2">
-                    <Coins className="h-4 w-4 shrink-0" />
-                    Purchase Believe Points
+                  <span className="flex items-center gap-3 min-w-0">
+                    <span className="h-10 w-10 rounded-lg bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center shrink-0">
+                      <Coins className="h-5 w-5 text-white" />
+                    </span>
+                    <span className="font-semibold">Purchase Believe Points</span>
                   </span>
-                  <span className="text-purple-300">→</span>
+                  <ChevronRight className="h-5 w-5 text-slate-600/50 shrink-0 dark:text-white/70" />
                 </Link>
               </div>
             </motion.div>

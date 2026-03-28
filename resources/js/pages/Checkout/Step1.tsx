@@ -62,7 +62,12 @@ export default function Step1({
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target
-    setFormData((prev) => ({ ...prev, [name]: value }))
+    setFormData((prev) => {
+      if (name === "country" && !["US", "CA", "AU"].includes(value)) {
+        return { ...prev, country: value, state: "" }
+      }
+      return { ...prev, [name]: value }
+    })
     if (errors[name]) {
       setErrors((prev) => ({ ...prev, [name]: "" }))
     }
@@ -70,15 +75,21 @@ export default function Step1({
 
   // Donation handlers removed - donation feature disabled for Printify products
 
+  const countryNeedsState = ['US', 'CA', 'AU'].includes(formData.country)
+
   const validateForm = (): boolean => {
-    const requiredFields = ['name', 'email', 'phone', 'address', 'city', 'state', 'zip']
+    const requiredFields = ['name', 'email', 'phone', 'address', 'city', 'zip'] as const
     const newErrors: Record<string, string> = {}
 
     requiredFields.forEach(field => {
-      if (!formData[field as keyof typeof formData]) {
+      if (!formData[field]) {
         newErrors[field] = 'This field is required'
       }
     })
+
+    if (countryNeedsState && !formData.state.trim()) {
+      newErrors.state = 'State / province is required for this country'
+    }
 
     if (formData.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
       newErrors.email = 'Please enter a valid email address'
@@ -227,28 +238,40 @@ export default function Step1({
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">State *</label>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    {countryNeedsState ? 'State / province *' : 'County / region (optional)'}
+                  </label>
                   <input
                     type="text"
                     name="state"
                     value={formData.state}
                     onChange={handleInputChange}
                     className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                    placeholder="NY"
-                    required
+                    placeholder={countryNeedsState ? 'NY' : 'e.g. Greater London'}
+                    required={countryNeedsState}
                   />
                   {errors.state && <p className="text-red-500 text-sm mt-1">{errors.state}</p>}
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">ZIP Code *</label>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    {formData.country === 'GB' ? 'Postcode *' : formData.country === 'CA' ? 'Postal code *' : 'ZIP / postal code *'}
+                  </label>
                   <input
                     type="text"
                     name="zip"
                     value={formData.zip}
                     onChange={handleInputChange}
                     className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                    placeholder="10001"
+                    placeholder={
+                      formData.country === 'GB'
+                        ? 'SW1A 1AA'
+                        : formData.country === 'CA'
+                          ? 'K1A 0B1'
+                          : formData.country === 'AU'
+                            ? '2000'
+                            : '10001'
+                    }
                     required
                   />
                   {errors.zip && <p className="text-red-500 text-sm mt-1">{errors.zip}</p>}

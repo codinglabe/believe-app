@@ -2,28 +2,28 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Cart;
 use App\Models\Order;
 use App\Models\OrderItem;
-use App\Models\Cart;
-use App\Models\CartItem;
 use App\Models\OrderShippingInfo;
+use App\Models\ShippoShipment;
 use App\Models\TempOrder;
 use App\Models\Transaction;
-use App\Models\StateSalesTax;
 use App\Services\PrintifyService;
 use App\Services\ShippoService;
 use App\Services\StripeConfigService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use Inertia\Response;
-use Stripe\Stripe;
 use Stripe\PaymentIntent;
-use Illuminate\Support\Facades\DB;
+use Stripe\Stripe;
 
 class CheckoutController extends Controller
 {
     protected $printifyService;
+
     protected $shippoService;
 
     public function __construct(PrintifyService $printifyService, ShippoService $shippoService)
@@ -41,10 +41,10 @@ class CheckoutController extends Controller
         $user = auth()->user();
         $cart = $user->cart()->with([
             'items.product',
-            'items.variant'
+            'items.variant',
         ])->first();
 
-        if (!$cart || $cart->items->isEmpty()) {
+        if (! $cart || $cart->items->isEmpty()) {
             return Inertia::render('Checkout/Empty');
         }
 
@@ -67,7 +67,7 @@ class CheckoutController extends Controller
                         'printify_blueprint_id' => $item->printify_blueprint_id,
                         'printify_print_provider_id' => $item->printify_print_provider_id,
                         'variant_options' => $item->variant_options,
-                    ]
+                    ],
                 ];
             }),
             'subtotal' => (float) $subtotal,
@@ -102,7 +102,7 @@ class CheckoutController extends Controller
         $user = auth()->user();
         $cart = $user->cart()->with(['items.product', 'items.variant'])->first();
 
-        if (!$cart || $cart->items->isEmpty()) {
+        if (! $cart || $cart->items->isEmpty()) {
             return response()->json(['error' => 'Cart is empty'], 400);
         }
 
@@ -139,7 +139,7 @@ class CheckoutController extends Controller
 
             // Check if cart has Printify products
             $hasPrintifyProducts = $cart->items->contains(function ($item) {
-                return !empty($item->product->printify_product_id);
+                return ! empty($item->product->printify_product_id);
             });
 
             $printifyOrderId = null;
@@ -148,16 +148,17 @@ class CheckoutController extends Controller
             $shippoRateObjectId = null;
             $shippoCarrier = null;
             $shippoRateAmount = null;
+            $shippoShipmentId = null;
 
             if ($hasPrintifyProducts) {
                 // Create Printify order only if there are Printify products
                 $printifyOrderData = $this->preparePrintifyOrder($cart, $tempOrder);
 
                 // Only create order if there are Printify line items
-                if (!empty($printifyOrderData['line_items'])) {
+                if (! empty($printifyOrderData['line_items'])) {
                     $printifyOrder = $this->printifyService->createOrder($printifyOrderData);
 
-                    if (!isset($printifyOrder['id'])) {
+                    if (! isset($printifyOrder['id'])) {
                         throw new \Exception('Failed to create Printify order');
                     }
 
@@ -190,7 +191,7 @@ class CheckoutController extends Controller
                                 'name' => 'Standard Shipping',
                                 'cost' => $defaultShippingCost,
                                 'estimated_days' => '5-10 business days',
-                            ]
+                            ],
                         ],
                     ];
                 }
@@ -209,7 +210,9 @@ class CheckoutController extends Controller
                 ];
 
                 if ($manualProduct && $this->shippoService->isConfigured() && $validated['country'] && $validated['zip']) {
+                    $manualProduct->load('organization.user', 'user');
                     $org = $manualProduct->organization;
+                    $sellerContact = $this->shippoService->getSellerContactForShippo($org, $manualProduct);
 
                     $shipFrom = [
                         'name' => $manualProduct->ship_from_name ?: ($org?->contact_name ?: ($org?->name ?? 'Seller')),
@@ -217,18 +220,18 @@ class CheckoutController extends Controller
                         'city' => $manualProduct->ship_from_city ?: ($org?->city ?? ''),
                         'state' => $manualProduct->ship_from_state ?: ($org?->state ?? ''),
                         'zip' => $manualProduct->ship_from_zip ?: ($org?->zip ?? ''),
-                        'country' => $manualProduct->ship_from_country ?: 'US',
-                        'phone' => '',
-                        'email' => '',
+                        'country' => $this->shippoService->normalizeCountryToIso2((string) ($manualProduct->ship_from_country ?: 'US')),
+                        'phone' => $sellerContact['phone'],
+                        'email' => $sellerContact['email'],
                     ];
 
                     $shipTo = [
-                        'name' => trim(($firstName ?? 'Customer') . ' ' . ($lastName ?? '')),
+                        'name' => trim(($firstName ?? 'Customer').' '.($lastName ?? '')),
                         'street1' => $validated['address'],
                         'city' => $validated['city'],
                         'state' => $validated['state'],
                         'zip' => $validated['zip'],
-                        'country' => $validated['country'],
+                        'country' => $this->shippoService->normalizeCountryToIso2((string) ($validated['country'] ?? 'US')),
                         'phone' => $validated['phone'],
                         'email' => $validated['email'],
                     ];
@@ -252,25 +255,28 @@ class CheckoutController extends Controller
 
                     try {
                         $ratesResult = $this->shippoService->getRatesForAddresses($shipFrom, $shipTo, $parcel);
-                        if (!empty($ratesResult['success']) && !empty($ratesResult['rates'])) {
+                        if (! empty($ratesResult['success']) && ! empty($ratesResult['rates'])) {
                             $cheapest = null;
                             foreach ($ratesResult['rates'] as $rate) {
-                                if (!isset($rate['amount'])) continue;
+                                if (! isset($rate['amount'])) {
+                                    continue;
+                                }
                                 $amt = (float) $rate['amount'];
                                 if ($cheapest === null || $amt < (float) $cheapest['amount']) {
                                     $cheapest = $rate;
                                 }
                             }
 
-                            if ($cheapest && !empty($cheapest['object_id'])) {
+                            if ($cheapest && ! empty($cheapest['object_id'])) {
                                 $shippingCost = (float) $cheapest['amount'];
                                 $shippoRateObjectId = (string) $cheapest['object_id'];
                                 $shippoCarrier = $cheapest['provider'] ?? null;
                                 $shippoRateAmount = (float) $cheapest['amount'];
+                                $shippoShipmentId = $ratesResult['shipment_id'] ?? null;
                                 $shippingMethods = [
                                     [
                                         'id' => 'shippo_cheapest',
-                                        'name' => $cheapest['provider'] ? ('Shippo: ' . $cheapest['provider']) : 'Shippo Shipping',
+                                        'name' => $cheapest['provider'] ? ('Shippo: '.$cheapest['provider']) : 'Shippo Shipping',
                                         'cost' => $shippingCost,
                                         'estimated_days' => $cheapest['estimated_days'] ? (string) $cheapest['estimated_days'] : '—',
                                     ],
@@ -314,7 +320,7 @@ class CheckoutController extends Controller
                 ];
 
                 // Calculate state-wise sales tax for manual products
-                if (!empty($validated['state'])) {
+                if (! empty($validated['state'])) {
                     $stateCode = strtoupper($validated['state']);
                     $stateTax = \App\Models\StateSalesTax::where('state_code', $stateCode)->first();
 
@@ -336,6 +342,7 @@ class CheckoutController extends Controller
                 'shippo_rate_object_id' => $shippoRateObjectId,
                 'shippo_carrier' => $shippoCarrier,
                 'shippo_rate_amount' => $shippoRateAmount,
+                'shippo_shipment_id' => $shippoShipmentId,
                 'status' => 'shipping_calculated',
             ]);
 
@@ -351,7 +358,8 @@ class CheckoutController extends Controller
             ]);
         } catch (\Exception $e) {
             DB::rollBack();
-            \Log::error('Step 1 submission error: ' . $e->getMessage());
+            \Log::error('Step 1 submission error: '.$e->getMessage());
+
             return response()->json(['error' => $e->getMessage()], 500);
         }
     }
@@ -416,7 +424,6 @@ class CheckoutController extends Controller
     //         return response()->json(['error' => $e->getMessage()], 500);
     //     }
     // }
-
 
     /**
      * Step 2: Create payment intent
@@ -494,7 +501,6 @@ class CheckoutController extends Controller
     //     }
     // }
 
-
     public function createPaymentIntent(Request $request): JsonResponse
     {
         $validated = $request->validate([
@@ -549,7 +555,7 @@ class CheckoutController extends Controller
                     }
 
                 } catch (\Exception $e) {
-                    \Log::error('Failed to get Printify order on attempt ' . $attempt . ': ' . $e->getMessage());
+                    \Log::error('Failed to get Printify order on attempt '.$attempt.': '.$e->getMessage());
 
                     // If this is the last attempt, use fallback
                     if ($attempt === $maxRetries) {
@@ -608,7 +614,7 @@ class CheckoutController extends Controller
             $paymentIntent = PaymentIntent::create([
                 'amount' => (int) ($tempOrder->total_amount * 100),
                 'currency' => 'usd',
-                'description' => 'Marketplace Order - ' . $user->email,
+                'description' => 'Marketplace Order - '.$user->email,
                 'metadata' => [
                     'user_id' => $user->id,
                     'temp_order_id' => $tempOrder->id,
@@ -636,7 +642,8 @@ class CheckoutController extends Controller
             ]);
         } catch (\Exception $e) {
             DB::rollBack();
-            \Log::error('Payment intent creation error: ' . $e->getMessage());
+            \Log::error('Payment intent creation error: '.$e->getMessage());
+
             return response()->json(['error' => $e->getMessage()], 500);
         }
     }
@@ -669,21 +676,23 @@ class CheckoutController extends Controller
 
                 if ($user->believe_points < $pointsRequired) {
                     DB::rollBack();
+
                     return response()->json([
-                        'error' => "Insufficient Believe Points. You need {$pointsRequired} points but only have {$user->believe_points} points."
+                        'error' => "Insufficient Believe Points. You need {$pointsRequired} points but only have {$user->believe_points} points.",
                     ], 400);
                 }
 
                 // Deduct points
-                if (!$user->deductBelievePoints($pointsRequired)) {
+                if (! $user->deductBelievePoints($pointsRequired)) {
                     DB::rollBack();
+
                     return response()->json([
-                        'error' => 'Failed to deduct Believe Points. Please try again.'
+                        'error' => 'Failed to deduct Believe Points. Please try again.',
                     ], 500);
                 }
             } else {
                 // Validate Stripe payment
-                if (!isset($validated['payment_intent_id'])) {
+                if (! isset($validated['payment_intent_id'])) {
                     return response()->json(['error' => 'Payment intent ID is required for Stripe payments'], 400);
                 }
 
@@ -867,12 +876,18 @@ class CheckoutController extends Controller
             // Post-commit: for manual-only orders, auto-create Shippo label/tracking
             // (Printify orders are handled via Printify webhooks + OrderController UI.)
             try {
-                if ($this->shippoService->isConfigured() && empty($order->printify_order_id) && !empty($tempOrder->shippo_rate_object_id)) {
+                if ($this->shippoService->isConfigured() && empty($order->printify_order_id) && ! empty($tempOrder->shippo_rate_object_id)) {
                     $purchase = $this->shippoService->purchaseLabel((string) $tempOrder->shippo_rate_object_id);
 
                     if (($purchase['success'] ?? false) === true) {
+                        // Load relations for parcel snapshot.
+                        $order->load(['items.product', 'shippingInfo']);
+                        $parcel = $this->shippoService->getParcelSnapshot($order);
+                        $shippingInfo = $order->shippingInfo;
+                        $shipToName = trim(($shippingInfo?->first_name ?? '').' '.($shippingInfo?->last_name ?? ''));
+
                         $order->update([
-                            'shippo_shipment_id' => null, // Not required for label creation; can be added later if needed
+                            'shippo_shipment_id' => $tempOrder->shippo_shipment_id,
                             'shippo_transaction_id' => $purchase['transaction_id'] ?? null,
                             'tracking_number' => $purchase['tracking_number'] ?? null,
                             'tracking_url' => $purchase['tracking_url'] ?? null,
@@ -881,6 +896,29 @@ class CheckoutController extends Controller
                             'shipping_status' => 'label_created',
                             'shipped_at' => now(),
                         ]);
+
+                        ShippoShipment::updateOrCreate(
+                            ['order_id' => $order->id, 'product_type' => 'manual'],
+                            [
+                                'shippo_shipment_id' => $tempOrder->shippo_shipment_id,
+                                'selected_rate_object_id' => (string) $tempOrder->shippo_rate_object_id,
+                                'shippo_transaction_id' => $purchase['transaction_id'] ?? null,
+                                'tracking_number' => $purchase['tracking_number'] ?? null,
+                                'label_url' => $purchase['label_url'] ?? null,
+                                'carrier' => $purchase['carrier'] ?? null,
+                                'ship_to_name' => $shipToName ?: null,
+                                'ship_to_street1' => (string) ($shippingInfo?->shipping_address ?? ''),
+                                'ship_to_city' => $shippingInfo?->city ?: null,
+                                'ship_to_state' => $shippingInfo?->state ?: null,
+                                'ship_to_zip' => $shippingInfo?->zip ?: null,
+                                'ship_to_country' => $shippingInfo?->country ?: null,
+                                'parcel_weight_oz' => $parcel['weight'] ?? null,
+                                'parcel_length_in' => $parcel['length'] ?? null,
+                                'parcel_width_in' => $parcel['width'] ?? null,
+                                'parcel_height_in' => $parcel['height'] ?? null,
+                                'status' => 'label_created',
+                            ]
+                        );
                     }
                 }
             } catch (\Exception $e) {
@@ -898,9 +936,10 @@ class CheckoutController extends Controller
             ]);
         } catch (\Exception $e) {
             DB::rollBack();
-            \Log::error('Payment confirmation error: ' . $e->getMessage());
-            \Log::error('Stack trace: ' . $e->getTraceAsString());
-            return response()->json(['error' => 'Failed to process payment: ' . $e->getMessage()], 500);
+            \Log::error('Payment confirmation error: '.$e->getMessage());
+            \Log::error('Stack trace: '.$e->getTraceAsString());
+
+            return response()->json(['error' => 'Failed to process payment: '.$e->getMessage()], 500);
         }
     }
 
@@ -913,19 +952,19 @@ class CheckoutController extends Controller
 
         foreach ($cart->items as $item) {
             // Only include Printify products (skip manual products)
-            if (!empty($item->product->printify_product_id) && !empty($item->printify_variant_id)) {
+            if (! empty($item->product->printify_product_id) && ! empty($item->printify_variant_id)) {
                 $lineItems[] = [
                     'product_id' => $item->product->printify_product_id,
                     'variant_id' => (int) $item->printify_variant_id,
                     'quantity' => $item->quantity,
-                    'external_id' => 'temp-' . $tempOrder->id . '-item-' . $item->id,
+                    'external_id' => 'temp-'.$tempOrder->id.'-item-'.$item->id,
                 ];
             }
         }
 
         return [
-            'external_id' => 'ORDER-' . $tempOrder->id . '-' . uniqid(),
-            'label' => 'ORDER-LABEL' . $tempOrder->id,
+            'external_id' => 'ORDER-'.$tempOrder->id.'-'.uniqid(),
+            'label' => 'ORDER-LABEL'.$tempOrder->id,
             'line_items' => $lineItems,
             'address_to' => [
                 'first_name' => $tempOrder->first_name,
@@ -944,7 +983,7 @@ class CheckoutController extends Controller
 
     /**
      * Calculate shipping from Printify
-    */
+     */
     public function calculateShippingFromPrintify(
         string $printifyOrderId,
         string $country,
@@ -968,7 +1007,7 @@ class CheckoutController extends Controller
                 ];
             }
 
-            $defaultCost = (float) (($printifyOrder['total_shipping']?? 0) / 100);
+            $defaultCost = (float) (($printifyOrder['total_shipping'] ?? 0) / 100);
 
             // Log donation distribution for debugging
             \Log::info('Printify order in checkout step1 submit', [
@@ -981,9 +1020,9 @@ class CheckoutController extends Controller
                 'methods' => $methods,
             ];
 
-
         } catch (\Exception $e) {
-            \Log::error('Shipping calculation error: ' . $e->getMessage());
+            \Log::error('Shipping calculation error: '.$e->getMessage());
+
             return [
                 'cost' => 9.99,
                 'methods' => [
@@ -992,13 +1031,11 @@ class CheckoutController extends Controller
                         'name' => 'Standard Shipping',
                         'cost' => 9.99,
                         'estimated_days' => '10-30 business days',
-                    ]
+                    ],
                 ],
             ];
         }
     }
-
-
 
     /**
      * Update tax amount when Step2 page loads
@@ -1072,7 +1109,8 @@ class CheckoutController extends Controller
             ]);
 
         } catch (\Exception $e) {
-            \Log::error('Tax update error: ' . $e->getMessage());
+            \Log::error('Tax update error: '.$e->getMessage());
+
             return response()->json([
                 'success' => false,
                 'error' => 'Failed to update tax amount',

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Order;
+use App\Models\ShippoShipment;
 use App\Models\User;
 use App\Services\PrintifyService;
 use App\Services\ShippoService;
@@ -43,12 +44,12 @@ class OrderController extends Controller
         }
 
         if ($search) {
-            $query->where(function($q) use ($search) {
+            $query->where(function ($q) use ($search) {
                 $q->where('reference_number', 'LIKE', "%{$search}%")
-                  ->orWhereHas('user', function($q) use ($search) {
-                      $q->where('name', 'LIKE', "%{$search}%")
-                        ->orWhere('email', 'LIKE', "%{$search}%");
-                  });
+                    ->orWhereHas('user', function ($q) use ($search) {
+                        $q->where('name', 'LIKE', "%{$search}%")
+                            ->orWhere('email', 'LIKE', "%{$search}%");
+                    });
             });
         }
 
@@ -73,6 +74,14 @@ class OrderController extends Controller
                 && $order->shippingInfo
                 && empty($order->tracking_number);
 
+            // Human-readable delivery pipeline (Shippo webhook updates shipping_status)
+            $order->delivery_status_label = match ($order->shipping_status) {
+                'label_created' => 'Label created',
+                'shipped' => 'In transit',
+                'completed' => 'Delivered',
+                default => $order->shipping_status ? ucfirst(str_replace('_', ' ', (string) $order->shipping_status)) : null,
+            };
+
             return $order;
         });
 
@@ -87,7 +96,6 @@ class OrderController extends Controller
             'userRole' => auth()->user()->role,
         ]);
     }
-
 
     /**
      * Display order items for admin (filtered by organization if specified)
@@ -144,7 +152,7 @@ class OrderController extends Controller
                 'total_amount' => $order->total_amount,
                 'shipping_cost' => $order->shipping_cost,
                 'tax_amount' => $order->tax_amount,
-            ]
+            ],
         ]);
     }
 
@@ -200,7 +208,7 @@ class OrderController extends Controller
                 $printifyShipping = isset($printifyOrder['total_shipping']) ? $printifyOrder['total_shipping'] / 100 : 0;
                 $printifyTax = isset($printifyOrder['total_tax']) ? $printifyOrder['total_tax'] / 100 : 0;
             } catch (\Exception $e) {
-                \Log::error('Error fetching Printify order for calculations: ' . $e->getMessage());
+                \Log::error('Error fetching Printify order for calculations: '.$e->getMessage());
             }
         }
 
@@ -302,7 +310,7 @@ class OrderController extends Controller
                 $printifyOrder = $this->printifyService->getOrder($order->printify_order_id);
                 $orderData['printify_details'] = $this->formatPrintifyOrderData($printifyOrder);
             } catch (\Exception $e) {
-                \Log::error('Error fetching Printify order: ' . $e->getMessage());
+                \Log::error('Error fetching Printify order: '.$e->getMessage());
                 $orderData['printify_details'] = null;
                 $orderData['printify_error'] = $e->getMessage();
             }
@@ -352,6 +360,36 @@ class OrderController extends Controller
             $order->update(['shippo_shipment_id' => $result['shipment_id']]);
         }
 
+        // Create/update internal shipment record (manual-only) so webhook can update status.
+        $shippingInfo = $order->shippingInfo;
+        $shipToName = trim(($shippingInfo?->first_name ?? '').' '.($shippingInfo?->last_name ?? ''));
+        $shipToStreet1 = (string) ($shippingInfo?->shipping_address ?? '');
+        $parcel = $this->shippoService->getParcelSnapshot($order);
+
+        ShippoShipment::updateOrCreate(
+            ['order_id' => $order->id, 'product_type' => 'manual'],
+            [
+                'shippo_shipment_id' => $result['shipment_id'] ?? $order->shippo_shipment_id,
+                'ship_to_name' => $shipToName ?: null,
+                'ship_to_street1' => $shipToStreet1 ?: null,
+                'ship_to_city' => $shippingInfo?->city ?: null,
+                'ship_to_state' => $shippingInfo?->state ?: null,
+                'ship_to_zip' => $shippingInfo?->zip ?: null,
+                'ship_to_country' => $shippingInfo?->country ?: null,
+                'parcel_weight_oz' => $parcel['weight'] ?? null,
+                'parcel_length_in' => $parcel['length'] ?? null,
+                'parcel_width_in' => $parcel['width'] ?? null,
+                'parcel_height_in' => $parcel['height'] ?? null,
+                // Not yet selected/purchased
+                'selected_rate_object_id' => null,
+                'shippo_transaction_id' => null,
+                'tracking_number' => null,
+                'label_url' => null,
+                'carrier' => null,
+                'status' => null,
+            ]
+        );
+
         return response()->json([
             'shipment_id' => $result['shipment_id'] ?? null,
             'rates' => $result['rates'] ?? [],
@@ -393,6 +431,20 @@ class OrderController extends Controller
             'shipped_at' => now(),
         ]);
 
+        // Persist selected rate + transaction details for webhook status updates.
+        ShippoShipment::updateOrCreate(
+            ['order_id' => $order->id, 'product_type' => 'manual'],
+            [
+                'shippo_shipment_id' => $order->shippo_shipment_id,
+                'selected_rate_object_id' => $request->rate_object_id,
+                'shippo_transaction_id' => $result['transaction_id'] ?? null,
+                'tracking_number' => $result['tracking_number'] ?? null,
+                'label_url' => $result['label_url'] ?? null,
+                'carrier' => $result['carrier'] ?? null,
+                'status' => 'label_created',
+            ]
+        );
+
         return response()->json([
             'tracking_number' => $order->tracking_number,
             'tracking_url' => $order->tracking_url,
@@ -411,7 +463,7 @@ class OrderController extends Controller
             return response()->json(['error' => 'Unauthorized action.'], 403);
         }
 
-        if (!$order->printify_order_id) {
+        if (! $order->printify_order_id) {
             return response()->json(['error' => 'No Printify order ID found.'], 400);
         }
 
@@ -422,7 +474,7 @@ class OrderController extends Controller
                 'order_id' => $order->id,
                 'printify_order_id' => $order->printify_order_id,
                 'response_status' => $cancelResponse['status'] ?? 'not_set',
-                'response' => $cancelResponse
+                'response' => $cancelResponse,
             ]);
 
             // Check if cancellation was successful (status can be 'canceled' or 'cancelled')
@@ -434,13 +486,14 @@ class OrderController extends Controller
                 // Process refund (Stripe or Believe Points)
                 $refundResult = $this->processRefund($order);
 
-                if (!$refundResult['success']) {
+                if (! $refundResult['success']) {
                     \Log::error('Refund failed after Printify cancellation', [
                         'order_id' => $order->id,
-                        'refund_result' => $refundResult
+                        'refund_result' => $refundResult,
                     ]);
+
                     return redirect()->back()->withErrors([
-                        'error' => 'Order cancelled in Printify but refund failed: ' . $refundResult['message']
+                        'error' => 'Order cancelled in Printify but refund failed: '.$refundResult['message'],
                     ]);
                 }
 
@@ -454,7 +507,7 @@ class OrderController extends Controller
 
                 // Only set stripe_refund_id if it's a Stripe refund
                 $paymentMethod = $order->payment_method;
-                if (!$paymentMethod) {
+                if (! $paymentMethod) {
                     // Try to detect from refund result
                     $paymentMethod = isset($refundResult['points_refunded']) ? 'believe_points' : 'stripe';
                 }
@@ -468,32 +521,33 @@ class OrderController extends Controller
                 \Log::info('Order cancelled and refund processed successfully', [
                     'order_id' => $order->id,
                     'payment_method' => $paymentMethod,
-                    'refund_result' => $refundResult
+                    'refund_result' => $refundResult,
                 ]);
 
                 return redirect()->back()->with([
                     'success' => true,
-                    'message' => 'Order cancelled and refund processed successfully'
+                    'message' => 'Order cancelled and refund processed successfully',
                 ]);
             }
 
             \Log::warning('Printify cancellation response status not recognized', [
                 'order_id' => $order->id,
                 'response_status' => $cancelResponse['status'] ?? 'not_set',
-                'response' => $cancelResponse
+                'response' => $cancelResponse,
             ]);
 
             return redirect()->back()->withErrors([
-                'error' => 'Failed to cancel order in Printify. Unexpected response status.'
+                'error' => 'Failed to cancel order in Printify. Unexpected response status.',
             ]);
 
         } catch (\Exception $e) {
-            \Log::error('Error cancelling Printify order: ' . $e->getMessage(), [
+            \Log::error('Error cancelling Printify order: '.$e->getMessage(), [
                 'order_id' => $order->id,
-                'exception' => $e
+                'exception' => $e,
             ]);
+
             return redirect()->back()->withErrors([
-                'error' => 'Failed to cancel order: ' . $e->getMessage()
+                'error' => 'Failed to cancel order: '.$e->getMessage(),
             ]);
         }
     }
@@ -508,7 +562,7 @@ class OrderController extends Controller
             if ($order->payment_status === 'refunded') {
                 return [
                     'success' => false,
-                    'message' => 'Refund already processed for this order'
+                    'message' => 'Refund already processed for this order',
                 ];
             }
 
@@ -516,7 +570,7 @@ class OrderController extends Controller
             $paymentMethod = $order->payment_method;
 
             // If payment_method is not set, try to detect from transaction records or Stripe payment intent
-            if (!$paymentMethod) {
+            if (! $paymentMethod) {
                 // First, check if Stripe payment intent exists
                 if ($order->stripe_payment_intent_id) {
                     $paymentMethod = 'stripe';
@@ -535,8 +589,8 @@ class OrderController extends Controller
                         $paymentMethod = 'believe_points';
                         \Log::info('Payment method not found, defaulting to Believe Points', [
                             'order_id' => $order->id,
-                            'has_stripe_intent' => !empty($order->stripe_payment_intent_id),
-                            'has_transaction' => !empty($transaction),
+                            'has_stripe_intent' => ! empty($order->stripe_payment_intent_id),
+                            'has_transaction' => ! empty($transaction),
                         ]);
                     }
                 }
@@ -545,7 +599,7 @@ class OrderController extends Controller
             \Log::info('Processing refund with detected payment method', [
                 'order_id' => $order->id,
                 'payment_method' => $paymentMethod,
-                'has_stripe_intent' => !empty($order->stripe_payment_intent_id),
+                'has_stripe_intent' => ! empty($order->stripe_payment_intent_id),
             ]);
 
             // Handle Believe Points refund
@@ -557,10 +611,10 @@ class OrderController extends Controller
                 ]);
 
                 $user = $order->user;
-                if (!$user) {
+                if (! $user) {
                     return [
                         'success' => false,
-                        'message' => 'User not found for this order'
+                        'message' => 'User not found for this order',
                     ];
                 }
 
@@ -597,7 +651,7 @@ class OrderController extends Controller
                 return [
                     'success' => true,
                     'message' => 'Believe Points refund processed successfully',
-                    'refund_id' => 'believe_points_refund_' . $order->id,
+                    'refund_id' => 'believe_points_refund_'.$order->id,
                     'refund_status' => 'succeeded',
                     'refund_amount' => $order->total_amount,
                     'points_refunded' => $pointsToRefund,
@@ -607,10 +661,10 @@ class OrderController extends Controller
             // Handle Stripe refund
             if ($paymentMethod === 'stripe') {
                 // Check if order has a Stripe payment intent
-                if (!$order->stripe_payment_intent_id) {
+                if (! $order->stripe_payment_intent_id) {
                     return [
                         'success' => false,
-                        'message' => 'No Stripe payment intent found for this order'
+                        'message' => 'No Stripe payment intent found for this order',
                     ];
                 }
 
@@ -624,7 +678,7 @@ class OrderController extends Controller
                 $stripe = \Laravel\Cashier\Cashier::stripe();
                 $refund = $stripe->refunds->create([
                     'payment_intent' => $order->stripe_payment_intent_id,
-                    'amount' => (int)($order->total_amount * 100), // Convert to cents
+                    'amount' => (int) ($order->total_amount * 100), // Convert to cents
                     'reason' => 'requested_by_customer',
                 ]);
 
@@ -641,32 +695,34 @@ class OrderController extends Controller
                         'message' => 'Stripe refund processed successfully',
                         'refund_id' => $refund->id,
                         'refund_status' => $refund->status,
-                        'refund_amount' => $refund->amount / 100 // Convert back from cents
+                        'refund_amount' => $refund->amount / 100, // Convert back from cents
                     ];
                 } else {
                     return [
                         'success' => false,
-                        'message' => 'Refund failed with status: ' . $refund->status
+                        'message' => 'Refund failed with status: '.$refund->status,
                     ];
                 }
             }
 
             return [
                 'success' => false,
-                'message' => 'Unknown payment method: ' . $paymentMethod
+                'message' => 'Unknown payment method: '.$paymentMethod,
             ];
 
         } catch (\Stripe\Exception\ApiErrorException $e) {
-            \Log::error('Stripe refund error: ' . $e->getMessage());
+            \Log::error('Stripe refund error: '.$e->getMessage());
+
             return [
                 'success' => false,
-                'message' => 'Stripe API error: ' . $e->getMessage()
+                'message' => 'Stripe API error: '.$e->getMessage(),
             ];
         } catch (\Exception $e) {
-            \Log::error('Refund processing error: ' . $e->getMessage());
+            \Log::error('Refund processing error: '.$e->getMessage());
+
             return [
                 'success' => false,
-                'message' => 'Refund processing error: ' . $e->getMessage()
+                'message' => 'Refund processing error: '.$e->getMessage(),
             ];
         }
     }
@@ -708,7 +764,9 @@ class OrderController extends Controller
      */
     private function getProductImage(?string $productId, ?string $variantId): ?string
     {
-        if (!$productId) return null;
+        if (! $productId) {
+            return null;
+        }
 
         try {
             $product = $this->printifyService->getProduct($productId);
@@ -724,7 +782,8 @@ class OrderController extends Controller
             // Return first image if no variant-specific image found
             return $images[0]['src'] ?? null;
         } catch (\Exception $e) {
-            \Log::error('Error fetching product image: ' . $e->getMessage());
+            \Log::error('Error fetching product image: '.$e->getMessage());
+
             return null;
         }
     }
@@ -750,17 +809,17 @@ class OrderController extends Controller
         if ($order->status === 'cancelled' || $order->status === 'refunded') {
             return response()->json([
                 'success' => false,
-                'message' => 'Cannot change status of a cancelled or refunded order.'
+                'message' => 'Cannot change status of a cancelled or refunded order.',
             ], 403);
         }
 
         // Check if this is a manual product order (not Printify)
         $isManualOrder = empty($order->printify_order_id);
 
-        if (!$isManualOrder) {
+        if (! $isManualOrder) {
             return response()->json([
                 'success' => false,
-                'message' => 'Cannot manually update status for Printify orders. Status is managed by Printify.'
+                'message' => 'Cannot manually update status for Printify orders. Status is managed by Printify.',
             ], 403);
         }
 
@@ -769,10 +828,10 @@ class OrderController extends Controller
             return empty($item->product->printify_product_id);
         });
 
-        if (!$hasManualProduct) {
+        if (! $hasManualProduct) {
             return response()->json([
                 'success' => false,
-                'message' => 'This order does not contain manual products.'
+                'message' => 'This order does not contain manual products.',
             ], 403);
         }
 
@@ -784,11 +843,12 @@ class OrderController extends Controller
                 // Process refund based on payment method
                 $refundResult = $this->processRefund($order);
 
-                if (!$refundResult['success']) {
+                if (! $refundResult['success']) {
                     DB::rollBack();
+
                     return response()->json([
                         'success' => false,
-                        'message' => 'Failed to process refund: ' . $refundResult['message']
+                        'message' => 'Failed to process refund: '.$refundResult['message'],
                     ], 400);
                 }
 
@@ -833,11 +893,11 @@ class OrderController extends Controller
 
             } catch (\Exception $e) {
                 DB::rollBack();
-                \Log::error('Error cancelling order and processing refund: ' . $e->getMessage());
+                \Log::error('Error cancelling order and processing refund: '.$e->getMessage());
 
                 return response()->json([
                     'success' => false,
-                    'message' => 'Failed to cancel order: ' . $e->getMessage()
+                    'message' => 'Failed to cancel order: '.$e->getMessage(),
                 ], 500);
             }
         }

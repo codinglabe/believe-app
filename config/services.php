@@ -54,7 +54,6 @@ return [
         'whatsapp_from' => env('TWILIO_FROM', 'whatsapp:+14155238886'),
     ],
 
-
     'firebase' => [
         'project_id' => env('FIREBASE_PROJECT_ID'),
         'credentials' => env('FIREBASE_CREDENTIALS', 'app/firebase/firebase-credentials.json'),
@@ -70,19 +69,19 @@ return [
     'gmail' => [
         'client_id' => env('GMAIL_CLIENT_ID'),
         'client_secret' => env('GMAIL_CLIENT_SECRET'),
-        'redirect_uri' => env('GMAIL_REDIRECT_URI', env('APP_URL') . '/email-invite/callback'),
+        'redirect_uri' => env('GMAIL_REDIRECT_URI', env('APP_URL').'/email-invite/callback'),
     ],
 
     'outlook' => [
         'client_id' => env('OUTLOOK_CLIENT_ID'),
         'client_secret' => env('OUTLOOK_CLIENT_SECRET'),
-        'redirect_uri' => env('OUTLOOK_REDIRECT_URI', env('APP_URL') . '/email-invite/callback'),
+        'redirect_uri' => env('OUTLOOK_REDIRECT_URI', env('APP_URL').'/email-invite/callback'),
     ],
 
     'facebook' => [
         'app_id' => env('FACEBOOK_APP_ID'),
         'app_secret' => env('FACEBOOK_APP_SECRET'),
-        'redirect_uri' => env('FACEBOOK_REDIRECT_URI', env('APP_URL') . '/facebook/callback'),
+        'redirect_uri' => env('FACEBOOK_REDIRECT_URI', env('APP_URL').'/facebook/callback'),
         'default_graph_version' => 'v21.0',
     ],
 
@@ -98,7 +97,7 @@ return [
         'api_key' => env('YOUTUBE_API_KEY', env('VITE_YOUTUBE_API_KEY')),
         'client_id' => env('YOUTUBE_CLIENT_ID', env('GOOGLE_CLIENT_ID')),
         'client_secret' => env('YOUTUBE_CLIENT_SECRET', env('GOOGLE_CLIENT_SECRET')),
-        'redirect_uri' => env('YOUTUBE_REDIRECT_URI', env('APP_URL') . '/integrations/youtube/callback'),
+        'redirect_uri' => env('YOUTUBE_REDIRECT_URI', env('APP_URL').'/integrations/youtube/callback'),
     ],
 
     'phaze' => [
@@ -121,7 +120,7 @@ return [
     'dropbox' => [
         'client_id' => env('DROPBOX_CLIENT_ID'),
         'client_secret' => env('DROPBOX_CLIENT_SECRET'),
-        'redirect_uri' => env('DROPBOX_REDIRECT_URI', env('APP_URL') . '/integrations/dropbox/callback'),
+        'redirect_uri' => env('DROPBOX_REDIRECT_URI', env('APP_URL').'/integrations/dropbox/callback'),
         'access_token' => env('DROPBOX_ACCESS_TOKEN'), // optional: app-level token for legacy use
         // SSL: set DROPBOX_SSL_VERIFY=false on Windows/local if you get "cURL error 60: unable to get local issuer certificate"
         'verify' => filter_var(env('DROPBOX_SSL_VERIFY', true), FILTER_VALIDATE_BOOLEAN),
@@ -130,6 +129,13 @@ return [
     'shippo' => [
         'api_key' => env('SHIPPO_API_KEY'),
         'api_base' => env('SHIPPO_API_BASE', 'https://api.goshippo.com'),
+        // USPS requires non-empty seller (ship-from) email AND phone. Used when org/user data is incomplete.
+        'fallback_seller_email' => env('SHIPPO_FALLBACK_SELLER_EMAIL', env('MAIL_FROM_ADDRESS')),
+        // Last-resort US digits only if nothing else is set (override in production via SHIPPO_FALLBACK_SELLER_PHONE).
+        'fallback_seller_phone' => env('SHIPPO_FALLBACK_SELLER_PHONE', '5555555555'),
+        // Webhook URL: {APP_URL}/api/webhooks/shippo — optional security (Shippo docs: HMAC or ?token=)
+        'webhook_hmac_secret' => env('SHIPPO_WEBHOOK_HMAC_SECRET'),
+        'webhook_query_token' => env('SHIPPO_WEBHOOK_TOKEN'),
     ],
 
     'irs' => [
