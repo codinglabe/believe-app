@@ -6,7 +6,7 @@ import { MerchantInput } from '@/components/merchant-ui'
 import { MerchantLabel } from '@/components/merchant-ui'
 import { MerchantTextarea } from '@/components/merchant-ui'
 import { MerchantDashboardLayout } from '@/components/merchant'
-import { Save, Building2, User, CreditCard, Globe, Download, CheckCircle2, XCircle } from 'lucide-react'
+import { Save, Building2, User, CreditCard, Globe, Download, CheckCircle2, XCircle, MapPin } from 'lucide-react'
 import { motion } from 'framer-motion'
 import { usePage } from '@inertiajs/react'
 import { showSuccessToast, showErrorToast } from '@/lib/toast'
@@ -89,6 +89,12 @@ export default function Settings({ billingData: initialBillingData }: SettingsPr
     name: merchant?.name || '',
     email: merchant?.email || '',
     phone: merchant?.phone || '',
+    shipping_contact_name: merchant?.shipping_contact_name || '',
+    shipping_address: merchant?.shipping_address || '',
+    shipping_city: merchant?.shipping_city || '',
+    shipping_state: merchant?.shipping_state || '',
+    shipping_zip: merchant?.shipping_zip || '',
+    shipping_country: merchant?.shipping_country || 'US',
   })
 
   const businessForm = useForm({
@@ -119,6 +125,12 @@ export default function Settings({ billingData: initialBillingData }: SettingsPr
         name: merchant.name || '',
         email: merchant.email || '',
         phone: merchant.phone || '',
+        shipping_contact_name: merchant.shipping_contact_name || '',
+        shipping_address: merchant.shipping_address || '',
+        shipping_city: merchant.shipping_city || '',
+        shipping_state: merchant.shipping_state || '',
+        shipping_zip: merchant.shipping_zip || '',
+        shipping_country: merchant.shipping_country || 'US',
       })
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -252,6 +264,97 @@ export default function Settings({ billingData: initialBillingData }: SettingsPr
                         )}
                       </div>
 
+                      <div className="pt-2 border-t border-[#FF1493]/20">
+                        <div className="flex items-center gap-2 mb-4">
+                          <MapPin className="h-5 w-5 text-[#FF1493]" />
+                          <div>
+                            <h3 className="text-lg font-semibold text-white">Shipping address</h3>
+                            <p className="text-sm text-gray-400">
+                              Where you ship marketplace orders from (used for carrier rates and labels). If you leave
+                              this blank, your business address from the Business tab is used when available.
+                            </p>
+                          </div>
+                        </div>
+                        <div className="space-y-4">
+                          <div>
+                            <MerchantLabel htmlFor="shipping_contact_name">Ship-from contact name (optional)</MerchantLabel>
+                            <MerchantInput
+                              id="shipping_contact_name"
+                              value={profileForm.data.shipping_contact_name}
+                              onChange={(e) => profileForm.setData('shipping_contact_name', e.target.value)}
+                              className="mt-1"
+                              placeholder="Warehouse or your name"
+                            />
+                            {profileForm.errors.shipping_contact_name && (
+                              <p className="mt-1 text-sm text-red-400">{profileForm.errors.shipping_contact_name}</p>
+                            )}
+                          </div>
+                          <div>
+                            <MerchantLabel htmlFor="shipping_address">Street address</MerchantLabel>
+                            <MerchantInput
+                              id="shipping_address"
+                              value={profileForm.data.shipping_address}
+                              onChange={(e) => profileForm.setData('shipping_address', e.target.value)}
+                              className="mt-1"
+                            />
+                            {profileForm.errors.shipping_address && (
+                              <p className="mt-1 text-sm text-red-400">{profileForm.errors.shipping_address}</p>
+                            )}
+                          </div>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                              <MerchantLabel htmlFor="shipping_city">City</MerchantLabel>
+                              <MerchantInput
+                                id="shipping_city"
+                                value={profileForm.data.shipping_city}
+                                onChange={(e) => profileForm.setData('shipping_city', e.target.value)}
+                                className="mt-1"
+                              />
+                              {profileForm.errors.shipping_city && (
+                                <p className="mt-1 text-sm text-red-400">{profileForm.errors.shipping_city}</p>
+                              )}
+                            </div>
+                            <div>
+                              <MerchantLabel htmlFor="shipping_state">State / region</MerchantLabel>
+                              <MerchantInput
+                                id="shipping_state"
+                                value={profileForm.data.shipping_state}
+                                onChange={(e) => profileForm.setData('shipping_state', e.target.value)}
+                                className="mt-1"
+                              />
+                              {profileForm.errors.shipping_state && (
+                                <p className="mt-1 text-sm text-red-400">{profileForm.errors.shipping_state}</p>
+                              )}
+                            </div>
+                            <div>
+                              <MerchantLabel htmlFor="shipping_zip">ZIP / postal code</MerchantLabel>
+                              <MerchantInput
+                                id="shipping_zip"
+                                value={profileForm.data.shipping_zip}
+                                onChange={(e) => profileForm.setData('shipping_zip', e.target.value)}
+                                className="mt-1"
+                              />
+                              {profileForm.errors.shipping_zip && (
+                                <p className="mt-1 text-sm text-red-400">{profileForm.errors.shipping_zip}</p>
+                              )}
+                            </div>
+                            <div>
+                              <MerchantLabel htmlFor="shipping_country">Country</MerchantLabel>
+                              <MerchantInput
+                                id="shipping_country"
+                                value={profileForm.data.shipping_country}
+                                onChange={(e) => profileForm.setData('shipping_country', e.target.value)}
+                                className="mt-1"
+                                placeholder="US"
+                              />
+                              {profileForm.errors.shipping_country && (
+                                <p className="mt-1 text-sm text-red-400">{profileForm.errors.shipping_country}</p>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
                       <div className="flex justify-end pt-4">
                         <MerchantButton type="submit" disabled={profileForm.processing}>
                           <Save className="w-4 h-4 mr-2" />
@@ -321,7 +424,7 @@ export default function Settings({ billingData: initialBillingData }: SettingsPr
 
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
-                          <MerchantLabel htmlFor="address">Address</MerchantLabel>
+                          <MerchantLabel htmlFor="address">Business address</MerchantLabel>
                           <MerchantInput
                             id="address"
                             value={businessForm.data.address}

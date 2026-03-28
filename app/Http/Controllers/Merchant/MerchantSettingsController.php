@@ -9,7 +9,6 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
-use Inertia\Response;
 use Laravel\Cashier\Cashier;
 
 class MerchantSettingsController extends Controller
@@ -48,19 +47,19 @@ class MerchantSettingsController extends Controller
                 if ($currentSubscription->stripe_id) {
                     $stripe = Cashier::stripe();
                     $stripeSubscription = $stripe->subscriptions->retrieve($currentSubscription->stripe_id);
-                    
+
                     // Update local subscription with latest data from Stripe
                     $currentSubscription->stripe_status = $stripeSubscription->status;
-                    $currentSubscription->ends_at = $stripeSubscription->cancel_at ? 
+                    $currentSubscription->ends_at = $stripeSubscription->cancel_at ?
                         \Carbon\Carbon::createFromTimestamp($stripeSubscription->cancel_at) : null;
-                    $currentSubscription->trial_ends_at = $stripeSubscription->trial_end ? 
+                    $currentSubscription->trial_ends_at = $stripeSubscription->trial_end ?
                         \Carbon\Carbon::createFromTimestamp($stripeSubscription->trial_end) : null;
                     $currentSubscription->save();
-                    
+
                     // Check if subscription is canceled
                     // Status is 'canceled' OR cancel_at is set (meaning it's scheduled to cancel)
                     // If cancel_at is set, don't show as current plan even if still active
-                    $isCanceled = $stripeSubscription->status === 'canceled' || 
+                    $isCanceled = $stripeSubscription->status === 'canceled' ||
                                  ($stripeSubscription->cancel_at !== null);
                 }
             } catch (\Exception $e) {
@@ -69,16 +68,16 @@ class MerchantSettingsController extends Controller
                     'subscription_id' => $currentSubscription->id,
                     'error' => $e->getMessage(),
                 ]);
-                
+
                 // Fallback: check local status
-                $isCanceled = $currentSubscription->stripe_status === 'canceled' || 
+                $isCanceled = $currentSubscription->stripe_status === 'canceled' ||
                              ($currentSubscription->ends_at && $currentSubscription->ends_at->isPast());
             }
 
             // Only create subscription data if subscription is still active (not canceled)
-            if (!$isCanceled) {
+            if (! $isCanceled) {
                 $plan = MerchantSubscriptionPlan::where('stripe_price_id', $currentSubscription->stripe_price)->first();
-                
+
                 $subscriptionData = [
                     'id' => $currentSubscription->id,
                     'stripe_id' => $currentSubscription->stripe_id,
@@ -114,7 +113,7 @@ class MerchantSettingsController extends Controller
                     if ($invoice->subscription) {
                         try {
                             $stripeSubscription = $stripe->subscriptions->retrieve($invoice->subscription);
-                            $subscriptionCanceled = $stripeSubscription->status === 'canceled' || 
+                            $subscriptionCanceled = $stripeSubscription->status === 'canceled' ||
                                                    ($stripeSubscription->cancel_at !== null);
                         } catch (\Exception $e) {
                             // If we can't retrieve subscription, check local database
@@ -122,7 +121,7 @@ class MerchantSettingsController extends Controller
                                 ->where('stripe_id', $invoice->subscription)
                                 ->first();
                             if ($localSubscription) {
-                                $subscriptionCanceled = $localSubscription->stripe_status === 'canceled' || 
+                                $subscriptionCanceled = $localSubscription->stripe_status === 'canceled' ||
                                                        ($localSubscription->ends_at !== null);
                             }
                         }
@@ -177,12 +176,24 @@ class MerchantSettingsController extends Controller
                 Rule::unique('merchants')->ignore($merchant->id),
             ],
             'phone' => ['nullable', 'string', 'max:255'],
+            'shipping_contact_name' => ['nullable', 'string', 'max:255'],
+            'shipping_address' => ['nullable', 'string', 'max:255'],
+            'shipping_city' => ['nullable', 'string', 'max:255'],
+            'shipping_state' => ['nullable', 'string', 'max:255'],
+            'shipping_zip' => ['nullable', 'string', 'max:32'],
+            'shipping_country' => ['nullable', 'string', 'max:255'],
         ]);
 
         $merchant->update([
             'name' => $validated['name'],
             'email' => $validated['email'],
             'phone' => $validated['phone'] ?? null,
+            'shipping_contact_name' => $validated['shipping_contact_name'] ?? null,
+            'shipping_address' => $validated['shipping_address'] ?? null,
+            'shipping_city' => $validated['shipping_city'] ?? null,
+            'shipping_state' => $validated['shipping_state'] ?? null,
+            'shipping_zip' => $validated['shipping_zip'] ?? null,
+            'shipping_country' => $validated['shipping_country'] ?? null,
         ]);
 
         return back()->with('flash', ['success' => 'Profile updated successfully.']);
@@ -211,4 +222,3 @@ class MerchantSettingsController extends Controller
         return back()->with('flash', ['success' => 'Business information updated successfully.']);
     }
 }
-
