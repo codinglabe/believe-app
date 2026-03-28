@@ -2,7 +2,6 @@
 
 namespace App\Http\Middleware;
 
-use App\Models\AdminSetting;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
@@ -70,7 +69,7 @@ class HandleInertiaRequests extends Middleware
 
         // Only load organization relationship if user is not a LivestockUser or Merchant
         // Load organization manually to avoid ambiguous column error with hasOneThrough
-        if ($user && !$isLivestockDomain && !$isMerchantDomain && !($user instanceof \App\Models\LivestockUser) && !($user instanceof \App\Models\Merchant)) {
+        if ($user && ! $isLivestockDomain && ! $isMerchantDomain && ! ($user instanceof \App\Models\LivestockUser) && ! ($user instanceof \App\Models\Merchant)) {
             // Load organization manually through board_members to avoid relationship query issues
             // This prevents the ambiguous column error when eager loading
             $boardMember = $user->boardMemberships()->first();
@@ -80,11 +79,11 @@ class HandleInertiaRequests extends Middleware
                     $user->setRelation('organization', $organization);
                 }
             }
-            $user->load("serviceSellerProfile");
+            $user->load('serviceSellerProfile');
         }
         // Only access roles if user is not a LivestockUser or Merchant (User model has roles via Spatie Permission)
         $role = null;
-        if ($user && !($user instanceof \App\Models\LivestockUser) && !($user instanceof \App\Models\Merchant)) {
+        if ($user && ! ($user instanceof \App\Models\LivestockUser) && ! ($user instanceof \App\Models\Merchant)) {
             $role = $user->roles?->first();
         }
 
@@ -92,7 +91,7 @@ class HandleInertiaRequests extends Middleware
         $permissions = [];
         $roles = [];
 
-        if ($user && !$isLivestockDomain && !$isMerchantDomain && !($user instanceof \App\Models\LivestockUser) && !($user instanceof \App\Models\Merchant) && method_exists($user, 'getAllPermissions')) {
+        if ($user && ! $isLivestockDomain && ! $isMerchantDomain && ! ($user instanceof \App\Models\LivestockUser) && ! ($user instanceof \App\Models\Merchant) && method_exists($user, 'getAllPermissions')) {
             $permissions = $user->getAllPermissions()->pluck('name')->toArray();
             $roles = $user->roles?->pluck('name')->toArray() ?? [];
         }
@@ -161,6 +160,12 @@ class HandleInertiaRequests extends Middleware
                     'state' => $user->state,
                     'zip_code' => $user->zip_code,
                     'country' => $user->country,
+                    'shipping_contact_name' => $user->shipping_contact_name,
+                    'shipping_address' => $user->shipping_address,
+                    'shipping_city' => $user->shipping_city,
+                    'shipping_state' => $user->shipping_state,
+                    'shipping_zip' => $user->shipping_zip,
+                    'shipping_country' => $user->shipping_country,
                     'status' => $user->status,
                     'role' => $user->role,
                     'email_verified_at' => $user->email_verified_at,
@@ -174,7 +179,7 @@ class HandleInertiaRequests extends Middleware
                     'name' => $user->name,
                     'email' => $user->email,
                     'phone' => $user->phone,
-                    'profile_image' => $user->profile_image ? '/storage/' . $user->profile_image : null,
+                    'profile_image' => $user->profile_image ? '/storage/'.$user->profile_image : null,
                     'bio' => $user->bio,
                     'status' => $user->status,
                     'is_verified' => $user->is_verified,
@@ -193,7 +198,7 @@ class HandleInertiaRequests extends Middleware
                 ];
             } else {
                 // Main app user data (only for regular User models)
-                if (!($user instanceof \App\Models\LivestockUser) && !($user instanceof \App\Models\Merchant)) {
+                if (! ($user instanceof \App\Models\LivestockUser) && ! ($user instanceof \App\Models\Merchant)) {
                     $userData = [
                         'id' => $user->id,
                         'slug' => $user->slug ?? null,
@@ -202,7 +207,7 @@ class HandleInertiaRequests extends Middleware
                         'phone' => $user->contact_number,
                         'role' => $user->role,
                         'organization_role' => $user->organization_role ?? null,
-                        'balance'=>$user->balance,
+                        'balance' => $user->balance,
                         'reward_points' => $user->reward_points ?? 0,
                         'believe_points' => $user->believe_points ?? 0,
                         'credits' => $user->credits ?? 0,
@@ -210,21 +215,21 @@ class HandleInertiaRequests extends Middleware
                         'ai_tokens_included' => $user->ai_tokens_included ?? 0,
                         'current_plan_id' => $user->current_plan_id ?? null,
                         'current_plan_details' => $user->current_plan_details ?? null,
-                        "image" => $user->role !== "organization" ? ($user->image ? '/storage/' . $user->image : null) :  ($user->organization?->user->image ? '/storage/' . $user->organization?->user->image : null),
+                        'image' => $user->role !== 'organization' ? ($user->image ? '/storage/'.$user->image : null) : ($user->organization?->user->image ? '/storage/'.$user->organization?->user->image : null),
                         'favorite_organizations_count' => $user->favoriteOrganizations()->count(),
-                        "cover_img" => $user->role !== "organization" ? ($user->cover_img ? '/storage/' . $user->cover_img : null) :($user->organization?->user?->cover_img ? '/storage/' . $user->organization?->user?->cover_img : null),
-                        "dob" => $user->dob,
+                        'cover_img' => $user->role !== 'organization' ? ($user->cover_img ? '/storage/'.$user->cover_img : null) : ($user->organization?->user?->cover_img ? '/storage/'.$user->organization?->user?->cover_img : null),
+                        'dob' => $user->dob,
                         'joined' => $user->created_at->format('F Y'),
-                        "email_verified_at" => $user->email_verified_at,
-                        "ownership_verified_at" => $user->ownership_verified_at,
-                        'referral_link' => $user->referral_code ? url('/register?ref=' . $user->referral_code) : null,
+                        'email_verified_at' => $user->email_verified_at,
+                        'ownership_verified_at' => $user->ownership_verified_at,
+                        'referral_link' => $user->referral_code ? url('/register?ref='.$user->referral_code) : null,
                         'push_token' => $user->push_token ?? null,
                         'timezone' => $user->timezone ?? 'UTC',
-                        "organization" => $user->organization ? [
+                        'organization' => $user->organization ? [
                             'id' => $user->organization->id,
                             'ein' => $user->organization->ein ?? null,
                             'name' => $user->organization->name,
-                            "registered_user_image" => $user->organization->registered_user_image ? '/storage/' . $user->organization->registered_user_image : null,
+                            'registered_user_image' => $user->organization->registered_user_image ? '/storage/'.$user->organization->registered_user_image : null,
                             'contact_title' => $user->organization->contact_title,
                             'website' => $user->organization->website,
                             'wefunder_project_url' => $user->organization->wefunder_project_url ?? null,
@@ -260,9 +265,9 @@ class HandleInertiaRequests extends Middleware
         }
 
         // SEO (from admin SEO settings) for main app only — used for social share previews (Facebook, WhatsApp, etc.)
-        $seoSiteName = (!$isLivestockDomain && !$isMerchantDomain) ? \App\Services\SeoService::getSiteName() : null;
-        $seoCanonical = (!$isLivestockDomain && !$isMerchantDomain) ? $request->url() : null;
-        $seoDefaultImage = (!$isLivestockDomain && !$isMerchantDomain) ? \App\Services\SeoService::getDefaultShareImage() : null;
+        $seoSiteName = (! $isLivestockDomain && ! $isMerchantDomain) ? \App\Services\SeoService::getSiteName() : null;
+        $seoCanonical = (! $isLivestockDomain && ! $isMerchantDomain) ? $request->url() : null;
+        $seoDefaultImage = (! $isLivestockDomain && ! $isMerchantDomain) ? \App\Services\SeoService::getDefaultShareImage() : null;
 
         // Consume flash messages so they are only sent once (not on every reload/page switch)
         $success = $request->session()->pull('success');
@@ -283,13 +288,13 @@ class HandleInertiaRequests extends Middleware
                 'permissions' => $permissions,
                 'roles' => $roles,
             ],
-            'ziggy' => fn(): array => [
+            'ziggy' => fn (): array => [
                 ...(new Ziggy)->toArray(),
                 'location' => $request->url(),
             ],
             'csrf_token' => csrf_token(),
             'sidebarOpen' => ! $request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',
-            'flash' => fn() => array_merge(
+            'flash' => fn () => array_merge(
                 is_array($request->session()->get('flash')) ? $request->session()->get('flash') : [],
                 array_filter([
                     'inviteUrl' => $request->session()->get('inviteUrl'),
@@ -300,12 +305,12 @@ class HandleInertiaRequests extends Middleware
                     'kiosk_service_request' => $kioskServiceRequest,
                 ])
             ),
-            'browser_publish_url' => fn() => $request->session()->pull('browser_publish_url'),
-            'success' => fn() => $success,
-            'error' => fn() => $error,
-            'info' => fn() => $info,
-            'warning' => fn() => $warning,
-            'kiosk_service_request' => fn() => $kioskServiceRequest,
+            'browser_publish_url' => fn () => $request->session()->pull('browser_publish_url'),
+            'success' => fn () => $success,
+            'error' => fn () => $error,
+            'info' => fn () => $info,
+            'warning' => fn () => $warning,
+            'kiosk_service_request' => fn () => $kioskServiceRequest,
             'isImpersonating' => $request->session()->has('impersonate_user_id'),
             'originalUserId' => $request->session()->get('impersonate_user_id'),
             'livestockDomain' => config('livestock.domain'),
