@@ -24,7 +24,7 @@ interface RequestRecord {
   ai_decision: string | null
   ai_reason: string
   ai_suggested_url: string | null
-  approved_service_id: number | null
+  approved_kiosk_provider_id: number | null
   market_code: string | null
   created_at: string | null
 }
@@ -243,7 +243,7 @@ export default function KioskRequestEdit({ requestRecord, categories }: PageProp
               </p>
               <p>
                 <span className="font-medium text-foreground">Approved service ID:</span>{" "}
-                {requestRecord.approved_service_id ?? "—"}
+                {requestRecord.approved_kiosk_provider_id ?? "—"}
               </p>
               <p>
                 <span className="font-medium text-foreground">Market code:</span>{" "}

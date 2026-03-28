@@ -39,6 +39,8 @@ class ProfileUpdateRequest extends FormRequest
                 'description' => ['required', 'string'],
                 'mission' => ['required', 'string'],
                 'gift_card_terms_approved' => ['nullable', 'boolean'],
+                'primary_action_category_ids' => ['required', 'array', 'min:1'],
+                'primary_action_category_ids.*' => ['integer', 'distinct', Rule::exists('primary_action_categories', 'id')->where('is_active', true)],
             ]);
         }
 

@@ -30,6 +30,13 @@ import { Input } from "@/components/frontend/ui/input"
 import { Label } from "@/components/frontend/ui/label"
 import { Textarea } from "@/components/frontend/ui/textarea"
 import { Checkbox } from "@/components/frontend/ui/checkbox"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/frontend/ui/select"
 import { Alert, AlertDescription } from "@/components/frontend/ui/alert"
 import { Link, router, usePage } from "@inertiajs/react"
 import { PageHead } from "@/components/frontend/PageHead"
@@ -64,6 +71,8 @@ interface OrganizationRegisterPageProps {
   inviteToken?: string
   organizationName?: string
   officers_for_ein_url?: string
+  /** Category Grid (Primary Action) — from `primary_action_categories` table */
+  primaryActionCategories?: { id: number; name: string }[]
 }
 
 interface PageProps extends OrganizationRegisterPageProps {
@@ -204,7 +213,15 @@ function OfficerIdDropzone({
   )
 }
 
-export default function OrganizationRegisterPage({ seo, referralCode = '', ein: prefilledEin, inviteToken, organizationName, officers_for_ein_url }: OrganizationRegisterPageProps) {
+export default function OrganizationRegisterPage({
+  seo,
+  referralCode = '',
+  ein: prefilledEin,
+  inviteToken,
+  organizationName,
+  officers_for_ein_url,
+  primaryActionCategories = [],
+}: OrganizationRegisterPageProps) {
   const { csrf_token, officers_for_ein_url: officersUrlFromPage } = usePage<PageProps>().props
   const officersForEinUrl = officers_for_ein_url ?? officersUrlFromPage ?? '/register/organization/officers-for-ein'
   const [showPassword, setShowPassword] = useState(false)
@@ -264,6 +281,7 @@ export default function OrganizationRegisterPage({ seo, referralCode = '', ein: 
     selected_irs_board_member_id: null as number | null,
     referralCode: referralCode,
     invite_token: "",
+    primary_action_category_ids: [] as number[],
   })
 
   const OFFICER_TITLES = ["President", "Treasurer", "Secretary", "Director", "Executive Director", "CEO", "Other"] as const
@@ -406,6 +424,43 @@ export default function OrganizationRegisterPage({ seo, referralCode = '', ein: 
     }
     return formData.password === formData.password_confirmation
   }, [formData.password, formData.password_confirmation])
+
+  const selectedPrimaryCategories = useMemo(() => {
+    return formData.primary_action_category_ids
+      .map((id) => primaryActionCategories.find((c) => c.id === id))
+      .filter((c): c is { id: number; name: string } => c != null)
+  }, [formData.primary_action_category_ids, primaryActionCategories])
+
+  const remainingPrimaryCategories = useMemo(
+    () => primaryActionCategories.filter((c) => !formData.primary_action_category_ids.includes(c.id)),
+    [primaryActionCategories, formData.primary_action_category_ids],
+  )
+
+  const addPrimaryCategoryTag = (id: number) => {
+    setFormData((prev) => {
+      if (prev.primary_action_category_ids.includes(id)) return prev
+      return { ...prev, primary_action_category_ids: [...prev.primary_action_category_ids, id] }
+    })
+    setErrors((prev) => {
+      if (!prev.primary_action_category_ids) return prev
+      const n = { ...prev }
+      delete n.primary_action_category_ids
+      return n
+    })
+  }
+
+  const removePrimaryCategoryTag = (id: number) => {
+    setFormData((prev) => ({
+      ...prev,
+      primary_action_category_ids: prev.primary_action_category_ids.filter((x) => x !== id),
+    }))
+    setErrors((prev) => {
+      if (!prev.primary_action_category_ids) return prev
+      const n = { ...prev }
+      delete n.primary_action_category_ids
+      return n
+    })
+  }
 
   // Multiple methods to get CSRF token
   const getCsrfToken = () => {
@@ -740,10 +795,18 @@ export default function OrganizationRegisterPage({ seo, referralCode = '', ein: 
           const id = selectedOfficerIdForSubmit ?? formData.selected_irs_board_member_id
           const numId = id != null && id !== '' && !Number.isNaN(Number(id)) ? Number(id) : null
           if (numId != null) formDataToSend.append(key, String(numId))
-        } else if (key !== 'selected_irs_board_member_id' && key !== 'officer_id' && !VERIFICATION_DOC_KEYS.includes(key as typeof VERIFICATION_DOC_KEYS[number])) {
+        } else if (
+          key !== 'primary_action_category_ids' &&
+          key !== 'selected_irs_board_member_id' &&
+          key !== 'officer_id' &&
+          !VERIFICATION_DOC_KEYS.includes(key as typeof VERIFICATION_DOC_KEYS[number])
+        ) {
           const val = formData[key as keyof typeof formData]
           if (val != null && val !== '') formDataToSend.append(key, val as string | Blob)
         }
+      })
+      formData.primary_action_category_ids.forEach((id) => {
+        formDataToSend.append('primary_action_category_ids[]', String(id))
       })
       if (formData.legal_name_confirmation) formDataToSend.append('legal_name_confirmation', formData.legal_name_confirmation)
       VERIFICATION_DOC_KEYS.forEach((k) => { const f = formData[k]; if (f) formDataToSend.append(k, f) })
@@ -804,10 +867,13 @@ export default function OrganizationRegisterPage({ seo, referralCode = '', ein: 
     switch (stepNumber) {
       case 1:
         return einData.ein.length === 9
-      case 2:
+      case 2: {
+        const hasPrimaryCategory =
+          primaryActionCategories.length > 0 && formData.primary_action_category_ids.length > 0
         return isManualEntry
-          ? !!(formData.name && formData.street && formData.city && formData.state && formData.zip)
-          : lookupStatus === 'success'
+          ? !!(formData.name && formData.street && formData.city && formData.state && formData.zip && hasPrimaryCategory)
+          : lookupStatus === 'success' && hasPrimaryCategory
+      }
       case 3:
         return !!(
           formData.image &&
@@ -1129,6 +1195,80 @@ export default function OrganizationRegisterPage({ seo, referralCode = '', ein: 
                             Organization verified! Please review the information below.
                           </AlertDescription>
                         </Alert>
+                      )}
+                    </div>
+
+                    <div className="space-y-2 min-w-0">
+                      <Label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                        Category Grid (Primary Action) *
+                      </Label>
+                      {primaryActionCategories.length === 0 ? (
+                        <Alert className="border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950">
+                          <AlertCircle className="h-4 w-4 text-amber-600" />
+                          <AlertDescription className="text-amber-800 dark:text-amber-200 text-sm">
+                            No categories are available yet. An administrator must add them under Admin → Org Primary Action
+                            Categories, or run the database seeder.
+                          </AlertDescription>
+                        </Alert>
+                      ) : (
+                        <div
+                          role="group"
+                          aria-label="Primary action categories"
+                          className="flex min-h-[2.375rem] w-full flex-wrap items-center gap-1 rounded-md border border-[#DDD] bg-white px-2 py-1 text-sm shadow-[inset_0_1px_0_0_rgba(255,255,255,0.9)] transition-[border-color,box-shadow] focus-within:border-ring focus-within:ring-2 focus-within:ring-ring/25 dark:border-gray-600 dark:bg-[hsl(210_12%_10%)] dark:shadow-none"
+                        >
+                          {selectedPrimaryCategories.map((c) => (
+                            <span
+                              key={c.id}
+                              className="tagify-tag inline-flex max-w-full items-center gap-0.5 rounded-md border border-white/25 bg-gradient-to-r from-purple-600 to-blue-600 px-1.5 py-0.5 text-[13px] leading-tight text-white shadow-sm"
+                            >
+                              <span className="truncate">{c.name}</span>
+                              <button
+                                type="button"
+                                onClick={() => removePrimaryCategoryTag(c.id)}
+                                className="tagify-tag__removeBtn ml-0.5 inline-flex size-[14px] shrink-0 cursor-pointer items-center justify-center rounded-sm text-white/85 transition-colors hover:bg-white/20 hover:text-white focus:outline-none focus:ring-2 focus:ring-white/50"
+                                aria-label={`Remove ${c.name}`}
+                              >
+                                <X className="h-2.5 w-2.5" strokeWidth={2.5} />
+                              </button>
+                            </span>
+                          ))}
+                          {remainingPrimaryCategories.length > 0 ? (
+                            <>
+                              <label className="sr-only" htmlFor="primary-action-category-add">
+                                Add category
+                              </label>
+                              <Select
+                                key={formData.primary_action_category_ids.join(",")}
+                                onValueChange={(v) => {
+                                  if (v) addPrimaryCategoryTag(Number(v))
+                                }}
+                              >
+                                <SelectTrigger
+                                  id="primary-action-category-add"
+                                  className="tagify__input h-7 min-w-[7rem] flex-1 justify-start border-0 bg-transparent px-1 py-0.5 text-sm text-muted-foreground shadow-none ring-0 ring-offset-0 hover:bg-transparent focus:ring-0 focus:ring-offset-0 data-[placeholder]:text-muted-foreground [&_svg]:hidden"
+                                >
+                                  <SelectValue placeholder="Add category…" />
+                                </SelectTrigger>
+                                <SelectContent className="max-h-60 border border-border bg-popover text-popover-foreground shadow-md">
+                                  {remainingPrimaryCategories.map((c) => (
+                                    <SelectItem
+                                      key={c.id}
+                                      value={String(c.id)}
+                                      className="cursor-pointer focus:bg-accent focus:text-accent-foreground"
+                                    >
+                                      {c.name}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </>
+                          ) : selectedPrimaryCategories.length > 0 ? (
+                            <span className="px-1 text-xs text-muted-foreground">All categories selected</span>
+                          ) : null}
+                        </div>
+                      )}
+                      {errors.primary_action_category_ids && (
+                        <p className="text-red-600 text-sm">{errors.primary_action_category_ids}</p>
                       )}
                     </div>
 

@@ -2,8 +2,7 @@
 
 namespace App\Services;
 
-use App\Models\KioskCategory;
-use App\Models\KioskService;
+use App\Models\KioskProvider;
 use App\Models\KioskServiceRequest;
 use App\Models\KioskSubcategory;
 use Illuminate\Support\Str;
@@ -11,67 +10,73 @@ use Illuminate\Support\Str;
 class KioskRequestApprovedServicePublisher
 {
     /**
-     * Create or update the kiosk_services row for an approved request.
+     * Create or update a {@see KioskProvider} row for an approved request (same table as AI ingest).
      */
-    public function publish(KioskServiceRequest $request): KioskService
+    public function publish(KioskServiceRequest $request): KioskProvider
     {
-        if (! $request->approved_service_id) {
-            $existing = KioskService::query()
-                ->where('category_slug', $request->category_slug)
-                ->where('display_name', $request->display_name)
-                ->where(fn ($q) => $q->where('state', $request->state)->orWhereNull('state'))
-                ->where(fn ($q) => $q->where('city', $request->city)->orWhereNull('city'))
-                ->first();
-            if ($existing) {
-                $request->approved_service_id = $existing->id;
-            }
+        $stateAbbr = KioskProviderAiIngestService::normalizeStateAbbr($request->state ?? '');
+        $normalizedCity = KioskProviderAiIngestService::normalizeCity($request->city ?? '');
+        if (strlen($stateAbbr) !== 2) {
+            $stateAbbr = 'ZZ';
+        }
+        if ($normalizedCity === '') {
+            $normalizedCity = 'Unknown';
         }
 
-        $serviceSlugBase = Str::slug($request->category_slug.'--'.($request->subcategory ?: $request->display_name));
-        $serviceSlug = $serviceSlugBase;
+        $zipNormalized = '';
+
+        $subSlug = Str::slug($request->subcategory ?: 'general');
+        if ($subSlug === '') {
+            $subSlug = 'general';
+        }
+
+        $providerSlugBase = Str::slug(Str::limit($request->display_name, 48, ''));
+        $providerSlug = $providerSlugBase !== '' ? $providerSlugBase : 'provider';
         $n = 0;
-        $excludeId = $request->approved_service_id ?? 0;
-        while (KioskService::where('service_slug', $serviceSlug)->where('id', '!=', $excludeId)->exists()) {
-            $n++;
-            $serviceSlug = $serviceSlugBase.'-'.$n;
-        }
+        $excludeId = (int) ($request->approved_kiosk_provider_id ?? 0);
 
-        $categorySort = (int) (KioskCategory::where('slug', $request->category_slug)->value('sort_order') ?? 99);
-        $maxItemSort = (int) KioskService::where('category_slug', $request->category_slug)->max('item_sort_within_category');
+        while (KioskProvider::query()
+            ->where('state_abbr', $stateAbbr)
+            ->where('normalized_city', $normalizedCity)
+            ->where('zip_normalized', $zipNormalized)
+            ->where('category_slug', $request->category_slug)
+            ->where('subcategory_slug', $subSlug)
+            ->where('provider_slug', $providerSlug)
+            ->when($excludeId > 0, fn ($q) => $q->where('id', '!=', $excludeId))
+            ->exists()) {
+            $n++;
+            $providerSlug = $providerSlugBase.'-'.$n;
+        }
 
         $payload = [
-            'market_code' => $request->market_code ?: 'USER-REQUEST',
-            'state' => $request->state,
-            'city' => $request->city,
+            'state_abbr' => $stateAbbr,
+            'normalized_city' => $normalizedCity,
+            'zip_normalized' => $zipNormalized,
             'category_slug' => $request->category_slug,
-            'subcategory' => $request->subcategory,
-            'service_slug' => $serviceSlug,
-            'display_name' => $request->display_name,
-            'url' => $request->url,
-            'launch_type' => $request->url ? 'web_portal' : 'internal_app',
-            'jurisdiction_level' => null,
-            'jurisdiction_rank' => 7,
-            'category_sort' => $categorySort,
-            'item_sort_within_category' => max(1, $maxItemSort + 1),
-            'is_active' => true,
-            'allow_webview' => true,
-            'enable_redirect_tracking' => true,
-            'internal_product' => null,
-            'notes' => trim('User-requested service. '.($request->details ?? '')),
+            'subcategory_slug' => $subSlug,
+            'provider_slug' => $providerSlug,
+            'name' => $request->display_name,
+            'website' => $request->url,
+            'payment_url' => null,
+            'login_url' => null,
+            'account_link_supported' => false,
+            'meta' => array_filter([
+                'source' => 'user_request',
+                'request_id' => $request->id,
+                'market_code' => $request->market_code,
+            ]),
         ];
 
-        if ($request->approved_service_id) {
-            $existingRow = KioskService::query()->whereKey($request->approved_service_id)->first();
-            if ($existingRow) {
-                $payload['item_sort_within_category'] = $existingRow->item_sort_within_category;
+        if ($excludeId > 0) {
+            $existing = KioskProvider::query()->find($excludeId);
+            if ($existing) {
+                $existing->update($payload);
+
+                return $existing->fresh();
             }
-            $service = KioskService::updateOrCreate(
-                ['id' => $request->approved_service_id],
-                $payload
-            );
-        } else {
-            $service = KioskService::create($payload);
         }
+
+        $provider = KioskProvider::create($payload);
 
         if (! empty($request->subcategory)) {
             KioskSubcategory::firstOrCreate(
@@ -80,17 +85,17 @@ class KioskRequestApprovedServicePublisher
             );
         }
 
-        return $service;
+        return $provider;
     }
 
     /**
-     * Deactivate the linked kiosk service when request is no longer approved.
+     * Remove the linked kiosk provider when a request is no longer approved.
      */
-    public function unpublishLinkedService(?int $approvedServiceId): void
+    public function unpublishLinkedService(?int $approvedKioskProviderId): void
     {
-        if (! $approvedServiceId) {
+        if (! $approvedKioskProviderId) {
             return;
         }
-        KioskService::whereKey($approvedServiceId)->update(['is_active' => false]);
+        KioskProvider::query()->whereKey($approvedKioskProviderId)->delete();
     }
 }

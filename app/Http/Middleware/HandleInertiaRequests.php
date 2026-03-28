@@ -269,6 +269,7 @@ class HandleInertiaRequests extends Middleware
         $error = $request->session()->pull('error');
         $info = $request->session()->pull('info');
         $warning = $request->session()->pull('warning');
+        $kioskServiceRequest = $request->session()->pull('kiosk_service_request');
 
         return [
             ...parent::share($request),
@@ -296,6 +297,7 @@ class HandleInertiaRequests extends Middleware
                     'error' => $error,
                     'info' => $info,
                     'warning' => $warning,
+                    'kiosk_service_request' => $kioskServiceRequest,
                 ])
             ),
             'browser_publish_url' => fn() => $request->session()->pull('browser_publish_url'),
@@ -303,6 +305,7 @@ class HandleInertiaRequests extends Middleware
             'error' => fn() => $error,
             'info' => fn() => $info,
             'warning' => fn() => $warning,
+            'kiosk_service_request' => fn() => $kioskServiceRequest,
             'isImpersonating' => $request->session()->has('impersonate_user_id'),
             'originalUserId' => $request->session()->get('impersonate_user_id'),
             'livestockDomain' => config('livestock.domain'),

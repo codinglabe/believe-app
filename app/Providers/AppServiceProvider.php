@@ -2,8 +2,16 @@
 
 namespace App\Providers;
 
+use App\Models\Donation;
+use App\Models\Enrollment;
+use App\Models\FundMeDonation;
+use App\Models\JobApplication;
 use App\Models\NodeSell;
 use App\Models\User;
+use App\Observers\DonationObserver;
+use App\Observers\EnrollmentObserver;
+use App\Observers\FundMeDonationObserver;
+use App\Observers\JobApplicationObserver;
 use App\Observers\NodeSellObserver;
 use App\Listeners\AwardInviteRewardPoints;
 use Illuminate\Auth\Events\Verified;
@@ -33,6 +41,10 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         NodeSell::observe(NodeSellObserver::class);
+        FundMeDonation::observe(FundMeDonationObserver::class);
+        Donation::observe(DonationObserver::class);
+        Enrollment::observe(EnrollmentObserver::class);
+        JobApplication::observe(JobApplicationObserver::class);
         Cashier::useCustomerModel(User::class);
         
         // Register event listener for email verification

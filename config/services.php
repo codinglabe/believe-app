@@ -66,6 +66,19 @@ return [
         'verify_ssl' => env('OPENAI_VERIFY_SSL', true),
     ],
 
+    /*
+    | AI ingest of local kiosk providers when supporters save city/state on profile.
+    */
+    'kiosk_provider_ingest' => [
+        'enabled' => env('KIOSK_PROVIDER_INGEST_ENABLED', true),
+        'cache_ttl_days' => (int) env('KIOSK_GEO_CACHE_TTL_DAYS', 30),
+        'model' => env('KIOSK_PROVIDER_INGEST_MODEL', 'gpt-3.5-turbo'),
+        /** Max completion tokens (raise if JSON is truncated; model caps still apply). */
+        'max_output_tokens' => (int) env('KIOSK_PROVIDER_INGEST_MAX_TOKENS', 4096),
+        /** When true, `kiosk:refresh-provider-ingest` runs from the scheduler (monthly). */
+        'monthly_refresh_enabled' => env('KIOSK_PROVIDER_MONTHLY_REFRESH_ENABLED', true),
+    ],
+
     'gmail' => [
         'client_id' => env('GMAIL_CLIENT_ID'),
         'client_secret' => env('GMAIL_CLIENT_SECRET'),

@@ -12,6 +12,7 @@ use App\Models\Transaction;
 use App\Services\PrintifyService;
 use App\Services\ShippoService;
 use App\Services\StripeConfigService;
+use App\Services\SupporterActivityService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -872,6 +873,16 @@ class CheckoutController extends Controller
             $tempOrder->update(['status' => 'payment_completed']);
 
             DB::commit();
+
+            try {
+                $order->load('items');
+                app(SupporterActivityService::class)->recordPurchasesForOrder($order);
+            } catch (\Throwable $e) {
+                \Log::warning('Supporter activity (purchase) failed', [
+                    'order_id' => $order->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
 
             // Post-commit: for manual-only orders, auto-create Shippo label/tracking
             // (Printify orders are handled via Printify webhooks + OrderController UI.)

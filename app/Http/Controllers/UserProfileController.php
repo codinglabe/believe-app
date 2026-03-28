@@ -21,6 +21,22 @@ use App\Models\User;
 use App\Models\UserFavoriteOrganization;
 use App\Models\UserFollow;
 use App\Models\VolunteerTimesheet;
+<<<<<<< HEAD
+=======
+use App\Models\JobApplication;
+use App\Models\FundraiseLead;
+use App\Models\Bid;
+use App\Models\Product;
+use App\Models\RewardPointLedger;
+use App\Models\MerchantHubOfferRedemption;
+use App\Models\User;
+use App\Models\Post;
+use App\Models\PostReaction;
+use App\Models\PostComment;
+use App\Jobs\IngestKioskProvidersForGeoJob;
+use App\Services\KioskProviderAiIngestService;
+use App\Services\ImpactScoreService;
+>>>>>>> 0cd89607976477ba399bba112d9ecb75ed16c96d
 use App\Services\ExcelDataTransformer;
 use App\Services\ImpactScoreService;
 use App\Services\PrintifyService;
@@ -198,6 +214,14 @@ class UserProfileController extends Controller
             $validated['image'] = $path;
         }
 
+        // Canonical geo for kiosk_providers + AI ingest (same keys as KioskProviderAiIngestService).
+        $geoBeforeNorm = $this->normalizeSupporterGeoForKiosk($user->city, $user->state, $user->zipcode);
+        $geoAfterNorm = $this->normalizeSupporterGeoForKiosk(
+            $validated['city'] ?? null,
+            $validated['state'] ?? null,
+            $validated['zipcode'] ?? null
+        );
+
         // Update basic info
         $updateData = [
             'name' => $validated['name'],
@@ -209,9 +233,9 @@ class UserProfileController extends Controller
                 ? Carbon::createFromFormat('m/d/Y', $validated['dob'].'/2000')->format('Y-m-d')
                 : null,
             'image' => $validated['image'] ?? $user->image,
-            'city' => $validated['city'] ?? null,
-            'state' => $validated['state'] ?? null,
-            'zipcode' => $validated['zipcode'] ?? null,
+            'city' => $geoAfterNorm['city'],
+            'state' => $geoAfterNorm['state'],
+            'zipcode' => $geoAfterNorm['zip'] !== '' ? $geoAfterNorm['zip'] : null,
         ];
 
         // Update timezone if provided and valid
@@ -223,6 +247,25 @@ class UserProfileController extends Controller
 
         $user->update($updateData);
 
+        if (
+            $isSupporter
+            && config('services.kiosk_provider_ingest.enabled', true)
+            && filled($user->city)
+            && filled($user->state)
+        ) {
+            $geoChanged =
+                ($geoBeforeNorm['city'] !== $geoAfterNorm['city'])
+                || ($geoBeforeNorm['state'] !== $geoAfterNorm['state'])
+                || ($geoBeforeNorm['zip'] !== $geoAfterNorm['zip']);
+            if ($geoChanged) {
+                IngestKioskProvidersForGeoJob::dispatch(
+                    (string) $geoAfterNorm['state'],
+                    (string) $geoAfterNorm['city'],
+                    $geoAfterNorm['zip'] !== '' ? $geoAfterNorm['zip'] : null
+                );
+            }
+        }
+
         // Sync supporter positions
         if (array_key_exists('positions', $validated)) {
             // If you're using many-to-many, fix the relationship first
@@ -232,6 +275,27 @@ class UserProfileController extends Controller
         }
 
         return back()->with('success', 'Profile updated successfully!');
+    }
+
+    /**
+     * Canonical city/state/zip aligned with {@see KioskProvider} / ingest so rows are not missed or mixed across geos.
+     *
+     * @return array{city: ?string, state: ?string, zip: string}
+     */
+    protected function normalizeSupporterGeoForKiosk(?string $city, ?string $state, mixed $zip): array
+    {
+        $c = $city !== null && trim((string) $city) !== ''
+            ? KioskProviderAiIngestService::normalizeCity((string) $city)
+            : null;
+        $s = $state !== null && trim((string) $state) !== ''
+            ? KioskProviderAiIngestService::normalizeStateAbbr((string) $state)
+            : null;
+        $z = '';
+        if ($zip !== null && trim((string) $zip) !== '') {
+            $z = substr(KioskProviderAiIngestService::normalizeZip((string) $zip), 0, 10);
+        }
+
+        return ['city' => $c, 'state' => $s, 'zip' => $z];
     }
 
     /**

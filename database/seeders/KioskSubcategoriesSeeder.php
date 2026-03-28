@@ -2,25 +2,30 @@
 
 namespace Database\Seeders;
 
-use App\Models\KioskService;
 use App\Models\KioskSubcategory;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
 use Illuminate\Database\Seeder;
 
 class KioskSubcategoriesSeeder extends Seeder
 {
     public function run(): void
     {
-        $rows = KioskService::query()
-            ->whereNotNull('subcategory')
-            ->where('subcategory', '!=', '')
-            ->orderBy('category_slug')
-            ->orderBy('item_sort_within_category')
-            ->get(['category_slug', 'subcategory']);
+        if (! Schema::hasTable('kiosk_providers')) {
+            return;
+        }
+
+        $rows = DB::table('kiosk_providers')
+            ->select('category_slug', 'subcategory_slug')
+            ->where('subcategory_slug', '!=', '')
+            ->distinct()
+            ->get();
 
         $grouped = [];
         foreach ($rows as $row) {
             $slug = (string) $row->category_slug;
-            $name = trim((string) $row->subcategory);
+            $name = Str::title(str_replace('-', ' ', (string) $row->subcategory_slug));
             if ($slug === '' || $name === '') {
                 continue;
             }
@@ -42,4 +47,3 @@ class KioskSubcategoriesSeeder extends Seeder
         }
     }
 }
-

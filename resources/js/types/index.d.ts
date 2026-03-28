@@ -14,7 +14,7 @@ export interface NavGroup {
     items: (NavItem | NavGroup)[];
     icon?: LucideIcon | null;
     permission?: string,
-    role?: string,
+    role?: string | string[],
 }
 
 export interface NavItem {
