@@ -1,4 +1,5 @@
 <?php
+
 namespace App\Http\Controllers;
 
 use App\Models\Category;
@@ -10,10 +11,9 @@ use App\Models\Product;
 use App\Services\PrintifyService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Str;
 use Inertia\Inertia;
 use Inertia\Response;
-use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Str;
 
 class MarketplaceController extends Controller
 {
@@ -212,7 +212,7 @@ class MarketplaceController extends Controller
         $categories = Category::where('status', 'active')->get();
 
         $organizations = Organization::query()
-            ->when($user && !empty($allowedOrganizationIds), function ($query) use ($allowedOrganizationIds) {
+            ->when($user && ! empty($allowedOrganizationIds), function ($query) use ($allowedOrganizationIds) {
                 $query->whereIn('id', $allowedOrganizationIds);
             })
             ->get(['id', 'name']);
@@ -265,7 +265,7 @@ class MarketplaceController extends Controller
                             }
                         }
 
-                        if (!empty($prices)) {
+                        if (! empty($prices)) {
                             $minPrice = min($prices);
                             $maxPrice = max($prices);
 
@@ -274,9 +274,9 @@ class MarketplaceController extends Controller
 
                             // Set display format
                             if ($minPrice == $maxPrice) {
-                                $productData['price_display'] = '$' . number_format($minPrice, 2);
+                                $productData['price_display'] = '$'.number_format($minPrice, 2);
                             } else {
-                                $productData['price_display'] = '$' . number_format($minPrice, 2) . ' - $' . number_format($maxPrice, 2);
+                                $productData['price_display'] = '$'.number_format($minPrice, 2).' - $'.number_format($maxPrice, 2);
                             }
 
                             // Set base price as minimum
@@ -302,7 +302,7 @@ class MarketplaceController extends Controller
                         $productData['printify_images'] = $printifyProduct['images'];
                     }
                 } catch (\Exception $e) {
-                    \Log::error('Error processing Printify product in marketplace: ' . $e->getMessage());
+                    \Log::error('Error processing Printify product in marketplace: '.$e->getMessage());
                     // Fallback to basic product data
                 }
             } else {
@@ -311,7 +311,7 @@ class MarketplaceController extends Controller
                 $productData['price'] = $unitPrice;
                 $productData['min_price'] = $unitPrice;
                 $productData['max_price'] = $unitPrice;
-                $productData['price_display'] = '$' . number_format($unitPrice, 2);
+                $productData['price_display'] = '$'.number_format($unitPrice, 2);
 
                 // Use product image if available
                 if ($product->image) {

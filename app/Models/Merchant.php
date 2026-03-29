@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
@@ -19,6 +20,24 @@ class Merchant extends Authenticatable
     public function subscriptions(): MorphMany
     {
         return $this->morphMany(Subscription::class, 'user', 'user_type', 'user_id');
+    }
+
+    public function marketplaceProducts(): HasMany
+    {
+        return $this->hasMany(MarketplaceProduct::class);
+    }
+
+    public function shippingAddresses(): HasMany
+    {
+        return $this->hasMany(MerchantShippingAddress::class);
+    }
+
+    public function defaultShippingAddress(): ?MerchantShippingAddress
+    {
+        return $this->shippingAddresses()
+            ->orderByDesc('is_default')
+            ->orderBy('id')
+            ->first();
     }
 
     /**
@@ -39,12 +58,6 @@ class Merchant extends Authenticatable
         'state',
         'zip_code',
         'country',
-        'shipping_contact_name',
-        'shipping_address',
-        'shipping_city',
-        'shipping_state',
-        'shipping_zip',
-        'shipping_country',
         'status',
         'role',
         'stripe_id',
@@ -94,20 +107,36 @@ class Merchant extends Authenticatable
     }
 
     /**
-     * Ship-from line for Shippo: dedicated profile fields, else business address columns.
+     * Ship-from for Shippo: default saved shipping address, else business address on the merchant record.
      *
-     * @return array{street1: string, city: string, state: string, zip: string, country: string, name: string}
+     * @return array{name: string, street1: string, street2: string, city: string, state: string, zip: string, country: string}
      */
     public function shipFromAddressForRates(): array
     {
-        $country = trim((string) ($this->shipping_country ?: $this->country ?: 'US'));
+        $row = $this->defaultShippingAddress();
+        if ($row) {
+            $country = trim((string) ($row->country ?: 'US'));
+
+            return [
+                'name' => trim((string) ($row->contact_name ?: $this->business_name ?: $this->name ?: 'Seller')),
+                'street1' => trim((string) $row->address_line1),
+                'street2' => trim((string) ($row->address_line2 ?? '')),
+                'city' => trim((string) $row->city),
+                'state' => trim((string) ($row->state ?? '')),
+                'zip' => trim((string) $row->zip),
+                'country' => $country !== '' ? $country : 'US',
+            ];
+        }
+
+        $country = trim((string) ($this->country ?: 'US'));
 
         return [
-            'name' => trim((string) ($this->shipping_contact_name ?: $this->business_name ?: $this->name ?: 'Seller')),
-            'street1' => trim((string) ($this->shipping_address ?: ($this->address ?? ''))),
-            'city' => trim((string) ($this->shipping_city ?: ($this->city ?? ''))),
-            'state' => trim((string) ($this->shipping_state ?: ($this->state ?? ''))),
-            'zip' => trim((string) ($this->shipping_zip ?: ($this->zip_code ?? ''))),
+            'name' => trim((string) ($this->business_name ?: $this->name ?: 'Seller')),
+            'street1' => trim((string) ($this->address ?? '')),
+            'street2' => '',
+            'city' => trim((string) ($this->city ?? '')),
+            'state' => trim((string) ($this->state ?? '')),
+            'zip' => trim((string) ($this->zip_code ?? '')),
             'country' => $country !== '' ? $country : 'US',
         ];
     }

@@ -3,16 +3,15 @@
 namespace App\Http\Controllers;
 
 use App\Models\CareAlliance;
-use App\Models\Post;
-use App\Models\PostReaction;
-use App\Models\PostComment;
-use App\Models\Organization;
-use App\Models\UserFavoriteOrganization;
-use App\Models\UserFollow;
 use App\Models\ExcelData;
+use App\Models\Organization;
+use App\Models\Post;
+use App\Models\PostComment;
+use App\Models\PostReaction;
 use App\Models\RewardPointLedger;
 use App\Models\User;
-use App\Services\ExcelDataTransformer;
+use App\Models\UserFavoriteOrganization;
+use App\Models\UserFollow;
 use App\Services\SeoService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -42,14 +41,14 @@ class PostController extends Controller
             'reactions.user',
         ])
             ->withCount(['reactions', 'comments'])
-            ->when(count($seenPostIds) > 0, function($query) use ($seenPostIds) {
-                return $query->orderByRaw('CASE WHEN id IN (' . implode(',', $seenPostIds) . ') THEN 1 ELSE 0 END');
+            ->when(count($seenPostIds) > 0, function ($query) use ($seenPostIds) {
+                return $query->orderByRaw('CASE WHEN id IN ('.implode(',', $seenPostIds).') THEN 1 ELSE 0 END');
             })
             ->orderBy('created_at', 'DESC')
             ->paginate(10);
 
         // Load comments (only first 5 per post) and user reactions
-        $posts->getCollection()->transform(function ($post) use ($userId, $seenPostIds) {
+        $posts->getCollection()->transform(function ($post) use ($userId) {
             $userReaction = $post->reactions()->where('user_id', $userId)->first();
             $post->user_reaction = $userReaction;
 
@@ -88,7 +87,7 @@ class PostController extends Controller
             // Get user stats
             $userStats['postsCount'] = Post::where('user_id', $user->id)->count();
             $userStats['followersCount'] = UserFavoriteOrganization::where('user_id', $user->id)->count();
-            
+
             // Get reward points
             $rewardPointsEarned = RewardPointLedger::where('user_id', $user->id)
                 ->where('type', 'credit')
@@ -103,13 +102,13 @@ class PostController extends Controller
             $userFavoriteOrgIds = UserFavoriteOrganization::where('user_id', $user->id)
                 ->pluck('organization_id')
                 ->toArray();
-            
+
             $suggestedOrgs = Organization::where('registration_status', 'approved')
                 ->whereNotIn('id', $userFavoriteOrgIds)
                 ->with('user:id,slug,name,image')
                 ->limit(4)
                 ->get();
-            
+
             if ($suggestedOrgs->isNotEmpty()) {
                 $eins = $suggestedOrgs->pluck('ein')->filter()->unique()->toArray();
                 $excelDataMap = ExcelData::whereIn('ein', $eins)
@@ -117,11 +116,11 @@ class PostController extends Controller
                     ->orderBy('id', 'desc')
                     ->get()
                     ->groupBy('ein')
-                    ->map(function($group) {
+                    ->map(function ($group) {
                         return $group->first()->id;
                     });
-                
-                $peopleYouMayKnow = $suggestedOrgs->map(function($org) use ($excelDataMap) {
+
+                $peopleYouMayKnow = $suggestedOrgs->map(function ($org) use ($excelDataMap) {
                     return [
                         'id' => $org->id,
                         'excel_data_id' => $excelDataMap->get($org->ein) ?? null,
@@ -140,7 +139,7 @@ class PostController extends Controller
                 ->orderBy('followers_count', 'desc')
                 ->limit(4)
                 ->get();
-            
+
             if ($trendingOrgs->isNotEmpty()) {
                 $eins = $trendingOrgs->pluck('ein')->filter()->unique()->toArray();
                 $excelDataMap = ExcelData::whereIn('ein', $eins)
@@ -148,13 +147,13 @@ class PostController extends Controller
                     ->orderBy('id', 'desc')
                     ->get()
                     ->groupBy('ein')
-                    ->map(function($group) {
+                    ->map(function ($group) {
                         return $group->first()->id;
                     });
-                
+
                 $colors = ['bg-rose-500', 'bg-cyan-500', 'bg-teal-500', 'bg-blue-500'];
-                
-                $trendingOrganizations = $trendingOrgs->map(function($org, $index) use ($excelDataMap, $colors) {
+
+                $trendingOrganizations = $trendingOrgs->map(function ($org, $index) use ($excelDataMap, $colors) {
                     return [
                         'id' => $org->id,
                         'excel_data_id' => $excelDataMap->get($org->ein) ?? null,
@@ -266,7 +265,7 @@ class PostController extends Controller
         }
 
         $post->update([
-            'content' => !empty($content) ? $content : null,
+            'content' => ! empty($content) ? $content : null,
             'images' => $finalImages,
             'is_edited' => true,
         ]);
@@ -463,10 +462,10 @@ class PostController extends Controller
         // Redirect to search page with query params
         $searchTerm = trim($request->get('q', ''));
         $type = $request->get('type', 'all');
-        
+
         return redirect()->route('search.index', [
             'q' => $searchTerm,
-            'type' => $type
+            'type' => $type,
         ]);
     }
 
@@ -476,17 +475,17 @@ class PostController extends Controller
     public function searchPage(Request $request)
     {
         $user = Auth::user();
-        
+
         // Get search query from request
         $searchQuery = trim($request->get('q', ''));
         $searchType = $request->get('type', 'all');
-        
+
         // Perform search if query is provided (minimum 1 character)
         $searchResults = ['users' => [], 'organizations' => []];
-        if (!empty($searchQuery) && strlen($searchQuery) >= 1) {
+        if (! empty($searchQuery) && strlen($searchQuery) >= 1) {
             $searchResults = $this->performSearch($searchQuery, $searchType, $user);
         }
-        
+
         // Get sidebar data (same as index)
         $peopleYouMayKnow = [];
         $trendingOrganizations = [];
@@ -503,7 +502,7 @@ class PostController extends Controller
             // Get user stats
             $userStats['postsCount'] = Post::where('user_id', $user->id)->count();
             $userStats['followersCount'] = UserFavoriteOrganization::where('user_id', $user->id)->count();
-            
+
             // Get reward points
             $rewardPointsEarned = RewardPointLedger::where('user_id', $user->id)
                 ->where('type', 'credit')
@@ -518,13 +517,13 @@ class PostController extends Controller
             $userFavoriteOrgIds = UserFavoriteOrganization::where('user_id', $user->id)
                 ->pluck('organization_id')
                 ->toArray();
-            
+
             $suggestedOrgs = Organization::where('registration_status', 'approved')
                 ->whereNotIn('id', $userFavoriteOrgIds)
                 ->with('user:id,slug,name,image')
                 ->limit(4)
                 ->get();
-            
+
             if ($suggestedOrgs->isNotEmpty()) {
                 $eins = $suggestedOrgs->pluck('ein')->filter()->unique()->toArray();
                 $excelDataMap = ExcelData::whereIn('ein', $eins)
@@ -532,11 +531,11 @@ class PostController extends Controller
                     ->orderBy('id', 'desc')
                     ->get()
                     ->groupBy('ein')
-                    ->map(function($group) {
+                    ->map(function ($group) {
                         return $group->first()->id;
                     });
-                
-                $peopleYouMayKnow = $suggestedOrgs->map(function($org) use ($excelDataMap) {
+
+                $peopleYouMayKnow = $suggestedOrgs->map(function ($org) use ($excelDataMap) {
                     return [
                         'id' => $org->id,
                         'excel_data_id' => $excelDataMap->get($org->ein) ?? null,
@@ -555,7 +554,7 @@ class PostController extends Controller
                 ->orderBy('followers_count', 'desc')
                 ->limit(4)
                 ->get();
-            
+
             if ($trendingOrgs->isNotEmpty()) {
                 $eins = $trendingOrgs->pluck('ein')->filter()->unique()->toArray();
                 $excelDataMap = ExcelData::whereIn('ein', $eins)
@@ -563,13 +562,13 @@ class PostController extends Controller
                     ->orderBy('id', 'desc')
                     ->get()
                     ->groupBy('ein')
-                    ->map(function($group) {
+                    ->map(function ($group) {
                         return $group->first()->id;
                     });
-                
+
                 $colors = ['bg-rose-500', 'bg-cyan-500', 'bg-teal-500', 'bg-blue-500'];
-                
-                $trendingOrganizations = $trendingOrgs->map(function($org, $index) use ($excelDataMap, $colors) {
+
+                $trendingOrganizations = $trendingOrgs->map(function ($org, $index) use ($excelDataMap, $colors) {
                     return [
                         'id' => $org->id,
                         'excel_data_id' => $excelDataMap->get($org->ein) ?? null,
@@ -592,7 +591,7 @@ class PostController extends Controller
             'searchType' => $searchType,
         ]);
     }
-    
+
     /**
      * Perform search and return results (extracted for reuse)
      */
@@ -606,15 +605,15 @@ class PostController extends Controller
         // Search users (supporters) - only registered users with 'user' role
         if ($type === 'all' || $type === 'users') {
             $usersQuery = User::whereHas('roles', function ($query) {
-                    $query->where('name', 'user');
-                })
+                $query->where('name', 'user');
+            })
                 ->whereDoesntHave('roles', function ($query) {
                     $query->whereIn('name', ['admin', 'organization', 'organization_pending']);
                 })
                 ->where(function ($query) use ($searchTerm) {
-                    $query->where('name', 'LIKE', '%' . $searchTerm . '%')
-                        ->orWhere('email', 'LIKE', '%' . $searchTerm . '%')
-                        ->orWhere('slug', 'LIKE', '%' . $searchTerm . '%');
+                    $query->where('name', 'LIKE', '%'.$searchTerm.'%')
+                        ->orWhere('email', 'LIKE', '%'.$searchTerm.'%')
+                        ->orWhere('slug', 'LIKE', '%'.$searchTerm.'%');
                 });
 
             // Exclude current user if authenticated
@@ -633,7 +632,7 @@ class PostController extends Controller
                             ->where('following_id', $userResult->id)
                             ->exists();
                     }
-                    
+
                     return [
                         'id' => $userResult->id,
                         'name' => $userResult->name,
@@ -652,11 +651,11 @@ class PostController extends Controller
         if ($type === 'all' || $type === 'organizations') {
             $organizations = Organization::where('registration_status', 'approved')
                 ->where(function ($query) use ($searchTerm) {
-                    $query->where('name', 'LIKE', '%' . $searchTerm . '%')
-                        ->orWhere('email', 'LIKE', '%' . $searchTerm . '%')
+                    $query->where('name', 'LIKE', '%'.$searchTerm.'%')
+                        ->orWhere('email', 'LIKE', '%'.$searchTerm.'%')
                         ->orWhereHas('user', function ($q) use ($searchTerm) {
-                            $q->where('slug', 'LIKE', '%' . $searchTerm . '%')
-                              ->orWhere('name', 'LIKE', '%' . $searchTerm . '%');
+                            $q->where('slug', 'LIKE', '%'.$searchTerm.'%')
+                                ->orWhere('name', 'LIKE', '%'.$searchTerm.'%');
                         });
                 })
                 ->with('user:id,slug,name,image')
@@ -668,9 +667,9 @@ class PostController extends Controller
                         ->where('status', 'complete')
                         ->orderBy('id', 'desc')
                         ->first();
-                    
+
                     $excelDataId = $excelData ? $excelData->id : null;
-                    
+
                     $isFollowing = false;
                     if ($user) {
                         // Check both organization_id and excel_data_id for following status

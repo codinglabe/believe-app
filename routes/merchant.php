@@ -4,6 +4,7 @@ use Illuminate\Support\Facades\Route;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use App\Http\Controllers\Merchant\Auth\MerchantAuthController;
+use App\Http\Controllers\Merchant\MerchantMarketplaceProductController;
 
 // ============================================
 // MERCHANT PROGRAM ROUTES
@@ -81,6 +82,20 @@ Route::middleware(['auth:merchant'])->group(function () {
 
         Route::patch('/settings/profile', [App\Http\Controllers\Merchant\MerchantSettingsController::class, 'updateProfile'])->name('merchant.settings.profile');
         Route::patch('/settings/business', [App\Http\Controllers\Merchant\MerchantSettingsController::class, 'updateBusiness'])->name('merchant.settings.business');
+
+        Route::post('/settings/shipping-addresses', [App\Http\Controllers\Merchant\MerchantSettingsController::class, 'storeShippingAddress'])->name('merchant.settings.shipping-addresses.store');
+        Route::patch('/settings/shipping-addresses/{shippingAddress}', [App\Http\Controllers\Merchant\MerchantSettingsController::class, 'updateShippingAddress'])->name('merchant.settings.shipping-addresses.update');
+        Route::delete('/settings/shipping-addresses/{shippingAddress}', [App\Http\Controllers\Merchant\MerchantSettingsController::class, 'destroyShippingAddress'])->name('merchant.settings.shipping-addresses.destroy');
+        Route::post('/settings/shipping-addresses/{shippingAddress}/default', [App\Http\Controllers\Merchant\MerchantSettingsController::class, 'setDefaultShippingAddress'])->name('merchant.settings.shipping-addresses.default');
+
+        Route::prefix('marketplace-products')->name('marketplace-products.')->group(function () {
+            Route::get('/', [MerchantMarketplaceProductController::class, 'index'])->name('index');
+            Route::get('/create', [MerchantMarketplaceProductController::class, 'create'])->name('create');
+            Route::post('/', [MerchantMarketplaceProductController::class, 'store'])->name('store');
+            Route::get('/{marketplace_product}/edit', [MerchantMarketplaceProductController::class, 'edit'])->name('edit');
+            Route::put('/{marketplace_product}', [MerchantMarketplaceProductController::class, 'update'])->name('update');
+            Route::delete('/{marketplace_product}', [MerchantMarketplaceProductController::class, 'destroy'])->name('destroy');
+        });
     });
 
     // Logout

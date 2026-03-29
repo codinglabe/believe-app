@@ -4,9 +4,11 @@ namespace App\Http\Controllers\Merchant;
 
 use App\Http\Controllers\Controller;
 use App\Models\Merchant;
+use App\Models\MerchantShippingAddress;
 use App\Models\MerchantSubscriptionPlan;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Laravel\Cashier\Cashier;
@@ -23,8 +25,28 @@ class MerchantSettingsController extends Controller
         // Get billing data
         $billingData = $this->getBillingData($merchant);
 
+        $shippingAddresses = $merchant->shippingAddresses()
+            ->orderByDesc('is_default')
+            ->orderBy('id')
+            ->get()
+            ->map(fn (MerchantShippingAddress $a) => [
+                'id' => $a->id,
+                'label' => $a->label,
+                'contact_name' => $a->contact_name,
+                'address_line1' => $a->address_line1,
+                'address_line2' => $a->address_line2,
+                'city' => $a->city,
+                'state' => $a->state,
+                'zip' => $a->zip,
+                'country' => $a->country,
+                'is_default' => $a->is_default,
+            ])
+            ->values()
+            ->all();
+
         return Inertia::render('merchant/Settings', [
             'billingData' => $billingData,
+            'shippingAddresses' => $shippingAddresses,
         ]);
     }
 
@@ -176,24 +198,12 @@ class MerchantSettingsController extends Controller
                 Rule::unique('merchants')->ignore($merchant->id),
             ],
             'phone' => ['nullable', 'string', 'max:255'],
-            'shipping_contact_name' => ['nullable', 'string', 'max:255'],
-            'shipping_address' => ['nullable', 'string', 'max:255'],
-            'shipping_city' => ['nullable', 'string', 'max:255'],
-            'shipping_state' => ['nullable', 'string', 'max:255'],
-            'shipping_zip' => ['nullable', 'string', 'max:32'],
-            'shipping_country' => ['nullable', 'string', 'max:255'],
         ]);
 
         $merchant->update([
             'name' => $validated['name'],
             'email' => $validated['email'],
             'phone' => $validated['phone'] ?? null,
-            'shipping_contact_name' => $validated['shipping_contact_name'] ?? null,
-            'shipping_address' => $validated['shipping_address'] ?? null,
-            'shipping_city' => $validated['shipping_city'] ?? null,
-            'shipping_state' => $validated['shipping_state'] ?? null,
-            'shipping_zip' => $validated['shipping_zip'] ?? null,
-            'shipping_country' => $validated['shipping_country'] ?? null,
         ]);
 
         return back()->with('flash', ['success' => 'Profile updated successfully.']);
@@ -220,5 +230,141 @@ class MerchantSettingsController extends Controller
         $merchant->update($validated);
 
         return back()->with('flash', ['success' => 'Business information updated successfully.']);
+    }
+
+    public function storeShippingAddress(Request $request)
+    {
+        $merchant = Auth::guard('merchant')->user();
+
+        $validated = $request->validate([
+            'label' => ['nullable', 'string', 'max:255'],
+            'contact_name' => ['nullable', 'string', 'max:255'],
+            'address_line1' => ['required', 'string', 'max:255'],
+            'address_line2' => ['nullable', 'string', 'max:255'],
+            'city' => ['required', 'string', 'max:255'],
+            'state' => ['nullable', 'string', 'max:255'],
+            'zip' => ['required', 'string', 'max:32'],
+            'country' => ['required', 'string', 'max:255'],
+            'is_default' => ['sometimes', 'boolean'],
+        ]);
+
+        $makeDefault = $request->boolean('is_default');
+        if (! $merchant->shippingAddresses()->exists()) {
+            $makeDefault = true;
+        }
+
+        DB::transaction(function () use ($merchant, $validated, $makeDefault) {
+            if ($makeDefault) {
+                $merchant->shippingAddresses()->update(['is_default' => false]);
+            }
+
+            $merchant->shippingAddresses()->create([
+                'label' => $validated['label'] ?? null,
+                'contact_name' => $validated['contact_name'] ?? null,
+                'address_line1' => $validated['address_line1'],
+                'address_line2' => $validated['address_line2'] ?? null,
+                'city' => $validated['city'],
+                'state' => $validated['state'] ?? null,
+                'zip' => $validated['zip'],
+                'country' => $validated['country'],
+                'is_default' => $makeDefault,
+            ]);
+
+            if (! $merchant->shippingAddresses()->where('is_default', true)->exists()) {
+                $firstId = $merchant->shippingAddresses()->orderBy('id')->value('id');
+                if ($firstId) {
+                    $merchant->shippingAddresses()->where('id', $firstId)->update(['is_default' => true]);
+                }
+            }
+        });
+
+        return back()->with('flash', ['success' => 'Shipping address added.']);
+    }
+
+    public function updateShippingAddress(Request $request, MerchantShippingAddress $shippingAddress)
+    {
+        $merchant = Auth::guard('merchant')->user();
+        $this->assertMerchantOwnsShippingAddress($merchant, $shippingAddress);
+
+        $validated = $request->validate([
+            'label' => ['nullable', 'string', 'max:255'],
+            'contact_name' => ['nullable', 'string', 'max:255'],
+            'address_line1' => ['required', 'string', 'max:255'],
+            'address_line2' => ['nullable', 'string', 'max:255'],
+            'city' => ['required', 'string', 'max:255'],
+            'state' => ['nullable', 'string', 'max:255'],
+            'zip' => ['required', 'string', 'max:32'],
+            'country' => ['required', 'string', 'max:255'],
+            'is_default' => ['sometimes', 'boolean'],
+        ]);
+
+        $makeDefault = $request->boolean('is_default');
+
+        DB::transaction(function () use ($merchant, $shippingAddress, $validated, $makeDefault) {
+            if ($makeDefault) {
+                $merchant->shippingAddresses()->update(['is_default' => false]);
+            }
+
+            $shippingAddress->update([
+                'label' => $validated['label'] ?? null,
+                'contact_name' => $validated['contact_name'] ?? null,
+                'address_line1' => $validated['address_line1'],
+                'address_line2' => $validated['address_line2'] ?? null,
+                'city' => $validated['city'],
+                'state' => $validated['state'] ?? null,
+                'zip' => $validated['zip'],
+                'country' => $validated['country'],
+                'is_default' => $makeDefault,
+            ]);
+
+            if (! $merchant->shippingAddresses()->where('is_default', true)->exists()) {
+                $next = $merchant->shippingAddresses()
+                    ->where('id', '!=', $shippingAddress->id)
+                    ->orderBy('id')
+                    ->first()
+                    ?? $merchant->shippingAddresses()->orderBy('id')->first();
+                $next?->update(['is_default' => true]);
+            }
+        });
+
+        return back()->with('flash', ['success' => 'Shipping address updated.']);
+    }
+
+    public function destroyShippingAddress(MerchantShippingAddress $shippingAddress)
+    {
+        $merchant = Auth::guard('merchant')->user();
+        $this->assertMerchantOwnsShippingAddress($merchant, $shippingAddress);
+
+        $wasDefault = $shippingAddress->is_default;
+        $shippingAddress->delete();
+
+        if ($wasDefault) {
+            $next = $merchant->shippingAddresses()->orderBy('id')->first();
+            if ($next) {
+                $next->update(['is_default' => true]);
+            }
+        }
+
+        return back()->with('flash', ['success' => 'Shipping address removed.']);
+    }
+
+    public function setDefaultShippingAddress(MerchantShippingAddress $shippingAddress)
+    {
+        $merchant = Auth::guard('merchant')->user();
+        $this->assertMerchantOwnsShippingAddress($merchant, $shippingAddress);
+
+        DB::transaction(function () use ($merchant, $shippingAddress) {
+            $merchant->shippingAddresses()->update(['is_default' => false]);
+            $shippingAddress->update(['is_default' => true]);
+        });
+
+        return back()->with('flash', ['success' => 'Default shipping address updated.']);
+    }
+
+    private function assertMerchantOwnsShippingAddress(Merchant $merchant, MerchantShippingAddress $address): void
+    {
+        if ((int) $address->merchant_id !== (int) $merchant->id) {
+            abort(403);
+        }
     }
 }

@@ -554,6 +554,7 @@ class ShippoService
                 return $this->addressPayload([
                     'name' => $parts['name'],
                     'street1' => $parts['street1'],
+                    'street2' => $parts['street2'] ?? '',
                     'city' => $parts['city'],
                     'state' => $parts['state'],
                     'zip' => $parts['zip'],
