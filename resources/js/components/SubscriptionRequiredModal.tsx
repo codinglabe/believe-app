@@ -11,9 +11,17 @@ interface SubscriptionRequiredModalProps {
     onClose: () => void
     feature?: 'wallet' | 'products' | 'donations' | 'commissions' | 'general'
     isSupporterView?: boolean // When true, shows message for supporters (organization needs subscription)
+    /** For donation supporter view: distinguishes Care Alliance (hub nonprofit must be subscribed). */
+    donationRecipientKind?: 'organization' | 'care_alliance'
 }
 
-export function SubscriptionRequiredModal({ isOpen, onClose, feature = 'general', isSupporterView = false }: SubscriptionRequiredModalProps) {
+export function SubscriptionRequiredModal({
+    isOpen,
+    onClose,
+    feature = 'general',
+    isSupporterView = false,
+    donationRecipientKind = 'organization',
+}: SubscriptionRequiredModalProps) {
     const handleSubscribe = () => {
         router.visit('/plans', {
             onSuccess: () => {
@@ -26,11 +34,19 @@ export function SubscriptionRequiredModal({ isOpen, onClose, feature = 'general'
         if (isSupporterView) {
             switch (feature) {
                 case 'donations':
-                    return {
-                        title: 'Donations Currently Unavailable',
-                        description: 'This organization does not have an active subscription plan, so donations are temporarily unavailable. Please check back later or contact the organization directly.',
-                        icon: <Gift className="h-12 w-12" />,
-                    }
+                    return donationRecipientKind === 'care_alliance'
+                        ? {
+                              title: 'Donations Currently Unavailable',
+                              description:
+                                  'The nonprofit that receives donations for this Care Alliance does not have an active subscription plan, so donations are temporarily unavailable. Please check back later or contact the alliance or that organization directly.',
+                              icon: <Gift className="h-12 w-12" />,
+                          }
+                        : {
+                              title: 'Donations Currently Unavailable',
+                              description:
+                                  'This organization does not have an active subscription plan, so donations are temporarily unavailable. Please check back later or contact the organization directly.',
+                              icon: <Gift className="h-12 w-12" />,
+                          }
                 default:
                     return {
                         title: 'Feature Unavailable',

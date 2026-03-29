@@ -863,7 +863,7 @@ class OrganizationController extends BaseController
                 }
                 $org = app(CareAlliancePublicPageService::class)->hubOrganizationForAlliance($alliance);
                 if ($org === null) {
-                    abort(404);
+                    return $this->toggleFavoriteToggleCareAllianceOnly($request, $user, $alliance);
                 }
 
                 return $this->toggleFavoriteToggleRegisteredOrg($request, $user, $org);
@@ -890,6 +890,9 @@ class OrganizationController extends BaseController
             $alliance = CareAlliance::query()->whereKey($id)->where('status', 'active')->first();
             if ($alliance !== null) {
                 $org = app(CareAlliancePublicPageService::class)->hubOrganizationForAlliance($alliance);
+                if ($org === null) {
+                    return $this->toggleFavoriteToggleCareAllianceOnly($request, $user, $alliance);
+                }
             }
         }
 
@@ -898,6 +901,65 @@ class OrganizationController extends BaseController
         }
 
         return $this->toggleFavoriteToggleRegisteredOrg($request, $user, $org);
+    }
+
+    /**
+     * Follow / unfollow a Care Alliance when no hub nonprofit is linked yet (organization_id-only favorites are impossible).
+     */
+    private function toggleFavoriteToggleCareAllianceOnly(Request $request, $user, CareAlliance $alliance): mixed
+    {
+        if ((int) $user->id === (int) $alliance->creator_user_id) {
+            $isAjax = $request->header('X-Requested-With') === 'XMLHttpRequest' && ! $request->header('X-Inertia');
+            if ($isAjax || $request->wantsJson() || $request->expectsJson()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => __('You cannot follow your own Care Alliance.'),
+                ], 403);
+            }
+
+            return redirect()->back()->with('error', __('You cannot follow your own Care Alliance.'));
+        }
+
+        $isFollowing = false;
+        $message = '';
+
+        $fav = UserFavoriteOrganization::where('user_id', $user->id)
+            ->where('care_alliance_id', $alliance->id)
+            ->first();
+
+        if ($fav) {
+            $fav->delete();
+            $isFollowing = false;
+            $message = 'Unfollowed alliance';
+        } else {
+            UserFavoriteOrganization::create([
+                'user_id' => $user->id,
+                'organization_id' => null,
+                'excel_data_id' => null,
+                'care_alliance_id' => $alliance->id,
+                'notifications' => true,
+            ]);
+            $isFollowing = true;
+            $message = 'Following alliance with notifications';
+        }
+
+        $isAjaxRequest = $request->header('X-Requested-With') === 'XMLHttpRequest'
+            && ! $request->header('X-Inertia');
+
+        if ($isAjaxRequest || $request->wantsJson() || $request->expectsJson()) {
+            return response()->json([
+                'success' => true,
+                'is_following' => $isFollowing,
+                'message' => $message,
+            ]);
+        }
+
+        $referer = $request->header('Referer');
+        if ($referer) {
+            return redirect($referer);
+        }
+
+        return redirect()->back();
     }
 
     /**
@@ -1025,19 +1087,34 @@ class OrganizationController extends BaseController
         $isFollowing = false;
         $message = '';
 
+        $allianceIdsPinnedToHub = CareAlliance::query()
+            ->where('hub_organization_id', $org->id)
+            ->pluck('id');
+
         $fav = UserFavoriteOrganization::where('user_id', $user->id)
             ->where('organization_id', $org->id)
             ->first();
 
         if ($fav) {
             $fav->delete();
+            if ($allianceIdsPinnedToHub->isNotEmpty()) {
+                UserFavoriteOrganization::where('user_id', $user->id)
+                    ->whereIn('care_alliance_id', $allianceIdsPinnedToHub)
+                    ->delete();
+            }
             $isFollowing = false;
             $message = 'Unfollowed organization';
         } else {
+            if ($allianceIdsPinnedToHub->isNotEmpty()) {
+                UserFavoriteOrganization::where('user_id', $user->id)
+                    ->whereIn('care_alliance_id', $allianceIdsPinnedToHub)
+                    ->delete();
+            }
             UserFavoriteOrganization::create([
                 'user_id' => $user->id,
                 'organization_id' => $org->id,
                 'excel_data_id' => $excelDataIdForRow,
+                'care_alliance_id' => null,
                 'notifications' => true,
             ]);
             $isFollowing = true;
@@ -1278,29 +1355,49 @@ class OrganizationController extends BaseController
             }
         }
 
-        if (! $org) {
-            if ($isAjaxRequest || $request->wantsJson() || $request->expectsJson()) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Organization not found',
-                ], 404);
-            }
+        $fav = null;
 
-            $referer = $request->header('Referer');
-            if ($referer) {
-                return redirect($referer)->with('error', 'Organization not found');
-            }
-            if ($excelRowUsedForLookup) {
-                return redirect()->route('organizations.show', $id)
-                    ->with('error', 'Organization not found');
-            }
+        if ($org) {
+            $fav = UserFavoriteOrganization::where('user_id', $user->id)
+                ->where('organization_id', $org->id)
+                ->first();
 
-            return redirect()->back()->with('error', 'Organization not found');
+            if (! $fav) {
+                $allianceIds = CareAlliance::query()
+                    ->where('hub_organization_id', $org->id)
+                    ->pluck('id');
+                if ($allianceIds->isNotEmpty()) {
+                    $fav = UserFavoriteOrganization::where('user_id', $user->id)
+                        ->whereIn('care_alliance_id', $allianceIds)
+                        ->first();
+                }
+            }
+        } else {
+            $allianceByKey = CareAlliance::query()->whereKey($id)->where('status', 'active')->first();
+            if ($allianceByKey) {
+                $fav = UserFavoriteOrganization::where('user_id', $user->id)
+                    ->where('care_alliance_id', $allianceByKey->id)
+                    ->first();
+            } else {
+                if ($isAjaxRequest || $request->wantsJson() || $request->expectsJson()) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Organization not found',
+                    ], 404);
+                }
+
+                $referer = $request->header('Referer');
+                if ($referer) {
+                    return redirect($referer)->with('error', 'Organization not found');
+                }
+                if ($excelRowUsedForLookup) {
+                    return redirect()->route('organizations.show', $id)
+                        ->with('error', 'Organization not found');
+                }
+
+                return redirect()->back()->with('error', 'Organization not found');
+            }
         }
-
-        $fav = UserFavoriteOrganization::where('user_id', $user->id)
-            ->where('organization_id', $org->id)
-            ->first();
 
         if (! $fav) {
             if ($isAjaxRequest || $request->wantsJson() || $request->expectsJson()) {
@@ -1764,7 +1861,7 @@ class OrganizationController extends BaseController
             $postsCount += \App\Models\FacebookPost::where('organization_id', $registeredOrg->id)->where('status', 'published')->count();
             $supportersCount = \App\Models\UserFavoriteOrganization::where('organization_id', $registeredOrg->id)->count();
             $supporters = \App\Models\UserFavoriteOrganization::where('organization_id', $registeredOrg->id)
-                ->with('user:id,name,email,image')
+                ->with('user:id,name,email,image,slug,role')
                 ->latest()
                 ->get()
                 ->map(function ($favorite) {
@@ -1773,9 +1870,11 @@ class OrganizationController extends BaseController
                         'user_id' => $favorite->user_id,
                         'user' => $favorite->user ? [
                             'id' => $favorite->user->id,
+                            'slug' => $favorite->user->slug,
                             'name' => $favorite->user->name,
                             'email' => $favorite->user->email,
                             'image' => $favorite->user->image,
+                            'role' => $favorite->user->role,
                         ] : null,
                         'notifications' => $favorite->notifications ?? false,
                         'joined_at' => $favorite->created_at?->toIso8601String(),
@@ -2064,7 +2163,7 @@ class OrganizationController extends BaseController
 
             // Only load supporters data for supporters tab (limit to 50 for performance)
             $supporters = \App\Models\UserFavoriteOrganization::where('organization_id', $registeredOrg->id)
-                ->with('user:id,name,email,image,slug')
+                ->with('user:id,name,email,image,slug,role')
                 ->latest()
                 ->limit(50)
                 ->get()
@@ -2078,6 +2177,7 @@ class OrganizationController extends BaseController
                             'name' => $favorite->user->name,
                             'email' => $favorite->user->email,
                             'image' => $favorite->user->image,
+                            'role' => $favorite->user->role,
                         ] : null,
                         'notifications' => $favorite->notifications ?? false,
                         'joined_at' => $favorite->created_at?->toIso8601String(),
@@ -2091,7 +2191,7 @@ class OrganizationController extends BaseController
 
             // Load supporters data for unregistered organizations
             $favoriteRecords = \App\Models\UserFavoriteOrganization::where('excel_data_id', $excelDataId)
-                ->with('user:id,name,email,image,slug')
+                ->with('user:id,name,email,image,slug,role')
                 ->latest()
                 ->limit(50)
                 ->get();
@@ -2107,6 +2207,7 @@ class OrganizationController extends BaseController
                             'name' => $favorite->user->name,
                             'email' => $favorite->user->email,
                             'image' => $favorite->user->image,
+                            'role' => $favorite->user->role,
                         ],
                         'notifications' => $favorite->notifications ?? false,
                         'joined_at' => $favorite->created_at?->toIso8601String(),

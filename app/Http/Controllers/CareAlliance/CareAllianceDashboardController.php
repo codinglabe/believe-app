@@ -5,17 +5,19 @@ namespace App\Http\Controllers\CareAlliance;
 use App\Http\Controllers\Controller;
 use App\Models\CareAlliance;
 use App\Models\CareAllianceCampaign;
+use App\Models\CareAllianceCampaignSplit;
 use App\Models\CareAllianceInvitation;
 use App\Models\CareAllianceJoinRequest;
 use App\Models\CareAllianceMembership;
 use App\Models\Organization;
-use App\Models\PrimaryActionCategory;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 
 class CareAllianceDashboardController extends Controller
 {
     private const MEMBER_TABS = ['invite', 'requests', 'invitations', 'memberships'];
+
+    private const CAMPAIGN_TABS = ['create', 'list'];
 
     private function allianceForUser(Request $request): CareAlliance
     {
@@ -71,6 +73,31 @@ class CareAllianceDashboardController extends Controller
     public function workspaceCampaigns(Request $request)
     {
         return Inertia::render('care-alliance/workspace/Campaigns', $this->campaignsPagePayload($request));
+    }
+
+    public function workspaceCampaignEdit(Request $request, CareAllianceCampaign $campaign)
+    {
+        $alliance = $this->allianceForUser($request);
+        if ((int) $campaign->care_alliance_id !== (int) $alliance->id) {
+            abort(404);
+        }
+
+        $alliance->load(['primaryActionCategories:id,name']);
+        $campaign->loadCount('donations');
+        $campaign->load([
+            'primaryActionCategories:id,name',
+            'splits' => fn ($q) => $q->orderBy('id')->with(['organization:id,name,ein']),
+        ]);
+
+        return Inertia::render('care-alliance/workspace/CampaignEdit', [
+            'alliance' => $this->allianceToArray($alliance),
+            'memberships' => $this->membershipsForCareAllianceWorkspace($alliance),
+            'primaryActionCategories' => $alliance->primaryActionCategories->map(fn ($c) => [
+                'id' => $c->id,
+                'name' => $c->name,
+            ])->values()->all(),
+            'campaign' => $this->campaignToWorkspaceArray($campaign, $alliance),
+        ]);
     }
 
     public function workspaceSettings(Request $request)
@@ -191,16 +218,11 @@ class CareAllianceDashboardController extends Controller
     }
 
     /**
-     * Campaigns workspace: memberships + campaigns (splits UI needs active members).
-     *
-     * @return array<string, mixed>
+     * @return array<int, array<string, mixed>>
      */
-    private function campaignsPagePayload(Request $request): array
+    private function membershipsForCareAllianceWorkspace(CareAlliance $alliance): array
     {
-        $alliance = $this->allianceForUser($request);
-        $alliance->load(['primaryActionCategories:id,name']);
-
-        $memberships = CareAllianceMembership::query()
+        return CareAllianceMembership::query()
             ->where('care_alliance_id', $alliance->id)
             ->with(['organization:id,name,ein,user_id'])
             ->orderByDesc('created_at')
@@ -215,33 +237,90 @@ class CareAllianceDashboardController extends Controller
                     'name' => $m->organization->name,
                     'ein' => $m->organization->ein,
                 ] : null,
-            ]);
+            ])
+            ->values()
+            ->all();
+    }
 
-        $campaigns = CareAllianceCampaign::query()
+    /**
+     * @return array<string, mixed>
+     */
+    private function campaignToWorkspaceArray(CareAllianceCampaign $c, CareAlliance $alliance): array
+    {
+        return [
+            'id' => $c->id,
+            'slug' => $c->slug,
+            'name' => $c->name,
+            'description' => $c->description,
+            'status' => $c->status,
+            'alliance_fee_bps_override' => $c->alliance_fee_bps_override,
+            'donations_count' => $c->donations_count,
+            'public_donate_url' => route('care-alliance.campaigns.donate', [
+                'allianceSlug' => $alliance->slug,
+                'campaign' => $c->slug,
+            ]),
+            'primary_action_categories' => $c->primaryActionCategories->map(fn ($cat) => [
+                'id' => $cat->id,
+                'name' => $cat->name,
+            ])->values()->all(),
+            'splits' => $c->splits->map(fn (CareAllianceCampaignSplit $s) => [
+                'is_alliance_fee' => $s->is_alliance_fee,
+                'percent_bps' => $s->percent_bps,
+                'organization' => $s->is_alliance_fee || ! $s->organization ? null : [
+                    'id' => $s->organization->id,
+                    'name' => $s->organization->name,
+                    'ein' => $s->organization->ein,
+                ],
+            ])->values()->all(),
+        ];
+    }
+
+    /**
+     * Campaigns workspace: memberships + campaigns (splits UI needs active members).
+     *
+     * @return array<string, mixed>
+     */
+    private function campaignsPagePayload(Request $request): array
+    {
+        $alliance = $this->allianceForUser($request);
+        $alliance->load(['primaryActionCategories:id,name']);
+
+        $tab = in_array($request->query('tab'), self::CAMPAIGN_TABS, true)
+            ? $request->query('tab')
+            : 'create';
+
+        $memberships = $this->membershipsForCareAllianceWorkspace($alliance);
+
+        $campaignsCount = CareAllianceCampaign::query()
             ->where('care_alliance_id', $alliance->id)
-            ->withCount('donations')
-            ->orderByDesc('created_at')
-            ->get();
+            ->count();
+
+        $campaigns = [];
+        if ($tab === 'list') {
+            $campaigns = CareAllianceCampaign::query()
+                ->where('care_alliance_id', $alliance->id)
+                ->withCount('donations')
+                ->with([
+                    'primaryActionCategories:id,name',
+                    'splits' => fn ($q) => $q->orderBy('id')->with(['organization:id,name,ein']),
+                ])
+                ->orderByDesc('created_at')
+                ->get()
+                ->map(fn (CareAllianceCampaign $c) => $this->campaignToWorkspaceArray($c, $alliance));
+        }
 
         return [
+            'campaignsTab' => $tab,
+            'campaignsCount' => $campaignsCount,
             'alliance' => $this->allianceToArray($alliance),
             'memberships' => $memberships,
             'invitations' => [],
             'joinRequests' => [],
-            'campaigns' => $campaigns->map(fn (CareAllianceCampaign $c) => [
+            'campaigns' => $campaigns,
+            'primaryActionCategories' => $alliance->primaryActionCategories->map(fn ($c) => [
                 'id' => $c->id,
                 'name' => $c->name,
-                'description' => $c->description,
-                'status' => $c->status,
-                'alliance_fee_bps_override' => $c->alliance_fee_bps_override,
-                'donations_count' => $c->donations_count,
-                'public_donate_url' => route('care-alliance.campaigns.donate', [$alliance->slug, $c->id]),
-            ]),
-            'primaryActionCategories' => PrimaryActionCategory::query()
-                ->where('is_active', true)
-                ->orderBy('sort_order')
-                ->orderBy('name')
-                ->get(['id', 'name']),
+            ])->values()->all(),
         ];
     }
 

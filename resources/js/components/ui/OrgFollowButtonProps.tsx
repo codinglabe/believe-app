@@ -131,7 +131,7 @@ export default function OrgFollowButton({
     setIsLoading(true)
     setLocalIsFollowing(true)
 
-    router.post(route("organizations.toggle-favorite", favoriteId), toggleFavoriteBody, {
+    router.post(route("organizations.toggle-favorite", { id: favoriteId }), toggleFavoriteBody, {
       ...inertiaPostOptions,
       onError: () => {
         followErrorToast()
@@ -161,7 +161,7 @@ export default function OrgFollowButton({
 
     const nextNotifications = !notifications
 
-    router.post(route("organizations.toggle-notifications", favoriteId), toggleFavoriteBody, {
+    router.post(route("organizations.toggle-notifications", { id: favoriteId }), toggleFavoriteBody, {
       ...inertiaPostOptions,
       onSuccess: () => {
         setLocalNotifications(nextNotifications)
@@ -193,7 +193,7 @@ export default function OrgFollowButton({
     setIsLoading(true)
     setLocalIsFollowing(false)
 
-    router.post(route("organizations.toggle-favorite", favoriteId), toggleFavoriteBody, {
+    router.post(route("organizations.toggle-favorite", { id: favoriteId }), toggleFavoriteBody, {
       ...inertiaPostOptions,
       onError: () => {
         followErrorToast()

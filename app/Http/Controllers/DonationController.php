@@ -2,14 +2,20 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\CareAlliance;
 use App\Models\Donation;
 use App\Models\Organization;
+use App\Models\User;
+use App\Services\CareAlliancePublicPageService;
 use App\Services\ImpactScoreService;
 use App\Services\SeoService;
 use App\Services\StripeConfigService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Collection;
 use Inertia\Inertia;
 use Laravel\Cashier\Cashier;
 
@@ -21,6 +27,150 @@ class DonationController extends Controller
     {
         $this->impactScoreService = $impactScoreService;
     }
+
+    /**
+     * Recipient nonprofit is allowed to receive donations if they have a platform plan and/or an active Stripe subscription.
+     * Aligns with ProductController: Cashier subscriptions often exist without users.current_plan_id being set.
+     */
+    private function recipientUserHasActiveSubscription(?User $user): bool
+    {
+        if (! $user) {
+            return false;
+        }
+
+        if ($user->current_plan_id !== null) {
+            return true;
+        }
+
+        if (method_exists($user, 'subscribed')) {
+            try {
+                if ($user->subscribed()) {
+                    return true;
+                }
+            } catch (\Exception $e) {
+                Log::warning('Failed to check Cashier subscription for donation recipient', [
+                    'user_id' => $user->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        // Named subscriptions (not only `default`) — any active/trialing row in Cashier
+        try {
+            if ($user->subscriptions()->whereIn('stripe_status', ['active', 'trialing'])->exists()) {
+                return true;
+            }
+        } catch (\Exception $e) {
+            Log::warning('Failed to list subscriptions for donation recipient', [
+                'user_id' => $user->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        return false;
+    }
+
+    /**
+     * Care Alliance donations often credit a member/hub org whose owner is not the paying platform user.
+     * Allow when the alliance creator (subscriber) has an active plan, if they are the real billing account.
+     */
+    private function donationRecipientMatchesAlliance(CareAlliance $alliance, Organization $recipientOrg): bool
+    {
+        if (strtolower(trim((string) $alliance->status)) !== 'active') {
+            return false;
+        }
+        $expected = app(CareAlliancePublicPageService::class)->donationRecipientOrganizationForAlliance($alliance);
+
+        return $expected !== null && (int) $expected->id === (int) $recipientOrg->id;
+    }
+
+    private function careAllianceCandidateIdsForRecipientOrganization(Organization $recipientOrg): Collection
+    {
+        $ids = CareAlliance::query()
+            ->where('hub_organization_id', $recipientOrg->id)
+            ->whereRaw('LOWER(TRIM(status)) = ?', ['active'])
+            ->pluck('id');
+
+        if (Schema::hasTable('care_alliance_memberships')) {
+            $ids = $ids->merge(
+                DB::table('care_alliance_memberships')
+                    ->where('organization_id', $recipientOrg->id)
+                    ->where('status', 'active')
+                    ->pluck('care_alliance_id')
+            );
+        }
+
+        return $ids->unique()->values();
+    }
+
+    private function careAllianceCreatorSubscriptionCoversDonation(int $careAllianceId, Organization $recipientOrg): bool
+    {
+        $alliance = CareAlliance::query()->find($careAllianceId);
+        if (! $alliance || ! $this->donationRecipientMatchesAlliance($alliance, $recipientOrg)) {
+            return false;
+        }
+        if (! $alliance->creator_user_id) {
+            return false;
+        }
+        $creator = User::query()->find($alliance->creator_user_id);
+
+        return $creator && $this->recipientUserHasActiveSubscription($creator);
+    }
+
+    /**
+     * When care_alliance_id is missing, find active alliances whose resolved donation recipient is this org
+     * and whose creator has a subscription (hub org and/or active member org).
+     */
+    private function anyAllianceCreatorPlanCoversRecipientOrganization(Organization $recipientOrg): bool
+    {
+        foreach ($this->careAllianceCandidateIdsForRecipientOrganization($recipientOrg)->all() as $aid) {
+            $alliance = CareAlliance::query()->find($aid);
+            if (! $alliance || ! $this->donationRecipientMatchesAlliance($alliance, $recipientOrg)) {
+                continue;
+            }
+            if ($alliance->creator_user_id) {
+                $creator = User::query()->find($alliance->creator_user_id);
+                if ($creator && $this->recipientUserHasActiveSubscription($creator)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * First matching alliance for this recipient (stable order) — used for Stripe checkout line item label.
+     */
+    private function firstCareAllianceMatchingRecipientOrganization(Organization $recipientOrg): ?CareAlliance
+    {
+        foreach ($this->careAllianceCandidateIdsForRecipientOrganization($recipientOrg)->sort()->values()->all() as $aid) {
+            $alliance = CareAlliance::query()->find($aid);
+            if ($alliance && $this->donationRecipientMatchesAlliance($alliance, $recipientOrg)) {
+                return $alliance;
+            }
+        }
+
+        return null;
+    }
+
+    private function resolveCareAllianceForCheckoutDisplay(Request $request, Organization $recipientOrg): ?CareAlliance
+    {
+        if ($request->input('recipient_kind') !== 'care_alliance') {
+            return null;
+        }
+
+        $careAllianceId = $request->input('care_alliance_id');
+        if ($careAllianceId !== null && $careAllianceId !== '') {
+            $alliance = CareAlliance::query()->find((int) $careAllianceId);
+            if ($alliance && $this->donationRecipientMatchesAlliance($alliance, $recipientOrg)) {
+                return $alliance;
+            }
+        }
+
+        return $this->firstCareAllianceMatchingRecipientOrganization($recipientOrg);
+    }
+
     /**
      * Display a listing of the donations.
      */
@@ -29,36 +179,78 @@ class DonationController extends Controller
     {
         $user = Auth::user();
 
-        // Show all approved organizations available for donations
-        // Organizations must be approved to receive donations
-        $query = Organization::where('registration_status', 'approved');
+        $search = $request->input('search');
+        $hasSearch = $search !== null && $search !== '';
 
-        // Apply search filter if a search query is present
-        if ($request->has('search') && $request->input('search') !== '') {
-            $search = $request->input('search');
-            $query->where(function ($q) use ($search) {
-                $q->where('name', 'like', '%' . $search . '%')
-                    ->orWhere('description', 'like', '%' . $search . '%')
-                    ->orWhere('mission', 'like', '%' . $search . '%')
-                    ->orWhere('city', 'like', '%' . $search . '%')
-                    ->orWhere('state', 'like', '%' . $search . '%');
+        // Approved nonprofits available for donations
+        $orgQuery = Organization::where('registration_status', 'approved');
+        if ($hasSearch) {
+            $orgQuery->where(function ($q) use ($search) {
+                $q->where('name', 'like', '%'.$search.'%')
+                    ->orWhere('description', 'like', '%'.$search.'%')
+                    ->orWhere('mission', 'like', '%'.$search.'%')
+                    ->orWhere('city', 'like', '%'.$search.'%')
+                    ->orWhere('state', 'like', '%'.$search.'%');
             });
         }
 
-        // Order by name for better UX
-        $query->orderBy('name', 'asc');
-
-        $organizations = $query->get()->map(function ($org) {
+        $orgRows = $orgQuery->orderBy('name')->get()->map(function (Organization $org) {
             return [
-                'id' => $org->id,
+                'id' => 'org-'.$org->id,
+                'kind' => 'organization',
+                'organization_id' => $org->id,
                 'name' => $org->name,
                 'description' => $org->description ?? $org->mission ?? 'No description available.',
-                'image' => $org->registered_user_image ? asset('storage/' . $org->registered_user_image) : null,
+                'image' => $org->registered_user_image ? asset('storage/'.$org->registered_user_image) : null,
                 'raised' => (float) ($org->balance ?? 0),
                 'goal' => 0,
                 'supporters' => $org->donations()->distinct('user_id')->count('user_id'),
             ];
         });
+
+        // Care Alliances: show when an approved recipient org exists (hub or active member).
+        // Listing matches organizations (no subscription filter); store() enforces subscription at checkout.
+        $allianceQuery = CareAlliance::query()
+            ->whereRaw('LOWER(TRIM(status)) = ?', ['active'])
+            ->with('creator:id,image');
+        if ($hasSearch) {
+            $allianceQuery->where(function ($q) use ($search) {
+                $q->where('name', 'like', '%'.$search.'%')
+                    ->orWhere('description', 'like', '%'.$search.'%');
+            });
+        }
+
+        $publicPage = app(CareAlliancePublicPageService::class);
+        $allianceRows = $allianceQuery->orderBy('name')->get()->map(function (CareAlliance $alliance) use ($publicPage) {
+            $recipient = $publicPage->donationRecipientOrganizationForAlliance($alliance);
+            if ($recipient === null) {
+                return null;
+            }
+
+            $image = null;
+            if ($alliance->creator?->image) {
+                $img = (string) $alliance->creator->image;
+                $image = str_starts_with($img, 'http') ? $img : asset('storage/'.ltrim($img, '/'));
+            }
+
+            return [
+                'id' => 'ca-'.$alliance->id,
+                'kind' => 'care_alliance',
+                'organization_id' => $recipient->id,
+                'name' => $alliance->name,
+                'description' => $alliance->description
+                    ? strip_tags((string) $alliance->description)
+                    : 'Care Alliance — shared fundraising for member nonprofits.',
+                'image' => $image,
+                'raised' => (float) ($recipient->balance ?? 0),
+                'goal' => 0,
+                'supporters' => $recipient->donations()->distinct('user_id')->count('user_id'),
+                'alliance_slug' => $alliance->slug,
+                'care_alliance_id' => $alliance->id,
+            ];
+        })->filter()->values();
+
+        $organizations = $orgRows->concat($allianceRows)->sortBy('name', SORT_NATURAL)->values();
 
         // Year-to-date giving and top 3 organizations for logged-in users
         $thisYearDonated = 0.0;
@@ -181,11 +373,34 @@ class DonationController extends Controller
             ]);
         }
 
-        // Check if organization has active subscription
-        if ($organization->user && $organization->user->current_plan_id === null) {
-            return redirect()->back()->withErrors([
-                'subscription' => 'This organization does not have an active subscription. Donations are not available at this time.'
-            ])->with('subscription_required', true);
+        $requireSubscription = filter_var(env('REQUIRE_SUBSCRIPTION_FOR_DONATIONS', true), FILTER_VALIDATE_BOOLEAN);
+        if ($requireSubscription) {
+            $organization->loadMissing('user');
+            $orgUser = $organization->user;
+            $orgRecipientHasPlan = $orgUser && $this->recipientUserHasActiveSubscription($orgUser);
+
+            $recipientKind = $request->input('recipient_kind', 'organization');
+            $careAllianceId = $request->input('care_alliance_id');
+
+            if ($recipientKind === 'care_alliance') {
+                $creatorCovers = false;
+                if ($careAllianceId !== null && $careAllianceId !== '') {
+                    $creatorCovers = $this->careAllianceCreatorSubscriptionCoversDonation((int) $careAllianceId, $organization);
+                }
+                if (! $creatorCovers) {
+                    $creatorCovers = $this->anyAllianceCreatorPlanCoversRecipientOrganization($organization);
+                }
+
+                if (! $orgRecipientHasPlan && ! $creatorCovers) {
+                    return redirect()->back()->withErrors([
+                        'subscription' => 'The nonprofit receiving donations for this Care Alliance does not have an active subscription. Donations are not available at this time.',
+                    ])->with('subscription_required', true);
+                }
+            } elseif ($orgUser && ! $orgRecipientHasPlan) {
+                return redirect()->back()->withErrors([
+                    'subscription' => 'This organization does not have an active subscription. Donations are not available at this time.',
+                ])->with('subscription_required', true);
+            }
         }
 
         $validated = $request->validate([
@@ -296,26 +511,46 @@ class DonationController extends Controller
 
         // Handle Stripe payment
         try {
+            $allianceForCheckout = $this->resolveCareAllianceForCheckoutDisplay($request, $organization);
+
+            // Stripe line item: alliance donations show only the Care Alliance name (no member list or payout copy).
+            $checkoutLineTitle = $allianceForCheckout !== null
+                ? sprintf('Donation to %s', $allianceForCheckout->name)
+                : "Donation to {$organizationName}";
+
+            $metadata = [
+                'donation_id' => (string) $donation->id,
+                'organization_id' => (string) $organization->id,
+            ];
+            if ($allianceForCheckout !== null) {
+                $metadata['care_alliance_id'] = (string) $allianceForCheckout->id;
+                $metadata['care_alliance_name'] = mb_substr((string) $allianceForCheckout->name, 0, 500);
+            }
+
             $checkoutOptions = [
                 'success_url' => route('donations.success') . '?session_id={CHECKOUT_SESSION_ID}',
                 'cancel_url' => route('donations.cancel'),
-                'metadata' => [
-                    'donation_id' => $donation->id,
-                    'organization_id' => $organization->id,
-                ],
+                'metadata' => $metadata,
                 'payment_method_types' => ['card'],
             ];
 
+            if ($validated['frequency'] !== 'one-time') {
+                $checkoutOptions['subscription_data'] = [
+                    'description' => mb_substr($checkoutLineTitle, 0, 500),
+                ];
+            }
+
             if ($validated['frequency'] === 'one-time') {
-                // One-time payment
                 $checkout = $user->checkoutCharge(
                     $amountInCents,
-                    "Donation to {$organizationName}",
+                    mb_substr($checkoutLineTitle, 0, 250),
                     1,
-                    $checkoutOptions
+                    $checkoutOptions,
+                    [],
+                    []
                 );
             } else {
-                // Recurring donation
+                // Recurring donation (product name comes from Stripe product; description on subscription)
                 $priceId = $this->createDynamicStripePrice($amountInCents, $validated['frequency']);
 
                 $checkout = $user->newSubscription('donation', $priceId)

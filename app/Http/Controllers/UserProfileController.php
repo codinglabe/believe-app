@@ -1550,46 +1550,14 @@ class UserProfileController extends Controller
                 ];
             });
 
-        // Get user's favorite organizations (for "Following" tab)
-        $favoriteOrganizations = UserFavoriteOrganization::where('user_id', $user->id)
-            ->with(['organization.user:id,slug,name,image'])
-            ->latest()
-            ->limit(10)
-            ->get()
-            ->map(function ($fav) {
-                // Handle both registered and unregistered organizations
-                if ($fav->organization) {
-                    // Registered organization
-                    return [
-                        'id' => $fav->organization_id,
-                        'excel_data_id' => $fav->excel_data_id,
-                        'name' => $fav->organization->name,
-                        'slug' => $fav->organization->user->slug ?? null,
-                        'image' => $fav->organization->user->image ?? null,
-                    ];
-                } elseif ($fav->excel_data_id) {
-                    // Unregistered organization - get from ExcelData
-                    $excelData = ExcelData::find($fav->excel_data_id);
-                    if ($excelData) {
-                        $rowData = $excelData->row_data;
-                        $transformedData = ExcelDataTransformer::transform($rowData);
-                        $orgName = $transformedData[1] ?? $rowData[1] ?? 'Unknown Organization';
-
-                        return [
-                            'id' => $fav->excel_data_id,
-                            'excel_data_id' => $fav->excel_data_id,
-                            'name' => $orgName,
-                            'slug' => null,
-                            'image' => null,
-                        ];
-                    }
-                }
-
-                // Fallback if neither organization nor excel_data exists
-                return null;
-            })
-            ->filter() // Remove null entries
-            ->values(); // Re-index array
+        // Get user's favorite organizations & Care Alliances (for "Following" tab)
+        $favoriteOrganizations = $this->mapUserFavoritesForPublicProfile(
+            UserFavoriteOrganization::where('user_id', $user->id)
+                ->with(['organization.user:id,slug,name,image', 'careAlliance:id,slug,name'])
+                ->latest()
+                ->limit(10)
+                ->get()
+        );
 
         // Get sidebar data (People You May Know, Trending Organizations)
         $peopleYouMayKnow = [];
@@ -2129,28 +2097,7 @@ class UserProfileController extends Controller
         $page = $request->get('page', 1);
         $perPage = 5;
 
-        // Get all activities and combine them
-        $donations = Donation::where('user_id', $user->id)
-            ->whereIn('status', ['completed', 'active'])
-            ->with('organization:id,name')
-            ->get()
-            ->map(function ($donation) {
-                return [
-                    'id' => 'donation_'.$donation->id,
-                    'type' => 'donation',
-                    'title' => 'Donated $'.number_format($donation->amount, 2).' to '.($donation->organization->name ?? 'Unknown Organization'),
-                    'description' => ($donation->frequency ?? 'one-time') !== 'one-time' ? ucfirst($donation->frequency).' donation' : null,
-                    'date' => $donation->donation_date ?? $donation->created_at,
-                    'data' => [
-                        'id' => $donation->id,
-                        'organization_name' => $donation->organization->name ?? 'Unknown Organization',
-                        'amount' => $donation->amount,
-                        'frequency' => $donation->frequency ?? 'one-time',
-                        'payment_method' => $donation->payment_method ?? 'stripe',
-                    ],
-                ];
-            });
-
+        // Get all activities and combine them (donations excluded from public activity feed)
         $jobApplications = JobApplication::where('user_id', $user->id)
             ->with('jobPost:id,title,organization_id')
             ->get()
@@ -2205,7 +2152,6 @@ class UserProfileController extends Controller
 
         // Combine all activities and sort by date
         $allActivities = collect()
-            ->merge($donations)
             ->merge($jobApplications)
             ->merge($enrollments)
             ->merge($posts)
@@ -2242,44 +2188,13 @@ class UserProfileController extends Controller
         $data = $this->getUserData($slug);
         $user = User::where('slug', $slug)->orWhere('id', $slug)->first();
 
-        $favoriteOrganizations = UserFavoriteOrganization::where('user_id', $user->id)
-            ->with(['organization.user:id,slug,name,image'])
-            ->latest()
-            ->limit(20)
-            ->get()
-            ->map(function ($fav) {
-                // Handle both registered and unregistered organizations
-                if ($fav->organization) {
-                    // Registered organization
-                    return [
-                        'id' => $fav->organization_id,
-                        'excel_data_id' => $fav->excel_data_id,
-                        'name' => $fav->organization->name,
-                        'slug' => $fav->organization->user->slug ?? null,
-                        'image' => $fav->organization->user->image ?? null,
-                    ];
-                } elseif ($fav->excel_data_id) {
-                    // Unregistered organization - get from ExcelData
-                    $excelData = ExcelData::find($fav->excel_data_id);
-                    if ($excelData) {
-                        $rowData = $excelData->row_data;
-                        $transformedData = ExcelDataTransformer::transform($rowData);
-                        $orgName = $transformedData[1] ?? $rowData[1] ?? 'Unknown Organization';
-
-                        return [
-                            'id' => $fav->excel_data_id,
-                            'excel_data_id' => $fav->excel_data_id,
-                            'name' => $orgName,
-                            'slug' => null,
-                            'image' => null,
-                        ];
-                    }
-                }
-
-                // Fallback for invalid data
-                return null;
-            })
-            ->filter(); // Remove null entries
+        $favoriteOrganizations = $this->mapUserFavoritesForPublicProfile(
+            UserFavoriteOrganization::where('user_id', $user->id)
+                ->with(['organization.user:id,slug,name,image', 'careAlliance:id,slug,name'])
+                ->latest()
+                ->limit(20)
+                ->get()
+        );
 
         return Inertia::render('frontend/user/user-show', array_merge($data, [
             'favoriteOrganizations' => $favoriteOrganizations,
@@ -2403,5 +2318,57 @@ class UserProfileController extends Controller
         }
 
         return redirect()->route('users.show', $targetUser->slug);
+    }
+
+    /**
+     * Map favorite rows to sidebar / Following tab (nonprofits, Excel-only, Care Alliances).
+     *
+     * @param  \Illuminate\Support\Collection<int, UserFavoriteOrganization>  $favorites
+     * @return \Illuminate\Support\Collection<int, array<string, mixed>>
+     */
+    private function mapUserFavoritesForPublicProfile($favorites)
+    {
+        return $favorites->map(function (UserFavoriteOrganization $fav) {
+            if ($fav->organization) {
+                return [
+                    'kind' => 'organization',
+                    'id' => $fav->organization_id,
+                    'excel_data_id' => $fav->excel_data_id,
+                    'name' => $fav->organization->name,
+                    'slug' => $fav->organization->user->slug ?? null,
+                    'image' => $fav->organization->user->image ?? null,
+                ];
+            }
+
+            if ($fav->excel_data_id) {
+                $excelData = ExcelData::find($fav->excel_data_id);
+                if ($excelData) {
+                    $rowData = $excelData->row_data;
+                    $transformedData = ExcelDataTransformer::transform($rowData);
+                    $orgName = $transformedData[1] ?? $rowData[1] ?? 'Unknown Organization';
+
+                    return [
+                        'kind' => 'excel',
+                        'id' => $fav->excel_data_id,
+                        'excel_data_id' => $fav->excel_data_id,
+                        'name' => $orgName,
+                        'slug' => null,
+                        'image' => null,
+                    ];
+                }
+            }
+
+            if ($fav->care_alliance_id && $fav->careAlliance) {
+                return [
+                    'kind' => 'care_alliance',
+                    'id' => 'care_alliance_'.$fav->care_alliance_id,
+                    'name' => $fav->careAlliance->name,
+                    'slug' => $fav->careAlliance->slug,
+                    'image' => null,
+                ];
+            }
+
+            return null;
+        })->filter()->values();
     }
 }

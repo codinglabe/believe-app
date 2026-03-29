@@ -71,6 +71,9 @@ interface Follower {
     notifications: boolean;
     created_at: string;
     updated_at: string;
+    follower_display_name?: string;
+    follower_avatar?: string | null;
+    is_organization_follower?: boolean;
     user: {
         id: number;
         name: string;
@@ -79,6 +82,17 @@ interface Follower {
         created_at: string;
         role: string;
     };
+}
+
+function followerDisplayName(follower: Follower): string {
+    return follower.follower_display_name ?? follower.user.name;
+}
+
+function followerAvatarSrc(follower: Follower): string | undefined {
+    const raw = follower.follower_avatar ?? follower.user.image;
+    if (!raw) return undefined;
+    if (raw.startsWith('http') || raw.startsWith('/')) return raw;
+    return `/storage/${raw}`;
 }
 
 interface Props {
@@ -540,15 +554,15 @@ export default function Index({ followers, organization, filters, allowedPerPage
                                                             <div className="relative">
                                                                 <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary/20 to-purple-500/20
                                                                               flex items-center justify-center border border-primary/10 group-hover:border-primary/30">
-                                                                    {follower.user.image ? (
+                                                                    {followerAvatarSrc(follower) ? (
                                                                         <img
-                                                                            src={follower.user.image}
-                                                                            alt={follower.user.name}
+                                                                            src={followerAvatarSrc(follower)}
+                                                                            alt={followerDisplayName(follower)}
                                                                             className="w-10 h-10 rounded-full object-cover"
                                                                         />
                                                                     ) : (
                                                                         <span className="font-semibold text-primary">
-                                                                            {follower.user.name.charAt(0).toUpperCase()}
+                                                                            {followerDisplayName(follower).charAt(0).toUpperCase()}
                                                                         </span>
                                                                     )}
                                                                 </div>
@@ -559,7 +573,7 @@ export default function Index({ followers, organization, filters, allowedPerPage
                                                             </div>
                                                             <div>
                                                                 <div className="font-semibold text-foreground group-hover:text-primary transition-colors">
-                                                                    {follower.user.name}
+                                                                    {followerDisplayName(follower)}
                                                                 </div>
                                                                 <div className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
                                                                     ID: {follower.user.id}
@@ -641,7 +655,7 @@ export default function Index({ followers, organization, filters, allowedPerPage
                                                                     <AlertDialogHeader>
                                                                         <AlertDialogTitle>Remove Follower</AlertDialogTitle>
                                                                         <AlertDialogDescription>
-                                                                            Are you sure you want to remove {follower.user.name} from your followers?
+                                                                            Are you sure you want to remove {followerDisplayName(follower)} from your followers?
                                                                             They will no longer receive updates from your organization.
                                                                         </AlertDialogDescription>
                                                                     </AlertDialogHeader>
@@ -716,15 +730,15 @@ export default function Index({ followers, organization, filters, allowedPerPage
                                                     <div className="relative">
                                                         <div className="w-12 h-12 rounded-full bg-gradient-to-br from-primary/20 to-purple-500/20
                                                                       flex items-center justify-center border border-primary/10">
-                                                            {follower.user.image ? (
+                                                            {followerAvatarSrc(follower) ? (
                                                                 <img
-                                                                    src={follower.user.image}
-                                                                    alt={follower.user.name}
+                                                                    src={followerAvatarSrc(follower)}
+                                                                    alt={followerDisplayName(follower)}
                                                                     className="w-12 h-12 rounded-full object-cover"
                                                                 />
                                                             ) : (
                                                                 <span className="font-bold text-lg text-primary">
-                                                                    {follower.user.name.charAt(0).toUpperCase()}
+                                                                    {followerDisplayName(follower).charAt(0).toUpperCase()}
                                                                 </span>
                                                             )}
                                                         </div>
@@ -735,7 +749,7 @@ export default function Index({ followers, organization, filters, allowedPerPage
                                                     </div>
                                                     <div>
                                                         <div className="font-bold text-foreground">
-                                                            {follower.user.name}
+                                                            {followerDisplayName(follower)}
                                                         </div>
                                                         <div className="flex items-center gap-2 mt-1">
                                                             {getUserRoleBadge(follower.user.role)}
@@ -795,7 +809,7 @@ export default function Index({ followers, organization, filters, allowedPerPage
                                                         <AlertDialogHeader>
                                                             <AlertDialogTitle>Remove Follower</AlertDialogTitle>
                                                             <AlertDialogDescription>
-                                                                Remove {follower.user.name} from your followers?
+                                                                Remove {followerDisplayName(follower)} from your followers?
                                                             </AlertDialogDescription>
                                                         </AlertDialogHeader>
                                                         <AlertDialogFooter>

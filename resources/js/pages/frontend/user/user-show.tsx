@@ -53,8 +53,6 @@ interface UserPageProps {
   user: any
   posts?: any[]
   postsCount?: number
-  donationsCount?: number
-  totalDonated?: number
   followersCount?: number
   followingCount?: number
   groupsCount?: number
@@ -67,7 +65,6 @@ interface UserPageProps {
   rewardPointsEarned?: number
   rewardPointsSpent?: number
   rewardPointsBalance?: number
-  recentDonations?: any[]
   jobApplications?: any[]
   enrollments?: any[]
   currentPage?: string
@@ -90,8 +87,6 @@ export default function UserPage({
   user,
   posts = [],
   postsCount = 0,
-  donationsCount = 0,
-  totalDonated = 0,
   followersCount = 0,
   followingCount = 0,
   groupsCount = 0,
@@ -104,7 +99,6 @@ export default function UserPage({
   rewardPointsEarned = 0,
   rewardPointsSpent = 0,
   rewardPointsBalance = 0,
-  recentDonations = [],
   jobApplications = [],
   enrollments = [],
   currentPage = 'show',
@@ -610,10 +604,6 @@ export default function UserPage({
                 <Users className="w-4 h-4" />
                 <span>{followersCount || 0} followers</span>
               </div>
-              <div className="flex items-center gap-1.5">
-                <Heart className="w-4 h-4" />
-                <span>{donationsCount || 0} donations</span>
-              </div>
             </div>
           </div>
         </div>
@@ -645,7 +635,15 @@ export default function UserPage({
                         {tab.name === "Groups" && <Users className="w-5 h-5" />}
                         <span className="text-sm">{tab.name}</span>
                         {tab.count !== null && (
-                          <span className="ml-auto text-xs text-gray-500">({tab.count})</span>
+                          <span
+                            className={
+                              isActive
+                                ? "ml-auto text-xs text-white/80"
+                                : "ml-auto text-xs text-gray-500 dark:text-gray-400"
+                            }
+                          >
+                            ({tab.count})
+                          </span>
                         )}
                       </Link>
                     )
@@ -1187,7 +1185,7 @@ export default function UserPage({
                         <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Following</h2>
                         <div className="flex items-center gap-3">
                           <Badge className="bg-gradient-to-r from-purple-600 to-blue-600 text-white">
-                            {followingCount} Organizations
+                            {followingCount} followed
                           </Badge>
                           <Link
                             href="/organizations"
@@ -1200,12 +1198,18 @@ export default function UserPage({
                       </div>
                       {favoriteOrganizations.length > 0 ? (
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          {favoriteOrganizations.map((org) => {
+                          {favoriteOrganizations.map((org: any) => {
                             const orgRouteParam = org.slug || org.id
+                            const followingHref =
+                              org.kind === "care_alliance" && org.slug
+                                ? route("alliances.show", org.slug)
+                                : orgRouteParam
+                                  ? route("organizations.show", orgRouteParam)
+                                  : "#"
                             return (
                               <Link
                                 key={org.id}
-                                href={orgRouteParam ? route('organizations.show', orgRouteParam) : '#'}
+                                href={followingHref}
                                 className="flex items-center gap-4 p-4 bg-gray-50 dark:bg-white/5 rounded-lg border border-gray-200 dark:border-white/10 hover:border-purple-500/50 hover:bg-gray-100 dark:hover:bg-white/10 transition-all"
                               >
                                 <Avatar className="w-14 h-14">
@@ -1215,8 +1219,22 @@ export default function UserPage({
                                   </AvatarFallback>
                                 </Avatar>
                                 <div className="flex-1 min-w-0">
-                                  <p className="font-semibold truncate text-gray-900 dark:text-white">{org.name}</p>
-                                  <p className="text-sm text-gray-600 dark:text-gray-400">Organization</p>
+                                  <p className="font-semibold text-gray-900 dark:text-white truncate">
+                                    {org.name}
+                                  </p>
+                                  <div className="mt-1.5">
+                                    {org.kind === "care_alliance" ? (
+                                      <Badge className="inline-flex w-fit items-center gap-1 border-0 px-2 py-0.5 text-xs font-semibold shadow-sm bg-indigo-600 text-white hover:bg-indigo-600">
+                                        <Building2 className="h-3 w-3 shrink-0" />
+                                        Care Alliance
+                                      </Badge>
+                                    ) : (
+                                      <Badge className="inline-flex w-fit items-center gap-1 border-0 px-2 py-0.5 text-xs font-semibold shadow-sm bg-green-600 text-white hover:bg-green-600">
+                                        <CheckCircle className="h-3 w-3 shrink-0" />
+                                        Organization
+                                      </Badge>
+                                    )}
+                                  </div>
                                 </div>
                                 <ChevronDown className="w-5 h-5 text-gray-500 dark:text-gray-400 -rotate-90" />
                               </Link>
@@ -1259,15 +1277,7 @@ export default function UserPage({
                       <h2 className="text-2xl font-bold mb-6 text-gray-900 dark:text-white">Activity</h2>
 
                       {/* Summary Stats */}
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-                        <div className="bg-gray-50 dark:bg-white/5 rounded-lg p-4 border border-gray-200 dark:border-white/10">
-                          <div className="flex items-center gap-3 mb-2">
-                            <Heart className="w-5 h-5 text-red-400" />
-                            <span className="text-sm text-gray-600 dark:text-gray-400">Donations</span>
-                          </div>
-                          <p className="text-2xl font-bold text-gray-900 dark:text-white">{donationsCount}</p>
-                          <p className="text-xs text-gray-500 dark:text-gray-500">${totalDonated.toLocaleString()} total</p>
-                        </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
                         <div className="bg-gray-50 dark:bg-white/5 rounded-lg p-4 border border-gray-200 dark:border-white/10">
                           <div className="flex items-center gap-3 mb-2">
                             <FileText className="w-5 h-5 text-blue-400" />
@@ -1299,11 +1309,7 @@ export default function UserPage({
                                 let iconBg = 'bg-blue-500/20'
                                 let iconColor = 'text-blue-400'
 
-                                if (activity.type === 'donation') {
-                                  Icon = Heart
-                                  iconBg = 'bg-red-500/20'
-                                  iconColor = 'text-red-400'
-                                } else if (activity.type === 'job_application') {
+                                if (activity.type === 'job_application') {
                                   Icon = Briefcase
                                   iconBg = 'bg-green-500/20'
                                   iconColor = 'text-green-400'
