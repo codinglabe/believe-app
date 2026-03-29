@@ -8,14 +8,15 @@ use App\Http\Controllers\Auth\NewPasswordController;
 use App\Http\Controllers\Auth\PasswordResetLinkController;
 use App\Http\Controllers\Auth\RegisteredUserController;
 use App\Http\Controllers\Auth\VerifyEmailController;
+use App\Http\Controllers\CareAlliance\CareAllianceRegisterController;
 use App\Http\Controllers\OrganizationRegisterController;
 use App\Http\Controllers\ProfilePhotoController;
 use App\Http\Controllers\PurchaseOrderController;
+use App\Models\User;
 use App\Services\SeoService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
-use App\Models\User;
 
 Route::middleware('guest')->group(function () {
     Route::get('/register', function () {
@@ -33,9 +34,10 @@ Route::middleware('guest')->group(function () {
 
         if ($request->has('ref')) {
             $user = User::where('referral_code', $request->ref)->first();
-            if (!$user) {
+            if (! $user) {
                 return redirect()->route('register')->with('error', 'Invalid referral code');
             }
+
             return Inertia::render('frontend/register/user', [
                 'seo' => $seo,
                 'referralCode' => $user->referral_code,
@@ -49,15 +51,18 @@ Route::middleware('guest')->group(function () {
         ]);
     })->name('register.user');
 
-    Route::get('/register/organization', [OrganizationRegisterController::class, "create"])->name('register.organization');
+    Route::get('/register/organization', [OrganizationRegisterController::class, 'create'])->name('register.organization');
 
-    Route::post('/register/organization', [OrganizationRegisterController::class, "register"])->name('register.organization.store');
+    Route::post('/register/organization', [OrganizationRegisterController::class, 'register'])->name('register.organization.store');
 
     Route::post('/register/organization/lookup-ein', [OrganizationRegisterController::class, 'lookupEIN'])
         ->name('register.organization.lookup-ein');
 
     Route::get('/register/organization/officers-for-ein', [OrganizationRegisterController::class, 'officersForEin'])
         ->name('register.organization.officers-for-ein');
+
+    Route::get('/register/care-alliance', [CareAllianceRegisterController::class, 'create'])->name('register.care-alliance');
+    Route::post('/register/care-alliance', [CareAllianceRegisterController::class, 'store'])->name('register.care-alliance.store');
 
     // Route::get('register', [RegisteredUserController::class, 'create'])
     //     ->name('register');
@@ -99,8 +104,7 @@ Route::middleware('auth')->group(function () {
     Route::delete('/profile/photo', [ProfilePhotoController::class, 'destroy'])->name('profile.photo.destroy');
     Route::get('/profile/photo', [ProfilePhotoController::class, 'show'])->name('profile.photo.show');
 
-    Route::post('/profile/cover', [ProfilePhotoController::class, 'updateCover'])->middleware("role:organization")->name('profile.cover');
-
+    Route::post('/profile/cover', [ProfilePhotoController::class, 'updateCover'])->middleware('role:organization|care_alliance')->name('profile.cover');
 
     Route::get('verify-email', EmailVerificationPromptController::class)
         ->name('verification.notice');

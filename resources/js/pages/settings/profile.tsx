@@ -4,7 +4,7 @@ import type React from "react"
 import type { SharedData } from "@/types"
 import { Transition } from "@headlessui/react"
 import { router, useForm, usePage } from "@inertiajs/react"
-import { type FormEventHandler, useState, useRef, useCallback, useMemo } from "react"
+import { type FormEventHandler, useState, useRef, useCallback, useMemo, useEffect } from "react"
 import SettingsLayout from "@/layouts/settings/layout"
 import { Button } from "@/components/frontend/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/frontend/ui/card"
@@ -33,6 +33,7 @@ import {
   Image as ImageIcon,
   Gift,
   X,
+  HeartHandshake,
 } from "lucide-react"
 import InputError from "@/components/input-error"
 import Cropper from "react-easy-crop"
@@ -49,30 +50,53 @@ import {
 
 type ProfileForm = {
   name: string
-    email: string
+  email: string
   dob: string
-    contact_title: string
-    website?: string
-    wefunder_project_url?: string
-    phone?: string
-    description?: string
-    mission?: string
-    gift_card_terms_approved?: boolean
-    primary_action_category_ids: number[]
+  contact_title: string
+  website?: string
+  wefunder_project_url?: string
+  phone?: string
+  description?: string
+  mission?: string
+  gift_card_terms_approved?: boolean
+  primary_action_category_ids: number[]
+  alliance_ein?: string
+  alliance_name?: string
+  alliance_city?: string
+  alliance_state?: string
 }
+
+type CareAlliancePayload = {
+  name: string
+  description: string | null
+  website: string | null
+  city: string | null
+  state: string | null
+  ein: string | null
+} | null
+
+type ProfileSettingsVariant = "standard" | "organization" | "alliance"
 
 export default function ProfileEdit({
   mustVerifyEmail,
   status,
   primaryActionCategories = [],
   organizationPrimaryActionCategoryIds = [],
+  careAlliance = null,
+  profileSettingsVariant = "standard",
 }: {
   mustVerifyEmail: boolean
   status?: string
   primaryActionCategories?: { id: number; name: string }[]
   organizationPrimaryActionCategoryIds?: number[]
+  careAlliance?: CareAlliancePayload
+  profileSettingsVariant?: ProfileSettingsVariant
 }) {
-  const { auth } = usePage<SharedData>().props
+  const page = usePage<SharedData & { success?: string }>()
+  const { auth } = page.props
+  const isCareAllianceHub = profileSettingsVariant === "alliance"
+  const showOrgProfileCard =
+    profileSettingsVariant === "alliance" || profileSettingsVariant === "organization"
 
   // Profile photo upload states
   const [isPhotoDialogOpen, setIsPhotoDialogOpen] = useState(false)
@@ -106,13 +130,43 @@ export default function ProfileEdit({
     phone: auth.user.phone || "",
     dob: auth.user.dob || "",
     contact_title: auth.user?.organization?.contact_title || "",
-    website: auth.user?.organization?.website || "",
+    website: isCareAllianceHub
+      ? careAlliance?.website || ""
+      : auth.user?.organization?.website || "",
     wefunder_project_url: auth.user?.organization?.wefunder_project_url || "",
-    description: auth.user?.organization?.description || "",
+    description: isCareAllianceHub
+      ? careAlliance?.description || ""
+      : auth.user?.organization?.description || "",
     mission: auth.user?.organization?.mission || "",
     gift_card_terms_approved: auth.user?.organization?.gift_card_terms_approved || false,
     primary_action_category_ids: organizationPrimaryActionCategoryIds ?? [],
+    alliance_ein: careAlliance?.ein ?? "",
+    alliance_name: careAlliance?.name ?? "",
+    alliance_city: careAlliance?.city ?? "",
+    alliance_state: careAlliance?.state ?? "",
   })
+
+  const primaryCategoryIdsKey = (organizationPrimaryActionCategoryIds ?? []).join(",")
+
+  useEffect(() => {
+    if (profileSettingsVariant !== "alliance") return
+    setData("alliance_name", careAlliance?.name ?? "")
+    setData("alliance_city", careAlliance?.city ?? "")
+    setData("alliance_state", careAlliance?.state ?? "")
+    setData("alliance_ein", careAlliance?.ein ?? "")
+    setData("website", careAlliance?.website ?? "")
+    setData("description", careAlliance?.description ?? "")
+    setData("primary_action_category_ids", organizationPrimaryActionCategoryIds ?? [])
+  }, [
+    profileSettingsVariant,
+    careAlliance?.name,
+    careAlliance?.description,
+    careAlliance?.website,
+    careAlliance?.city,
+    careAlliance?.state,
+    careAlliance?.ein,
+    primaryCategoryIdsKey,
+  ])
 
   const selectedPrimaryCategories = useMemo(
     () =>
@@ -393,7 +447,7 @@ const getCroppedImage = async (
   }
 
   return (
-    <SettingsLayout activeTab="profile">
+    <SettingsLayout activeTab="profile" settingsBranding={isCareAllianceHub ? "alliance" : "default"}>
       <div className="space-y-6">
         {/* Success Message */}
         <Transition
@@ -406,10 +460,17 @@ const getCroppedImage = async (
           <Alert className="border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950">
             <CheckCircle className="h-4 w-4 text-green-600" />
             <AlertDescription className="text-green-700 dark:text-green-400">
-              Profile updated successfully!
+              {isCareAllianceHub ? "Alliance Settings saved successfully!" : "Profile updated successfully!"}
             </AlertDescription>
           </Alert>
         </Transition>
+
+        {typeof page.props.success === "string" && page.props.success.trim() !== "" && (
+          <Alert className="border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950">
+            <CheckCircle className="h-4 w-4 text-green-600" />
+            <AlertDescription className="text-green-700 dark:text-green-400">{page.props.success}</AlertDescription>
+          </Alert>
+        )}
 
         {/* Email Verification Alert */}
         {mustVerifyEmail && auth.user.email_verified_at === null && (
@@ -423,7 +484,7 @@ const getCroppedImage = async (
 
               <form onSubmit={submit} className="space-y-6">
 
-        {auth.user.role === "organization" && (
+        {showOrgProfileCard && !isCareAllianceHub && (
 
           <Card className="bg-white dark:bg-transparent border-gray-200 dark:border-gray-800 shadow-sm">
             <CardHeader className="pb-4">
@@ -811,7 +872,7 @@ const getCroppedImage = async (
                 </div>
                           </div>
 
-                          {auth.user.role === "organization" && (
+                          {showOrgProfileCard && !isCareAllianceHub && (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="sm:col-span-2">
                   <Label htmlFor="name" className="text-gray-900 dark:text-white font-medium">
@@ -824,7 +885,7 @@ const getCroppedImage = async (
                     onChange={(e) => setData("contact_title", e.target.value)}
                     className="mt-1 bg-white dark:bg-gray-900 border-gray-300 dark:border-gray-600 focus:ring-blue-500 focus:border-blue-500"
                     placeholder="Excutive Director, Ceo, Manager, etc.."
-                    required={auth.user.role === "organization"}
+                    required={profileSettingsVariant === "organization"}
                   />
                   <InputError message={errors.contact_title} className="mt-1" />
                 </div>
@@ -893,18 +954,95 @@ const getCroppedImage = async (
             </CardContent>
                   </Card>
 
-                  {auth.user.role === "organization" && (
+                  {showOrgProfileCard && (
           <Card className="bg-white dark:bg-transparent border-gray-200 dark:border-gray-800 shadow-sm">
             <CardHeader className="pb-4">
               <CardTitle className="text-gray-900 dark:text-white flex items-center gap-2">
-                <User className="h-5 w-5 text-blue-500" />
-                Additional Information
+                {isCareAllianceHub ? (
+                  <HeartHandshake className="h-5 w-5 text-rose-500" />
+                ) : (
+                  <User className="h-5 w-5 text-blue-500" />
+                )}
+                {isCareAllianceHub ? "Care Alliance profile" : "Additional Information"}
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-6">
+              {isCareAllianceHub && (
+                <>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="sm:col-span-2">
+                      <Label htmlFor="alliance_name" className="text-gray-900 dark:text-white font-medium">
+                        Alliance name *
+                      </Label>
+                      <Input
+                        id="alliance_name"
+                        type="text"
+                        value={data.alliance_name ?? ""}
+                        onChange={(e) => setData("alliance_name", e.target.value)}
+                        className="mt-1 bg-white dark:bg-gray-900 border-gray-300 dark:border-gray-600 focus:ring-blue-500 focus:border-blue-500"
+                        placeholder="Your Care Alliance name"
+                        required
+                      />
+                      <InputError message={errors.alliance_name} className="mt-1" />
+                    </div>
+                    <div>
+                      <Label htmlFor="alliance_city" className="text-gray-900 dark:text-white font-medium">
+                        City
+                      </Label>
+                      <div className="relative mt-1">
+                        <MapPin className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                        <Input
+                          id="alliance_city"
+                          type="text"
+                          value={data.alliance_city ?? ""}
+                          onChange={(e) => setData("alliance_city", e.target.value)}
+                          className="pl-10 bg-white dark:bg-gray-900 border-gray-300 dark:border-gray-600 focus:ring-blue-500 focus:border-blue-500"
+                          placeholder="City"
+                        />
+                      </div>
+                      <InputError message={errors.alliance_city} className="mt-1" />
+                    </div>
+                    <div>
+                      <Label htmlFor="alliance_state" className="text-gray-900 dark:text-white font-medium">
+                        State / region
+                      </Label>
+                      <Input
+                        id="alliance_state"
+                        type="text"
+                        value={data.alliance_state ?? ""}
+                        onChange={(e) => setData("alliance_state", e.target.value)}
+                        className="mt-1 bg-white dark:bg-gray-900 border-gray-300 dark:border-gray-600 focus:ring-blue-500 focus:border-blue-500"
+                        placeholder="ST"
+                      />
+                      <InputError message={errors.alliance_state} className="mt-1" />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="alliance_ein" className="text-gray-900 dark:text-white font-medium">
+                      EIN (optional)
+                    </Label>
+                    <Input
+                      id="alliance_ein"
+                      value={data.alliance_ein ?? ""}
+                      onChange={(e) => setData("alliance_ein", e.target.value)}
+                      className="mt-1 bg-white dark:bg-gray-900 border-gray-300 dark:border-gray-600 focus:ring-blue-500 focus:border-blue-500"
+                      placeholder="12-3456789"
+                      autoComplete="off"
+                    />
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      A valid 9-digit EIN unlocks wallet and payout features for your alliance. It is stored on your Care Alliance and synced to your linked organization record.
+                    </p>
+                    <InputError message={errors.alliance_ein} className="mt-1" />
+                  </div>
+                </>
+              )}
+
               <div className="space-y-2 min-w-0">
                 <Label className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                  Category Grid (Primary Action) *
+                  {isCareAllianceHub
+                    ? "Primary action categories *"
+                    : "Category Grid (Primary Action) *"}
                 </Label>
                 {primaryActionCategories.length === 0 ? (
                   <Alert className="border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950">
@@ -978,20 +1116,25 @@ const getCroppedImage = async (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="sm:col-span-2">
                   <Label htmlFor="website" className="text-gray-900 dark:text-white font-medium">
-                    Website (Optional)
+                    {isCareAllianceHub ? "Alliance website (optional)" : "Website (Optional)"}
                   </Label>
-                  <Input
-                    id="website"
-                    type="text"
-                    value={data.website}
-                    onChange={(e) => setData("website", e.target.value)}
-                    className="mt-1 bg-white dark:bg-gray-900 border-gray-300 dark:border-gray-600 focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="example.com"
-                  />
+                  <div className="relative mt-1">
+                    <Globe className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                    <Input
+                      id="website"
+                      type="text"
+                      value={data.website}
+                      onChange={(e) => setData("website", e.target.value)}
+                      className="pl-10 bg-white dark:bg-gray-900 border-gray-300 dark:border-gray-600 focus:ring-blue-500 focus:border-blue-500"
+                      placeholder={isCareAllianceHub ? "https://your-alliance.org" : "example.com"}
+                    />
+                  </div>
                   <InputError message={errors.website} className="mt-1" />
                 </div>
               </div>
 
+              {!isCareAllianceHub && (
+              <>
               {/* Wefunder project URL — link shown to supporters on your page */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="sm:col-span-2">
@@ -1012,12 +1155,14 @@ const getCroppedImage = async (
                   <InputError message={errors.wefunder_project_url} className="mt-1" />
                 </div>
               </div>
+              </>
+              )}
 
               {/* Description */}
       <div className="grid grid-cols-1 gap-4">
         <div>
           <Label htmlFor="description" className="text-gray-900 dark:text-white font-medium">
-            Description *
+            {isCareAllianceHub ? "Alliance description *" : "Description *"}
           </Label>
           <TextArea
             id="description"
@@ -1025,14 +1170,18 @@ const getCroppedImage = async (
             onChange={(e) => setData("description", e.target.value)}
             className="mt-1 w-full bg-white dark:bg-gray-900 border-gray-300 dark:border-gray-600 focus:ring-blue-500 focus:border-blue-500 rounded-md shadow-sm"
             rows={4}
-            placeholder="Briefly describe your organization..."
-            required={auth.user.role === "organization"}
+            placeholder={
+              isCareAllianceHub
+                ? "Describe your Care Alliance, its purpose, and how you work with member organizations…"
+                : "Briefly describe your organization..."
+            }
+            required={showOrgProfileCard}
           />
           <InputError message={errors.description} className="mt-1" />
         </div>
       </div>
 
-      {/* Mission */}
+      {!isCareAllianceHub && (
       <div className="grid grid-cols-1 gap-4">
         <div>
           <Label htmlFor="mission" className="text-gray-900 dark:text-white font-medium">
@@ -1045,11 +1194,12 @@ const getCroppedImage = async (
             className="mt-1 w-full bg-white dark:bg-gray-900 border-gray-300 dark:border-gray-600 focus:ring-blue-500 focus:border-blue-500 rounded-md shadow-sm"
             rows={4}
             placeholder="What is your organization's mission?"
-            required={auth.user.role === "organization"}
+            required={profileSettingsVariant === "organization"}
           />
           <InputError message={errors.mission} className="mt-1" />
         </div>
       </div>
+      )}
 
             </CardContent>
                       </Card>

@@ -11,6 +11,15 @@ use App\Http\Controllers\AiCampaignController;
 use App\Http\Controllers\AiChatController;
 use App\Http\Controllers\BoardMemberController;
 use App\Http\Controllers\CampaignController;
+use App\Http\Controllers\CareAlliance\CareAllianceCampaignManageController;
+use App\Http\Controllers\CareAlliance\CareAllianceDashboardController;
+use App\Http\Controllers\CareAlliance\CareAllianceDonationController;
+use App\Http\Controllers\CareAlliance\CareAllianceInvitationController;
+use App\Http\Controllers\CareAlliance\CareAllianceJoinRequestReviewController;
+use App\Http\Controllers\CareAlliance\CareAllianceOrgInvitationController;
+use App\Http\Controllers\CareAlliance\CareAllianceOrgJoinRequestController;
+use App\Http\Controllers\CareAlliance\CareAllianceOrgMembershipController;
+use App\Http\Controllers\CareAlliance\CareAlliancePublicController;
 use App\Http\Controllers\CartController;
 use App\Http\Controllers\CategoryController;
 use App\Http\Controllers\ChatController;
@@ -50,6 +59,7 @@ use App\Http\Controllers\LiveViewController;
 use App\Http\Controllers\ManageDataController;
 use App\Http\Controllers\ManageDatasetController;
 use App\Http\Controllers\MarketplaceController;
+use App\Http\Controllers\MarketplaceOrganizationProductController;
 use App\Http\Controllers\NewsletterController;
 use App\Http\Controllers\NodeBossController;
 use App\Http\Controllers\NodeReferralController;
@@ -142,10 +152,11 @@ Route::middleware(['auth', 'EnsureEmailIsVerified'])->group(function () {
     Route::get('/find-supporters', [\App\Http\Controllers\FindSupportersController::class, 'index'])->name('find-supporters.index');
     Route::get('/search', [\App\Http\Controllers\PostController::class, 'searchPage'])->name('search.index');
     Route::get('/social-feed/search', [\App\Http\Controllers\PostController::class, 'search'])->name('social-feed.search');
-    // Toggle favorite organization - allow any authenticated user (controller rejects org role with friendly message)
+    // Toggle favorite organization — authenticated supporters and organization/care_alliance users (same UserFavoriteOrganization flow)
     Route::post('/organizations/{id}/toggle-favorite', [\App\Http\Controllers\OrganizationController::class, 'toggleFavorite'])->name('organizations.toggle-favorite-search');
     Route::post('/organizations/{id}/toggle-favorite', [\App\Http\Controllers\OrganizationController::class, 'toggleFavorite'])->name('user.organizations.toggle-favorite');
     Route::post('/organizations/{id}/toggle-favorite', [\App\Http\Controllers\OrganizationController::class, 'toggleFavorite'])->name('organizations.toggle-favorite');
+    Route::post('/organizations/{id}/toggle-notifications', [OrganizationController::class, 'toggleNotifications'])->name('organizations.toggle-notifications');
     // GET fallback: if user hits toggle-favorite with GET (e.g. refresh/back), redirect to organization page
     Route::get('/organizations/{id}/toggle-favorite', function (string $id) {
         return redirect()->route('organizations.show', $id);
@@ -297,6 +308,28 @@ Route::get('/nodeboss/{id}/buy', [NodeBossController::class, 'frontendShow'])->n
 
 Route::get('/donate', [DonationController::class, 'index'])->name('donate');
 
+// Care Alliance — public campaign donation + preview (no auth)
+Route::get('/care-alliance/{allianceSlug}/campaigns/{campaign}/donate', [CareAllianceDonationController::class, 'donatePage'])
+    ->name('care-alliance.campaigns.donate')
+    ->where('campaign', '[0-9]+');
+Route::post('/care-alliance/{allianceSlug}/campaigns/{campaign}/preview', [CareAllianceDonationController::class, 'preview'])
+    ->name('care-alliance.campaigns.preview')
+    ->where('campaign', '[0-9]+');
+
+// Care Alliance — public hub (must stay before any conflicting /care-alliance/* catch-alls)
+Route::prefix('alliances/{allianceSlug}')
+    ->where(['allianceSlug' => '[a-zA-Z0-9][a-zA-Z0-9-]*'])
+    ->group(function () {
+        Route::get('/', [CareAlliancePublicController::class, 'show'])->name('alliances.show');
+        Route::get('/products', [CareAlliancePublicController::class, 'products'])->name('alliances.products');
+        Route::get('/jobs', [CareAlliancePublicController::class, 'jobs'])->name('alliances.jobs');
+        Route::get('/events', [CareAlliancePublicController::class, 'events'])->name('alliances.events');
+        Route::get('/about', [CareAlliancePublicController::class, 'about'])->name('alliances.about');
+        Route::get('/contact', [CareAlliancePublicController::class, 'contact'])->name('alliances.contact');
+        Route::get('/members', [CareAlliancePublicController::class, 'members'])->name('alliances.members');
+        Route::get('/supporters', [CareAlliancePublicController::class, 'supporters'])->name('alliances.supporters');
+    });
+
 Route::get('/pricing', [App\Http\Controllers\PlansController::class, 'pricing'])->name('pricing');
 
 // Support a Project — public landing: Give (FundMe) or Grow (Invest / Wefunder)
@@ -313,7 +346,7 @@ Route::get('/invest/redirect/{lead}', [App\Http\Controllers\InvestController::cl
     ->where('lead', '[0-9]+');
 // Org-only: Support Community Projects (Donation vs Investment / Wefunder)
 Route::get('/fundraise/community-projects', [App\Http\Controllers\FundraiseController::class, 'communityProjects'])->name('fundraise.community-projects')
-    ->middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|organization_pending']);
+    ->middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|organization_pending|care_alliance']);
 
 // Believe FundMe – public listing and campaign pages
 Route::get('/believe-fundme', [FundMeController::class, 'index'])->name('fundme.index');
@@ -327,7 +360,8 @@ Route::get('/believe-fundme/{slug}', [FundMeController::class, 'show'])->name('f
 
 /* marketplace */
 Route::get('/marketplace', [MarketplaceController::class, 'index'])->name('marketplace.index');
-Route::get('/marketplace/pool/{organization_product}', [\App\Http\Controllers\MarketplaceOrganizationProductController::class, 'show'])->name('marketplace.pool.show');
+Route::get('/marketplace/pool/{organization_product}', [MarketplaceOrganizationProductController::class, 'show'])
+    ->name('marketplace.pool.show');
 Route::get('/product/{product}', [ProductController::class, 'show'])->name('product.show');
 Route::post('/product/{product}/bid', [ProductController::class, 'placeBid'])->name('product.bid')->middleware(['auth', 'EnsureEmailIsVerified']);
 // Note: Public route for products moved after resource routes to avoid conflict with /products/create
@@ -414,7 +448,7 @@ Route::get('/service-hub/chat/{chatId}', [App\Http\Controllers\ServiceHubControl
 
 // Cart routes (protected)
 // Believe Points Routes (organization_pending cannot access until onboarding complete)
-Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin|user'])->prefix('believe-points')->name('believe-points.')->group(function () {
+Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin|user|care_alliance'])->prefix('believe-points')->name('believe-points.')->group(function () {
     Route::get('/', [App\Http\Controllers\BelievePointController::class, 'index'])->name('index');
     Route::post('/purchase', [App\Http\Controllers\BelievePointController::class, 'purchase'])->name('purchase');
     Route::get('/success', [App\Http\Controllers\BelievePointController::class, 'success'])->name('success');
@@ -616,8 +650,6 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:user'])->name('user.')
     Route::get('/api/impact-score', [\App\Http\Controllers\ImpactScoreController::class, 'index'])->name('api.impact-score');
     Route::get('/profile/fractional-ownership', [\App\Http\Controllers\FractionalOwnershipController::class, 'myPurchases'])->name('profile.fractional-ownership');
     Route::get('nodeboss/shares', [NodeShareController::class, 'index'])->name('nodeboss.sahres');
-    // Toggle favorite moved to auth-only group so org users get friendly message instead of permission-denied
-    Route::post('/organizations/{id}/toggle-notifications', [OrganizationController::class, 'toggleNotifications'])->name('organizations.toggle-notifications');
 
     Route::post('/organizations/{orgId}/save-positions-follow', [OrganizationController::class, 'savePositionsAndFollow'])
         ->name('organizations.save-positions-and-follow');
@@ -632,7 +664,7 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:user'])->name('user.')
 });
 
 Route::post('/user/topics/store', [UsersInterestedTopicsController::class, 'store'])
-    ->middleware(['auth', 'EnsureEmailIsVerified', 'role:user|organization|organization_pending']);
+    ->middleware(['auth', 'EnsureEmailIsVerified', 'role:user|organization|organization_pending|care_alliance']);
 
 Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:user'])->get('/profile-old', function () {
     return Inertia::render('frontend/profile');
@@ -645,7 +677,7 @@ Route::resource('/chat-group-topics', ChatTopicController::class)->only(['index'
     'destroy' => 'permission:communication.delete',
 ]);
 
-Route::get('group-topics/select', [UsersInterestedTopicsController::class, 'orgSelect'])->middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin|organization_pending'])
+Route::get('group-topics/select', [UsersInterestedTopicsController::class, 'orgSelect'])->middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin|organization_pending|care_alliance'])
     ->name('auth.topics.select');
 
 Route::prefix('chat')->middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected'])->name('chat.')->group(function () {
@@ -667,7 +699,7 @@ Route::prefix('chat')->middleware(['auth', 'EnsureEmailIsVerified', 'topics.sele
 });
 
 // Wallet Routes
-Route::prefix('wallet')->middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected'])->name('wallet.')->group(function () {
+Route::prefix('wallet')->middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected', 'care_alliance.wallet'])->name('wallet.')->group(function () {
     Route::post('/connect', [WalletController::class, 'connect'])->name('connect');
     Route::get('/balance', [WalletController::class, 'getBalance'])->name('balance');
     Route::get('/status', [WalletController::class, 'status'])->name('status');
@@ -842,7 +874,7 @@ Route::middleware(['auth', 'EnsureEmailIsVerified'])->group(function () {
     Route::delete('/push-token', [PushTokenController::class, 'destroy']);
 });
 
-Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization', 'topics.selected'])->group(function () {
+Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|care_alliance', 'topics.selected'])->group(function () {
     Route::get('/content', [ContentItemController::class, 'index'])->name('content.items.index');
     Route::get('/content/create', [ContentItemController::class, 'create'])->name('content.items.create');
     Route::post('/content', [ContentItemController::class, 'store'])->name('content.items.store');
@@ -963,7 +995,7 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization', 'topics
     });
 });
 
-Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin|organization_pending', 'topics.selected'])->group(function () {
+Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin|organization_pending|care_alliance', 'topics.selected'])->group(function () {
     Route::get('dashboard', [DashboardController::class, 'index'])->name('dashboard');
     Route::get('dashboard/project-applications', [App\Http\Controllers\FundraiseController::class, 'dashboardProjectApplications'])->name('dashboard.project-applications');
     Route::put('dashboard/project-applications/{lead}', [App\Http\Controllers\FundraiseController::class, 'updateProjectApplication'])->name('dashboard.project-applications.update')->where('lead', '[0-9]+');
@@ -1014,7 +1046,7 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin|org
     });
 
     // Form 1023 Application Routes - Only for organization users (not admins)
-    Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|organization_pending', 'topics.selected'])->group(function () {
+    Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|organization_pending|care_alliance', 'topics.selected'])->group(function () {
         Route::get('/dashboard/form1023/apply', [Form1023ApplicationController::class, 'show'])->name('form1023.apply.show');
         Route::post('/dashboard/form1023/apply', [Form1023ApplicationController::class, 'store'])->name('form1023.apply.store');
         Route::put('/dashboard/form1023/apply/{application}', [Form1023ApplicationController::class, 'update'])->name('form1023.apply.update');
@@ -1025,7 +1057,7 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin|org
         Route::get('/dashboard/form1023/apply/{application}/cancel', [Form1023ApplicationController::class, 'cancel'])->name('form1023.apply.cancel');
     });
 
-    Route::middleware('role:organization')->group(function () {
+    Route::middleware('role:organization|care_alliance')->group(function () {
         Route::get('/compliance', [GovernanceComplianceController::class, 'index'])->name('governance.compliance');
         Route::resource('board-members', BoardMemberController::class)
             ->only(['index', 'store', 'update', 'destroy'])
@@ -1146,7 +1178,7 @@ Route::middleware(['auth', 'EnsureEmailIsVerified'])->group(function () {
 Route::get('/products/{id}', [ProductController::class, 'show'])->name('products.show.public');
 
 // Printify Integration Routes
-Route::middleware(['auth', 'topics.selected', 'role:admin|organization'])->group(function () {
+Route::middleware(['auth', 'topics.selected', 'role:admin|organization|care_alliance'])->group(function () {
     Route::get('/printify/providers', [PrintifyProductController::class, 'getProviders'])->name('printify.providers');
     Route::get('/printify/variants', [PrintifyProductController::class, 'getVariants'])->name('printify.variants');
     Route::get('/printify/shipping', [PrintifyProductController::class, 'getShipping'])->name('printify.shipping');
@@ -1219,53 +1251,53 @@ Route::resource('job-applications', JobApplicationController::class)->middleware
 ]);
 Route::put('job-applications/{jobApplication}/update-status', [JobApplicationController::class, 'updateStatus'])
     ->name('job-applications.update-status')
-    ->middleware(['role:organization', 'permission:job.posts.read']);
+    ->middleware(['role:organization|care_alliance', 'permission:job.posts.read']);
 
 // Volunteers Routes
 Route::get('supporter-activity', [SupporterActivityController::class, 'index'])
     ->name('supporter-activity.index')
-    ->middleware(['role:organization|admin', 'permission:dashboard.read']);
+    ->middleware(['role:organization|admin|care_alliance', 'permission:dashboard.read']);
 Route::get('supporter-activity/supporters/{supporter}', [SupporterActivityController::class, 'show'])
     ->name('supporter-activity.show')
-    ->middleware(['role:organization|admin', 'permission:dashboard.read']);
+    ->middleware(['role:organization|admin|care_alliance', 'permission:dashboard.read']);
 
 Route::get('volunteers', [VolunteerController::class, 'index'])
     ->name('volunteers.index')
-    ->middleware(['role:organization', 'permission:volunteer.read']);
+    ->middleware(['role:organization|care_alliance', 'permission:volunteer.read']);
 
 // Volunteer Time Sheet Routes (must come before volunteers/{volunteer} to avoid route conflicts)
 // IMPORTANT: Specific routes (like fetch-volunteers) must come BEFORE parameterized routes ({timesheet})
 Route::get('volunteers/timesheet', [VolunteerTimesheetController::class, 'index'])
     ->name('volunteers.timesheet.index')
-    ->middleware(['role:organization', 'permission:volunteer.timesheet.read']);
+    ->middleware(['role:organization|care_alliance', 'permission:volunteer.timesheet.read']);
 Route::get('volunteers/timesheet/create', [VolunteerTimesheetController::class, 'create'])
     ->name('volunteers.timesheet.create')
-    ->middleware(['role:organization', 'permission:volunteer.timesheet.create']);
+    ->middleware(['role:organization|care_alliance', 'permission:volunteer.timesheet.create']);
 Route::get('volunteers/timesheet/fetch-volunteers', [VolunteerTimesheetController::class, 'fetchVolunteers'])
     ->name('volunteers.timesheet.fetch-volunteers')
-    ->middleware(['role:organization', 'permission:volunteer.timesheet.create']);
+    ->middleware(['role:organization|care_alliance', 'permission:volunteer.timesheet.create']);
 Route::post('volunteers/timesheet', [VolunteerTimesheetController::class, 'store'])
     ->name('volunteers.timesheet.store')
-    ->middleware(['role:organization', 'permission:volunteer.timesheet.create']);
+    ->middleware(['role:organization|care_alliance', 'permission:volunteer.timesheet.create']);
 Route::get('volunteers/timesheet/{timesheet}', [VolunteerTimesheetController::class, 'show'])
     ->name('volunteers.timesheet.show')
-    ->middleware(['role:organization', 'permission:volunteer.timesheet.read']);
+    ->middleware(['role:organization|care_alliance', 'permission:volunteer.timesheet.read']);
 Route::get('volunteers/timesheet/{timesheet}/edit', [VolunteerTimesheetController::class, 'edit'])
     ->name('volunteers.timesheet.edit')
-    ->middleware(['role:organization', 'permission:volunteer.timesheet.edit']);
+    ->middleware(['role:organization|care_alliance', 'permission:volunteer.timesheet.edit']);
 Route::put('volunteers/timesheet/{timesheet}', [VolunteerTimesheetController::class, 'update'])
     ->name('volunteers.timesheet.update')
-    ->middleware(['role:organization', 'permission:volunteer.timesheet.update']);
+    ->middleware(['role:organization|care_alliance', 'permission:volunteer.timesheet.update']);
 Route::put('volunteers/timesheet/{timesheet}/status', [VolunteerTimesheetController::class, 'updateStatus'])
     ->name('volunteers.timesheet.update-status')
-    ->middleware(['role:organization', 'permission:volunteer.timesheet.update']);
+    ->middleware(['role:organization|care_alliance', 'permission:volunteer.timesheet.update']);
 Route::delete('volunteers/timesheet/{timesheet}', [VolunteerTimesheetController::class, 'destroy'])
     ->name('volunteers.timesheet.destroy')
-    ->middleware(['role:organization', 'permission:volunteer.timesheet.delete']);
+    ->middleware(['role:organization|care_alliance', 'permission:volunteer.timesheet.delete']);
 
 Route::get('volunteers/{volunteer}', [VolunteerController::class, 'show'])
     ->name('volunteers.show')
-    ->middleware(['role:organization', 'permission:volunteer.read']);
+    ->middleware(['role:organization|care_alliance', 'permission:volunteer.read']);
 
 // Events Routes
 Route::resource('events', EventController::class)->middleware([
@@ -1695,7 +1727,7 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected'])->group(f
 });
 
 // Integrations – Dropbox (organization + supporter)
-Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin|organization_pending|user', 'topics.selected'])->prefix('integrations')->name('integrations.')->group(function () {
+Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin|organization_pending|user|care_alliance', 'topics.selected'])->prefix('integrations')->name('integrations.')->group(function () {
     Route::get('/dropbox', [IntegrationsController::class, 'dropbox'])->name('dropbox');
     Route::get('/dropbox/search', [IntegrationsController::class, 'searchDropbox'])->name('dropbox.search');
     Route::get('/dropbox/redirect', [IntegrationsController::class, 'redirectToDropbox'])->name('dropbox.redirect');
@@ -1709,7 +1741,7 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin|org
 });
 
 // YouTube integration: organization + supporter (outside dashboard group so role:user can access)
-Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|user', 'topics.selected'])->prefix('integrations')->name('integrations.')->group(function () {
+Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|user|care_alliance', 'topics.selected'])->prefix('integrations')->name('integrations.')->group(function () {
     Route::get('/youtube/connect', [IntegrationsController::class, 'youtubeConnect'])->name('youtube.connect'); // supporter (normal user) only
     Route::get('/youtube', [IntegrationsController::class, 'youtube'])->name('youtube'); // organization only
     Route::get('/youtube/redirect', [IntegrationsController::class, 'redirectToYouTube'])->name('youtube.redirect');
@@ -1723,11 +1755,44 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected'])->group(f
     Route::post('/donate/non-cash', [DonationController::class, 'storeNonCash'])->name('donations.non-cash.store');
     Route::get('/donations/success', [DonationController::class, 'success'])->name('donations.success');
     Route::get('/donations/cancel', [DonationController::class, 'cancel'])->name('donations.cancel');
+
+    Route::post('/care-alliance/{allianceSlug}/campaigns/{campaign}/checkout', [CareAllianceDonationController::class, 'checkout'])
+        ->name('care-alliance.campaigns.checkout')
+        ->where('campaign', '[0-9]+');
+    Route::get('/care-alliance/donations/success', [CareAllianceDonationController::class, 'success'])
+        ->name('care-alliance.donations.success');
 });
 
 // Organization donations route
-Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization', 'topics.selected'])->group(function () {
+Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|care_alliance', 'topics.selected'])->group(function () {
     Route::get('/donations', [DonationController::class, 'organizationIndex'])->name('donations.index');
+});
+
+// Care Alliance — workspace & APIs (same app shell as organizations; requires topics.selected)
+Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|organization_pending|care_alliance', 'topics.selected'])->prefix('care-alliance')->name('care-alliance.')->group(function () {
+    Route::get('/dashboard', [CareAllianceDashboardController::class, 'index'])->name('dashboard');
+    Route::get('/workspace/overview', [CareAllianceDashboardController::class, 'workspaceOverview'])->name('workspace.overview');
+    Route::get('/workspace/members', [CareAllianceDashboardController::class, 'workspaceMembers'])->name('workspace.members');
+    Route::get('/workspace/campaigns', [CareAllianceDashboardController::class, 'workspaceCampaigns'])->name('workspace.campaigns');
+    Route::get('/workspace/settings', [CareAllianceDashboardController::class, 'workspaceSettings'])->name('workspace.settings');
+    Route::patch('/settings', [CareAllianceDashboardController::class, 'updateSettings'])->name('settings.update');
+    Route::get('/organizations/search', [CareAllianceInvitationController::class, 'searchOrganizations'])->name('organizations.search');
+    Route::post('/invitations', [CareAllianceInvitationController::class, 'store'])->name('invitations.store');
+    Route::post('/invitations/{invitation}/resend', [CareAllianceInvitationController::class, 'resend'])->name('invitations.resend');
+    Route::delete('/invitations/{invitation}', [CareAllianceInvitationController::class, 'destroy'])->name('invitations.destroy');
+    Route::post('/join-requests/{joinRequest}/approve', [CareAllianceJoinRequestReviewController::class, 'approve'])->name('join-requests.approve');
+    Route::post('/join-requests/{joinRequest}/decline', [CareAllianceJoinRequestReviewController::class, 'decline'])->name('join-requests.decline');
+    Route::post('/campaigns', [CareAllianceCampaignManageController::class, 'store'])->name('campaigns.store');
+});
+
+// Care Alliance — nonprofits accept/decline alliance invites (not Care Alliance hub users)
+Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|organization_pending', 'deny.care_alliance.hub'])->group(function () {
+    Route::get('/organization/alliance-membership', [CareAllianceOrgMembershipController::class, 'index'])->name('organization.alliance-membership');
+    Route::get('/organization/care-alliances/search', [CareAllianceOrgJoinRequestController::class, 'searchAlliances'])->name('organization.care-alliances.search');
+    Route::post('/organization/care-alliance-join-requests', [CareAllianceOrgJoinRequestController::class, 'store'])->name('organization.care-alliance-join-requests.store');
+    Route::get('/organization/care-alliance-invitations', [CareAllianceOrgInvitationController::class, 'pending'])->name('organization.care-alliance.invitations');
+    Route::post('/organization/care-alliance-invitations/{invitation}/accept', [CareAllianceOrgInvitationController::class, 'accept'])->name('organization.care-alliance.invitations.accept');
+    Route::post('/organization/care-alliance-invitations/{invitation}/decline', [CareAllianceOrgInvitationController::class, 'decline'])->name('organization.care-alliance.invitations.decline');
 });
 
 // Gift Cards routes
@@ -1736,7 +1801,7 @@ Route::get('/gift-cards', [App\Http\Controllers\GiftCardController::class, 'inde
 Route::get('/gift-cards/brands', [App\Http\Controllers\GiftCardController::class, 'getBrands'])->name('gift-cards.brands');
 
 // Organization routes (view purchased cards) - organization_pending cannot access until onboarding complete
-Route::middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected', 'role:organization|admin'])->group(function () {
+Route::middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected', 'role:organization|admin|care_alliance'])->group(function () {
     Route::get('/gift-cards/purchased', [App\Http\Controllers\GiftCardController::class, 'createdCards'])->name('gift-cards.created');
 });
 
@@ -2010,7 +2075,7 @@ Route::middleware(['web', 'auth', 'EnsureEmailIsVerified'])->prefix('frontend')-
 // The webhook will process checkout.session.completed events automatically
 
 // Email Invite Routes
-Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization', 'topics.selected'])->prefix('email-invite')->name('email-invite.')->group(function () {
+Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|care_alliance', 'topics.selected'])->prefix('email-invite')->name('email-invite.')->group(function () {
     Route::get('/', [App\Http\Controllers\EmailInviteController::class, 'index'])->name('index');
     Route::match(['get', 'post'], '/connect/gmail', [App\Http\Controllers\EmailInviteController::class, 'connectGmail'])->name('connect.gmail');
     Route::match(['get', 'post'], '/connect/outlook', [App\Http\Controllers\EmailInviteController::class, 'connectOutlook'])->name('connect.outlook');

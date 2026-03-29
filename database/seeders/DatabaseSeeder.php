@@ -4,7 +4,6 @@ namespace Database\Seeders;
 
 use App\Models\User;
 // use Illuminate\Database\Console\Seeds\WithoutModelEvents;
-use Google\Service\AndroidEnterprise\Permission;
 use Illuminate\Database\Seeder;
 
 class DatabaseSeeder extends Seeder
@@ -91,5 +90,8 @@ class DatabaseSeeder extends Seeder
         $this->call(KioskCategoriesSeeder::class);
         $this->call(UsStatesSeeder::class);
         $this->call(KioskSubcategoriesSeeder::class);
+
+        // After all seeders: care_alliance role must match organization permissions (Spatie).
+        $this->call(CareAllianceMirrorOrganizationPermissionsSeeder::class);
     }
 }

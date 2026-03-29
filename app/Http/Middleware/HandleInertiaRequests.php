@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Models\CareAlliance;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
@@ -160,12 +161,6 @@ class HandleInertiaRequests extends Middleware
                     'state' => $user->state,
                     'zip_code' => $user->zip_code,
                     'country' => $user->country,
-                    'shipping_contact_name' => $user->shipping_contact_name,
-                    'shipping_address' => $user->shipping_address,
-                    'shipping_city' => $user->shipping_city,
-                    'shipping_state' => $user->shipping_state,
-                    'shipping_zip' => $user->shipping_zip,
-                    'shipping_country' => $user->shipping_country,
                     'status' => $user->status,
                     'role' => $user->role,
                     'email_verified_at' => $user->email_verified_at,
@@ -199,6 +194,11 @@ class HandleInertiaRequests extends Middleware
             } else {
                 // Main app user data (only for regular User models)
                 if (! ($user instanceof \App\Models\LivestockUser) && ! ($user instanceof \App\Models\Merchant)) {
+                    $careAllianceHub = CareAlliance::query()
+                        ->where('creator_user_id', $user->id)
+                        ->where('status', 'active')
+                        ->first(['id', 'slug', 'name']);
+
                     $userData = [
                         'id' => $user->id,
                         'slug' => $user->slug ?? null,
@@ -225,6 +225,11 @@ class HandleInertiaRequests extends Middleware
                         'referral_link' => $user->referral_code ? url('/register?ref='.$user->referral_code) : null,
                         'push_token' => $user->push_token ?? null,
                         'timezone' => $user->timezone ?? 'UTC',
+                        'care_alliance_wallet_eligible' => $user->careAllianceWalletEligible(),
+                        'care_alliance' => $careAllianceHub ? [
+                            'slug' => $careAllianceHub->slug,
+                            'name' => $careAllianceHub->name,
+                        ] : null,
                         'organization' => $user->organization ? [
                             'id' => $user->organization->id,
                             'ein' => $user->organization->ein ?? null,

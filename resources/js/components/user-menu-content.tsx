@@ -1,18 +1,25 @@
 import { DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
 import { UserInfo } from '@/components/user-info';
 import { useMobileNavigation } from '@/hooks/use-mobile-navigation';
-import { type User } from '@/types';
-import { Link, router } from '@inertiajs/react';
-import { LinkIcon, LogOut, Settings, CreditCard, Crown, Globe } from 'lucide-react';
+import { type SharedData, type User } from '@/types';
+import { Link, router, usePage } from '@inertiajs/react';
+import { HeartHandshake, LinkIcon, LogOut, Settings, CreditCard, Crown, Globe, Users } from 'lucide-react';
+import { route } from 'ziggy-js';
 interface UserMenuContentProps {
     user: User;
 }
 
 export function UserMenuContent({ user }: UserMenuContentProps) {
     const cleanup = useMobileNavigation();
+    const { auth } = usePage<SharedData>().props;
+    const authRoles = auth?.roles ?? [];
+    const hasCareAllianceRole = authRoles.some((r) => String(r).toLowerCase() === 'care_alliance');
+    const careAllianceHub = (user as { care_alliance?: { slug: string; name: string } | null }).care_alliance;
+
     const isAdmin = user.role === 'admin';
     const isOrganization = user.role === 'organization' || user.role === 'organization_pending';
     const organizationPublicViewSlug = (user as any).organization?.public_view_slug;
+    const showOrgAllianceMembership = isOrganization && !hasCareAllianceRole;
 
     const handleLogout = () => {
         cleanup();
@@ -66,6 +73,20 @@ export function UserMenuContent({ user }: UserMenuContentProps) {
                         Website
                     </Link>
                 </DropdownMenuItem>
+                {hasCareAllianceRole && careAllianceHub?.slug && (
+                    <DropdownMenuItem asChild>
+                        <Link
+                            className="block w-full"
+                            href={route('alliances.show', careAllianceHub.slug)}
+                            as="button"
+                            prefetch
+                            onClick={cleanup}
+                        >
+                            <Globe className="mr-2" />
+                            Alliance public page
+                        </Link>
+                    </DropdownMenuItem>
+                )}
                 {isOrganization && organizationPublicViewSlug && (
                     <DropdownMenuItem asChild>
                         <Link 
@@ -77,6 +98,34 @@ export function UserMenuContent({ user }: UserMenuContentProps) {
                         >
                             <Globe className="mr-2" />
                             Public View
+                        </Link>
+                    </DropdownMenuItem>
+                )}
+                {hasCareAllianceRole && (
+                    <DropdownMenuItem asChild>
+                        <Link
+                            className="block w-full"
+                            href={route('care-alliance.dashboard')}
+                            as="button"
+                            prefetch
+                            onClick={cleanup}
+                        >
+                            <HeartHandshake className="mr-2" />
+                            Care Alliance
+                        </Link>
+                    </DropdownMenuItem>
+                )}
+                {showOrgAllianceMembership && (
+                    <DropdownMenuItem asChild>
+                        <Link
+                            className="block w-full"
+                            href={route('organization.alliance-membership')}
+                            as="button"
+                            prefetch
+                            onClick={cleanup}
+                        >
+                            <Users className="mr-2" />
+                            Alliance membership
                         </Link>
                     </DropdownMenuItem>
                 )}

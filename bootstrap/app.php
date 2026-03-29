@@ -1,10 +1,10 @@
 <?php
 
+use App\Http\Middleware\DetectTimezone;
 use App\Http\Middleware\HandleAppearance;
 use App\Http\Middleware\HandleInertiaRequests;
 use App\Http\Middleware\IncreaseUploadLimits;
 use App\Http\Middleware\NoCacheAuthPages;
-use App\Http\Middleware\DetectTimezone;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -12,9 +12,9 @@ use Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
-        web: __DIR__ . '/../routes/web.php',
-        api: __DIR__ . '/../routes/api.php',
-        commands: __DIR__ . '/../routes/console.php',
+        web: __DIR__.'/../routes/web.php',
+        api: __DIR__.'/../routes/api.php',
+        commands: __DIR__.'/../routes/console.php',
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware) {
@@ -27,7 +27,7 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $middleware->encryptCookies(except: [
             'appearance',
-            'sidebar_state'
+            'sidebar_state',
         ]);
 
         $middleware->web(append: [
@@ -55,6 +55,8 @@ return Application::configure(basePath: dirname(__DIR__))
             'EnsureEmailIsVerified' => \App\Http\Middleware\EnsureEmailIsVerified::class,
             'api.email.verified' => \App\Http\Middleware\EnsureApiEmailVerified::class, // Secure API email verification guard
             'barter.access' => \App\Http\Middleware\BarterNetworkAccess::class,
+            'care_alliance.wallet' => \App\Http\Middleware\EnsureCareAllianceWalletEligible::class,
+            'deny.care_alliance.hub' => \App\Http\Middleware\DenyCareAllianceHubUser::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {
@@ -64,7 +66,7 @@ return Application::configure(basePath: dirname(__DIR__))
                 if ($request->expectsJson()) {
                     return response()->json([
                         'message' => 'The requested resource was not found.',
-                        'status' => 404
+                        'status' => 404,
                     ], 404);
                 }
 
@@ -72,7 +74,7 @@ return Application::configure(basePath: dirname(__DIR__))
                 $user = $request->user();
                 $backUrl = $request->header('referer');
 
-                if (!$backUrl && $user) {
+                if (! $backUrl && $user) {
                     $userRole = $user->role ?? null;
                     if ($userRole === 'admin' || $userRole === 'organization' || $userRole === 'organization_pending') {
                         $backUrl = route('dashboard');
@@ -83,7 +85,7 @@ return Application::configure(basePath: dirname(__DIR__))
                     } else {
                         $backUrl = '/';
                     }
-                } elseif (!$backUrl) {
+                } elseif (! $backUrl) {
                     $backUrl = '/';
                 }
 
@@ -95,7 +97,7 @@ return Application::configure(basePath: dirname(__DIR__))
                             'id' => $user->id,
                             'role' => $user->role ?? null,
                         ] : null,
-                    ]
+                    ],
                 ])->toResponse($request)->setStatusCode(404);
             }
 
@@ -104,7 +106,7 @@ return Application::configure(basePath: dirname(__DIR__))
                 if ($request->expectsJson()) {
                     return response()->json([
                         'message' => $e->getMessage(),
-                        'status' => 403
+                        'status' => 403,
                     ], 403);
                 }
 
@@ -150,7 +152,7 @@ return Application::configure(basePath: dirname(__DIR__))
 
                 // Get role-specific back URL
                 $backUrl = $request->header('referer');
-                if (!$backUrl && $user) {
+                if (! $backUrl && $user) {
                     $userRole = $userRoles[0] ?? $user->role ?? null;
                     if ($userRole === 'admin' || $userRole === 'organization' || $userRole === 'organization_pending') {
                         $backUrl = route('dashboard');
@@ -161,7 +163,7 @@ return Application::configure(basePath: dirname(__DIR__))
                     } else {
                         $backUrl = '/';
                     }
-                } elseif (!$backUrl) {
+                } elseif (! $backUrl) {
                     $backUrl = '/';
                 }
 
@@ -171,7 +173,7 @@ return Application::configure(basePath: dirname(__DIR__))
                     'userRoles' => $userRoles,
                     'userPermissions' => $userPermissions,
                     'requiredPermission' => $requiredPermission ?: 'access_denied',
-                    'requiredRoles' => !empty($requiredRoles) ? $requiredRoles : null,
+                    'requiredRoles' => ! empty($requiredRoles) ? $requiredRoles : null,
                     'backUrl' => $backUrl,
                     'errorMessage' => $errorMessage,
                     'auth' => [
@@ -181,7 +183,7 @@ return Application::configure(basePath: dirname(__DIR__))
                         ] : null,
                         'roles' => $userRoles,
                         'permissions' => $userPermissions,
-                    ]
+                    ],
                 ])->toResponse($request)->setStatusCode(403);
             }
         });

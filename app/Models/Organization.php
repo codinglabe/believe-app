@@ -6,10 +6,25 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Support\Collection;
 
 class Organization extends Model
 {
     use HasFactory;
+
+    /**
+     * Resolve the organization for an authenticated user: primary owner (organizations.user_id)
+     * or the org linked through board membership (same as User::organization()).
+     */
+    public static function forAuthUser(User $user): ?self
+    {
+        $owned = static::query()->where('user_id', $user->id)->first();
+        if ($owned) {
+            return $owned;
+        }
+
+        return $user->organization;
+    }
 
     protected $fillable = [
         'user_id',
@@ -91,6 +106,21 @@ class Organization extends Model
             ->withTimestamps();
     }
 
+    public function careAllianceMemberships(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(CareAllianceMembership::class);
+    }
+
+    public function careAllianceInvitations(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(CareAllianceInvitation::class, 'organization_id');
+    }
+
+    public function careAllianceJoinRequests(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(CareAllianceJoinRequest::class);
+    }
+
     public function users()
     {
         return $this->hasManyThrough(User::class, BoardMember::class, 'organization_id', 'id', 'id', 'user_id');
@@ -154,6 +184,33 @@ class Organization extends Model
     }
 
     /**
+     * Platform users who should receive database notifications for Care Alliance invitations (owner + board).
+     *
+     * @return Collection<int, User>
+     */
+    public function careAllianceInvitationNotifyUsers(): Collection
+    {
+        $ids = collect();
+
+        if ($this->user_id) {
+            $ids->push((int) $this->user_id);
+        }
+
+        $this->boardMembers()
+            ->whereNotNull('user_id')
+            ->pluck('user_id')
+            ->each(fn ($uid) => $ids->push((int) $uid));
+
+        $ids = $ids->unique()->filter()->values();
+
+        if ($ids->isEmpty()) {
+            return collect();
+        }
+
+        return User::query()->whereIn('id', $ids)->get();
+    }
+
+    /**
      * Get IRS board members for this organization (by EIN)
      */
     public function irsBoardMembers()
@@ -189,6 +246,77 @@ class Organization extends Model
     public function scopeActive($query)
     {
         return $query->where('registration_status', 'approved');
+    }
+
+    /** Approved registration and operational status (for Care Alliance invite search, etc.). */
+    public function scopeActiveRegistered($query)
+    {
+        return $query->where('registration_status', 'approved')
+            ->where('status', 'Active');
+    }
+
+    /**
+     * Approved registration + linked platform user (owner or board). Does not filter organizations.status.
+     */
+    public function scopeCareAllianceInviteEligible($query)
+    {
+        return $query->active()
+            ->where(function ($q) {
+                $q->whereNotNull('user_id')
+                    ->orWhereHas('boardMembers', function ($sub) {
+                        $sub->whereNotNull('user_id');
+                    });
+            });
+    }
+
+    /**
+     * Approved-registration orgs matching Care Alliance invite search (Inertia partial reload).
+     * Does not filter on organizations.status (e.g. "Active").
+     *
+     * When {@see $careAllianceId} is set, excludes organizations that already have a pending invitation
+     * or a pending/active membership with that alliance (so you cannot double-invite or re-pick current members).
+     *
+     * @return array<int, array{id: int, name: string, ein: string|null, email: string|null}>
+     */
+    public static function careAllianceSearchResults(string $q, ?int $careAllianceId = null, int $limit = 20): array
+    {
+        $q = trim($q);
+        if (strlen($q) < 2) {
+            return [];
+        }
+
+        $query = static::query()
+            ->careAllianceInviteEligible()
+            ->where(function ($query) use ($q) {
+                $query->where('name', 'like', '%'.$q.'%')
+                    ->orWhere('ein', 'like', '%'.preg_replace('/\D/', '', $q).'%')
+                    ->orWhere('email', 'like', '%'.$q.'%');
+            });
+
+        if ($careAllianceId !== null) {
+            $query
+                ->whereDoesntHave('careAllianceMemberships', function ($sub) use ($careAllianceId) {
+                    $sub->where('care_alliance_id', $careAllianceId)
+                        ->whereIn('status', ['pending', 'active']);
+                })
+                ->whereDoesntHave('careAllianceInvitations', function ($sub) use ($careAllianceId) {
+                    $sub->where('care_alliance_id', $careAllianceId)
+                        ->where('status', 'pending');
+                });
+        }
+
+        return $query
+            ->orderBy('name')
+            ->limit($limit)
+            ->get(['id', 'name', 'ein', 'email'])
+            ->map(fn ($o) => [
+                'id' => $o->id,
+                'name' => $o->name,
+                'ein' => $o->ein,
+                'email' => $o->email,
+            ])
+            ->values()
+            ->all();
     }
 
     // Scope for search

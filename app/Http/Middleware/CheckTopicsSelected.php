@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Models\Organization;
 use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -22,10 +23,15 @@ class CheckTopicsSelected
             return $next($request);
         }
 
-            $user = $request->user();
+        $user = $request->user();
 
         // Allow admin users to bypass topic selection requirement
         if ($user && $user->role === 'admin') {
+            return $next($request);
+        }
+
+        // Legacy Care Alliance accounts without an organization profile (before unified org provisioning)
+        if ($user && $user->hasRole('care_alliance') && ! Organization::forAuthUser($user)) {
             return $next($request);
         }
 
@@ -34,7 +40,7 @@ class CheckTopicsSelected
             return $next($request);
         }
 
-        if ($user && !$user->interestedTopics()->exists()) {
+        if ($user && ! $user->interestedTopics()->exists()) {
 
             // For JSON/API requests, return JSON response instead of redirecting
             if ($request->expectsJson() || $request->wantsJson() || $request->is('api/*') || $request->header('Accept') === 'application/json') {

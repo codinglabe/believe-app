@@ -34,6 +34,7 @@ import {
 } from "lucide-react"
 import PromotionalBanner from "@/components/PromotionalBanner"
 import ProfileCompletionBanner from "@/components/ProfileCompletionBanner"
+import { CareAllianceOrgInvitesInline } from "@/components/CareAllianceOrgInvitesInline"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -647,6 +648,10 @@ export default function Dashboard({
   const organization = orgInfo
   const userRole = auth?.user?.role // 'admin' or 'organization'
   const isOrgUser = userRole === "organization" || userRole === "organization_pending"
+  const userRoles = (auth?.roles ?? []) as string[]
+  const isCareAllianceHub = userRoles.some((r) => String(r).toLowerCase() === "care_alliance")
+  /** Nonprofits joining an alliance — not Care Alliance administrators */
+  const showOrgAllianceMembershipUi = isOrgUser && !isCareAllianceHub
   const userId = auth?.user?.id // Get user ID to detect user changes
 
   // Wallet Connect Popup State
@@ -656,11 +661,13 @@ export default function Dashboard({
   const [isCheckingWallet, setIsCheckingWallet] = useState(true)
   const [userDismissedPopup, setUserDismissedPopup] = useState(false)
 
+  const careAllianceWalletEligible = auth?.user?.care_alliance_wallet_eligible !== false
+
   // Check wallet connection status - FORCE CHECK FOR EACH ORGANIZATION USER
   // Re-check when user ID changes (different organization account)
   useEffect(() => {
     const checkWalletStatus = async () => {
-      if (!isOrgUser) {
+      if (!isOrgUser || !careAllianceWalletEligible) {
         setIsCheckingWallet(false)
         setShowWalletPopup(false)
         setWalletConnected(false)
@@ -740,7 +747,7 @@ export default function Dashboard({
     // Always check wallet status for organization users
     // Check immediately when component mounts or user changes
     checkWalletStatus()
-  }, [isOrgUser, userId]) // Add userId to dependencies to re-check when user changes
+  }, [isOrgUser, userId, careAllianceWalletEligible]) // Add userId to dependencies to re-check when user changes
 
   // Check if wallet is connected
   const isWalletConnected = walletConnected || (auth.user?.balance !== undefined && auth.user?.balance !== null)
@@ -1096,6 +1103,8 @@ export default function Dashboard({
     <AppLayout breadcrumbs={breadcrumbs}>
       <Head title="Dashboard" />
       <div className="flex flex-col gap-6 m-3 md:m-6">
+        {/* Pending Care Alliance invites — org dashboard: sign in → /dashboard → this card (also linked from invitation emails) */}
+        {showOrgAllianceMembershipUi && <CareAllianceOrgInvitesInline />}
         {/* Profile Completion Banner – top of dashboard nudge for organization users */}
         {isOrgUser && profileCompletion && profileCompletion.percent < 100 && (
           <ProfileCompletionBanner profileCompletion={profileCompletion} />

@@ -5,11 +5,10 @@ use App\Http\Controllers\PaymentMethodSettingController;
 use App\Http\Controllers\Settings\PasswordController;
 use App\Http\Controllers\Settings\ProfileController;
 use App\Http\Controllers\Settings\ReferralLinkController;
-use App\Http\Controllers\UsersInterestedTopicsController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
-Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin'])->group(function () {
+Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin|care_alliance'])->group(function () {
     Route::redirect('settings', 'settings/profile');
 
     // Admin-only settings (outside topics.selected middleware)
@@ -48,7 +47,7 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin'])-
         })->name('appearance');
 
         // Exemption Certificates - For nonprofit organizations
-        Route::middleware('role:organization')->group(function () {
+        Route::middleware('role:organization|care_alliance')->group(function () {
             Route::get('settings/exemption-certificates', [NonprofitExemptionCertificateController::class, 'index'])->name('exemption-certificates.index');
             Route::post('settings/exemption-certificates', [NonprofitExemptionCertificateController::class, 'store'])->name('exemption-certificates.store');
             Route::put('settings/exemption-certificates/{id}', [NonprofitExemptionCertificateController::class, 'update'])->name('exemption-certificates.update');
@@ -64,10 +63,9 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin'])-
 
 });
 
+Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:user|organization|admin|care_alliance'])->put('settings/password', [PasswordController::class, 'update'])->name('password.update');
 
-Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:user|organization|admin'])->put('settings/password', [PasswordController::class, 'update'])->name('password.update');
-
-Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization'])->group(function () {
+Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|care_alliance'])->group(function () {
     Route::patch(
         'settings/social-accounts',
         [ProfileController::class, 'updateSocialAccounts']

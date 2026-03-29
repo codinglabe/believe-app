@@ -2,26 +2,28 @@
 
 namespace App\Http\Controllers;
 
+use App\Jobs\SendOrganizationInviteJob;
+use App\Models\CareAlliance;
+use App\Models\CareAllianceMembership;
 use App\Models\ExcelData;
 use App\Models\FollowerPosition;
 use App\Models\FollowingUserPosition;
 use App\Models\NteeCode;
-use App\Services\ImpactScoreService;
 use App\Models\Organization;
 use App\Models\UserFavoriteOrganization;
+use App\Services\CareAlliancePublicPageService;
+use App\Services\ExcelDataTransformer;
+use App\Services\ImpactScoreService;
 use App\Services\OpenAiService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
-use App\Jobs\SendOrganizationInviteJob;
 use Inertia\Inertia;
-use Illuminate\Support\Facades\DB;
-use App\Services\ExcelDataTransformer;
 
 class OrganizationController extends BaseController
 {
-
     protected $impactScoreService;
 
     public function __construct(ImpactScoreService $impactScoreService)
@@ -29,228 +31,228 @@ class OrganizationController extends BaseController
         $this->impactScoreService = $impactScoreService;
     }
 
-public function index(Request $request)
-{
-    // Get search parameters - ADD category_description
-    $search = $request->get('search');
-    $category = $request->get('category');
-    $categoryDescription = $request->get('category_description'); // Add this
-    $state = $request->get('state');
-    $city = $request->get('city');
-    $zip = $request->get('zip');
-    $page = $request->get('page', 1);
-    $sort = $request->get('sort', 'id');
-    $perPage = min($request->get("per_page", 6), 50);
+    public function index(Request $request)
+    {
+        // Get search parameters - ADD category_description
+        $search = $request->get('search');
+        $category = $request->get('category');
+        $categoryDescription = $request->get('category_description'); // Add this
+        $state = $request->get('state');
+        $city = $request->get('city');
+        $zip = $request->get('zip');
+        $page = $request->get('page', 1);
+        $sort = $request->get('sort', 'id');
+        $perPage = min($request->get('per_page', 6), 50);
 
-    // Optimized query
-    $query = ExcelData::where('status', 'complete')
-        ->where('ein', '!=', 'EIN')
-        ->whereNotNull('ein');
+        // Optimized query
+        $query = ExcelData::where('status', 'complete')
+            ->where('ein', '!=', 'EIN')
+            ->whereNotNull('ein');
 
-    // Optimized search
-    if ($search) {
-        $query->where(function ($q) use ($search) {
-            $q->where('name_virtual', 'LIKE', '%' . $search . '%')
-              ->orWhere('sort_name_virtual', 'LIKE', '%' . $search . '%');
+        // Optimized search
+        if ($search) {
+            $query->where(function ($q) use ($search) {
+                $q->where('name_virtual', 'LIKE', '%'.$search.'%')
+                    ->orWhere('sort_name_virtual', 'LIKE', '%'.$search.'%');
+            });
+        }
+
+        // Optimized category filter
+        if ($category && $category !== 'All Categories') {
+            $query->join('ntee_codes', 'excel_data.ntee_code_virtual', '=', 'ntee_codes.ntee_codes')
+                ->where('ntee_codes.category', $category);
+        }
+
+        // NEW: Filter by category description
+        if ($categoryDescription && $categoryDescription !== 'All Descriptions') {
+            // If not already joined for category filter, join the table
+            if (! str_contains($query->toSql(), 'ntee_codes')) {
+                $query->join('ntee_codes', 'excel_data.ntee_code_virtual', '=', 'ntee_codes.ntee_codes');
+            }
+            $query->where('ntee_codes.description', $categoryDescription);
+        }
+
+        // Filter by location
+        if ($state && $state !== 'All States') {
+            $query->where('state_virtual', $state);
+        }
+
+        if ($city && $city !== 'All Cities') {
+            $query->where('city_virtual', $city);
+        }
+
+        if ($zip) {
+            if (strlen($zip) >= 3) {
+                $query->where('zip_virtual', 'LIKE', $zip.'%');
+            } else {
+                $query->where('zip_virtual', 'LIKE', '%'.$zip.'%');
+            }
+        }
+
+        // Continue with the rest of your existing code...
+        $query->select([
+            'excel_data.id',
+            'excel_data.ein',
+            'excel_data.row_data',
+            'excel_data.created_at',
+            'excel_data.updated_at',
+            'excel_data.name_virtual',
+            'excel_data.state_virtual',
+            'excel_data.city_virtual',
+            'excel_data.ntee_code_virtual',
+            'excel_data.zip_virtual',
+            'excel_data.file_id',
+        ]);
+
+        // Apply sorting
+        switch ($sort) {
+            case 'name':
+                $query->orderBy('name_virtual', 'asc');
+                break;
+            case 'state':
+                $query->orderBy('state_virtual', 'asc');
+                break;
+            case 'city':
+                $query->orderBy('city_virtual', 'asc');
+                break;
+            default:
+                $query->orderBy('id', 'asc');
+                break;
+        }
+
+        // Get organizations with pagination
+        $organizations = $query->paginate($perPage);
+
+        // Get all EINs from the excel data results
+        $eins = $organizations->pluck('ein')->filter()->toArray();
+
+        // Find registered organizations with these EINs
+        $registeredOrgs = [];
+        $userFavorites = [];
+
+        if (! empty($eins)) {
+            $registeredOrgs = Organization::whereIn('ein', $eins)
+                ->where('registration_status', 'approved')
+                ->get()
+                ->keyBy('ein');
+
+            // Get user favorites if authenticated
+            if (Auth::check() && ! $registeredOrgs->isEmpty()) {
+                $userFavorites = UserFavoriteOrganization::where('user_id', Auth::id())
+                    ->whereIn('organization_id', $registeredOrgs->pluck('id'))
+                    ->pluck('organization_id')
+                    ->toArray();
+            }
+        }
+
+        // Get NTEE codes and their categories/descriptions for the organizations
+        $nteeCodes = $organizations->pluck('ntee_code_virtual')->filter()->toArray();
+        $nteeCategories = [];
+        $nteeDescriptions = [];
+
+        if (! empty($nteeCodes)) {
+            $nteeData = NteeCode::whereIn('ntee_codes', $nteeCodes)
+                ->select('ntee_codes', 'category', 'description')
+                ->get()
+                ->keyBy('ntee_codes');
+
+            $nteeCategories = $nteeData->pluck('category', 'ntee_codes')->toArray();
+            $nteeDescriptions = $nteeData->pluck('description', 'ntee_codes')->toArray();
+        }
+
+        // Transform the data
+        $transformedOrganizations = $organizations->getCollection()->map(function ($item) use ($registeredOrgs, $userFavorites, $nteeCategories, $nteeDescriptions) {
+            $rowData = $item->row_data;
+            $nteeCode = $item->ntee_code_virtual ?? $rowData[26] ?? '';
+
+            // Get NTEE category and description
+            $nteeCategory = '';
+            $nteeDescription = '';
+            if ($nteeCode && isset($nteeCategories[$nteeCode])) {
+                $nteeCategory = $nteeCategories[$nteeCode];
+                $nteeDescription = $nteeDescriptions[$nteeCode] ?? '';
+            }
+
+            // Format NTEE code with category
+            $formattedNteeCode = $nteeCode;
+            if ($nteeCode && $nteeCategory) {
+                $formattedNteeCode = $nteeCode.' - '.$nteeCategory;
+            }
+
+            // Check if this excel data organization is registered
+            $isRegistered = isset($registeredOrgs[$item->ein]);
+
+            // For registered organizations, check if they're favorited by the user
+            $isFavorited = false;
+            if ($isRegistered && Auth::check()) {
+                $registeredOrg = $registeredOrgs[$item->ein];
+                $isFavorited = in_array($registeredOrg->id, $userFavorites);
+            }
+
+            return [
+                'id' => $item->id,
+                'ein' => $item->ein,
+                'name' => $item->name_virtual ?? $rowData[1] ?? '',
+                'city' => $item->city_virtual ?? $rowData[4] ?? '',
+                'state' => $item->state_virtual ?? $rowData[5] ?? '',
+                'zip' => $item->zip_virtual ?? $rowData[6] ?? '',
+                'classification' => $rowData[10] ?? '',
+                'ntee_code' => $formattedNteeCode,
+                'ntee_code_raw' => $nteeCode,
+                'ntee_category' => $nteeCategory,
+                'ntee_category_description' => $nteeDescription, // Add this
+                'created_at' => $item->created_at,
+                'is_registered' => $isRegistered,
+                'is_favorited' => $isFavorited,
+            ];
         });
-    }
 
-    // Optimized category filter
-    if ($category && $category !== 'All Categories') {
-        $query->join('ntee_codes', 'excel_data.ntee_code_virtual', '=', 'ntee_codes.ntee_codes')
-              ->where('ntee_codes.category', $category);
-    }
+        // Cache filter options - ADD categoryDescriptions
+        $categories = cache()->remember('orgs_categories', 3600, function () {
+            return DB::table('ntee_codes')
+                ->distinct()
+                ->orderBy('category')
+                ->pluck('category')
+                ->prepend('All Categories');
+        });
 
-    // NEW: Filter by category description
-    if ($categoryDescription && $categoryDescription !== 'All Descriptions') {
-        // If not already joined for category filter, join the table
-        if (!str_contains($query->toSql(), 'ntee_codes')) {
-            $query->join('ntee_codes', 'excel_data.ntee_code_virtual', '=', 'ntee_codes.ntee_codes');
-        }
-        $query->where('ntee_codes.description', $categoryDescription);
-    }
+        $categoryDescriptions = cache()->remember('orgs_category_descriptions', 3600, function () {
+            return DB::table('ntee_codes')
+                ->distinct()
+                ->orderBy('description')
+                ->pluck('description')
+                ->prepend('All Descriptions');
+        });
 
-    // Filter by location
-    if ($state && $state !== 'All States') {
-        $query->where('state_virtual', $state);
-    }
-
-    if ($city && $city !== 'All Cities') {
-        $query->where('city_virtual', $city);
-    }
-
-    if ($zip) {
-        if (strlen($zip) >= 3) {
-            $query->where('zip_virtual', 'LIKE', $zip . '%');
-        } else {
-            $query->where('zip_virtual', 'LIKE', '%' . $zip . '%');
-        }
-    }
-
-    // Continue with the rest of your existing code...
-    $query->select([
-        'excel_data.id',
-        'excel_data.ein',
-        'excel_data.row_data',
-        'excel_data.created_at',
-        'excel_data.updated_at',
-        'excel_data.name_virtual',
-        'excel_data.state_virtual',
-        'excel_data.city_virtual',
-        'excel_data.ntee_code_virtual',
-        'excel_data.zip_virtual',
-        'excel_data.file_id'
-    ]);
-
-    // Apply sorting
-    switch ($sort) {
-        case 'name':
-            $query->orderBy('name_virtual', 'asc');
-            break;
-        case 'state':
-            $query->orderBy('state_virtual', 'asc');
-            break;
-        case 'city':
-            $query->orderBy('city_virtual', 'asc');
-            break;
-        default:
-            $query->orderBy('id', 'asc');
-            break;
-    }
-
-    // Get organizations with pagination
-    $organizations = $query->paginate($perPage);
-
-    // Get all EINs from the excel data results
-    $eins = $organizations->pluck('ein')->filter()->toArray();
-
-    // Find registered organizations with these EINs
-    $registeredOrgs = [];
-    $userFavorites = [];
-
-    if (!empty($eins)) {
-        $registeredOrgs = Organization::whereIn('ein', $eins)
-            ->where('registration_status', 'approved')
-            ->get()
-            ->keyBy('ein');
-
-        // Get user favorites if authenticated
-        if (Auth::check() && !$registeredOrgs->isEmpty()) {
-            $userFavorites = UserFavoriteOrganization::where('user_id', Auth::id())
-                ->whereIn('organization_id', $registeredOrgs->pluck('id'))
-                ->pluck('organization_id')
-                ->toArray();
-        }
-    }
-
-    // Get NTEE codes and their categories/descriptions for the organizations
-    $nteeCodes = $organizations->pluck('ntee_code_virtual')->filter()->toArray();
-    $nteeCategories = [];
-    $nteeDescriptions = [];
-
-    if (!empty($nteeCodes)) {
-        $nteeData = NteeCode::whereIn('ntee_codes', $nteeCodes)
-            ->select('ntee_codes', 'category', 'description')
-            ->get()
-            ->keyBy('ntee_codes');
-
-        $nteeCategories = $nteeData->pluck('category', 'ntee_codes')->toArray();
-        $nteeDescriptions = $nteeData->pluck('description', 'ntee_codes')->toArray();
-    }
-
-    // Transform the data
-    $transformedOrganizations = $organizations->getCollection()->map(function ($item) use ($registeredOrgs, $userFavorites, $nteeCategories, $nteeDescriptions) {
-        $rowData = $item->row_data;
-        $nteeCode = $item->ntee_code_virtual ?? $rowData[26] ?? '';
-
-        // Get NTEE category and description
-        $nteeCategory = '';
-        $nteeDescription = '';
-        if ($nteeCode && isset($nteeCategories[$nteeCode])) {
-            $nteeCategory = $nteeCategories[$nteeCode];
-            $nteeDescription = $nteeDescriptions[$nteeCode] ?? '';
-        }
-
-        // Format NTEE code with category
-        $formattedNteeCode = $nteeCode;
-        if ($nteeCode && $nteeCategory) {
-            $formattedNteeCode = $nteeCode . " - " . $nteeCategory;
-        }
-
-        // Check if this excel data organization is registered
-        $isRegistered = isset($registeredOrgs[$item->ein]);
-
-        // For registered organizations, check if they're favorited by the user
-        $isFavorited = false;
-        if ($isRegistered && Auth::check()) {
-            $registeredOrg = $registeredOrgs[$item->ein];
-            $isFavorited = in_array($registeredOrg->id, $userFavorites);
-        }
-
-        return [
-            'id' => $item->id,
-            'ein' => $item->ein,
-            'name' => $item->name_virtual ?? $rowData[1] ?? '',
-            'city' => $item->city_virtual ?? $rowData[4] ?? '',
-            'state' => $item->state_virtual ?? $rowData[5] ?? '',
-            'zip' => $item->zip_virtual ?? $rowData[6] ?? '',
-            'classification' => $rowData[10] ?? '',
-            'ntee_code' => $formattedNteeCode,
-            'ntee_code_raw' => $nteeCode,
-            'ntee_category' => $nteeCategory,
-            'ntee_category_description' => $nteeDescription, // Add this
-            'created_at' => $item->created_at,
-            'is_registered' => $isRegistered,
-            'is_favorited' => $isFavorited,
+        $filterOptions = [
+            'categories' => $categories,
+            'categoryDescriptions' => $categoryDescriptions, // Add this
+            'states' => $this->getStates(),
+            'cities' => ['All Cities'],
         ];
-    });
 
-    // Cache filter options - ADD categoryDescriptions
-    $categories = cache()->remember('orgs_categories', 3600, function () {
-        return DB::table('ntee_codes')
-            ->distinct()
-            ->orderBy('category')
-            ->pluck('category')
-            ->prepend('All Categories');
-    });
+        $organizations->setCollection($transformedOrganizations);
 
-    $categoryDescriptions = cache()->remember('orgs_category_descriptions', 3600, function () {
-        return DB::table('ntee_codes')
-            ->distinct()
-            ->orderBy('description')
-            ->pluck('description')
-            ->prepend('All Descriptions');
-    });
-
-    $filterOptions = [
-        'categories' => $categories,
-        'categoryDescriptions' => $categoryDescriptions, // Add this
-        'states' => $this->getStates(),
-        'cities' => ['All Cities'],
-    ];
-
-    $organizations->setCollection($transformedOrganizations);
-
-    return Inertia::render('frontend/organization/organizations', [
-        'seo' => \App\Services\SeoService::forPage('organizations'),
-        'organizations' => $organizations,
-        'filters' => [
-            'search' => $search,
-            'category' => $category,
-            'category_description' => $categoryDescription, // Add this
-            'state' => $state,
-            'city' => $city,
-            'zip' => $zip,
-            'sort' => $sort,
-            'per_page' => $perPage,
-        ],
-        'filterOptions' => $filterOptions,
-        'hasActiveFilters' => $search || ($category && $category !== 'All Categories') ||
-            ($categoryDescription && $categoryDescription !== 'All Descriptions') || // Add this
-            ($state && $state !== 'All States') ||
-            ($city && $city !== 'All Cities') || $zip,
-    ]);
-}
+        return Inertia::render('frontend/organization/organizations', [
+            'seo' => \App\Services\SeoService::forPage('organizations'),
+            'organizations' => $organizations,
+            'filters' => [
+                'search' => $search,
+                'category' => $category,
+                'category_description' => $categoryDescription, // Add this
+                'state' => $state,
+                'city' => $city,
+                'zip' => $zip,
+                'sort' => $sort,
+                'per_page' => $perPage,
+            ],
+            'filterOptions' => $filterOptions,
+            'hasActiveFilters' => $search || ($category && $category !== 'All Categories') ||
+                ($categoryDescription && $categoryDescription !== 'All Descriptions') || // Add this
+                ($state && $state !== 'All States') ||
+                ($city && $city !== 'All Cities') || $zip,
+        ]);
+    }
 
     private function getStates()
     {
@@ -311,7 +313,7 @@ public function index(Request $request)
             'GU',
             'MP',
             'PR',
-            'VI'
+            'VI',
         ];
 
         // Create a collection with just the abbreviations, sorted alphabetically
@@ -366,7 +368,7 @@ public function index(Request $request)
         //     $request->all()
         // );
         $state = $request->get('state');
-        $cacheKey = 'cities_filter_v2_' . md5($state ?? 'all');
+        $cacheKey = 'cities_filter_v2_'.md5($state ?? 'all');
 
         $cities = cache()->remember($cacheKey, 3600, function () use ($state) {
             $query = ExcelData::where('status', 'complete')
@@ -382,6 +384,7 @@ public function index(Request $request)
             if (! $state || $state === 'All States') {
                 $query->limit(5000);
             }
+
             return $query->pluck('city_virtual')->prepend('All Cities');
         });
 
@@ -428,7 +431,7 @@ public function index(Request $request)
             }
         }
 
-        if (!$organization) {
+        if (! $organization) {
             abort(404, 'Organization not found');
         }
 
@@ -570,7 +573,7 @@ public function index(Request $request)
             if ($postFilter === 'organization') {
                 // Only this organization's posts
                 $postsQuery->where('user_id', $registeredOrg->user_id);
-            } else if ($postFilter === 'all') {
+            } elseif ($postFilter === 'all') {
                 // "All Posts" means: organization's posts + posts from supporters who follow this organization
 
                 // Get all user IDs who follow this organization (supporters)
@@ -697,7 +700,7 @@ public function index(Request $request)
                                 'image' => $post->user->image ? Storage::url($post->user->image) : null,
                             ];
                         }
-                    } else if ($post->user) {
+                    } elseif ($post->user) {
                         $creator = [
                             'id' => $post->user->id,
                             'name' => $post->user->name,
@@ -744,7 +747,7 @@ public function index(Request $request)
                     ->get()
                     ->map(function ($post) {
                         return [
-                            'id' => 'fb_' . $post->id,
+                            'id' => 'fb_'.$post->id,
                             'title' => null,
                             'content' => $post->message,
                             'image' => $post->image,
@@ -785,6 +788,7 @@ public function index(Request $request)
             'believePointsSpent' => $believePointsSpent,
             'believePointsBalance' => $believePointsBalance,
             'postFilter' => $postFilter ?? 'organization', // Pass filter to frontend
+            'connectedCareAlliances' => $this->connectedCareAlliancesPayload($registeredOrg),
         ]);
     }
 
@@ -839,28 +843,85 @@ public function index(Request $request)
     {
         $user = Auth::user();
 
-        // Supporters and organization users can both follow organizations
-        // Get the ExcelData organization
-        $excelDataOrg = ExcelData::findOrFail($id);
+        $ctx = $request->input('toggle_favorite_context');
+        if (in_array($ctx, ['excel', 'organization', 'alliance'], true)) {
+            if ($ctx === 'organization') {
+                $org = Organization::query()
+                    ->whereKey($id)
+                    ->where('registration_status', 'approved')
+                    ->first();
+                if ($org === null) {
+                    abort(404);
+                }
 
-        // Find the registered organization by EIN (used for both self-check and favorite logic)
+                return $this->toggleFavoriteToggleRegisteredOrg($request, $user, $org);
+            }
+            if ($ctx === 'alliance') {
+                $alliance = CareAlliance::query()->whereKey($id)->where('status', 'active')->first();
+                if ($alliance === null) {
+                    abort(404);
+                }
+                $org = app(CareAlliancePublicPageService::class)->hubOrganizationForAlliance($alliance);
+                if ($org === null) {
+                    abort(404);
+                }
+
+                return $this->toggleFavoriteToggleRegisteredOrg($request, $user, $org);
+            }
+            $excelDataOrg = ExcelData::find($id);
+            if ($excelDataOrg === null) {
+                abort(404);
+            }
+
+            return $this->toggleFavoriteViaExcelRow($request, $user, $id, $excelDataOrg);
+        }
+
+        $excelDataOrg = ExcelData::find($id);
+        if ($excelDataOrg !== null) {
+            return $this->toggleFavoriteViaExcelRow($request, $user, $id, $excelDataOrg);
+        }
+
+        $org = Organization::query()
+            ->whereKey($id)
+            ->where('registration_status', 'approved')
+            ->first();
+
+        if ($org === null) {
+            $alliance = CareAlliance::query()->whereKey($id)->where('status', 'active')->first();
+            if ($alliance !== null) {
+                $org = app(CareAlliancePublicPageService::class)->hubOrganizationForAlliance($alliance);
+            }
+        }
+
+        if ($org === null) {
+            abort(404);
+        }
+
+        return $this->toggleFavoriteToggleRegisteredOrg($request, $user, $org);
+    }
+
+    /**
+     * Public nonprofit profile: toggle by IRS / Excel row id.
+     */
+    private function toggleFavoriteViaExcelRow(Request $request, $user, int $id, ExcelData $excelDataOrg)
+    {
         $org = Organization::where('ein', $excelDataOrg->ein)
             ->where('registration_status', 'approved')
             ->first();
 
-        // Organization cannot follow their own organization
         $userOrg = $user->organization ?? Organization::where('user_id', $user->id)->first();
         if ($userOrg) {
             $isOwnByEin = $userOrg->ein === $excelDataOrg->ein;
             $isOwnById = $org && $userOrg->id === $org->id;
             if ($isOwnByEin || $isOwnById) {
-                $isAjax = $request->header('X-Requested-With') === 'XMLHttpRequest' && !$request->header('X-Inertia');
+                $isAjax = $request->header('X-Requested-With') === 'XMLHttpRequest' && ! $request->header('X-Inertia');
                 if ($isAjax || $request->wantsJson() || $request->expectsJson()) {
                     return response()->json([
                         'success' => false,
                         'message' => __('You cannot follow your own organization.'),
                     ], 403);
                 }
+
                 return redirect()->back()->with('error', __('You cannot follow your own organization.'));
             }
         }
@@ -869,7 +930,6 @@ public function index(Request $request)
         $message = '';
 
         if ($org) {
-            // Registered organization - use organization_id
             $fav = UserFavoriteOrganization::where('user_id', $user->id)
                 ->where('organization_id', $org->id)
                 ->first();
@@ -882,15 +942,13 @@ public function index(Request $request)
                 UserFavoriteOrganization::create([
                     'user_id' => $user->id,
                     'organization_id' => $org->id,
-                    'excel_data_id' => $id, // Also store excel_data_id for consistency
-                    'notifications' => true
+                    'excel_data_id' => $id,
+                    'notifications' => true,
                 ]);
                 $isFollowing = true;
                 $message = 'Following organization with notifications';
             }
         } else {
-            // Unregistered organization - use excel_data_id
-            // Cast to int to ensure type matching
             $excelDataId = (int) $id;
             $fav = UserFavoriteOrganization::where('user_id', $user->id)
                 ->where('excel_data_id', $excelDataId)
@@ -903,24 +961,18 @@ public function index(Request $request)
             } else {
                 $createdFavorite = UserFavoriteOrganization::create([
                     'user_id' => $user->id,
-                    'organization_id' => null, // null for unregistered organizations
+                    'organization_id' => null,
                     'excel_data_id' => $excelDataId,
-                    'notifications' => true
+                    'notifications' => true,
                 ]);
-
-                // Refresh the model to ensure it has the latest data from database
                 $createdFavorite->refresh();
-
                 $isFollowing = true;
                 $message = 'Following organization with notifications';
             }
         }
 
-        // For API requests (axios/fetch), return JSON response
-        // Axios sends X-Requested-With: XMLHttpRequest header
-        // Check if it's an AJAX request (not Inertia)
         $isAjaxRequest = $request->header('X-Requested-With') === 'XMLHttpRequest'
-            && !$request->header('X-Inertia');
+            && ! $request->header('X-Inertia');
 
         if ($isAjaxRequest || $request->wantsJson() || $request->expectsJson()) {
             return response()->json([
@@ -930,14 +982,90 @@ public function index(Request $request)
             ]);
         }
 
-        // For Inertia requests, redirect back to reload the page with updated favorite status
         $referer = $request->header('Referer');
         if ($referer) {
             return redirect($referer);
         }
-        // Fallback to organization show page
+
         return redirect()->route('organizations.show', $id)
             ->with('success', $message);
+    }
+
+    /**
+     * Registered hub / org id or equivalent (after Care Alliance resolution).
+     */
+    private function toggleFavoriteToggleRegisteredOrg(Request $request, $user, Organization $org)
+    {
+        $userOrg = $user->organization ?? Organization::where('user_id', $user->id)->first();
+        if ($userOrg) {
+            $isOwnByEin = $org->ein && $userOrg->ein && $userOrg->ein === $org->ein;
+            $isOwnById = (int) $userOrg->id === (int) $org->id;
+            if ($isOwnByEin || $isOwnById) {
+                $isAjax = $request->header('X-Requested-With') === 'XMLHttpRequest' && ! $request->header('X-Inertia');
+                if ($isAjax || $request->wantsJson() || $request->expectsJson()) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => __('You cannot follow your own organization.'),
+                    ], 403);
+                }
+
+                return redirect()->back()->with('error', __('You cannot follow your own organization.'));
+            }
+        }
+
+        $excelDataIdForRow = null;
+        if ($org->ein) {
+            $excelDataIdForRow = ExcelData::query()
+                ->where('ein', $org->ein)
+                ->where('status', 'complete')
+                ->orderByDesc('id')
+                ->value('id');
+        }
+
+        $isFollowing = false;
+        $message = '';
+
+        $fav = UserFavoriteOrganization::where('user_id', $user->id)
+            ->where('organization_id', $org->id)
+            ->first();
+
+        if ($fav) {
+            $fav->delete();
+            $isFollowing = false;
+            $message = 'Unfollowed organization';
+        } else {
+            UserFavoriteOrganization::create([
+                'user_id' => $user->id,
+                'organization_id' => $org->id,
+                'excel_data_id' => $excelDataIdForRow,
+                'notifications' => true,
+            ]);
+            $isFollowing = true;
+            $message = 'Following organization with notifications';
+        }
+
+        $isAjaxRequest = $request->header('X-Requested-With') === 'XMLHttpRequest'
+            && ! $request->header('X-Inertia');
+
+        if ($isAjaxRequest || $request->wantsJson() || $request->expectsJson()) {
+            return response()->json([
+                'success' => true,
+                'is_following' => $isFollowing,
+                'message' => $message,
+            ]);
+        }
+
+        $referer = $request->header('Referer');
+        if ($referer) {
+            return redirect($referer);
+        }
+
+        $fallback = $excelDataIdForRow ?? $org->user?->slug;
+        if ($fallback !== null) {
+            return redirect()->route('organizations.show', $fallback);
+        }
+
+        return redirect()->back();
     }
 
     // public function toggleFavorite(Request $request, int $id)
@@ -1092,49 +1220,144 @@ public function index(Request $request)
     //         ->with('followerPosition')
     //         ->get();
 
-
     //     return response()->json([
     //         'all_positions' => $positions,
     //         'user_positions' => $userPositions
     //     ]);
     // }
 
-
-
     public function toggleNotifications(Request $request, int $id)
     {
         $user = Auth::user();
 
-        // Get the ExcelData organization
-        $excelDataOrg = ExcelData::findOrFail($id);
+        $isAjaxRequest = $request->header('X-Requested-With') === 'XMLHttpRequest'
+            && ! $request->header('X-Inertia');
 
-        // Find the registered organization by EIN
-        $org = Organization::where('ein', $excelDataOrg->ein)
-            ->where('registration_status', 'approved')
-            ->first();
+        $ctx = $request->input('toggle_favorite_context');
+        $org = null;
+        $excelRowUsedForLookup = false;
 
-        if (!$org) {
-            return redirect()->route('organizations.show', $id)
-                ->with('error', 'Organization not found');
+        if (in_array($ctx, ['excel', 'organization', 'alliance'], true)) {
+            if ($ctx === 'organization') {
+                $org = Organization::query()
+                    ->whereKey($id)
+                    ->where('registration_status', 'approved')
+                    ->first();
+            } elseif ($ctx === 'alliance') {
+                $alliance = CareAlliance::query()->whereKey($id)->where('status', 'active')->first();
+                if ($alliance !== null) {
+                    $org = app(CareAlliancePublicPageService::class)->hubOrganizationForAlliance($alliance);
+                }
+            } else {
+                $excelDataOrg = ExcelData::find($id);
+                if ($excelDataOrg !== null) {
+                    $excelRowUsedForLookup = true;
+                    $org = Organization::where('ein', $excelDataOrg->ein)
+                        ->where('registration_status', 'approved')
+                        ->first();
+                }
+            }
+        } else {
+            $excelDataOrg = ExcelData::find($id);
+            if ($excelDataOrg !== null) {
+                $excelRowUsedForLookup = true;
+                $org = Organization::where('ein', $excelDataOrg->ein)
+                    ->where('registration_status', 'approved')
+                    ->first();
+            } else {
+                $org = Organization::query()
+                    ->whereKey($id)
+                    ->where('registration_status', 'approved')
+                    ->first();
+                if (! $org) {
+                    $alliance = CareAlliance::query()->whereKey($id)->where('status', 'active')->first();
+                    if ($alliance !== null) {
+                        $org = app(CareAlliancePublicPageService::class)->hubOrganizationForAlliance($alliance);
+                    }
+                }
+            }
+        }
+
+        if (! $org) {
+            if ($isAjaxRequest || $request->wantsJson() || $request->expectsJson()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Organization not found',
+                ], 404);
+            }
+
+            $referer = $request->header('Referer');
+            if ($referer) {
+                return redirect($referer)->with('error', 'Organization not found');
+            }
+            if ($excelRowUsedForLookup) {
+                return redirect()->route('organizations.show', $id)
+                    ->with('error', 'Organization not found');
+            }
+
+            return redirect()->back()->with('error', 'Organization not found');
         }
 
         $fav = UserFavoriteOrganization::where('user_id', $user->id)
             ->where('organization_id', $org->id)
             ->first();
 
-        if (!$fav) {
-            return redirect()->route('organizations.show', $id)
-                ->with('error', 'You are not following this organization');
+        if (! $fav) {
+            if ($isAjaxRequest || $request->wantsJson() || $request->expectsJson()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'You are not following this organization',
+                ], 400);
+            }
+
+            $referer = $request->header('Referer');
+            if ($referer) {
+                return redirect($referer)->with('error', 'You are not following this organization');
+            }
+
+            $fallback = ExcelData::query()
+                ->where('ein', $org->ein)
+                ->where('status', 'complete')
+                ->orderByDesc('id')
+                ->value('id') ?? $org->user?->slug;
+            if ($fallback !== null) {
+                return redirect()->route('organizations.show', $fallback)
+                    ->with('error', 'You are not following this organization');
+            }
+
+            return redirect()->back()->with('error', 'You are not following this organization');
         }
 
         $fav->update([
-            'notifications' => !$fav->notifications
+            'notifications' => ! $fav->notifications,
         ]);
 
         $message = $fav->notifications ? 'Notifications enabled' : 'Notifications disabled';
 
-        return redirect()->route('organizations.show', $id)
-            ->with('success', $message);
+        if ($isAjaxRequest || $request->wantsJson() || $request->expectsJson()) {
+            return response()->json([
+                'success' => true,
+                'notifications' => (bool) $fav->notifications,
+                'message' => $message,
+            ]);
+        }
+
+        $referer = $request->header('Referer');
+        if ($referer) {
+            return redirect($referer)->with('success', $message);
+        }
+
+        $fallback = ExcelData::query()
+            ->where('ein', $org->ein)
+            ->where('status', 'complete')
+            ->orderByDesc('id')
+            ->value('id') ?? $org->user?->slug;
+        if ($fallback !== null) {
+            return redirect()->route('organizations.show', $fallback)
+                ->with('success', $message);
+        }
+
+        return redirect()->back()->with('success', $message);
     }
 
     /**
@@ -1178,7 +1401,7 @@ public function index(Request $request)
                 if ($organization->description && trim($organization->description) !== '' &&
                     $organization->description !== 'This organization is listed in our database but has not yet registered for additional features.') {
                     return response()->json([
-                        'error' => 'Organization description already exists'
+                        'error' => 'Organization description already exists',
                     ], 400);
                 }
 
@@ -1221,7 +1444,7 @@ public function index(Request $request)
                 if ($orgState && trim($orgState) !== '') {
                     $prompt .= ", {$orgState}";
                 }
-                $prompt .= ". ";
+                $prompt .= '. ';
             } elseif ($orgState && trim($orgState) !== '') {
                 $prompt .= "Location: {$orgState}. ";
             }
@@ -1238,7 +1461,7 @@ public function index(Request $request)
                 $prompt .= "The NTEE code is: {$orgNteeCode}. ";
             }
 
-            $prompt .= "The description should be informative, engaging, and provide a clear overview of what the organization does, who it serves, and its impact. ";
+            $prompt .= 'The description should be informative, engaging, and provide a clear overview of what the organization does, who it serves, and its impact. ';
             $prompt .= "IMPORTANT: The generated description MUST include the organization's name \"{$orgName}\"";
             if ($orgCity && trim($orgCity) !== '') {
                 $prompt .= ", the city \"{$orgCity}\"";
@@ -1246,31 +1469,31 @@ public function index(Request $request)
             if ($orgState && trim($orgState) !== '') {
                 $prompt .= ", and the state \"{$orgState}\"";
             }
-            $prompt .= " within the description text itself. Make sure to naturally incorporate these details into the narrative. ";
-            $prompt .= "Keep it comprehensive (approximately 200-400 words). Return only the description text, no additional commentary or formatting.";
+            $prompt .= ' within the description text itself. Make sure to naturally incorporate these details into the narrative. ';
+            $prompt .= 'Keep it comprehensive (approximately 200-400 words). Return only the description text, no additional commentary or formatting.';
 
             // Generate description using OpenAI (no token tracking for this feature)
-            $openAiService = new OpenAiService();
+            $openAiService = new OpenAiService;
             $result = $openAiService->chatCompletion([
                 [
                     'role' => 'system',
-                    'content' => 'You are a professional nonprofit consultant specializing in writing compelling organization descriptions. Create clear, engaging, and informative "About Us" descriptions for nonprofit organizations.'
+                    'content' => 'You are a professional nonprofit consultant specializing in writing compelling organization descriptions. Create clear, engaging, and informative "About Us" descriptions for nonprofit organizations.',
                 ],
                 [
                     'role' => 'user',
-                    'content' => $prompt
-                ]
+                    'content' => $prompt,
+                ],
             ]);
             $generatedDescription = $result['content'];
 
             // Update organization with generated description
             $organization->update([
-                'description' => trim($generatedDescription)
+                'description' => trim($generatedDescription),
             ]);
 
             return response()->json([
                 'success' => true,
-                'description' => trim($generatedDescription)
+                'description' => trim($generatedDescription),
             ]);
 
         } catch (\Throwable $e) {
@@ -1333,7 +1556,7 @@ public function index(Request $request)
             }
         }
 
-        if (!$organization) {
+        if (! $organization) {
             abort(404, 'Organization not found');
         }
 
@@ -1341,7 +1564,7 @@ public function index(Request $request)
         $transformedData = ExcelDataTransformer::transform($rowData);
 
         // Reuse registeredOrg if already loaded, otherwise query once with select for speed
-        if (!$registeredOrg) {
+        if (! $registeredOrg) {
             $registeredOrg = Organization::where('ein', $organization->ein)
                 ->where('registration_status', 'approved')
                 ->with('user:id,slug,name,email,image,cover_img')
@@ -1351,7 +1574,7 @@ public function index(Request $request)
 
         // Get any org record only if registeredOrg not found (for mission/description fallback)
         $anyOrgRecord = $registeredOrg;
-        if (!$anyOrgRecord) {
+        if (! $anyOrgRecord) {
             $anyOrgRecord = Organization::where('ein', $organization->ein)
                 ->select('id', 'ein', 'description', 'mission', 'website', 'wefunder_project_url', 'phone', 'email', 'contact_name', 'contact_title', 'social_accounts', 'city', 'state')
                 ->first();
@@ -1490,6 +1713,7 @@ public function index(Request $request)
             'supporters' => $supporters,
             'currentPage' => 'products',
             'auth' => Auth::user() ? ['user' => Auth::user()] : null,
+            'connectedCareAlliances' => $this->connectedCareAlliancesPayload($registeredOrg),
             ...$sidebarData,
         ]);
     }
@@ -1503,7 +1727,7 @@ public function index(Request $request)
         // Reuse registeredOrg from getOrganizationData to avoid duplicate query
         $registeredOrg = $organizationData['_registered_org'] ?? null;
 
-        if (!$registeredOrg && $organizationData['is_registered']) {
+        if (! $registeredOrg && $organizationData['is_registered']) {
             $registeredOrg = Organization::where('ein', $organizationData['ein'])
                 ->where('registration_status', 'approved')
                 ->select('id', 'user_id', 'name', 'description', 'mission', 'website', 'phone', 'email', 'contact_name', 'contact_title', 'social_accounts', 'city', 'state')
@@ -1527,7 +1751,7 @@ public function index(Request $request)
                 $jobsQuery->withExists([
                     'applications as has_applied' => function ($q) {
                         $q->where('user_id', Auth::id());
-                    }
+                    },
                 ]);
             }
 
@@ -1579,6 +1803,7 @@ public function index(Request $request)
             'supporters' => $supporters,
             'currentPage' => 'jobs',
             'auth' => Auth::user() ? ['user' => Auth::user()] : null,
+            'connectedCareAlliances' => $this->connectedCareAlliancesPayload($registeredOrg),
             ...$believePoints,
             ...$sidebarData,
         ]);
@@ -1631,6 +1856,7 @@ public function index(Request $request)
             'supporters' => $supporters,
             'currentPage' => 'events',
             'auth' => Auth::user() ? ['user' => Auth::user()] : null,
+            'connectedCareAlliances' => $this->connectedCareAlliancesPayload($registeredOrg),
             ...$sidebarData,
         ]);
     }
@@ -1645,7 +1871,7 @@ public function index(Request $request)
             ->where('registration_status', 'approved')
             ->first();
 
-        if (!$registeredOrg) {
+        if (! $registeredOrg) {
             abort(404, 'Organization not found');
         }
 
@@ -1673,7 +1899,7 @@ public function index(Request $request)
         // Reuse registeredOrg from getOrganizationData to avoid duplicate query
         $registeredOrg = $organizationData['_registered_org'] ?? null;
 
-        if (!$registeredOrg && $organizationData['is_registered']) {
+        if (! $registeredOrg && $organizationData['is_registered']) {
             $registeredOrg = Organization::where('ein', $organizationData['ein'])
                 ->where('registration_status', 'approved')
                 ->select('id', 'user_id', 'name', 'description', 'mission', 'website', 'phone', 'email', 'contact_name', 'contact_title', 'social_accounts', 'city', 'state')
@@ -1714,6 +1940,7 @@ public function index(Request $request)
             'supporters' => $supporters,
             'currentPage' => 'about',
             'auth' => Auth::user() ? ['user' => Auth::user()] : null,
+            'connectedCareAlliances' => $this->connectedCareAlliancesPayload($registeredOrg),
             ...$believePoints,
             ...$sidebarData,
         ]);
@@ -1796,6 +2023,7 @@ public function index(Request $request)
             'supporters' => $supporters,
             'currentPage' => 'contact',
             'auth' => Auth::user() ? ['user' => Auth::user()] : null,
+            'connectedCareAlliances' => $this->connectedCareAlliancesPayload($registeredOrg),
             ...$sidebarData,
         ]);
     }
@@ -1810,7 +2038,7 @@ public function index(Request $request)
         // Reuse registeredOrg from getOrganizationData to avoid duplicate query
         $registeredOrg = $organizationData['_registered_org'] ?? null;
 
-        if (!$registeredOrg && $organizationData['is_registered']) {
+        if (! $registeredOrg && $organizationData['is_registered']) {
             $registeredOrg = Organization::where('ein', $organizationData['ein'])
                 ->where('registration_status', 'approved')
                 ->select('id', 'user_id', 'name', 'description', 'mission', 'website', 'phone', 'email', 'contact_name', 'contact_title', 'social_accounts', 'city', 'state')
@@ -1884,6 +2112,7 @@ public function index(Request $request)
                         'joined_at' => $favorite->created_at?->toIso8601String(),
                     ];
                 }
+
                 return null;
             })->filter()->values()->toArray();
         }
@@ -1903,9 +2132,42 @@ public function index(Request $request)
             'supporters' => $supporters,
             'currentPage' => 'supporters',
             'auth' => Auth::user() ? ['user' => Auth::user()] : null,
+            'connectedCareAlliances' => $this->connectedCareAlliancesPayload($registeredOrg),
             ...$believePoints,
             ...$sidebarData,
         ]);
+    }
+
+    /**
+     * Active Care Alliances this nonprofit is a member of (public profile).
+     *
+     * @return array<int, array{id: int, name: string, slug: string}>
+     */
+    private function connectedCareAlliancesPayload(?Organization $registeredOrg): array
+    {
+        if ($registeredOrg === null) {
+            return [];
+        }
+
+        return CareAllianceMembership::query()
+            ->where('organization_id', $registeredOrg->id)
+            ->where('status', 'active')
+            ->whereHas('careAlliance', fn ($q) => $q->where('status', 'active'))
+            ->with(['careAlliance:id,slug,name'])
+            ->get()
+            ->map(function (CareAllianceMembership $m) {
+                $alliance = $m->careAlliance;
+
+                return $alliance ? [
+                    'id' => (int) $alliance->id,
+                    'name' => $alliance->name,
+                    'slug' => $alliance->slug,
+                ] : null;
+            })
+            ->filter()
+            ->sortBy(fn (array $row) => strtolower($row['name']))
+            ->values()
+            ->all();
     }
 
     /**
@@ -1944,7 +2206,7 @@ public function index(Request $request)
 
             $suggestedOrgs = \App\Models\Organization::where('registration_status', 'approved')
                 ->whereNotIn('id', $userFavoriteOrgIds)
-                ->when($registeredOrg, function($query) use ($registeredOrg) {
+                ->when($registeredOrg, function ($query) use ($registeredOrg) {
                     return $query->where('id', '!=', $registeredOrg->id);
                 })
                 ->with('user:id,slug,name,image')
@@ -1961,18 +2223,18 @@ public function index(Request $request)
                     ->orderBy('id', 'desc')
                     ->get()
                     ->groupBy('ein')
-                    ->map(function($group) {
+                    ->map(function ($group) {
                         return $group->first()->id; // Get the first (latest) record
                     });
 
-                $peopleYouMayKnow = $suggestedOrgs->map(function($org) use ($excelDataMap) {
+                $peopleYouMayKnow = $suggestedOrgs->map(function ($org) use ($excelDataMap) {
                     return [
                         'id' => $org->id,
                         'excel_data_id' => $excelDataMap->get($org->ein) ?? null,
                         'slug' => $org->user?->slug ?? null,
                         'name' => $org->name,
                         'org' => $org->description ? \Illuminate\Support\Str::limit($org->description, 30) : 'Organization',
-                        'avatar' => $org->user?->image ? '/storage/' . $org->user->image : null,
+                        'avatar' => $org->user?->image ? '/storage/'.$org->user->image : null,
                     ];
                 })->toArray();
             }
@@ -1997,13 +2259,13 @@ public function index(Request $request)
                 ->orderBy('id', 'desc')
                 ->get()
                 ->groupBy('ein')
-                ->map(function($group) {
+                ->map(function ($group) {
                     return $group->first()->id; // Get the first (latest) record
                 });
 
             $colors = ['bg-rose-500', 'bg-cyan-500', 'bg-teal-500', 'bg-blue-500'];
 
-            $trendingOrganizations = $trendingOrgs->map(function($org, $index) use ($excelDataMap, $colors) {
+            $trendingOrganizations = $trendingOrgs->map(function ($org, $index) use ($excelDataMap, $colors) {
                 return [
                     'id' => $org->id,
                     'excel_data_id' => $excelDataMap->get($org->ein) ?? null,
@@ -2036,7 +2298,7 @@ public function index(Request $request)
         ]);
 
         $user = Auth::user();
-        if (!$user) {
+        if (! $user) {
             return response()->json([
                 'success' => false,
                 'message' => 'You must be logged in to invite organizations',
