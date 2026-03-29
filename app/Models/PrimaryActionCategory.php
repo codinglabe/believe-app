@@ -24,4 +24,15 @@ class PrimaryActionCategory extends Model
         return $this->belongsToMany(Organization::class, 'org_primary_action_category')
             ->withTimestamps();
     }
+
+    /** Supporters who selected this interest on their profile */
+    public function supporterUsers(): BelongsToMany
+    {
+        return $this->belongsToMany(
+            User::class,
+            'primary_action_category_user',
+            'primary_action_category_id',
+            'user_id'
+        )->withTimestamps();
+    }
 }

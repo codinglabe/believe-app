@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Jobs\IngestKioskProvidersForGeoJob;
 use App\Models\Bid;
 use App\Models\Donation;
 use App\Models\ExcelData;
@@ -13,6 +14,7 @@ use App\Models\Organization;
 use App\Models\Post;
 use App\Models\PostComment;
 use App\Models\PostReaction;
+use App\Models\PrimaryActionCategory;
 use App\Models\Product;
 use App\Models\RaffleTicket;
 use App\Models\RewardPointLedger;
@@ -21,10 +23,9 @@ use App\Models\User;
 use App\Models\UserFavoriteOrganization;
 use App\Models\UserFollow;
 use App\Models\VolunteerTimesheet;
-use App\Jobs\IngestKioskProvidersForGeoJob;
-use App\Services\KioskProviderAiIngestService;
 use App\Services\ExcelDataTransformer;
 use App\Services\ImpactScoreService;
+use App\Services\KioskProviderAiIngestService;
 use App\Services\PrintifyService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -124,6 +125,7 @@ class UserProfileController extends Controller
     public function edit()
     {
         $user = auth()->user();
+        $user->load(['supporterPositions', 'supporterInterestCategories']);
 
         // সব active positions + ইউজারের বর্তমান positions
         $positions = SupporterPosition::where('is_active', 1)
@@ -131,6 +133,14 @@ class UserProfileController extends Controller
             ->get(['id', 'name']);
 
         $userPositions = $user->supporterPositions->pluck('id')->toArray();
+
+        $supporterInterests = PrimaryActionCategory::query()
+            ->where('is_active', true)
+            ->orderBy('sort_order')
+            ->orderBy('name')
+            ->get(['id', 'name']);
+
+        $userSupporterInterestIds = $user->supporterInterestCategories->pluck('id')->toArray();
 
         return Inertia::render('frontend/user-profile/edit', [
             'user' => [
@@ -142,11 +152,13 @@ class UserProfileController extends Controller
                 'dob' => $user->dob ? Carbon::parse($user->dob)->format('m/d') : null,
                 'image' => $user->image ? Storage::url($user->image) : null,
                 'positions' => $userPositions, // current selected
+                'supporter_interests' => $userSupporterInterestIds,
                 'city' => $user->city,
                 'state' => $user->state,
                 'zipcode' => $user->zipcode,
             ],
             'availablePositions' => $positions,
+            'availableSupporterInterests' => $supporterInterests,
         ]);
     }
 
@@ -177,6 +189,12 @@ class UserProfileController extends Controller
             'image' => ['nullable', 'image', 'mimes:jpeg,png,jpg,gif', 'max:2048'],
             'positions' => ['sometimes', 'array'],
             'positions.*' => ['exists:supporter_positions,id'],
+            'supporter_interests' => ['sometimes', 'array'],
+            'supporter_interests.*' => [
+                'integer',
+                Rule::exists('primary_action_categories', 'id')->where(fn ($q) => $q->where('is_active', true)),
+            ],
+            '_supporter_interests_touched' => ['sometimes', 'boolean'],
             'timezone' => ['nullable', 'string', 'max:255'],
             'city' => [Rule::requiredIf($isSupporter), 'nullable', 'string', 'max:255'],
             'state' => [Rule::requiredIf($isSupporter), 'nullable', 'string', 'max:2'],
@@ -258,6 +276,15 @@ class UserProfileController extends Controller
             $user->supporterPositions()->sync($validated['positions']);
         } else {
             $user->supporterPositions()->detach();
+        }
+
+        // Supporters Interest (primary action categories — same list as org registration admin grid)
+        if ($request->boolean('_supporter_interests_touched') || array_key_exists('supporter_interests', $validated)) {
+            $ids = array_values(array_unique(array_filter(
+                array_map('intval', $validated['supporter_interests'] ?? []),
+                fn (int $id) => $id > 0
+            )));
+            $user->supporterInterestCategories()->sync($ids);
         }
 
         return back()->with('success', 'Profile updated successfully!');

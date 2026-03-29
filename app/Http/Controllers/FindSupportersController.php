@@ -2,14 +2,13 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\ChatTopic;
 use App\Models\Post;
 use App\Models\PostComment;
 use App\Models\PostReaction;
+use App\Models\PrimaryActionCategory;
 use App\Models\User;
 use App\Models\UserFavoriteOrganization;
 use App\Models\UserFollow;
-use App\Services\SeoService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -39,44 +38,60 @@ class FindSupportersController extends Controller
         $search = trim((string) $request->get('q', ''));
         if ($search !== '') {
             $query->where(function ($q) use ($search) {
-                $q->where('name', 'LIKE', '%' . $search . '%')
-                    ->orWhere('email', 'LIKE', '%' . $search . '%')
-                    ->orWhere('slug', 'LIKE', '%' . $search . '%')
-                    ->orWhere('city', 'LIKE', '%' . $search . '%')
-                    ->orWhere('state', 'LIKE', '%' . $search . '%');
+                $q->where('name', 'LIKE', '%'.$search.'%')
+                    ->orWhere('email', 'LIKE', '%'.$search.'%')
+                    ->orWhere('slug', 'LIKE', '%'.$search.'%')
+                    ->orWhere('city', 'LIKE', '%'.$search.'%')
+                    ->orWhere('state', 'LIKE', '%'.$search.'%');
             });
         }
 
-        // Same causes as me: users who share at least one interested topic with current user
+        // Pivot `primary_action_category_user` also has `id`; qualify category PK on joins.
+        $pacKey = (new PrimaryActionCategory)->getQualifiedKeyName();
+
+        // Same causes as me: overlap with current user's profile "Supporters Interest"
+        // (primary_action_categories — same list as organization primary action / org registration).
         $sameCauses = $request->boolean('same_causes');
         if ($sameCauses && $currentUser) {
-            $myTopicIds = $currentUser->interestedTopics()->pluck('chat_topics.id')->toArray();
-            if (!empty($myTopicIds)) {
-                $query->whereHas('interestedTopics', function ($q) use ($myTopicIds) {
-                    $q->whereIn('chat_topics.id', $myTopicIds);
+            $myCauseIds = $currentUser->supporterInterestCategories()->pluck($pacKey)->toArray();
+            if (! empty($myCauseIds)) {
+                $query->whereHas('supporterInterestCategories', function ($q) use ($myCauseIds, $pacKey) {
+                    $q->whereIn($pacKey, $myCauseIds);
                 });
             }
         }
 
-        // Filter by selected interests (topic ids)
-        $interestIds = $request->input('interests', []);
-        if (!is_array($interestIds)) {
-            $interestIds = array_filter(explode(',', (string) $interestIds));
+        // Filter by organization cause / supporter interest (primary_action_category ids).
+        // Accept `causes` (preferred); legacy `interests` kept for old bookmarks (same shape, new ids).
+        $causeIds = $request->input('causes', $request->input('interests', []));
+        if (! is_array($causeIds)) {
+            $causeIds = array_filter(explode(',', (string) $causeIds));
         }
-        $interestIds = array_map('intval', array_filter($interestIds));
-        if (!empty($interestIds)) {
-            $query->whereHas('interestedTopics', function ($q) use ($interestIds) {
-                $q->whereIn('chat_topics.id', $interestIds);
-            });
+        $causeIds = array_values(array_unique(array_filter(array_map('intval', $causeIds), fn (int $id) => $id > 0)));
+        if (! empty($causeIds)) {
+            $allowed = PrimaryActionCategory::query()
+                ->where('is_active', true)
+                ->whereIn('id', $causeIds)
+                ->pluck('id')
+                ->all();
+            if (! empty($allowed)) {
+                $query->whereHas('supporterInterestCategories', function ($q) use ($allowed, $pacKey) {
+                    $q->whereIn($pacKey, $allowed);
+                });
+            }
         }
+
+        $query->with(['supporterInterestCategories' => function ($q) {
+            $q->where('is_active', true)->orderBy('sort_order')->orderBy('name');
+        }]);
 
         // Location filter (city or state contains text)
         $location = trim((string) $request->get('location', ''));
         if ($location !== '') {
             $query->where(function ($q) use ($location) {
-                $q->where('city', 'LIKE', '%' . $location . '%')
-                    ->orWhere('state', 'LIKE', '%' . $location . '%')
-                    ->orWhere('zipcode', 'LIKE', '%' . $location . '%');
+                $q->where('city', 'LIKE', '%'.$location.'%')
+                    ->orWhere('state', 'LIKE', '%'.$location.'%')
+                    ->orWhere('zipcode', 'LIKE', '%'.$location.'%');
             });
         }
 
@@ -96,9 +111,12 @@ class FindSupportersController extends Controller
             $query->orderBy('users.name');
         }
 
+        $query->with(['supporterInterestCategories' => function ($q) {
+            $q->where('is_active', true)->orderBy('sort_order')->orderBy('name');
+        }]);
+
         $paginator = $query->paginate(12)->withQueryString();
 
-        $currentUserTopicIds = $currentUser ? $currentUser->interestedTopics()->pluck('chat_topics.id')->toArray() : [];
         $currentUserFavoriteOrgIds = $currentUser
             ? UserFavoriteOrganization::where('user_id', $currentUser->id)->pluck('organization_id')->toArray()
             : [];
@@ -111,9 +129,9 @@ class FindSupportersController extends Controller
                     ->exists();
             }
 
-            $topicNames = $user->interestedTopics->pluck('name')->toArray();
+            $causeNames = $user->supporterInterestCategories->pluck('name')->toArray();
             $sharedOrgsCount = 0;
-            if ($currentUser && !empty($currentUserFavoriteOrgIds)) {
+            if ($currentUser && ! empty($currentUserFavoriteOrgIds)) {
                 $sharedOrgsCount = UserFavoriteOrganization::where('user_id', $user->id)
                     ->whereIn('organization_id', $currentUserFavoriteOrgIds)
                     ->count();
@@ -122,7 +140,7 @@ class FindSupportersController extends Controller
             $postIds = Post::where('user_id', $user->id)->pluck('id')->toArray();
             $reactionsCount = 0;
             $commentsCount = 0;
-            if (!empty($postIds)) {
+            if (! empty($postIds)) {
                 $reactionsCount = PostReaction::whereIn('post_id', $postIds)->count();
                 $commentsCount = PostComment::whereIn('post_id', $postIds)->count();
             }
@@ -138,7 +156,7 @@ class FindSupportersController extends Controller
                 'image' => $user->image ? Storage::url($user->image) : null,
                 'is_following' => $isFollowing,
                 'location' => $locationDisplay,
-                'interests' => $topicNames,
+                'interests' => $causeNames,
                 'shared_organizations_count' => $sharedOrgsCount,
                 'reactions_count' => $reactionsCount,
                 'comments_count' => $commentsCount,
@@ -146,7 +164,12 @@ class FindSupportersController extends Controller
             ];
         });
 
-        $interestOptions = ChatTopic::active()->orderBy('name')->get(['id', 'name'])->map(fn ($t) => ['id' => $t->id, 'name' => $t->name]);
+        $interestOptions = PrimaryActionCategory::query()
+            ->where('is_active', true)
+            ->orderBy('sort_order')
+            ->orderBy('name')
+            ->get(['id', 'name'])
+            ->map(fn ($row) => ['id' => $row->id, 'name' => $row->name]);
 
         return Inertia::render('frontend/find-supporters', [
             'seo' => \App\Services\SeoService::forPage('find_supporters'),
@@ -154,7 +177,7 @@ class FindSupportersController extends Controller
             'searchQuery' => $search,
             'filters' => [
                 'same_causes' => $sameCauses,
-                'interests' => $interestIds,
+                'causes' => $causeIds,
                 'location' => $location,
                 'radius' => $request->get('radius', ''),
                 'sort' => $sort,

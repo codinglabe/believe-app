@@ -213,7 +213,7 @@ export function NavMain({ items = [] }: NavMainProps) {
                                         className="flex items-center gap-3 w-full rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200 hover:bg-sidebar-accent/80 hover:text-sidebar-accent-foreground data-[active=true]:bg-sidebar-accent data-[active=true]:text-sidebar-accent-foreground data-[active=true]:shadow-sm"
                                     >
                                         {item.icon && <item.icon className="h-4 w-4 shrink-0" />}
-                                        <span className="truncate flex-1" title={item.title}>{item.title}</span>
+                                        <span className="min-w-0 flex-1 whitespace-normal break-words text-left leading-snug" title={item.title}>{item.title}</span>
                                         <motion.div
                                             animate={{ rotate: isExpanded ? 90 : 0 }}
                                             transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
@@ -286,7 +286,7 @@ export function NavMain({ items = [] }: NavMainProps) {
                                                                     className="flex items-center gap-2.5 w-full rounded-md px-2.5 py-2 text-sm transition-all duration-200 hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground data-[active=true]:bg-sidebar-accent data-[active=true]:text-sidebar-accent-foreground data-[active=true]:font-medium"
                                                                 >
                                                                     {subItem.icon && <subItem.icon className="h-4 w-4 shrink-0" />}
-                                                                    <span className="truncate flex-1" title={subItem.title}>{subItem.title}</span>
+                                                                    <span className="min-w-0 flex-1 whitespace-normal break-words text-left leading-snug" title={subItem.title}>{subItem.title}</span>
                                                                     <motion.div
                                                                         animate={{ rotate: isSubExpanded ? 90 : 0 }}
                                                                         transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
@@ -337,7 +337,7 @@ export function NavMain({ items = [] }: NavMainProps) {
                                                                                                 className="flex items-center gap-2 w-full rounded-md px-2 py-1.5 text-xs transition-all duration-200 hover:bg-sidebar-accent/50"
                                                                                             >
                                                                                                 {subSubItem.icon && <subSubItem.icon className="h-3 w-3 shrink-0" />}
-                                                                                                <span className="truncate flex-1" title={subSubItem.title}>{subSubItem.title}</span>
+                                                                                                <span className="min-w-0 flex-1 whitespace-normal break-words text-left leading-snug" title={subSubItem.title}>{subSubItem.title}</span>
                                                                                                 <motion.div
                                                                                                     animate={{ rotate: expandedGroups.has(subSubItem.title) ? 90 : 0 }}
                                                                                                     transition={{ duration: 0.3 }}
@@ -368,7 +368,7 @@ export function NavMain({ items = [] }: NavMainProps) {
                                                                                                                 >
                                                                                                                     <Link href={ssItem.href} prefetch className="flex items-center gap-2 w-full" title={ssItem.title}>
                                                                                                                         {ssItem.icon && <ssItem.icon className="h-3 w-3 shrink-0" />}
-                                                                                                                        <span className="truncate flex-1" title={ssItem.title}>{ssItem.title}</span>
+                                                                                                                        <span className="min-w-0 flex-1 whitespace-normal break-words text-left leading-snug" title={ssItem.title}>{ssItem.title}</span>
                                                                                                                     </Link>
                                                                                                                 </SidebarMenuButton>
                                                                                                             </SidebarMenuItem>
@@ -410,7 +410,7 @@ export function NavMain({ items = [] }: NavMainProps) {
                                                                                         >
                                                                                             <Link href={subSubItem.href} prefetch className="flex items-center gap-2 w-full" title={subSubItem.title}>
                                                                                                 {subSubItem.icon && <subSubItem.icon className="h-3 w-3 shrink-0" />}
-                                                                                                <span className="truncate flex-1" title={subSubItem.title}>{subSubItem.title}</span>
+                                                                                                <span className="min-w-0 flex-1 whitespace-normal break-words text-left leading-snug" title={subSubItem.title}>{subSubItem.title}</span>
                                                                                             </Link>
                                                                                         </SidebarMenuButton>
                                                                                     </SidebarMenuItem>
@@ -455,7 +455,7 @@ export function NavMain({ items = [] }: NavMainProps) {
                                                     >
                                                                 <Link href={subItem.href} prefetch className="flex items-center gap-2.5 w-full" title={subItem.title}>
                                                                     {subItem.icon && <subItem.icon className="h-4 w-4 shrink-0" />}
-                                                                    <span className="truncate flex-1" title={subItem.title}>{subItem.title}</span>
+                                                                    <span className="min-w-0 flex-1 whitespace-normal break-words text-left leading-snug" title={subItem.title}>{subItem.title}</span>
                                                         </Link>
                                                     </SidebarMenuButton>
                                                 </SidebarMenuItem>
@@ -483,7 +483,7 @@ export function NavMain({ items = [] }: NavMainProps) {
                                 >
                                     <Link href={item.href} prefetch className="flex items-center gap-3 w-full" title={item.title}>
                                         {item.icon && <item.icon className="h-4 w-4 shrink-0" />}
-                                        <span className="truncate flex-1" title={item.title}>{item.title}</span>
+                                        <span className="min-w-0 flex-1 whitespace-normal break-words text-left leading-snug" title={item.title}>{item.title}</span>
                                     </Link>
                                 </SidebarMenuButton>
                             </SidebarMenuItem>

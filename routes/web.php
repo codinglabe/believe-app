@@ -1167,15 +1167,17 @@ Route::get('/products/{id}', [ProductController::class, 'show'])->name('products
         // Route::post('/printify/products/sync', [ProductController::class, 'syncFromPrintify'])->name('printify.products.sync');
     });
 
-    /* Category Routes */
-    Route::resource('categories', CategoryController::class)->except(['show'])->middleware([
-        'index' => 'permission:category.read',
-        'create' => 'permission:category.create',
-        'store' => 'permission:category.create',
-        'edit' => 'permission:category.edit',
-        'update' => 'permission:category.update',
-        'destroy' => 'permission:category.delete'
-    ]);
+    /* Category Routes — global catalog; admin only (not organization dashboard) */
+    Route::middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected', 'role:admin'])->group(function () {
+        Route::resource('categories', CategoryController::class)->except(['show'])->middleware([
+            'index' => 'permission:category.read',
+            'create' => 'permission:category.create',
+            'store' => 'permission:category.create',
+            'edit' => 'permission:category.edit',
+            'update' => 'permission:category.update',
+            'destroy' => 'permission:category.delete',
+        ]);
+    });
 
     /* Raffle Routes */
     Route::resource('raffles', RaffleController::class)->middleware([
