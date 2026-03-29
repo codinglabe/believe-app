@@ -6,32 +6,43 @@ import AppLayout from "@/layouts/app-layout"
 import { Card, CardContent } from "@/components/frontend/ui/card"
 import { User, Lock, Shield, CreditCard, Globe, Webhook, Settings, ShoppingBag, FileText, MapPin } from "lucide-react"
 import type { PropsWithChildren } from "react"
-const breadcrumbs: BreadcrumbItem[] = [
-  {
-    title: 'Settings',
-    href: '/settings/profile',
-  },
-];
 
 interface SettingsLayoutProps extends PropsWithChildren {
   activeTab?: string
+  /** Care Alliance hub: use Alliance Settings copy and breadcrumbs */
+  settingsBranding?: "default" | "alliance"
 }
 
-export default function SettingsLayout({ children, activeTab = "profile" }: SettingsLayoutProps) {
+export default function SettingsLayout({
+  children,
+  activeTab = "profile",
+  settingsBranding = "default",
+}: SettingsLayoutProps) {
   const { auth } = usePage<SharedData>().props
+  const isAllianceBranding = settingsBranding === "alliance"
+  const pageTitle = isAllianceBranding ? "Alliance Settings" : "Settings"
+  const pageSubtitle = isAllianceBranding
+    ? "Manage your Care Alliance and organization profile information."
+    : "Manage your account settings and preferences"
+  const profileNavLabel = isAllianceBranding ? "Alliance Settings" : "Profile Information"
+
+  const breadcrumbs: BreadcrumbItem[] = [
+    {
+      title: pageTitle,
+      href: "/settings/profile",
+    },
+  ]
 
   return (
     <AppLayout breadcrumbs={breadcrumbs}>
-      <Head title="Settings" />
+      <Head title={pageTitle} />
 
       <div className="space-y-6 p-4 sm:p-6">
         {/* Page Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Settings</h1>
-            <p className="text-gray-600 dark:text-gray-400 mt-1.5">
-              Manage your account settings and preferences
-            </p>
+            <h1 className="text-3xl font-bold text-gray-900 dark:text-white">{pageTitle}</h1>
+            <p className="text-gray-600 dark:text-gray-400 mt-1.5">{pageSubtitle}</p>
           </div>
         </div>
 
@@ -57,7 +68,7 @@ export default function SettingsLayout({ children, activeTab = "profile" }: Sett
                       }`}
                     >
                       <User className="h-4 w-4 flex-shrink-0" />
-                      <span className="truncate">Profile Information</span>
+                      <span className="truncate">{profileNavLabel}</span>
                     </Link>
                     <Link
                       href={route("password.edit")}
@@ -71,61 +82,55 @@ export default function SettingsLayout({ children, activeTab = "profile" }: Sett
                       <span className="truncate">Password & Security</span>
                     </Link>
 
-                    {(auth.user.role === "admin" || auth.user.role !== "organization") && (
+                    {auth.user.role === "admin" && (
                       <>
                         <div className="px-3 py-2 mt-4 mb-2">
                           <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Administration</h3>
                         </div>
-                        {auth.user.role === "admin" && (
-                          <>
-                            <Link
-                              href="/settings/payment-methods"
-                              className={`flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-all ${
-                                activeTab === "payment-methods"
-                                  ? "bg-primary/10 text-primary dark:bg-primary/20 dark:text-primary"
-                                  : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
-                              }`}
-                            >
-                              <CreditCard className="h-4 w-4 flex-shrink-0" />
-                              <span className="truncate">Payment Methods</span>
-                            </Link>
-                            <Link
-                              href="/settings/bridge"
-                              className={`flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-all ${
-                                activeTab === "bridge"
-                                  ? "bg-primary/10 text-primary dark:bg-primary/20 dark:text-primary"
-                                  : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
-                              }`}
-                            >
-                              <Webhook className="h-4 w-4 flex-shrink-0" />
-                              <span className="truncate">Bridge Wallet</span>
-                            </Link>
-                            <Link
-                              href="/settings/application"
-                              className={`flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-all ${
-                                activeTab === "application"
-                                  ? "bg-primary/10 text-primary dark:bg-primary/20 dark:text-primary"
-                                  : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
-                              }`}
-                            >
-                              <Settings className="h-4 w-4 flex-shrink-0" />
-                              <span className="truncate">Application Settings</span>
-                            </Link>
-                          </>
-                        )}
-                        {auth.user.role !== "organization" && (
-                          <Link
-                            href={route("admin.webhooks.index")}
-                            className={`flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-all ${
-                              activeTab === "webhook-manage"
-                                ? "bg-primary/10 text-primary dark:bg-primary/20 dark:text-primary"
-                                : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
-                            }`}
-                          >
-                            <Globe className="h-4 w-4 flex-shrink-0" />
-                            <span className="truncate">Webhook Management</span>
-                          </Link>
-                        )}
+                        <Link
+                          href="/settings/payment-methods"
+                          className={`flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-all ${
+                            activeTab === "payment-methods"
+                              ? "bg-primary/10 text-primary dark:bg-primary/20 dark:text-primary"
+                              : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
+                          }`}
+                        >
+                          <CreditCard className="h-4 w-4 flex-shrink-0" />
+                          <span className="truncate">Payment Methods</span>
+                        </Link>
+                        <Link
+                          href="/settings/bridge"
+                          className={`flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-all ${
+                            activeTab === "bridge"
+                              ? "bg-primary/10 text-primary dark:bg-primary/20 dark:text-primary"
+                              : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
+                          }`}
+                        >
+                          <Webhook className="h-4 w-4 flex-shrink-0" />
+                          <span className="truncate">Bridge Wallet</span>
+                        </Link>
+                        <Link
+                          href="/settings/application"
+                          className={`flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-all ${
+                            activeTab === "application"
+                              ? "bg-primary/10 text-primary dark:bg-primary/20 dark:text-primary"
+                              : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
+                          }`}
+                        >
+                          <Settings className="h-4 w-4 flex-shrink-0" />
+                          <span className="truncate">Application Settings</span>
+                        </Link>
+                        <Link
+                          href={route("admin.webhooks.index")}
+                          className={`flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-all ${
+                            activeTab === "webhook-manage"
+                              ? "bg-primary/10 text-primary dark:bg-primary/20 dark:text-primary"
+                              : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
+                          }`}
+                        >
+                          <Globe className="h-4 w-4 flex-shrink-0" />
+                          <span className="truncate">Webhook Management</span>
+                        </Link>
                       </>
                     )}
 
@@ -202,7 +207,7 @@ export default function SettingsLayout({ children, activeTab = "profile" }: Sett
                       }`}
                     >
                       <User className="h-4 w-4 flex-shrink-0" />
-                      <span className="truncate">Profile Information</span>
+                      <span className="truncate">{profileNavLabel}</span>
                     </Link>
                     <Link
                       href={route("password.edit")}
@@ -216,61 +221,55 @@ export default function SettingsLayout({ children, activeTab = "profile" }: Sett
                       <span className="truncate">Password & Security</span>
                     </Link>
 
-                    {(auth.user.role === "admin" || auth.user.role !== "organization") && (
+                    {auth.user.role === "admin" && (
                       <>
                         <div className="px-3 py-2 mt-4 mb-2">
                           <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Administration</h3>
                         </div>
-                        {auth.user.role === "admin" && (
-                          <>
-                            <Link
-                              href="/settings/payment-methods"
-                              className={`flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-all ${
-                                activeTab === "payment-methods"
-                                  ? "bg-primary/10 text-primary dark:bg-primary/20 dark:text-primary"
-                                  : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
-                              }`}
-                            >
-                              <CreditCard className="h-4 w-4 flex-shrink-0" />
-                              <span className="truncate">Payment Methods</span>
-                            </Link>
-                            <Link
-                              href="/settings/bridge"
-                              className={`flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-all ${
-                                activeTab === "bridge"
-                                  ? "bg-primary/10 text-primary dark:bg-primary/20 dark:text-primary"
-                                  : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
-                              }`}
-                            >
-                              <Webhook className="h-4 w-4 flex-shrink-0" />
-                              <span className="truncate">Bridge Wallet</span>
-                            </Link>
-                            <Link
-                              href="/settings/application"
-                              className={`flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-all ${
-                                activeTab === "application"
-                                  ? "bg-primary/10 text-primary dark:bg-primary/20 dark:text-primary"
-                                  : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
-                              }`}
-                            >
-                              <Settings className="h-4 w-4 flex-shrink-0" />
-                              <span className="truncate">Application Settings</span>
-                            </Link>
-                          </>
-                        )}
-                        {auth.user.role !== "organization" && (
-                          <Link
-                            href={route("admin.webhooks.index")}
-                            className={`flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-all ${
-                              activeTab === "webhook-manage"
-                                ? "bg-primary/10 text-primary dark:bg-primary/20 dark:text-primary"
-                                : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
-                            }`}
-                          >
-                            <Globe className="h-4 w-4 flex-shrink-0" />
-                            <span className="truncate">Webhook Management</span>
-                          </Link>
-                        )}
+                        <Link
+                          href="/settings/payment-methods"
+                          className={`flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-all ${
+                            activeTab === "payment-methods"
+                              ? "bg-primary/10 text-primary dark:bg-primary/20 dark:text-primary"
+                              : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
+                          }`}
+                        >
+                          <CreditCard className="h-4 w-4 flex-shrink-0" />
+                          <span className="truncate">Payment Methods</span>
+                        </Link>
+                        <Link
+                          href="/settings/bridge"
+                          className={`flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-all ${
+                            activeTab === "bridge"
+                              ? "bg-primary/10 text-primary dark:bg-primary/20 dark:text-primary"
+                              : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
+                          }`}
+                        >
+                          <Webhook className="h-4 w-4 flex-shrink-0" />
+                          <span className="truncate">Bridge Wallet</span>
+                        </Link>
+                        <Link
+                          href="/settings/application"
+                          className={`flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-all ${
+                            activeTab === "application"
+                              ? "bg-primary/10 text-primary dark:bg-primary/20 dark:text-primary"
+                              : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
+                          }`}
+                        >
+                          <Settings className="h-4 w-4 flex-shrink-0" />
+                          <span className="truncate">Application Settings</span>
+                        </Link>
+                        <Link
+                          href={route("admin.webhooks.index")}
+                          className={`flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-all ${
+                            activeTab === "webhook-manage"
+                              ? "bg-primary/10 text-primary dark:bg-primary/20 dark:text-primary"
+                              : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
+                          }`}
+                        >
+                          <Globe className="h-4 w-4 flex-shrink-0" />
+                          <span className="truncate">Webhook Management</span>
+                        </Link>
                       </>
                     )}
 

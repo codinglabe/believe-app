@@ -38,6 +38,7 @@ import {
   AlertCircle,
   TrendingUp,
   ExternalLink,
+  UsersRound,
 } from "lucide-react"
 import { Button } from "@/components/frontend/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/frontend/ui/avatar"
@@ -70,6 +71,26 @@ interface OrganizationPageProps {
   believePointsSpent?: number
   believePointsBalance?: number
   postFilter?: string
+  partnerOrganizationsCount?: number
+  careAlliancePublic?: { slug: string; id?: number }
+  careAllianceCampaigns?: Array<{ id: number; name: string; description?: string | null }>
+  careAllianceProfile?: {
+    focus_areas: Array<{ id: number; name: string }>
+    website?: string | null
+    hub_lead_name?: string
+    ein?: string | null
+  }
+  allianceMembers?: Array<{
+    id: number
+    name: string
+    public_slug?: string | null
+    image?: string | null
+    city?: string | null
+    state?: string | null
+    joined_at?: string | null
+  }>
+  connectedCareAlliances?: Array<{ id: number; name: string; slug: string }>
+  seo?: { title?: string; description?: string }
 }
 
 export default function OrganizationPage({
@@ -92,6 +113,13 @@ export default function OrganizationPage({
   believePointsSpent = 0,
   believePointsBalance = 0,
   postFilter = 'organization',
+  partnerOrganizationsCount = 0,
+  careAlliancePublic,
+  careAllianceCampaigns = [],
+  careAllianceProfile,
+  allianceMembers = [],
+  connectedCareAlliances = [],
+  seo: seoProp,
 }: OrganizationPageProps) {
   const { url } = usePage()
   const page = usePage()
@@ -116,8 +144,45 @@ export default function OrganizationPage({
                     currentPath.includes('/events') ? 'events' :
                     currentPath.includes('/about') ? 'about' :
                     currentPath.includes('/contact') ? 'contact' :
+                    currentPath.includes('/members') ? 'members' :
                     currentPath.includes('/supporters') ? 'supporters' : null)
   }, [currentPage, currentPath])
+
+  /** Alliance public UI: backend flag and/or URL (props alone can be missing after transforms). */
+  const isCareAlliancePublic = Boolean(
+    organization?.is_care_alliance_public ??
+      (organization as { isCareAlliancePublic?: boolean })?.isCareAlliancePublic ??
+      careAlliancePublic?.slug ??
+      String(currentPath || url || "").includes("/alliances/")
+  )
+  /** Slug for /alliances/{slug} — props, then browser path (handles full URLs and Inertia `url`). */
+  const alliancePublicSlug = useMemo(() => {
+    const fromProps = careAlliancePublic?.slug ?? organization?.registered_organization?.user?.slug
+    if (fromProps) {
+      return fromProps
+    }
+    const raw = String(currentPath || url || "").split("?")[0].split("#")[0]
+    let pathOnly = raw
+    if (raw.includes("://")) {
+      try {
+        pathOnly = new URL(raw).pathname
+      } catch {
+        pathOnly = raw
+      }
+    }
+    const m = pathOnly.match(/\/alliances\/([^/]+)/)
+    return m ? decodeURIComponent(m[1]) : undefined
+  }, [careAlliancePublic?.slug, organization?.registered_organization?.user?.slug, currentPath, url])
+
+  /**
+   * Normal org: hide on own profile. Care Alliance public: show Follow (toggle-favorite) whenever we can resolve
+   * the alliance slug — same POST as nonprofit profiles; supporters and organization accounts can favorite the hub.
+   */
+  const showOrgFollowButton =
+    (!organization.is_own_organization && !isCareAlliancePublic) ||
+    (isCareAlliancePublic && Boolean(alliancePublicSlug))
+
+  const allianceHubOwner = Boolean(isCareAlliancePublic && organization.is_own_organization)
 
   // Normalize events: backend sends paginator { data, total } or plain array
   const eventsList = useMemo(() => Array.isArray(events) ? events : (events?.data ?? []), [events])
@@ -135,7 +200,10 @@ export default function OrganizationPage({
     else if (pageType === 'events') tab = "Events"
     else if (pageType === 'about') tab = "About"
     else if (pageType === 'contact') tab = "Contact"
-    else if (pageType === 'supporters') tab = "Supporters"
+    else if (pageType === 'members') tab = "Members"
+    else if (pageType === 'supporters') {
+      tab = organization.is_care_alliance_public ? "Followers" : "Supporters"
+    }
 
     // Ensure the initial tab is valid for unregistered organizations
     if (!organization.is_registered && tab !== "About" && tab !== "Contact" && tab !== "Supporters") {
@@ -143,12 +211,12 @@ export default function OrganizationPage({
     }
 
     return tab
-  }, [pageType, organization.is_registered])
+  }, [pageType, organization.is_registered, organization.is_care_alliance_public])
 
   const [activeTab, setActiveTab] = useState(initialTab)
   const [postsState, setPostsState] = useState<any[]>(posts)
   const [showReactionPicker, setShowReactionPicker] = useState<number | null>(null)
-  const [commentInputs, setCommentInputs] = useState<Record<number, string>>({})
+  const [commentInputs, setCommentInputs] = useState<Record<number | string, string>>({})
   const [showComments, setShowComments] = useState<Record<number, boolean>>({})
   const [isPageLoading, setIsPageLoading] = useState(true)
   const [isGeneratingAbout, setIsGeneratingAbout] = useState(false)
@@ -183,27 +251,55 @@ export default function OrganizationPage({
     const slug = organization.registered_organization?.user?.slug || organization.id
 
     let routePath = ''
-    switch(tabName) {
-      case "Products":
-        routePath = route('organizations.products', slug)
-        break
-      case "Opportunities":
-        routePath = route('organizations.jobs', slug)
-        break
-      case "Events":
-        routePath = route('organizations.events', slug)
-        break
-      case "About":
-        routePath = route('organizations.about', slug)
-        break
-      case "Contact":
-        routePath = route('organizations.contact', slug)
-        break
-      case "Supporters":
-        routePath = route('organizations.supporters', slug)
-        break
-      default:
-        routePath = route('organizations.show', slug)
+    if (isCareAlliancePublic && alliancePublicSlug) {
+      switch (tabName) {
+        case "Products":
+          routePath = route('alliances.products', alliancePublicSlug)
+          break
+        case "Opportunities":
+          routePath = route('alliances.jobs', alliancePublicSlug)
+          break
+        case "Events":
+          routePath = route('alliances.events', alliancePublicSlug)
+          break
+        case "About":
+          routePath = route('alliances.about', alliancePublicSlug)
+          break
+        case "Contact":
+          routePath = route('alliances.contact', alliancePublicSlug)
+          break
+        case "Members":
+          routePath = route('alliances.members', alliancePublicSlug)
+          break
+        case "Followers":
+          routePath = route('alliances.supporters', alliancePublicSlug)
+          break
+        default:
+          routePath = route('alliances.show', alliancePublicSlug)
+      }
+    } else {
+      switch (tabName) {
+        case "Products":
+          routePath = route('organizations.products', slug)
+          break
+        case "Opportunities":
+          routePath = route('organizations.jobs', slug)
+          break
+        case "Events":
+          routePath = route('organizations.events', slug)
+          break
+        case "About":
+          routePath = route('organizations.about', slug)
+          break
+        case "Contact":
+          routePath = route('organizations.contact', slug)
+          break
+        case "Supporters":
+          routePath = route('organizations.supporters', slug)
+          break
+        default:
+          routePath = route('organizations.show', slug)
+      }
     }
 
     router.visit(routePath, {
@@ -238,7 +334,7 @@ export default function OrganizationPage({
       orgDescription.trim() === '' ||
       orgDescription === 'This organization is listed in our database but has not yet registered for additional features.'
 
-    if (alreadyTriggered || !needsDescription || activeTab !== 'About') return
+    if (alreadyTriggered || !needsDescription || activeTab !== 'About' || isCareAlliancePublic) return
 
     hasAutoGeneratedRef.current = true
     if (typeof sessionStorage !== 'undefined') sessionStorage.setItem(storageKey, '1')
@@ -263,10 +359,13 @@ export default function OrganizationPage({
         setIsGeneratingAbout(false)
         setHasAutoGenerated(false)
       })
-  }, [activeTab, orgId, orgDescription])
+  }, [activeTab, orgId, orgDescription, isCareAlliancePublic])
 
   const handleDonateNow = () => {
     if (!organization.is_registered) {
+      return
+    }
+    if (isCareAlliancePublic) {
       return
     }
 
@@ -470,7 +569,10 @@ export default function OrganizationPage({
     const post = postsState.find(p => p.id === postId)
     if (!post) return
 
-    const shareUrl = `${window.location.origin}/organizations/${organization.registered_organization?.user?.slug || organization.id}?post=${postId}`
+    const shareSlug = organization.registered_organization?.user?.slug || organization.id
+    const shareUrl = isCareAlliancePublic && alliancePublicSlug
+      ? `${window.location.origin}/alliances/${alliancePublicSlug}?post=${postId}`
+      : `${window.location.origin}/organizations/${shareSlug}?post=${postId}`
     const shareText = post.content || post.title || 'Check out this post'
 
     if (navigator.share) {
@@ -524,8 +626,20 @@ export default function OrganizationPage({
     ? locationParts.join(', ') + (organization.zipcode ? ` ${organization.zipcode}` : '')
     : 'Location not specified'
 
+  const allianceSidebarBlurb = useMemo(() => {
+    if (!organization.is_care_alliance_public || !organization.description) {
+      return ''
+    }
+    const raw = String(organization.description)
+    const plain = raw.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()
+    if (!plain || plain === 'This organization is listed in our database but has not yet registered for additional features.') {
+      return ''
+    }
+    return plain.length > 260 ? `${plain.slice(0, 257)}…` : plain
+  }, [organization.is_care_alliance_public, organization.description])
+
   // Profile tabs - only show About and Contact for unregistered organizations
-  const allTabs = [
+  const registeredOrgTabs = [
     { name: "Community Feed", count: postsCount || 0 },
     { name: "About", count: null },
     { name: "Events", count: eventsCount },
@@ -535,9 +649,20 @@ export default function OrganizationPage({
     { name: "Contact", count: null },
   ]
 
+  const careAllianceTabs = [
+    { name: "Community Feed", count: postsCount || 0 },
+    { name: "Members", count: partnerOrganizationsCount || 0 },
+    { name: "Followers", count: supportersCount || 0 },
+    { name: "About", count: null },
+    { name: "Events", count: eventsCount },
+    { name: "Opportunities", count: jobsCount || 0 },
+    { name: "Products", count: products?.length || 0 },
+    { name: "Contact", count: null },
+  ]
+
   const profileTabs = organization.is_registered
-    ? allTabs
-    : allTabs.filter(tab => tab.name === "About" || tab.name === "Contact" || tab.name === "Supporters")
+    ? (organization.is_care_alliance_public ? careAllianceTabs : registeredOrgTabs)
+    : registeredOrgTabs.filter(tab => tab.name === "About" || tab.name === "Contact" || tab.name === "Supporters")
 
   // Use only dynamic data from backend - no static defaults - memoize to prevent infinite loops
   const peopleToShow = useMemo(() => {
@@ -606,8 +731,8 @@ export default function OrganizationPage({
   return (
     <FrontendLayout>
       <PageHead
-        title={orgName}
-        description={metaDescription ? String(metaDescription).slice(0, 160) : undefined}
+        title={seoProp?.title ?? orgName}
+        description={seoProp?.description ?? (metaDescription ? String(metaDescription).slice(0, 160) : undefined)}
       />
         <div className="min-h-screen bg-gray-50 dark:bg-[#0a0f1a] text-gray-900 dark:text-white">
 
@@ -636,7 +761,7 @@ export default function OrganizationPage({
                         {organization.name.charAt(0).toUpperCase()}
                       </AvatarFallback>
                     </Avatar>
-                    {organization.is_registered && (
+                    {organization.is_registered && !organization.is_care_alliance_public && (
                       <div className="absolute -bottom-1 -right-1 w-7 h-7 bg-green-500 rounded-full border-3 border-[#0a0f1a] flex items-center justify-center">
                         <CheckCircle className="w-5 h-5 text-white" />
                       </div>
@@ -652,19 +777,23 @@ export default function OrganizationPage({
                       </div>
                     <p className="text-gray-600 dark:text-gray-400 text-sm mb-1">{organizationHandle}</p>
                     <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2">
-                      {organization.is_registered && (
-                        <>
-                          <Badge className="bg-green-600 hover:bg-green-600 text-white text-xs px-2 py-0.5 flex items-center gap-1">
-                            <CheckCircle className="w-3 h-3" />
-                            Registered
-                          </Badge>
-                          {organization.registered_organization?.user?.email && (
-                            <Badge className="bg-green-600 hover:bg-green-600 text-white text-xs px-2 py-0.5 flex items-center gap-1">
-                              <ShieldCheck className="w-3 h-3" />
-                              Verified
-                            </Badge>
-                          )}
-                        </>
+                      {organization.is_care_alliance_public && (
+                        <Badge className="bg-indigo-600 hover:bg-indigo-600 text-white text-xs px-2 py-0.5 flex items-center gap-1">
+                          <Building2 className="w-3 h-3" />
+                          Care Alliance
+                        </Badge>
+                      )}
+                      {organization.is_registered && !organization.is_care_alliance_public && (
+                        <Badge className="bg-green-600 hover:bg-green-600 text-white text-xs px-2 py-0.5 flex items-center gap-1">
+                          <CheckCircle className="w-3 h-3" />
+                          Registered
+                        </Badge>
+                      )}
+                      {organization.is_registered && organization.registered_organization?.user?.email && (
+                        <Badge className="bg-green-600 hover:bg-green-600 text-white text-xs px-2 py-0.5 flex items-center gap-1">
+                          <ShieldCheck className="w-3 h-3" />
+                          Verified
+                        </Badge>
                       )}
                       {!organization.is_registered && (
                         <Badge className="bg-orange-500 hover:bg-orange-600 text-white text-xs px-2 py-0.5 flex items-center gap-1">
@@ -678,17 +807,19 @@ export default function OrganizationPage({
 
                 {/* Action Buttons Row - responsive wrap */}
                 <div className="flex flex-wrap items-center justify-center sm:justify-end gap-2 sm:gap-3 w-full">
-                {/* Follow button - hide when viewing own organization */}
-                {!organization.is_own_organization && (
+                {/* Follow — same POST as nonprofits: organizations.toggle-favorite (ExcelData id or hub organizations.id). */}
+                {showOrgFollowButton && (
                 <OrgFollowButton
-                  key={`follow-${organization.id}-${isFavorite}-${organization.is_favorited}`}
+                  key={`follow-${organization.is_care_alliance_public ? alliancePublicSlug : organization.id}`}
                   organization={organization}
                   auth={auth}
+                  allianceHubOwner={allianceHubOwner}
+                  careAlliancePublicId={careAlliancePublic?.id ?? null}
                   initialIsFollowing={isFavorite}
                   initialNotifications={organization.notifications_enabled || false}
                 />
                 )}
-                {organization.is_registered && !organization.is_own_organization && (
+                {organization.is_registered && !organization.is_own_organization && !organization.is_care_alliance_public && (
                     <>
                     <Button
                         size="sm"
@@ -750,7 +881,9 @@ export default function OrganizationPage({
               <div className="flex flex-wrap items-center justify-center sm:justify-start gap-3 sm:gap-4 md:gap-6 py-3 px-3 sm:px-0 text-sm text-gray-600 dark:text-gray-400 border-t border-gray-200 dark:border-white/10">
                 <div className="flex items-center gap-1.5">
                   <Users className="w-4 h-4" />
-                  <span className="whitespace-nowrap text-gray-900 dark:text-white">Member since {memberSince}</span>
+                  <span className="whitespace-nowrap text-gray-900 dark:text-white">
+                    {organization.is_care_alliance_public ? `Alliance since ${memberSince}` : `Member since ${memberSince}`}
+                  </span>
                 </div>
                 <div className="flex items-center gap-1.5">
                   <MapPin className="w-4 h-4" />
@@ -767,11 +900,17 @@ export default function OrganizationPage({
                 </div>
                 <div className="flex items-center gap-1.5">
                   <Users className="w-4 h-4" />
-                  <span className="text-gray-900 dark:text-white">{supportersCount || 0} supporters</span>
+                  <span className="text-gray-900 dark:text-white">
+                    {organization.is_care_alliance_public
+                      ? `${partnerOrganizationsCount || 0} partner orgs`
+                      : `${supportersCount || 0} supporters`}
+                  </span>
                 </div>
                 <div className="flex items-center gap-1.5">
                   <Calendar className="w-4 h-4" />
-                  <span className="text-gray-900 dark:text-white">Organized</span>
+                  <span className="text-gray-900 dark:text-white">
+                    {organization.is_care_alliance_public ? 'Nonprofit network' : 'Organized'}
+                  </span>
                 </div>
               </div>
           </div>
@@ -799,6 +938,8 @@ export default function OrganizationPage({
                         {tab.name === "Events" && <Calendar className="w-5 h-5" />}
                         {tab.name === "Opportunities" && <Briefcase className="w-5 h-5" />}
                         {tab.name === "Supporters" && <UserPlus className="w-5 h-5" />}
+                        {tab.name === "Followers" && <UserPlus className="w-5 h-5" />}
+                        {tab.name === "Members" && <UsersRound className="w-5 h-5" />}
                         {tab.name === "Products" && <ShoppingBag className="w-5 h-5" />}
                         {tab.name === "Contact" && <Phone className="w-5 h-5" />}
                         <span className="text-sm">{tab.name}</span>
@@ -810,7 +951,42 @@ export default function OrganizationPage({
                   </nav>
                 </div>
 
-                  {organization.is_registered && (
+                  {organization.is_registered && organization.is_care_alliance_public && (
+                  <div className="rounded-xl border border-indigo-500/20 dark:border-indigo-400/15 bg-white dark:bg-[#111827] shadow-sm animate-in fade-in slide-in-from-left-4 duration-500 delay-100 p-4">
+                    <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-3">Activity snapshot</p>
+                    <div className="flex items-center justify-between">
+                      <div className="text-center flex-1">
+                        <p className="text-lg font-bold text-gray-900 dark:text-white tabular-nums">
+                          {believePointsBalance >= 1000
+                            ? `${(believePointsBalance / 1000).toFixed(1)}k`
+                            : believePointsBalance.toLocaleString()}
+                        </p>
+                        <p className="text-[10px] text-gray-500 dark:text-gray-500">Network points</p>
+                        <div className="mt-1 space-y-0.5">
+                          <p className="text-[9px] text-green-400">+{believePointsEarned.toLocaleString()} earned</p>
+                          {believePointsSpent > 0 && (
+                            <p className="text-[9px] text-red-400">-{believePointsSpent.toLocaleString()} spent</p>
+                          )}
+                        </div>
+                      </div>
+                      <div className="text-center flex-1 border-x border-gray-200 dark:border-white/10 px-1">
+                        <p className="text-lg font-bold text-gray-900 dark:text-white tabular-nums">{partnerOrganizationsCount || 0}</p>
+                        <p className="text-[10px] text-gray-500 dark:text-gray-500">Member orgs</p>
+                      </div>
+                      <div className="text-center flex-1">
+                        <p className="text-lg font-bold text-gray-900 dark:text-white tabular-nums">{postsCount || 0}</p>
+                        <p className="text-[10px] text-gray-500 dark:text-gray-500">Feed posts</p>
+                      </div>
+                    </div>
+                    {careAllianceProfile?.ein && (
+                      <p className="text-[10px] text-gray-500 dark:text-gray-500 mt-3 pt-3 border-t border-gray-200 dark:border-white/10 text-center">
+                        EIN {careAllianceProfile.ein}
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                  {organization.is_registered && !organization.is_care_alliance_public && (
                   <div className="bg-white dark:bg-[#111827] rounded-xl p-4 animate-in fade-in slide-in-from-left-4 duration-500 delay-100">
                     <p className="text-xs text-gray-500 dark:text-gray-500 mb-3">Organization Info</p>
                     <div className="flex items-center gap-3 mb-4">
@@ -862,7 +1038,35 @@ export default function OrganizationPage({
                   </div>
                 )}
 
-                {organization.mission && organization.mission !== 'Mission statement not available for unregistered organizations.' && (
+                {organization.is_registered &&
+                  !organization.is_care_alliance_public &&
+                  connectedCareAlliances.length > 0 && (
+                    <div className="bg-white dark:bg-[#111827] rounded-xl p-4 animate-in fade-in slide-in-from-left-4 duration-500 delay-150 border border-indigo-500/15 dark:border-indigo-400/10">
+                      <h3 className="font-semibold mb-1 text-gray-900 dark:text-white flex items-center gap-2">
+                        <UsersRound className="w-4 h-4 text-indigo-600 dark:text-indigo-400 shrink-0" />
+                        Care Alliances
+                      </h3>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
+                        This organization is connected to these Care Alliances.
+                      </p>
+                      <ul className="space-y-2">
+                        {connectedCareAlliances.map((a) => (
+                          <li key={a.id}>
+                            <Link
+                              href={route("alliances.show", a.slug)}
+                              className="flex items-center gap-2 text-sm text-indigo-600 dark:text-indigo-400 hover:underline font-medium"
+                            >
+                              <Building2 className="w-3.5 h-3.5 shrink-0 opacity-80" />
+                              <span className="break-words">{a.name}</span>
+                              <ExternalLink className="w-3 h-3 shrink-0 opacity-60 ml-auto" />
+                            </Link>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                {!organization.is_care_alliance_public && organization.mission && organization.mission !== 'Mission statement not available for unregistered organizations.' && (
                   <div className="bg-white dark:bg-[#111827] rounded-xl p-4 animate-in fade-in slide-in-from-left-4 duration-500 delay-200">
                     <h3 className="font-semibold mb-3 text-gray-900 dark:text-white">Mission</h3>
                     <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">{organization.mission}</p>
@@ -889,7 +1093,10 @@ export default function OrganizationPage({
                       <button
                         onClick={() => {
                           const slug = organization.registered_organization?.user?.slug || organization.id;
-                          router.get(route('organizations.show', slug), { filter: 'organization' }, {
+                          const feedUrl = isCareAlliancePublic && alliancePublicSlug
+                            ? route('alliances.show', alliancePublicSlug)
+                            : route('organizations.show', slug);
+                          router.get(feedUrl, { filter: 'organization' }, {
                             preserveState: true,
                             preserveScroll: true,
                             only: ['posts', 'postFilter'],
@@ -906,7 +1113,10 @@ export default function OrganizationPage({
                       <button
                         onClick={() => {
                           const slug = organization.registered_organization?.user?.slug || organization.id;
-                          router.get(route('organizations.show', slug), { filter: 'all' }, {
+                          const feedUrl = isCareAlliancePublic && alliancePublicSlug
+                            ? route('alliances.show', alliancePublicSlug)
+                            : route('organizations.show', slug);
+                          router.get(feedUrl, { filter: 'all' }, {
                             preserveState: true,
                             preserveScroll: true,
                             only: ['posts', 'postFilter'],
@@ -928,6 +1138,21 @@ export default function OrganizationPage({
                         const reactionsCount = postItem.reactions_count || postItem.likes_count || 0
                         const commentsCount = postItem.comments_count || 0
                         const postComments = postItem.comments || []
+                        const allianceFeed = Boolean(organization.is_care_alliance_public)
+                        const feedAuthorName = allianceFeed ? organization.name : (postItem.creator_name || organization.name)
+                        const feedAuthorHref = allianceFeed && alliancePublicSlug
+                          ? route('alliances.show', alliancePublicSlug)
+                          : postItem.creator_slug
+                            ? (postItem.creator_type === 'organization'
+                              ? route('organizations.show', postItem.creator_slug)
+                              : route('users.show', postItem.creator_slug))
+                            : null
+                        const feedAvatarSrc = allianceFeed
+                          ? orgImage
+                          : (postItem.creator_image || (postItem.creator_type === 'organization' ? orgImage : userImage))
+                        const feedSubline = allianceFeed
+                          ? organizationHandle
+                          : (postItem.creator_type === 'organization' ? organizationHandle : `@${postItem.creator_slug || postItem.user?.slug || ''}`)
                         // Use a unique key that combines post ID with creator info to ensure uniqueness
                         const creatorId = postItem.creator?.id || postItem.user?.id || 'unknown'
                         const uniqueKey = postId?.toString().startsWith('fb_')
@@ -944,33 +1169,34 @@ export default function OrganizationPage({
                               <div className="flex items-start justify-between mb-4">
                                 <div className="flex items-center gap-3">
                                   <Avatar className="w-12 h-12">
-                                    <AvatarImage src={postItem.creator_image || (postItem.creator_type === 'organization' ? orgImage : userImage)} />
+                                    <AvatarImage src={feedAvatarSrc} />
                                     <AvatarFallback className="bg-gradient-to-br from-teal-500 to-cyan-500 text-lg">
-                                      {(postItem.creator_name || organization.name).charAt(0).toUpperCase()}
+                                      {feedAuthorName.charAt(0).toUpperCase()}
                                     </AvatarFallback>
                                   </Avatar>
                                   <div>
                                     <div className="flex items-center gap-2">
-                                      {postItem.creator_slug ? (
+                                      {feedAuthorHref ? (
                                         <Link
-                                          href={postItem.creator_type === 'organization'
-                                            ? route('organizations.show', postItem.creator_slug)
-                                            : route('users.show', postItem.creator_slug)}
+                                          href={feedAuthorHref}
                                           className="font-semibold text-base text-gray-900 dark:text-white hover:underline"
                                         >
-                                          {postItem.creator_name || organization.name}
+                                          {feedAuthorName}
                                         </Link>
                                       ) : (
                                         <h4 className="font-semibold text-base text-gray-900 dark:text-white">
-                                          {postItem.creator_name || organization.name}
+                                          {feedAuthorName}
                                         </h4>
                                       )}
-                                      {postItem.creator_type === 'organization' && organization.is_registered && (
+                                      {allianceFeed && organization.is_registered && (
+                                        <Badge className="bg-indigo-600/90 text-white text-[10px] px-1.5 py-0 border-0">Care Alliance</Badge>
+                                      )}
+                                      {!allianceFeed && postItem.creator_type === 'organization' && organization.is_registered && (
                                         <CheckCircle className="w-4 h-4 text-blue-400" />
                                       )}
                                     </div>
                                     <p className="text-sm text-gray-600 dark:text-gray-400">
-                                      {postItem.creator_type === 'organization' ? organizationHandle : `@${postItem.creator_slug || postItem.user?.slug || ''}`}
+                                      {feedSubline}
                                     </p>
                                   </div>
                                 </div>
@@ -1082,16 +1308,16 @@ export default function OrganizationPage({
                                                   <div
                                                     key={reaction.id || idx}
                                                     className="relative group"
-                                                    title={reaction.user?.name ? `${reaction.user.name} reacted with ${reaction.type}` : 'User'}
+                                                    title={organization.is_care_alliance_public ? `Reaction: ${reaction.type}` : (reaction.user?.name ? `${reaction.user.name} reacted with ${reaction.type}` : 'User')}
                                                   >
                                                     <Avatar className="w-6 h-6 border-2 border-[#111827] hover:z-10 transition-all hover:scale-110">
                                                       <AvatarImage
-                                                        src={reaction.user?.image ? (reaction.user.image.startsWith('http') || reaction.user.image.startsWith('/storage/') || reaction.user.image.startsWith('/')
+                                                        src={organization.is_care_alliance_public ? undefined : (reaction.user?.image ? (reaction.user.image.startsWith('http') || reaction.user.image.startsWith('/storage/') || reaction.user.image.startsWith('/')
                                                           ? reaction.user.image
-                                                          : `/storage/${reaction.user.image}`) : undefined}
+                                                          : `/storage/${reaction.user.image}`) : undefined)}
                                                       />
                                                       <AvatarFallback className="bg-gradient-to-br from-purple-500 to-blue-500 text-xs">
-                                                        {reaction.user?.name?.charAt(0).toUpperCase() || 'U'}
+                                                        {organization.is_care_alliance_public ? '•' : (reaction.user?.name?.charAt(0).toUpperCase() || 'U')}
                                                       </AvatarFallback>
                                                     </Avatar>
                                                     {/* Show reaction emoji on hover or as overlay */}
@@ -1245,14 +1471,16 @@ export default function OrganizationPage({
                                     {postComments.map((comment: any) => (
                                       <div key={comment.id} className="flex gap-3">
                                         <Avatar className="w-8 h-8">
-                                          <AvatarImage src={comment.user?.image ? `/storage/${comment.user.image}` : undefined} />
+                                          <AvatarImage src={organization.is_care_alliance_public ? undefined : (comment.user?.image ? `/storage/${comment.user.image}` : undefined)} />
                                           <AvatarFallback className="bg-gradient-to-br from-purple-500 to-blue-500 text-xs">
-                                            {comment.user?.name?.charAt(0).toUpperCase() || 'U'}
+                                            {organization.is_care_alliance_public ? '+' : (comment.user?.name?.charAt(0).toUpperCase() || 'U')}
                                           </AvatarFallback>
                                         </Avatar>
                                         <div className="flex-1">
                                           <div className="bg-gray-50 dark:bg-white/5 rounded-lg p-3">
-                                            <p className="text-sm font-semibold mb-1 text-gray-900 dark:text-white">{comment.user?.name || 'Anonymous'}</p>
+                                            <p className="text-sm font-semibold mb-1 text-gray-900 dark:text-white">
+                                              {organization.is_care_alliance_public ? 'Supporter' : (comment.user?.name || 'Anonymous')}
+                                            </p>
                                             <p className="text-sm text-gray-700 dark:text-gray-300">{comment.content}</p>
                                           </div>
                                           <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">
@@ -1359,7 +1587,7 @@ export default function OrganizationPage({
                         })}
                       </div>
                     )}
-                      {organization.mission && organization.mission !== 'Mission statement not available for unregistered organizations.' && (
+                      {!organization.is_care_alliance_public && organization.mission && organization.mission !== 'Mission statement not available for unregistered organizations.' && (
                       <div className="mb-4">
                         <h3 className="text-lg font-semibold mb-2 text-gray-900 dark:text-white">Mission</h3>
                         <p className="text-gray-700 dark:text-gray-300 leading-relaxed">{organization.mission}</p>
@@ -1444,6 +1672,26 @@ export default function OrganizationPage({
                         <ShoppingBag className="w-16 h-16 text-gray-600 mx-auto mb-4" />
                         <p className="text-gray-600 dark:text-gray-400">No products available yet.</p>
               </div>
+                    )}
+                    {isCareAlliancePublic && alliancePublicSlug && careAllianceCampaigns.length > 0 && (
+                      <div className="mt-8 pt-8 border-t border-gray-200 dark:border-white/10">
+                        <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Alliance campaigns</h3>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                          {careAllianceCampaigns.map((c) => (
+                            <Link
+                              key={c.id}
+                              href={route('care-alliance.campaigns.donate', { allianceSlug: alliancePublicSlug, campaign: c.id })}
+                              className="block rounded-lg border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-[#0a0f1a] p-4 hover:border-purple-500/50 transition-all"
+                            >
+                              <p className="font-medium text-gray-900 dark:text-white">{c.name}</p>
+                              {c.description && (
+                                <p className="text-sm text-gray-600 dark:text-gray-400 mt-1 line-clamp-2">{c.description}</p>
+                              )}
+                              <span className="text-sm text-purple-600 dark:text-purple-400 mt-2 inline-block">Donate →</span>
+                            </Link>
+                          ))}
+                        </div>
+                      </div>
                     )}
             </div>
                 )}
@@ -1750,8 +1998,160 @@ export default function OrganizationPage({
                   </div>
                 )}
 
+                {/* Members — Care Alliance member nonprofits */}
+                {activeTab === "Members" && organization.is_registered && organization.is_care_alliance_public && (
+                  <div className="bg-white dark:bg-[#111827] rounded-xl p-6 animate-in fade-in slide-in-from-bottom-4 duration-500 border border-indigo-500/15 dark:border-indigo-400/10">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-2">
+                      <h2 className="text-2xl font-bold flex items-center gap-2 text-gray-900 dark:text-white">
+                        <UsersRound className="w-7 h-7 text-indigo-600 dark:text-indigo-400" />
+                        Member organizations
+                      </h2>
+                      <Badge className="bg-gradient-to-r from-indigo-600 to-violet-600 text-white w-fit">
+                        {allianceMembers.length || partnerOrganizationsCount || 0} members
+                      </Badge>
+                    </div>
+                    <p className="text-sm text-gray-600 dark:text-gray-400 mb-6">
+                      Registered nonprofits in this Care Alliance. Visit a member&apos;s public profile to learn more or support their work.
+                    </p>
+                    {allianceMembers.length > 0 ? (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {allianceMembers.map((m) => {
+                          const href = m.public_slug ? route('organizations.show', m.public_slug) : null
+                          return (
+                            <Link
+                              key={m.id}
+                              href={href || '#'}
+                              onClick={(e) => {
+                                if (!href) e.preventDefault()
+                              }}
+                              className="group flex gap-4 rounded-xl border border-gray-200 dark:border-white/10 bg-gray-50/80 dark:bg-[#0a0f1a] p-4 hover:border-indigo-500/40 hover:shadow-md transition-all"
+                            >
+                              <Avatar className="w-14 h-14 shrink-0 ring-2 ring-indigo-500/20">
+                                <AvatarImage src={m.image ? `/storage/${m.image}` : undefined} />
+                                <AvatarFallback className="bg-indigo-600 text-white text-lg">
+                                  {m.name.charAt(0).toUpperCase()}
+                                </AvatarFallback>
+                              </Avatar>
+                              <div className="min-w-0 flex-1">
+                                <h3 className="font-semibold text-gray-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 truncate">
+                                  {m.name}
+                                </h3>
+                                {(m.city || m.state) && (
+                                  <p className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1 mt-1">
+                                    <MapPin className="w-3.5 h-3.5 shrink-0" />
+                                    {[m.city, m.state].filter(Boolean).join(', ')}
+                                  </p>
+                                )}
+                                {m.joined_at && (
+                                  <p className="text-[11px] text-gray-500 dark:text-gray-500 mt-2">
+                                    Member since {new Date(m.joined_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}
+                                  </p>
+                                )}
+                              </div>
+                            </Link>
+                          )
+                        })}
+                      </div>
+                    ) : (
+                      <div className="text-center py-16 rounded-xl border border-dashed border-gray-300 dark:border-white/10">
+                        <UsersRound className="w-16 h-16 text-indigo-500/50 mx-auto mb-4" />
+                        <p className="text-gray-600 dark:text-gray-400 font-medium">No member organizations yet</p>
+                        <p className="text-gray-500 dark:text-gray-500 text-sm mt-2 max-w-md mx-auto">
+                          When nonprofits join this alliance, they will be listed here with a link to their public profiles.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Followers — users following the alliance hub (same data as org supporters) */}
+                {activeTab === "Followers" && organization.is_registered && organization.is_care_alliance_public && (
+                  <div className="bg-white dark:bg-[#111827] rounded-xl p-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                    <div className="flex items-center justify-between mb-6">
+                      <h2 className="text-2xl font-bold flex items-center gap-2 text-gray-900 dark:text-white">
+                        <Users className="w-6 h-6" />
+                        Followers
+                      </h2>
+                      <Badge className="bg-gradient-to-r from-indigo-600 to-violet-600 text-white">
+                        {supportersCount || 0} {supportersCount === 1 ? "follower" : "followers"}
+                      </Badge>
+                    </div>
+                    {Array.isArray(supporters) && supporters.length > 0 ? (
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {supporters.map((supporter: any, index: number) => {
+                          const userSlug = supporter.user?.slug || supporter.user?.id
+                          const orgPubSlug = supporter.organization_public_slug
+                          const userRoute = supporter.is_partner_organization && orgPubSlug
+                            ? route('organizations.show', orgPubSlug)
+                            : userSlug
+                              ? route('users.show', userSlug)
+                              : null
+
+                          return (
+                            <Link
+                              key={supporter.id || supporter.user_id || `follower-${index}`}
+                              href={userRoute || '#'}
+                              onClick={(e) => {
+                                if (!userRoute) {
+                                  e.preventDefault()
+                                }
+                              }}
+                              className="bg-gray-50 dark:bg-[#0a0f1a] rounded-lg p-4 border border-gray-200 dark:border-white/10 hover:border-indigo-500/50 transition-all cursor-pointer block"
+                            >
+                              <div className="flex items-center gap-3 mb-3">
+                                <Avatar className="w-12 h-12 flex-shrink-0">
+                                  <AvatarImage
+                                    src={supporter.user?.image ? `/storage/${supporter.user.image}` : supporter.avatar || "/placeholder.svg"}
+                                  />
+                                  <AvatarFallback className="bg-gradient-to-br from-indigo-500 to-violet-500 text-sm">
+                                    {supporter.user?.name
+                                      ? supporter.user.name.split(' ').map((n: string) => n[0]).join('').toUpperCase()
+                                      : supporter.name
+                                      ? supporter.name.split(' ').map((n: string) => n[0]).join('').toUpperCase()
+                                      : 'U'}
+                                  </AvatarFallback>
+                                </Avatar>
+                                <div className="flex-1 min-w-0">
+                                  <h3 className="font-semibold truncate text-gray-900 dark:text-white">
+                                    {supporter.user?.name || supporter.name || 'Anonymous'}
+                                  </h3>
+                                  {supporter.user?.email && (
+                                    <p className="text-xs text-gray-600 dark:text-gray-400 truncate">{supporter.user.email}</p>
+                                  )}
+                                </div>
+                              </div>
+                              <div className="space-y-2">
+                                {supporter.joined_at && (
+                                  <p className="text-xs text-gray-500 dark:text-gray-500">
+                                    Following since{" "}
+                                    {new Date(supporter.joined_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}
+                                  </p>
+                                )}
+                                {supporter.notifications && (
+                                  <Badge className="bg-green-600/20 text-green-400 text-xs inline-flex items-center gap-1">
+                                    <Bell className="w-3 h-3" />
+                                    Notifications on
+                                  </Badge>
+                                )}
+                              </div>
+                            </Link>
+                          )
+                        })}
+                      </div>
+                    ) : (
+                      <div className="text-center py-12">
+                        <Users className="w-16 h-16 text-gray-600 mx-auto mb-4" />
+                        <p className="text-gray-600 dark:text-gray-400">No followers yet.</p>
+                        <p className="text-gray-500 dark:text-gray-500 text-sm mt-2">
+                          Follow this alliance from its hub profile to show up here.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {/* Supporters Tab Content - For both registered and unregistered organizations */}
-                {activeTab === "Supporters" && (
+                {activeTab === "Supporters" && !organization.is_care_alliance_public && (
                   <div className="bg-white dark:bg-[#111827] rounded-xl p-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
                     <div className="flex items-center justify-between mb-6">
                       <h2 className="text-2xl font-bold flex items-center gap-2 text-gray-900 dark:text-white">
@@ -1766,7 +2166,12 @@ export default function OrganizationPage({
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                         {supporters.map((supporter: any, index: number) => {
                           const userSlug = supporter.user?.slug || supporter.user?.id
-                          const userRoute = userSlug ? route('users.show', userSlug) : null
+                          const orgPubSlug = supporter.organization_public_slug
+                          const userRoute = supporter.is_partner_organization && orgPubSlug
+                            ? route('organizations.show', orgPubSlug)
+                            : userSlug
+                              ? route('users.show', userSlug)
+                              : null
 
                           return (
                             <Link
@@ -1833,6 +2238,66 @@ export default function OrganizationPage({
 
               {/* Right Sidebar */}
               <aside className="lg:col-span-3 space-y-4">
+                {organization.is_care_alliance_public && (
+                  <div className="rounded-xl overflow-hidden border border-indigo-500/25 dark:border-indigo-400/15 bg-white dark:bg-[#111827] shadow-sm animate-in fade-in slide-in-from-right-4 duration-500">
+                    <div className="bg-gradient-to-r from-indigo-600 via-violet-600 to-purple-600 px-4 py-2.5">
+                      <p className="text-[10px] font-semibold uppercase tracking-wider text-white/90">About this alliance</p>
+                      <p className="text-xs text-white/80 mt-1 leading-snug">Mission, focus, and how to connect</p>
+                    </div>
+                    <div className="p-4 space-y-3">
+                      {allianceSidebarBlurb && (
+                        <p className="text-xs text-gray-600 dark:text-gray-400 leading-relaxed">{allianceSidebarBlurb}</p>
+                      )}
+                      {careAllianceProfile?.website && (
+                        <a
+                          href={careAllianceProfile.website.startsWith('http') ? careAllianceProfile.website : `https://${careAllianceProfile.website}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 text-xs text-indigo-600 dark:text-indigo-400 hover:underline"
+                        >
+                          <Globe className="w-3.5 h-3.5 shrink-0" />
+                          <span className="truncate">Alliance website</span>
+                        </a>
+                      )}
+                      <div className="rounded-lg bg-violet-500/[0.07] dark:bg-violet-500/10 p-3 text-center border border-violet-500/10">
+                        <p className="text-xl font-bold text-violet-700 dark:text-violet-300 tabular-nums">{careAllianceCampaigns.length}</p>
+                        <p className="text-[10px] text-gray-500 dark:text-gray-500 mt-0.5">Active fundraising campaigns</p>
+                      </div>
+                      {careAllianceProfile?.focus_areas && careAllianceProfile.focus_areas.length > 0 && (
+                        <div>
+                          <p className="text-[10px] font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-1.5">Focus areas</p>
+                          <div className="flex flex-wrap gap-1.5">
+                            {careAllianceProfile.focus_areas.map((a) => (
+                              <span
+                                key={a.id}
+                                className="text-[10px] px-2 py-0.5 rounded-full border border-indigo-500/30 bg-indigo-500/5 text-indigo-800 dark:text-indigo-200"
+                              >
+                                {a.name}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {location && location !== 'Location not specified' && (
+                        <p className="text-xs text-gray-600 dark:text-gray-400 flex items-center gap-1.5">
+                          <MapPin className="w-3.5 h-3.5 shrink-0 text-indigo-500" />
+                          {location}
+                        </p>
+                      )}
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="w-full border-indigo-500/30 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-500/10"
+                        onClick={() => handleTabChange('Members')}
+                      >
+                        <UsersRound className="w-4 h-4 mr-2" />
+                        View member organizations
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
                 {/* Organizations You May Know */}
                 {peopleToShow.length > 0 && (
                   <div className="bg-white dark:bg-[#111827] rounded-xl p-4 animate-in fade-in slide-in-from-right-4 duration-500">
@@ -1941,7 +2406,7 @@ export default function OrganizationPage({
 
 
           {/* Modals */}
-          {organization.is_registered && (
+          {organization.is_registered && !organization.is_care_alliance_public && (
             <DonationModal
               isOpen={showDonationModal}
               onClose={() => setShowDonationModal(false)}

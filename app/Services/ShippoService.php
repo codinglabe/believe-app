@@ -529,8 +529,42 @@ class ShippoService
      */
     protected function getShipFrom(Order $order): array
     {
-        $order->loadMissing(['organization.user', 'items.product.organization.user', 'items.product.user']);
+        $order->loadMissing([
+            'organization.user',
+            'items.product.organization.user',
+            'items.product.user',
+            'items.organizationProduct.marketplaceProduct.merchant',
+        ]);
         $firstItem = $order->items->first();
+
+        if ($firstItem?->organization_product_id) {
+            $merchant = $firstItem->organizationProduct?->marketplaceProduct?->merchant;
+            if ($merchant) {
+                $parts = $merchant->shipFromAddressForRates();
+                $contact = $this->getSellerContactForShippo(null, null);
+                $mEmail = trim((string) ($merchant->email ?? ''));
+                $mPhone = trim((string) ($merchant->phone ?? ''));
+                if ($mEmail !== '') {
+                    $contact['email'] = $mEmail;
+                }
+                if ($mPhone !== '') {
+                    $contact['phone'] = $mPhone;
+                }
+
+                return $this->addressPayload([
+                    'name' => $parts['name'],
+                    'street1' => $parts['street1'],
+                    'street2' => $parts['street2'] ?? '',
+                    'city' => $parts['city'],
+                    'state' => $parts['state'],
+                    'zip' => $parts['zip'],
+                    'country' => $parts['country'],
+                    'phone' => $contact['phone'],
+                    'email' => $contact['email'],
+                ]);
+            }
+        }
+
         $product = $firstItem?->product;
         // Order may not have organization loaded; product always belongs to an org for marketplace items.
         $org = $order->organization ?? $product?->organization;

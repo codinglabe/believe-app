@@ -2,32 +2,30 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Organization;
-use App\Models\UserFavoriteOrganization;
-use App\Models\User;
-use App\Models\Form1023Application;
+use App\Models\AdminSetting;
+use App\Models\CareAlliance;
 use App\Models\ComplianceApplication;
 use App\Models\Donation;
 use App\Models\Event;
-use App\Models\Form990Filing;
+use App\Models\Form1023Application;
 use App\Models\FractionalOrder;
 use App\Models\GiftCard;
 use App\Models\JobApplication;
 use App\Models\JobPost;
-use App\Models\AdminSetting;
+use App\Models\Organization;
 use App\Models\PromotionalBanner;
+use App\Models\User;
+use App\Models\UserFavoriteOrganization;
 use App\Services\TaxComplianceService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
-use Spatie\Permission\Models\Role;
 use Spatie\Permission\Models\Permission;
+use Spatie\Permission\Models\Role;
 
 class DashboardController extends Controller
 {
-    public function __construct(private TaxComplianceService $taxComplianceService)
-    {
-    }
+    public function __construct(private TaxComplianceService $taxComplianceService) {}
 
     public function index(Request $request)
     {
@@ -80,9 +78,6 @@ class DashboardController extends Controller
                         'created_at' => $org->created_at->toIso8601String(),
                     ];
                 });
-
-
-
 
             // Payment Statistics - Include Fractional Ownership revenue and Gift Card commissions
             $form1023Revenue = Form1023Application::where('payment_status', 'paid')->sum('amount');
@@ -143,9 +138,9 @@ class DashboardController extends Controller
                 ->get()
                 ->map(function ($app) {
                     return [
-                        'id' => 'form1023_' . $app->id,
+                        'id' => 'form1023_'.$app->id,
                         'type' => 'Form 1023',
-                        'description' => $app->application_number . ' - ' . ($app->organization->name ?? 'N/A'),
+                        'description' => $app->application_number.' - '.($app->organization->name ?? 'N/A'),
                         'amount' => $app->amount,
                         'status' => 'completed',
                         'user_name' => $app->organization->user->name ?? 'N/A',
@@ -162,9 +157,9 @@ class DashboardController extends Controller
                 ->get()
                 ->map(function ($app) {
                     return [
-                        'id' => 'compliance_' . $app->id,
+                        'id' => 'compliance_'.$app->id,
                         'type' => 'Compliance',
-                        'description' => 'Compliance Application - ' . ($app->organization->name ?? 'N/A'),
+                        'description' => 'Compliance Application - '.($app->organization->name ?? 'N/A'),
                         'amount' => $app->amount,
                         'status' => 'completed',
                         'user_name' => $app->organization->user->name ?? 'N/A',
@@ -181,9 +176,9 @@ class DashboardController extends Controller
                 ->get()
                 ->map(function ($order) {
                     return [
-                        'id' => 'fractional_' . $order->id,
+                        'id' => 'fractional_'.$order->id,
                         'type' => 'Fractional Ownership',
-                        'description' => $order->offering->title . ' - Order ' . ($order->order_number ?? '#' . $order->id),
+                        'description' => $order->offering->title.' - Order '.($order->order_number ?? '#'.$order->id),
                         'amount' => $order->amount,
                         'status' => 'completed',
                         'user_name' => $order->user->name ?? 'N/A',
@@ -374,7 +369,7 @@ class DashboardController extends Controller
             'form1023Application' => $form1023Application,
             'form990Filings' => $form990Filings,
             'overdueForm990Filings' => $overdueForm990Filings,
-            'promotionalBanner' => $promotionalBanner ? (function() use ($promotionalBanner) {
+            'promotionalBanner' => $promotionalBanner ? (function () use ($promotionalBanner) {
                 $imageUrl = $promotionalBanner->image_url;
                 // Convert path to full URL if needed
                 if ($imageUrl) {
@@ -384,6 +379,7 @@ class DashboardController extends Controller
                         $imageUrl = \Illuminate\Support\Facades\Storage::disk('public')->url($imageUrl);
                     }
                 }
+
                 return [
                     'id' => $promotionalBanner->id,
                     'title' => $promotionalBanner->title,
@@ -419,7 +415,6 @@ class DashboardController extends Controller
         ]);
     }
 
-
     public function getUserTopic(Request $request)
     {
         return $request->user()->interestedTopics()->get();
@@ -434,11 +429,12 @@ class DashboardController extends Controller
 
     private function refreshComplianceIfNeeded(Organization $organization): Organization
     {
-        $shouldRefresh = !$organization->tax_compliance_checked_at
+        $shouldRefresh = ! $organization->tax_compliance_checked_at
             || $organization->tax_compliance_checked_at->lte(Carbon::now()->subDay());
 
-        if (!$shouldRefresh) {
+        if (! $shouldRefresh) {
             $this->syncOrganizationOwnerRole($organization);
+
             return $organization;
         }
 
@@ -480,13 +476,32 @@ class DashboardController extends Controller
         return $organization;
     }
 
+    /**
+     * @param  list<string>  $orgRoleNames
+     */
+    private function syncOrganizationSpatieRoles(User $user, array $orgRoleNames): void
+    {
+        $names = array_values(array_unique($orgRoleNames));
+        if (CareAlliance::where('creator_user_id', $user->id)->exists()) {
+            $names[] = 'care_alliance';
+            $names = array_values(array_unique($names));
+        }
+
+        $roles = collect($names)
+            ->map(fn (string $n) => Role::findOrCreate($n, 'web'))
+            ->all();
+        $user->syncRoles($roles);
+    }
+
     private function syncOrganizationOwnerRole(Organization $organization): void
     {
         $user = $organization->user;
 
-        if (!$user) {
+        if (! $user) {
             return;
         }
+
+        $hasCareAlliance = CareAlliance::where('creator_user_id', $user->id)->exists();
 
         // Check if there's an approved Form 1023 application
         // If approved, user should have organization role
@@ -496,17 +511,13 @@ class DashboardController extends Controller
 
         // If there's an approved Form 1023 application, ensure user has organization role
         if ($hasApprovedForm1023) {
-            if (!$user->hasRole('organization') || $user->role !== 'organization') {
-                $organizationRole = Role::firstOrCreate(
-                    ['name' => 'organization', 'guard_name' => 'web']
-                );
-
+            if (! $user->hasRole('organization') || $user->role !== 'organization') {
                 // Remove organization_pending role if it exists
                 if ($user->hasRole('organization_pending')) {
                     $user->removeRole('organization_pending');
                 }
 
-                $user->syncRoles([$organizationRole]);
+                $this->syncOrganizationSpatieRoles($user, ['organization']);
                 $user->role = 'organization';
                 $user->save();
 
@@ -516,6 +527,7 @@ class DashboardController extends Controller
                     $organization->save();
                 }
             }
+
             return;
         }
 
@@ -532,20 +544,23 @@ class DashboardController extends Controller
                 $user->role = 'organization';
                 $user->save();
             }
+            $this->syncOrganizationSpatieRoles($user, ['organization']);
+
             return;
         }
 
-        $targetRole = ($organization->registration_status === 'approved' && !$organization->is_compliance_locked)
+        $targetRole = ($organization->registration_status === 'approved' && ! $organization->is_compliance_locked)
             ? 'organization'
             : 'organization_pending';
 
         Role::findOrCreate($targetRole);
 
-        if ($user->hasRole($targetRole) && $user->roles()->count() === 1 && $user->role === $targetRole) {
+        $expectedRoleCount = 1 + ($hasCareAlliance ? 1 : 0);
+        if ($user->hasRole($targetRole) && $user->role === $targetRole && $user->roles()->count() === $expectedRoleCount && (! $hasCareAlliance || $user->hasRole('care_alliance'))) {
             return;
         }
 
-        $user->syncRoles([$targetRole]);
+        $this->syncOrganizationSpatieRoles($user, [$targetRole]);
 
         if ($user->role !== $targetRole) {
             $user->role = $targetRole;

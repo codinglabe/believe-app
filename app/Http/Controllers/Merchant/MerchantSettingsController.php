@@ -4,12 +4,13 @@ namespace App\Http\Controllers\Merchant;
 
 use App\Http\Controllers\Controller;
 use App\Models\Merchant;
+use App\Models\MerchantShippingAddress;
 use App\Models\MerchantSubscriptionPlan;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
-use Inertia\Response;
 use Laravel\Cashier\Cashier;
 
 class MerchantSettingsController extends Controller
@@ -24,8 +25,28 @@ class MerchantSettingsController extends Controller
         // Get billing data
         $billingData = $this->getBillingData($merchant);
 
+        $shippingAddresses = $merchant->shippingAddresses()
+            ->orderByDesc('is_default')
+            ->orderBy('id')
+            ->get()
+            ->map(fn (MerchantShippingAddress $a) => [
+                'id' => $a->id,
+                'label' => $a->label,
+                'contact_name' => $a->contact_name,
+                'address_line1' => $a->address_line1,
+                'address_line2' => $a->address_line2,
+                'city' => $a->city,
+                'state' => $a->state,
+                'zip' => $a->zip,
+                'country' => $a->country,
+                'is_default' => $a->is_default,
+            ])
+            ->values()
+            ->all();
+
         return Inertia::render('merchant/Settings', [
             'billingData' => $billingData,
+            'shippingAddresses' => $shippingAddresses,
         ]);
     }
 
@@ -48,19 +69,19 @@ class MerchantSettingsController extends Controller
                 if ($currentSubscription->stripe_id) {
                     $stripe = Cashier::stripe();
                     $stripeSubscription = $stripe->subscriptions->retrieve($currentSubscription->stripe_id);
-                    
+
                     // Update local subscription with latest data from Stripe
                     $currentSubscription->stripe_status = $stripeSubscription->status;
-                    $currentSubscription->ends_at = $stripeSubscription->cancel_at ? 
+                    $currentSubscription->ends_at = $stripeSubscription->cancel_at ?
                         \Carbon\Carbon::createFromTimestamp($stripeSubscription->cancel_at) : null;
-                    $currentSubscription->trial_ends_at = $stripeSubscription->trial_end ? 
+                    $currentSubscription->trial_ends_at = $stripeSubscription->trial_end ?
                         \Carbon\Carbon::createFromTimestamp($stripeSubscription->trial_end) : null;
                     $currentSubscription->save();
-                    
+
                     // Check if subscription is canceled
                     // Status is 'canceled' OR cancel_at is set (meaning it's scheduled to cancel)
                     // If cancel_at is set, don't show as current plan even if still active
-                    $isCanceled = $stripeSubscription->status === 'canceled' || 
+                    $isCanceled = $stripeSubscription->status === 'canceled' ||
                                  ($stripeSubscription->cancel_at !== null);
                 }
             } catch (\Exception $e) {
@@ -69,16 +90,16 @@ class MerchantSettingsController extends Controller
                     'subscription_id' => $currentSubscription->id,
                     'error' => $e->getMessage(),
                 ]);
-                
+
                 // Fallback: check local status
-                $isCanceled = $currentSubscription->stripe_status === 'canceled' || 
+                $isCanceled = $currentSubscription->stripe_status === 'canceled' ||
                              ($currentSubscription->ends_at && $currentSubscription->ends_at->isPast());
             }
 
             // Only create subscription data if subscription is still active (not canceled)
-            if (!$isCanceled) {
+            if (! $isCanceled) {
                 $plan = MerchantSubscriptionPlan::where('stripe_price_id', $currentSubscription->stripe_price)->first();
-                
+
                 $subscriptionData = [
                     'id' => $currentSubscription->id,
                     'stripe_id' => $currentSubscription->stripe_id,
@@ -114,7 +135,7 @@ class MerchantSettingsController extends Controller
                     if ($invoice->subscription) {
                         try {
                             $stripeSubscription = $stripe->subscriptions->retrieve($invoice->subscription);
-                            $subscriptionCanceled = $stripeSubscription->status === 'canceled' || 
+                            $subscriptionCanceled = $stripeSubscription->status === 'canceled' ||
                                                    ($stripeSubscription->cancel_at !== null);
                         } catch (\Exception $e) {
                             // If we can't retrieve subscription, check local database
@@ -122,7 +143,7 @@ class MerchantSettingsController extends Controller
                                 ->where('stripe_id', $invoice->subscription)
                                 ->first();
                             if ($localSubscription) {
-                                $subscriptionCanceled = $localSubscription->stripe_status === 'canceled' || 
+                                $subscriptionCanceled = $localSubscription->stripe_status === 'canceled' ||
                                                        ($localSubscription->ends_at !== null);
                             }
                         }
@@ -210,5 +231,140 @@ class MerchantSettingsController extends Controller
 
         return back()->with('flash', ['success' => 'Business information updated successfully.']);
     }
-}
 
+    public function storeShippingAddress(Request $request)
+    {
+        $merchant = Auth::guard('merchant')->user();
+
+        $validated = $request->validate([
+            'label' => ['nullable', 'string', 'max:255'],
+            'contact_name' => ['nullable', 'string', 'max:255'],
+            'address_line1' => ['required', 'string', 'max:255'],
+            'address_line2' => ['nullable', 'string', 'max:255'],
+            'city' => ['required', 'string', 'max:255'],
+            'state' => ['nullable', 'string', 'max:255'],
+            'zip' => ['required', 'string', 'max:32'],
+            'country' => ['required', 'string', 'max:255'],
+            'is_default' => ['sometimes', 'boolean'],
+        ]);
+
+        $makeDefault = $request->boolean('is_default');
+        if (! $merchant->shippingAddresses()->exists()) {
+            $makeDefault = true;
+        }
+
+        DB::transaction(function () use ($merchant, $validated, $makeDefault) {
+            if ($makeDefault) {
+                $merchant->shippingAddresses()->update(['is_default' => false]);
+            }
+
+            $merchant->shippingAddresses()->create([
+                'label' => $validated['label'] ?? null,
+                'contact_name' => $validated['contact_name'] ?? null,
+                'address_line1' => $validated['address_line1'],
+                'address_line2' => $validated['address_line2'] ?? null,
+                'city' => $validated['city'],
+                'state' => $validated['state'] ?? null,
+                'zip' => $validated['zip'],
+                'country' => $validated['country'],
+                'is_default' => $makeDefault,
+            ]);
+
+            if (! $merchant->shippingAddresses()->where('is_default', true)->exists()) {
+                $firstId = $merchant->shippingAddresses()->orderBy('id')->value('id');
+                if ($firstId) {
+                    $merchant->shippingAddresses()->where('id', $firstId)->update(['is_default' => true]);
+                }
+            }
+        });
+
+        return back()->with('flash', ['success' => 'Shipping address added.']);
+    }
+
+    public function updateShippingAddress(Request $request, MerchantShippingAddress $shippingAddress)
+    {
+        $merchant = Auth::guard('merchant')->user();
+        $this->assertMerchantOwnsShippingAddress($merchant, $shippingAddress);
+
+        $validated = $request->validate([
+            'label' => ['nullable', 'string', 'max:255'],
+            'contact_name' => ['nullable', 'string', 'max:255'],
+            'address_line1' => ['required', 'string', 'max:255'],
+            'address_line2' => ['nullable', 'string', 'max:255'],
+            'city' => ['required', 'string', 'max:255'],
+            'state' => ['nullable', 'string', 'max:255'],
+            'zip' => ['required', 'string', 'max:32'],
+            'country' => ['required', 'string', 'max:255'],
+            'is_default' => ['sometimes', 'boolean'],
+        ]);
+
+        $makeDefault = $request->boolean('is_default');
+
+        DB::transaction(function () use ($merchant, $shippingAddress, $validated, $makeDefault) {
+            if ($makeDefault) {
+                $merchant->shippingAddresses()->update(['is_default' => false]);
+            }
+
+            $shippingAddress->update([
+                'label' => $validated['label'] ?? null,
+                'contact_name' => $validated['contact_name'] ?? null,
+                'address_line1' => $validated['address_line1'],
+                'address_line2' => $validated['address_line2'] ?? null,
+                'city' => $validated['city'],
+                'state' => $validated['state'] ?? null,
+                'zip' => $validated['zip'],
+                'country' => $validated['country'],
+                'is_default' => $makeDefault,
+            ]);
+
+            if (! $merchant->shippingAddresses()->where('is_default', true)->exists()) {
+                $next = $merchant->shippingAddresses()
+                    ->where('id', '!=', $shippingAddress->id)
+                    ->orderBy('id')
+                    ->first()
+                    ?? $merchant->shippingAddresses()->orderBy('id')->first();
+                $next?->update(['is_default' => true]);
+            }
+        });
+
+        return back()->with('flash', ['success' => 'Shipping address updated.']);
+    }
+
+    public function destroyShippingAddress(MerchantShippingAddress $shippingAddress)
+    {
+        $merchant = Auth::guard('merchant')->user();
+        $this->assertMerchantOwnsShippingAddress($merchant, $shippingAddress);
+
+        $wasDefault = $shippingAddress->is_default;
+        $shippingAddress->delete();
+
+        if ($wasDefault) {
+            $next = $merchant->shippingAddresses()->orderBy('id')->first();
+            if ($next) {
+                $next->update(['is_default' => true]);
+            }
+        }
+
+        return back()->with('flash', ['success' => 'Shipping address removed.']);
+    }
+
+    public function setDefaultShippingAddress(MerchantShippingAddress $shippingAddress)
+    {
+        $merchant = Auth::guard('merchant')->user();
+        $this->assertMerchantOwnsShippingAddress($merchant, $shippingAddress);
+
+        DB::transaction(function () use ($merchant, $shippingAddress) {
+            $merchant->shippingAddresses()->update(['is_default' => false]);
+            $shippingAddress->update(['is_default' => true]);
+        });
+
+        return back()->with('flash', ['success' => 'Default shipping address updated.']);
+    }
+
+    private function assertMerchantOwnsShippingAddress(Merchant $merchant, MerchantShippingAddress $address): void
+    {
+        if ((int) $address->merchant_id !== (int) $merchant->id) {
+            abort(403);
+        }
+    }
+}

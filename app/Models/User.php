@@ -450,6 +450,31 @@ class User extends Authenticatable implements MustVerifyEmail
         return $this->hasMany(Campaign::class);
     }
 
+    public function createdCareAlliances(): HasMany
+    {
+        return $this->hasMany(CareAlliance::class, 'creator_user_id');
+    }
+
+    /**
+     * Care Alliance creators need a 9-digit EIN on their alliance record to use wallet / Bridge flows.
+     * Everyone else is unrestricted by this rule.
+     */
+    public function careAllianceWalletEligible(): bool
+    {
+        if (! $this->hasRole('care_alliance')) {
+            return true;
+        }
+
+        $alliance = CareAlliance::query()->where('creator_user_id', $this->id)->first();
+        if (! $alliance) {
+            return true;
+        }
+
+        $digits = $alliance->ein ? preg_replace('/\D/', '', $alliance->ein) : '';
+
+        return strlen($digits) === 9;
+    }
+
     public function sendJobs()
     {
         return $this->hasMany(SendJob::class);

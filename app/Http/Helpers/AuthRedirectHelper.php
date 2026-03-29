@@ -19,7 +19,7 @@ class AuthRedirectHelper
      */
     public static function defaultRedirectForUser(?Authenticatable $user): string
     {
-        if (!$user) {
+        if (! $user) {
             return Route::has('dashboard') ? route('dashboard') : '/';
         }
 
@@ -27,15 +27,21 @@ class AuthRedirectHelper
 
         if ($role === 'user') {
             $slug = $user->slug ?? $user->id;
+
             return Route::has('users.show') ? route('users.show', $slug) : '/';
         }
 
         if (in_array($role, ['organization', 'organization_pending'], true)) {
             $slug = $user->slug ?? $user->id;
+
             return Route::has('organizations.show') ? route('organizations.show', $slug) : '/';
         }
 
         if ($role === 'admin') {
+            return Route::has('dashboard') ? route('dashboard') : '/';
+        }
+
+        if ($role === 'care_alliance') {
             return Route::has('dashboard') ? route('dashboard') : '/';
         }
 

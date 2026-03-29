@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Settings;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Settings\ProfileUpdateRequest;
+use App\Models\CareAlliance;
 use App\Models\PrimaryActionCategory;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Http\RedirectResponse;
@@ -19,11 +20,15 @@ class ProfileController extends Controller
      */
     public function edit(Request $request): Response
     {
+        $user = $request->user();
         $primaryActionCategories = [];
         $organizationPrimaryActionCategoryIds = [];
+        $careAlliance = null;
+        $profileSettingsVariant = 'standard';
 
-        if ($request->user()?->role === 'organization') {
-            $request->user()->load('organization.primaryActionCategories');
+        $needsOrgCategories = $user?->hasRole('care_alliance') || $user?->role === 'organization';
+
+        if ($needsOrgCategories) {
             $primaryActionCategories = PrimaryActionCategory::query()
                 ->where('is_active', true)
                 ->orderBy('sort_order')
@@ -32,9 +37,38 @@ class ProfileController extends Controller
                 ->map(fn ($c) => ['id' => $c->id, 'name' => $c->name])
                 ->values()
                 ->all();
+        }
 
-            if ($request->user()->organization) {
-                $organizationPrimaryActionCategoryIds = $request->user()->organization
+        if ($user?->hasRole('care_alliance')) {
+            $profileSettingsVariant = 'alliance';
+
+            $alliance = CareAlliance::query()
+                ->where('creator_user_id', $user->id)
+                ->with('primaryActionCategories')
+                ->first();
+
+            if ($alliance) {
+                $organizationPrimaryActionCategoryIds = $alliance->primaryActionCategories
+                    ->pluck('id')
+                    ->values()
+                    ->all();
+                $careAlliance = [
+                    'name' => $alliance->name,
+                    'description' => $alliance->description,
+                    'website' => $alliance->website,
+                    'city' => $alliance->city,
+                    'state' => $alliance->state,
+                    'ein' => $alliance->ein,
+                ];
+            }
+
+            $user->load('organization');
+        } elseif ($user?->role === 'organization') {
+            $profileSettingsVariant = 'organization';
+            $user->load('organization.primaryActionCategories');
+
+            if ($user->organization) {
+                $organizationPrimaryActionCategoryIds = $user->organization
                     ->primaryActionCategories
                     ->pluck('id')
                     ->values()
@@ -47,6 +81,8 @@ class ProfileController extends Controller
             'status' => $request->session()->get('status'),
             'primaryActionCategories' => $primaryActionCategories,
             'organizationPrimaryActionCategoryIds' => $organizationPrimaryActionCategoryIds,
+            'careAlliance' => $careAlliance,
+            'profileSettingsVariant' => $profileSettingsVariant,
         ]);
     }
 
@@ -68,7 +104,50 @@ class ProfileController extends Controller
             'dob' => $request->input('dob'),
         ]);
 
-        if ($request->user()->role === "organization") {
+        if ($request->user()->hasRole('care_alliance')) {
+            $alliance = CareAlliance::query()
+                ->where('creator_user_id', $request->user()->id)
+                ->first();
+            $org = $request->user()->organization;
+
+            if ($alliance && $org) {
+                $validated = $request->validated();
+                $alliance->name = $validated['alliance_name'];
+                $alliance->description = $validated['description'] ?? null;
+                $alliance->website = $validated['website'] ?? null;
+                $alliance->city = $validated['alliance_city'] ?? null;
+                $alliance->state = $validated['alliance_state'] ?? null;
+
+                $rawEin = $request->input('alliance_ein');
+                $ein = $rawEin !== null && $rawEin !== '' ? trim((string) $rawEin) : null;
+                $alliance->ein = $ein;
+                $digits = $ein ? preg_replace('/\D/', '', $ein) : '';
+                if (strlen($digits) === 9) {
+                    $org->ein = substr($digits, 0, 9);
+                }
+                $alliance->save();
+
+                $pacIds = $validated['primary_action_category_ids'];
+                $pacIds = array_values(array_unique(array_map('intval', $pacIds)));
+                $alliance->primaryActionCategories()->sync($pacIds);
+
+                $desc = $alliance->description ?? '';
+                $org->update([
+                    'name' => $alliance->name,
+                    'contact_name' => $request->input('name'),
+                    'city' => $alliance->city ?: $org->city,
+                    'state' => $alliance->state ?: $org->state,
+                    'description' => $desc,
+                    'website' => $alliance->website,
+                    'mission' => $desc !== '' ? $desc : $org->mission,
+                    'email' => $request->input('email'),
+                    'phone' => $request->input('phone') ?? $org->phone,
+                ]);
+
+                $org->primaryActionCategories()->sync($pacIds);
+                $request->user()->load('organization');
+            }
+        } elseif ($request->user()->role === 'organization') {
             $updateData = [
                 'contact_name' => $request->input('name'),
                 'contact_title' => $request->input('contact_title'),
@@ -82,8 +161,8 @@ class ProfileController extends Controller
 
             // Handle gift card terms approval
             if ($request->has('gift_card_terms_approved')) {
-                $updateData['gift_card_terms_approved'] = (bool)$request->input('gift_card_terms_approved');
-                if ($updateData['gift_card_terms_approved'] && !$request->user()->organization->gift_card_terms_approved) {
+                $updateData['gift_card_terms_approved'] = (bool) $request->input('gift_card_terms_approved');
+                if ($updateData['gift_card_terms_approved'] && ! $request->user()->organization->gift_card_terms_approved) {
                     $updateData['gift_card_terms_approved_at'] = now();
                 }
             }
@@ -123,7 +202,6 @@ class ProfileController extends Controller
         return redirect('/');
     }
 
-
     public function updateSocialAccounts(Request $request)
     {
         $request->validate([
@@ -159,16 +237,16 @@ class ProfileController extends Controller
 
         $user = $request->user();
 
-        if ($user->role !== 'organization' || !$user->organization) {
+        if ($user->role !== 'organization' || ! $user->organization) {
             abort(403, 'Only organizations can update gift card terms.');
         }
 
         $updateData = [
-            'gift_card_terms_approved' => (bool)$request->input('gift_card_terms_approved'),
+            'gift_card_terms_approved' => (bool) $request->input('gift_card_terms_approved'),
         ];
 
         // Set approval timestamp if approving for the first time
-        if ($updateData['gift_card_terms_approved'] && !$user->organization->gift_card_terms_approved) {
+        if ($updateData['gift_card_terms_approved'] && ! $user->organization->gift_card_terms_approved) {
             $updateData['gift_card_terms_approved_at'] = now();
         }
 

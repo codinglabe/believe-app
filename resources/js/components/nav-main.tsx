@@ -22,6 +22,28 @@ type PageProps = {
 const isGroup = (item: NavEntry): item is NavGroup => 'items' in item;
 const isNavItem = (item: NavEntry): item is NavItem => 'href' in item;
 
+/** Care Alliance users use the same org dashboard/sidebar; treat like organization for nav visibility. */
+const ORG_SIDEBAR_ROLE_ALIASES = new Set(['organization', 'care_alliance']);
+
+function userHasOrgSidebarRole(userRoles: string[]): boolean {
+    return userRoles.some((ur) => ORG_SIDEBAR_ROLE_ALIASES.has(ur.toLowerCase()));
+}
+
+function roleRequirementMatches(
+    requiredRole: string,
+    userRoles: string[],
+    organizationLiteralOnly: boolean,
+): boolean {
+    const req = requiredRole.toLowerCase();
+    if (req === 'organization') {
+        if (organizationLiteralOnly) {
+            return userRoles.some((ur) => ur.toLowerCase() === 'organization');
+        }
+        return userHasOrgSidebarRole(userRoles);
+    }
+    return userRoles.some((ur) => ur.toLowerCase() === req);
+}
+
 /** True if this href matches the current URL (exact, /create, /:id/edit, or prefix with /) */
 function itemMatchesUrl(href: string, url: string): boolean {
     if (url === href) return true;
@@ -54,6 +76,12 @@ export function NavMain({ items = [] }: NavMainProps) {
     const userRoles = page.props.auth.roles ?? [];
 
     const hasDirectAccess = (entry: NavEntry): boolean => {
+        if ('excludeCareAllianceHub' in entry && entry.excludeCareAllianceHub === true) {
+            if (userRoles.some((ur) => ur.toLowerCase() === 'care_alliance')) {
+                return false;
+            }
+        }
+
         // Check permissions: if entry has permission requirement, user must have it
         let permissionAllowed = true;
         if (entry.permission) {
@@ -69,17 +97,19 @@ export function NavMain({ items = [] }: NavMainProps) {
         // Check roles: if entry has role requirement, user must have it
         let roleAllowed = true;
         if (entry.role) {
-            if (Array.isArray(entry.role)) {
-                // If role is an array, user must have at least one
-                roleAllowed = entry.role.some((r) => {
-                    // Case-insensitive comparison for roles
-                    const roleLower = r.toLowerCase();
-                    return userRoles.some(ur => ur.toLowerCase() === roleLower);
-                });
+            if (entry.organizationOnlyNav) {
+                const isCareAllianceHub = userRoles.some((ur) => ur.toLowerCase() === 'care_alliance');
+                if (isCareAllianceHub) {
+                    roleAllowed = false;
+                } else if (Array.isArray(entry.role)) {
+                    roleAllowed = entry.role.some((r) => roleRequirementMatches(r, userRoles, true));
+                } else {
+                    roleAllowed = roleRequirementMatches(entry.role, userRoles, true);
+                }
+            } else if (Array.isArray(entry.role)) {
+                roleAllowed = entry.role.some((r) => roleRequirementMatches(r, userRoles, false));
             } else {
-                // If role is a string, user must have it (case-insensitive)
-                const roleLower = entry.role.toLowerCase();
-                roleAllowed = userRoles.some(ur => ur.toLowerCase() === roleLower);
+                roleAllowed = roleRequirementMatches(entry.role, userRoles, false);
             }
         }
 

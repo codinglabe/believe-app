@@ -157,6 +157,34 @@ const mainNavItems: (NavItem | NavGroup)[] = [
         permission: "dashboard.read"
     },
 
+    {
+        title: 'Alliance Membership',
+        href: '/organization/alliance-membership',
+        icon: Users,
+        role: ['organization', 'organization_pending'],
+        organizationOnlyNav: true,
+    },
+
+    {
+        title: 'Care Alliance',
+        icon: HeartHandshake,
+        role: 'care_alliance',
+        items: [
+            {
+                title: 'Members',
+                href: '/care-alliance/workspace/members',
+                icon: Users,
+                role: 'care_alliance',
+            },
+            {
+                title: 'Campaigns',
+                href: '/care-alliance/workspace/campaigns',
+                icon: Megaphone,
+                role: 'care_alliance',
+            },
+        ],
+    },
+
     // Believe Points (hidden for organization_pending until onboarding complete)
     {
         title: 'Believe Points',
@@ -804,7 +832,15 @@ const mainNavItems: (NavItem | NavGroup)[] = [
                 title: 'Organization Settings',
                 href: '/settings/profile',
                 icon: Settings,
-                permission: "profile.read"
+                permission: "profile.read",
+                excludeCareAllianceHub: true,
+            },
+            {
+                title: 'Alliance Settings',
+                href: '/settings/profile',
+                icon: Settings,
+                permission: "profile.read",
+                role: 'care_alliance',
             },
             {
                 title: 'SEO Settings',
@@ -1013,7 +1049,10 @@ const mainNavItems: (NavItem | NavGroup)[] = [
 export function AppSidebar() {
     const page = usePage();
     const userRoles = (page.props as any).auth?.roles ?? [];
-    const isOrganization = userRoles.some((role: string) => role.toLowerCase() === 'organization');
+    const isOrganization = userRoles.some((role: string) => {
+        const r = role.toLowerCase();
+        return r === 'organization' || r === 'care_alliance';
+    });
     const currentPlanId = (page.props as any).auth?.user?.current_plan_id ?? null;
     const hasPlan = currentPlanId !== null;
 

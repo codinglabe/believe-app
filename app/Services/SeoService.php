@@ -15,6 +15,8 @@ class SeoService
         'register' => 'Create Account',
         'register_user' => 'Register as Supporter',
         'register_organization' => 'Register Your Nonprofit',
+        'register_care_alliance' => 'Register a Care Alliance',
+        'care_alliance_donate' => 'Care Alliance Campaign Donation',
         'find_supporters' => 'Find Supporters',
         'search' => 'Search',
         'organizations' => 'Organizations',
@@ -48,6 +50,8 @@ class SeoService
                 'register' => ['title' => 'Create Account', 'description' => 'Join as a supporter or register your nonprofit. Create an account to donate, follow causes, and make an impact.'],
                 'register_user' => ['title' => 'Register as Supporter', 'description' => 'Create your supporter account to discover nonprofits, donate, follow causes, and make an impact.'],
                 'register_organization' => ['title' => 'Register Your Nonprofit', 'description' => 'Register your 501(c)(3) nonprofit to receive donations, manage campaigns, and grow your community of supporters.'],
+                'register_care_alliance' => ['title' => 'Register a Care Alliance', 'description' => 'Create a Care Alliance to coordinate member nonprofits, run shared campaigns, and split donations transparently.'],
+                'care_alliance_donate' => ['title' => 'Donate to a Care Alliance Campaign', 'description' => 'Support a multi-organization campaign with a clear fund split before you pay.'],
                 'find_supporters' => ['title' => 'Find Supporters', 'description' => 'Discover supporters who share your causes. Connect by interests, location, and activity. Grow your community.'],
                 'search' => ['title' => 'Search', 'description' => 'Search supporters, organizations, and posts. Find people and causes that match your interests.'],
                 'organizations' => ['title' => 'Organizations', 'description' => 'Browse verified nonprofits by cause, location, and name. Find organizations to support and donate to.'],
@@ -71,10 +75,11 @@ class SeoService
     public static function getSettings(): array
     {
         $stored = AdminSetting::get('seo_settings', null);
-        if (!$stored || !is_array($stored)) {
+        if (! $stored || ! is_array($stored)) {
             return self::defaults();
         }
         $defaults = self::defaults();
+
         return [
             'site_name' => $stored['site_name'] ?? $defaults['site_name'],
             'default_description' => $stored['default_description'] ?? $defaults['default_description'],
@@ -90,9 +95,10 @@ class SeoService
     {
         $settings = self::getSettings();
         $url = trim((string) ($settings['default_share_image'] ?? ''));
-        if ($url !== '' && !str_starts_with($url, 'http')) {
+        if ($url !== '' && ! str_starts_with($url, 'http')) {
             $url = url($url);
         }
+
         return $url;
     }
 
@@ -104,10 +110,11 @@ class SeoService
     {
         $settings = self::getSettings();
         $page = $settings['pages'][$key] ?? null;
-        if (!$page || empty($page['title'])) {
+        if (! $page || empty($page['title'])) {
             $defaults = self::defaults();
             $page = $defaults['pages'][$key] ?? ['title' => $key, 'description' => $settings['default_description']];
         }
+
         return [
             'title' => (string) ($page['title'] ?? ''),
             'description' => isset($page['description']) ? (string) $page['description'] : '',
@@ -120,6 +127,7 @@ class SeoService
     public static function getSiteName(): string
     {
         $settings = self::getSettings();
+
         return (string) ($settings['site_name'] ?? config('app.name'));
     }
 

@@ -17,7 +17,7 @@ class NotificationController extends Controller
             ->get();
 
         return response()->json([
-            'notifications' => $notifications
+            'notifications' => $notifications,
         ]);
     }
 
@@ -30,21 +30,21 @@ class NotificationController extends Controller
             ->firstOrFail();
 
         // Mark as read if not already read
-        if (!$notification->read_at) {
+        if (! $notification->read_at) {
             $notification->markAsRead();
         }
 
-        // Get the content item ID from notification data
         $contentItemId = $notification->data['content_item_id'] ?? null;
 
-        if (!$contentItemId) {
+        if (! $contentItemId) {
             return response()->json([
-                'success' => false,
-                'message' => 'Content item not found in notification'
-            ], 400);
+                'success' => true,
+                'message' => 'Notification marked as read',
+                'redirect_url' => null,
+                'content_item_id' => null,
+            ]);
         }
 
-        // Find the content item and verify user has access
         $contentItem = ContentItem::findOrFail($contentItemId);
 
         $redirectUrl = route('notifications.content.show', $contentItem);
@@ -53,7 +53,7 @@ class NotificationController extends Controller
             'success' => true,
             'message' => 'Notification marked as read',
             'redirect_url' => $redirectUrl,
-            'content_item_id' => $contentItemId
+            'content_item_id' => $contentItemId,
         ]);
     }
 
@@ -65,7 +65,7 @@ class NotificationController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'All notifications marked as read'
+            'message' => 'All notifications marked as read',
         ]);
     }
 
@@ -77,19 +77,19 @@ class NotificationController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'All notifications cleared'
+            'message' => 'All notifications cleared',
         ]);
     }
 
     public function show(Request $request, ContentItem $contentItem)
     {
         // Verify user has access to this content item through campaign
-        if (!$this->userHasAccessToContent($request->user(), $contentItem)) {
+        if (! $this->userHasAccessToContent($request->user(), $contentItem)) {
             abort(403, 'You do not have access to this content');
         }
 
         return Inertia::render('frontend/notification-content/show', [
-            'contentItem' => $contentItem
+            'contentItem' => $contentItem,
         ]);
     }
 
