@@ -1,9 +1,10 @@
 "use client"
 import FrontendLayout from "@/layouts/frontend/frontend-layout"
-import { useState, useMemo, useRef, useEffect, useCallback } from "react"
+import { useState, useMemo, useRef, useEffect } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import { Heart, CreditCard, Shield, Search, X, Loader2, Coins, Lock, ChevronRight, Building2, UtensilsCrossed, Brain, Check, Gift, Wrench, TrendingUp, Car, Package, FileText, Camera, ArrowLeft } from "lucide-react"
+import { Heart, CreditCard, Shield, Search, X, Loader2, Coins, Lock, ChevronRight, Building2, UtensilsCrossed, Brain, Check, CheckCircle, Gift, Wrench, TrendingUp, Car, Package, FileText, Camera, ArrowLeft } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -13,16 +14,65 @@ import { useNotification } from "@/components/frontend/notification-provider"
 import { SubscriptionRequiredModal } from "@/components/SubscriptionRequiredModal"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/frontend/ui/avatar"
 import SiteTitle from "@/components/site-title"
+import { cn } from "@/lib/utils"
 
-// Define the expected props structure for an Inertia page
-interface Organization {
-  id: number
+/** Nonprofit or Care Alliance (donation routes to hub org via organization_id). */
+interface DonateCause {
+  id: string
+  kind: "organization" | "care_alliance"
+  organization_id: number
   name: string
   description: string
-  image: string // Assuming image is a URL
+  image: string | null
   raised: number
   goal: number
   supporters: number
+  alliance_slug?: string
+  care_alliance_id?: number
+}
+
+function CauseAvatar({
+  name,
+  src,
+  className,
+  shape = "circle",
+}: {
+  name: string
+  src?: string | null
+  className?: string
+  /** `square` uses rounded corners like the search list thumbnails. */
+  shape?: "circle" | "square"
+}) {
+  const initial = (name.trim().charAt(0) || "?").toUpperCase()
+  const usableSrc = typeof src === "string" && src.trim() !== "" ? src.trim() : undefined
+  const round = shape === "square" ? "rounded-md" : "rounded-full"
+  return (
+    <Avatar className={cn("shrink-0", round, className)}>
+      <AvatarImage src={usableSrc} alt="" className="object-cover" />
+      <AvatarFallback
+        className={cn(
+          round,
+          "bg-purple-500/25 text-slate-800 text-sm font-semibold dark:bg-purple-500/35 dark:text-white",
+        )}
+      >
+        {initial}
+      </AvatarFallback>
+    </Avatar>
+  )
+}
+
+function CauseKindBadge({ kind }: { kind: DonateCause["kind"] }) {
+  return kind === "care_alliance" ? (
+    <Badge className="inline-flex w-fit items-center gap-1 border-0 px-2 py-0.5 text-xs font-semibold shadow-sm bg-indigo-600 text-white hover:bg-indigo-600">
+      <Building2 className="h-3 w-3 shrink-0" />
+      Care Alliance
+    </Badge>
+  ) : (
+    <Badge className="inline-flex w-fit items-center gap-1 border-0 px-2 py-0.5 text-xs font-semibold shadow-sm bg-green-600 text-white hover:bg-green-600">
+      <CheckCircle className="h-3 w-3 shrink-0" />
+      Organization
+    </Badge>
+  )
 }
 
 interface User {
@@ -38,7 +88,7 @@ interface TopOrganization {
 
 interface DonatePageProps {
   seo?: { title: string; description?: string }
-  organizations: Organization[]
+  organizations: DonateCause[]
   user?: User | null
   message?: string
   searchQuery?: string
@@ -94,7 +144,7 @@ export default function DonatePage({
   const [donationMode, setDonationMode] = useState<DonationMode>("cash_points")
   const [selectedAmount, setSelectedAmount] = useState<number | null>(null)
   const [customAmount, setCustomAmount] = useState("")
-  const [selectedCauseId, setSelectedCauseId] = useState<number | null>(null)
+  const [selectedCauseId, setSelectedCauseId] = useState<string | null>(null)
   const [paymentMethod, setPaymentMethod] = useState<'stripe' | 'believe_points'>('stripe')
 
   // Non-cash donation state
@@ -116,14 +166,10 @@ export default function DonatePage({
   const [isSearchFocused, setIsSearchFocused] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submissionError, setSubmissionError] = useState<string | null>(null)
-  const [isSearchingOrganizations, setIsSearchingOrganizations] = useState(false) // New state for search loading
+  const [isSearchingOrganizations, setIsSearchingOrganizations] = useState(false)
   const [showSubscriptionModal, setShowSubscriptionModal] = useState(false)
 
-  // State to hold the organizations currently displayed in the search results dropdown.
-  // In a real Inertia app, this would typically be `organizations` prop itself,
-  // which gets updated by Laravel after an `router.get` visit.
-  // Here, we simulate that filtering locally for the sandbox.
-  const [displayedOrganizations, setDisplayedOrganizations] = useState<Organization[]>(initialOrganizations)
+  const searchDebounceSkipRef = useRef(true)
 
   // Donor Information States, pre-filled if user prop is provided
   const [name, setName] = useState(user?.name || "")
@@ -134,39 +180,28 @@ export default function DonatePage({
   const searchContainerRef = useRef<HTMLDivElement>(null)
   const nonCashOrgSearchRef = useRef<HTMLDivElement>(null)
 
-  // Function to simulate Inertia.js dynamic search (router.get)
-  // This function is now called explicitly, e.g., on Enter key press.
-  const performSearch = useCallback(
-    async (query: string) => {
-      setIsSearchingOrganizations(true)
-      // In a real Inertia app, you'd do:
-      router.get("/donate", { search: query }, { preserveScroll: true, preserveState: true, replace: true })
-      // And the `organizations` prop would be updated by Inertia after the server responds.
-      const lowerCaseQuery = query.toLowerCase()
-      const filtered = initialOrganizations.filter(
-        (cause) =>
-          cause.name.toLowerCase().includes(lowerCaseQuery) || cause.description.toLowerCase().includes(lowerCaseQuery),
-      )
-      setDisplayedOrganizations(filtered)
-      setIsSearchingOrganizations(false)
-    },
-    [initialOrganizations],
-  ) // Depend on initialOrganizations to filter from the full list
-
-  // Effect to update displayedOrganizations when initialOrganizations prop changes (from Laravel)
-  // This is crucial for a real Inertia app where Laravel sends new filtered data.
+  // Debounced server search: Laravel filters `organizations`; list uses `initialOrganizations` from props.
   useEffect(() => {
-    setDisplayedOrganizations(initialOrganizations)
-    // If the initial search query is present, also perform a local filter for the sandbox
-    if (initialSearchQuery) {
-      const lowerCaseQuery = initialSearchQuery.toLowerCase()
-      const filtered = initialOrganizations.filter(
-        (cause) =>
-          cause.name.toLowerCase().includes(lowerCaseQuery) || cause.description.toLowerCase().includes(lowerCaseQuery),
-      )
-      setDisplayedOrganizations(filtered)
+    if (searchDebounceSkipRef.current) {
+      searchDebounceSkipRef.current = false
+      return
     }
-  }, [initialOrganizations, initialSearchQuery])
+    const q = searchQuery.trim()
+    const t = window.setTimeout(() => {
+      setIsSearchingOrganizations(true)
+      router.get(
+        "/donate",
+        q ? { search: q } : {},
+        {
+          preserveScroll: true,
+          preserveState: true,
+          replace: true,
+          onFinish: () => setIsSearchingOrganizations(false),
+        },
+      )
+    }, 300)
+    return () => clearTimeout(t)
+  }, [searchQuery])
 
   // Close search results when clicking outside
   useEffect(() => {
@@ -214,12 +249,23 @@ export default function DonatePage({
   const givingProgress = givingGoal > 0 ? Math.min(100, (thisYearDonated / givingGoal) * 100) : 0
 
   const selectedCause = useMemo(() => {
-    // Find selected cause from the *initial* full list of organizations
-    // This ensures the selected cause details remain consistent even if search results change.
     return initialOrganizations.find((cause) => cause.id === selectedCauseId)
   }, [selectedCauseId, initialOrganizations])
 
-  const handleCauseSelect = (id: number) => {
+  const donationSubscriptionModalRecipientKind = useMemo((): "organization" | "care_alliance" => {
+    if (selectedCause?.kind === "care_alliance") {
+      return "care_alliance"
+    }
+    if (donationMode === "non_cash" && nonCashPreferredOrgId != null) {
+      const row = initialOrganizations.find((o) => o.organization_id === nonCashPreferredOrgId)
+      if (row?.kind === "care_alliance") {
+        return "care_alliance"
+      }
+    }
+    return "organization"
+  }, [selectedCause, donationMode, nonCashPreferredOrgId, initialOrganizations])
+
+  const handleCauseSelect = (id: string) => {
     setSelectedCauseId(id)
     setSearchQuery("") // Clear search query after selection
     setIsSearchFocused(false) // Hide search results
@@ -235,7 +281,7 @@ export default function DonatePage({
     setSubmissionError(null)
     setIsSubmitting(true)
 
-    if (!selectedCauseId) {
+    if (!selectedCauseId || !selectedCause) {
       setSubmissionError("Please select a non-profit organization.")
       setIsSubmitting(false)
       return
@@ -248,7 +294,12 @@ export default function DonatePage({
     }
 
     const donationData = {
-      organization_id: selectedCauseId,
+      organization_id: selectedCause.organization_id,
+      recipient_kind: selectedCause.kind,
+      care_alliance_id:
+        selectedCause.kind === "care_alliance" && selectedCause.care_alliance_id != null
+          ? selectedCause.care_alliance_id
+          : undefined,
       amount: getCurrentAmount(),
       frequency: 'one-time',
       message: donorMessage,
@@ -467,7 +518,6 @@ export default function DonatePage({
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
                       onFocus={() => setIsSearchFocused(true)}
-                      onKeyDown={(e) => e.key === "Enter" && performSearch(searchQuery)}
                       className="pl-10 h-11 rounded-lg border-slate-200/60 bg-white/60 text-slate-900 placeholder:text-slate-500 text-sm focus-visible:ring-purple-400/50 focus-visible:border-purple-400/50 dark:border-white/20 dark:bg-white/5 dark:text-white dark:placeholder:text-white/50"
                     />
                     {searchQuery && (
@@ -489,12 +539,11 @@ export default function DonatePage({
                         className="mt-2 flex items-center justify-between p-2 rounded-lg bg-white/70 border border-slate-200/70 dark:bg-white/10 dark:border-white/10"
                       >
                         <div className="flex items-center gap-2 min-w-0">
-                          <img
-                            src={selectedCause.image || "/placeholder.svg"}
-                            alt=""
-                            className="h-8 w-8 rounded-full object-cover shrink-0"
-                          />
-                          <span className="font-medium text-slate-900 truncate dark:text-white">{selectedCause.name}</span>
+                          <CauseAvatar name={selectedCause.name} src={selectedCause.image} className="h-8 w-8" />
+                          <div className="min-w-0 flex flex-col gap-1">
+                            <span className="font-medium text-slate-900 truncate dark:text-white">{selectedCause.name}</span>
+                            <CauseKindBadge kind={selectedCause.kind} />
+                          </div>
                         </div>
                         <Button
                           variant="ghost"
@@ -507,26 +556,26 @@ export default function DonatePage({
                       </motion.div>
                     )}
                   </AnimatePresence>
-                  {isSearchFocused && !selectedCause && (searchQuery || displayedOrganizations.length > 0) && (
+                  {isSearchFocused && !selectedCause && (searchQuery || initialOrganizations.length > 0) && (
                     <div className="absolute z-20 w-full mt-1 rounded-lg border border-slate-200/70 bg-white/90 backdrop-blur-xl shadow-xl max-h-52 overflow-y-auto dark:border-white/20 dark:bg-purple-950/95">
                       {isSearchingOrganizations ? (
                         <div className="p-3 text-center text-sm text-slate-600/70 dark:text-white/60 flex items-center justify-center gap-2">
                           <Loader2 className="h-4 w-4 animate-spin" /> Searching...
                         </div>
-                      ) : displayedOrganizations.length === 0 ? (
+                      ) : initialOrganizations.length === 0 ? (
                         <p className="p-3 text-sm text-slate-600/70 dark:text-white/60">No organizations found.</p>
                       ) : (
-                        displayedOrganizations.map((cause) => (
+                        initialOrganizations.map((cause) => (
                           <button
                             key={cause.id}
                             type="button"
                             className="w-full p-3 text-left hover:bg-white/80 flex items-center gap-3 text-slate-900 dark:hover:bg-white/10 dark:text-white"
                             onClick={() => handleCauseSelect(cause.id)}
                           >
-                            <img src={cause.image || "/placeholder.svg"} alt="" className="h-9 w-9 rounded-md object-cover shrink-0" />
-                            <div className="min-w-0">
+                            <CauseAvatar name={cause.name} src={cause.image} shape="square" className="h-9 w-9" />
+                            <div className="min-w-0 flex flex-col gap-1">
                               <div className="font-medium text-sm truncate">{cause.name}</div>
-                              <div className="text-xs text-slate-600/70 truncate dark:text-white/60">{cause.description}</div>
+                              <CauseKindBadge kind={cause.kind} />
                             </div>
                           </button>
                         ))
@@ -818,7 +867,7 @@ export default function DonatePage({
                       value={
                         nonCashSearchQuery ||
                         (nonCashPreferredOrgId
-                          ? initialOrganizations.find((o) => o.id === nonCashPreferredOrgId)?.name ?? ""
+                          ? initialOrganizations.find((o) => o.organization_id === nonCashPreferredOrgId)?.name ?? ""
                           : "")
                       }
                       onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
@@ -853,13 +902,16 @@ export default function DonatePage({
                             type="button"
                             className="w-full p-3 text-left hover:bg-white/80 flex items-center gap-3 text-slate-900 dark:hover:bg-white/10 dark:text-white"
                             onClick={() => {
-                              setNonCashPreferredOrgId(org.id)
+                              setNonCashPreferredOrgId(org.organization_id)
                               setNonCashSearchQuery("")
                               setNonCashSearchFocused(false)
                             }}
                           >
-                            <img src={org.image || "/placeholder.svg"} alt="" className="h-8 w-8 rounded-full object-cover shrink-0" />
-                            <span className="font-medium text-sm truncate">{org.name}</span>
+                            <CauseAvatar name={org.name} src={org.image} className="h-8 w-8" />
+                            <div className="min-w-0 flex flex-col gap-1">
+                              <span className="font-medium text-sm truncate">{org.name}</span>
+                              <CauseKindBadge kind={org.kind} />
+                            </div>
                           </button>
                         ))}
                     </div>
@@ -969,6 +1021,7 @@ export default function DonatePage({
           onClose={() => setShowSubscriptionModal(false)}
           feature="donations"
           isSupporterView={true}
+          donationRecipientKind={donationSubscriptionModalRecipientKind}
         />
       </div>
     </FrontendLayout>

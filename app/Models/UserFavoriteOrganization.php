@@ -12,6 +12,7 @@ class UserFavoriteOrganization extends Model
         'user_id',
         'organization_id',
         'excel_data_id',
+        'care_alliance_id',
         'notifications',
     ];
 
@@ -20,6 +21,7 @@ class UserFavoriteOrganization extends Model
         'excel_data_id' => 'integer',
         'organization_id' => 'integer',
         'user_id' => 'integer',
+        'care_alliance_id' => 'integer',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
     ];
@@ -32,5 +34,10 @@ class UserFavoriteOrganization extends Model
     public function organization()
     {
         return $this->belongsTo(Organization::class);
+    }
+
+    public function careAlliance()
+    {
+        return $this->belongsTo(CareAlliance::class, 'care_alliance_id');
     }
 }

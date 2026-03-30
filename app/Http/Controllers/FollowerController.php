@@ -31,18 +31,64 @@ class FollowerController extends Controller
 
         $followers = UserFavoriteOrganization::query()
             ->with(['user' => function ($query) {
-                $query->select('id', 'name', 'email', 'image', 'created_at', 'role');
+                $query->select('id', 'name', 'email', 'image', 'created_at', 'role')
+                    ->with(['organization.user:id,slug']);
             }])
             ->where('organization_id', $organization->id)
             ->when($search, function ($query, $search) {
-                $query->whereHas('user', function ($q) use ($search) {
-                    $q->where('name', 'like', "%{$search}%")
-                      ->orWhere('email', 'like', "%{$search}%");
+                $query->where(function ($outer) use ($search) {
+                    $outer->whereHas('user', function ($q) use ($search) {
+                        $q->where('name', 'like', "%{$search}%")
+                            ->orWhere('email', 'like', "%{$search}%");
+                    })->orWhereHas('user', function ($q) use ($search) {
+                        $q->whereIn('role', ['organization', 'organization_pending'])
+                            ->whereHas('organization', function ($oq) use ($search) {
+                                $oq->where('name', 'like', "%{$search}%");
+                            });
+                    });
                 });
             })
             ->orderBy('created_at', 'desc')
             ->paginate($perPage)
             ->withQueryString();
+
+        $userIds = $followers->getCollection()->pluck('user_id')->unique()->filter()->map(fn ($id) => (int) $id)->all();
+
+        $ownedOrgsByUserId = Organization::query()
+            ->whereIn('user_id', $userIds)
+            ->with(['user:id,slug'])
+            ->get()
+            ->keyBy(fn (Organization $o) => (int) $o->user_id);
+
+        $followers->getCollection()->transform(function (UserFavoriteOrganization $follower) use ($ownedOrgsByUserId) {
+            $user = $follower->user;
+            if ($user === null) {
+                $follower->setAttribute('follower_display_name', 'Unknown');
+                $follower->setAttribute('follower_avatar', null);
+                $follower->setAttribute('is_organization_follower', false);
+
+                return $follower;
+            }
+
+            $role = (string) ($user->role ?? '');
+            $isOrgAccount = in_array($role, ['organization', 'organization_pending'], true);
+            $org = $ownedOrgsByUserId->get((int) $user->id) ?? $user->organization;
+
+            $displayName = (string) $user->name;
+            $avatar = $user->image;
+            if ($isOrgAccount && $org !== null) {
+                $displayName = (string) $org->name;
+                if (! empty($org->registered_user_image)) {
+                    $avatar = $org->registered_user_image;
+                }
+            }
+
+            $follower->setAttribute('follower_display_name', $displayName);
+            $follower->setAttribute('follower_avatar', $avatar);
+            $follower->setAttribute('is_organization_follower', $isOrgAccount && $org !== null);
+
+            return $follower;
+        });
 
         return Inertia::render('organization/Followers/Index', [
             'followers' => $followers,

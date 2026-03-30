@@ -51,6 +51,60 @@ import { PageHead } from "@/components/frontend/PageHead"
 import { motion, AnimatePresence } from "framer-motion"
 import useAxios from "@/hooks/useAxios"
 
+function supporterIsOrganizationAccount(supporter: {
+  is_organization_follower?: boolean
+  is_partner_organization?: boolean
+  user?: { role?: string } | null
+}): boolean {
+  if (supporter.is_organization_follower || supporter.is_partner_organization) return true
+  const r = supporter.user?.role
+  return r === "organization" || r === "organization_pending"
+}
+
+function SupporterAccountTypeBadge({
+  supporter,
+  variant,
+}: {
+  supporter: {
+    is_organization_follower?: boolean
+    is_partner_organization?: boolean
+    user?: { role?: string } | null
+  }
+  variant: "followers" | "supporters"
+}) {
+  const isOrg = supporterIsOrganizationAccount(supporter)
+  if (variant === "followers") {
+    return isOrg ? (
+      <Badge className="mt-1 text-[10px] px-2 py-0.5 h-auto font-medium bg-indigo-600/90 hover:bg-indigo-600 text-white border-0 gap-1 w-fit">
+        <Building2 className="h-3 w-3 shrink-0" />
+        Organization
+      </Badge>
+    ) : (
+      <Badge
+        variant="outline"
+        className="mt-1 text-[10px] px-2 py-0.5 h-auto font-medium border-gray-300 dark:border-white/20 text-gray-700 dark:text-gray-300 gap-1 w-fit"
+      >
+        <User className="h-3 w-3 shrink-0" />
+        User
+      </Badge>
+    )
+  }
+  return isOrg ? (
+    <Badge className="mt-1 text-[10px] px-2 py-0.5 h-auto font-medium bg-purple-600/90 hover:bg-purple-600 text-white border-0 gap-1 w-fit">
+      <Building2 className="h-3 w-3 shrink-0" />
+      Organization
+    </Badge>
+  ) : (
+    <Badge
+      variant="outline"
+      className="mt-1 text-[10px] px-2 py-0.5 h-auto font-medium border-gray-300 dark:border-white/20 text-gray-700 dark:text-gray-300 gap-1 w-fit"
+    >
+      <User className="h-3 w-3 shrink-0" />
+      User
+    </Badge>
+  )
+}
+
 interface OrganizationPageProps {
   auth?: any
   organization: any
@@ -73,7 +127,7 @@ interface OrganizationPageProps {
   postFilter?: string
   partnerOrganizationsCount?: number
   careAlliancePublic?: { slug: string; id?: number }
-  careAllianceCampaigns?: Array<{ id: number; name: string; description?: string | null }>
+  careAllianceCampaigns?: Array<{ id: number; slug: string; name: string; description?: string | null }>
   careAllianceProfile?: {
     focus_areas: Array<{ id: number; name: string }>
     website?: string | null
@@ -1680,7 +1734,7 @@ export default function OrganizationPage({
                           {careAllianceCampaigns.map((c) => (
                             <Link
                               key={c.id}
-                              href={route('care-alliance.campaigns.donate', { allianceSlug: alliancePublicSlug, campaign: c.id })}
+                              href={route('care-alliance.campaigns.donate', { allianceSlug: alliancePublicSlug, campaign: c.slug })}
                               className="block rounded-lg border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-[#0a0f1a] p-4 hover:border-purple-500/50 transition-all"
                             >
                               <p className="font-medium text-gray-900 dark:text-white">{c.name}</p>
@@ -2077,15 +2131,24 @@ export default function OrganizationPage({
                       </Badge>
                     </div>
                     {Array.isArray(supporters) && supporters.length > 0 ? (
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      <div className="grid grid-cols-2 gap-3 sm:gap-4">
                         {supporters.map((supporter: any, index: number) => {
                           const userSlug = supporter.user?.slug || supporter.user?.id
-                          const orgPubSlug = supporter.organization_public_slug
-                          const userRoute = supporter.is_partner_organization && orgPubSlug
-                            ? route('organizations.show', orgPubSlug)
-                            : userSlug
-                              ? route('users.show', userSlug)
-                              : null
+                          const orgPublicSlug = supporter.organization_public_slug
+                          const displayName =
+                            supporter.follower_display_name ??
+                            supporter.user?.name ??
+                            supporter.name ??
+                            'Anonymous'
+                          const avatarFile =
+                            supporter.follower_avatar ?? supporter.user?.image ?? supporter.avatar
+                          const userRoute =
+                            orgPublicSlug &&
+                            (supporter.is_organization_follower || supporter.is_partner_organization)
+                              ? route('organizations.show', orgPublicSlug)
+                              : userSlug
+                                ? route('users.show', userSlug)
+                                : null
 
                           return (
                             <Link
@@ -2101,23 +2164,23 @@ export default function OrganizationPage({
                               <div className="flex items-center gap-3 mb-3">
                                 <Avatar className="w-12 h-12 flex-shrink-0">
                                   <AvatarImage
-                                    src={supporter.user?.image ? `/storage/${supporter.user.image}` : supporter.avatar || "/placeholder.svg"}
+                                    src={avatarFile ? `/storage/${avatarFile}` : "/placeholder.svg"}
                                   />
                                   <AvatarFallback className="bg-gradient-to-br from-indigo-500 to-violet-500 text-sm">
-                                    {supporter.user?.name
-                                      ? supporter.user.name.split(' ').map((n: string) => n[0]).join('').toUpperCase()
-                                      : supporter.name
-                                      ? supporter.name.split(' ').map((n: string) => n[0]).join('').toUpperCase()
-                                      : 'U'}
+                                    {displayName
+                                      .split(/\s+/)
+                                      .filter(Boolean)
+                                      .slice(0, 2)
+                                      .map((n: string) => n[0])
+                                      .join('')
+                                      .toUpperCase() || 'U'}
                                   </AvatarFallback>
                                 </Avatar>
                                 <div className="flex-1 min-w-0">
                                   <h3 className="font-semibold truncate text-gray-900 dark:text-white">
-                                    {supporter.user?.name || supporter.name || 'Anonymous'}
+                                    {displayName}
                                   </h3>
-                                  {supporter.user?.email && (
-                                    <p className="text-xs text-gray-600 dark:text-gray-400 truncate">{supporter.user.email}</p>
-                                  )}
+                                  <SupporterAccountTypeBadge supporter={supporter} variant="followers" />
                                 </div>
                               </div>
                               <div className="space-y-2">
@@ -2163,7 +2226,7 @@ export default function OrganizationPage({
                       </Badge>
                     </div>
                     {Array.isArray(supporters) && supporters.length > 0 ? (
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      <div className="grid grid-cols-2 gap-3 sm:gap-4">
                         {supporters.map((supporter: any, index: number) => {
                           const userSlug = supporter.user?.slug || supporter.user?.id
                           const orgPubSlug = supporter.organization_public_slug
@@ -2201,9 +2264,7 @@ export default function OrganizationPage({
                                   <h3 className="font-semibold truncate text-gray-900 dark:text-white">
                                     {supporter.user?.name || supporter.name || 'Anonymous'}
                                   </h3>
-                                  {supporter.user?.email && (
-                                    <p className="text-xs text-gray-600 dark:text-gray-400 truncate">{supporter.user.email}</p>
-                                  )}
+                                  <SupporterAccountTypeBadge supporter={supporter} variant="supporters" />
               </div>
                               </div>
                               <div className="space-y-2">
