@@ -44,6 +44,7 @@ class SupporterActivityController extends BaseController
                 'selectedOrganizationId' => null,
                 'period' => $period,
                 'metric' => null,
+                'transactionLedger' => [],
             ]));
         }
 
@@ -56,6 +57,8 @@ class SupporterActivityController extends BaseController
         $topSupporters = $this->buildTopSupporters($orgId, $from);
 
         $recentActivity = $this->buildRecentActivityFeed($orgId, $from);
+
+        $transactionLedger = $this->buildTransactionLedger($orgId, $from);
 
         $metricDrilldown = $metric
             ? $this->buildMetricDrilldown($orgId, $metric, $from)
@@ -72,6 +75,7 @@ class SupporterActivityController extends BaseController
             'activeSupporters' => $activeSupporters,
             'topSupporters' => $topSupporters,
             'recentActivity' => $recentActivity,
+            'transactionLedger' => $transactionLedger,
             'metricDrilldown' => $metricDrilldown,
             'metric' => $metric,
             'metricLabels' => $metricLabels,
@@ -241,6 +245,7 @@ class SupporterActivityController extends BaseController
             'activeSupporters' => [],
             'topSupporters' => [],
             'recentActivity' => [],
+            'transactionLedger' => [],
             'metricDrilldown' => [],
             'metric' => null,
             'metricLabels' => $this->metricLabels(),
@@ -420,6 +425,102 @@ class SupporterActivityController extends BaseController
                     : '—',
             ];
         })->values()->all();
+    }
+
+    /**
+     * Full transaction ledger rows (spec-style columns) for the selected org and period.
+     *
+     * @return list<array<string, mixed>>
+     */
+    private function buildTransactionLedger(int $orgId, ?Carbon $from): array
+    {
+        $rows = SupporterActivity::query()
+            ->where('organization_id', $orgId)
+            ->when($from, fn ($q) => $q->where('created_at', '>=', $from))
+            ->with(['supporter:id,name'])
+            ->orderByDesc('created_at')
+            ->limit(250)
+            ->get();
+
+        return $rows->map(fn (SupporterActivity $row) => $this->ledgerRowFromActivity($row))->values()->all();
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function ledgerRowFromActivity(SupporterActivity $row): array
+    {
+        $cents = $row->amount_cents;
+        $moneyAmount = ($cents !== null && (int) $cents > 0)
+            ? '$'.number_format((int) $cents / 100, 2)
+            : (($cents !== null && (int) $cents === 0) ? '$0.00' : '—');
+
+        $pts = $row->believe_points;
+        $pointsAmount = $pts !== null && (int) $pts > 0 ? (string) (int) $pts : '—';
+
+        $actionType = $row->action_type ?? $row->event_type;
+        $targetEntityType = $row->target_entity_type ?? SupporterActivity::inferTargetEntityType($row->event_type);
+        $targetEntityId = $row->target_entity_id ?? $row->reference_id;
+        $txRef = $row->transaction_reference;
+        if ($txRef === null || trim((string) $txRef) === '') {
+            $txRef = $row->reference_id !== null ? (string) $row->reference_id : null;
+        }
+
+        return [
+            'id' => $row->id,
+            'supporter_id' => $row->supporter_id,
+            'supporter_name' => $row->supporter->name ?? ('User #'.$row->supporter_id),
+            'submodule_type' => $this->ledgerScalarCell($row->submodule_type),
+            'page_name' => $this->ledgerScalarCell($row->page_name),
+            'route_name' => $this->ledgerScalarCell($row->route_name),
+            'action_type' => $this->ledgerScalarCell($actionType),
+            'interest_category_id' => $row->interest_category_id !== null ? (string) $row->interest_category_id : '—',
+            'interest_category_name' => $this->ledgerScalarCell($row->interest_category_name),
+            'target_entity_type' => $this->ledgerScalarCell($targetEntityType),
+            'target_entity_id' => $targetEntityId !== null ? (string) $targetEntityId : '—',
+            'target_entity_title' => $this->ledgerScalarCell($row->target_entity_title),
+            'search_term' => $this->ledgerScalarCell($row->search_term),
+            'filter_json' => $this->ledgerJsonCell($row->filter_json),
+            'referrer_url' => $this->ledgerScalarCell($row->referrer_url),
+            'entry_source' => $this->ledgerScalarCell($row->entry_source),
+            'dwell_seconds' => $row->dwell_seconds !== null ? (string) (int) $row->dwell_seconds : '—',
+            'money_amount' => $moneyAmount,
+            'points_amount' => $pointsAmount,
+            'transaction_reference' => $this->ledgerScalarCell($txRef),
+            'outcome_type' => $this->ledgerScalarCell($row->outcome_type),
+            'metadata_json' => $this->ledgerJsonCell($row->metadata_json),
+            'created_at' => $row->created_at?->timezone(config('app.timezone'))->format('Y-m-d H:i:s') ?? '—',
+            'updated_at' => $row->updated_at?->timezone(config('app.timezone'))->format('Y-m-d H:i:s') ?? '—',
+        ];
+    }
+
+    private function ledgerScalarCell(mixed $v): string
+    {
+        if ($v === null) {
+            return '—';
+        }
+        $s = trim((string) $v);
+
+        return $s !== '' ? $s : '—';
+    }
+
+    private function ledgerJsonCell(mixed $v): string
+    {
+        if ($v === null) {
+            return '—';
+        }
+        if (is_array($v) && $v === []) {
+            return '—';
+        }
+        if (is_string($v)) {
+            $t = trim($v);
+
+            return $t !== '' ? $t : '—';
+        }
+
+        $enc = json_encode($v, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+
+        return $enc !== false && $enc !== '' ? $enc : '—';
     }
 
     /**
