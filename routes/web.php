@@ -947,6 +947,11 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|care_alli
             ->name('organization.followers.bulk-destroy');
     });
 
+    Route::prefix('marketplace/product-pool')->name('marketplace.product-pool.')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Organization\MarketplaceProductPoolController::class, 'index'])->name('index');
+        Route::post('/adopt', [\App\Http\Controllers\Organization\MarketplaceProductPoolController::class, 'store'])->name('adopt');
+    });
+
     // old Facebook Integration Routes
     // Route::prefix('facebook')->group(function () {
     //     // Connection Management

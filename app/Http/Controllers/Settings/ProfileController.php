@@ -3,9 +3,12 @@
 namespace App\Http\Controllers\Settings;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Settings\CareAllianceFinancialSettingsRequest;
 use App\Http\Requests\Settings\ProfileUpdateRequest;
 use App\Models\CareAlliance;
+use App\Models\CareAllianceMembership;
 use App\Models\PrimaryActionCategory;
+use App\Services\CareAllianceGeneralDonationDistributionService;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -179,6 +182,122 @@ class ProfileController extends Controller
         }
 
         return to_route('profile.edit');
+    }
+
+    /**
+     * Care Alliance: global financial rules for normal (non-campaign) donations from /donate.
+     */
+    public function updateFinancial(CareAllianceFinancialSettingsRequest $request): RedirectResponse
+    {
+        $alliance = CareAlliance::query()
+            ->where('creator_user_id', $request->user()->id)
+            ->firstOrFail();
+
+        $prevDistributionFrequency = $alliance->distribution_frequency;
+
+        $validated = $request->validated();
+
+        $memberIds = CareAllianceMembership::query()
+            ->where('care_alliance_id', $alliance->id)
+            ->where('status', 'active')
+            ->pluck('organization_id')
+            ->map(fn ($id) => (int) $id)
+            ->all();
+
+        if (in_array($validated['allocation_method'], ['proportional_equal', 'weighted_by_donations'], true) && count($memberIds) < 1) {
+            return redirect()->back()->withErrors([
+                'allocation_method' => 'Add at least one active member organization before using this allocation method.',
+            ]);
+        }
+
+        if ($validated['allocation_method'] === 'fixed_percentage' && count($memberIds) < 1) {
+            return redirect()->back()->withErrors([
+                'allocation_method' => 'Add at least one active member organization before using fixed percentage allocation.',
+            ]);
+        }
+
+        $alliance->allocation_method = $validated['allocation_method'];
+        $alliance->distribution_frequency = $validated['distribution_frequency'];
+        $alliance->min_payout_cents = (int) round((float) $validated['min_payout_dollars'] * 100);
+        $alliance->management_fee_bps = (int) round((float) $validated['management_fee_percent'] * 100);
+
+        if ($validated['allocation_method'] === 'fixed_percentage') {
+            $alliance->financial_fixed_member_pool_bps = (int) round((float) $validated['financial_fixed_member_pool_percent'] * 100);
+            $alliance->financial_fixed_splits = null;
+        } else {
+            $alliance->financial_fixed_member_pool_bps = null;
+            $alliance->financial_fixed_splits = null;
+        }
+
+        $alliance->financial_settings_completed_at = now();
+        $alliance->save();
+
+        if (
+            CareAllianceGeneralDonationDistributionService::distributionIsScheduled($prevDistributionFrequency)
+            && ! CareAllianceGeneralDonationDistributionService::distributionIsScheduled($alliance->distribution_frequency)
+        ) {
+            app(CareAllianceGeneralDonationDistributionService::class)->releasePendingImmediately($alliance->fresh());
+        }
+
+        return to_route('profile.financial.edit')->with('status', 'financial-settings-saved');
+    }
+
+    /**
+     * Care Alliance: dedicated page for global financial rules (normal /donate splits).
+     */
+    public function editFinancial(Request $request): Response
+    {
+        abort_unless($request->user()?->hasRole('care_alliance'), 403);
+
+        $alliance = CareAlliance::query()
+            ->where('creator_user_id', $request->user()->id)
+            ->first();
+
+        if (! $alliance) {
+            return Inertia::render('settings/financial', [
+                'hasAlliance' => false,
+                'careAllianceFinancial' => null,
+                'allianceDisplayName' => '',
+            ]);
+        }
+
+        return Inertia::render('settings/financial', [
+            'hasAlliance' => true,
+            'careAllianceFinancial' => $this->buildCareAllianceFinancialPayload($alliance),
+            'allianceDisplayName' => $alliance->name,
+        ]);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function buildCareAllianceFinancialPayload(CareAlliance $alliance): array
+    {
+        $memberOrgs = CareAllianceMembership::query()
+            ->where('care_alliance_id', $alliance->id)
+            ->where('status', 'active')
+            ->with('organization:id,name')
+            ->orderBy('id')
+            ->get()
+            ->map(fn (CareAllianceMembership $m) => [
+                'id' => (int) $m->organization_id,
+                'name' => $m->organization?->name ?? 'Organization',
+            ])
+            ->values()
+            ->all();
+
+        $splitter = app(CareAllianceGeneralDonationDistributionService::class);
+
+        return [
+            'allocation_method' => $alliance->allocation_method ?? 'proportional_equal',
+            'distribution_frequency' => $alliance->distribution_frequency ?? 'instant',
+            'min_payout_cents' => (int) ($alliance->min_payout_cents ?? 10000),
+            'management_fee_bps' => (int) ($alliance->management_fee_bps ?? 500),
+            'financial_fixed_member_pool_percent' => ((int) ($alliance->financial_fixed_member_pool_bps ?? 0)) / 100,
+            'financial_settings_completed_at' => $alliance->financial_settings_completed_at?->toIso8601String(),
+            'example_preview' => $splitter->buildExamplePreview($alliance),
+            'member_organizations' => $memberOrgs,
+        ];
     }
 
     /**

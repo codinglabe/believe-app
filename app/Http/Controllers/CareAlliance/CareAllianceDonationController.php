@@ -146,7 +146,7 @@ class CareAllianceDonationController extends Controller
             'donor_user_id' => $user->id,
             'amount_cents' => $validated['amount_cents'],
             'currency' => 'USD',
-            'status' => 'pending',
+            'status' => CareAllianceDonation::STATUS_PENDING,
             'split_snapshot' => $lines,
         ]);
 
@@ -174,7 +174,7 @@ class CareAllianceDonationController extends Controller
 
             return Inertia::location($checkout->url);
         } catch (\Throwable $e) {
-            $donation->update(['status' => 'failed']);
+            $donation->update(['status' => CareAllianceDonation::STATUS_FAILED]);
             Log::error('Care Alliance Stripe checkout failed', ['e' => $e->getMessage()]);
 
             return response()->json([
@@ -200,10 +200,10 @@ class CareAllianceDonationController extends Controller
 
             $donation = CareAllianceDonation::with(['campaign.careAlliance'])->findOrFail($donationId);
 
-            if ($session->payment_status === 'paid' && $donation->status === 'pending') {
+            if ($session->payment_status === 'paid' && $donation->status === CareAllianceDonation::STATUS_PENDING) {
                 DB::transaction(function () use ($donation, $session) {
                     $donation->update([
-                        'status' => 'completed',
+                        'status' => CareAllianceDonation::STATUS_COMPLETED,
                         'payment_reference' => $session->payment_intent ?? $session->id,
                     ]);
 

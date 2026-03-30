@@ -566,6 +566,12 @@ const mainNavItems: (NavItem | NavGroup)[] = [
                         icon: Package,
                         permission: "ecommerce.read",
                     },
+                    {
+                        title: 'Merchant product pool',
+                        href: '/marketplace/product-pool',
+                        icon: Package,
+                        permission: "product.read",
+                    },
                 ]
             },
             {
@@ -1060,14 +1066,18 @@ export function AppSidebar() {
         <Sidebar collapsible="icon" variant="inset" className='z-30 [&_.group\\/sidebar-wrapper.has-data-\\[variant\\=inset\\]]:!bg-sidebar [&_[data-sidebar=sidebar]]:!bg-sidebar'>
             <div className="relative h-full flex flex-col border-r border-sidebar-border bg-sidebar">
                 <SidebarResizeHandle />
-                <SidebarHeader className="border-b border-sidebar-border bg-sidebar flex-shrink-0 px-4 py-3">
-                    <SidebarMenu>
+                <SidebarHeader className="h-16 shrink-0 flex flex-col justify-center border-b-2 border-sidebar-border bg-sidebar px-4 py-0">
+                    <SidebarMenu className="gap-0">
                         <SidebarMenuItem>
-                            <SidebarMenuButton size="lg" asChild className="hover:bg-sidebar-accent/50 transition-colors rounded-lg">
-                                {/* <Link href="/dashboard" prefetch> */}
-                                {/* <AppLogo /> */}
-                                <SiteTitle href={route("dashboard")} />
-                                {/* </Link> */}
+                            <SidebarMenuButton
+                                size="default"
+                                asChild
+                                className="h-auto min-h-0 items-center py-1 hover:bg-sidebar-accent/50 transition-colors rounded-lg"
+                            >
+                                <SiteTitle
+                                    href={route('dashboard')}
+                                    className="[&_img]:h-9 [&_img]:w-9 [&_span]:text-lg"
+                                />
                             </SidebarMenuButton>
                         </SidebarMenuItem>
                     </SidebarMenu>

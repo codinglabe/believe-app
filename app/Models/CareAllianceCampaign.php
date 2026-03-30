@@ -71,6 +71,13 @@ class CareAllianceCampaign extends Model
         return $this->hasMany(CareAllianceDonation::class);
     }
 
+    /** Donations that completed Stripe checkout (excludes pending / failed). */
+    public function completedDonations(): HasMany
+    {
+        return $this->hasMany(CareAllianceDonation::class)
+            ->where('status', CareAllianceDonation::STATUS_COMPLETED);
+    }
+
     public function primaryActionCategories(): BelongsToMany
     {
         return $this->belongsToMany(

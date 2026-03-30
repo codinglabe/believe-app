@@ -23,6 +23,12 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin|car
     Route::middleware('topics.selected')->group(function () {
         Route::get('settings/profile', [ProfileController::class, 'edit'])->name('profile.edit');
         Route::patch('settings/profile', [ProfileController::class, 'update'])->name('profile.update');
+        Route::get('settings/financial', [ProfileController::class, 'editFinancial'])
+            ->name('profile.financial.edit')
+            ->middleware('role:care_alliance');
+        Route::patch('settings/profile/financial', [ProfileController::class, 'updateFinancial'])
+            ->name('profile.financial.update')
+            ->middleware('role:care_alliance');
         Route::delete('settings/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
 
         Route::get('settings/password', [PasswordController::class, 'edit'])->name('password.edit');

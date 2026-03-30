@@ -7,17 +7,21 @@ use App\Models\CareAlliance;
 use App\Models\CareAllianceCampaign;
 use App\Models\CareAllianceCampaignSplit;
 use App\Models\CareAllianceInvitation;
+use App\Models\CareAllianceDonation;
 use App\Models\CareAllianceJoinRequest;
 use App\Models\CareAllianceMembership;
+use App\Models\Donation;
 use App\Models\Organization;
+use App\Services\CareAllianceGeneralDonationDistributionService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 
 class CareAllianceDashboardController extends Controller
 {
     private const MEMBER_TABS = ['invite', 'requests', 'invitations', 'memberships'];
 
-    private const CAMPAIGN_TABS = ['create', 'list'];
+    private const CAMPAIGN_TABS = ['create', 'list', 'activity'];
 
     private function allianceForUser(Request $request): CareAlliance
     {
@@ -83,7 +87,7 @@ class CareAllianceDashboardController extends Controller
         }
 
         $alliance->load(['primaryActionCategories:id,name']);
-        $campaign->loadCount('donations');
+        $campaign->loadCount('completedDonations');
         $campaign->load([
             'primaryActionCategories:id,name',
             'splits' => fn ($q) => $q->orderBy('id')->with(['organization:id,name,ein']),
@@ -243,6 +247,235 @@ class CareAllianceDashboardController extends Controller
     }
 
     /**
+     * Allocation + schedule + settlement copy for the Donation activity tab.
+     *
+     * @return array<string, mixed>
+     */
+    private function donationActivitySettlementPayload(
+        CareAlliance $alliance,
+        string $rowType,
+        ?Donation $generalDonation = null,
+        ?CareAllianceDonation $campaignDonation = null
+    ): array {
+        if ($rowType === 'campaign' && $campaignDonation) {
+            $st = strtolower((string) $campaignDonation->status);
+            $walletStatus = match ($st) {
+                'completed' => 'Split applied to wallets (campaign checkout)',
+                'pending' => 'Awaiting payment',
+                'failed' => 'Payment failed',
+                default => ucfirst($st),
+            };
+
+            return [
+                'row_type' => 'campaign',
+                'allocation_label' => 'Campaign split (per campaign rules)',
+                'schedule_label' => 'Instant settlement',
+                'allocation_method' => null,
+                'distribution_frequency' => null,
+                'wallet_status_label' => $walletStatus,
+                'settings_completed' => null,
+            ];
+        }
+
+        $allocationLabel = match ($alliance->allocation_method ?? 'proportional_equal') {
+            'fixed_percentage' => 'Fixed % — member pool',
+            'weighted_by_donations' => 'Weighted by donations',
+            default => 'Proportional (equal among members)',
+        };
+
+        $scheduleLabel = match ($alliance->distribution_frequency ?? 'instant') {
+            'weekly' => 'Weekly release pool',
+            'monthly' => 'Monthly release pool',
+            'quarterly' => 'Quarterly release pool',
+            default => 'Instant',
+        };
+
+        $isScheduled = CareAllianceGeneralDonationDistributionService::distributionIsScheduled($alliance->distribution_frequency);
+        $finOk = (bool) $alliance->financial_settings_completed_at;
+        $st = $generalDonation ? strtolower((string) $generalDonation->status) : '';
+
+        if (! $finOk) {
+            $walletStatus = 'Recipient org credit only — complete Financial Settings for alliance splits';
+        } elseif ($isScheduled) {
+            $walletStatus = match ($st) {
+                'completed', 'active' => 'Share pooled — releases on schedule (min. payout applies)',
+                'pending' => 'Awaiting payment',
+                'failed' => 'Payment failed',
+                'canceled' => 'Canceled',
+                default => ucfirst($st ?: '—'),
+            };
+        } else {
+            $walletStatus = match ($st) {
+                'completed', 'active' => 'Released to wallets (instant settlement)',
+                'pending' => 'Awaiting payment',
+                'failed' => 'Payment failed',
+                'canceled' => 'Canceled',
+                default => ucfirst($st ?: '—'),
+            };
+        }
+
+        return [
+            'row_type' => 'general',
+            'allocation_label' => $allocationLabel,
+            'schedule_label' => $scheduleLabel,
+            'allocation_method' => $alliance->allocation_method ?? 'proportional_equal',
+            'distribution_frequency' => $alliance->distribution_frequency ?? 'instant',
+            'wallet_status_label' => $walletStatus,
+            'settings_completed' => $finOk,
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function donationActivityRow(CareAllianceDonation $d, CareAlliance $alliance): array
+    {
+        $snapshot = $d->split_snapshot ?? [];
+        $splitLines = [];
+        foreach (is_array($snapshot) ? $snapshot : [] as $line) {
+            if (! is_array($line)) {
+                continue;
+            }
+            $splitLines[] = [
+                'type' => isset($line['type']) ? (string) $line['type'] : null,
+                'label' => isset($line['label']) ? (string) $line['label'] : null,
+                'cents' => (int) ($line['cents'] ?? 0),
+                'percent_bps' => isset($line['percent_bps']) ? (int) $line['percent_bps'] : null,
+                'organization_id' => isset($line['organization_id']) ? (int) $line['organization_id'] : null,
+            ];
+        }
+
+        $campaign = $d->campaign;
+        $donor = $d->donor;
+
+        return [
+            'row_key' => 'cad-'.$d->id,
+            'id' => $d->id,
+            'amount_cents' => $d->amount_cents,
+            'currency' => $d->currency,
+            'status' => $d->status,
+            'created_at' => $d->created_at?->toIso8601String(),
+            'payment_reference' => $d->payment_reference,
+            'campaign' => $campaign ? [
+                'id' => $campaign->id,
+                'slug' => $campaign->slug,
+                'name' => $campaign->name,
+            ] : [
+                'id' => 0,
+                'slug' => '',
+                'name' => '—',
+            ],
+            'donor' => $donor ? [
+                'id' => $donor->id,
+                'name' => $donor->name,
+            ] : null,
+            'split_lines' => $splitLines,
+            'settlement' => $this->donationActivitySettlementPayload($alliance, 'campaign', null, $d),
+        ];
+    }
+
+    /**
+     * Normal /donate (and modal) gifts: same activity card shape as campaign donations; split lines follow current financial rules.
+     *
+     * @return list<array{type: string|null, label: string|null, cents: int, percent_bps: int|null, organization_id: int|null}>
+     */
+    private function generalDonationSplitLines(CareAlliance $alliance, Donation $donation, int $amountCents): array
+    {
+        if ($amountCents < 1) {
+            return [];
+        }
+
+        if (! $alliance->financial_settings_completed_at) {
+            $donation->loadMissing('organization');
+            $org = $donation->organization;
+
+            return [[
+                'type' => 'organization',
+                'label' => $org?->name ?? 'Recipient organization',
+                'cents' => $amountCents,
+                'percent_bps' => 10000,
+                'organization_id' => $org ? (int) $org->id : null,
+            ]];
+        }
+
+        $svc = app(CareAllianceGeneralDonationDistributionService::class);
+        $dist = $svc->computeDistribution($alliance, $amountCents);
+        $lines = [];
+
+        if ($dist['fee_cents'] > 0) {
+            $label = ($alliance->name !== '' && $alliance->name !== null)
+                ? $alliance->name.' (Alliance)'
+                : 'Alliance';
+            $lines[] = [
+                'type' => 'alliance',
+                'label' => $label,
+                'cents' => $dist['fee_cents'],
+                'percent_bps' => (int) round(10000 * $dist['fee_cents'] / $amountCents),
+                'organization_id' => null,
+            ];
+        }
+
+        $orgIds = array_values(array_unique(array_filter(array_map(
+            fn ($row) => (int) ($row['organization_id'] ?? 0),
+            $dist['org_shares']
+        ))));
+        $orgs = $orgIds === []
+            ? collect()
+            : Organization::query()->whereIn('id', $orgIds)->get()->keyBy('id');
+
+        foreach ($dist['org_shares'] as $share) {
+            $oid = (int) ($share['organization_id'] ?? 0);
+            $cents = (int) ($share['cents'] ?? 0);
+            if ($oid < 1 || $cents < 1) {
+                continue;
+            }
+            $org = $orgs->get($oid);
+            $lines[] = [
+                'type' => 'organization',
+                'label' => $org?->name ?? 'Member organization',
+                'cents' => $cents,
+                'percent_bps' => (int) round(10000 * $cents / $amountCents),
+                'organization_id' => $oid,
+            ];
+        }
+
+        return $lines;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function generalDonationActivityRow(Donation $d, CareAlliance $alliance): array
+    {
+        $amountCents = (int) round((float) $d->amount * 100);
+        $donor = $d->user;
+
+        return [
+            'row_key' => 'don-'.$d->id,
+            'id' => $d->id,
+            'amount_cents' => $amountCents,
+            'currency' => 'USD',
+            'status' => (string) $d->status,
+            'created_at' => $d->created_at?->toIso8601String()
+                ?? $d->donation_date?->toIso8601String(),
+            'payment_reference' => $d->transaction_id !== null && $d->transaction_id !== ''
+                ? (string) $d->transaction_id
+                : null,
+            'campaign' => [
+                'id' => 0,
+                'slug' => '',
+                'name' => 'General donation',
+            ],
+            'donor' => $donor ? [
+                'id' => (int) $donor->id,
+                'name' => (string) $donor->name,
+            ] : null,
+            'split_lines' => $this->generalDonationSplitLines($alliance, $d, $amountCents),
+            'settlement' => $this->donationActivitySettlementPayload($alliance, 'general', $d, null),
+        ];
+    }
+
+    /**
      * @return array<string, mixed>
      */
     private function campaignToWorkspaceArray(CareAllianceCampaign $c, CareAlliance $alliance): array
@@ -254,7 +487,7 @@ class CareAllianceDashboardController extends Controller
             'description' => $c->description,
             'status' => $c->status,
             'alliance_fee_bps_override' => $c->alliance_fee_bps_override,
-            'donations_count' => $c->donations_count,
+            'donations_count' => (int) $c->completed_donations_count,
             'public_donate_url' => route('care-alliance.campaigns.donate', [
                 'allianceSlug' => $alliance->slug,
                 'campaign' => $c->slug,
@@ -299,7 +532,7 @@ class CareAllianceDashboardController extends Controller
         if ($tab === 'list') {
             $campaigns = CareAllianceCampaign::query()
                 ->where('care_alliance_id', $alliance->id)
-                ->withCount('donations')
+                ->withCount('completedDonations')
                 ->with([
                     'primaryActionCategories:id,name',
                     'splits' => fn ($q) => $q->orderBy('id')->with(['organization:id,name,ein']),
@@ -307,6 +540,82 @@ class CareAllianceDashboardController extends Controller
                 ->orderByDesc('created_at')
                 ->get()
                 ->map(fn (CareAllianceCampaign $c) => $this->campaignToWorkspaceArray($c, $alliance));
+        }
+
+        $donationActivity = [];
+        $donationActivityPagination = null;
+        if ($tab === 'activity') {
+            $perPage = (int) $request->query('activity_per_page', 15);
+            $perPage = min(50, max(5, $perPage));
+
+            $campaignActivityQuery = CareAllianceDonation::query()
+                ->select([
+                    DB::raw("'campaign' as activity_kind"),
+                    'care_alliance_donations.id as activity_source_id',
+                    'care_alliance_donations.created_at as activity_at',
+                ])
+                ->whereHas('campaign', fn ($q) => $q->where('care_alliance_id', $alliance->id));
+
+            $generalActivityQuery = Donation::query()
+                ->select([
+                    DB::raw("'general' as activity_kind"),
+                    'donations.id as activity_source_id',
+                    DB::raw('COALESCE(donations.created_at, donations.donation_date) as activity_at'),
+                ])
+                ->where('care_alliance_id', $alliance->id);
+
+            $union = $campaignActivityQuery->toBase()->unionAll($generalActivityQuery->toBase());
+            $merged = DB::query()->fromSub($union, 'donation_activity_union')->orderByDesc('activity_at');
+
+            $paginator = $merged->paginate($perPage, ['*'], 'activity_page');
+
+            $cadIds = [];
+            $donIds = [];
+            foreach ($paginator->items() as $row) {
+                $kind = (string) ($row->activity_kind ?? '');
+                $sid = (int) ($row->activity_source_id ?? 0);
+                if ($sid < 1) {
+                    continue;
+                }
+                if ($kind === 'campaign') {
+                    $cadIds[] = $sid;
+                } elseif ($kind === 'general') {
+                    $donIds[] = $sid;
+                }
+            }
+
+            $cadById = $cadIds === [] ? collect() : CareAllianceDonation::query()
+                ->whereIn('id', array_values(array_unique($cadIds)))
+                ->with([
+                    'campaign:id,care_alliance_id,slug,name',
+                    'donor:id,name',
+                ])
+                ->get()
+                ->keyBy('id');
+
+            $donById = $donIds === [] ? collect() : Donation::query()
+                ->whereIn('id', array_values(array_unique($donIds)))
+                ->with(['user:id,name'])
+                ->get()
+                ->keyBy('id');
+
+            $donationActivity = [];
+            foreach ($paginator->items() as $row) {
+                $kind = (string) ($row->activity_kind ?? '');
+                $sid = (int) ($row->activity_source_id ?? 0);
+                if ($kind === 'campaign' && ($d = $cadById->get($sid)) instanceof CareAllianceDonation) {
+                    $donationActivity[] = $this->donationActivityRow($d, $alliance);
+                } elseif ($kind === 'general' && ($d = $donById->get($sid)) instanceof Donation) {
+                    $donationActivity[] = $this->generalDonationActivityRow($d, $alliance);
+                }
+            }
+
+            $donationActivityPagination = [
+                'current_page' => $paginator->currentPage(),
+                'last_page' => $paginator->lastPage(),
+                'per_page' => $paginator->perPage(),
+                'total' => $paginator->total(),
+            ];
         }
 
         return [
@@ -317,6 +626,8 @@ class CareAllianceDashboardController extends Controller
             'invitations' => [],
             'joinRequests' => [],
             'campaigns' => $campaigns,
+            'donationActivity' => $donationActivity,
+            'donationActivityPagination' => $donationActivityPagination,
             'primaryActionCategories' => $alliance->primaryActionCategories->map(fn ($c) => [
                 'id' => $c->id,
                 'name' => $c->name,

@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
-import { Activity, Check, TrendingUp, Users, X } from 'lucide-react';
+import { Activity, Check, BookOpen, TrendingUp, Users, X } from 'lucide-react';
 
 const breadcrumbs: BreadcrumbItem[] = [
     { title: 'Dashboard', href: '/dashboard' },
@@ -57,6 +57,34 @@ interface DrillRow {
     last_activity: string;
 }
 
+/** Transaction ledger row (recommended analytics / ledger columns + supporter). */
+interface LedgerRow {
+    id: number;
+    supporter_id: number;
+    supporter_name: string;
+    submodule_type: string;
+    page_name: string;
+    route_name: string;
+    action_type: string;
+    interest_category_id: string;
+    interest_category_name: string;
+    target_entity_type: string;
+    target_entity_id: string;
+    target_entity_title: string;
+    search_term: string;
+    filter_json: string;
+    referrer_url: string;
+    entry_source: string;
+    dwell_seconds: string;
+    money_amount: string;
+    points_amount: string;
+    transaction_reference: string;
+    outcome_type: string;
+    metadata_json: string;
+    created_at: string;
+    updated_at: string;
+}
+
 interface OrgOption {
     id: number;
     name: string;
@@ -77,6 +105,7 @@ interface Props {
     activeSupporters: ActiveRow[];
     topSupporters: TopRow[];
     recentActivity: RecentRow[];
+    transactionLedger: LedgerRow[];
     metricDrilldown: DrillRow[];
     metric: string | null;
     metricLabels: Record<string, string>;
@@ -122,6 +151,7 @@ export default function SupporterActivityIndex({
     activeSupporters,
     topSupporters,
     recentActivity,
+    transactionLedger,
     metricDrilldown,
     metric,
     metricLabels,
@@ -332,6 +362,171 @@ export default function SupporterActivityIndex({
                                 </Card>
                             </button>
                         </div>
+
+                        <Card className="border-violet-200/80 dark:border-violet-900/50">
+                            <CardHeader>
+                                <CardTitle className="flex items-center gap-2 text-lg">
+                                    <BookOpen className="h-5 w-5 text-violet-600 dark:text-violet-400" />
+                                    Transaction ledger
+                                </CardTitle>
+                                <CardDescription>
+                                    Recommended ledger columns for each tracked event (up to 250 rows). Scroll horizontally to
+                                    see all fields; empty values show as —. New events fill core columns automatically;
+                                    page/route/search and dwell time can be wired from the frontend later.
+                                </CardDescription>
+                            </CardHeader>
+                            <CardContent className="p-0 sm:p-6">
+                                <div className="overflow-x-auto border-t sm:border sm:rounded-md">
+                                    <Table>
+                                        <TableHeader>
+                                            <TableRow className="hover:bg-transparent">
+                                                <TableHead className="sticky left-0 z-10 min-w-[140px] bg-card text-xs whitespace-nowrap shadow-[2px_0_8px_-2px_rgba(0,0,0,0.08)]">
+                                                    Supporter
+                                                </TableHead>
+                                                <TableHead className="min-w-[120px] text-xs whitespace-nowrap" title="submodule_type">
+                                                    Submodule
+                                                </TableHead>
+                                                <TableHead className="min-w-[120px] text-xs whitespace-nowrap" title="page_name">
+                                                    Page
+                                                </TableHead>
+                                                <TableHead className="min-w-[120px] text-xs whitespace-nowrap" title="route_name">
+                                                    Route
+                                                </TableHead>
+                                                <TableHead className="min-w-[140px] text-xs whitespace-nowrap" title="action_type">
+                                                    Action
+                                                </TableHead>
+                                                <TableHead className="min-w-[100px] text-xs whitespace-nowrap" title="interest_category_id">
+                                                    Category ID
+                                                </TableHead>
+                                                <TableHead className="min-w-[140px] text-xs whitespace-nowrap" title="interest_category_name">
+                                                    Category name
+                                                </TableHead>
+                                                <TableHead className="min-w-[120px] text-xs whitespace-nowrap" title="target_entity_type">
+                                                    Target type
+                                                </TableHead>
+                                                <TableHead className="min-w-[100px] text-xs whitespace-nowrap" title="target_entity_id">
+                                                    Target ID
+                                                </TableHead>
+                                                <TableHead className="min-w-[160px] text-xs whitespace-nowrap" title="target_entity_title">
+                                                    Target title
+                                                </TableHead>
+                                                <TableHead className="min-w-[120px] text-xs whitespace-nowrap" title="search_term">
+                                                    Search
+                                                </TableHead>
+                                                <TableHead className="min-w-[160px] text-xs whitespace-nowrap" title="filter_json">
+                                                    Filters (JSON)
+                                                </TableHead>
+                                                <TableHead className="min-w-[180px] text-xs whitespace-nowrap" title="referrer_url">
+                                                    Referrer URL
+                                                </TableHead>
+                                                <TableHead className="min-w-[100px] text-xs whitespace-nowrap" title="entry_source">
+                                                    Entry source
+                                                </TableHead>
+                                                <TableHead className="min-w-[90px] text-xs whitespace-nowrap" title="dwell_seconds">
+                                                    Dwell (sec)
+                                                </TableHead>
+                                                <TableHead className="min-w-[100px] text-xs whitespace-nowrap" title="money_amount">
+                                                    Money
+                                                </TableHead>
+                                                <TableHead className="min-w-[100px] text-xs whitespace-nowrap" title="points_amount">
+                                                    Points
+                                                </TableHead>
+                                                <TableHead className="min-w-[120px] text-xs whitespace-nowrap" title="transaction_reference">
+                                                    Transaction ref
+                                                </TableHead>
+                                                <TableHead className="min-w-[100px] text-xs whitespace-nowrap" title="outcome_type">
+                                                    Outcome
+                                                </TableHead>
+                                                <TableHead className="min-w-[160px] text-xs whitespace-nowrap" title="metadata_json">
+                                                    Metadata (JSON)
+                                                </TableHead>
+                                                <TableHead className="min-w-[150px] text-xs whitespace-nowrap" title="created_at">
+                                                    Created
+                                                </TableHead>
+                                                <TableHead className="min-w-[150px] text-xs whitespace-nowrap" title="updated_at">
+                                                    Updated
+                                                </TableHead>
+                                            </TableRow>
+                                        </TableHeader>
+                                        <TableBody>
+                                            {transactionLedger.length === 0 ? (
+                                                <TableRow>
+                                                    <TableCell
+                                                        colSpan={22}
+                                                        className="text-muted-foreground text-center py-10 text-sm"
+                                                    >
+                                                        No ledger rows in this period yet.
+                                                    </TableCell>
+                                                </TableRow>
+                                            ) : (
+                                                transactionLedger.map((row) => (
+                                                    <TableRow key={row.id}>
+                                                        <TableCell className="sticky left-0 z-10 min-w-[140px] bg-card align-top text-xs font-medium shadow-[2px_0_8px_-2px_rgba(0,0,0,0.08)]">
+                                                            <Link
+                                                                href={supporterProfileUrl(
+                                                                    row.supporter_id,
+                                                                    isAdmin,
+                                                                    selectedOrganizationId,
+                                                                    period,
+                                                                )}
+                                                                className="text-primary hover:underline"
+                                                            >
+                                                                {row.supporter_name}
+                                                            </Link>
+                                                        </TableCell>
+                                                        <TableCell className="align-top text-xs max-w-[200px] truncate" title={row.submodule_type}>
+                                                            {row.submodule_type}
+                                                        </TableCell>
+                                                        <TableCell className="align-top text-xs max-w-[200px] truncate" title={row.page_name}>
+                                                            {row.page_name}
+                                                        </TableCell>
+                                                        <TableCell className="align-top text-xs max-w-[200px] truncate" title={row.route_name}>
+                                                            {row.route_name}
+                                                        </TableCell>
+                                                        <TableCell className="align-top text-xs font-mono max-w-[220px] truncate" title={row.action_type}>
+                                                            {row.action_type}
+                                                        </TableCell>
+                                                        <TableCell className="align-top text-xs tabular-nums">{row.interest_category_id}</TableCell>
+                                                        <TableCell className="align-top text-xs max-w-[180px] truncate" title={row.interest_category_name}>
+                                                            {row.interest_category_name}
+                                                        </TableCell>
+                                                        <TableCell className="align-top text-xs">{row.target_entity_type}</TableCell>
+                                                        <TableCell className="align-top text-xs font-mono">{row.target_entity_id}</TableCell>
+                                                        <TableCell className="align-top text-xs max-w-[200px] truncate" title={row.target_entity_title}>
+                                                            {row.target_entity_title}
+                                                        </TableCell>
+                                                        <TableCell className="align-top text-xs max-w-[160px] truncate" title={row.search_term}>
+                                                            {row.search_term}
+                                                        </TableCell>
+                                                        <TableCell className="align-top text-xs font-mono max-w-[200px] truncate" title={row.filter_json}>
+                                                            {row.filter_json}
+                                                        </TableCell>
+                                                        <TableCell className="align-top text-xs max-w-[220px] truncate" title={row.referrer_url}>
+                                                            {row.referrer_url}
+                                                        </TableCell>
+                                                        <TableCell className="align-top text-xs">{row.entry_source}</TableCell>
+                                                        <TableCell className="align-top text-xs tabular-nums">{row.dwell_seconds}</TableCell>
+                                                        <TableCell className="align-top text-xs tabular-nums">{row.money_amount}</TableCell>
+                                                        <TableCell className="align-top text-xs tabular-nums">{row.points_amount}</TableCell>
+                                                        <TableCell className="align-top text-xs font-mono">{row.transaction_reference}</TableCell>
+                                                        <TableCell className="align-top text-xs">{row.outcome_type}</TableCell>
+                                                        <TableCell className="align-top text-xs font-mono max-w-[220px] truncate" title={row.metadata_json}>
+                                                            {row.metadata_json}
+                                                        </TableCell>
+                                                        <TableCell className="align-top text-xs text-muted-foreground whitespace-nowrap">
+                                                            {row.created_at}
+                                                        </TableCell>
+                                                        <TableCell className="align-top text-xs text-muted-foreground whitespace-nowrap">
+                                                            {row.updated_at}
+                                                        </TableCell>
+                                                    </TableRow>
+                                                ))
+                                            )}
+                                        </TableBody>
+                                    </Table>
+                                </div>
+                            </CardContent>
+                        </Card>
 
                         {metric && (
                             <Card className="border-primary/30">

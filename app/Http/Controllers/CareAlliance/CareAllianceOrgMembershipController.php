@@ -8,12 +8,44 @@ use App\Models\CareAllianceInvitation;
 use App\Models\CareAllianceJoinRequest;
 use App\Models\CareAllianceMembership;
 use App\Models\Organization;
+use App\Models\Transaction;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 
 class CareAllianceOrgMembershipController extends Controller
 {
-    private const TABS = ['join', 'outgoing', 'invitations', 'membership'];
+    private const TABS = ['join', 'outgoing', 'invitations', 'membership', 'activity'];
+
+    /**
+     * @return list<array{id: int, amount: float, role: string|null, care_alliance_id: int|null, care_alliance_name: string|null, created_at: string|null}>
+     */
+    private function allianceWalletActivityRows(Organization $org, int $limit = 25): array
+    {
+        if (! $org->user_id) {
+            return [];
+        }
+
+        return Transaction::query()
+            ->where('user_id', (int) $org->user_id)
+            ->where('payment_method', 'care_alliance_split')
+            ->orderByDesc('created_at')
+            ->limit($limit)
+            ->get()
+            ->map(function (Transaction $t) {
+                $meta = is_array($t->meta) ? $t->meta : [];
+
+                return [
+                    'id' => $t->id,
+                    'amount' => (float) $t->amount,
+                    'role' => isset($meta['role']) ? (string) $meta['role'] : null,
+                    'care_alliance_id' => isset($meta['care_alliance_id']) ? (int) $meta['care_alliance_id'] : null,
+                    'care_alliance_name' => isset($meta['care_alliance_name']) ? (string) $meta['care_alliance_name'] : null,
+                    'created_at' => $t->created_at?->toIso8601String(),
+                ];
+            })
+            ->values()
+            ->all();
+    }
 
     private function organizationForUser(Request $request): Organization
     {
@@ -49,6 +81,7 @@ class CareAllianceOrgMembershipController extends Controller
         $memberships = [];
         $joinRequests = [];
         $allianceSearchResults = [];
+        $allianceWalletActivity = [];
 
         switch ($tab) {
             case 'join':
@@ -116,6 +149,9 @@ class CareAllianceOrgMembershipController extends Controller
                         ],
                     ]);
                 break;
+            case 'activity':
+                $allianceWalletActivity = $this->allianceWalletActivityRows($org, 50);
+                break;
         }
 
         return Inertia::render('organization/AllianceMembership/Index', [
@@ -131,6 +167,7 @@ class CareAllianceOrgMembershipController extends Controller
             'invitations' => $invitations,
             'memberships' => $memberships,
             'joinRequests' => $joinRequests,
+            'allianceWalletActivity' => $allianceWalletActivity,
         ]);
     }
 }

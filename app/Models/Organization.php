@@ -375,6 +375,11 @@ class Organization extends Model
         return $this->hasMany(Product::class, 'organization_id');
     }
 
+    public function organizationProducts()
+    {
+        return $this->hasMany(OrganizationProduct::class);
+    }
+
     public function jobPosts()
     {
         return $this->hasMany(JobPost::class, 'organization_id', 'id');

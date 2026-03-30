@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Cart;
 use App\Models\CartItem;
+use App\Models\OrganizationProduct;
 use App\Models\Product;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -20,7 +21,7 @@ class CartController extends Controller
     {
         try {
             $user = $request->user();
-            $cart = $user->cart()->with('items.product')->first();
+            $cart = $user->cart()->with(['items.product', 'items.organizationProduct.marketplaceProduct'])->first();
 
             if (!$cart) {
                 $cart = $user->cart()->create();
@@ -44,7 +45,7 @@ class CartController extends Controller
     {
         try {
             $user = $request->user();
-            $cart = $user->cart()->with('items.product')->first();
+            $cart = $user->cart()->with(['items.product', 'items.organizationProduct.marketplaceProduct'])->first();
 
             if (!$cart) {
                 return response()->json([
@@ -200,6 +201,10 @@ class CartController extends Controller
             // Use firstOrCreate to ensure cart always exists
             $cart = $user->cart()->firstOrCreate();
 
+            if ($request->filled('organization_product_id')) {
+                return $this->addOrganizationPoolListing($request, $cart);
+            }
+
             // Get product first to determine if it's Printify or manual
             $product = Product::with('organization')->findOrFail($request->product_id);
             $isPrintifyProduct = !empty($product->printify_product_id);
@@ -289,6 +294,67 @@ class CartController extends Controller
         }
     }
 
+    /**
+     * Add a merchant-pool listing (organization_products) to the cart.
+     */
+    private function addOrganizationPoolListing(Request $request, Cart $cart): JsonResponse
+    {
+        $validated = $request->validate([
+            'organization_product_id' => 'required|exists:organization_products,id',
+            'quantity' => 'required|integer|min:1',
+        ]);
+
+        $op = OrganizationProduct::query()
+            ->where('id', $validated['organization_product_id'])
+            ->where('status', 'active')
+            ->with('marketplaceProduct')
+            ->firstOrFail();
+
+        $mp = $op->marketplaceProduct;
+        if (! $mp || ! $mp->inPool()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'This listing is not available.',
+            ], 422);
+        }
+
+        $qty = (int) $validated['quantity'];
+        if ($mp->inventory_quantity !== null && $qty > (int) $mp->inventory_quantity) {
+            return response()->json([
+                'success' => false,
+                'message' => "Only {$mp->inventory_quantity} available in stock.",
+            ], 422);
+        }
+
+        $cart->items()->delete();
+
+        $firstImage = null;
+        $imgs = $mp->images ?? [];
+        if (is_array($imgs) && count($imgs) > 0) {
+            $path = $imgs[0];
+            $firstImage = filter_var($path, FILTER_VALIDATE_URL) ? $path : asset('storage/'.ltrim((string) $path, '/'));
+        }
+
+        $cart->items()->create([
+            'product_id' => null,
+            'organization_product_id' => $op->id,
+            'quantity' => $qty,
+            'unit_price' => $op->custom_price,
+            'printify_variant_id' => null,
+            'printify_blueprint_id' => null,
+            'printify_print_provider_id' => null,
+            'variant_options' => null,
+            'variant_price_modifier' => 0,
+            'variant_image' => $firstImage,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Added to cart',
+            'cartData' => $this->getCartData($request, $cart->load(['items.product', 'items.organizationProduct.marketplaceProduct'])),
+            'cart_cleared' => true,
+        ]);
+    }
 
     /**
      * Helper method to create cart item
@@ -349,7 +415,7 @@ class CartController extends Controller
     {
         if (!$cart) {
             $user = $request->user();
-            $cart = $user->cart()->with('items.product')->first();
+            $cart = $user->cart()->with(['items.product', 'items.organizationProduct.marketplaceProduct'])->first();
         }
 
         if (!$cart) {
@@ -360,10 +426,34 @@ class CartController extends Controller
             ];
         }
 
+        $cart->loadMissing(['items.product', 'items.organizationProduct.organization', 'items.organizationProduct.marketplaceProduct']);
+
         $items = $cart->items->map(function ($item) {
+            if ($item->organization_product_id) {
+                $op = $item->organizationProduct;
+                $mp = $op?->marketplaceProduct;
+
+                return [
+                    'id' => $item->id,
+                    'product_id' => null,
+                    'organization_product_id' => $item->organization_product_id,
+                    'product_name' => $mp?->name ?? 'Product',
+                    'product_image' => $item->variant_image,
+                    'quantity' => $item->quantity,
+                    'unit_price' => $item->unit_price,
+                    'subtotal' => $item->unit_price * $item->quantity,
+                    'variant_options' => [],
+                    'printify_variant_id' => null,
+                    'variant_price_modifier' => $item->variant_price_modifier,
+                    'listing_type' => 'merchant_pool',
+                    'sold_by_organization' => $op?->organization?->name,
+                ];
+            }
+
             return [
                 'id' => $item->id,
                 'product_id' => $item->product_id,
+                'organization_product_id' => null,
                 'product_name' => $item->product->name,
                 'product_image' => $item->product->image,
                 'quantity' => $item->quantity,
@@ -372,6 +462,7 @@ class CartController extends Controller
                 'variant_options' => $item->variant_options ? json_decode($item->variant_options, true) : [],
                 'printify_variant_id' => $item->printify_variant_id,
                 'variant_price_modifier' => $item->variant_price_modifier,
+                'listing_type' => 'catalog',
             ];
         });
 
@@ -395,14 +486,23 @@ class CartController extends Controller
 
         $this->authorize('update', $cartItem);
 
-        if ($validated['quantity'] > $cartItem->product->quantity_available) {
+        $cartItem->loadMissing(['product', 'organizationProduct.marketplaceProduct']);
+
+        if ($cartItem->organization_product_id) {
+            $mp = $cartItem->organizationProduct?->marketplaceProduct;
+            if ($mp && $mp->inventory_quantity !== null && $validated['quantity'] > (int) $mp->inventory_quantity) {
+                return response()->json([
+                    'error' => 'Only '.$mp->inventory_quantity.' items available in stock',
+                ], 422);
+            }
+        } elseif ($cartItem->product && $validated['quantity'] > $cartItem->product->quantity_available) {
             return response()->json([
                 'error' => 'Only ' . $cartItem->product->quantity_available . ' items available in stock'
             ], 422);
         }
 
         $cartItem->update($validated);
-        $cart = $cartItem->cart->load(['items.product', 'items.variant']);
+        $cart = $cartItem->cart->load(['items.product', 'items.variant', 'items.organizationProduct.marketplaceProduct']);
 
         return response()->json([
             'message' => 'Cart item updated',
@@ -421,7 +521,7 @@ class CartController extends Controller
 
         $cart = $cartItem->cart;
         $cartItem->delete();
-        $cart->load(['items.product', 'items.variant']);
+        $cart->load(['items.product', 'items.variant', 'items.organizationProduct.marketplaceProduct']);
 
         return response()->json([
             'message' => 'Item removed from cart',
@@ -440,7 +540,7 @@ class CartController extends Controller
 
         if ($cart) {
             $cart->items()->delete();
-            $cart->load(['items.product', 'items.variant']);
+            $cart->load(['items.product', 'items.variant', 'items.organizationProduct.marketplaceProduct']);
         }
 
         return response()->json([

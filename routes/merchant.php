@@ -1,10 +1,10 @@
 <?php
 
-use Illuminate\Support\Facades\Route;
-use Illuminate\Http\Request;
-use Inertia\Inertia;
 use App\Http\Controllers\Merchant\Auth\MerchantAuthController;
 use App\Http\Controllers\Merchant\MerchantMarketplaceProductController;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Route;
+use Inertia\Inertia;
 
 // ============================================
 // MERCHANT PROGRAM ROUTES
@@ -44,7 +44,7 @@ Route::middleware('guest:merchant')->group(function () {
 Route::middleware(['auth:merchant'])->group(function () {
     // Dashboard (no subscription required)
     Route::get('/dashboard', [App\Http\Controllers\Merchant\MerchantDashboardController::class, 'index'])->name('merchant.dashboard');
-    
+
     // Subscription routes (no subscription required to view/subscribe)
     Route::prefix('subscription')->name('merchant.subscription.')->group(function () {
         Route::get('/', [App\Http\Controllers\Merchant\MerchantSubscriptionController::class, 'index'])->name('index');
@@ -118,4 +118,3 @@ Route::prefix('hub')->name('hub.')->group(function () {
     // Offer detail route (must be last to avoid matching "success" as slug)
     Route::get('/offers/{slug}', [App\Http\Controllers\Merchant\HubOfferController::class, 'show'])->name('offer.show');
 });
-

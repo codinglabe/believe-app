@@ -6,6 +6,7 @@ use App\Models\CareAlliance;
 use App\Models\Donation;
 use App\Models\Organization;
 use App\Models\User;
+use App\Services\CareAllianceGeneralDonationDistributionService;
 use App\Services\CareAlliancePublicPageService;
 use App\Services\ImpactScoreService;
 use App\Services\SeoService;
@@ -156,19 +157,25 @@ class DonationController extends Controller
 
     private function resolveCareAllianceForCheckoutDisplay(Request $request, Organization $recipientOrg): ?CareAlliance
     {
-        if ($request->input('recipient_kind') !== 'care_alliance') {
-            return null;
-        }
-
-        $careAllianceId = $request->input('care_alliance_id');
-        if ($careAllianceId !== null && $careAllianceId !== '') {
-            $alliance = CareAlliance::query()->find((int) $careAllianceId);
-            if ($alliance && $this->donationRecipientMatchesAlliance($alliance, $recipientOrg)) {
-                return $alliance;
+        if ($request->input('recipient_kind') === 'care_alliance') {
+            $careAllianceId = $request->input('care_alliance_id');
+            if ($careAllianceId !== null && $careAllianceId !== '') {
+                $alliance = CareAlliance::query()->find((int) $careAllianceId);
+                if ($alliance && $this->donationRecipientMatchesAlliance($alliance, $recipientOrg)) {
+                    return $alliance;
+                }
             }
+
+            return $this->firstCareAllianceMatchingRecipientOrganization($recipientOrg);
         }
 
-        return $this->firstCareAllianceMatchingRecipientOrganization($recipientOrg);
+        // Org profile / favorites / embedded donate flows omit recipient_kind but use the same organization_id
+        // as the alliance's public donation recipient — attach alliance so financial settings apply.
+        if ($request->missing('recipient_kind')) {
+            return $this->firstCareAllianceMatchingRecipientOrganization($recipientOrg);
+        }
+
+        return null;
     }
 
     /**
@@ -397,9 +404,12 @@ class DonationController extends Controller
                     ])->with('subscription_required', true);
                 }
             } elseif ($orgUser && ! $orgRecipientHasPlan) {
-                return redirect()->back()->withErrors([
-                    'subscription' => 'This organization does not have an active subscription. Donations are not available at this time.',
-                ])->with('subscription_required', true);
+                $creatorCovers = $this->anyAllianceCreatorPlanCoversRecipientOrganization($organization);
+                if (! $creatorCovers) {
+                    return redirect()->back()->withErrors([
+                        'subscription' => 'This organization does not have an active subscription. Donations are not available at this time.',
+                    ])->with('subscription_required', true);
+                }
             }
         }
 
@@ -445,10 +455,18 @@ class DonationController extends Controller
             }
         }
 
+        $allianceForCheckout = $this->resolveCareAllianceForCheckoutDisplay($request, $organization);
+        if ($allianceForCheckout && ! $allianceForCheckout->financial_settings_completed_at) {
+            return redirect()->back()->withErrors([
+                'message' => 'This alliance must complete Financial Settings under Settings → Profile before receiving donations.',
+            ]);
+        }
+
         // Create donation record
         $donation = Donation::create([
             'user_id' => $user->id,
             'organization_id' => $organization->id,
+            'care_alliance_id' => $allianceForCheckout?->id,
             'amount' => $validated['amount'],
             'frequency' => $validated['frequency'],
             'status' => 'pending',
@@ -480,17 +498,7 @@ class DonationController extends Controller
                     'transaction_id' => 'believe_points_donation_' . $donation->id,
                 ]);
 
-                // Add donation amount to organization's user balance
-                if ($donation->organization && $donation->organization->user) {
-                    $donation->organization->user->increment('balance', $donation->amount);
-                    Log::info('Donation added to organization user balance (Believe Points)', [
-                        'donation_id' => $donation->id,
-                        'organization_id' => $donation->organization->id,
-                        'user_id' => $donation->organization->user->id,
-                        'amount' => $donation->amount,
-                        'new_balance' => $donation->organization->user->fresh()->balance,
-                    ]);
-                }
+                $this->applyDonationToBalances($donation);
 
                 // Award impact points for completed donation
                 $this->impactScoreService->awardDonationPoints($donation);
@@ -511,8 +519,6 @@ class DonationController extends Controller
 
         // Handle Stripe payment
         try {
-            $allianceForCheckout = $this->resolveCareAllianceForCheckoutDisplay($request, $organization);
-
             // Stripe line item: alliance donations show only the Care Alliance name (no member list or payout copy).
             $checkoutLineTitle = $allianceForCheckout !== null
                 ? sprintf('Donation to %s', $allianceForCheckout->name)
@@ -579,7 +585,7 @@ class DonationController extends Controller
 
         // Handle Believe Points donation success (no session_id needed)
         if ($donationId && !$sessionId) {
-            $donation = Donation::with(['organization', 'user'])->find($donationId);
+            $donation = Donation::with(['organization', 'user', 'careAlliance:id,name,slug'])->find($donationId);
 
             if ($donation && $donation->payment_method === 'believe_points' && $donation->status === 'completed') {
                 return Inertia::render('frontend/organization/donation/success', [
@@ -601,35 +607,29 @@ class DonationController extends Controller
         }
         try {
             $session = Cashier::stripe()->checkout->sessions->retrieve($sessionId);
-            $donation = Donation::with(['organization', 'user'])->findOrFail($session->metadata->donation_id);
+            $donation = Donation::with(['organization', 'user', 'careAlliance:id,name,slug'])->findOrFail($session->metadata->donation_id);
 
             $user = $donation->user;
 
             // Check payment status from Stripe session
             if ($session->payment_status === 'paid') {
                 if ($session->payment_intent) {
-                    // One-time payment
-                    $donation->update([
-                        'transaction_id' => $session->payment_intent,
-                        'payment_method' => $session->payment_method_types[0] ?? 'card',
-                        'status' => 'completed',
-                        'donation_date' => now(),
-                    ]);
+                    // One-time: only settle wallets once (success URL can be reloaded).
+                    $alreadySettled = $donation->status === 'completed'
+                        && (string) $donation->transaction_id === (string) $session->payment_intent;
+                    if (! $alreadySettled) {
+                        DB::transaction(function () use ($donation, $session) {
+                            $donation->update([
+                                'transaction_id' => $session->payment_intent,
+                                'payment_method' => $session->payment_method_types[0] ?? 'card',
+                                'status' => 'completed',
+                                'donation_date' => now(),
+                            ]);
+                            $this->applyDonationToBalances($donation->fresh());
+                        });
 
-                    // Add donation amount to organization's user balance
-                    if ($donation->organization && $donation->organization->user) {
-                        $donation->organization->user->increment('balance', $donation->amount);
-                        Log::info('Donation added to organization user balance', [
-                            'donation_id' => $donation->id,
-                            'organization_id' => $donation->organization->id,
-                            'user_id' => $donation->organization->user->id,
-                            'amount' => $donation->amount,
-                            'new_balance' => $donation->organization->user->fresh()->balance,
-                        ]);
+                        $this->impactScoreService->awardDonationPoints($donation->fresh());
                     }
-
-                    // Award impact points for completed donation
-                    $this->impactScoreService->awardDonationPoints($donation);
                 } elseif ($session->subscription) {
                     // Recurring payment - store subscription using Laravel Cashier
                     try {
@@ -701,52 +701,42 @@ class DonationController extends Controller
                         // Continue even if subscription storage fails - webhook will handle it
                     }
 
-                    // Recurring payment
-                    $donation->update([
-                        'transaction_id' => $session->subscription,
-                        'payment_method' => 'card',
-                        'status' => 'active',
-                        'donation_date' => now(),
-                    ]);
-
-                    // Add donation amount to organization's user balance for recurring donations
-                    if ($donation->organization && $donation->organization->user) {
-                        $donation->organization->user->increment('balance', $donation->amount);
-                        Log::info('Recurring donation added to organization user balance', [
-                            'donation_id' => $donation->id,
-                            'organization_id' => $donation->organization->id,
-                            'user_id' => $donation->organization->user->id,
-                            'amount' => $donation->amount,
-                            'new_balance' => $donation->organization->user->fresh()->balance,
-                        ]);
+                    // Recurring: first checkout only — same guard as one-time (page refresh).
+                    $alreadySettled = in_array($donation->status, ['active', 'completed'], true)
+                        && (string) $donation->transaction_id === (string) $session->subscription;
+                    if (! $alreadySettled) {
+                        DB::transaction(function () use ($donation, $session) {
+                            $donation->update([
+                                'transaction_id' => $session->subscription,
+                                'payment_method' => 'card',
+                                'status' => 'active',
+                                'donation_date' => now(),
+                            ]);
+                            $this->applyDonationToBalances($donation->fresh());
+                        });
                     }
 
-                    // Award impact points for active recurring donation
-                    $this->impactScoreService->awardDonationPoints($donation);
+                    // Status is "active" for recurring checkout — awardDonationPoints only runs for "completed".
+                    if (! $alreadySettled) {
+                        $this->impactScoreService->awardDonationPoints($donation->fresh());
+                    }
                 } else {
                     // Payment is paid but no payment_intent or subscription found
-                    // Still mark as completed if payment_status is paid
-                    $donation->update([
-                        'transaction_id' => $session->id,
-                        'payment_method' => $session->payment_method_types[0] ?? 'card',
-                        'status' => 'completed',
-                        'donation_date' => now(),
-                    ]);
+                    $alreadySettled = $donation->status === 'completed'
+                        && (string) $donation->transaction_id === (string) $session->id;
+                    if (! $alreadySettled) {
+                        DB::transaction(function () use ($donation, $session) {
+                            $donation->update([
+                                'transaction_id' => $session->id,
+                                'payment_method' => $session->payment_method_types[0] ?? 'card',
+                                'status' => 'completed',
+                                'donation_date' => now(),
+                            ]);
+                            $this->applyDonationToBalances($donation->fresh());
+                        });
 
-                    // Add donation amount to organization's user balance
-                    if ($donation->organization && $donation->organization->user) {
-                        $donation->organization->user->increment('balance', $donation->amount);
-                        Log::info('Donation added to organization user balance (fallback)', [
-                            'donation_id' => $donation->id,
-                            'organization_id' => $donation->organization->id,
-                            'user_id' => $donation->organization->user->id,
-                            'amount' => $donation->amount,
-                            'new_balance' => $donation->organization->user->fresh()->balance,
-                        ]);
+                        $this->impactScoreService->awardDonationPoints($donation->fresh());
                     }
-
-                    // Award impact points
-                    $this->impactScoreService->awardDonationPoints($donation);
                 }
             } else {
                 // Payment not completed yet
@@ -757,8 +747,9 @@ class DonationController extends Controller
                 ]);
             }
 
-            // Refresh donation to get updated status
+            // Refresh donation to get updated status (re-load display relations)
             $donation->refresh();
+            $donation->load(['organization', 'user', 'careAlliance:id,name,slug']);
 
             return Inertia::render('frontend/organization/donation/success', [
                 'donation' => $donation,
@@ -827,6 +818,38 @@ class DonationController extends Controller
         ]);
 
         return $price->id;
+    }
+
+    /**
+     * Normal (main /donate) Care Alliance gifts: split by alliance financial rules when configured.
+     * Otherwise credit the recipient organization only (legacy / non-alliance).
+     */
+    private function applyDonationToBalances(Donation $donation): void
+    {
+        $donation->loadMissing('organization.user');
+        if ($donation->care_alliance_id) {
+            $alliance = CareAlliance::query()->find($donation->care_alliance_id);
+            if ($alliance && $alliance->financial_settings_completed_at) {
+                $amountCents = (int) round((float) $donation->amount * 100);
+                $svc = app(CareAllianceGeneralDonationDistributionService::class);
+                $dist = $svc->computeDistribution($alliance, $amountCents);
+                if (CareAllianceGeneralDonationDistributionService::distributionIsScheduled($alliance->distribution_frequency)) {
+                    $svc->accumulatePendingDistribution($alliance, $dist['org_shares'], $dist['fee_cents']);
+                } else {
+                    $svc->distributeCompletedDonation($donation, $alliance, $dist['org_shares'], $dist['fee_cents']);
+                }
+
+                return;
+            }
+        }
+        if ($donation->organization && $donation->organization->user) {
+            $donation->organization->user->increment('balance', $donation->amount);
+            Log::info('Donation added to organization user balance', [
+                'donation_id' => $donation->id,
+                'organization_id' => $donation->organization->id,
+                'amount' => $donation->amount,
+            ]);
+        }
     }
 
     /**

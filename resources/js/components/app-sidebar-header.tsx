@@ -1,5 +1,5 @@
 import { Breadcrumbs } from '@/components/breadcrumbs';
-import { SidebarFooter, SidebarTrigger, useSidebar } from '@/components/ui/sidebar';
+import { SidebarTrigger, useSidebar } from '@/components/ui/sidebar';
 import { type BreadcrumbItem as BreadcrumbItemType } from '@/types';
 import { NavUser } from './nav-user';
 import { NotificationBell } from './notification-bell';
@@ -220,9 +220,9 @@ export function AppSidebarHeader({ breadcrumbs = [] }: { breadcrumbs?: Breadcrum
                 {/* Theme Toggle */}
                 <AppearanceToggleDropdown />
 
-                <SidebarFooter>
+                <div className="flex items-center shrink-0">
                     <NavUser />
-                </SidebarFooter>
+                </div>
             </div>
         </header>
     );

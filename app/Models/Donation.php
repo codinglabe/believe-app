@@ -3,12 +3,14 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class Donation extends Model
 {
     protected $fillable = [
         'user_id',
         'organization_id',
+        'care_alliance_id',
         'amount',
         'frequency',
         'payment_method',
@@ -48,5 +50,10 @@ class Donation extends Model
     public function organization()
     {
         return $this->belongsTo(Organization::class);
+    }
+
+    public function careAlliance(): BelongsTo
+    {
+        return $this->belongsTo(CareAlliance::class);
     }
 }

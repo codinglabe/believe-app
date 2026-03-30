@@ -1,6 +1,7 @@
 "use client"
 
 import { useId, useMemo, useState } from "react"
+import { motion } from "framer-motion"
 import CareAllianceWorkspaceShell from "@/layouts/care-alliance/care-alliance-workspace-shell"
 import {
   AlertDialog,
@@ -35,17 +36,33 @@ import { Link, router, usePage } from "@inertiajs/react"
 import toast from "react-hot-toast"
 import {
   Building2,
+  ChevronLeft,
+  ChevronRight,
   CircleDollarSign,
+  Clock,
   ExternalLink,
+  HeartHandshake,
   Landmark,
+  Layers,
+  CalendarClock,
+  Wallet,
   Megaphone,
   Pencil,
+  Receipt,
+  Sparkles,
   Trash2,
+  User,
   Users,
   X,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
-import type { CareAllianceCampaignRow, CareAllianceCampaignsTab, CareAllianceWorkspaceProps } from "../types"
+import type {
+  CareAllianceCampaignRow,
+  CareAllianceCampaignsTab,
+  CareAllianceDonationActivityPagination,
+  CareAllianceDonationActivityRow,
+  CareAllianceWorkspaceProps,
+} from "../types"
 import {
   dashboardCardClass,
   dashboardInputClass,
@@ -71,6 +88,8 @@ const CAMPAIGNS_WORKSPACE_KEYS = [
   "invitations",
   "joinRequests",
   "campaigns",
+  "donationActivity",
+  "donationActivityPagination",
   "primaryActionCategories",
 ] as const
 
@@ -98,6 +117,440 @@ function formatSplitPercentBps(bps: number): string {
   if (Number.isInteger(pct)) return `${pct}%`
   const s = pct.toFixed(2).replace(/\.?0+$/, "")
   return `${s}%`
+}
+
+function formatMoneyCents(cents: number, currency = "USD"): string {
+  try {
+    return new Intl.NumberFormat("en-US", { style: "currency", currency }).format(cents / 100)
+  } catch {
+    return `$${(cents / 100).toFixed(2)}`
+  }
+}
+
+function formatActivityDate(iso: string | null): string {
+  if (!iso) return "—"
+  try {
+    return new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(iso))
+  } catch {
+    return iso
+  }
+}
+
+function donationStatusBadgeClass(status: string): string {
+  const s = status.toLowerCase()
+  if (s === "completed" || s === "active") {
+    return "border-emerald-500/25 bg-emerald-500/10 text-emerald-800 dark:text-emerald-200"
+  }
+  if (s === "pending") {
+    return "border-amber-500/25 bg-amber-500/10 text-amber-900 dark:text-amber-100"
+  }
+  if (s === "failed") {
+    return "border-destructive/25 bg-destructive/10 text-destructive"
+  }
+  return "border-border bg-muted/60 text-muted-foreground"
+}
+
+function DonationActivityEmptyState() {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 10, scale: 0.98 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      transition={{ type: "spring", stiffness: 320, damping: 28 }}
+      className="relative overflow-hidden rounded-2xl border border-dashed border-violet-500/20 bg-gradient-to-b from-violet-500/[0.04] via-muted/20 to-teal-500/[0.04] px-6 py-16 text-center dark:from-violet-500/[0.07] dark:to-teal-500/[0.05]"
+    >
+      <div className="pointer-events-none absolute -right-8 -top-8 h-32 w-32 rounded-full bg-violet-500/10 blur-2xl" aria-hidden />
+      <div className="pointer-events-none absolute -bottom-10 -left-10 h-36 w-36 rounded-full bg-teal-500/10 blur-2xl" aria-hidden />
+      <motion.div
+        className="relative mx-auto flex h-16 w-16 items-center justify-center rounded-2xl border border-violet-500/20 bg-background/80 shadow-lg shadow-violet-500/10 dark:bg-background/60"
+        animate={{ y: [0, -5, 0] }}
+        transition={{ duration: 3.2, repeat: Infinity, ease: "easeInOut" }}
+      >
+        <Receipt className="h-7 w-7 text-violet-600 opacity-90 dark:text-violet-400" strokeWidth={1.75} />
+      </motion.div>
+      <p className="relative mt-5 text-base font-semibold tracking-tight text-foreground">No donations yet</p>
+      <p className="relative mx-auto mt-2 max-w-sm text-sm leading-relaxed text-muted-foreground">
+        When supporters complete checkout, each gift appears here with a full breakdown of the split.
+      </p>
+    </motion.div>
+  )
+}
+
+function DonationSplitLines({
+  lines,
+  currency,
+  paymentReference,
+}: {
+  lines: CareAllianceDonationActivityRow["split_lines"]
+  currency: string
+  paymentReference: string | null
+}) {
+  if (lines.length === 0 && !paymentReference) {
+    return (
+      <p className="rounded-lg border border-border/60 bg-muted/20 px-3 py-2.5 text-sm text-muted-foreground">
+        No split snapshot stored for this record.
+      </p>
+    )
+  }
+
+  return (
+    <div className="space-y-2.5">
+      <div className="mb-1 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+        <Sparkles className="h-3.5 w-3.5 text-violet-500/80" aria-hidden />
+        Split allocation
+      </div>
+      <ul className="space-y-2">
+        {lines.map((line, i) => {
+          const isAlliance = line.type === "alliance"
+          return (
+            <li key={i}>
+              <motion.div
+                initial={{ opacity: 0, x: -8 }}
+                whileInView={{ opacity: 1, x: 0 }}
+                viewport={{ once: true, margin: "-20px" }}
+                transition={{ delay: i * 0.05, type: "spring", stiffness: 400, damping: 32 }}
+                whileHover={{ scale: 1.008 }}
+                className="will-change-transform"
+              >
+                <div
+                  className={cn(
+                    "flex flex-col gap-2 rounded-xl border px-3.5 py-3 shadow-sm transition-shadow duration-200 sm:flex-row sm:items-center sm:justify-between sm:gap-3",
+                    isAlliance
+                      ? "border-violet-500/20 bg-gradient-to-r from-violet-500/[0.08] to-violet-500/[0.02] dark:from-violet-500/[0.12] dark:to-violet-500/[0.04]"
+                      : "border-border/70 bg-gradient-to-r from-muted/40 to-muted/15 dark:from-muted/25 dark:to-muted/10",
+                  )}
+                >
+                  <div className="flex min-w-0 items-start gap-2.5 sm:items-center">
+                    <span
+                      className={cn(
+                        "flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border shadow-sm",
+                        isAlliance
+                          ? "border-violet-500/25 bg-background/90 text-violet-700 dark:text-violet-300"
+                          : "border-border/80 bg-background/80 text-muted-foreground",
+                      )}
+                      aria-hidden
+                    >
+                      {isAlliance ? (
+                        <Landmark className="h-4 w-4" strokeWidth={1.75} />
+                      ) : (
+                        <Building2 className="h-4 w-4" strokeWidth={1.75} />
+                      )}
+                    </span>
+                    <div className="min-w-0">
+                      <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                        {isAlliance ? "Alliance" : line.type === "organization" ? "Organization" : line.type ?? "Recipient"}
+                      </p>
+                      <p className="truncate text-sm font-semibold text-foreground">{line.label ?? "—"}</p>
+                      {line.percent_bps != null ? (
+                        <p className="text-xs text-muted-foreground">{formatSplitPercentBps(line.percent_bps)} of total</p>
+                      ) : null}
+                    </div>
+                  </div>
+                  <span className="shrink-0 text-right text-base font-bold tabular-nums tracking-tight text-foreground sm:text-lg">
+                    {formatMoneyCents(line.cents, currency)}
+                  </span>
+                </div>
+              </motion.div>
+            </li>
+          )
+        })}
+      </ul>
+      {paymentReference ? (
+        <motion.p
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.15 }}
+          className="rounded-lg border border-border/50 bg-muted/25 px-3 py-2 font-mono text-[11px] leading-relaxed text-muted-foreground"
+        >
+          <span className="font-sans text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/80">
+            Payment ref
+          </span>
+          <br />
+          {paymentReference}
+        </motion.p>
+      ) : null}
+    </div>
+  )
+}
+
+function donationActivityRowUid(row: CareAllianceDonationActivityRow): string {
+  return row.row_key?.trim() ? row.row_key : `donation-${row.id}`
+}
+
+function DonationSettlementStrip({ row }: { row: CareAllianceDonationActivityRow }) {
+  const s = row.settlement
+  if (!s) return null
+
+  const settingsIncomplete = s.row_type === "general" && s.settings_completed === false
+
+  return (
+    <div className="space-y-2 pt-0.5">
+      <div className="flex flex-wrap gap-1.5">
+        <Badge
+          variant="outline"
+          title="Allocation method"
+          className="inline-flex max-w-full items-center gap-1 border-violet-500/25 bg-violet-500/[0.06] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-900 dark:text-violet-100"
+        >
+          <Layers className="h-3 w-3 shrink-0 opacity-90" aria-hidden />
+          <span className="truncate normal-case">{s.allocation_label}</span>
+        </Badge>
+        <Badge
+          variant="outline"
+          title="Distribution schedule"
+          className="inline-flex max-w-full items-center gap-1 border-sky-500/25 bg-sky-500/[0.06] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-sky-900 dark:text-sky-100"
+        >
+          <CalendarClock className="h-3 w-3 shrink-0 opacity-90" aria-hidden />
+          <span className="truncate normal-case">{s.schedule_label}</span>
+        </Badge>
+      </div>
+      <p
+        className={cn(
+          "flex items-start gap-1.5 text-xs leading-snug",
+          settingsIncomplete ? "text-amber-800 dark:text-amber-200" : "text-muted-foreground",
+        )}
+      >
+        <Wallet className="mt-0.5 h-3.5 w-3.5 shrink-0 opacity-85" aria-hidden />
+        <span>{s.wallet_status_label}</span>
+      </p>
+    </div>
+  )
+}
+
+/** Expanded panel: machine keys from Financial Settings (general /donate flow only). */
+function DonationSettlementRulesCodes({ row }: { row: CareAllianceDonationActivityRow }) {
+  const s = row.settlement
+  if (!s || s.row_type !== "general") return null
+  if (s.allocation_method == null || s.distribution_frequency == null) return null
+
+  return (
+    <div className="rounded-lg border border-border/50 bg-muted/25 px-3 py-2.5">
+      <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Financial settings (rules)</p>
+      <p className="mt-1.5 break-all font-mono text-[11px] leading-relaxed text-foreground/90">
+        <span className="text-muted-foreground">allocation_method</span>={s.allocation_method}{" "}
+        <span className="text-muted-foreground/70">·</span>{" "}
+        <span className="text-muted-foreground">distribution_frequency</span>={s.distribution_frequency}
+      </p>
+    </div>
+  )
+}
+
+function DonationAccordionItem({ row, index }: { row: CareAllianceDonationActivityRow; index: number }) {
+  const statusLower = row.status.toLowerCase()
+  const isCompleted = statusLower === "completed"
+  const isPending = statusLower === "pending"
+  const isFailed = statusLower === "failed"
+  const isActive = statusLower === "active"
+  const splitCount = row.split_lines.length
+  const rowUid = donationActivityRowUid(row)
+  const showSuccessStripe = isCompleted || isActive
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 18 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{
+        delay: Math.min(index * 0.045, 0.35),
+        type: "spring",
+        stiffness: 380,
+        damping: 28,
+      }}
+    >
+      <AccordionItem
+        value={rowUid}
+        className={cn(
+          "overflow-hidden rounded-2xl border border-b-0 bg-card text-card-foreground shadow-sm transition-all duration-300",
+          "data-[state=open]:shadow-lg",
+          showSuccessStripe &&
+            "border-emerald-500/25 ring-1 ring-emerald-500/[0.07] data-[state=open]:ring-emerald-500/20",
+          isPending && "border-amber-500/25 ring-1 ring-amber-500/[0.08] data-[state=open]:ring-amber-500/18",
+          isFailed && "border-destructive/30 ring-1 ring-destructive/10",
+          !showSuccessStripe && !isPending && !isFailed && "border-border/90 data-[state=open]:shadow-md",
+        )}
+      >
+        <div className="relative">
+          {(showSuccessStripe || isPending || isFailed) && (
+            <div
+              className={cn(
+                "pointer-events-none absolute inset-y-3 left-0 z-0 w-1 rounded-full opacity-90",
+                showSuccessStripe && "bg-gradient-to-b from-emerald-500 to-teal-600",
+                isPending && "bg-gradient-to-b from-amber-400 to-amber-600",
+                isFailed && "bg-gradient-to-b from-red-500 to-red-700",
+              )}
+              aria-hidden
+            />
+          )}
+          <AccordionTrigger
+            className={cn(
+              "items-start gap-3 px-4 py-4 text-left hover:no-underline sm:px-5 sm:py-4",
+              "[&>svg]:mt-1.5 [&>svg]:shrink-0 [&>svg]:text-muted-foreground",
+              (showSuccessStripe || isPending || isFailed) && "pl-5 sm:pl-6",
+            )}
+          >
+            <div className="flex min-w-0 flex-1 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+              <div className="flex min-w-0 gap-3">
+                <motion.div
+                  whileHover={{ rotate: [0, -4, 4, 0] }}
+                  transition={{ duration: 0.45 }}
+                  className={cn(
+                    "flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border shadow-sm",
+                    showSuccessStripe &&
+                      "border-emerald-500/25 bg-gradient-to-br from-emerald-500/15 to-teal-600/10 text-emerald-700 dark:text-emerald-300",
+                    isPending &&
+                      "border-amber-500/25 bg-gradient-to-br from-amber-500/12 to-amber-600/10 text-amber-800 dark:text-amber-200",
+                    isFailed && "border-destructive/25 bg-destructive/10 text-destructive",
+                    !showSuccessStripe && !isPending && !isFailed && "border-border/80 bg-muted/50 text-muted-foreground",
+                  )}
+                  aria-hidden
+                >
+                  <HeartHandshake className="h-5 w-5" strokeWidth={1.75} />
+                </motion.div>
+                <div className="min-w-0 space-y-1.5">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-base font-semibold leading-snug tracking-tight text-foreground sm:text-[1.05rem]">
+                      {row.campaign.name}
+                    </span>
+                    {row.settlement?.row_type === "campaign" ? (
+                      <Badge
+                        variant="outline"
+                        className="border-fuchsia-500/30 bg-fuchsia-500/[0.07] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-fuchsia-900 dark:text-fuchsia-100"
+                      >
+                        Campaign
+                      </Badge>
+                    ) : row.settlement?.row_type === "general" ? (
+                      <Badge
+                        variant="outline"
+                        className="border-teal-500/30 bg-teal-500/[0.07] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-teal-900 dark:text-teal-100"
+                      >
+                        General
+                      </Badge>
+                    ) : null}
+                    <Badge
+                      variant="outline"
+                      className={cn(
+                        "border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider capitalize",
+                        donationStatusBadgeClass(row.status),
+                      )}
+                    >
+                      {isActive ? "recurring" : row.status}
+                    </Badge>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                    <span className="inline-flex items-center gap-1">
+                      <Clock className="h-3 w-3 shrink-0 opacity-70" aria-hidden />
+                      {formatActivityDate(row.created_at)}
+                    </span>
+                    <span className="inline-flex items-center gap-1">
+                      <User className="h-3 w-3 shrink-0 opacity-70" aria-hidden />
+                      <span className="truncate">{row.donor?.name ?? "Anonymous"}</span>
+                    </span>
+                  </div>
+                  <DonationSettlementStrip row={row} />
+                </div>
+              </div>
+              <div className="flex shrink-0 flex-col items-stretch gap-2 sm:items-end">
+                <motion.span
+                  layout
+                  className="text-xl font-bold tabular-nums tracking-tight text-foreground sm:text-2xl"
+                >
+                  {formatMoneyCents(row.amount_cents, row.currency)}
+                </motion.span>
+                {splitCount > 0 ? (
+                  <span className="inline-flex w-fit items-center gap-1 rounded-full border border-border/80 bg-muted/40 px-2.5 py-0.5 text-[11px] font-medium text-muted-foreground">
+                    <Users className="h-3 w-3 opacity-80" aria-hidden />
+                    {splitCount} split{splitCount === 1 ? "" : "s"}
+                  </span>
+                ) : null}
+              </div>
+            </div>
+          </AccordionTrigger>
+        </div>
+
+        <AccordionContent className="border-t border-border/60 bg-gradient-to-b from-muted/[0.2] to-transparent px-4 pb-2 pt-0 sm:px-5">
+          <div className="space-y-4 pt-4">
+            <DonationSettlementRulesCodes row={row} />
+            <DonationSplitLines
+              lines={row.split_lines}
+              currency={row.currency}
+              paymentReference={row.payment_reference}
+            />
+          </div>
+        </AccordionContent>
+      </AccordionItem>
+    </motion.div>
+  )
+}
+
+function DonationActivityPanel({ rows }: { rows: CareAllianceDonationActivityRow[] }) {
+  if (rows.length === 0) {
+    return <DonationActivityEmptyState />
+  }
+
+  return (
+    <Accordion type="single" collapsible className="space-y-3">
+      {rows.map((row, index) => (
+        <DonationAccordionItem key={donationActivityRowUid(row)} row={row} index={index} />
+      ))}
+    </Accordion>
+  )
+}
+
+function DonationActivityPaginationBar({
+  meta,
+  onPageChange,
+}: {
+  meta: CareAllianceDonationActivityPagination
+  onPageChange: (page: number) => void
+}) {
+  if (meta.last_page <= 1 || meta.total < 1) {
+    return null
+  }
+
+  const from = (meta.current_page - 1) * meta.per_page + 1
+  const to = Math.min(meta.current_page * meta.per_page, meta.total)
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ type: "spring", stiffness: 420, damping: 32 }}
+      className="mt-6 flex flex-col gap-4 border-t border-border/60 pt-6 sm:flex-row sm:items-center sm:justify-between"
+    >
+      <p className="text-center text-sm text-muted-foreground sm:text-left">
+        Showing{" "}
+        <span className="font-semibold tabular-nums text-foreground">
+          {from}–{to}
+        </span>{" "}
+        of{" "}
+        <span className="font-semibold tabular-nums text-foreground">{meta.total}</span> donations
+      </p>
+      <div className="flex flex-wrap items-center justify-center gap-2 sm:justify-end">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="gap-1 shadow-sm"
+          disabled={meta.current_page <= 1}
+          onClick={() => onPageChange(meta.current_page - 1)}
+        >
+          <ChevronLeft className="h-4 w-4" aria-hidden />
+          Previous
+        </Button>
+        <span className="flex min-h-9 min-w-[6.5rem] items-center justify-center rounded-md border border-border/60 bg-muted/30 px-3 text-xs font-semibold tabular-nums text-foreground">
+          Page {meta.current_page} / {meta.last_page}
+        </span>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="gap-1 shadow-sm"
+          disabled={meta.current_page >= meta.last_page}
+          onClick={() => onPageChange(meta.current_page + 1)}
+        >
+          Next
+          <ChevronRight className="h-4 w-4" aria-hidden />
+        </Button>
+      </div>
+    </motion.div>
+  )
 }
 
 function CampaignSplitList({ splits }: { splits: NonNullable<CareAllianceCampaignRow["splits"]> }) {
@@ -353,6 +806,8 @@ export default function CareAllianceWorkspaceCampaigns() {
   const formId = useId()
   const page = usePage<CareAllianceWorkspaceProps>()
   const { alliance, memberships, campaigns } = page.props
+  const donationActivity = page.props.donationActivity ?? []
+  const donationActivityPagination = page.props.donationActivityPagination ?? null
   const primaryActionCategories = page.props.primaryActionCategories ?? []
   const campaignsTab: CareAllianceCampaignsTab = page.props.campaignsTab ?? "create"
   const campaignsCount = page.props.campaignsCount ?? campaigns.length
@@ -411,7 +866,29 @@ export default function CareAllianceWorkspaceCampaigns() {
   }
 
   const visitCampaignsTab = (tab: CareAllianceCampaignsTab) => {
-    router.get(route(CAMPAIGNS_ROUTE), { tab }, {
+    const params: Record<string, string | number> = { tab }
+    if (tab === "activity") {
+      params.activity_page = 1
+    }
+    router.get(route(CAMPAIGNS_ROUTE), params, {
+      preserveState: true,
+      preserveScroll: true,
+      only: [...CAMPAIGNS_WORKSPACE_KEYS],
+    })
+  }
+
+  const visitDonationActivityPage = (activityPage: number) => {
+    const params: Record<string, string | number> = { tab: "activity", activity_page: activityPage }
+    if (typeof window !== "undefined") {
+      const per = new URLSearchParams(window.location.search).get("activity_per_page")
+      if (per && per !== "") {
+        const n = Number.parseInt(per, 10)
+        if (!Number.isNaN(n) && n >= 5 && n <= 50) {
+          params.activity_per_page = n
+        }
+      }
+    }
+    router.get(route(CAMPAIGNS_ROUTE), params, {
       preserveState: true,
       preserveScroll: true,
       only: [...CAMPAIGNS_WORKSPACE_KEYS],
@@ -510,7 +987,7 @@ export default function CareAllianceWorkspaceCampaigns() {
   return (
     <CareAllianceWorkspaceShell allianceName={alliance.name} section="campaigns">
       <Tabs value={campaignsTab} onValueChange={(v) => visitCampaignsTab(v as CareAllianceCampaignsTab)} className="w-full space-y-6">
-        <TabsList className="grid h-11 w-full max-w-lg grid-cols-2 p-1">
+        <TabsList className="grid h-auto min-h-11 w-full max-w-2xl grid-cols-1 gap-1 p-1 sm:grid-cols-3">
           <TabsTrigger value="create" className="gap-2 text-sm">
             Create campaign
           </TabsTrigger>
@@ -524,6 +1001,10 @@ export default function CareAllianceWorkspaceCampaigns() {
                 {campaignsCount}
               </Badge>
             ) : null}
+          </TabsTrigger>
+          <TabsTrigger value="activity" className="gap-2 text-sm">
+            <Receipt className="h-3.5 w-3.5 shrink-0 opacity-80" aria-hidden />
+            Donation activity
           </TabsTrigger>
         </TabsList>
 
@@ -815,6 +1296,69 @@ export default function CareAllianceWorkspaceCampaigns() {
             )}
           </CardContent>
         </Card>
+        </TabsContent>
+
+        <TabsContent value="activity" className="mt-0 space-y-0 outline-none focus-visible:ring-0 focus-visible:ring-offset-0">
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ type: "spring", stiffness: 400, damping: 32 }}
+          >
+            <Card className={cn(dashboardCardClass, "overflow-hidden shadow-md shadow-black/[0.03] dark:shadow-black/20")}>
+              <CardHeader className="relative space-y-0 overflow-hidden border-b border-border/60 bg-gradient-to-br from-violet-500/[0.07] via-background to-teal-500/[0.06] pb-5 pt-6 dark:from-violet-500/[0.12] dark:via-background dark:to-teal-500/[0.08]">
+                <div className="pointer-events-none absolute -right-16 top-0 h-40 w-40 rounded-full bg-violet-400/15 blur-3xl dark:bg-violet-500/20" aria-hidden />
+                <div className="pointer-events-none absolute -left-10 bottom-0 h-32 w-32 rounded-full bg-teal-400/12 blur-3xl dark:bg-teal-500/15" aria-hidden />
+                <div className="relative flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="flex gap-3">
+                    <motion.div
+                      initial={{ scale: 0.85, opacity: 0 }}
+                      animate={{ scale: 1, opacity: 1 }}
+                      transition={{ type: "spring", stiffness: 400, damping: 22, delay: 0.05 }}
+                      className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-violet-500/20 bg-background/70 shadow-inner dark:bg-background/50"
+                      aria-hidden
+                    >
+                      <Receipt className="h-6 w-6 text-violet-600 dark:text-violet-400" strokeWidth={1.75} />
+                    </motion.div>
+                    <div className="space-y-1.5">
+                      <CardTitle className="flex flex-wrap items-center gap-2 text-xl font-bold tracking-tight text-foreground">
+                        Donation activity
+                        <Sparkles className="h-4 w-4 text-amber-500/90" aria-hidden />
+                      </CardTitle>
+                      <CardDescription className="max-w-xl text-sm leading-relaxed text-muted-foreground">
+                        Each row shows <span className="font-medium text-foreground/90">allocation</span>,{" "}
+                        <span className="font-medium text-foreground/90">schedule</span>, and{" "}
+                        <span className="font-medium text-foreground/90">wallet status</span> from your Financial Settings
+                        (general gifts) or campaign checkout (campaign gifts). Expand for split lines and rule keys.
+                      </CardDescription>
+                    </div>
+                  </div>
+                  {donationActivityPagination != null && donationActivityPagination.total > 0 ? (
+                    <motion.div
+                      initial={{ opacity: 0, scale: 0.92 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      transition={{ delay: 0.12, type: "spring", stiffness: 400, damping: 24 }}
+                    >
+                      <Badge
+                        variant="secondary"
+                        className="h-fit shrink-0 border border-violet-500/20 bg-background/80 px-3 py-1.5 text-xs font-semibold tabular-nums text-foreground shadow-sm backdrop-blur-sm dark:bg-background/60"
+                      >
+                        {donationActivityPagination.total} total
+                      </Badge>
+                    </motion.div>
+                  ) : null}
+                </div>
+              </CardHeader>
+              <CardContent className="px-4 pb-6 pt-6 sm:px-6">
+                <DonationActivityPanel rows={donationActivity} />
+                {donationActivityPagination ? (
+                  <DonationActivityPaginationBar
+                    meta={donationActivityPagination}
+                    onPageChange={visitDonationActivityPage}
+                  />
+                ) : null}
+              </CardContent>
+            </Card>
+          </motion.div>
         </TabsContent>
       </Tabs>
 

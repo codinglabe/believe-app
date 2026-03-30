@@ -139,12 +139,12 @@ export default function Marketplace({
 
 
     // Calculate pagination for products
+    const totalPool = poolListings?.length || 0
     const totalProducts = products?.length || 0
     const totalProductPages = Math.ceil(totalProducts / productsPerPage)
     const startProductIndex = (currentProductPage - 1) * productsPerPage
     const endProductIndex = Math.min(startProductIndex + productsPerPage, totalProducts)
     const currentProducts = products?.slice(startProductIndex, endProductIndex) || []
-    const totalPool = poolListings.length
 
     const [filters, setFilters] = useState<{
         search: string
@@ -567,7 +567,12 @@ export default function Marketplace({
                                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-3 pb-4 border-b border-gray-200 dark:border-gray-700">
                                     <div>
                                         <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white">
-                                            Products {totalProducts > 0 && <span className="text-purple-600 dark:text-purple-400">({totalProducts})</span>}
+                                            Marketplace
+                                            {(totalPool > 0 || totalProducts > 0) && (
+                                                <span className="text-purple-600 dark:text-purple-400 text-lg font-semibold ml-2">
+                                                    ({totalPool > 0 ? `${totalPool} pool` : ''}{totalPool > 0 && totalProducts > 0 ? ', ' : ''}{totalProducts > 0 ? `${totalProducts} catalog` : ''})
+                                                </span>
+                                            )}
                                         </h2>
                                         {filters.search && (
                                             <p className="text-gray-600 dark:text-gray-400 mt-2 text-sm">
@@ -576,7 +581,11 @@ export default function Marketplace({
                                         )}
                                     </div>
                                     <div className="text-sm text-gray-600 dark:text-gray-400 font-medium">
-                                        Showing {startProductIndex + 1}-{endProductIndex} of {totalProducts} products
+                                        {totalProducts > 0
+                                            ? `Showing ${startProductIndex + 1}-${endProductIndex} of ${totalProducts} catalog products`
+                                            : totalPool > 0
+                                                ? `${totalPool} pool listing${totalPool === 1 ? '' : 's'}`
+                                                : 'No listings'}
                                     </div>
                                 </div>
 
@@ -791,7 +800,7 @@ export default function Marketplace({
                                             </div>
                                         )}
                                     </>
-                                ) : (
+                                ) : totalPool === 0 ? (
                                     <div className="text-center py-16 sm:py-20">
                                         <div className="inline-flex items-center justify-center w-20 h-20 bg-gray-100 dark:bg-gray-800 rounded-full mb-6">
                                             <ShoppingCart className="h-10 w-10 text-gray-400" />
@@ -810,6 +819,10 @@ export default function Marketplace({
                                             Clear all filters
                                         </Button>
                                     </div>
+                                ) : (
+                                    <p className="text-sm text-gray-600 dark:text-gray-400 py-4">
+                                        No catalog products match your filters. Browse pool listings above or clear filters.
+                                    </p>
                                 )}
                             </motion.div>
                         </div>

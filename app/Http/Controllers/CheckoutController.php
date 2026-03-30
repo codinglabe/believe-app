@@ -43,6 +43,8 @@ class CheckoutController extends Controller
         $cart = $user->cart()->with([
             'items.product',
             'items.variant',
+            'items.organizationProduct.marketplaceProduct',
+            'items.organizationProduct.organization',
         ])->first();
 
         if (! $cart || $cart->items->isEmpty()) {
@@ -55,6 +57,28 @@ class CheckoutController extends Controller
 
         return Inertia::render('Checkout/index', [
             'items' => $cart->items->map(function ($item) {
+                if ($item->organization_product_id) {
+                    $mp = $item->organizationProduct?->marketplaceProduct;
+
+                    return [
+                        'id' => $item->id,
+                        'quantity' => $item->quantity,
+                        'unit_price' => (float) $item->unit_price,
+                        'variant_image' => $item->variant_image,
+                        'product' => [
+                            'name' => $mp?->name ?? 'Product',
+                        ],
+                        'variant_data' => [
+                            'printify_variant_id' => null,
+                            'printify_blueprint_id' => null,
+                            'printify_print_provider_id' => null,
+                            'variant_options' => null,
+                        ],
+                        'listing_type' => 'merchant_pool',
+                        'sold_by_organization' => $item->organizationProduct?->organization?->name,
+                    ];
+                }
+
                 return [
                     'id' => $item->id,
                     'quantity' => $item->quantity,
@@ -69,6 +93,7 @@ class CheckoutController extends Controller
                         'printify_print_provider_id' => $item->printify_print_provider_id,
                         'variant_options' => $item->variant_options,
                     ],
+                    'listing_type' => 'catalog',
                 ];
             }),
             'subtotal' => (float) $subtotal,
@@ -101,7 +126,12 @@ class CheckoutController extends Controller
         ]);
 
         $user = auth()->user();
-        $cart = $user->cart()->with(['items.product', 'items.variant'])->first();
+        $cart = $user->cart()->with([
+            'items.product',
+            'items.variant',
+            'items.organizationProduct.marketplaceProduct',
+            'items.organizationProduct.organization',
+        ])->first();
 
         if (! $cart || $cart->items->isEmpty()) {
             return response()->json(['error' => 'Cart is empty'], 400);
@@ -138,9 +168,11 @@ class CheckoutController extends Controller
                 'status' => 'pending',
             ]);
 
-            // Check if cart has Printify products
+            // Check if cart has Printify products (catalog products only)
             $hasPrintifyProducts = $cart->items->contains(function ($item) {
-                return ! empty($item->product->printify_product_id);
+                return $item->product_id
+                    && $item->product
+                    && ! empty($item->product->printify_product_id);
             });
 
             $printifyOrderId = null;
@@ -661,7 +693,11 @@ class CheckoutController extends Controller
 
         $user = auth()->user();
         $tempOrder = TempOrder::where('user_id', $user->id)
-            ->with('cart.items.product')
+            ->with([
+                'cart.items.product',
+                'cart.items.organizationProduct.marketplaceProduct',
+                'cart.items.organizationProduct.organization',
+            ])
             ->findOrFail($validated['temp_order_id']);
 
         $paymentMethod = $validated['payment_method'] ?? 'stripe';
@@ -749,10 +785,26 @@ class CheckoutController extends Controller
             // Set empty organization donations array since donation is disabled
             $organizationDonations = [];
 
+            $tempOrder->loadMissing([
+                'cart.items.product',
+                'cart.items.organizationProduct.marketplaceProduct',
+                'cart.items.organizationProduct.organization',
+            ]);
+
+            $firstItem = $tempOrder->cart->items->first();
+            $orderOrganizationId = null;
+            if ($firstItem) {
+                if ($firstItem->organization_product_id) {
+                    $orderOrganizationId = $firstItem->organizationProduct?->organization_id;
+                } else {
+                    $orderOrganizationId = $firstItem->product?->organization_id;
+                }
+            }
+
             // Create final order
             $order = Order::create([
                 'user_id' => $user->id,
-                'organization_id' => $tempOrder->cart->items->first()->product->organization_id ?? null,
+                'organization_id' => $orderOrganizationId,
                 'subtotal' => $tempOrder->subtotal,
                 'platform_fee' => $tempOrder->platform_fee,
                 // 'donation_amount' => $tempOrder->donation_amount, // Commented out - removed donation for Printify products
@@ -783,54 +835,96 @@ class CheckoutController extends Controller
                 'shipping_method' => $tempOrder->selected_shipping_method,
             ]);
 
-            // Create order items from cart (donation removed for Printify products)
+            // Create order items from cart; pool lines use organization_products + revenue split
+            $splitMerchantCents = 0;
+            $splitOrgCents = 0;
+            $splitBiuCents = 0;
+
             foreach ($tempOrder->cart->items as $cartItem) {
-                // COMMENTED OUT: Donation calculation removed for Printify products
-                // $orgId = $cartItem->product->organization_id;
-                // $orgDonationData = $organizationDonations[$orgId] ?? null;
+                $donationPerItem = 0;
+                $lineSubtotal = (float) $cartItem->unit_price * (int) $cartItem->quantity;
 
-                // Calculate donation per item for this organization
-                $donationPerItem = 0; // Set to 0 - donation removed for Printify products
+                if ($cartItem->organization_product_id) {
+                    $op = $cartItem->organizationProduct;
+                    $mp = $op?->marketplaceProduct;
 
-                // COMMENTED OUT: Donation distribution logic
-                // // FIX: Check if orgDonationData exists and has required data
-                // if (
-                //     $orgDonationData &&
-                //     isset($orgDonationData['donation_amount']) &&
-                //     isset($orgDonationData['org_subtotal']) &&
-                //     $orgDonationData['org_subtotal'] > 0 &&
-                //     $orgDonationData['item_count'] > 0
-                // ) {
+                    if (! $op || ! $mp) {
+                        throw new \Exception('Invalid merchant pool listing in cart.');
+                    }
 
-                //     $itemSubtotal = $cartItem->unit_price * $cartItem->quantity;
-                //     $itemPercentage = ($itemSubtotal / $orgDonationData['org_subtotal']) * 100;
-                //     $donationPerItem = ($orgDonationData['donation_amount'] * $itemPercentage) / 100;
+                    $lineCents = (int) round($lineSubtotal * 100);
+                    $pctM = (float) ($mp->pct_merchant ?? 0);
+                    $pctN = (float) ($mp->pct_nonprofit ?? 0);
+                    $mCents = (int) round($lineCents * $pctM / 100);
+                    $nCents = (int) round($lineCents * $pctN / 100);
+                    $bCents = $lineCents - $mCents - $nCents;
 
-                //     // Ensure donation per item is not negative
-                //     $donationPerItem = max(0, $donationPerItem);
-                // }
+                    $splitMerchantCents += $mCents;
+                    $splitOrgCents += $nCents;
+                    $splitBiuCents += $bCents;
 
-                OrderItem::create([
+                    OrderItem::create([
+                        'order_id' => $order->id,
+                        'product_id' => null,
+                        'organization_product_id' => $op->id,
+                        'organization_id' => $op->organization_id,
+                        'printify_product_id' => null,
+                        'printify_variant_id' => null,
+                        'printify_blueprint_id' => null,
+                        'printify_print_provider_id' => null,
+                        'quantity' => $cartItem->quantity,
+                        'unit_price' => $cartItem->unit_price,
+                        'subtotal' => $lineSubtotal,
+                        'per_organization_donation_amount' => $donationPerItem,
+                        'variant_data' => $cartItem->variant_options,
+                        'primary_image' => $cartItem->variant_image,
+                        'product_details' => [
+                            'marketplace_product_id' => $mp->id,
+                            'merchant_id' => $mp->merchant_id,
+                            'name' => $mp->name,
+                            'organization_product_id' => $op->id,
+                        ],
+                    ]);
+
+                    if ($mp->inventory_quantity !== null) {
+                        $mp->decrement('inventory_quantity', (int) $cartItem->quantity);
+                    }
+                } else {
+                    $product = $cartItem->product;
+                    if (! $product) {
+                        throw new \Exception('Invalid catalog product in cart.');
+                    }
+
+                    OrderItem::create([
+                        'order_id' => $order->id,
+                        'product_id' => $cartItem->product_id,
+                        'organization_product_id' => null,
+                        'organization_id' => $product->organization_id,
+                        'printify_product_id' => $product->printify_product_id,
+                        'printify_variant_id' => $cartItem->printify_variant_id,
+                        'printify_blueprint_id' => $cartItem->printify_blueprint_id,
+                        'printify_print_provider_id' => $cartItem->printify_print_provider_id,
+                        'quantity' => $cartItem->quantity,
+                        'unit_price' => $cartItem->unit_price,
+                        'subtotal' => $lineSubtotal,
+                        'per_organization_donation_amount' => $donationPerItem,
+                        'variant_data' => $cartItem->variant_options,
+                        'primary_image' => $cartItem->variant_image,
+                    ]);
+
+                    $product->update([
+                        'quantity_ordered' => $product->quantity_ordered + $cartItem->quantity,
+                        'quantity_available' => $product->quantity_available - $cartItem->quantity,
+                    ]);
+                }
+            }
+
+            if ($splitMerchantCents + $splitOrgCents + $splitBiuCents > 0) {
+                OrderSplit::create([
                     'order_id' => $order->id,
-                    'product_id' => $cartItem->product_id,
-                    'organization_id' => $cartItem->product->organization_id,
-                    'printify_product_id' => $cartItem->product->printify_product_id,
-                    'printify_variant_id' => $cartItem->printify_variant_id,
-                    'printify_blueprint_id' => $cartItem->printify_blueprint_id,
-                    'printify_print_provider_id' => $cartItem->printify_print_provider_id,
-                    'quantity' => $cartItem->quantity,
-                    'unit_price' => $cartItem->unit_price,
-                    'subtotal' => $cartItem->unit_price * $cartItem->quantity,
-                    'per_organization_donation_amount' => $donationPerItem,
-                    'variant_data' => $cartItem->variant_options,
-                    'primary_image' => $cartItem->variant_image,
-                ]);
-
-                // Update product inventory
-                $product = $cartItem->product;
-                $product->update([
-                    'quantity_ordered' => $product->quantity_ordered + $cartItem->quantity,
-                    'quantity_available' => $product->quantity_available - $cartItem->quantity,
+                    'merchant_amount' => number_format($splitMerchantCents / 100, 2, '.', ''),
+                    'organization_amount' => number_format($splitOrgCents / 100, 2, '.', ''),
+                    'biu_amount' => number_format($splitBiuCents / 100, 2, '.', ''),
                 ]);
             }
 
@@ -961,8 +1055,13 @@ class CheckoutController extends Controller
         $lineItems = [];
 
         foreach ($cart->items as $item) {
-            // Only include Printify products (skip manual products)
-            if (! empty($item->product->printify_product_id) && ! empty($item->printify_variant_id)) {
+            // Only include Printify catalog products (skip pool listings and manual products)
+            if (
+                $item->product_id
+                && $item->product
+                && ! empty($item->product->printify_product_id)
+                && ! empty($item->printify_variant_id)
+            ) {
                 $lineItems[] = [
                     'product_id' => $item->product->printify_product_id,
                     'variant_id' => (int) $item->printify_variant_id,

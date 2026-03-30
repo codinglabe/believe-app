@@ -16,6 +16,7 @@ import { cn } from "@/lib/utils"
 import toast from "react-hot-toast"
 import { route } from "ziggy-js"
 import {
+  Activity,
   Building2,
   CalendarClock,
   Check,
@@ -30,10 +31,11 @@ import {
   Mail,
   Plus,
   Search,
+  Wallet,
 } from "lucide-react"
 import { dashboardInputClass } from "@/pages/care-alliance/workspace/shared"
 
-export type AllianceMembershipTab = "join" | "outgoing" | "invitations" | "membership"
+export type AllianceMembershipTab = "join" | "outgoing" | "invitations" | "membership" | "activity"
 
 type AllianceRef = { id: number; name: string | null; slug: string | null }
 
@@ -70,6 +72,16 @@ type OrgJoinRequestRow = {
   alliance: AllianceRef
 }
 
+/** Care Alliance split credits to this org owner’s wallet (from transactions). */
+export type AllianceWalletActivityRow = {
+  id: number
+  amount: number
+  role: string | null
+  care_alliance_id: number | null
+  care_alliance_name: string | null
+  created_at: string | null
+}
+
 const MEMBERSHIP_PAGE_KEYS = [
   "activeTab",
   "organization",
@@ -80,6 +92,7 @@ const MEMBERSHIP_PAGE_KEYS = [
   "invitations",
   "memberships",
   "joinRequests",
+  "allianceWalletActivity",
 ] as const
 
 const ALLIANCE_MEMBERSHIP_ROUTE = "organization.alliance-membership"
@@ -96,6 +109,7 @@ export type AllianceMembershipPageProps = {
   invitations: InvitationRow[]
   memberships: MembershipRow[]
   joinRequests: OrgJoinRequestRow[]
+  allianceWalletActivity?: AllianceWalletActivityRow[]
 }
 
 function formatInvitationExpiry(iso: string | null): string {
@@ -204,6 +218,92 @@ function outgoingJoinRequestBadgeVariant(status: string): "default" | "secondary
   return "secondary"
 }
 
+function formatWalletActivityWhen(iso: string | null): string {
+  if (!iso) return "—"
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return "—"
+  return d.toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  })
+}
+
+function walletActivityRoleLabel(role: string | null): string {
+  if (role === "member_share") return "Member share"
+  if (role === "alliance_fee") return "Alliance fee"
+  return "Credit"
+}
+
+function AllianceWalletActivityPanel({
+  rows,
+  variant = "embedded",
+}: {
+  rows: AllianceWalletActivityRow[]
+  variant?: "embedded" | "page"
+}) {
+  const isPage = variant === "page"
+  return (
+    <div
+      className={cn(
+        "bg-gradient-to-br from-teal-500/[0.06] via-violet-500/[0.04] to-transparent dark:from-teal-500/10 dark:via-violet-500/8",
+        isPage ? "rounded-xl border border-border/70 p-5 sm:p-6" : "border-b border-border/70 px-5 py-4 sm:px-6",
+      )}
+    >
+      <div className="mb-3 flex items-start gap-2.5">
+        <div
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-teal-500/15 text-teal-700 ring-1 ring-teal-500/20 dark:bg-teal-500/10 dark:text-teal-300"
+          aria-hidden
+        >
+          <Wallet className="h-4 w-4" strokeWidth={1.75} />
+        </div>
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-foreground">Alliance split activity</p>
+          <p className="text-xs text-muted-foreground leading-relaxed">
+            Credits to your organization owner&apos;s wallet when Care Alliance donations are distributed to members (instant or
+            scheduled release). New splits appear after each payout.
+          </p>
+        </div>
+      </div>
+      {rows.length === 0 ? (
+        <p className="rounded-lg border border-dashed border-border/80 bg-muted/40 px-3 py-3 text-center text-xs text-muted-foreground">
+          No Care Alliance split credits yet. Once your nonprofit receives a share from an alliance, it will show here.
+        </p>
+      ) : (
+        <ul
+          className={cn(
+            "space-y-1 overflow-y-auto pr-1",
+            isPage ? "max-h-[min(520px,60vh)]" : "max-h-[220px]",
+          )}
+        >
+          {rows.map((r) => (
+            <li
+              key={r.id}
+              className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1 rounded-md border border-border/60 bg-background/80 px-3 py-2 text-sm shadow-sm dark:bg-background/40"
+            >
+              <div className="min-w-0 flex-1">
+                <span className="font-medium text-foreground">
+                  {r.care_alliance_name?.trim() ? r.care_alliance_name : "Care Alliance"}
+                </span>
+                <span className="text-muted-foreground"> · </span>
+                <span className="text-xs text-muted-foreground">{walletActivityRoleLabel(r.role)}</span>
+              </div>
+              <div className="flex shrink-0 items-center gap-3">
+                <span className="text-xs text-muted-foreground tabular-nums">{formatWalletActivityWhen(r.created_at)}</span>
+                <span className="font-semibold tabular-nums text-emerald-700 dark:text-emerald-400">
+                  +{new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(r.amount)}
+                </span>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
+
 export default function OrganizationAllianceMembershipIndex() {
   const page = usePage<AllianceMembershipPageProps>()
   const {
@@ -216,6 +316,7 @@ export default function OrganizationAllianceMembershipIndex() {
     invitations,
     memberships,
     joinRequests,
+    allianceWalletActivity = [],
   } = page.props
   const { flash } = page.props as { flash?: { success?: string; error?: string } }
 
@@ -421,6 +522,10 @@ export default function OrganizationAllianceMembershipIndex() {
             </TabsTrigger>
             <TabsTrigger value="membership" className="shrink-0">
               Membership
+            </TabsTrigger>
+            <TabsTrigger value="activity" className="inline-flex shrink-0 items-center gap-1.5">
+              <Activity className="h-3.5 w-3.5 opacity-80" aria-hidden />
+              Activity
             </TabsTrigger>
           </TabsList>
 
@@ -898,7 +1003,52 @@ export default function OrganizationAllianceMembershipIndex() {
                     Public campaigns for an alliance you belong to may appear on that alliance&apos;s fundraising pages when they are
                     published.
                   </p>
+                  <p className="mt-3 text-xs text-muted-foreground">
+                    <button
+                      type="button"
+                      onClick={() => visitTab("activity")}
+                      className="font-medium text-violet-600 underline-offset-4 hover:underline dark:text-violet-400"
+                    >
+                      View alliance split activity
+                    </button>{" "}
+                    — wallet credits from shared donations.
+                  </p>
                 </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="activity" className="mt-4 outline-none">
+            <Card className="overflow-hidden border-emerald-200/70 shadow-sm dark:border-emerald-900/40">
+              <CardHeader className="space-y-0 border-b bg-muted/30 pb-5 pt-6 dark:bg-muted/20">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="flex min-w-0 flex-1 gap-3.5">
+                    <div
+                      className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-emerald-500/12 text-emerald-700 ring-1 ring-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300 dark:ring-emerald-500/25"
+                      aria-hidden
+                    >
+                      <Activity className="h-5 w-5" strokeWidth={1.75} />
+                    </div>
+                    <div className="min-w-0 space-y-1.5">
+                      <CardTitle className="text-xl font-semibold tracking-tight">Activity</CardTitle>
+                      <CardDescription className="max-w-2xl text-sm leading-relaxed">
+                        Transaction-style log of Care Alliance member share credits to{" "}
+                        <span className="font-medium text-foreground/90">{organization.name}</span>&apos;s wallet (up to 50 recent).
+                      </CardDescription>
+                    </div>
+                  </div>
+                  {allianceWalletActivity.length > 0 ? (
+                    <Badge
+                      variant="secondary"
+                      className="h-fit shrink-0 border border-border/60 bg-background/80 px-2.5 py-1 text-xs font-medium tabular-nums text-muted-foreground"
+                    >
+                      {allianceWalletActivity.length} shown
+                    </Badge>
+                  ) : null}
+                </div>
+              </CardHeader>
+              <CardContent className="p-5 sm:p-6">
+                <AllianceWalletActivityPanel rows={allianceWalletActivity} variant="page" />
               </CardContent>
             </Card>
           </TabsContent>
