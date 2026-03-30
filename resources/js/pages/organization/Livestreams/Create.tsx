@@ -1,21 +1,16 @@
 "use client"
 
 import type React from "react"
-import { Head, useForm, Link } from "@inertiajs/react"
+import { Head, useForm, router, Link } from "@inertiajs/react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Textarea } from "@/components/admin/ui/textarea"
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
+import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Video, Calendar, Youtube, Info, ArrowLeft, CheckCircle2 } from "lucide-react"
 import { Switch } from "@/components/admin/ui/switch"
-import { Video, ArrowLeft, Mic, Camera, Download } from "lucide-react"
 import AppLayout from "@/layouts/app-layout"
-
-const BRAND = {
-  from: "#9333ea",
-  to: "#2563eb",
-  fromMuted: "rgba(147,51,234,0.15)",
-  toMuted: "rgba(37,99,235,0.1)",
-}
 
 interface Organization {
   id: number
@@ -25,15 +20,15 @@ interface Organization {
 
 interface Props {
   organization: Organization
-  hasYoutubeIntegrated: boolean
 }
 
-export default function CreateLivestream({ organization, hasYoutubeIntegrated }: Props) {
+export default function CreateLivestream({ organization }: Props) {
   const { data, setData, post, processing, errors } = useForm({
     title: "",
-    display_name: organization.name ?? "",
-    auto_create_youtube: hasYoutubeIntegrated,
-    is_public: true,
+    description: "",
+    scheduled_at: "",
+    youtube_stream_key: "",
+    auto_create_youtube: false,
   })
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -43,128 +38,189 @@ export default function CreateLivestream({ organization, hasYoutubeIntegrated }:
 
   return (
     <AppLayout>
-      <Head title="Start a New Meeting" />
-      <div className="min-h-screen bg-background">
-        <div
-          className="relative overflow-hidden border-b border-purple-200 dark:border-purple-500/20"
-          style={{
-            background: `linear-gradient(135deg, ${BRAND.fromMuted} 0%, rgba(147,51,234,0.2) 50%, ${BRAND.toMuted} 100%)`,
-          }}
-        >
-          <div className="relative w-full px-4 py-8 md:px-6 lg:px-8">
-            <Link
-              href="/livestreams"
-              className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
-            >
-              <ArrowLeft className="h-4 w-4" />
-              Back
-            </Link>
-            <h1 className="mt-4 text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
-              Start a New Meeting
-            </h1>
-            <p className="mt-1 text-muted-foreground">
-              Create a meeting in one click. Invite others and go live when you’re ready.
-            </p>
-          </div>
+      <Head title="Create Livestream" />
+      <div className="container mx-auto py-8 px-4 max-w-4xl">
+        <Link href="/livestreams" className="inline-flex items-center text-gray-400 hover:text-white mb-4">
+          <ArrowLeft className="w-4 h-4 mr-2" />
+          Back to Livestreams
+        </Link>
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold mb-2">Create New Livestream</h1>
+          <p className="text-gray-400">
+            Set up a VDO.Ninja room for your organization's virtual events
+          </p>
         </div>
 
-        <div className="w-full max-w-md mx-auto px-4 py-10">
-          <form onSubmit={handleSubmit} className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">Meeting details</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="title">Meeting name</Label>
-                  <Input
-                    id="title"
-                    value={data.title}
-                    onChange={(e) => setData("title", e.target.value)}
-                    placeholder="e.g. Sunday Service"
-                    className="h-11"
-                  />
-                  {errors.title && (
-                    <p className="text-sm text-destructive">{errors.title}</p>
-                  )}
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="display_name">Your display name</Label>
-                  <Input
-                    id="display_name"
-                    value={data.display_name}
-                    onChange={(e) => setData("display_name", e.target.value)}
-                    placeholder="Your name"
-                    className="h-11"
-                  />
-                  {errors.display_name && (
-                    <p className="text-sm text-destructive">{errors.display_name}</p>
-                  )}
-                </div>
-                <div className="flex items-center justify-between gap-4 rounded-lg border border-border p-3">
-                  <div className="space-y-0.5 min-w-0">
-                    <Label htmlFor="is_public" className="text-sm font-medium">
-                      Public meeting
+        <form onSubmit={handleSubmit}>
+          <Card className="mb-6">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Video className="w-5 h-5" />
+                Stream Details
+              </CardTitle>
+              <CardDescription>
+                Basic information about your livestream
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div>
+                <Label htmlFor="title">Title (Optional)</Label>
+                <Input
+                  id="title"
+                  value={data.title}
+                  onChange={(e) => setData("title", e.target.value)}
+                  placeholder="e.g., Weekly Service - February 10"
+                  className="mt-1"
+                />
+                {errors.title && (
+                  <p className="text-red-500 text-sm mt-1">{errors.title}</p>
+                )}
+              </div>
+
+              <div>
+                <Label htmlFor="description">Description (Optional)</Label>
+                <Textarea
+                  id="description"
+                  value={data.description}
+                  onChange={(e) => setData("description", e.target.value)}
+                  placeholder="Describe your livestream event..."
+                  className="mt-1"
+                  rows={4}
+                />
+                {errors.description && (
+                  <p className="text-red-500 text-sm mt-1">{errors.description}</p>
+                )}
+              </div>
+
+              <div>
+                <Label htmlFor="scheduled_at">Scheduled Start Time (Optional)</Label>
+                <Input
+                  id="scheduled_at"
+                  type="datetime-local"
+                  value={data.scheduled_at}
+                  onChange={(e) => setData("scheduled_at", e.target.value)}
+                  className="mt-1"
+                />
+                {errors.scheduled_at && (
+                  <p className="text-red-500 text-sm mt-1">{errors.scheduled_at}</p>
+                )}
+                <p className="text-sm text-gray-400 mt-1">
+                  Leave empty to create a draft stream
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="mb-6">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Youtube className="w-5 h-5" />
+                YouTube Integration (Optional)
+              </CardTitle>
+              <CardDescription>
+                Automatically create YouTube broadcast or manually enter stream key
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex items-center justify-between p-4 bg-blue-500/10 border border-blue-500/30 rounded-lg">
+                <div className="flex-1">
+                  <div className="flex items-center gap-2 mb-1">
+                    <CheckCircle2 className="w-4 h-4 text-green-400" />
+                    <Label htmlFor="auto_create_youtube" className="font-semibold cursor-pointer">
+                      Auto-create YouTube Broadcast
                     </Label>
-                    <p className="text-xs text-muted-foreground">
-                      When live, show on Unity Live page. Off = private (only people with your viewer link can watch).
+                  </div>
+                  <p className="text-sm text-gray-400">
+                    Automatically create a YouTube live broadcast and get the stream key
+                  </p>
+                </div>
+                <Switch
+                  id="auto_create_youtube"
+                  checked={data.auto_create_youtube}
+                  onCheckedChange={(checked) => setData("auto_create_youtube", checked)}
+                />
+              </div>
+
+              {!data.auto_create_youtube && (
+                <>
+                  <Alert>
+                    <Info className="w-4 h-4" />
+                    <AlertDescription>
+                      <strong>How to get your YouTube Stream Key:</strong>
+                      <ol className="list-decimal list-inside mt-2 space-y-1 text-sm">
+                        <li>Go to YouTube Studio → Go Live</li>
+                        <li>Create a new stream or use an existing one</li>
+                        <li>Copy the "Stream Key" (starts with "rtmp://" or similar)</li>
+                        <li>Paste it here to enable OBS → YouTube streaming</li>
+                      </ol>
+                    </AlertDescription>
+                  </Alert>
+
+                  <div>
+                    <Label htmlFor="youtube_stream_key">YouTube Stream Key</Label>
+                    <Input
+                      id="youtube_stream_key"
+                      type="password"
+                      value={data.youtube_stream_key}
+                      onChange={(e) => setData("youtube_stream_key", e.target.value)}
+                      placeholder="Paste your YouTube stream key here"
+                      className="mt-1 font-mono text-sm"
+                    />
+                    {errors.youtube_stream_key && (
+                      <p className="text-red-500 text-sm mt-1">{errors.youtube_stream_key}</p>
+                    )}
+                    <p className="text-sm text-gray-400 mt-1">
+                      You can add this later from the host dashboard
                     </p>
                   </div>
-                  <Switch
-                    id="is_public"
-                    checked={data.is_public}
-                    onCheckedChange={(checked) => setData("is_public", checked)}
-                  />
-                </div>
-              </CardContent>
-            </Card>
+                </>
+              )}
 
-            <div className="flex flex-col gap-3">
-              <Button
-                type="submit"
-                disabled={processing}
-                size="lg"
-                className="h-12 w-full text-base font-semibold text-white"
-                style={{
-                  background: `linear-gradient(135deg, ${BRAND.from}, ${BRAND.to})`,
-                }}
-              >
-                <Video className="mr-2 h-5 w-5" />
-                {processing ? "Creating…" : "Create meeting"}
-              </Button>
-              <Link href="/livestreams" className="block w-full">
-                <Button type="button" variant="outline" size="lg" className="h-12 w-full">
-                  Join existing meeting
-                </Button>
-              </Link>
-            </div>
+              {data.auto_create_youtube && (
+                <Alert className="bg-green-500/10 border-green-500/30">
+                  <CheckCircle2 className="w-4 h-4 text-green-400" />
+                  <AlertDescription>
+                    <strong>Auto-create enabled!</strong> A YouTube live broadcast will be automatically created when you save this livestream.
+                    Make sure you've connected your YouTube account in <a href="/integrations/youtube" className="text-[#FF1493] hover:underline">Integrations</a>.
+                  </AlertDescription>
+                </Alert>
+              )}
+            </CardContent>
+          </Card>
 
-            <div className="rounded-lg border border-border bg-muted/30 p-4 space-y-2">
-              <p className="text-sm font-medium text-foreground">Options</p>
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Mic className="h-4 w-4" />
-                <span>Mic & camera</span>
-              </div>
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Camera className="h-4 w-4" />
-                <span>Audio only</span>
-              </div>
-            </div>
+          <div className="flex gap-4">
+            <Button
+              type="submit"
+              disabled={processing}
+              className="bg-gradient-to-r from-[#FF1493] to-[#DC143C] hover:from-[#FF1493]/90 hover:to-[#DC143C]/90"
+            >
+              {processing ? "Creating..." : "Create Livestream"}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => router.visit("/livestreams")}
+            >
+              Cancel
+            </Button>
+          </div>
+        </form>
 
-            <div className="pt-4 border-t border-border">
-              <a
-                href="https://obsproject.com/download"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
-              >
-                <Download className="h-4 w-4" />
-                Download OBS Studio (optional)
-              </a>
-            </div>
-          </form>
-        </div>
+        <Card className="mt-8 bg-blue-500/10 border-blue-500/30">
+          <CardHeader>
+            <CardTitle className="text-sm">What happens next?</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ul className="list-disc list-inside space-y-2 text-sm text-gray-300">
+              <li>A unique VDO.Ninja room will be automatically generated</li>
+              <li>You'll receive a secure password for the room</li>
+              <li>Guests can join using a simple link (no accounts needed)</li>
+              <li>You'll use OBS Studio to pull in guest feeds and stream to YouTube</li>
+            </ul>
+          </CardContent>
+        </Card>
       </div>
     </AppLayout>
   )
 }
+
