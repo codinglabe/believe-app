@@ -145,7 +145,6 @@ export default function Marketplace({
     const startProductIndex = (currentProductPage - 1) * productsPerPage
     const endProductIndex = Math.min(startProductIndex + productsPerPage, totalProducts)
     const currentProducts = products?.slice(startProductIndex, endProductIndex) || []
-    const totalPool = poolListings.length
 
     const [filters, setFilters] = useState<{
         search: string
