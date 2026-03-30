@@ -1,3 +1,38 @@
+import type { CareAllianceMembershipRow } from "../types"
+
+/** Split rows passed in only need `kind` and `organization_id` for org rows. */
+export type OrgSplitRowForFilter = { kind: "org" | "fee"; organization_id?: number | "" }
+
+/**
+ * Active members available for one org split row: excludes organizations already chosen on other org rows,
+ * but always includes this row’s current selection (if any).
+ */
+export function activeMembersForOrgSplitRow(
+  activeMembers: CareAllianceMembershipRow[],
+  splitRows: OrgSplitRowForFilter[],
+  rowIndex: number,
+): CareAllianceMembershipRow[] {
+  const takenElsewhere = new Set<number>()
+  splitRows.forEach((r, i) => {
+    if (i === rowIndex || r.kind !== "org") return
+    if (r.organization_id !== "" && r.organization_id !== undefined) {
+      takenElsewhere.add(Number(r.organization_id))
+    }
+  })
+  const currentRow = splitRows[rowIndex]
+  const currentId =
+    currentRow?.kind === "org" && currentRow.organization_id !== "" && currentRow.organization_id !== undefined
+      ? Number(currentRow.organization_id)
+      : null
+
+  return activeMembers.filter((m) => {
+    const oid = m.organization?.id
+    if (!oid) return false
+    if (currentId !== null && oid === currentId) return true
+    return !takenElsewhere.has(oid)
+  })
+}
+
 /** Match organization dashboard cards (e.g. dashboard.tsx StatCard / bg-card border-border). */
 export const dashboardCardClass =
   "border border-border bg-card text-card-foreground shadow-sm [&_.text-muted-foreground]:text-muted-foreground [&_label]:text-foreground"

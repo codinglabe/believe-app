@@ -2,9 +2,9 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Product extends Model
@@ -22,6 +22,7 @@ class Product extends Model
         'ship_from_state',
         'ship_from_zip',
         'ship_from_country',
+        'ship_from_merchant_id',
         'parcel_length_in',
         'parcel_width_in',
         'parcel_height_in',
@@ -104,10 +105,11 @@ class Product extends Model
         $slug = \Str::slug($name);
         $baseSlug = $slug;
         $i = 1;
-        while (static::where('slug', $slug)->where('user_id', $userId)->when($ignoreId, fn($q) => $q->where('id', '!=', $ignoreId))->exists()) {
-            $slug = $baseSlug . '-' . $i;
+        while (static::where('slug', $slug)->where('user_id', $userId)->when($ignoreId, fn ($q) => $q->where('id', '!=', $ignoreId))->exists()) {
+            $slug = $baseSlug.'-'.$i;
             $i++;
         }
+
         return $slug;
     }
 
@@ -118,7 +120,7 @@ class Product extends Model
     {
         return Attribute::make(
             get: function ($value) {
-                if (!$value) {
+                if (! $value) {
                     return null;
                 }
 
@@ -128,17 +130,23 @@ class Product extends Model
                 }
 
                 // Return the full URL for stored images
-                return asset('storage/' . $value);
+                return asset('storage/'.$value);
             }
         );
     }
 
-     /**
+    /**
      * Get the organization that owns the product.
      */
     public function organization(): BelongsTo
     {
         return $this->belongsTo(Organization::class);
+    }
+
+    /** When set, Shippo ship-from uses this merchant's default/business address. */
+    public function shipFromMerchant(): BelongsTo
+    {
+        return $this->belongsTo(Merchant::class, 'ship_from_merchant_id');
     }
 
     public function productCategory()
@@ -179,6 +187,7 @@ class Product extends Model
     public function getCurrentBidAmount(): ?float
     {
         $top = $this->bids()->whereIn('status', ['active', 'winning'])->first();
+
         return $top ? (float) $top->bid_amount : null;
     }
 
@@ -194,7 +203,7 @@ class Product extends Model
 
     public function hasWinner(): bool
     {
-        return !empty($this->winner_user_id) && !empty($this->winning_bid_id);
+        return ! empty($this->winner_user_id) && ! empty($this->winning_bid_id);
     }
 
     public function isBiddingClosed(): bool
@@ -203,6 +212,7 @@ class Product extends Model
             return true;
         }
         $deadline = $this->isAuction() ? $this->auction_end : $this->bid_deadline;
+
         return $deadline && $deadline->isPast();
     }
 
@@ -221,7 +231,7 @@ class Product extends Model
      */
     public function isPrintifyProduct(): bool
     {
-        return !empty($this->printify_product_id);
+        return ! empty($this->printify_product_id);
     }
 
     /**
@@ -240,4 +250,3 @@ class Product extends Model
         return $this->isPrintifyProduct() ? 'Printify' : 'Manual';
     }
 }
-

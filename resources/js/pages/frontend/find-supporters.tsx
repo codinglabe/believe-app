@@ -61,7 +61,8 @@ interface InterestOption {
 
 interface Filters {
   same_causes: boolean
-  interests: number[]
+  /** Primary action category ids (profile Supporter interest) */
+  causes: number[]
   location: string
   radius: string
   sort: string
@@ -72,6 +73,7 @@ interface PageProps {
   supporters: PaginatedSupporters
   searchQuery: string
   filters: Filters
+  /** Active primary action categories (same as org registration + supporter profile) */
   interestOptions: InterestOption[]
   auth?: { user?: { id: number; name?: string } }
 }
@@ -83,7 +85,7 @@ function buildParams(
   const params: Record<string, string | number | boolean | number[] | undefined> = {}
   if (q.trim()) params.q = q.trim()
   if (filters.same_causes) params.same_causes = true
-  if (filters.interests.length) params.interests = filters.interests
+  if (filters.causes.length) params.causes = filters.causes
   if (filters.location?.trim()) params.location = filters.location.trim()
   if (filters.radius?.trim()) params.radius = filters.radius
   if (filters.sort && filters.sort !== "best_match") params.sort = filters.sort
@@ -105,7 +107,7 @@ export default function FindSupportersPage() {
   const [supporters, setSupporters] = useState(initialSupporters)
   const [filters, setFilters] = useState<Filters>({
     same_causes: initialFilters?.same_causes ?? false,
-    interests: Array.isArray(initialFilters?.interests) ? initialFilters.interests : [],
+    causes: Array.isArray(initialFilters?.causes) ? initialFilters.causes : [],
     location: initialFilters?.location ?? "",
     radius: initialFilters?.radius ?? "",
     sort: initialFilters?.sort ?? "best_match",
@@ -119,7 +121,7 @@ export default function FindSupportersPage() {
     return map
   })
   const [loadingFollow, setLoadingFollow] = useState<Record<number, boolean>>({})
-  const [interestsExpanded, setInterestsExpanded] = useState(true)
+  const [causesExpanded, setCausesExpanded] = useState(true)
   const [showAllInterests, setShowAllInterests] = useState(false)
   const [locationExpanded, setLocationExpanded] = useState(true)
   const [sortDropdownOpen, setSortDropdownOpen] = useState(false)
@@ -208,7 +210,7 @@ export default function FindSupportersPage() {
     setSearchQuery(initialQuery ?? "")
     setFilters({
       same_causes: initialFilters?.same_causes ?? false,
-      interests: Array.isArray(initialFilters?.interests) ? initialFilters.interests : [],
+      causes: Array.isArray(initialFilters?.causes) ? initialFilters.causes : [],
       location: initialFilters?.location ?? "",
       radius: initialFilters?.radius ?? "",
       sort: initialFilters?.sort ?? "best_match",
@@ -249,12 +251,12 @@ export default function FindSupportersPage() {
     })
   }, [filters, searchQuery])
 
-  const toggleInterest = useCallback(
-    (topicId: number) => {
-      const next = filters.interests.includes(topicId)
-        ? filters.interests.filter((id) => id !== topicId)
-        : [...filters.interests, topicId]
-      const nextFilters = { ...filters, interests: next }
+  const toggleCause = useCallback(
+    (causeId: number) => {
+      const next = filters.causes.includes(causeId)
+        ? filters.causes.filter((id) => id !== causeId)
+        : [...filters.causes, causeId]
+      const nextFilters = { ...filters, causes: next }
       setFilters(nextFilters)
       router.get(route("find-supporters.index"), buildParams(searchQuery, nextFilters), {
         preserveState: false,
@@ -274,10 +276,10 @@ export default function FindSupportersPage() {
     [filters, searchQuery]
   )
 
-  const removeInterestChip = useCallback(
-    (topicId: number) => {
-      const next = filters.interests.filter((id) => id !== topicId)
-      const nextFilters = { ...filters, interests: next }
+  const removeCauseChip = useCallback(
+    (causeId: number) => {
+      const next = filters.causes.filter((id) => id !== causeId)
+      const nextFilters = { ...filters, causes: next }
       setFilters(nextFilters)
       router.get(route("find-supporters.index"), buildParams(searchQuery, nextFilters), {
         preserveState: false,
@@ -315,12 +317,12 @@ export default function FindSupportersPage() {
     [filters.sort]
   )
 
-  const selectedInterestNames = useMemo(
+  const selectedCauseNames = useMemo(
     () =>
-      filters.interests
+      filters.causes
         .map((id) => interestOptions.find((t) => t.id === id)?.name)
         .filter(Boolean) as string[],
-    [filters.interests, interestOptions]
+    [filters.causes, interestOptions]
   )
 
   const primaryBlue = "#3B82F6"
@@ -363,23 +365,23 @@ export default function FindSupportersPage() {
                   <div className="mb-6">
                     <button
                       type="button"
-                      onClick={() => setInterestsExpanded(!interestsExpanded)}
+                      onClick={() => setCausesExpanded(!causesExpanded)}
                       className="w-full flex items-center justify-between font-semibold text-gray-900 dark:text-white text-sm mb-3 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
                     >
-                      Interests
+                      Supporter interest
                       <ChevronDown
-                        className={`w-4 h-4 transition-transform duration-200 ${interestsExpanded ? "" : "-rotate-90"}`}
+                        className={`w-4 h-4 transition-transform duration-200 ${causesExpanded ? "" : "-rotate-90"}`}
                       />
                     </button>
-                    {interestsExpanded && (
+                    {causesExpanded && (
                       <div className="flex flex-wrap gap-2 mt-2">
                         {visibleInterestOptions.map((topic) => {
-                          const isSelected = filters.interests.includes(topic.id)
+                          const isSelected = filters.causes.includes(topic.id)
                           return (
                             <button
                               key={topic.id}
                               type="button"
-                              onClick={() => toggleInterest(topic.id)}
+                              onClick={() => toggleCause(topic.id)}
                               className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full text-sm font-medium border transition-all duration-200 ${
                                 isSelected
                                   ? "bg-gradient-to-r from-blue-600 to-blue-700 text-white border-blue-600 shadow-sm hover:shadow-md"
@@ -477,7 +479,7 @@ export default function FindSupportersPage() {
                       </button>
                     </span>
                   )}
-                  {selectedInterestNames.map((name) => {
+                  {selectedCauseNames.map((name) => {
                     const id = interestOptions.find((t) => t.name === name)?.id
                     return (
                       <span
@@ -488,7 +490,7 @@ export default function FindSupportersPage() {
                         {name}
                         <button
                           type="button"
-                          onClick={() => id != null && removeInterestChip(id)}
+                          onClick={() => id != null && removeCauseChip(id)}
                           className="ml-0.5 rounded-full hover:bg-white/20 p-0.5 transition-colors"
                         >
                           <X className="w-3.5 h-3.5" />
@@ -546,9 +548,9 @@ export default function FindSupportersPage() {
                   )}
                 </div>
               </div>
-              {selectedInterestNames.length > 0 && (
+              {selectedCauseNames.length > 0 && (
                 <p className="text-sm text-gray-500 dark:text-gray-400">
-                  {selectedInterestNames.join(", ")}
+                  {selectedCauseNames.join(", ")}
                   {supporters.total > 0 && ` • ${supporters.total} supporter${supporters.total !== 1 ? "s" : ""}`}
                 </p>
               )}

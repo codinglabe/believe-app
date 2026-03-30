@@ -311,10 +311,10 @@ Route::get('/donate', [DonationController::class, 'index'])->name('donate');
 // Care Alliance — public campaign donation + preview (no auth)
 Route::get('/care-alliance/{allianceSlug}/campaigns/{campaign}/donate', [CareAllianceDonationController::class, 'donatePage'])
     ->name('care-alliance.campaigns.donate')
-    ->where('campaign', '[0-9]+');
+    ->where('campaign', '[a-zA-Z0-9][a-zA-Z0-9-]*');
 Route::post('/care-alliance/{allianceSlug}/campaigns/{campaign}/preview', [CareAllianceDonationController::class, 'preview'])
     ->name('care-alliance.campaigns.preview')
-    ->where('campaign', '[0-9]+');
+    ->where('campaign', '[a-zA-Z0-9][a-zA-Z0-9-]*');
 
 // Care Alliance — public hub (must stay before any conflicting /care-alliance/* catch-alls)
 Route::prefix('alliances/{allianceSlug}')
@@ -1167,6 +1167,10 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin|org
 
 // Winner pay flow (auth only; controller checks winner)
 Route::middleware(['auth', 'EnsureEmailIsVerified'])->group(function () {
+    Route::get('/products/{product}/winning-bid/shipping', [ProductController::class, 'winningBidShipping'])
+        ->name('products.winning-bid.shipping');
+    Route::get('/products/{product}/winning-bid/shipping-rates', [ProductController::class, 'winningBidShippingRatesJson'])
+        ->name('products.winning-bid.shipping-rates');
     Route::post('/products/{product}/pay-winning-bid', [ProductController::class, 'createWinningBidCheckout'])
         ->name('products.winning-bid.checkout');
     Route::get('/products/{product}/winning-bid-success', [ProductController::class, 'winningBidPaymentSuccess'])
@@ -1185,15 +1189,17 @@ Route::middleware(['auth', 'topics.selected', 'role:admin|organization|care_alli
     // Route::post('/printify/products/sync', [ProductController::class, 'syncFromPrintify'])->name('printify.products.sync');
 });
 
-/* Category Routes */
-Route::resource('categories', CategoryController::class)->except(['show'])->middleware([
-    'index' => 'permission:category.read',
-    'create' => 'permission:category.create',
-    'store' => 'permission:category.create',
-    'edit' => 'permission:category.edit',
-    'update' => 'permission:category.update',
-    'destroy' => 'permission:category.delete',
-]);
+/* Category Routes — global catalog; admin only (not organization dashboard) */
+Route::middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected', 'role:admin'])->group(function () {
+    Route::resource('categories', CategoryController::class)->except(['show'])->middleware([
+        'index' => 'permission:category.read',
+        'create' => 'permission:category.create',
+        'store' => 'permission:category.create',
+        'edit' => 'permission:category.edit',
+        'update' => 'permission:category.update',
+        'destroy' => 'permission:category.delete',
+    ]);
+});
 
 /* Raffle Routes */
 Route::resource('raffles', RaffleController::class)->middleware([
@@ -1758,7 +1764,7 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected'])->group(f
 
     Route::post('/care-alliance/{allianceSlug}/campaigns/{campaign}/checkout', [CareAllianceDonationController::class, 'checkout'])
         ->name('care-alliance.campaigns.checkout')
-        ->where('campaign', '[0-9]+');
+        ->where('campaign', '[a-zA-Z0-9][a-zA-Z0-9-]*');
     Route::get('/care-alliance/donations/success', [CareAllianceDonationController::class, 'success'])
         ->name('care-alliance.donations.success');
 });
@@ -1773,6 +1779,7 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|organizat
     Route::get('/dashboard', [CareAllianceDashboardController::class, 'index'])->name('dashboard');
     Route::get('/workspace/overview', [CareAllianceDashboardController::class, 'workspaceOverview'])->name('workspace.overview');
     Route::get('/workspace/members', [CareAllianceDashboardController::class, 'workspaceMembers'])->name('workspace.members');
+    Route::get('/workspace/campaigns/{campaign}/edit', [CareAllianceDashboardController::class, 'workspaceCampaignEdit'])->name('workspace.campaigns.edit');
     Route::get('/workspace/campaigns', [CareAllianceDashboardController::class, 'workspaceCampaigns'])->name('workspace.campaigns');
     Route::get('/workspace/settings', [CareAllianceDashboardController::class, 'workspaceSettings'])->name('workspace.settings');
     Route::patch('/settings', [CareAllianceDashboardController::class, 'updateSettings'])->name('settings.update');
@@ -1783,6 +1790,8 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|organizat
     Route::post('/join-requests/{joinRequest}/approve', [CareAllianceJoinRequestReviewController::class, 'approve'])->name('join-requests.approve');
     Route::post('/join-requests/{joinRequest}/decline', [CareAllianceJoinRequestReviewController::class, 'decline'])->name('join-requests.decline');
     Route::post('/campaigns', [CareAllianceCampaignManageController::class, 'store'])->name('campaigns.store');
+    Route::patch('/campaigns/{campaign}', [CareAllianceCampaignManageController::class, 'update'])->name('campaigns.update');
+    Route::delete('/campaigns/{campaign}', [CareAllianceCampaignManageController::class, 'destroy'])->name('campaigns.destroy');
 });
 
 // Care Alliance — nonprofits accept/decline alliance invites (not Care Alliance hub users)

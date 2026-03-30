@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import type { SharedData } from "@/types"
 import { Head, Link, router, useForm, usePage } from '@inertiajs/react';
 import { Button } from '@/components/ui/button';
@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { TextArea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Save, Plus, Minus, Loader2, Upload, Package, DollarSign, ImageIcon, Tag, Settings2, Info, ExternalLink, ShoppingBag, Check, Gavel, TrendingUp, Clock } from 'lucide-react';
+import { Save, Plus, Minus, Loader2, Upload, Package, DollarSign, ImageIcon, Tag, Settings2, Info, ExternalLink, ShoppingBag, Check, Gavel, TrendingUp, Clock, MapPin } from 'lucide-react';
 import { showErrorToast, showSuccessToast } from '@/lib/toast';
 import AppLayout from "@/layouts/app-layout"
 import type { BreadcrumbItem } from "@/types"
@@ -62,14 +62,35 @@ interface Variant {
     cost: number;
 }
 
+interface MerchantShipFromOption {
+    id: number;
+    label: string;
+    address_preview: {
+        name: string;
+        street1: string;
+        street2?: string;
+        city: string;
+        state: string;
+        zip: string;
+        country: string;
+    };
+}
+
 interface Props {
     categories: Category[];
     organizations?: { id: number; name: string }[];
+    merchants_for_ship_from?: MerchantShipFromOption[];
     blueprints: Blueprint[];
     printify_enabled: boolean;
 }
 
-export default function Create({ categories, organizations = [], blueprints, printify_enabled }: Props) {
+export default function Create({
+    categories,
+    organizations = [],
+    merchants_for_ship_from = [],
+    blueprints,
+    printify_enabled,
+}: Props) {
     const { auth, flash } = usePage<SharedData>().props
 
 
@@ -79,7 +100,6 @@ export default function Create({ categories, organizations = [], blueprints, pri
         description: '',
         quantity: '',
         unit_price: '',
-        shipping_charge: '',
         owned_by: 'admin',
         organization_id: '',
         status: 'active',
@@ -113,7 +133,29 @@ export default function Create({ categories, organizations = [], blueprints, pri
         winner_notification: 'email,in_app',
         winner_payment_window: '24h',
         offer_to_next_if_unpaid: true,
+
+        // Shippo ship-from (manual physical products)
+        ship_from_mode: 'custom' as 'custom' | 'merchant',
+        ship_from_merchant_id: '' as string | number,
+        ship_from_name: '',
+        ship_from_street1: '',
+        ship_from_city: '',
+        ship_from_state: '',
+        ship_from_zip: '',
+        ship_from_country: 'US',
+        parcel_length_in: '',
+        parcel_width_in: '',
+        parcel_height_in: '',
+        parcel_weight_oz: '',
     });
+
+    const selectedMerchantShipFrom = useMemo(() => {
+        if (!data.ship_from_merchant_id) {
+            return null;
+        }
+        const id = Number(data.ship_from_merchant_id);
+        return merchants_for_ship_from.find((m) => m.id === id) ?? null;
+    }, [data.ship_from_merchant_id, merchants_for_ship_from]);
 
      const [processing, setProcessing] = useState(false);
     const [errors, setErrors] = useState<any>({});
@@ -134,6 +176,12 @@ useEffect(() => {
     setData('categories', selectedCategories);
 }, [selectedCategories]);
 
+    useEffect(() => {
+        if (merchants_for_ship_from.length === 0 && data.ship_from_mode === 'merchant') {
+            setData('ship_from_mode', 'custom');
+        }
+    }, [merchants_for_ship_from.length, data.ship_from_mode, setData]);
+
 // Simple handler using local state
 const handleCategoryChange = (categoryId: number) => {
     setSelectedCategories(prev => {
@@ -141,6 +189,14 @@ const handleCategoryChange = (categoryId: number) => {
         return isSelected
             ? prev.filter(id => id !== categoryId)
             : [...prev, categoryId];
+    });
+    setErrors((prev: Record<string, unknown>) => {
+        if (!prev.categories) {
+            return prev;
+        }
+        const next = { ...prev };
+        delete next.categories;
+        return next;
     });
 };
 
@@ -367,12 +423,6 @@ const handleCategoryChange = (categoryId: number) => {
                     showErrorToast('Please enter a valid unit price.');
                     return;
                 }
-                if (!data.shipping_charge || parseFloat(data.shipping_charge) < 0) {
-                    setErrors({ shipping_charge: 'Please enter a valid shipping charge.' });
-                    setProcessing(false);
-                    showErrorToast('Please enter a valid shipping charge.');
-                    return;
-                }
             }
             if (pricingModel === 'auction') {
                 if (!data.starting_bid || parseFloat(data.starting_bid) < 0) {
@@ -408,6 +458,42 @@ const handleCategoryChange = (categoryId: number) => {
                 showErrorToast('Please upload a product image.');
                 return;
             }
+
+            if (data.type === 'physical') {
+                const hasMerchants = merchants_for_ship_from.length > 0;
+                const effectiveMode = hasMerchants ? data.ship_from_mode : 'custom';
+                if (effectiveMode === 'merchant') {
+                    if (!data.ship_from_merchant_id) {
+                        setErrors({ ship_from_merchant_id: 'Select a merchant warehouse for ship-from.' });
+                        setProcessing(false);
+                        showErrorToast('Select a merchant for the Shippo ship-from address.');
+                        return;
+                    }
+                } else {
+                    if (
+                        !String(data.ship_from_name || '').trim() ||
+                        !String(data.ship_from_street1 || '').trim() ||
+                        !String(data.ship_from_city || '').trim() ||
+                        !String(data.ship_from_state || '').trim() ||
+                        !String(data.ship_from_zip || '').trim() ||
+                        !String(data.ship_from_country || '').trim()
+                    ) {
+                        setErrors({
+                            ship_from_street1: 'Fill in the complete vendor ship-from address (Shippo “from”).',
+                        });
+                        setProcessing(false);
+                        showErrorToast('Enter the full ship-from address for Shippo rates and labels.');
+                        return;
+                    }
+                }
+            }
+        }
+
+        if (!data.categories?.length) {
+            setErrors({ categories: 'Select at least one product category.' });
+            setProcessing(false);
+            showErrorToast('Select at least one product category.');
+            return;
         }
 
         const formData = new FormData();
@@ -420,6 +506,40 @@ const handleCategoryChange = (categoryId: number) => {
         formData.append('status', data.status);
         formData.append('sku', data.sku);
         formData.append('type', data.type);
+
+        if (!data.is_printify_product && data.type === 'physical') {
+            const hasMerchants = merchants_for_ship_from.length > 0;
+            const effectiveMode = hasMerchants ? data.ship_from_mode : 'custom';
+            formData.append('ship_from_mode', effectiveMode);
+            if (effectiveMode === 'merchant' && data.ship_from_merchant_id) {
+                formData.append('ship_from_merchant_id', String(data.ship_from_merchant_id));
+            } else {
+                formData.append('ship_from_name', String(data.ship_from_name || '').trim());
+                formData.append('ship_from_street1', String(data.ship_from_street1 || '').trim());
+                formData.append('ship_from_city', String(data.ship_from_city || '').trim());
+                formData.append('ship_from_state', String(data.ship_from_state || '').trim());
+                formData.append('ship_from_zip', String(data.ship_from_zip || '').trim());
+                formData.append(
+                    'ship_from_country',
+                    String(data.ship_from_country || 'US')
+                        .toUpperCase()
+                        .slice(0, 2)
+                );
+            }
+            if (data.parcel_length_in) {
+                formData.append('parcel_length_in', String(data.parcel_length_in));
+            }
+            if (data.parcel_width_in) {
+                formData.append('parcel_width_in', String(data.parcel_width_in));
+            }
+            if (data.parcel_height_in) {
+                formData.append('parcel_height_in', String(data.parcel_height_in));
+            }
+            if (data.parcel_weight_oz) {
+                formData.append('parcel_weight_oz', String(data.parcel_weight_oz));
+            }
+        }
+
         if (data.tags) formData.append('tags', data.tags);
         if (data.organization_id) formData.append('organization_id', data.organization_id);
         formData.append('is_printify_product', data.is_printify_product ? '1' : '0');
@@ -436,11 +556,10 @@ const handleCategoryChange = (categoryId: number) => {
             formData.append('image', data.image);
         }
 
-        // Manual product: unit_price and shipping_charge (required for fixed price)
+        // Manual product: unit_price (shipping is quoted via Shippo at checkout)
         if (!data.is_printify_product) {
             formData.append('pricing_model', data.pricing_model || 'fixed');
             if (data.unit_price) formData.append('unit_price', data.unit_price);
-            if (data.shipping_charge) formData.append('shipping_charge', data.shipping_charge);
             if (data.pricing_model === 'auction') {
                 if (data.starting_bid) formData.append('starting_bid', data.starting_bid);
                 if (data.reserve_price) formData.append('reserve_price', data.reserve_price);
@@ -724,7 +843,6 @@ const handleCategoryChange = (categoryId: number) => {
                                                 } else {
                                                     // Reset manual product fields when enabling Printify
                                                     setData('unit_price', '');
-                                                    setData('shipping_charge', '');
                                                     // Initialize printify_images array with one empty slot
                                                     if (data.printify_images.length === 0) {
                                                         setData('printify_images', [null as any]);
@@ -1554,6 +1672,251 @@ const handleCategoryChange = (categoryId: number) => {
                                 </Card>
                             )}
 
+                            {!data.is_printify_product && data.type === 'physical' && (
+                                <Card className="border-2 border-sky-200 bg-white shadow-lg dark:border-sky-800 dark:bg-gray-900">
+                                    <CardHeader className="border-b border-sky-200 py-3 dark:border-sky-800">
+                                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                                            <div className="rounded-xl bg-sky-600 p-2.5 shadow-md dark:bg-sky-500">
+                                                <MapPin className="h-5 w-5 text-white" />
+                                            </div>
+                                            <div>
+                                                <CardTitle className="text-lg font-bold text-gray-900 dark:text-gray-100">
+                                                    Ship from (vendor) — Shippo
+                                                </CardTitle>
+                                                <CardDescription className="text-sm text-gray-600 dark:text-gray-400">
+                                                    This address is the Shippo <strong>from</strong> location. The buyer&apos;s address at checkout is the{' '}
+                                                    <strong>to</strong> address for rates and labels.
+                                                </CardDescription>
+                                            </div>
+                                        </div>
+                                    </CardHeader>
+                                    <CardContent className="space-y-6 pt-6">
+                                        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
+                                            {merchants_for_ship_from.length > 0 && (
+                                                <label
+                                                    className={`flex cursor-pointer items-center gap-2 rounded-xl border-2 px-4 py-3 transition-all ${
+                                                        data.ship_from_mode === 'merchant'
+                                                            ? 'border-sky-500 bg-sky-50 dark:border-sky-400 dark:bg-sky-950/40'
+                                                            : 'border-gray-200 dark:border-gray-600 hover:border-sky-300'
+                                                    }`}
+                                                >
+                                                    <input
+                                                        type="radio"
+                                                        name="ship_from_mode"
+                                                        className="sr-only"
+                                                        checked={data.ship_from_mode === 'merchant'}
+                                                        onChange={() => setData('ship_from_mode', 'merchant')}
+                                                    />
+                                                    <Package className="h-4 w-4 shrink-0 text-sky-600 dark:text-sky-400" />
+                                                    <span className="text-sm font-medium">Use merchant warehouse</span>
+                                                </label>
+                                            )}
+                                            <label
+                                                className={`flex cursor-pointer items-center gap-2 rounded-xl border-2 px-4 py-3 transition-all ${
+                                                    data.ship_from_mode === 'custom'
+                                                        ? 'border-sky-500 bg-sky-50 dark:border-sky-400 dark:bg-sky-950/40'
+                                                        : 'border-gray-200 dark:border-gray-600 hover:border-sky-300'
+                                                }`}
+                                            >
+                                                <input
+                                                    type="radio"
+                                                    name="ship_from_mode"
+                                                    className="sr-only"
+                                                    checked={data.ship_from_mode === 'custom'}
+                                                    onChange={() => setData('ship_from_mode', 'custom')}
+                                                />
+                                                <MapPin className="h-4 w-4 shrink-0 text-sky-600 dark:text-sky-400" />
+                                                <span className="text-sm font-medium">Custom vendor address</span>
+                                            </label>
+                                        </div>
+
+                                        {merchants_for_ship_from.length > 0 && data.ship_from_mode === 'merchant' && (
+                                            <div className="space-y-2">
+                                                <Label className="text-sm font-semibold">Merchant *</Label>
+                                                <Select
+                                                    value={data.ship_from_merchant_id ? String(data.ship_from_merchant_id) : ''}
+                                                    onValueChange={(v) => setData('ship_from_merchant_id', v ? Number(v) : '')}
+                                                >
+                                                    <SelectTrigger
+                                                        className={
+                                                            errors.ship_from_merchant_id ? 'border-red-500' : ''
+                                                        }
+                                                    >
+                                                        <SelectValue placeholder="Select merchant" />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        {merchants_for_ship_from.map((m) => (
+                                                            <SelectItem key={m.id} value={String(m.id)}>
+                                                                {m.label}
+                                                            </SelectItem>
+                                                        ))}
+                                                    </SelectContent>
+                                                </Select>
+                                                {errors.ship_from_merchant_id && (
+                                                    <p className="text-sm text-red-500">{errors.ship_from_merchant_id}</p>
+                                                )}
+                                                {selectedMerchantShipFrom && (
+                                                    <div className="rounded-lg border border-sky-200 bg-sky-50/80 p-4 text-sm dark:border-sky-800 dark:bg-sky-950/30">
+                                                        <p className="mb-1 font-semibold text-sky-900 dark:text-sky-100">
+                                                            Ship-from preview
+                                                        </p>
+                                                        <p className="text-gray-800 dark:text-gray-200">
+                                                            {selectedMerchantShipFrom.address_preview.name}
+                                                        </p>
+                                                        <p className="text-gray-700 dark:text-gray-300">
+                                                            {selectedMerchantShipFrom.address_preview.street1}
+                                                            {selectedMerchantShipFrom.address_preview.street2
+                                                                ? `, ${selectedMerchantShipFrom.address_preview.street2}`
+                                                                : ''}
+                                                        </p>
+                                                        <p className="text-gray-700 dark:text-gray-300">
+                                                            {selectedMerchantShipFrom.address_preview.city},{' '}
+                                                            {selectedMerchantShipFrom.address_preview.state}{' '}
+                                                            {selectedMerchantShipFrom.address_preview.zip}
+                                                        </p>
+                                                        <p className="text-gray-700 dark:text-gray-300">
+                                                            {selectedMerchantShipFrom.address_preview.country}
+                                                        </p>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+
+                                        {data.ship_from_mode === 'custom' && (
+                                            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                                                <div className="space-y-2 sm:col-span-2">
+                                                    <Label>Contact / business name *</Label>
+                                                    <Input
+                                                        value={data.ship_from_name}
+                                                        onChange={(e) => setData('ship_from_name', e.target.value)}
+                                                        placeholder="Warehouse or your name"
+                                                        className={errors.ship_from_name ? 'border-red-500' : ''}
+                                                    />
+                                                    {errors.ship_from_name && (
+                                                        <p className="text-xs text-red-500">{errors.ship_from_name}</p>
+                                                    )}
+                                                </div>
+                                                <div className="space-y-2 sm:col-span-2">
+                                                    <Label>Street address *</Label>
+                                                    <Input
+                                                        value={data.ship_from_street1}
+                                                        onChange={(e) => setData('ship_from_street1', e.target.value)}
+                                                        placeholder="123 Ship St"
+                                                        className={errors.ship_from_street1 ? 'border-red-500' : ''}
+                                                    />
+                                                    {errors.ship_from_street1 && (
+                                                        <p className="text-xs text-red-500">{errors.ship_from_street1}</p>
+                                                    )}
+                                                </div>
+                                                <div className="space-y-2">
+                                                    <Label>City *</Label>
+                                                    <Input
+                                                        value={data.ship_from_city}
+                                                        onChange={(e) => setData('ship_from_city', e.target.value)}
+                                                        className={errors.ship_from_city ? 'border-red-500' : ''}
+                                                    />
+                                                    {errors.ship_from_city && (
+                                                        <p className="text-xs text-red-500">{errors.ship_from_city}</p>
+                                                    )}
+                                                </div>
+                                                <div className="space-y-2">
+                                                    <Label>State / region *</Label>
+                                                    <Input
+                                                        value={data.ship_from_state}
+                                                        onChange={(e) => setData('ship_from_state', e.target.value)}
+                                                        className={errors.ship_from_state ? 'border-red-500' : ''}
+                                                    />
+                                                    {errors.ship_from_state && (
+                                                        <p className="text-xs text-red-500">{errors.ship_from_state}</p>
+                                                    )}
+                                                </div>
+                                                <div className="space-y-2">
+                                                    <Label>Postal code *</Label>
+                                                    <Input
+                                                        value={data.ship_from_zip}
+                                                        onChange={(e) => setData('ship_from_zip', e.target.value)}
+                                                        className={errors.ship_from_zip ? 'border-red-500' : ''}
+                                                    />
+                                                    {errors.ship_from_zip && (
+                                                        <p className="text-xs text-red-500">{errors.ship_from_zip}</p>
+                                                    )}
+                                                </div>
+                                                <div className="space-y-2">
+                                                    <Label>Country (ISO2) *</Label>
+                                                    <Input
+                                                        value={data.ship_from_country}
+                                                        onChange={(e) =>
+                                                            setData(
+                                                                'ship_from_country',
+                                                                e.target.value.toUpperCase().slice(0, 2)
+                                                            )
+                                                        }
+                                                        placeholder="US"
+                                                        maxLength={2}
+                                                        className={errors.ship_from_country ? 'border-red-500' : ''}
+                                                    />
+                                                    {errors.ship_from_country && (
+                                                        <p className="text-xs text-red-500">{errors.ship_from_country}</p>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        <div className="rounded-lg border border-dashed border-gray-300 p-4 dark:border-gray-600">
+                                            <p className="mb-3 text-sm font-semibold text-gray-800 dark:text-gray-200">
+                                                Parcel (optional — Shippo defaults if empty)
+                                            </p>
+                                            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                                                <div className="space-y-1">
+                                                    <Label className="text-xs">Length (in)</Label>
+                                                    <Input
+                                                        type="number"
+                                                        step="0.01"
+                                                        min="0"
+                                                        value={data.parcel_length_in}
+                                                        onChange={(e) => setData('parcel_length_in', e.target.value)}
+                                                        placeholder="10"
+                                                    />
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <Label className="text-xs">Width (in)</Label>
+                                                    <Input
+                                                        type="number"
+                                                        step="0.01"
+                                                        min="0"
+                                                        value={data.parcel_width_in}
+                                                        onChange={(e) => setData('parcel_width_in', e.target.value)}
+                                                        placeholder="8"
+                                                    />
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <Label className="text-xs">Height (in)</Label>
+                                                    <Input
+                                                        type="number"
+                                                        step="0.01"
+                                                        min="0"
+                                                        value={data.parcel_height_in}
+                                                        onChange={(e) => setData('parcel_height_in', e.target.value)}
+                                                        placeholder="4"
+                                                    />
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <Label className="text-xs">Weight (oz)</Label>
+                                                    <Input
+                                                        type="number"
+                                                        step="0.01"
+                                                        min="0"
+                                                        value={data.parcel_weight_oz}
+                                                        onChange={(e) => setData('parcel_weight_oz', e.target.value)}
+                                                        placeholder="16"
+                                                    />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </CardContent>
+                                </Card>
+                            )}
+
                             {/* Pricing & Inventory */}
                             <Card className={`border-2 shadow-lg transition-all duration-300 dark:shadow-xl ${data.pricing_model === 'auction' || data.pricing_model === 'blind_bid' ? 'border-purple-200 dark:border-purple-800' : 'border-gray-200 dark:border-gray-700'} bg-white dark:bg-gray-900`}>
                                 <CardHeader className="border-b border-green-200 bg-gradient-to-r from-green-50 via-emerald-50 to-teal-50 py-2 dark:border-green-800 dark:from-green-950/40 dark:via-emerald-950/40 dark:to-teal-950/40">
@@ -1620,38 +1983,14 @@ const handleCategoryChange = (categoryId: number) => {
                                                     </p>
                                                 )}
                                             </div>
-                                            <div className="space-y-2">
-                                                <Label htmlFor="shipping_charge" className="flex items-center gap-2">
-                                                    <Package className="h-4 w-4" />
-                                                    Shipping Charge ($) *
-                                                </Label>
-                                                <div className="relative">
-                                                    <span className="absolute top-1/2 left-3 -translate-y-1/2 transform font-medium text-gray-500 dark:text-gray-400">
-                                                        $
-                                                    </span>
-                                                    <Input
-                                                        id="shipping_charge"
-                                                        type="number"
-                                                        step="0.01"
-                                                        min="0"
-                                                        value={data.shipping_charge}
-                                                        onChange={(e) => handleChange('shipping_charge', e.target.value)}
-                                                        placeholder="0.00"
-                                                        className={`h-11 pl-8 text-base ${errors.shipping_charge ? 'border-red-500 focus-visible:ring-red-500 dark:border-red-500' : 'border-gray-300 focus-visible:ring-green-500 dark:border-gray-600'} bg-white text-gray-900 placeholder:text-gray-400 dark:bg-gray-800 dark:text-gray-100 dark:placeholder:text-gray-500`}
-                                                    />
-                                                </div>
-                                                {errors.shipping_charge && (
-                                                    <p className="flex items-center gap-1 text-sm text-red-500">
-                                                        <span>⚠</span> {errors.shipping_charge}
-                                                    </p>
-                                                )}
+                                            {data.type === 'physical' && (
                                                 <div className="flex items-start gap-2.5 rounded-lg border border-blue-200 bg-blue-50 p-3 dark:border-blue-800 dark:bg-blue-900/30">
-                                                    <Info className="mt-0.5 h-4 w-4 shrink-0 text-blue-600 dark:text-blue-400" />
+                                                    <Package className="mt-0.5 h-4 w-4 shrink-0 text-blue-600 dark:text-blue-400" />
                                                     <p className="text-xs leading-relaxed text-blue-700 sm:text-sm dark:text-blue-300">
-                                                        Shipping charge customers will pay for this product
+                                                        Shipping cost is not set here. At checkout, buyers see live rates from Shippo based on your ship-from address and parcel details.
                                                     </p>
                                                 </div>
-                                            </div>
+                                            )}
                                         </>
                                     )}
 
@@ -1866,9 +2205,15 @@ const handleCategoryChange = (categoryId: number) => {
                                     <div className="space-y-3">
                                         <Label className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-gray-100">
                                             <Tag className="h-4 w-4" />
-                                            Categories
+                                            Categories *
                                         </Label>
-                                        <div className="rounded-xl border-2 border-gray-200 bg-gray-50 p-4 sm:p-6 dark:border-gray-700 dark:bg-gray-800/50">
+                                        <div
+                                            className={`rounded-xl border-2 bg-gray-50 p-4 sm:p-6 dark:bg-gray-800/50 ${
+                                                errors.categories
+                                                    ? 'border-red-500 dark:border-red-500'
+                                                    : 'border-gray-200 dark:border-gray-700'
+                                            }`}
+                                        >
                                             <div className="flex flex-wrap gap-2 sm:gap-3">
                                                 {categories.map((category) => (
                                                     <label

@@ -21,14 +21,38 @@ class CareAllianceDonationController extends Controller
         private CareAllianceSplitService $splitService
     ) {}
 
-    public function donatePage(string $allianceSlug, int $campaignId)
+    public function donatePage(Request $request, string $allianceSlug, CareAllianceCampaign $campaign)
     {
         $alliance = CareAlliance::where('slug', $allianceSlug)->firstOrFail();
-        $campaign = CareAllianceCampaign::where('care_alliance_id', $alliance->id)
-            ->where('id', $campaignId)
-            ->where('status', 'active')
-            ->with(['splits.organization:id,name', 'careAlliance:id,name,slug'])
-            ->firstOrFail();
+        if ((int) $campaign->care_alliance_id !== (int) $alliance->id || $campaign->status !== 'active') {
+            abort(404);
+        }
+
+        $campaign->load([
+            'splits' => fn ($q) => $q->orderBy('id')->with(['organization:id,name']),
+            'careAlliance:id,name,slug',
+        ]);
+
+        $user = $request->user();
+        $checkoutDisabledAsAllianceOwner = $user !== null
+            && (int) $user->id === (int) $alliance->creator_user_id;
+
+        $hasAmountQuery = $request->has('amount_cents');
+        $amountCents = $hasAmountQuery
+            ? max(0, (int) $request->query('amount_cents'))
+            : 2500;
+
+        $lines = [];
+        $splitError = null;
+
+        if ($amountCents >= 100) {
+            try {
+                $lines = $this->splitService->snapshotForAmount($campaign, $amountCents);
+            } catch (\Throwable $e) {
+                $splitError = $e->getMessage();
+                $lines = [];
+            }
+        }
 
         return Inertia::render('care-alliance/Donate', [
             'seo' => SeoService::forPage('care_alliance_donate'),
@@ -39,20 +63,26 @@ class CareAllianceDonationController extends Controller
             ],
             'campaign' => [
                 'id' => $campaign->id,
+                'slug' => $campaign->slug,
                 'name' => $campaign->name,
                 'description' => $campaign->description,
             ],
+            'donation_amount_cents' => $amountCents,
+            'lines' => $lines,
+            'split_error' => $splitError,
+            'campaign_has_splits' => $campaign->splits->isNotEmpty(),
+            'checkout_disabled_as_alliance_owner' => $checkoutDisabledAsAllianceOwner,
         ]);
     }
 
-    public function preview(Request $request, string $allianceSlug, int $campaignId)
+    public function preview(Request $request, string $allianceSlug, CareAllianceCampaign $campaign)
     {
         $alliance = CareAlliance::where('slug', $allianceSlug)->firstOrFail();
-        $campaign = CareAllianceCampaign::where('care_alliance_id', $alliance->id)
-            ->where('id', $campaignId)
-            ->where('status', 'active')
-            ->with(['splits.organization:id,name'])
-            ->firstOrFail();
+        if ((int) $campaign->care_alliance_id !== (int) $alliance->id || $campaign->status !== 'active') {
+            abort(404);
+        }
+
+        $campaign->load(['splits.organization:id,name']);
 
         $validated = $request->validate([
             'amount_cents' => 'required|integer|min:100',
@@ -74,7 +104,7 @@ class CareAllianceDonationController extends Controller
         ]);
     }
 
-    public function checkout(Request $request, string $allianceSlug, int $campaignId)
+    public function checkout(Request $request, string $allianceSlug, CareAllianceCampaign $campaign)
     {
         $user = $request->user();
         if ($user->hasRole('admin')) {
@@ -85,11 +115,18 @@ class CareAllianceDonationController extends Controller
         }
 
         $alliance = CareAlliance::where('slug', $allianceSlug)->firstOrFail();
-        $campaign = CareAllianceCampaign::where('care_alliance_id', $alliance->id)
-            ->where('id', $campaignId)
-            ->where('status', 'active')
-            ->with(['splits.organization:id,name'])
-            ->firstOrFail();
+        if ((int) $campaign->care_alliance_id !== (int) $alliance->id || $campaign->status !== 'active') {
+            abort(404);
+        }
+
+        if ((int) $user->id === (int) $alliance->creator_user_id) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Alliance operators cannot donate through their own campaign link.',
+            ], 403);
+        }
+
+        $campaign->load(['splits.organization:id,name']);
 
         $validated = $request->validate([
             'amount_cents' => 'required|integer|min:100',
@@ -118,7 +155,10 @@ class CareAllianceDonationController extends Controller
         try {
             $checkoutOptions = [
                 'success_url' => route('care-alliance.donations.success').'?session_id={CHECKOUT_SESSION_ID}',
-                'cancel_url' => route('care-alliance.campaigns.donate', [$allianceSlug, $campaignId]),
+                'cancel_url' => route('care-alliance.campaigns.donate', [
+                    'allianceSlug' => $allianceSlug,
+                    'campaign' => $campaign->slug,
+                ]),
                 'metadata' => [
                     'care_alliance_donation_id' => (string) $donation->id,
                 ],

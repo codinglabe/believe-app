@@ -102,8 +102,20 @@ function Step2Form({ items, subtotal, donation_amount, step2Data, onBack }: Omit
   }, [currentTotalAmount, currentBalance, paymentMethod])
 
   const [selectedShippingMethod, setSelectedShippingMethod] = useState(
-    step2Data.shippingMethods[0]?.id || "standard"
+    () => String(step2Data.shippingMethods[0]?.id ?? "standard")
   )
+
+  const handleShippingMethodChange = (methodId: string) => {
+    setSelectedShippingMethod(methodId)
+    const m = step2Data.shippingMethods.find((x: { id?: string | number }) => String(x?.id) === String(methodId))
+    if (m && typeof m.cost === "number") {
+      setCurrentShippingCost(m.cost)
+      setCurrentTotalAmount(subtotal + m.cost + step2Data.taxAmount)
+    }
+    setPaymentStep("initial")
+    setPaymentIntentData(null)
+    setPaymentError("")
+  }
 
   // Initialize tax calculation status
   useEffect(() => {
@@ -493,6 +505,45 @@ function Step2Form({ items, subtotal, donation_amount, step2Data, onBack }: Omit
               </div>
             )}
           </div>
+
+          {/* Shipping options (manual: live Shippo rates; Printify: carrier choice when multiple) */}
+          {step2Data.shippingMethods && step2Data.shippingMethods.length > 0 && (
+            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 mb-6">
+              <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">Shipping method</h3>
+              <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                Choose how your order ships. Totals update when you change selection; click calculate / pay again if you already started card payment.
+              </p>
+              <div className="space-y-2">
+                {step2Data.shippingMethods.map((m: { id: string | number; name?: string; cost: number; estimated_days?: string }) => (
+                  <label
+                    key={String(m.id)}
+                    className={`flex cursor-pointer items-start gap-3 rounded-lg border-2 p-4 transition-all ${
+                      String(selectedShippingMethod) === String(m.id)
+                        ? "border-blue-600 bg-blue-50 dark:border-blue-500 dark:bg-blue-950/30"
+                        : "border-gray-200 dark:border-gray-600 hover:border-blue-300"
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="shipping_method"
+                      className="mt-1"
+                      checked={String(selectedShippingMethod) === String(m.id)}
+                      onChange={() => handleShippingMethodChange(String(m.id))}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <div className="font-medium text-gray-900 dark:text-white">{m.name || "Shipping"}</div>
+                      {m.estimated_days != null && m.estimated_days !== "—" && (
+                        <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                          Est. {m.estimated_days} business days
+                        </div>
+                      )}
+                    </div>
+                    <div className="font-semibold text-gray-900 dark:text-white shrink-0">${Number(m.cost).toFixed(2)}</div>
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Payment Method Selection */}
           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 mb-6">

@@ -20,6 +20,7 @@ class Bid extends Model
         'zip',
         'country',
         'shippo_rate_object_id',
+        'shippo_shipment_id',
         'shippo_shipping_cost',
         'shippo_tax_amount',
         'shippo_carrier',
@@ -29,6 +30,7 @@ class Bid extends Model
     public function getLocationDisplayAttribute(): string
     {
         $parts = array_filter([$this->city, $this->state]);
+
         return $parts ? implode(', ', $parts) : '';
     }
 

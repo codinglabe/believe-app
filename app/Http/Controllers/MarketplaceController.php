@@ -209,7 +209,7 @@ class MarketplaceController extends Controller
         // Process products with cached Printify images
         $processedProducts = $this->processProductsWithImagesNDVariantsPrice($products);
 
-        $categories = Category::where('status', 'active')->get();
+        $categories = Category::query()->where('status', 'active')->parents()->orderBy('name')->get();
 
         $organizations = Organization::query()
             ->when($user && ! empty($allowedOrganizationIds), function ($query) use ($allowedOrganizationIds) {

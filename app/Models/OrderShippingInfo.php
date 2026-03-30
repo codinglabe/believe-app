@@ -16,11 +16,11 @@ class OrderShippingInfo extends Model
         'email',
         'phone',
         'shipping_address',
+        'shipping_address_line2',
         'city',
         'country',
         'state',
         'zip',
-        'phone',
     ];
 
     public function order(): BelongsTo

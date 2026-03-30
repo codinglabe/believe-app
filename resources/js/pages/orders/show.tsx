@@ -329,13 +329,20 @@ export default function Show({ order, userRole }: Props) {
         setPurchaseResult(null);
         setShippoRatesLoading(true);
         try {
-            const { data } = await axios.get(route('orders.shippo.rates', { order: order.id }));
+            const { data } = await axios.get(route('orders.shippo.rates', { order: order.id }), {
+                headers: { Accept: 'application/json' },
+            });
             setShippoRates(data.rates || []);
             if ((data.rates?.length ?? 0) === 0) {
                 setShippoError('No shipping rates available for this address.');
             }
         } catch (err: any) {
-            setShippoError(err.response?.data?.error || 'Failed to load shipping rates.');
+            const d = err.response?.data;
+            const msg =
+                (typeof d?.error === 'string' && d.error) ||
+                (typeof d?.message === 'string' && d.message) ||
+                'Failed to load shipping rates.';
+            setShippoError(msg);
             setShippoRates([]);
         } finally {
             setShippoRatesLoading(false);
@@ -367,8 +374,13 @@ export default function Show({ order, userRole }: Props) {
             });
             showSuccessToast('Shipping label created successfully.');
         } catch (err: any) {
-            setShippoError(err.response?.data?.error || 'Failed to purchase label.');
-            showErrorToast(err.response?.data?.error || 'Failed to purchase label.');
+            const d = err.response?.data;
+            const msg =
+                (typeof d?.error === 'string' && d.error) ||
+                (typeof d?.message === 'string' && d.message) ||
+                'Failed to purchase label.';
+            setShippoError(msg);
+            showErrorToast(msg);
         } finally {
             setShippoPurchaseLoading(false);
         }

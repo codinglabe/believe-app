@@ -21,6 +21,20 @@ class Order extends Model
         'can_create_shippo_label',
     ];
 
+    /**
+     * @return array<string, string>
+     */
+    protected function casts(): array
+    {
+        return [
+            'shipped_at' => 'datetime',
+            'delivered_at' => 'datetime',
+            'sent_to_production_at' => 'datetime',
+            'refunded_at' => 'datetime',
+            'paid_at' => 'datetime',
+        ];
+    }
+
     protected $fillable = [
         'user_id',
         'reference_number',

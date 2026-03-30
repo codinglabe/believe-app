@@ -13,6 +13,14 @@ return new class extends Migration
 {
     public function up(): void
     {
+        if (! Schema::hasTable('marketplace_products')) {
+            return;
+        }
+
+        if (Schema::hasColumn('marketplace_products', 'category_id')) {
+            return;
+        }
+
         Schema::table('marketplace_products', function (Blueprint $table) {
             $table->foreignId('category_id')->nullable()->after('description')->constrained('categories')->nullOnDelete();
             $table->index('category_id');
@@ -44,6 +52,14 @@ return new class extends Migration
 
     public function down(): void
     {
+        if (! Schema::hasTable('marketplace_products')) {
+            return;
+        }
+
+        if (! Schema::hasColumn('marketplace_products', 'category_id')) {
+            return;
+        }
+
         Schema::table('marketplace_products', function (Blueprint $table) {
             $table->string('category', 255)->nullable()->after('description');
             $table->index('category');

@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Order;
+use App\Models\OrderShippingInfo;
 use App\Models\Organization;
 use App\Models\Product;
 use App\Models\User;
@@ -30,6 +31,34 @@ class ShippoService
     public function isConfigured(): bool
     {
         return ! empty($this->apiKey);
+    }
+
+    /**
+     * Shippo ShipmentExtra: bypass strict USPS/CASS validation when the address is correct but fails "Address not found".
+     *
+     * @return array<string, mixed>
+     */
+    protected function shipmentExtraForValidationBypass(): array
+    {
+        if (! filter_var(config('services.shippo.bypass_address_validation', true), FILTER_VALIDATE_BOOLEAN)) {
+            return [];
+        }
+
+        return ['bypass_address_validation' => true];
+    }
+
+    /**
+     * Trim and normalize whitespace for Shippo address fields.
+     */
+    protected function sanitizeAddressComponent(?string $value): string
+    {
+        $s = trim((string) $value);
+        if ($s === '') {
+            return '';
+        }
+        $s = preg_replace('/\s+/u', ' ', $s) ?? $s;
+
+        return $s;
     }
 
     /**
@@ -151,6 +180,50 @@ class ShippoService
     }
 
     /**
+     * Ship-to phone is required by many carriers (e.g. USPS). Use profile phone or config fallback.
+     */
+    public function ensureRecipientPhoneForShippo(?string $phone): string
+    {
+        $p = trim((string) $phone);
+        if ($p !== '') {
+            return $this->normalizePhoneForShippo($p);
+        }
+        $fallback = trim((string) config('services.shippo.fallback_seller_phone', ''));
+        if ($fallback !== '') {
+            return $this->normalizePhoneForShippo($fallback);
+        }
+
+        return '+15555555555';
+    }
+
+    /**
+     * Human-readable text from Shippo shipment `messages` (validation / no-rates reasons).
+     *
+     * @param  array<int, mixed>  $messages
+     */
+    protected function formatShippoShipmentMessages(array $messages): string
+    {
+        $parts = [];
+        foreach ($messages as $m) {
+            if (is_string($m) && trim($m) !== '') {
+                $parts[] = trim($m);
+
+                continue;
+            }
+            if (! is_array($m)) {
+                continue;
+            }
+            $t = $m['text'] ?? $m['message'] ?? null;
+            if (is_string($t) && trim($t) !== '') {
+                $parts[] = trim($t);
+            }
+        }
+        $parts = array_values(array_unique($parts));
+
+        return $parts !== [] ? implode(' ', $parts) : '';
+    }
+
+    /**
      * Return a set of carrier tokens whose carrier account is active AND connected.
      *
      * This avoids label purchase failures when a specific carrier (e.g. DHL Express)
@@ -261,6 +334,11 @@ class ShippoService
             'async' => false,
         ];
 
+        $extra = $this->shipmentExtraForValidationBypass();
+        if ($extra !== []) {
+            $payload['extra'] = $extra;
+        }
+
         $response = Http::withHeaders([
             'Authorization' => 'ShippoToken '.$this->apiKey,
             'Content-Type' => 'application/json',
@@ -280,7 +358,102 @@ class ShippoService
 
         $data = $response->json();
         $rates = $data['rates'] ?? [];
-        $ratesList = array_map(function ($rate) {
+        $messages = is_array($data['messages'] ?? null) ? $data['messages'] : [];
+
+        if ($rates === []) {
+            $fromMessages = $this->formatShippoShipmentMessages($messages);
+            $detail = $fromMessages !== ''
+                ? $fromMessages
+                : 'Shippo returned no rates for this shipment (check ship-from, ship-to, and parcel).';
+
+            Log::warning('Shippo getRatesForAddresses: empty rates', [
+                'messages' => $messages,
+                'shipment_status' => $data['status'] ?? null,
+            ]);
+
+            return [
+                'success' => false,
+                'error' => $detail,
+            ];
+        }
+
+        $ratesList = $this->mapRawShippoRates($rates);
+
+        $ratesList = $this->filterActiveCarrierRates($ratesList);
+
+        return [
+            'success' => true,
+            'shipment_id' => $data['object_id'] ?? null,
+            'rates' => $ratesList,
+        ];
+    }
+
+    /**
+     * Re-fetch rates for an existing shipment (same rate object_ids as when the shipment was created).
+     *
+     * @return array{success: bool, shipment_id?: string, rates?: array, error?: string}
+     */
+    public function retrieveShipmentRates(string $shipmentObjectId): array
+    {
+        if (! $this->isConfigured()) {
+            return ['success' => false, 'error' => 'Shippo is not configured.'];
+        }
+
+        $shipmentObjectId = trim($shipmentObjectId);
+        if ($shipmentObjectId === '') {
+            return ['success' => false, 'error' => 'Missing Shippo shipment id.'];
+        }
+
+        $response = Http::withHeaders([
+            'Authorization' => 'ShippoToken '.$this->apiKey,
+        ])->get($this->baseUrl.'/shipments/'.$shipmentObjectId);
+
+        if (! $response->successful()) {
+            Log::warning('Shippo retrieveShipmentRates failed', [
+                'status' => $response->status(),
+                'shipment_id' => $shipmentObjectId,
+                'body' => $response->json(),
+            ]);
+
+            return [
+                'success' => false,
+                'error' => $this->shippoApiErrorMessage($response),
+            ];
+        }
+
+        $data = $response->json();
+        $rates = $data['rates'] ?? [];
+        $messages = is_array($data['messages'] ?? null) ? $data['messages'] : [];
+
+        if ($rates === []) {
+            $fromMessages = $this->formatShippoShipmentMessages($messages);
+            $detail = $fromMessages !== ''
+                ? $fromMessages
+                : 'This Shippo shipment no longer has rates. Refresh shipping options.';
+
+            return [
+                'success' => false,
+                'error' => $detail,
+            ];
+        }
+
+        $ratesList = $this->mapRawShippoRates($rates);
+        $ratesList = $this->filterActiveCarrierRates($ratesList);
+
+        return [
+            'success' => true,
+            'shipment_id' => $data['object_id'] ?? $shipmentObjectId,
+            'rates' => $ratesList,
+        ];
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $rates
+     * @return array<int, array<string, mixed>>
+     */
+    protected function mapRawShippoRates(array $rates): array
+    {
+        return array_values(array_map(function ($rate) {
             return [
                 'object_id' => $rate['object_id'] ?? null,
                 'provider' => $rate['provider'] ?? '',
@@ -290,15 +463,48 @@ class ShippoService
                 'estimated_days' => $rate['estimated_days'] ?? null,
                 'duration_terms' => $rate['duration_terms'] ?? null,
             ];
-        }, $rates);
+        }, $rates));
+    }
 
-        $ratesList = $this->filterActiveCarrierRates($ratesList);
+    /**
+     * Normalize Shippo rate rows for checkout UI. Each method id is the rate object_id used to purchase a label.
+     *
+     * @param  array<int, array<string, mixed>>  $rates  Rows from getRatesForAddresses()['rates']
+     * @return array<int, array{id: string, name: string, cost: float, estimated_days: string, provider: string, currency: string}>
+     */
+    public function ratesToCheckoutMethods(array $rates): array
+    {
+        $methods = [];
+        foreach ($rates as $rate) {
+            $objectId = $rate['object_id'] ?? null;
+            if (! $objectId) {
+                continue;
+            }
+            $provider = trim((string) ($rate['provider'] ?? '')) ?: 'Carrier';
+            $svc = $rate['servicelevel'] ?? [];
+            $svcLabel = '';
+            if (is_array($svc)) {
+                $svcLabel = trim((string) ($svc['name'] ?? $svc['token'] ?? ''));
+            } elseif (is_string($svc)) {
+                $svcLabel = trim($svc);
+            }
+            $name = trim($provider.($svcLabel !== '' ? ' — '.$svcLabel : ''));
+            if ($name === '') {
+                $name = 'Shipping';
+            }
+            $est = $rate['estimated_days'] ?? null;
+            $methods[] = [
+                'id' => (string) $objectId,
+                'name' => $name,
+                'cost' => round((float) ($rate['amount'] ?? 0), 2),
+                'estimated_days' => $est !== null && $est !== '' ? (string) $est : '—',
+                'provider' => $provider,
+                'currency' => (string) ($rate['currency'] ?? 'USD'),
+            ];
+        }
+        usort($methods, fn ($a, $b) => $a['cost'] <=> $b['cost']);
 
-        return [
-            'success' => true,
-            'shipment_id' => $data['object_id'] ?? null,
-            'rates' => $ratesList,
-        ];
+        return $methods;
     }
 
     /**
@@ -500,6 +706,39 @@ class ShippoService
     }
 
     /**
+     * Shippo/USPS validation expects a 2-letter US state code when country is US.
+     */
+    protected function normalizeUsStateForShippo(string $state): string
+    {
+        $s = trim($state);
+        if ($s === '') {
+            return '';
+        }
+        if (strlen($s) === 2) {
+            return strtoupper($s);
+        }
+
+        static $map = [
+            'alabama' => 'AL', 'alaska' => 'AK', 'arizona' => 'AZ', 'arkansas' => 'AR', 'california' => 'CA',
+            'colorado' => 'CO', 'connecticut' => 'CT', 'delaware' => 'DE', 'florida' => 'FL', 'georgia' => 'GA',
+            'hawaii' => 'HI', 'idaho' => 'ID', 'illinois' => 'IL', 'indiana' => 'IN', 'iowa' => 'IA',
+            'kansas' => 'KS', 'kentucky' => 'KY', 'louisiana' => 'LA', 'maine' => 'ME', 'maryland' => 'MD',
+            'massachusetts' => 'MA', 'michigan' => 'MI', 'minnesota' => 'MN', 'mississippi' => 'MS', 'missouri' => 'MO',
+            'montana' => 'MT', 'nebraska' => 'NE', 'nevada' => 'NV', 'new hampshire' => 'NH', 'new jersey' => 'NJ',
+            'new mexico' => 'NM', 'new york' => 'NY', 'north carolina' => 'NC', 'north dakota' => 'ND', 'ohio' => 'OH',
+            'oklahoma' => 'OK', 'oregon' => 'OR', 'pennsylvania' => 'PA', 'rhode island' => 'RI', 'south carolina' => 'SC',
+            'south dakota' => 'SD', 'tennessee' => 'TN', 'texas' => 'TX', 'utah' => 'UT', 'vermont' => 'VT',
+            'virginia' => 'VA', 'washington' => 'WA', 'west virginia' => 'WV', 'wisconsin' => 'WI', 'wyoming' => 'WY',
+            'district of columbia' => 'DC', 'american samoa' => 'AS', 'guam' => 'GU', 'northern mariana islands' => 'MP',
+            'puerto rico' => 'PR', 'us virgin islands' => 'VI', 'u.s. virgin islands' => 'VI',
+        ];
+
+        $key = strtolower($s);
+
+        return $map[$key] ?? $s;
+    }
+
+    /**
      * Build address array for Shippo API.
      *
      * @param  array{name?: string, street1?: string, street2?: string, city?: string, state?: string, zip?: string, country?: string, phone?: string, email?: string}  $data
@@ -509,19 +748,77 @@ class ShippoService
         $country = $this->normalizeCountryToIso2((string) ($data['country'] ?? 'US'));
         $zip = $this->normalizePostalCodeForShippo((string) ($data['zip'] ?? ''), $country);
 
+        $state = trim((string) ($data['state'] ?? ''));
+        if ($country === 'US' && $state !== '') {
+            $state = $this->normalizeUsStateForShippo($state);
+        }
+
+        $name = $this->sanitizeAddressComponent($data['name'] ?? '');
+        $street1 = $this->sanitizeAddressComponent($data['street1'] ?? $data['shipping_address'] ?? $data['address'] ?? '');
+        $street2 = $this->sanitizeAddressComponent($data['street2'] ?? '');
+        $city = $this->sanitizeAddressComponent($data['city'] ?? '');
+
         $out = [
-            'name' => $data['name'] ?? 'Recipient',
-            'street1' => $data['street1'] ?? $data['shipping_address'] ?? $data['address'] ?? '',
-            'street2' => $data['street2'] ?? '',
-            'city' => $data['city'] ?? '',
-            'state' => $data['state'] ?? '',
+            'name' => $name !== '' ? $name : 'Recipient',
+            'street1' => $street1,
+            'street2' => $street2,
+            'city' => $city,
+            'state' => $state,
             'zip' => $zip,
             'country' => $country,
-            'phone' => $data['phone'] ?? '',
-            'email' => $data['email'] ?? '',
+            'phone' => $this->sanitizeAddressComponent($data['phone'] ?? ''),
+            'email' => trim((string) ($data['email'] ?? '')),
         ];
 
         return $this->stripEmptyAddressFields($out);
+    }
+
+    /**
+     * Ship-from for manual products: linked merchant warehouse, saved custom address, or organization fallback.
+     *
+     * @return array<string, mixed>
+     */
+    public function shipFromForManualProduct(Product $product, ?\App\Models\Organization $org): array
+    {
+        $product->loadMissing(['shipFromMerchant.shippingAddresses', 'user']);
+        $sellerContact = $this->getSellerContactForShippo($org, $product);
+
+        if ($product->ship_from_merchant_id && $product->shipFromMerchant) {
+            $m = $product->shipFromMerchant;
+            $parts = $m->shipFromAddressForRates();
+            $mEmail = trim((string) ($m->email ?? ''));
+            $mPhone = trim((string) ($m->phone ?? ''));
+            if ($mEmail !== '') {
+                $sellerContact['email'] = $mEmail;
+            }
+            if ($mPhone !== '') {
+                $sellerContact['phone'] = $mPhone;
+            }
+
+            return $this->addressPayload([
+                'name' => $parts['name'],
+                'street1' => $parts['street1'],
+                'street2' => $parts['street2'] ?? '',
+                'city' => $parts['city'],
+                'state' => $parts['state'],
+                'zip' => $parts['zip'],
+                'country' => $parts['country'] ?? 'US',
+                'phone' => $sellerContact['phone'],
+                'email' => $sellerContact['email'],
+            ]);
+        }
+
+        return $this->addressPayload([
+            'name' => $product->ship_from_name ?: ($org?->contact_name ?: ($org?->name ?? 'Seller')),
+            'street1' => $product->ship_from_street1 ?: ($org?->street ?? ''),
+            'street2' => '',
+            'city' => $product->ship_from_city ?: ($org?->city ?? ''),
+            'state' => $product->ship_from_state ?: ($org?->state ?? ''),
+            'zip' => $product->ship_from_zip ?: ($org?->zip ?? ''),
+            'country' => $product->ship_from_country ?: 'US',
+            'phone' => $sellerContact['phone'],
+            'email' => $sellerContact['email'],
+        ]);
     }
 
     /**
@@ -533,7 +830,8 @@ class ShippoService
             'organization.user',
             'items.product.organization.user',
             'items.product.user',
-            'items.organizationProduct.marketplaceProduct.merchant',
+            'items.product.shipFromMerchant.shippingAddresses',
+            'items.organizationProduct.marketplaceProduct.merchant.shippingAddresses',
         ]);
         $firstItem = $order->items->first();
 
@@ -568,20 +866,12 @@ class ShippoService
         $product = $firstItem?->product;
         // Order may not have organization loaded; product always belongs to an org for marketplace items.
         $org = $order->organization ?? $product?->organization;
-        $contact = $this->getSellerContactForShippo($org, $product);
 
         if ($product && $this->productHasShipFrom($product)) {
-            return $this->addressPayload([
-                'name' => $product->ship_from_name ?? $org?->name ?? 'Seller',
-                'street1' => $product->ship_from_street1,
-                'city' => $product->ship_from_city,
-                'state' => $product->ship_from_state,
-                'zip' => $product->ship_from_zip,
-                'country' => $product->ship_from_country ?? 'US',
-                'phone' => $contact['phone'],
-                'email' => $contact['email'],
-            ]);
+            return $this->shipFromForManualProduct($product, $org);
         }
+
+        $contact = $this->getSellerContactForShippo($org, $product);
 
         if ($org) {
             return $this->addressPayload([
@@ -608,8 +898,22 @@ class ShippoService
         ]);
     }
 
-    protected function productHasShipFrom(Product $product): bool
+    public function productHasShipFrom(Product $product): bool
     {
+        $product->loadMissing('shipFromMerchant.shippingAddresses');
+
+        if ($product->ship_from_merchant_id) {
+            $m = $product->shipFromMerchant;
+            if (! $m) {
+                return false;
+            }
+            $p = $m->shipFromAddressForRates();
+
+            return trim((string) $p['street1']) !== ''
+                && trim((string) $p['city']) !== ''
+                && trim((string) $p['zip']) !== '';
+        }
+
         return ! empty($product->ship_from_street1) && ! empty($product->ship_from_city) && ! empty($product->ship_from_zip);
     }
 
@@ -662,6 +966,47 @@ class ShippoService
     }
 
     /**
+     * Street lines as stored for the order (matches bid/checkout: line1 + optional line2).
+     * Legacy rows may only have a single shipping_address with "line1, line2" concatenated — split for Shippo.
+     *
+     * @return array{street1: string, street2: string}
+     */
+    public function splitOrderShippingStreetLines(OrderShippingInfo $info): array
+    {
+        $line1 = trim((string) ($info->shipping_address ?? ''));
+        $line2 = trim((string) ($info->shipping_address_line2 ?? ''));
+
+        if ($line2 === '' && $line1 !== '' && str_contains($line1, ', ')) {
+            $parts = explode(', ', $line1, 2);
+            if (count($parts) === 2 && strlen(trim($parts[0])) >= 3 && strlen(trim($parts[1])) <= 120) {
+                return ['street1' => trim($parts[0]), 'street2' => trim($parts[1])];
+            }
+        }
+
+        return ['street1' => $line1, 'street2' => $line2];
+    }
+
+    /**
+     * Ship-to payload for Shippo (same structure as winning-bid checkout rates).
+     */
+    public function shipToAddressFromOrderShipping(OrderShippingInfo $info): array
+    {
+        $lines = $this->splitOrderShippingStreetLines($info);
+
+        return $this->addressPayload([
+            'name' => trim(($info->first_name ?? '').' '.($info->last_name ?? '')),
+            'street1' => $lines['street1'],
+            'street2' => $lines['street2'],
+            'city' => $info->city,
+            'state' => $info->state,
+            'zip' => $info->zip,
+            'country' => $info->country ?? 'US',
+            'phone' => $this->ensureRecipientPhoneForShippo($info->phone),
+            'email' => $info->email,
+        ]);
+    }
+
+    /**
      * Create a shipment and return available rates.
      *
      * @return array{success: bool, shipment_id?: string, rates?: array, error?: string}
@@ -679,18 +1024,19 @@ class ShippoService
         }
 
         $addressFrom = $this->getShipFrom($order);
-        $addressTo = $this->addressPayload([
-            'name' => trim(($shippingInfo->first_name ?? '').' '.($shippingInfo->last_name ?? '')),
-            'street1' => $shippingInfo->shipping_address,
-            'city' => $shippingInfo->city,
-            'state' => $shippingInfo->state,
-            'zip' => $shippingInfo->zip,
-            'country' => $shippingInfo->country ?? 'US',
-            'phone' => $shippingInfo->phone,
-            'email' => $shippingInfo->email,
-        ]);
+        if (trim((string) ($addressFrom['street1'] ?? '')) === '') {
+            return [
+                'success' => false,
+                'error' => 'Ship-from address is incomplete. Set the product ship-from address or your organization warehouse address.',
+            ];
+        }
+
+        $addressTo = $this->shipToAddressFromOrderShipping($shippingInfo);
 
         $parcel = $this->getParcel($order);
+
+        // Always create a fresh shipment from current order shipping + product ship-from so Shippo
+        // matches what the buyer entered and what the product uses (no stale cached shipment).
 
         $payload = [
             'address_from' => $addressFrom,
@@ -698,6 +1044,11 @@ class ShippoService
             'parcels' => [$parcel],
             'async' => false,
         ];
+
+        $extra = $this->shipmentExtraForValidationBypass();
+        if ($extra !== []) {
+            $payload['extra'] = $extra;
+        }
 
         $response = Http::withHeaders([
             'Authorization' => 'ShippoToken '.$this->apiKey,
@@ -719,18 +1070,27 @@ class ShippoService
 
         $data = $response->json();
         $rates = $data['rates'] ?? [];
-        $ratesList = array_map(function ($rate) {
-            return [
-                'object_id' => $rate['object_id'] ?? null,
-                'provider' => $rate['provider'] ?? '',
-                'servicelevel' => $rate['servicelevel'] ?? [],
-                'amount' => $rate['amount'] ?? '0',
-                'currency' => $rate['currency'] ?? 'USD',
-                'estimated_days' => $rate['estimated_days'] ?? null,
-                'duration_terms' => $rate['duration_terms'] ?? null,
-            ];
-        }, $rates);
+        $messages = is_array($data['messages'] ?? null) ? $data['messages'] : [];
 
+        if ($rates === []) {
+            $fromMessages = $this->formatShippoShipmentMessages($messages);
+            $detail = $fromMessages !== ''
+                ? $fromMessages
+                : 'Shippo returned no rates for this shipment (check ship-from, ship-to, and parcel).';
+
+            Log::warning('Shippo createShipment: empty rates', [
+                'order_id' => $order->id,
+                'messages' => $messages,
+                'shipment_status' => $data['status'] ?? null,
+            ]);
+
+            return [
+                'success' => false,
+                'error' => $detail,
+            ];
+        }
+
+        $ratesList = $this->mapRawShippoRates($rates);
         $ratesList = $this->filterActiveCarrierRates($ratesList);
 
         return [

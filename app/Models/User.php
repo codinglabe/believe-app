@@ -702,6 +702,19 @@ class User extends Authenticatable implements MustVerifyEmail
     }
 
     /**
+     * Primary action categories this supporter is interested in (profile: Supporters Interest).
+     */
+    public function supporterInterestCategories(): BelongsToMany
+    {
+        return $this->belongsToMany(
+            PrimaryActionCategory::class,
+            'primary_action_category_user',
+            'user_id',
+            'primary_action_category_id'
+        )->withTimestamps();
+    }
+
+    /**
      * Get the gigs created by this user
      */
     public function gigs(): HasMany

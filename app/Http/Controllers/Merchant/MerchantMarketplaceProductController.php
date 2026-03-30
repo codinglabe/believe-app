@@ -46,10 +46,7 @@ class MerchantMarketplaceProductController extends Controller
     {
         return Inertia::render('merchant/MarketplaceProducts/Create', [
             'product' => null,
-            'categories' => Category::query()
-                ->where('status', 'active')
-                ->orderBy('name')
-                ->get(['id', 'name']),
+            'categories' => $this->parentCategorySelectOptions(),
         ]);
     }
 
@@ -84,10 +81,7 @@ class MerchantMarketplaceProductController extends Controller
 
         return Inertia::render('merchant/MarketplaceProducts/Create', [
             'product' => $this->transformForFrontend($marketplace_product),
-            'categories' => Category::query()
-                ->where('status', 'active')
-                ->orderBy('name')
-                ->get(['id', 'name']),
+            'categories' => $this->parentCategorySelectOptions(),
         ]);
     }
 
@@ -124,6 +118,23 @@ class MerchantMarketplaceProductController extends Controller
             ->with('success', 'Product removed.');
     }
 
+    /**
+     * @return \Illuminate\Support\Collection<int, array{id: int, name: string}>
+     */
+    private function parentCategorySelectOptions()
+    {
+        return Category::query()
+            ->where('status', 'active')
+            ->parents()
+            ->orderBy('name')
+            ->get(['id', 'name'])
+            ->map(fn (Category $c) => [
+                'id' => $c->id,
+                'name' => $c->name,
+            ])
+            ->values();
+    }
+
     private function assertOwns(MarketplaceProduct $product): void
     {
         $merchant = Auth::guard('merchant')->user();
@@ -134,16 +145,16 @@ class MerchantMarketplaceProductController extends Controller
 
     private function validatePayload(Request $request): array
     {
-        if ($request->has('category_id') && $request->input('category_id') === '') {
-            $request->merge(['category_id' => null]);
-        }
-
         $poolOn = $request->boolean('nonprofit_marketplace_enabled');
 
         $rules = [
             'name' => ['required', 'string', 'max:255'],
             'description' => ['nullable', 'string'],
-            'category_id' => ['nullable', 'integer', 'exists:categories,id'],
+            'category_id' => [
+                'required',
+                'integer',
+                Rule::exists('categories', 'id')->where(fn ($q) => $q->whereNull('parent_id')->where('status', 'active')),
+            ],
             'base_price' => ['required', 'numeric', 'min:0'],
             'cost' => ['nullable', 'numeric', 'min:0'],
             'inventory_quantity' => ['nullable', 'integer', 'min:0'],
@@ -188,10 +199,7 @@ class MerchantMarketplaceProductController extends Controller
             $validated['suggested_retail_price'] = $validated['suggested_retail_price'] ?? null;
         }
 
-        if (array_key_exists('category_id', $validated)) {
-            $v = $validated['category_id'];
-            $validated['category_id'] = ($v === null || $v === '') ? null : (int) $v;
-        }
+        $validated['category_id'] = (int) $validated['category_id'];
 
         return $validated;
     }

@@ -108,6 +108,13 @@ class CareAlliancePublicPageService
                 })
                 ->first();
         }
+        // Alliance-only follow row (no hub nonprofit linked yet) — same Follow button on public page.
+        if (! $hubFavorite && Auth::check()) {
+            $hubFavorite = UserFavoriteOrganization::query()
+                ->where('user_id', Auth::id())
+                ->where('care_alliance_id', $alliance->id)
+                ->first();
+        }
 
         $toggleFavoriteContext = 'alliance';
         if ($excelIdForToggle !== null) {
@@ -216,7 +223,7 @@ class CareAlliancePublicPageService
      *
      * @return array{postsCount: int, supportersCount: int, jobsCount: int}
      */
-    public function hubAllianceCounts(int $creatorUserId, ?int $hubOrganizationId): array
+    public function hubAllianceCounts(int $creatorUserId, ?int $hubOrganizationId, ?int $careAllianceId = null): array
     {
         $postsCount = Post::where('user_id', $creatorUserId)->count();
         if ($hubOrganizationId) {
@@ -225,13 +232,22 @@ class CareAlliancePublicPageService
                 ->count();
         }
 
-        $supportersCount = 0;
+        $supporterUserIds = collect();
         if ($hubOrganizationId) {
-            $supportersCount = (int) (UserFavoriteOrganization::query()
-                ->where('organization_id', $hubOrganizationId)
-                ->selectRaw('COUNT(DISTINCT user_id) as cnt')
-                ->value('cnt') ?? 0);
+            $supporterUserIds = $supporterUserIds->merge(
+                UserFavoriteOrganization::query()
+                    ->where('organization_id', $hubOrganizationId)
+                    ->pluck('user_id')
+            );
         }
+        if ($careAllianceId !== null) {
+            $supporterUserIds = $supporterUserIds->merge(
+                UserFavoriteOrganization::query()
+                    ->where('care_alliance_id', $careAllianceId)
+                    ->pluck('user_id')
+            );
+        }
+        $supportersCount = $supporterUserIds->unique()->count();
 
         $jobsCount = $hubOrganizationId
             ? JobPost::where('organization_id', $hubOrganizationId)->count()
@@ -249,34 +265,116 @@ class CareAlliancePublicPageService
      *
      * @return array<int, array<string, mixed>>
      */
-    public function allianceFollowersForHub(?int $hubOrganizationId): array
+    public function allianceFollowersForHub(?int $hubOrganizationId, ?int $careAllianceId = null): array
     {
-        if ($hubOrganizationId === null) {
+        $userWithOrg = function ($q) {
+            $q->select('id', 'name', 'email', 'image', 'slug', 'role')
+                ->with(['organization.user:id,slug']);
+        };
+
+        $rows = collect();
+
+        if ($hubOrganizationId !== null) {
+            $rows = $rows->merge(
+                UserFavoriteOrganization::query()
+                    ->where('organization_id', $hubOrganizationId)
+                    ->with(['user' => $userWithOrg])
+                    ->latest()
+                    ->limit(50)
+                    ->get()
+            );
+        }
+
+        if ($careAllianceId !== null) {
+            $rows = $rows->merge(
+                UserFavoriteOrganization::query()
+                    ->where('care_alliance_id', $careAllianceId)
+                    ->with(['user' => $userWithOrg])
+                    ->latest()
+                    ->limit(50)
+                    ->get()
+            );
+        }
+
+        if ($rows->isEmpty()) {
             return [];
         }
 
-        return UserFavoriteOrganization::query()
-            ->where('organization_id', $hubOrganizationId)
-            ->with('user:id,name,email,image,slug')
-            ->latest()
-            ->limit(50)
+        $uniqueFavorites = $rows->unique('user_id')->take(50)->values();
+
+        $userIds = $uniqueFavorites->pluck('user_id')->unique()->filter()->map(fn ($id) => (int) $id)->all();
+
+        $ownedOrgsByUserId = Organization::query()
+            ->whereIn('user_id', $userIds)
+            ->with(['user:id,slug'])
             ->get()
-            ->map(function (UserFavoriteOrganization $favorite) {
-                return [
-                    'id' => $favorite->id,
-                    'user_id' => $favorite->user_id,
-                    'user' => $favorite->user ? [
-                        'id' => $favorite->user->id,
-                        'slug' => $favorite->user->slug,
-                        'name' => $favorite->user->name,
-                        'email' => $favorite->user->email,
-                        'image' => $favorite->user->image,
-                    ] : null,
-                    'notifications' => $favorite->notifications ?? false,
-                    'joined_at' => $favorite->created_at?->toIso8601String(),
-                ];
+            ->keyBy(fn (Organization $o) => (int) $o->user_id);
+
+        return $uniqueFavorites
+            ->map(function (UserFavoriteOrganization $favorite) use ($ownedOrgsByUserId) {
+                return $this->mapAllianceFollowerRow($favorite, $ownedOrgsByUserId);
             })
             ->all();
+    }
+
+    /**
+     * @param  \Illuminate\Support\Collection<int, Organization>  $ownedOrgsByUserId
+     * @return array<string, mixed>
+     */
+    private function mapAllianceFollowerRow(UserFavoriteOrganization $favorite, $ownedOrgsByUserId): array
+    {
+        $user = $favorite->user;
+        if ($user === null) {
+            return [
+                'id' => $favorite->id,
+                'user_id' => $favorite->user_id,
+                'user' => null,
+                'notifications' => $favorite->notifications ?? false,
+                'joined_at' => $favorite->created_at?->toIso8601String(),
+                'follower_display_name' => 'Anonymous',
+                'follower_avatar' => null,
+                'is_organization_follower' => false,
+                'organization_public_slug' => null,
+            ];
+        }
+
+        $role = (string) ($user->role ?? '');
+        $isOrgAccount = in_array($role, ['organization', 'organization_pending'], true);
+
+        $org = $ownedOrgsByUserId->get((int) $user->id) ?? $user->organization;
+
+        $displayName = (string) $user->name;
+        $avatar = $user->image;
+        $orgSlug = null;
+        $isOrgFollower = false;
+
+        if ($isOrgAccount && $org !== null) {
+            $isOrgFollower = true;
+            $displayName = (string) $org->name;
+            $orgSlug = $org->user?->slug;
+            if (! empty($org->registered_user_image)) {
+                $avatar = $org->registered_user_image;
+            }
+        }
+
+        return [
+            'id' => $favorite->id,
+            'user_id' => $favorite->user_id,
+            'user' => [
+                'id' => $user->id,
+                'slug' => $user->slug,
+                'name' => $user->name,
+                'email' => $user->email,
+                'image' => $user->image,
+                'role' => $user->role,
+            ],
+            'notifications' => $favorite->notifications ?? false,
+            'joined_at' => $favorite->created_at?->toIso8601String(),
+            'follower_display_name' => $displayName,
+            'follower_avatar' => $avatar,
+            'is_organization_follower' => $isOrgFollower,
+            'organization_public_slug' => $orgSlug,
+        ];
     }
 
     /**
@@ -505,9 +603,10 @@ class CareAlliancePublicPageService
             ->where('care_alliance_id', $alliance->id)
             ->where('status', 'active')
             ->orderBy('name')
-            ->get(['id', 'name', 'description'])
+            ->get(['id', 'slug', 'name', 'description'])
             ->map(fn (CareAllianceCampaign $c) => [
                 'id' => $c->id,
+                'slug' => $c->slug,
                 'name' => $c->name,
                 'description' => $c->description,
             ])
@@ -606,7 +705,7 @@ class CareAlliancePublicPageService
         $organization = $this->syntheticOrganization($alliance, $creatorOrg, $creator);
         $authUserId = Auth::id();
 
-        $counts = $this->hubAllianceCounts($creator->id, $hubOrganizationId);
+        $counts = $this->hubAllianceCounts($creator->id, $hubOrganizationId, (int) $alliance->id);
         $bp = $this->aggregateBelievePoints($hubOrganizationId !== null ? [$hubOrganizationId] : []);
         $sidebar = $this->allianceHubSidebar($hubOrganizationId);
 
@@ -652,7 +751,7 @@ class CareAlliancePublicPageService
         } elseif ($currentPage === 'events') {
             $props['events'] = $this->loadEventsPaginatorForHub($request, $hubOrganizationId);
         } elseif ($currentPage === 'supporters') {
-            $props['supporters'] = $this->allianceFollowersForHub($hubOrganizationId);
+            $props['supporters'] = $this->allianceFollowersForHub($hubOrganizationId, (int) $alliance->id);
         } elseif ($currentPage === 'members') {
             $props['allianceMembers'] = $this->allianceMembersForPublic($alliance);
         }
@@ -795,6 +894,41 @@ class CareAlliancePublicPageService
         }
 
         return $candidates->count() === 1 ? $candidates->first() : null;
+    }
+
+    /**
+     * Approved organization that should receive donations for this alliance on /donate.
+     * Uses pinned/resolved hub when approved; else first approved active member; else creator's approved org.
+     */
+    public function donationRecipientOrganizationForAlliance(CareAlliance $alliance): ?Organization
+    {
+        $hub = $this->hubOrganizationForAlliance($alliance);
+        if ($hub !== null && strtolower((string) $hub->registration_status) === 'approved') {
+            return $hub;
+        }
+
+        $memberIds = $this->memberOrganizationIds($alliance);
+        if ($memberIds !== []) {
+            $fromMembers = Organization::query()
+                ->whereIn('id', $memberIds)
+                ->where('registration_status', 'approved')
+                ->orderBy('id')
+                ->first();
+            if ($fromMembers !== null) {
+                return $fromMembers;
+            }
+        }
+
+        $creatorUserId = $alliance->creator_user_id;
+        if ($creatorUserId !== null && (int) $creatorUserId !== 0) {
+            return Organization::query()
+                ->where('user_id', (int) $creatorUserId)
+                ->where('registration_status', 'approved')
+                ->orderByDesc('id')
+                ->first();
+        }
+
+        return null;
     }
 
     public function hubOrganizationForAlliance(CareAlliance $alliance): ?Organization

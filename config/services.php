@@ -142,6 +142,9 @@ return [
     'shippo' => [
         'api_key' => env('SHIPPO_API_KEY'),
         'api_base' => env('SHIPPO_API_BASE', 'https://api.goshippo.com'),
+        // When true, Shippo sets extra.bypass_address_validation on shipments (USPS/UPS/LaserShip) so
+        // real customer addresses that fail strict CASS "Address not found" can still get rates/labels.
+        'bypass_address_validation' => filter_var(env('SHIPPO_BYPASS_ADDRESS_VALIDATION', 'true'), FILTER_VALIDATE_BOOLEAN),
         // USPS requires non-empty seller (ship-from) email AND phone. Used when org/user data is incomplete.
         'fallback_seller_email' => env('SHIPPO_FALLBACK_SELLER_EMAIL', env('MAIL_FROM_ADDRESS')),
         // Last-resort US digits only if nothing else is set (override in production via SHIPPO_FALLBACK_SELLER_PHONE).

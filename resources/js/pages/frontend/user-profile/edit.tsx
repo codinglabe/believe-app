@@ -35,15 +35,17 @@ interface PageProps {
     dob?: string
     image?: string
     positions: number[]
+    supporter_interests?: number[]
     city?: string
     state?: string
     zipcode?: string
   }
   availablePositions: { id: number; name: string }[]
+  availableSupporterInterests: { id: number; name: string }[]
 }
 
 export default function ProfileEdit() {
-  const { user, availablePositions } = usePage<PageProps>().props
+  const { user, availablePositions, availableSupporterInterests } = usePage<PageProps>().props
 
   const { data, setData, post, processing, errors, reset, recentlySuccessful } = useForm({
     name: user?.name || "",
@@ -52,6 +54,9 @@ export default function ProfileEdit() {
     dob: user?.dob || "",
     image: null as File | null,
     positions: user?.positions || [],
+    supporter_interests: user?.supporter_interests || [],
+    /** Must be in form payload: backend only syncs pivot when this is true */
+    _supporter_interests_touched: true,
     city: user?.city || "",
     state: user?.state || "",
     zipcode: user?.zipcode || "",
@@ -70,6 +75,7 @@ export default function ProfileEdit() {
       setData("state", user.state || "")
       setData("zipcode", user.zipcode || "")
       setData("positions", user.positions || [])
+      setData("supporter_interests", user.supporter_interests || [])
       if (user.image) {
         setPreviewUrl(user.image)
       }
@@ -78,36 +84,15 @@ export default function ProfileEdit() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-
-    const formData = new FormData()
-    formData.append("name", data.name)
-    formData.append("email", data.email)
-    formData.append("phone", data.phone)
-    formData.append("dob", data.dob)
-    formData.append("city", data.city)
-    formData.append("state", data.state)
-    formData.append("zipcode", data.zipcode)
-
-    // Add positions as array
-    data.positions.forEach((positionId: number) => {
-      formData.append("positions[]", positionId.toString())
-    })
-
-    if (data.image) {
-      formData.append("image", data.image)
-    }
-
-    // Add method for Laravel
-    formData.append("_method", "POST")
-
+    // useForm sends its `data` as the body (JSON or FormData if a file is set).
+    // Do not pass FormData inside options — Inertia ignores it and the touch flag never reached Laravel.
     post(route("user.profile.update"), {
-      data: formData,
       preserveScroll: true,
       onSuccess: () => {
         toast.success("Profile updated successfully!")
       },
-      onError: (errors) => {
-        console.error("Update errors:", errors)
+      onError: (errs) => {
+        console.error("Update errors:", errs)
         toast.error("Failed to update profile. Please check the form.")
       },
     })
@@ -131,6 +116,11 @@ export default function ProfileEdit() {
   const positionOptions = availablePositions.map(position => ({
     label: position.name,
     value: position.id.toString()
+  }))
+
+  const supporterInterestOptions = availableSupporterInterests.map((row) => ({
+    label: row.name,
+    value: row.id.toString(),
   }))
 
   return (
@@ -321,6 +311,26 @@ export default function ProfileEdit() {
               )}
               <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
                 You can select multiple roles (e.g., Doctor + Volunteer)
+              </p>
+            </div>
+
+            {/* Supporters Interest — same categories as Org Primary Action (admin-managed) */}
+            <div>
+              <Label className="text-gray-900 dark:text-white mb-2 block">
+                Supporters Interest
+              </Label>
+              <MultiSelect
+                options={supporterInterestOptions}
+                selected={data.supporter_interests.map(String)}
+                onChange={(selected) => setData("supporter_interests", selected.map(Number))}
+                placeholder="Select causes you care about (multiple allowed)"
+              />
+              {errors.supporter_interests && (
+                <p className="text-red-600 text-sm mt-2">{errors.supporter_interests}</p>
+              )}
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
+                Choose all that apply — Housing, Food, Mental Health, Education, Faith-Based, Jobs, Youth,
+                Aging, and more as your organization adds them.
               </p>
             </div>
           </CardContent>
