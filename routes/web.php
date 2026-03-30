@@ -1162,6 +1162,10 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin|org
 
 // Winner pay flow (auth only; controller checks winner)
 Route::middleware(['auth', 'EnsureEmailIsVerified'])->group(function () {
+    Route::get('/products/{product}/winning-bid/shipping', [ProductController::class, 'winningBidShipping'])
+        ->name('products.winning-bid.shipping');
+    Route::get('/products/{product}/winning-bid/shipping-rates', [ProductController::class, 'winningBidShippingRatesJson'])
+        ->name('products.winning-bid.shipping-rates');
     Route::post('/products/{product}/pay-winning-bid', [ProductController::class, 'createWinningBidCheckout'])
         ->name('products.winning-bid.checkout');
     Route::get('/products/{product}/winning-bid-success', [ProductController::class, 'winningBidPaymentSuccess'])
@@ -1191,7 +1195,6 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected', 'role:adm
         'destroy' => 'permission:category.delete',
     ]);
 });
-
 
 /* Raffle Routes */
 Route::resource('raffles', RaffleController::class)->middleware([

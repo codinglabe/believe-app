@@ -56,6 +56,7 @@ class MarketplaceProductPoolController extends Controller
         $categories = Category::query()
             ->whereIn('id', $categoryIdsInPool)
             ->where('status', 'active')
+            ->parents()
             ->orderBy('name')
             ->get(['id', 'name']);
 

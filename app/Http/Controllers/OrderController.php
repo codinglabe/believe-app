@@ -7,6 +7,7 @@ use App\Models\ShippoShipment;
 use App\Models\User;
 use App\Services\PrintifyService;
 use App\Services\ShippoService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
@@ -25,6 +26,23 @@ class OrderController extends Controller
         $this->printifyService = $printifyService;
         $this->shippoService = $shippoService;
         Stripe::setApiKey(config('services.stripe.secret'));
+    }
+
+    /**
+     * Organization users may only access their own orders; avoid null organization dereference.
+     */
+    protected function organizationOrderJsonAuth(Order $order): ?JsonResponse
+    {
+        $user = auth()->user();
+        if ($user->role !== 'organization') {
+            return null;
+        }
+        $org = $user->organization;
+        if (! $org || (int) $order->organization_id !== (int) $org->id) {
+            return response()->json(['error' => 'Unauthorized.'], 403);
+        }
+
+        return null;
     }
 
     /**
@@ -315,8 +333,9 @@ class OrderController extends Controller
      */
     public function getShippoRates(Order $order)
     {
-        if (auth()->user()->role === 'organization' && $order->organization_id !== auth()->user()->organization->id) {
-            return response()->json(['error' => 'Unauthorized.'], 403);
+        $authResponse = $this->organizationOrderJsonAuth($order);
+        if ($authResponse !== null) {
+            return $authResponse;
         }
         if (! $this->shippoService->isConfigured()) {
             return response()->json(['error' => 'Shipping is not configured.'], 503);
@@ -338,7 +357,10 @@ class OrderController extends Controller
         // Create/update internal shipment record (manual-only) so webhook can update status.
         $shippingInfo = $order->shippingInfo;
         $shipToName = trim(($shippingInfo?->first_name ?? '').' '.($shippingInfo?->last_name ?? ''));
-        $shipToStreet1 = (string) ($shippingInfo?->shipping_address ?? '');
+        $shipLines = $shippingInfo
+            ? $this->shippoService->splitOrderShippingStreetLines($shippingInfo)
+            : ['street1' => '', 'street2' => ''];
+        $shipToStreet1 = $shipLines['street1'] ?: null;
         $parcel = $this->shippoService->getParcelSnapshot($order);
 
         ShippoShipment::updateOrCreate(
@@ -376,8 +398,9 @@ class OrderController extends Controller
      */
     public function purchaseShippoLabel(Request $request, Order $order)
     {
-        if (auth()->user()->role === 'organization' && $order->organization_id !== auth()->user()->organization->id) {
-            return response()->json(['error' => 'Unauthorized.'], 403);
+        $authResponse = $this->organizationOrderJsonAuth($order);
+        if ($authResponse !== null) {
+            return $authResponse;
         }
         $request->validate(['rate_object_id' => 'required|string|max:100']);
         if (! $this->shippoService->isConfigured()) {

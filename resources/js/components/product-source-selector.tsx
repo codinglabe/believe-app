@@ -165,7 +165,7 @@ export function ProductSourceSelector({ selected, onSelect }: ProductSourceSelec
                     ? 'text-green-800 dark:text-green-200'
                     : 'text-gray-600 dark:text-gray-400 group-hover:text-gray-700 dark:group-hover:text-gray-300'
                 }`}>
-                  Add your own products with custom pricing and shipping. You manage inventory and fulfillment with complete control.
+                  Add your own products with custom pricing. Shipping is quoted at checkout via Shippo; you manage inventory and fulfillment.
                 </p>
               </div>
             </div>

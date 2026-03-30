@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Bid;
 use App\Models\Category;
+use App\Models\Merchant;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\OrderShippingInfo;
@@ -12,20 +13,25 @@ use App\Models\Product;
 use App\Models\ProductVariant;
 use App\Models\ShippoShipment;
 use App\Models\StateSalesTax;
+use App\Models\User;
 use App\Notifications\BidCancelledNotification;
 use App\Notifications\BidLostNotification;
 use App\Notifications\BidWonNotification;
 use App\Services\PrintifyService;
 use App\Services\ShippoService;
+use App\Services\SupporterActivityService;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 use Laravel\Cashier\Cashier;
-use App\Services\SupporterActivityService;
 
 class ProductController extends BaseController
 {
@@ -90,8 +96,9 @@ class ProductController extends BaseController
     {
         $this->authorizePermission($request, 'product.create');
 
-        $categories = Category::all();
+        $categories = $this->categoriesForProductForm();
         $organizations = Organization::all(['id', 'name']);
+        $merchantsForShipFrom = $this->merchantsForShipFromPicker();
 
         // Get Printify blueprints for product types
         $blueprints = [];
@@ -106,9 +113,124 @@ class ProductController extends BaseController
         return Inertia::render('products/create', [
             'categories' => $categories,
             'organizations' => $organizations,
+            'merchants_for_ship_from' => $merchantsForShipFrom,
             'blueprints' => $blueprints,
             'printify_enabled' => ! empty($blueprints),
         ]);
+    }
+
+    /**
+     * @return array<int, array{id: int, label: string, address_preview: array<string, string>}>
+     */
+    private function merchantsForShipFromPicker(): array
+    {
+        return Merchant::query()
+            ->where('status', 'active')
+            ->with(['shippingAddresses' => fn ($q) => $q->orderByDesc('is_default')->orderBy('id')])
+            ->orderBy('business_name')
+            ->orderBy('name')
+            ->get()
+            ->map(function (Merchant $m) {
+                $parts = $m->shipFromAddressForRates();
+
+                return [
+                    'id' => $m->id,
+                    'label' => $m->business_name ?: $m->name,
+                    'address_preview' => [
+                        'name' => $parts['name'],
+                        'street1' => $parts['street1'],
+                        'street2' => $parts['street2'] ?? '',
+                        'city' => $parts['city'],
+                        'state' => $parts['state'],
+                        'zip' => $parts['zip'],
+                        'country' => $parts['country'],
+                    ],
+                ];
+            })
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Normalize ship-from fields for manual products (Shippo). No-op for Printify create/update payloads.
+     *
+     * @param  array<string, mixed>  $validated
+     * @return array<string, mixed>
+     */
+    protected function normalizeValidatedManualPhysicalShipFrom(array $validated, bool $isPrintifyProduct): array
+    {
+        if ($isPrintifyProduct) {
+            unset($validated['ship_from_mode']);
+
+            return $validated;
+        }
+
+        if (($validated['type'] ?? 'physical') === 'physical') {
+            if (($validated['ship_from_mode'] ?? '') === 'merchant') {
+                if (empty($validated['ship_from_merchant_id'])) {
+                    throw ValidationException::withMessages([
+                        'ship_from_merchant_id' => 'Select a merchant whose address will be used as the ship-from location.',
+                    ]);
+                }
+                $merchant = Merchant::query()
+                    ->where('id', $validated['ship_from_merchant_id'])
+                    ->where('status', 'active')
+                    ->first();
+                if (! $merchant) {
+                    throw ValidationException::withMessages([
+                        'ship_from_merchant_id' => 'Invalid merchant selected.',
+                    ]);
+                }
+                $parts = $merchant->shipFromAddressForRates();
+                if (trim((string) $parts['street1']) === '' || trim((string) $parts['city']) === '' || trim((string) $parts['zip']) === '') {
+                    throw ValidationException::withMessages([
+                        'ship_from_merchant_id' => 'That merchant does not have a complete ship-from address. Add a default shipping address or business address on the merchant profile.',
+                    ]);
+                }
+                $validated['ship_from_name'] = null;
+                $validated['ship_from_street1'] = null;
+                $validated['ship_from_city'] = null;
+                $validated['ship_from_state'] = null;
+                $validated['ship_from_zip'] = null;
+                $validated['ship_from_country'] = null;
+            } else {
+                $validated['ship_from_merchant_id'] = null;
+                $requiredCustom = [
+                    'ship_from_name' => 'Contact or business name',
+                    'ship_from_street1' => 'Street address',
+                    'ship_from_city' => 'City',
+                    'ship_from_state' => 'State / region',
+                    'ship_from_zip' => 'Postal code',
+                    'ship_from_country' => 'Country',
+                ];
+                foreach ($requiredCustom as $field => $label) {
+                    if (trim((string) ($validated[$field] ?? '')) === '') {
+                        throw ValidationException::withMessages([
+                            $field => "{$label} is required for a custom ship-from address (Shippo).",
+                        ]);
+                    }
+                }
+                $validated['ship_from_country'] = strtoupper((string) $validated['ship_from_country']);
+            }
+        } else {
+            $validated['ship_from_merchant_id'] = null;
+            if (($validated['type'] ?? '') === 'digital') {
+                $validated['ship_from_name'] = null;
+                $validated['ship_from_street1'] = null;
+                $validated['ship_from_city'] = null;
+                $validated['ship_from_state'] = null;
+                $validated['ship_from_zip'] = null;
+                $validated['ship_from_country'] = null;
+                $validated['parcel_length_in'] = null;
+                $validated['parcel_width_in'] = null;
+                $validated['parcel_height_in'] = null;
+                $validated['parcel_weight_oz'] = null;
+            }
+        }
+
+        unset($validated['ship_from_mode']);
+
+        return $validated;
     }
 
     public function show(Request $request, $id): Response
@@ -604,6 +726,7 @@ class ProductController extends BaseController
         $isPrintifyProduct = $request->boolean('is_printify_product', false);
 
         $pricingModel = $request->input('pricing_model', 'fixed');
+        $productTypeInput = $request->input('type', 'physical');
 
         // Base validation rules for all products
         $rules = [
@@ -616,8 +739,15 @@ class ProductController extends BaseController
             'sku' => 'required|string|max:255|unique:products,sku',
             'type' => 'required|in:digital,physical',
             'tags' => 'nullable|string',
-            'categories' => 'array',
-            'categories.*' => 'integer|exists:categories,id',
+            'categories' => [
+                'required',
+                'array',
+                'min:1',
+            ],
+            'categories.*' => [
+                'integer',
+                Rule::exists('categories', 'id')->where(fn ($q) => $q->whereNull('parent_id')->where('status', 'active')),
+            ],
             'is_printify_product' => 'nullable|boolean',
             'pricing_model' => 'nullable|in:fixed,auction,blind_bid,offer',
         ];
@@ -634,10 +764,9 @@ class ProductController extends BaseController
                 'image' => 'nullable|image|mimes:jpeg,png,jpg,gif,svg', // Optional for Printify (uses design images)
             ]);
         } else {
-            // Manual product validation - unit_price/shipping required only for fixed price
+            // Manual product validation — shipping is from Shippo at checkout, not stored on the product
             $rules = array_merge($rules, [
                 'unit_price' => $pricingModel === 'fixed' ? 'required|numeric|min:0' : 'nullable|numeric|min:0',
-                'shipping_charge' => $pricingModel === 'fixed' ? 'required|numeric|min:0' : 'nullable|numeric|min:0',
                 'image' => 'required|image|mimes:jpeg,png,jpg,gif,svg', // Required for manual products
             ]);
             if ($pricingModel === 'auction') {
@@ -662,6 +791,25 @@ class ProductController extends BaseController
                     'offer_to_next_if_unpaid' => 'nullable|boolean',
                 ]);
             }
+
+            if ($productTypeInput === 'physical') {
+                $rules['ship_from_mode'] = ['required', Rule::in(['custom', 'merchant'])];
+                $rules['ship_from_merchant_id'] = [
+                    'nullable',
+                    'integer',
+                    Rule::exists('merchants', 'id')->where('status', 'active'),
+                ];
+                $rules['ship_from_name'] = ['nullable', 'string', 'max:100'];
+                $rules['ship_from_street1'] = ['nullable', 'string', 'max:255'];
+                $rules['ship_from_city'] = ['nullable', 'string', 'max:100'];
+                $rules['ship_from_state'] = ['nullable', 'string', 'max:50'];
+                $rules['ship_from_zip'] = ['nullable', 'string', 'max:20'];
+                $rules['ship_from_country'] = ['nullable', 'string', 'max:2'];
+                $rules['parcel_length_in'] = ['nullable', 'numeric', 'min:0.01', 'max:999'];
+                $rules['parcel_width_in'] = ['nullable', 'numeric', 'min:0.01', 'max:999'];
+                $rules['parcel_height_in'] = ['nullable', 'numeric', 'min:0.01', 'max:999'];
+                $rules['parcel_weight_oz'] = ['nullable', 'numeric', 'min:0.01', 'max:99999'];
+            }
         }
 
         $messages = [
@@ -678,9 +826,9 @@ class ProductController extends BaseController
             'unit_price.required' => 'Unit price is required for manual products.',
             'unit_price.numeric' => 'Unit price must be a number.',
             'unit_price.min' => 'Unit price cannot be negative.',
-            'shipping_charge.required' => 'Shipping charge is required for manual products.',
-            'shipping_charge.numeric' => 'Shipping charge must be a number.',
-            'shipping_charge.min' => 'Shipping charge cannot be negative.',
+            'categories.required' => 'Select at least one product category.',
+            'categories.min' => 'Select at least one product category.',
+            'ship_from_mode.required' => 'Choose how Shippo ship-from is set: custom address or merchant warehouse.',
         ];
 
         // Printify-specific error messages
@@ -701,6 +849,7 @@ class ProductController extends BaseController
         }
 
         $validated = $request->validate($rules, $messages);
+        $validated = $this->normalizeValidatedManualPhysicalShipFrom($validated, $isPrintifyProduct);
 
         try {
             $imagePath = null;
@@ -819,9 +968,9 @@ class ProductController extends BaseController
                 $productData['printify_blueprint_id'] = $request->printify_blueprint_id;
                 $productData['printify_provider_id'] = $request->printify_provider_id;
             } else {
-                // For manual products, set unit_price and shipping_charge (used for fixed price or as fallback)
+                // For manual products: unit price only; shipping comes from Shippo when the customer checks out
                 $productData['unit_price'] = $validated['unit_price'] ?? 0;
-                $productData['shipping_charge'] = $validated['shipping_charge'] ?? 0;
+                $productData['shipping_charge'] = null;
 
                 // Calculate profit margin for manual products using env PRINTIFY_PROFIT_MARGIN
                 $profitMargin = (float) env('PRINTIFY_PROFIT_MARGIN', 25);
@@ -1051,15 +1200,33 @@ class ProductController extends BaseController
     }
 
     /**
+     * @return \Illuminate\Support\Collection<int, array{id: int, name: string}>
+     */
+    private function categoriesForProductForm()
+    {
+        return Category::query()
+            ->where('status', 'active')
+            ->parents()
+            ->orderBy('name')
+            ->get(['id', 'name'])
+            ->map(fn (Category $c) => [
+                'id' => $c->id,
+                'name' => $c->name,
+            ])
+            ->values();
+    }
+
+    /**
      * Show the form for editing the specified resource.
      */
     public function edit(Request $request, int $id): Response
     {
         $this->authorizePermission($request, 'product.edit');
 
-        $product = Product::with('categories')->findOrFail($id);
-        $categories = Category::all();
+        $product = Product::with(['categories', 'shipFromMerchant'])->findOrFail($id);
+        $categories = $this->categoriesForProductForm();
         $organizations = Organization::all(['id', 'name']);
+        $merchantsForShipFrom = $this->merchantsForShipFromPicker();
         $selectedCategories = $product->categories()->pluck('categories.id')->toArray();
 
         $printifyData = [];
@@ -1089,6 +1256,8 @@ class ProductController extends BaseController
             'categories' => $categories,
             'selectedCategories' => $selectedCategories,
             'organizations' => $organizations,
+            'merchants_for_ship_from' => $merchantsForShipFrom,
+            'is_printify_product' => (bool) $product->printify_product_id,
             'printify_data' => $printifyData,
             'printify_provider' => $printifyProvider,
         ]);
@@ -1105,16 +1274,51 @@ class ProductController extends BaseController
             abort(403, 'Unauthorized action.');
         }
 
-        // Only allow specific fields to be updated
-        $validated = $request->validate([
+        $isPrintifyProduct = (bool) $product->printify_product_id;
+
+        $categoryExistsRule = Rule::exists('categories', 'id')->where(fn ($q) => $q->whereNull('parent_id')->where('status', 'active'));
+
+        $sharedMessages = [
+            'categories.required' => 'Select at least one product category.',
+            'categories.min' => 'Select at least one product category.',
+        ];
+
+        $rules = [
             'quantity' => 'required|integer|min:0',
             'status' => 'required|in:active,inactive,archived',
-            'categories' => 'array',
-            'categories.*' => 'integer|exists:categories,id',
-        ]);
+            'categories' => ['required', 'array', 'min:1'],
+            'categories.*' => ['integer', $categoryExistsRule],
+        ];
+
+        if (! $isPrintifyProduct && $product->type === 'physical') {
+            $rules['ship_from_mode'] = ['required', Rule::in(['custom', 'merchant'])];
+            $rules['ship_from_merchant_id'] = [
+                'nullable',
+                'integer',
+                Rule::exists('merchants', 'id')->where('status', 'active'),
+            ];
+            $rules['ship_from_name'] = ['nullable', 'string', 'max:100'];
+            $rules['ship_from_street1'] = ['nullable', 'string', 'max:255'];
+            $rules['ship_from_city'] = ['nullable', 'string', 'max:100'];
+            $rules['ship_from_state'] = ['nullable', 'string', 'max:50'];
+            $rules['ship_from_zip'] = ['nullable', 'string', 'max:20'];
+            $rules['ship_from_country'] = ['nullable', 'string', 'max:2'];
+            $rules['parcel_length_in'] = ['nullable', 'numeric', 'min:0.01', 'max:999'];
+            $rules['parcel_width_in'] = ['nullable', 'numeric', 'min:0.01', 'max:999'];
+            $rules['parcel_height_in'] = ['nullable', 'numeric', 'min:0.01', 'max:999'];
+            $rules['parcel_weight_oz'] = ['nullable', 'numeric', 'min:0.01', 'max:99999'];
+        }
+
+        $validated = $request->validate($rules, array_merge($sharedMessages, [
+            'ship_from_mode.required' => 'Choose how Shippo ship-from is set: custom address or merchant warehouse.',
+        ]));
+
+        if (! $isPrintifyProduct && $product->type === 'physical') {
+            $validated['type'] = 'physical';
+            $validated = $this->normalizeValidatedManualPhysicalShipFrom($validated, false);
+        }
 
         try {
-            // Check if status can be updated
             if ($product->status === 'active' && $validated['status'] !== 'active') {
                 return back()->withErrors(['status_error' => 'Cannot update status from active.']);
             }
@@ -1122,39 +1326,53 @@ class ProductController extends BaseController
             $categories = $validated['categories'] ?? [];
             unset($validated['categories']);
 
-            // Store old quantity for calculation
             $oldQuantity = $product->quantity;
-            $newQuantity = $validated['quantity'];
+            $newQuantity = (int) $validated['quantity'];
             $quantityDifference = $newQuantity - $oldQuantity;
-
-            // Calculate new quantity_available
             $newQuantityAvailable = $product->quantity_available + $quantityDifference;
 
-            // Ensure quantity_available doesn't go negative
             if ($newQuantityAvailable < 0) {
                 return back()->withErrors(['quantity_error' => 'Cannot reduce quantity below ordered items.']);
             }
 
-            // Store old status for comparison
             $oldStatus = $product->status;
             $newStatus = $validated['status'];
 
-            // Update product with calculated quantities
-            $product->update([
+            unset($validated['quantity'], $validated['status']);
+
+            $data = [
                 'quantity' => $newQuantity,
                 'quantity_available' => $newQuantityAvailable,
                 'status' => $newStatus,
-            ]);
+            ];
 
-            // Handle Printify publish/unpublish based on status change
+            if (! $isPrintifyProduct && $product->type === 'physical') {
+                foreach ([
+                    'ship_from_merchant_id',
+                    'ship_from_name',
+                    'ship_from_street1',
+                    'ship_from_city',
+                    'ship_from_state',
+                    'ship_from_zip',
+                    'ship_from_country',
+                    'parcel_length_in',
+                    'parcel_width_in',
+                    'parcel_height_in',
+                    'parcel_weight_oz',
+                ] as $key) {
+                    if (array_key_exists($key, $validated)) {
+                        $data[$key] = $validated[$key];
+                    }
+                }
+            }
+
+            $product->update($data);
+            $product->categories()->sync($categories);
+
             if ($product->printify_product_id && $oldStatus !== $newStatus) {
                 $this->handlePrintifyPublishStatus($product, $oldStatus, $newStatus);
             }
 
-            // Update categories
-            $product->categories()->sync($categories);
-
-            // Prepare success message with calculation details
             $successMessage = 'Product updated successfully';
             if ($quantityDifference != 0) {
                 $action = $quantityDifference > 0 ? 'increased' : 'decreased';
@@ -1163,7 +1381,6 @@ class ProductController extends BaseController
 
             return redirect()->route('products.index')
                 ->with('success', $successMessage);
-
         } catch (\Exception $e) {
             return back()->withErrors(['error' => 'Failed to update product: '.$e->getMessage()]);
         }
@@ -1654,13 +1871,15 @@ class ProductController extends BaseController
     }
 
     /**
-     * Create Stripe Checkout session for winner to pay for their winning bid.
-     * Uses same Cashier checkoutCharge flow as donations, Believe Points, etc.
+     * Winner chooses a Shippo-backed shipping option before Stripe Checkout (manual / physical).
      */
-    public function createWinningBidCheckout(Request $request, Product $product)
+    public function winningBidShipping(Request $request, Product $product): Response|RedirectResponse
     {
         $user = $request->user();
-        if (! $user || $product->winner_user_id != $user->id || $product->winner_status !== 'pending_payment') {
+        if (! $user instanceof User) {
+            abort(403);
+        }
+        if ($product->winner_user_id != $user->id || $product->winner_status !== 'pending_payment') {
             abort(403, 'You are not the winner or payment is not pending.');
         }
         $winningBid = $product->winningBid;
@@ -1668,107 +1887,118 @@ class ProductController extends BaseController
             abort(404, 'Winning bid not found.');
         }
 
-        // Option A: collect full shipping address at bid time and use Shippo rates for checkout.
-        if (empty($winningBid->address_line1) || empty($winningBid->zip) || empty($winningBid->country)) {
-            abort(422, 'Shipping address is missing for this bid.');
-        }
-
-        $organization = $product->organization;
-        if (! $organization) {
-            abort(422, 'Product organization is missing.');
-        }
-
-        $organization->loadMissing('user');
-        $product->loadMissing('user');
-        $sellerContact = $this->shippoService->getSellerContactForShippo($organization, $product);
-
-        // Build ship-from (seller/organization) address
-        $shipFrom = [
-            'name' => $product->ship_from_name ?: ($organization->contact_name ?: $organization->name ?: 'Seller'),
-            'street1' => $product->ship_from_street1 ?: $organization->street,
-            'city' => $product->ship_from_city ?: $organization->city,
-            'state' => $product->ship_from_state ?: $organization->state,
-            'zip' => $product->ship_from_zip ?: $organization->zip,
-            'country' => $this->shippoService->normalizeCountryToIso2((string) ($product->ship_from_country ?: 'US')),
-            'phone' => $sellerContact['phone'],
-            'email' => $sellerContact['email'],
-        ];
-
-        // Build ship-to (winner) address from bid
-        $countryIso = $this->shippoService->normalizeCountryToIso2((string) ($winningBid->country ?: 'US'));
-
-        $shipTo = [
-            'name' => $user->name ?: 'Customer',
-            'street1' => $winningBid->address_line1,
-            'street2' => $winningBid->address_line2 ?: '',
-            'city' => $winningBid->city ?: ($user->city ?? ''),
-            'state' => $winningBid->state ?: ($user->state ?? ''),
-            'zip' => $winningBid->zip,
-            'country' => $countryIso,
-            'phone' => $user->contact_number ?: '',
-            'email' => $user->email ?: '',
-        ];
-
-        if (empty($shipTo['city']) || empty($shipTo['zip'])) {
-            abort(422, 'Bid location is incomplete (city/zip).');
-        }
-
-        $needsState = in_array($countryIso, ['US', 'CA', 'AU'], true);
-        if ($needsState && trim((string) ($shipTo['state'] ?? '')) === '') {
-            abort(422, 'Bid location is incomplete (state/region required for this country).');
-        }
-
-        // Parcel defaults (override with product-specific values)
-        $length = $product->parcel_length_in !== null ? (float) $product->parcel_length_in : 10.0;
-        $width = $product->parcel_width_in !== null ? (float) $product->parcel_width_in : 8.0;
-        $height = $product->parcel_height_in !== null ? (float) $product->parcel_height_in : 4.0;
-        $weight = $product->parcel_weight_oz !== null ? (float) $product->parcel_weight_oz : 16.0;
-        if ($weight < 0.1) {
-            $weight = 16.0;
-        }
-
-        if (! $this->shippoService->isConfigured()) {
-            abort(503, 'Shippo is not configured.');
-        }
-
-        $parcel = [
-            'length' => (string) $length,
-            'width' => (string) $width,
-            'height' => (string) $height,
-            'distance_unit' => 'in',
-            'weight' => (string) $weight,
-            'mass_unit' => 'oz',
-        ];
-
-        $ratesResult = $this->shippoService->getRatesForAddresses($shipFrom, $shipTo, $parcel);
-        if (! ($ratesResult['success'] ?? false) || empty($ratesResult['rates'])) {
-            abort(422, 'Could not retrieve shipping rates from Shippo.');
-        }
-
-        // Pick cheapest rate
-        $cheapest = null;
-        foreach ($ratesResult['rates'] as $rate) {
-            if (! isset($rate['amount'])) {
-                continue;
-            }
-            $amt = (float) $rate['amount'];
-            if ($cheapest === null || $amt < (float) $cheapest['amount']) {
-                $cheapest = $rate;
-            }
-        }
-
-        if (! $cheapest || empty($cheapest['object_id'])) {
-            abort(422, 'No valid Shippo rate found.');
+        $quote = $this->winningBidQuotedShippingMethods($product, $winningBid, $user);
+        if (! ($quote['success'] ?? false)) {
+            return redirect()->route('user.profile.bid-wins')
+                ->with('error', $quote['error'] ?? 'Shipping could not be calculated.');
         }
 
         $bidAmount = (float) $winningBid->bid_amount;
-        $shippingCost = (float) $cheapest['amount'];
-
-        // Calculate tax using your existing state-wise tax table.
-        $stateCode = strtoupper(trim((string) $shipTo['state']));
+        $stateCode = strtoupper(trim((string) ($winningBid->state ?? '')));
         $taxRow = StateSalesTax::where('state_code', $stateCode)->first();
-        $taxRate = $taxRow ? (float) $taxRow->base_sales_tax_rate : 0.0;
-        $taxAmount = $taxRow ? round(($bidAmount * $taxRate) / 100, 2) : 0.0;
+        $taxAmount = $taxRow ? round(($bidAmount * (float) $taxRow->base_sales_tax_rate) / 100, 2) : 0.0;
+
+        return Inertia::render('frontend/winning-bid-shipping', [
+            'product' => [
+                'id' => $product->id,
+                'name' => $product->name,
+                'image' => $product->image,
+            ],
+            'bid_amount' => $bidAmount,
+            'bid_amount_formatted' => '$'.number_format($bidAmount, 2),
+            'estimated_tax' => $taxAmount,
+            'payment_deadline' => $product->winner_payment_deadline?->toIso8601String(),
+            'shipping_methods' => $quote['methods'],
+        ]);
+    }
+
+    /**
+     * JSON: Shippo shipping options for the winning bid (used on /profile/bid-wins per item).
+     */
+    public function winningBidShippingRatesJson(Request $request, Product $product): JsonResponse
+    {
+        $user = $request->user();
+        if (! $user instanceof User) {
+            return response()->json(['success' => false, 'error' => 'Unauthorized.'], 403);
+        }
+        if ($product->winner_user_id != $user->id || $product->winner_status !== 'pending_payment') {
+            return response()->json(['success' => false, 'error' => 'Not eligible for payment.'], 403);
+        }
+        $winningBid = $product->winningBid;
+        if (! $winningBid) {
+            return response()->json(['success' => false, 'error' => 'Winning bid not found.'], 404);
+        }
+
+        if ($request->boolean('refresh')) {
+            $winningBid->forceFill(['shippo_shipment_id' => null])->save();
+            $winningBid->refresh();
+        }
+
+        $quote = $this->winningBidQuotedShippingMethods($product, $winningBid, $user);
+        if (! ($quote['success'] ?? false)) {
+            return response()->json([
+                'success' => false,
+                'error' => $quote['error'] ?? 'Could not get shipping rates.',
+            ], 422);
+        }
+
+        $bidAmount = (float) $winningBid->bid_amount;
+        $stateCode = strtoupper(trim((string) ($winningBid->state ?? '')));
+        $taxRow = StateSalesTax::where('state_code', $stateCode)->first();
+        $estimatedTax = $taxRow ? round(($bidAmount * (float) $taxRow->base_sales_tax_rate) / 100, 2) : 0.0;
+
+        return response()->json([
+            'success' => true,
+            'shipping_methods' => $quote['methods'],
+            'bid_amount' => $bidAmount,
+            'estimated_tax' => $estimatedTax,
+        ]);
+    }
+
+    /**
+     * Create Stripe Checkout session after the winner selects a Shippo rate.
+     */
+    public function createWinningBidCheckout(Request $request, Product $product)
+    {
+        $validated = $request->validate([
+            'shippo_rate_object_id' => ['required', 'string', 'max:120'],
+        ]);
+
+        $user = $request->user();
+        if (! $user instanceof User) {
+            abort(403);
+        }
+        if ($product->winner_user_id != $user->id || $product->winner_status !== 'pending_payment') {
+            abort(403, 'You are not the winner or payment is not pending.');
+        }
+        $winningBid = $product->winningBid;
+        if (! $winningBid) {
+            abort(404, 'Winning bid not found.');
+        }
+
+        $quote = $this->winningBidQuotedShippingMethods($product, $winningBid, $user);
+        if (! ($quote['success'] ?? false)) {
+            return response()->json([
+                'message' => $quote['error'] ?? 'Could not get shipping rates.',
+            ], 422);
+        }
+
+        $selectedId = (string) $validated['shippo_rate_object_id'];
+        $picked = collect($quote['methods'])->first(function ($m) use ($selectedId) {
+            return (string) ($m['id'] ?? '') === $selectedId;
+        });
+        if (! $picked) {
+            return response()->json([
+                'message' => 'This shipping option is no longer available. Refresh the page and try again.',
+            ], 422);
+        }
+
+        $bidAmount = (float) $winningBid->bid_amount;
+        $shippingCost = (float) $picked['cost'];
+
+        $stateCode = strtoupper(trim((string) ($winningBid->state ?? '')));
+        $taxRow = StateSalesTax::where('state_code', $stateCode)->first();
+        $taxAmount = $taxRow ? round(($bidAmount * (float) $taxRow->base_sales_tax_rate) / 100, 2) : 0.0;
 
         $totalAmount = $bidAmount + $shippingCost + $taxAmount;
         $amountCents = (int) round($totalAmount * 100);
@@ -1776,13 +2006,12 @@ class ProductController extends BaseController
             $amountCents = 50;
         }
 
-        // Persist selected Shippo rate so success callback can purchase the same label
         $winningBid->update([
-            'shippo_rate_object_id' => (string) $cheapest['object_id'],
+            'shippo_rate_object_id' => (string) $picked['id'],
             'shippo_shipping_cost' => $shippingCost,
             'shippo_tax_amount' => $taxAmount,
-            'shippo_carrier' => $cheapest['provider'] ?? null,
-            'shippo_currency' => $cheapest['currency'] ?? 'USD',
+            'shippo_carrier' => $picked['provider'] ?? null,
+            'shippo_currency' => $picked['currency'] ?? 'USD',
         ]);
 
         $checkoutOptions = [
@@ -1793,7 +2022,7 @@ class ProductController extends BaseController
                 'winning_bid_id' => (string) $winningBid->id,
                 'user_id' => (string) $user->id,
                 'type' => 'winning_bid',
-                'shippo_rate_object_id' => (string) $cheapest['object_id'],
+                'shippo_rate_object_id' => (string) $picked['id'],
                 'shipping_cost' => (string) $shippingCost,
                 'tax_amount' => (string) $taxAmount,
             ],
@@ -1806,7 +2035,10 @@ class ProductController extends BaseController
             $checkoutOptions
         );
 
-        return Inertia::location($checkout->url);
+        // JSON + full browser navigation — Inertia::location() after router.post does not reliably open Stripe Checkout.
+        return response()->json([
+            'redirect' => $checkout->url,
+        ]);
     }
 
     /**
@@ -1863,18 +2095,14 @@ class ProductController extends BaseController
             $nameParts = explode(' ', trim((string) $user->name));
             $firstName = $nameParts[0] ?? 'Customer';
             $lastName = count($nameParts) > 1 ? implode(' ', array_slice($nameParts, 1)) : '';
-            $shippingAddress = (string) $winningBid->address_line1;
-            if (! empty($winningBid->address_line2)) {
-                $shippingAddress .= ', '.(string) $winningBid->address_line2;
-            }
-
             OrderShippingInfo::create([
                 'order_id' => $order->id,
                 'first_name' => $firstName,
                 'last_name' => $lastName,
                 'email' => $user->email,
                 'phone' => $user->contact_number,
-                'shipping_address' => $shippingAddress,
+                'shipping_address' => (string) $winningBid->address_line1,
+                'shipping_address_line2' => $winningBid->address_line2 ? (string) $winningBid->address_line2 : null,
                 'city' => $winningBid->city,
                 'state' => $winningBid->state,
                 'zip' => $winningBid->zip,
@@ -1908,6 +2136,7 @@ class ProductController extends BaseController
                     $parcel = $this->shippoService->getParcelSnapshot($order);
                     $shippingInfo = $order->shippingInfo;
                     $shipToName = trim(($shippingInfo?->first_name ?? '').' '.($shippingInfo?->last_name ?? ''));
+                    $shipLines = $shippingInfo ? $this->shippoService->splitOrderShippingStreetLines($shippingInfo) : ['street1' => '', 'street2' => ''];
 
                     ShippoShipment::updateOrCreate(
                         ['order_id' => $order->id, 'product_type' => 'manual'],
@@ -1919,7 +2148,7 @@ class ProductController extends BaseController
                             'label_url' => $shippoResult['label_url'] ?? null,
                             'carrier' => $shippoResult['carrier'] ?? null,
                             'ship_to_name' => $shipToName ?: null,
-                            'ship_to_street1' => (string) ($shippingInfo?->shipping_address ?? ''),
+                            'ship_to_street1' => $shipLines['street1'] ?: null,
                             'ship_to_city' => $shippingInfo?->city ?: null,
                             'ship_to_state' => $shippingInfo?->state ?: null,
                             'ship_to_zip' => $shippingInfo?->zip ?: null,
@@ -1958,6 +2187,102 @@ class ProductController extends BaseController
 
             return redirect()->route('user.profile.bid-wins')->with('error', 'Failed to create order.');
         }
+    }
+
+    /**
+     * Shippo rates for the winning bid ship-from / ship-to (reused on shipping page and checkout POST).
+     *
+     * @return array{success: bool, error?: string, methods?: array<int, array<string, mixed>>}
+     */
+    private function winningBidQuotedShippingMethods(Product $product, Bid $winningBid, User $user): array
+    {
+        if (empty($winningBid->address_line1) || empty($winningBid->zip) || empty($winningBid->country)) {
+            return ['success' => false, 'error' => 'Shipping address is missing for this bid.'];
+        }
+
+        $organization = $product->organization;
+        if (! $organization) {
+            return ['success' => false, 'error' => 'Product organization is missing.'];
+        }
+
+        $organization->loadMissing('user');
+        $product->loadMissing(['user', 'shipFromMerchant.shippingAddresses']);
+
+        $shipFrom = $this->shippoService->shipFromForManualProduct($product, $organization);
+
+        $countryIso = $this->shippoService->normalizeCountryToIso2((string) ($winningBid->country ?: 'US'));
+
+        $shipTo = [
+            'name' => $user->name ?: 'Customer',
+            'street1' => $winningBid->address_line1,
+            'street2' => $winningBid->address_line2 ?: '',
+            'city' => $winningBid->city ?: ($user->city ?? ''),
+            'state' => $winningBid->state ?: ($user->state ?? ''),
+            'zip' => $winningBid->zip,
+            'country' => $countryIso,
+            'phone' => $this->shippoService->ensureRecipientPhoneForShippo($user->contact_number ?? null),
+            'email' => $user->email ?: '',
+        ];
+
+        if (empty($shipTo['city']) || empty($shipTo['zip'])) {
+            return ['success' => false, 'error' => 'Bid location is incomplete (city/zip).'];
+        }
+
+        $needsState = in_array($countryIso, ['US', 'CA', 'AU'], true);
+        if ($needsState && trim((string) ($shipTo['state'] ?? '')) === '') {
+            return ['success' => false, 'error' => 'Bid location is incomplete (state/region required for this country).'];
+        }
+
+        $length = $product->parcel_length_in !== null ? (float) $product->parcel_length_in : 10.0;
+        $width = $product->parcel_width_in !== null ? (float) $product->parcel_width_in : 8.0;
+        $height = $product->parcel_height_in !== null ? (float) $product->parcel_height_in : 4.0;
+        $weight = $product->parcel_weight_oz !== null ? (float) $product->parcel_weight_oz : 16.0;
+        if ($weight < 0.1) {
+            $weight = 16.0;
+        }
+
+        if (! $this->shippoService->isConfigured()) {
+            return ['success' => false, 'error' => 'Shippo is not configured.'];
+        }
+
+        $parcel = [
+            'length' => (string) $length,
+            'width' => (string) $width,
+            'height' => (string) $height,
+            'distance_unit' => 'in',
+            'weight' => (string) $weight,
+            'mass_unit' => 'oz',
+        ];
+
+        $ratesResult = null;
+
+        // Reuse the same Shippo shipment as the rate list so rate object_ids still match at checkout.
+        if (! empty($winningBid->shippo_shipment_id)) {
+            $ratesResult = $this->shippoService->retrieveShipmentRates((string) $winningBid->shippo_shipment_id);
+            if (! ($ratesResult['success'] ?? false) || empty($ratesResult['rates'])) {
+                $ratesResult = null;
+            }
+        }
+
+        if ($ratesResult === null) {
+            $ratesResult = $this->shippoService->getRatesForAddresses($shipFrom, $shipTo, $parcel);
+            if (! ($ratesResult['success'] ?? false) || empty($ratesResult['rates'])) {
+                $err = $ratesResult['error'] ?? 'Could not retrieve shipping rates from Shippo.';
+
+                return ['success' => false, 'error' => is_string($err) ? $err : 'Could not retrieve shipping rates from Shippo.'];
+            }
+
+            $winningBid->forceFill([
+                'shippo_shipment_id' => $ratesResult['shipment_id'] ?? null,
+            ])->save();
+        }
+
+        $methods = $this->shippoService->ratesToCheckoutMethods($ratesResult['rates']);
+        if (empty($methods)) {
+            return ['success' => false, 'error' => 'No valid Shippo rates available for this address.'];
+        }
+
+        return ['success' => true, 'methods' => $methods];
     }
 
     /**
