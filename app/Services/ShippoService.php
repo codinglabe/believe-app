@@ -831,6 +831,7 @@ class ShippoService
             'items.product.organization.user',
             'items.product.user',
             'items.product.shipFromMerchant.shippingAddresses',
+            'items.organizationProduct.marketplaceProduct.merchant.shippingAddresses',
         ]);
         $firstItem = $order->items->first();
 
