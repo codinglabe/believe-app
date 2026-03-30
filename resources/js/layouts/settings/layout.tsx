@@ -4,26 +4,46 @@ import type { BreadcrumbItem, SharedData } from "@/types"
 import { Head, Link, usePage } from "@inertiajs/react"
 import AppLayout from "@/layouts/app-layout"
 import { Card, CardContent } from "@/components/frontend/ui/card"
-import { User, Lock, Shield, CreditCard, Globe, Webhook, Settings, ShoppingBag, FileText, MapPin } from "lucide-react"
+import {
+  User,
+  Lock,
+  Shield,
+  CreditCard,
+  Globe,
+  Webhook,
+  Settings,
+  ShoppingBag,
+  FileText,
+  MapPin,
+  Landmark,
+} from "lucide-react"
 import type { PropsWithChildren } from "react"
 
 interface SettingsLayoutProps extends PropsWithChildren {
   activeTab?: string
   /** Care Alliance hub: use Alliance Settings copy and breadcrumbs */
   settingsBranding?: "default" | "alliance"
+  /** Override the default page title / subtitle (e.g. Financial Settings page) */
+  pageTitle?: string
+  pageSubtitle?: string
 }
 
 export default function SettingsLayout({
   children,
   activeTab = "profile",
   settingsBranding = "default",
+  pageTitle: pageTitleProp,
+  pageSubtitle: pageSubtitleProp,
 }: SettingsLayoutProps) {
   const { auth } = usePage<SharedData>().props
   const isAllianceBranding = settingsBranding === "alliance"
-  const pageTitle = isAllianceBranding ? "Alliance Settings" : "Settings"
-  const pageSubtitle = isAllianceBranding
-    ? "Manage your Care Alliance and organization profile information."
-    : "Manage your account settings and preferences"
+  const pageTitle =
+    pageTitleProp ?? (isAllianceBranding ? "Alliance Settings" : "Settings")
+  const pageSubtitle =
+    pageSubtitleProp ??
+    (isAllianceBranding
+      ? "Manage your Care Alliance and organization profile information."
+      : "Manage your account settings and preferences")
   const profileNavLabel = isAllianceBranding ? "Alliance Settings" : "Profile Information"
 
   const breadcrumbs: BreadcrumbItem[] = [
@@ -81,6 +101,19 @@ export default function SettingsLayout({
                       <Lock className="h-4 w-4 flex-shrink-0" />
                       <span className="truncate">Password & Security</span>
                     </Link>
+                    {auth.user.role === "care_alliance" && (
+                      <Link
+                        href={route("profile.financial.edit")}
+                        className={`flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-all ${
+                          activeTab === "financial"
+                            ? "bg-primary/10 text-primary dark:bg-primary/20 dark:text-primary"
+                            : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
+                        }`}
+                      >
+                        <Landmark className="h-4 w-4 flex-shrink-0" />
+                        <span className="truncate">Financial Settings</span>
+                      </Link>
+                    )}
 
                     {auth.user.role === "admin" && (
                       <>
@@ -220,6 +253,19 @@ export default function SettingsLayout({
                       <Lock className="h-4 w-4 flex-shrink-0" />
                       <span className="truncate">Password & Security</span>
                     </Link>
+                    {auth.user.role === "care_alliance" && (
+                      <Link
+                        href={route("profile.financial.edit")}
+                        className={`flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-all ${
+                          activeTab === "financial"
+                            ? "bg-primary/10 text-primary dark:bg-primary/20 dark:text-primary"
+                            : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
+                        }`}
+                      >
+                        <Landmark className="h-4 w-4 flex-shrink-0" />
+                        <span className="truncate">Financial Settings</span>
+                      </Link>
+                    )}
 
                     {auth.user.role === "admin" && (
                       <>

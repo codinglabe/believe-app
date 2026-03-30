@@ -4,6 +4,10 @@ namespace App\Http\Controllers;
 
 use App\Models\AdminSetting;
 use App\Models\CareAlliance;
+use App\Models\CareAllianceCampaign;
+use App\Models\CareAllianceDonation;
+use App\Models\CareAllianceJoinRequest;
+use App\Models\CareAllianceMembership;
 use App\Models\ComplianceApplication;
 use App\Models\Donation;
 use App\Models\Event;
@@ -305,6 +309,50 @@ class DashboardController extends Controller
         // For organization users: check if they have any active plan subscription
         $hasSubscription = $user->current_plan_id !== null;
 
+        // Care Alliance hub (creator): dashboard totals + pool balance for /dashboard
+        $careAllianceDashboard = null;
+        $careAlliance = CareAlliance::query()
+            ->where('creator_user_id', $user->id)
+            ->first();
+        if ($careAlliance) {
+            $aid = (int) $careAlliance->id;
+
+            $campaignRaisedCents = (int) CareAllianceDonation::query()
+                ->whereHas('campaign', fn ($q) => $q->where('care_alliance_id', $aid))
+                ->where('status', CareAllianceDonation::STATUS_COMPLETED)
+                ->sum('amount_cents');
+
+            $generalRaisedCents = (int) round((float) Donation::query()
+                ->where('care_alliance_id', $aid)
+                ->whereIn('status', ['completed', 'active'])
+                ->sum('amount') * 100);
+
+            $completedGiftCount = CareAllianceDonation::query()
+                ->whereHas('campaign', fn ($q) => $q->where('care_alliance_id', $aid))
+                ->where('status', CareAllianceDonation::STATUS_COMPLETED)
+                ->count()
+                + Donation::query()
+                    ->where('care_alliance_id', $aid)
+                    ->whereIn('status', ['completed', 'active'])
+                    ->count();
+
+            $careAllianceDashboard = [
+                'total_raised_cents' => $campaignRaisedCents + $generalRaisedCents,
+                'active_members_count' => CareAllianceMembership::query()
+                    ->where('care_alliance_id', $aid)
+                    ->where('status', 'active')
+                    ->count(),
+                'campaigns_count' => CareAllianceCampaign::query()
+                    ->where('care_alliance_id', $aid)
+                    ->count(),
+                'pending_join_requests_count' => CareAllianceJoinRequest::query()
+                    ->where('care_alliance_id', $aid)
+                    ->where('status', 'pending')
+                    ->count(),
+                'completed_gift_count' => $completedGiftCount,
+            ];
+        }
+
         // Profile completion (integrations) for behavior nudge banner – organization users only
         $profileCompletion = null;
         if ($organization) {
@@ -412,6 +460,7 @@ class DashboardController extends Controller
                 ];
             }),
             'hasSubscription' => $hasSubscription,
+            'careAllianceDashboard' => $careAllianceDashboard,
         ]);
     }
 

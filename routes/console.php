@@ -87,3 +87,9 @@ Schedule::command('service-orders:auto-complete')
     ->hourly()
     ->withoutOverlapping()
     ->runInBackground();
+
+// Care Alliance: flush pooled general-donation splits to member org owner wallets after weekly / monthly / quarterly windows
+Schedule::command('care-alliance:release-pending-distributions')
+    ->hourly()
+    ->withoutOverlapping()
+    ->runInBackground();

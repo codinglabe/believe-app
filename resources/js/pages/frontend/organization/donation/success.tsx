@@ -8,6 +8,7 @@ import {
     Receipt,
     Building2,
     Heart,
+    HeartHandshake,
     Download,
     Share2,
     ArrowRight,
@@ -30,6 +31,12 @@ interface Donation {
     status: string
     payment_method: string
     message?: string
+    care_alliance_id?: number | null
+    care_alliance?: {
+        id: number
+        name: string
+        slug?: string
+    } | null
     organization?: {
         id: number
         name?: string
@@ -67,15 +74,21 @@ export default function DonationSuccessPage({ donation, paymentMethod = 'stripe'
     }
 
     const isRecurring = donation.frequency && donation.frequency !== 'one-time'
+    const allianceName = donation.care_alliance?.name?.trim() || null
+    const isCareAllianceDonation =
+        donation.care_alliance_id != null && Number(donation.care_alliance_id) > 0
     const donationDetails = {
         amount: formatAmount(donation.amount),
         date: formatDate(donation.donation_date),
         transactionId: donation.transaction_id,
         organization: donation?.organization?.name || 'Organization',
+        allianceName,
         message: donation?.message,
         frequency: donation.frequency,
         status: donation.status,
     }
+
+    const shareRecipientLabel = allianceName ?? donationDetails.organization
 
     const containerVariants = {
         hidden: { opacity: 0 },
@@ -124,7 +137,7 @@ export default function DonationSuccessPage({ donation, paymentMethod = 'stripe'
         if (navigator.share) {
             navigator.share({
                 title: 'I just made a donation!',
-                text: `I donated ${donationDetails.amount} to ${donationDetails.organization}`,
+                text: `I donated ${donationDetails.amount} to ${shareRecipientLabel}`,
                 url: window.location.href,
             }).catch(() => {})
         }
@@ -177,6 +190,26 @@ export default function DonationSuccessPage({ donation, paymentMethod = 'stripe'
                                         >
                                             Your contribution is making a real difference. We're incredibly grateful for your support in helping us create positive change.
                                         </motion.p>
+
+                                        {donationDetails.allianceName ? (
+                                            <motion.div
+                                                variants={itemVariants}
+                                                className="mb-8 flex justify-center px-2"
+                                            >
+                                                <div className="inline-flex max-w-full flex-col items-center gap-2 rounded-2xl border border-violet-200/80 bg-gradient-to-r from-violet-50/95 to-indigo-50/90 px-5 py-4 text-center shadow-sm dark:border-violet-500/25 dark:from-violet-950/40 dark:to-indigo-950/35">
+                                                    <span className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-violet-700 dark:text-violet-300">
+                                                        <HeartHandshake className="h-4 w-4 shrink-0" aria-hidden />
+                                                        Care Alliance
+                                                    </span>
+                                                    <span className="text-xl font-bold tracking-tight text-gray-900 dark:text-white md:text-2xl">
+                                                        {donationDetails.allianceName}
+                                                    </span>
+                                                    <span className="text-sm text-gray-600 dark:text-gray-400">
+                                                        Thank you for supporting this alliance and its member nonprofits.
+                                                    </span>
+                                                </div>
+                                            </motion.div>
+                                        ) : null}
 
                                         {isRecurring && (
                                             <motion.div variants={itemVariants} className="mb-6">
@@ -246,16 +279,31 @@ export default function DonationSuccessPage({ donation, paymentMethod = 'stripe'
                                             </div>
                                         </div>
 
-                                        {/* Organization */}
-                                        <div className="space-y-2">
-                                            <div className="flex items-center gap-2 text-sm font-medium text-gray-500 dark:text-gray-400">
-                                                <Building2 className="h-4 w-4" />
-                                                Organization
+                                        {/* Care Alliance (when donation was to an alliance from /donate) */}
+                                        {donationDetails.allianceName ? (
+                                            <div className="space-y-2 md:col-span-2">
+                                                <div className="flex items-center gap-2 text-sm font-medium text-gray-500 dark:text-gray-400">
+                                                    <HeartHandshake className="h-4 w-4" />
+                                                    Care Alliance
+                                                </div>
+                                                <p className="text-lg font-semibold text-gray-900 dark:text-white">
+                                                    {donationDetails.allianceName}
+                                                </p>
                                             </div>
-                                            <p className="text-lg font-semibold text-gray-900 dark:text-white">
-                                                {donationDetails.organization}
-                                            </p>
-                                        </div>
+                                        ) : null}
+
+                                        {/* Organization — omit for Care Alliance (funds are attributed to the alliance, not a single recipient line item) */}
+                                        {!isCareAllianceDonation ? (
+                                            <div className="space-y-2">
+                                                <div className="flex items-center gap-2 text-sm font-medium text-gray-500 dark:text-gray-400">
+                                                    <Building2 className="h-4 w-4" />
+                                                    Organization
+                                                </div>
+                                                <p className="text-lg font-semibold text-gray-900 dark:text-white">
+                                                    {donationDetails.organization}
+                                                </p>
+                                            </div>
+                                        ) : null}
 
                                         {/* Date */}
                                         <div className="space-y-2">

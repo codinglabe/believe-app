@@ -15,6 +15,7 @@ import {
   Globe,
   Heart,
   Mail,
+  Inbox,
   MapPin,
   Phone,
   User,
@@ -31,6 +32,9 @@ import {
   Clock,
   AlertCircle,
   XCircle,
+  Wallet,
+  Megaphone,
+  Sparkles,
 } from "lucide-react"
 import PromotionalBanner from "@/components/PromotionalBanner"
 import ProfileCompletionBanner from "@/components/ProfileCompletionBanner"
@@ -80,6 +84,14 @@ const breadcrumbs: BreadcrumbItem[] = [
     href: "/dashboard",
   },
 ]
+
+function formatUsdFromCents(cents: number): string {
+  return new Intl.NumberFormat(undefined, { style: "currency", currency: "USD" }).format(cents / 100)
+}
+
+function formatUsd(dollars: number): string {
+  return new Intl.NumberFormat(undefined, { style: "currency", currency: "USD" }).format(dollars)
+}
 
 type StatCardProps = {
   title: string
@@ -624,6 +636,7 @@ export default function Dashboard({
   promotionalBanners = null,
   hasSubscription = false,
   profileCompletion = null,
+  careAllianceDashboard = null,
 }: {
   totalOrg?: number
   orgInfo?: any
@@ -642,6 +655,13 @@ export default function Dashboard({
     total: number
     missing: Array<{ id: string; label: string; benefit: string; route: string; connected: boolean }>
     completeSetupHref: string | null
+  } | null
+  careAllianceDashboard?: {
+    total_raised_cents: number
+    active_members_count: number
+    campaigns_count: number
+    pending_join_requests_count: number
+    completed_gift_count: number
   } | null
 } & AdminDashboardProps) {
   const auth = usePage().props.auth
@@ -911,6 +931,15 @@ export default function Dashboard({
 
   const localStats = userRole === "admin" ? adminStats : organizationStats
 
+  const hubWalletUsd =
+    walletBalance !== null && !Number.isNaN(Number(walletBalance))
+      ? Number(walletBalance)
+      : auth?.user?.balance !== undefined && auth?.user?.balance !== null
+        ? Number(auth.user.balance)
+        : null
+  const showHubWalletLoading =
+    Boolean(isCareAllianceHub && careAllianceDashboard && hubWalletUsd === null && isCheckingWallet)
+
   const welcomeMessages = {
     admin: `Welcome back, Administrator ${auth.user?.name}!`,
     organization: `Welcome, ${organization?.name}!`,
@@ -1123,36 +1152,108 @@ export default function Dashboard({
           </p>
         </div> */}
 
-               <div className="bg-card border-border border rounded-lg p-6 shadow-sm mb-6 flex flex-col md:flex-row items-center md:items-start gap-6">
-                  {/* User Image */}
-                  {isOrgUser && (
-          <div className="flex-shrink-0">
-            <div className="w-24 h-24 md:w-32 md:h-32 rounded-full overflow-hidden border-4 border-white shadow-lg">
-              <img
-                src={organization?.registered_user_image ? organization?.registered_user_image : '/placeholder-user.jpg'}
-                alt={auth.user?.name || 'User'}
-                className="w-full h-full object-cover"
-              />
-            </div>
-          </div>
-                  )}
-
-          {/* Welcome Content */}
-          <div className="flex-1 text-center md:text-left">
-            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-              <div>
-            <h1 className="text-2xl md:text-3xl font-bold text-white">
-              {welcomeMessages[userRole as keyof typeof welcomeMessages] || "Welcome!"}
-            </h1>
-            <VerificationBanner user={auth?.user} />
-            <p className="text-muted-foreground mt-2">
-            {userRole === "admin" ? "System overview and management tools" : "EIN: " + organization?.ein}
-            </p>
+        {isCareAllianceHub && careAllianceDashboard ? (
+          <div className="bg-card border-border mb-6 flex flex-col gap-6 rounded-lg border p-6 shadow-sm lg:flex-row lg:items-stretch lg:gap-8">
+            <div className="flex min-w-0 flex-1 flex-col gap-6 md:flex-row md:items-start">
+              {isOrgUser && (
+                <div className="flex-shrink-0">
+                  <div className="h-24 w-24 overflow-hidden rounded-full border-4 border-white shadow-lg md:h-32 md:w-32">
+                    <img
+                      src={organization?.registered_user_image ? organization?.registered_user_image : "/placeholder-user.jpg"}
+                      alt={auth.user?.name || "User"}
+                      className="h-full w-full object-cover"
+                    />
+                  </div>
+                </div>
+              )}
+              <div className="flex-1 text-center md:text-left">
+                <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                  <div>
+                    <h1 className="text-2xl font-bold text-white md:text-3xl">
+                      {welcomeMessages[userRole as keyof typeof welcomeMessages] || "Welcome!"}
+                    </h1>
+                    <VerificationBanner user={auth?.user} />
+                    <p className="text-muted-foreground mt-2">
+                      {userRole === "admin" ? "System overview and management tools" : "EIN: " + organization?.ein}
+                    </p>
+                  </div>
+                </div>
               </div>
-
+            </div>
+            <div className="border-border flex w-full shrink-0 flex-col border-t pt-6 lg:w-[min(100%,20rem)] lg:border-t-0 lg:border-l lg:pt-0 lg:pl-8">
+              <div className="relative overflow-hidden rounded-2xl border border-blue-200/90 bg-gradient-to-br from-blue-50 via-indigo-50/90 to-purple-50/70 shadow-md shadow-blue-500/10 ring-1 ring-blue-500/15 dark:border-blue-800/70 dark:from-blue-950/60 dark:via-indigo-950/40 dark:to-purple-950/35 dark:shadow-blue-950/30 dark:ring-blue-500/20">
+                <div
+                  aria-hidden
+                  className="pointer-events-none absolute -right-8 -top-12 h-32 w-32 rounded-full bg-blue-400/40 blur-3xl dark:bg-blue-500/20"
+                />
+                <div
+                  aria-hidden
+                  className="pointer-events-none absolute -bottom-8 -left-6 h-24 w-24 rounded-full bg-purple-400/30 blur-2xl dark:bg-purple-500/15"
+                />
+                <div className="relative p-5 sm:p-6">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <Badge
+                          variant="secondary"
+                          className="border-blue-500/30 bg-blue-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-blue-800 dark:border-blue-400/35 dark:bg-blue-500/15 dark:text-blue-200"
+                        >
+                          Wallet
+                        </Badge>
+                        <Sparkles className="h-3.5 w-3.5 text-blue-600/80 dark:text-indigo-400/90" />
+                      </div>
+                      <h2 className="text-foreground text-lg font-semibold tracking-tight">Available balance</h2>
+                    </div>
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-blue-600 to-indigo-600 text-white shadow-md shadow-blue-600/25 dark:from-blue-500 dark:to-indigo-600 dark:shadow-blue-500/20">
+                      <Wallet className="h-5 w-5" strokeWidth={2} />
+                    </div>
+                  </div>
+                  <div className="mt-5 rounded-xl border border-blue-200/60 bg-gradient-to-br from-white/90 to-blue-50/50 px-4 py-4 backdrop-blur-sm dark:border-blue-800/50 dark:from-blue-950/50 dark:to-indigo-950/30">
+                    <p className="text-muted-foreground text-[11px] font-medium uppercase tracking-wide">
+                      Current balance
+                    </p>
+                    <p className="text-foreground mt-1 text-3xl font-bold tracking-tight tabular-nums sm:text-4xl">
+                      {showHubWalletLoading ? (
+                        <span className="text-muted-foreground inline-block animate-pulse">···</span>
+                      ) : hubWalletUsd !== null ? (
+                        formatUsd(hubWalletUsd)
+                      ) : (
+                        "—"
+                      )}
+                    </p>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
-        </div>
+        ) : (
+          <div className="bg-card border-border mb-6 flex flex-col gap-6 rounded-lg border p-6 shadow-sm md:flex-row md:items-start">
+            {isOrgUser && (
+              <div className="flex-shrink-0">
+                <div className="h-24 w-24 overflow-hidden rounded-full border-4 border-white shadow-lg md:h-32 md:w-32">
+                  <img
+                    src={organization?.registered_user_image ? organization?.registered_user_image : "/placeholder-user.jpg"}
+                    alt={auth.user?.name || "User"}
+                    className="h-full w-full object-cover"
+                  />
+                </div>
+              </div>
+            )}
+            <div className="flex-1 text-center md:text-left">
+              <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <h1 className="text-2xl font-bold text-white md:text-3xl">
+                    {welcomeMessages[userRole as keyof typeof welcomeMessages] || "Welcome!"}
+                  </h1>
+                  <VerificationBanner user={auth?.user} />
+                  <p className="text-muted-foreground mt-2">
+                    {userRole === "admin" ? "System overview and management tools" : "EIN: " + organization?.ein}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Form 990 Filing Alert */}
         {(overdueForm990Filings && overdueForm990Filings.length > 0) && (
@@ -1410,39 +1511,94 @@ export default function Dashboard({
           )
         })()}
 
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
-          <StatCard
-            title="Total Donations"
-            value={`$${localStats.totalDonations.toLocaleString()}`}
-            change={localStats.donationChange}
-            icon={<DollarSign className="h-6 w-6" />}
-          />
-          <StatCard
-            title="Total Events"
-            value={localStats.totalEvents}
-            change={localStats.eventsChange}
-            icon={<Calendar className="h-6 w-6" />}
-          />
-
-          {userRole === "admin" && (
-            <>
+        {isCareAllianceHub && careAllianceDashboard ? (
+          <div className="space-y-6">
+            <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-5">
               <StatCard
-                title="Active Volunteers"
-                value={localStats.totalVolunteers}
-                change={localStats.volunteersChange}
-                icon={<User className="h-6 w-6" />}
+                title="Total raised (alliance)"
+                value={formatUsdFromCents(careAllianceDashboard.total_raised_cents)}
+                icon={<DollarSign className="h-6 w-6" />}
               />
-              <StatCard title="Organizations" value={localStats.organizationsManaged} icon={<User className="h-6 w-6" />} />
-            </>
-          )}
+              <StatCard
+                title="Active members"
+                value={careAllianceDashboard.active_members_count}
+                icon={<Users className="h-6 w-6" />}
+              />
+              <StatCard
+                title="Campaigns"
+                value={careAllianceDashboard.campaigns_count}
+                icon={<Megaphone className="h-6 w-6" />}
+              />
+              <StatCard
+                title="Completed gifts"
+                value={careAllianceDashboard.completed_gift_count}
+                icon={<Heart className="h-6 w-6" />}
+              />
+              <StatCard
+                title="Pending join requests"
+                value={careAllianceDashboard.pending_join_requests_count}
+                icon={<Inbox className="h-6 w-6" />}
+              />
+            </div>
 
-          {isOrgUser && (
-            <>
-              <StatCard title="My Volunteers" value={localStats.myVolunteers} icon={<User className="h-6 w-6" />} />
-              <StatCard title="Total Followers" value={localStats.totalFav} icon={<UserCheck className="h-6 w-6" />} />
-            </>
-          )}
-        </div>
+            <div className="space-y-3">
+              <h2 className="text-foreground text-base font-semibold">Your organization</h2>
+              <p className="text-muted-foreground text-sm">
+                The same activity metrics as your nonprofit profile (hub organization).
+              </p>
+              <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+                <StatCard
+                  title="Completed donations"
+                  value={localStats.totalDonations}
+                  change={localStats.donationChange}
+                  icon={<DollarSign className="h-6 w-6" />}
+                />
+                <StatCard
+                  title="Total Events"
+                  value={localStats.totalEvents}
+                  change={localStats.eventsChange}
+                  icon={<Calendar className="h-6 w-6" />}
+                />
+                <StatCard title="My Volunteers" value={localStats.myVolunteers} icon={<User className="h-6 w-6" />} />
+                <StatCard title="Total Followers" value={localStats.totalFav} icon={<UserCheck className="h-6 w-6" />} />
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+            <StatCard
+              title="Completed donations"
+              value={localStats.totalDonations}
+              change={localStats.donationChange}
+              icon={<DollarSign className="h-6 w-6" />}
+            />
+            <StatCard
+              title="Total Events"
+              value={localStats.totalEvents}
+              change={localStats.eventsChange}
+              icon={<Calendar className="h-6 w-6" />}
+            />
+
+            {userRole === "admin" && (
+              <>
+                <StatCard
+                  title="Active Volunteers"
+                  value={localStats.totalVolunteers}
+                  change={localStats.volunteersChange}
+                  icon={<User className="h-6 w-6" />}
+                />
+                <StatCard title="Organizations" value={localStats.organizationsManaged} icon={<User className="h-6 w-6" />} />
+              </>
+            )}
+
+            {isOrgUser && (
+              <>
+                <StatCard title="My Volunteers" value={localStats.myVolunteers} icon={<User className="h-6 w-6" />} />
+                <StatCard title="Total Followers" value={localStats.totalFav} icon={<UserCheck className="h-6 w-6" />} />
+              </>
+            )}
+          </div>
+        )}
 
               {isOrgUser && (
         <div className="grid gap-6 md:grid-cols-3 lg:grid-cols-3">

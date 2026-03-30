@@ -23,11 +23,25 @@ class CareAlliance extends Model
         'fund_model',
         'status',
         'balance_cents',
+        'allocation_method',
+        'distribution_frequency',
+        'min_payout_cents',
+        'financial_fixed_splits',
+        'financial_fixed_member_pool_bps',
+        'financial_settings_completed_at',
+        'pending_distribution_json',
+        'pending_distribution_started_at',
     ];
 
     protected $casts = [
         'management_fee_bps' => 'integer',
         'balance_cents' => 'integer',
+        'min_payout_cents' => 'integer',
+        'financial_fixed_splits' => 'array',
+        'financial_fixed_member_pool_bps' => 'integer',
+        'financial_settings_completed_at' => 'datetime',
+        'pending_distribution_json' => 'array',
+        'pending_distribution_started_at' => 'datetime',
     ];
 
     public function creator(): BelongsTo

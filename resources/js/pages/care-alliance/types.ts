@@ -68,8 +68,49 @@ export type OrganizationSearchHit = {
 /** Care Alliance workspace Members page URL `tab` (each tab loads its own payload). */
 export type CareAllianceMembersTab = "invite" | "requests" | "invitations" | "memberships"
 
-/** Campaigns workspace URL `tab` (list tab loads campaign rows from the server). */
-export type CareAllianceCampaignsTab = "create" | "list"
+export type CareAllianceDonationActivitySplitLine = {
+  type: string | null
+  label: string | null
+  cents: number
+  percent_bps: number | null
+  organization_id: number | null
+}
+
+/** Allocation / schedule / wallet settlement labels (Donation activity tab). */
+export type CareAllianceDonationActivitySettlement = {
+  row_type: "campaign" | "general"
+  allocation_label: string
+  schedule_label: string
+  allocation_method: string | null
+  distribution_frequency: string | null
+  wallet_status_label: string
+  settings_completed: boolean | null
+}
+
+export type CareAllianceDonationActivityRow = {
+  /** Stable key for list + accordion (`cad-*` campaign ledger, `don-*` main /donate flow). */
+  row_key?: string
+  id: number
+  amount_cents: number
+  currency: string
+  status: string
+  created_at: string | null
+  payment_reference: string | null
+  campaign: { id: number; slug: string; name: string }
+  donor: { id: number; name: string } | null
+  split_lines: CareAllianceDonationActivitySplitLine[]
+  settlement?: CareAllianceDonationActivitySettlement
+}
+
+export type CareAllianceDonationActivityPagination = {
+  current_page: number
+  last_page: number
+  per_page: number
+  total: number
+}
+
+/** Campaigns workspace URL `tab` (list tab loads campaign rows; activity tab loads donation ledger). */
+export type CareAllianceCampaignsTab = "create" | "list" | "activity"
 
 export type CareAllianceWorkspaceProps = {
   alliance: CareAllianceAlliance
@@ -82,6 +123,10 @@ export type CareAllianceWorkspaceProps = {
   campaignsTab?: CareAllianceCampaignsTab
   /** Total campaigns for this alliance (for badges; cheap count even when `tab=create`). */
   campaignsCount?: number
+  /** `tab=activity`: campaign gifts + general /donate gifts (`care_alliance_id`), merged by date. */
+  donationActivity?: CareAllianceDonationActivityRow[]
+  /** `tab=activity`: server pagination for donation activity list. */
+  donationActivityPagination?: CareAllianceDonationActivityPagination | null
   /** Members workspace only; drives which tab data the server returns. */
   activeTab?: CareAllianceMembersTab
   /** URL `q` param (invite tab org search); drives `organizationSearchResults`. */
