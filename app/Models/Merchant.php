@@ -12,7 +12,7 @@ use Laravel\Cashier\Subscription;
 
 class Merchant extends Authenticatable
 {
-    use HasFactory, Notifiable, Billable;
+    use Billable, HasFactory, Notifiable;
 
     /**
      * Get all of the merchant's subscriptions.
@@ -144,20 +144,20 @@ class Merchant extends Authenticatable
     /**
      * Send the email verification notification.
      *
-     * @param string|null $domain The domain from the request context (where user is accessing from)
+     * @param  string|null  $domain  The domain from the request context (where user is accessing from)
      * @return void
      */
     public function sendEmailVerificationNotification(?string $domain = null)
     {
         // Get domain from request if not provided
-        if (!$domain && request()) {
+        if (! $domain && request()) {
             // Use actual request host, not config value
             $scheme = request()->getScheme();
             $host = request()->getHost();
             $port = request()->getPort();
-            $domain = $scheme . '://' . $host . ($port && $port != 80 && $port != 443 ? ':' . $port : '');
+            $domain = $scheme.'://'.$host.($port && $port != 80 && $port != 443 ? ':'.$port : '');
         }
-        
+
         $this->notify(new \App\Notifications\VerifyEmailNotification($domain));
     }
 }

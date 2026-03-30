@@ -566,6 +566,12 @@ const mainNavItems: (NavItem | NavGroup)[] = [
                         icon: Package,
                         permission: "ecommerce.read",
                     },
+                    {
+                        title: 'Merchant product pool',
+                        href: '/marketplace/product-pool',
+                        icon: Package,
+                        permission: "product.read",
+                    },
                 ]
             },
             {
