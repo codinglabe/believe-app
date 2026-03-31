@@ -96,6 +96,10 @@ Route::middleware(['auth:merchant'])->group(function () {
             Route::put('/{marketplace_product}', [MerchantMarketplaceProductController::class, 'update'])->name('update');
             Route::delete('/{marketplace_product}', [MerchantMarketplaceProductController::class, 'destroy'])->name('destroy');
         });
+
+        Route::get('/marketplace-orders', [App\Http\Controllers\Merchant\MerchantMarketplaceOrderController::class, 'index'])->name('merchant.marketplace-orders.index');
+        Route::get('/marketplace-orders/{order}/shippo/rates', [App\Http\Controllers\Merchant\MerchantMarketplaceOrderController::class, 'getShippoRates'])->name('merchant.marketplace-orders.shippo.rates');
+        Route::post('/marketplace-orders/{order}/shippo/purchase-label', [App\Http\Controllers\Merchant\MerchantMarketplaceOrderController::class, 'purchaseShippoLabel'])->name('merchant.marketplace-orders.shippo.purchase-label');
     });
 
     // Logout

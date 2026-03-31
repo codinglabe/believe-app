@@ -41,11 +41,11 @@ export function SubscriptionRequiredModal({ isOpen, onClose }: SubscriptionRequi
           animate={{ scale: 1, opacity: 1, y: 0 }}
           exit={{ scale: 0.8, opacity: 0, y: 50 }}
           transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-          className="relative w-full max-w-2xl bg-gradient-to-br from-[#1a0a0a] via-[#2d1b1b] to-[#1a0a0a] rounded-2xl shadow-2xl border border-[#FF1493]/20 overflow-hidden"
+          className="relative w-full max-w-2xl bg-gradient-to-br from-[#1a0a0a] via-[#2d1b1b] to-[#1a0a0a] rounded-2xl shadow-2xl border border-[#2563EB]/20 overflow-hidden"
           onClick={(e) => e.stopPropagation()}
         >
           {/* Animated Background */}
-          <div className="absolute inset-0 bg-gradient-to-r from-[#FF1493]/10 via-[#DC143C]/10 to-[#E97451]/10 animate-pulse"></div>
+          <div className="absolute inset-0 bg-gradient-to-r from-[#2563EB]/8 to-[#2563EB]/3 animate-pulse"></div>
           
           {/* Sparkle Effects */}
           <div className="absolute inset-0 overflow-hidden pointer-events-none">
@@ -68,7 +68,7 @@ export function SubscriptionRequiredModal({ isOpen, onClose }: SubscriptionRequi
                   repeat: Infinity,
                   delay: Math.random() * 2,
                 }}
-                className="absolute w-2 h-2 bg-[#FF1493] rounded-full"
+                className="absolute w-2 h-2 bg-[#2563EB] rounded-full"
               />
             ))}
           </div>
@@ -90,8 +90,8 @@ export function SubscriptionRequiredModal({ isOpen, onClose }: SubscriptionRequi
                 transition={{ delay: 0.2, type: 'spring', stiffness: 200 }}
                 className="relative"
               >
-                <div className="absolute inset-0 bg-gradient-to-r from-[#FF1493] via-[#DC143C] to-[#E97451] rounded-full blur-xl opacity-50 animate-pulse"></div>
-                <div className="relative p-6 bg-gradient-to-br from-[#FF1493] via-[#DC143C] to-[#E97451] rounded-full">
+                <div className="absolute inset-0 bg-gradient-to-r from-[#2563EB] to-[#1D4ED8] rounded-full blur-xl opacity-50 animate-pulse"></div>
+                <div className="relative p-6 bg-gradient-to-br from-[#2563EB] to-[#1D4ED8] rounded-full">
                   <Lock className="w-12 h-12 text-white" />
                 </div>
               </motion.div>
@@ -143,7 +143,7 @@ export function SubscriptionRequiredModal({ isOpen, onClose }: SubscriptionRequi
                     animate={{ scale: 1 }}
                     transition={{ delay: 0.7 + index * 0.1, type: 'spring' }}
                   >
-                    <CheckCircle2 className="w-5 h-5 text-[#FF1493]" />
+                    <CheckCircle2 className="w-5 h-5 text-[#2563EB]" />
                   </motion.div>
                   <span>{feature}</span>
                 </motion.div>
@@ -159,7 +159,7 @@ export function SubscriptionRequiredModal({ isOpen, onClose }: SubscriptionRequi
             >
               <MerchantButton
                 onClick={handleSubscribe}
-                className="flex items-center justify-center gap-2 text-base sm:text-lg px-6 sm:px-10 py-3 sm:py-4 bg-gradient-to-r from-[#FF1493] via-[#DC143C] to-[#E97451] hover:from-[#FF1493]/90 hover:via-[#DC143C]/90 hover:to-[#E97451]/90 text-white shadow-lg shadow-[#FF1493]/50 font-semibold"
+                className="flex items-center justify-center gap-2 text-base sm:text-lg px-6 sm:px-10 py-3 sm:py-4 bg-gradient-to-r from-[#2563EB] to-[#1D4ED8] hover:opacity-95 text-white shadow-lg shadow-[#2563EB]/50 font-semibold"
               >
                 <Crown className="w-4 h-4 sm:w-5 sm:h-5" />
                 View Plans
@@ -186,7 +186,7 @@ export function SubscriptionRequiredModal({ isOpen, onClose }: SubscriptionRequi
               }}
               className="absolute top-20 left-10 opacity-20"
             >
-              <Sparkles className="w-8 h-8 text-[#FF1493]" />
+              <Sparkles className="w-8 h-8 text-[#2563EB]" />
             </motion.div>
             <motion.div
               animate={{
@@ -201,7 +201,7 @@ export function SubscriptionRequiredModal({ isOpen, onClose }: SubscriptionRequi
               }}
               className="absolute bottom-20 right-10 opacity-20"
             >
-              <Crown className="w-8 h-8 text-[#DC143C]" />
+              <Crown className="w-8 h-8 text-[#2563EB]" />
             </motion.div>
           </div>
         </motion.div>

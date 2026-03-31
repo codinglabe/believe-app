@@ -112,6 +112,9 @@ class Order extends Model
         }
 
         return $this->items->contains(function ($item) {
+            if ($item->marketplace_product_id || $item->organization_product_id) {
+                return true;
+            }
             $product = $item->product ?? null;
 
             return $product && empty($product->printify_product_id);

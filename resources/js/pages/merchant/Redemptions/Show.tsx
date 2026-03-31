@@ -133,7 +133,7 @@ export default function RedemptionShow({ redemption }: Props) {
               <MerchantButton
                 onClick={() => setIsScannerOpen(true)}
                 size="sm"
-                className="bg-gradient-to-r from-[#FF1493] to-[#DC143C] hover:from-[#FF1493]/90 hover:to-[#DC143C]/90 w-full sm:w-auto"
+                className="bg-gradient-to-r from-[#2563EB] to-[#1D4ED8] hover:opacity-95 w-full sm:w-auto"
               >
                 <Camera className="w-4 h-4 sm:mr-2" />
                 <span className="hidden sm:inline">Scan QR Code</span>
@@ -177,7 +177,7 @@ export default function RedemptionShow({ redemption }: Props) {
 
                   {/* Both calculations + which way supporter paid */}
                   {redemption.pricingBreakdown && (
-                    <div className="space-y-4 pt-4 border-t border-[#FF1493]/20">
+                    <div className="space-y-4 pt-4 border-t border-[#2563EB]/20">
                       <p className="text-xs text-gray-400 uppercase tracking-wide">Retail price</p>
                       <p className="text-lg font-semibold text-gray-300 line-through">
                         {redemption.pricingBreakdown.currency || redemption.currency || 'USD'} {redemption.pricingBreakdown.regularPrice.toFixed(2)}
@@ -215,13 +215,13 @@ export default function RedemptionShow({ redemption }: Props) {
                         <p className="text-xs text-gray-400 mb-3">This customer used the following to redeem this offer:</p>
                         <div className="flex flex-col sm:flex-row gap-3">
                           {redemption.pointsUsed > 0 ? (
-                            <div className="flex items-center gap-3 px-4 py-3 bg-[#FF1493]/15 rounded-lg border border-[#FF1493]/40 flex-1">
-                              <div className="w-10 h-10 rounded-full bg-[#FF1493]/30 flex items-center justify-center">
-                                <Gift className="w-5 h-5 text-[#FF1493]" />
+                            <div className="flex items-center gap-3 px-4 py-3 bg-[#2563EB]/15 rounded-lg border border-[#2563EB]/40 flex-1">
+                              <div className="w-10 h-10 rounded-full bg-[#2563EB]/30 flex items-center justify-center">
+                                <Gift className="w-5 h-5 text-[#2563EB]" />
                               </div>
                               <div>
                                 <p className="text-xs text-gray-400">Paid with points</p>
-                                <p className="text-lg font-bold text-[#FF1493]">{redemption.pointsUsed.toLocaleString()} points</p>
+                                <p className="text-lg font-bold text-[#2563EB]">{redemption.pointsUsed.toLocaleString()} points</p>
                               </div>
                             </div>
                           ) : null}
@@ -247,12 +247,12 @@ export default function RedemptionShow({ redemption }: Props) {
                   )}
 
                   {redemption.code && (
-                    <div className="p-3 sm:p-4 bg-black/30 rounded-lg border border-[#FF1493]/20">
+                    <div className="p-3 sm:p-4 bg-black/30 rounded-lg border border-[#2563EB]/20">
                       <div className="flex items-center gap-2 mb-2">
                         <Hash className="w-4 h-4 text-gray-400 flex-shrink-0" />
                         <span className="text-xs sm:text-sm text-gray-400">Redemption Code</span>
                       </div>
-                      <p className="text-lg sm:text-xl font-mono font-bold text-[#FF1493] break-all">{redemption.code}</p>
+                      <p className="text-lg sm:text-xl font-mono font-bold text-[#2563EB] break-all">{redemption.code}</p>
                     </div>
                   )}
                 </MerchantCardContent>
@@ -347,7 +347,7 @@ export default function RedemptionShow({ redemption }: Props) {
                 </MerchantCardHeader>
                 <MerchantCardContent className="space-y-3 sm:space-y-4">
                   <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-gradient-to-br from-[#FF1493] via-[#DC143C] to-[#E97451] flex items-center justify-center flex-shrink-0">
+                    <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-gradient-to-br from-[#2563EB] to-[#1D4ED8] flex items-center justify-center flex-shrink-0">
                       <User className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
                     </div>
                     <div className="min-w-0 flex-1">
@@ -359,10 +359,10 @@ export default function RedemptionShow({ redemption }: Props) {
                     </div>
                   </div>
                   {redemption.shippingAddress && (redemption.shippingAddress.line1 || redemption.shippingAddress.city) && (
-                    <div className="pt-4 mt-4 border-t border-[#FF1493]/20">
+                    <div className="pt-4 mt-4 border-t border-[#2563EB]/20">
                       <div className="flex items-center gap-2 mb-3">
-                        <div className="w-8 h-8 rounded-lg bg-[#FF1493]/20 flex items-center justify-center shrink-0">
-                          <MapPin className="w-4 h-4 text-[#FF1493]" />
+                        <div className="w-8 h-8 rounded-lg bg-[#2563EB]/20 flex items-center justify-center shrink-0">
+                          <MapPin className="w-4 h-4 text-[#2563EB]" />
                         </div>
                         <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Shipping address</span>
                       </div>
@@ -384,7 +384,7 @@ export default function RedemptionShow({ redemption }: Props) {
                             )}
                           </p>
                           {redemption.shippingAddress.country && (
-                            <span className="inline-block mt-2 px-2.5 py-1 rounded-md bg-[#FF1493]/15 text-[#FF1493] text-xs font-medium uppercase tracking-wide">
+                            <span className="inline-block mt-2 px-2.5 py-1 rounded-md bg-[#2563EB]/15 text-[#2563EB] text-xs font-medium uppercase tracking-wide">
                               {redemption.shippingAddress.country}
                             </span>
                           )}
@@ -405,7 +405,7 @@ export default function RedemptionShow({ redemption }: Props) {
                 </MerchantCardHeader>
                 <MerchantCardContent className="space-y-3 sm:space-y-4">
                   <div className="flex items-start gap-3">
-                    <div className="w-2 h-2 rounded-full bg-[#FF1493] mt-2 flex-shrink-0"></div>
+                    <div className="w-2 h-2 rounded-full bg-[#2563EB] mt-2 flex-shrink-0"></div>
                     <div className="min-w-0 flex-1">
                       <p className="text-xs sm:text-sm font-semibold text-white">Redeemed</p>
                       <p className="text-xs text-gray-400 break-words">
@@ -443,7 +443,7 @@ export default function RedemptionShow({ redemption }: Props) {
                       {getStatusBadge(redemption.status)}
                     </div>
                   </div>
-                  <div className="pt-3 border-t border-[#FF1493]/20">
+                  <div className="pt-3 border-t border-[#2563EB]/20">
                     <p className="text-xs text-gray-400 mb-2">Status Guide</p>
                     <div className="space-y-2 text-xs">
                       <div className="flex items-start gap-2">

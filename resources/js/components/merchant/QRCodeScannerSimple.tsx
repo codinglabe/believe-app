@@ -343,12 +343,12 @@ export default function QRCodeScannerSimple({ isOpen, onClose, merchantId }: QRC
               exit={{ opacity: 0, scale: 0.9, y: 20 }}
               transition={{ type: "spring", duration: 0.5 }}
               onClick={(e) => e.stopPropagation()}
-              className="w-full max-w-sm bg-black border border-[#FF1493]/20 rounded-lg overflow-hidden"
+              className="w-full max-w-sm bg-black border border-[#2563EB]/20 rounded-lg overflow-hidden"
             >
               {/* Header */}
-              <div className="flex items-center justify-between p-3 border-b border-[#FF1493]/20">
+              <div className="flex items-center justify-between p-3 border-b border-[#2563EB]/20">
                 <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#FF1493] to-[#DC143C] flex items-center justify-center">
+                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#2563EB] to-[#1D4ED8] flex items-center justify-center">
                     <QrCode className="w-4 h-4 text-white" />
                   </div>
                   <div>
@@ -358,7 +358,7 @@ export default function QRCodeScannerSimple({ isOpen, onClose, merchantId }: QRC
                 </div>
                 <button
                   onClick={handleClose}
-                  className="p-1.5 rounded-lg hover:bg-[#FF1493]/10 transition-colors"
+                  className="p-1.5 rounded-lg hover:bg-[#2563EB]/10 transition-colors"
                 >
                   <X className="w-4 h-4 text-gray-400" />
                 </button>
@@ -475,7 +475,7 @@ export default function QRCodeScannerSimple({ isOpen, onClose, merchantId }: QRC
                           setNotForMerchantData(null)
                           setScanning(true)
                         }}
-                        className="w-full bg-gradient-to-r from-[#FF1493] to-[#DC143C]"
+                        className="w-full bg-gradient-to-r from-[#2563EB] to-[#1D4ED8]"
                       >
                         <Camera className="w-4 h-4 mr-2" />
                         Scan Another Code
@@ -562,7 +562,7 @@ export default function QRCodeScannerSimple({ isOpen, onClose, merchantId }: QRC
                       >
                         <div className="flex items-center justify-between">
                           <span className="text-xs text-gray-400">Code:</span>
-                          <span className="text-xs font-mono text-[#FF1493]">{alreadyUsedData.code}</span>
+                          <span className="text-xs font-mono text-[#2563EB]">{alreadyUsedData.code}</span>
                         </div>
                         {alreadyUsedData.user_name && (
                           <div className="flex items-center justify-between">
@@ -630,7 +630,7 @@ export default function QRCodeScannerSimple({ isOpen, onClose, merchantId }: QRC
                           setAlreadyUsedData(null)
                           setScanning(true)
                         }}
-                        className="w-full bg-gradient-to-r from-[#FF1493] to-[#DC143C]"
+                        className="w-full bg-gradient-to-r from-[#2563EB] to-[#1D4ED8]"
                       >
                         <Camera className="w-4 h-4 mr-2" />
                         Scan Another Code
@@ -639,7 +639,7 @@ export default function QRCodeScannerSimple({ isOpen, onClose, merchantId }: QRC
                   </motion.div>
                 ) : !scanning ? (
                   <>
-                    <div className="w-full bg-gray-900 rounded-lg flex items-center justify-center border-2 border-dashed border-[#FF1493]/30" style={{ aspectRatio: '1', minHeight: '300px' }}>
+                    <div className="w-full bg-gray-900 rounded-lg flex items-center justify-center border-2 border-dashed border-[#2563EB]/30" style={{ aspectRatio: '1', minHeight: '300px' }}>
                       <div className="text-center">
                         <Camera className="w-12 h-12 text-gray-600 mx-auto mb-2" />
                         <p className="text-gray-400 text-xs">Ready to scan</p>
@@ -654,7 +654,7 @@ export default function QRCodeScannerSimple({ isOpen, onClose, merchantId }: QRC
                         value={manualCode}
                         onChange={(e) => setManualCode(e.target.value.toUpperCase())}
                         placeholder="RED-XXXXXXXX"
-                        className="w-full px-3 py-2 text-sm bg-black/50 border border-[#FF1493]/20 rounded-lg text-white placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#FF1493]/50"
+                        className="w-full px-3 py-2 text-sm bg-black/50 border border-[#2563EB]/20 rounded-lg text-white placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#2563EB]/50"
                         onKeyDown={(e) => {
                           if (e.key === 'Enter') {
                             handleManualSubmit()
@@ -674,7 +674,7 @@ export default function QRCodeScannerSimple({ isOpen, onClose, merchantId }: QRC
                       <MerchantButton
                         onClick={handleStartScan}
                         size="sm"
-                        className="flex-1 bg-gradient-to-r from-[#FF1493] to-[#DC143C] text-sm"
+                        className="flex-1 bg-gradient-to-r from-[#2563EB] to-[#1D4ED8] text-sm"
                       >
                         <Camera className="w-3.5 h-3.5 mr-1.5" />
                         Scan
@@ -696,7 +696,7 @@ export default function QRCodeScannerSimple({ isOpen, onClose, merchantId }: QRC
                   </>
                 ) : (
                   <>
-                    <div className="relative w-full bg-black rounded-lg overflow-hidden border-2 border-[#FF1493]" style={{ aspectRatio: '1', minHeight: '300px' }}>
+                    <div className="relative w-full bg-black rounded-lg overflow-hidden border-2 border-[#2563EB]" style={{ aspectRatio: '1', minHeight: '300px' }}>
                       {cameraPermission === 'granted' && scanning ? (
                         <div ref={videoContainerRef} className="relative w-full h-full">
                           <QrReader
@@ -742,16 +742,16 @@ export default function QRCodeScannerSimple({ isOpen, onClose, merchantId }: QRC
                           />
                           {/* Scanning overlay */}
                           <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10">
-                            <div className="w-48 h-48 border-2 border-[#FF1493] rounded-lg relative">
+                            <div className="w-48 h-48 border-2 border-[#2563EB] rounded-lg relative">
                               {/* Corner indicators */}
-                              <div className="absolute top-0 left-0 w-6 h-6 border-t-2 border-l-2 border-[#FF1493]"></div>
-                              <div className="absolute top-0 right-0 w-6 h-6 border-t-2 border-r-2 border-[#FF1493]"></div>
-                              <div className="absolute bottom-0 left-0 w-6 h-6 border-b-2 border-l-2 border-[#FF1493]"></div>
-                              <div className="absolute bottom-0 right-0 w-6 h-6 border-b-2 border-r-2 border-[#FF1493]"></div>
+                              <div className="absolute top-0 left-0 w-6 h-6 border-t-2 border-l-2 border-[#2563EB]"></div>
+                              <div className="absolute top-0 right-0 w-6 h-6 border-t-2 border-r-2 border-[#2563EB]"></div>
+                              <div className="absolute bottom-0 left-0 w-6 h-6 border-b-2 border-l-2 border-[#2563EB]"></div>
+                              <div className="absolute bottom-0 right-0 w-6 h-6 border-b-2 border-r-2 border-[#2563EB]"></div>
                               
                               {/* Scanning line animation */}
                               <motion.div
-                                className="absolute left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-[#FF1493] to-transparent"
+                                className="absolute left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-[#2563EB] to-transparent"
                                 initial={{ top: 0 }}
                                 animate={{ 
                                   top: ['0%', '100%', '0%'],
@@ -762,7 +762,7 @@ export default function QRCodeScannerSimple({ isOpen, onClose, merchantId }: QRC
                                   ease: "linear"
                                 }}
                                 style={{
-                                  boxShadow: '0 0 10px #FF1493, 0 0 20px #FF1493'
+                                  boxShadow: '0 0 10px #2563EB, 0 0 20px #2563EB'
                                 }}
                               />
                             </div>
@@ -771,7 +771,7 @@ export default function QRCodeScannerSimple({ isOpen, onClose, merchantId }: QRC
                       ) : cameraPermission === 'prompt' ? (
                         <div className="w-full h-full flex items-center justify-center" style={{ minHeight: '300px' }}>
                           <div className="text-center">
-                            <Loader2 className="w-6 h-6 animate-spin text-[#FF1493] mx-auto mb-2" />
+                            <Loader2 className="w-6 h-6 animate-spin text-[#2563EB] mx-auto mb-2" />
                             <p className="text-gray-400 text-xs">Requesting camera access...</p>
                             <p className="text-gray-500 text-xs mt-1">Please allow camera access</p>
                           </div>
@@ -810,7 +810,7 @@ export default function QRCodeScannerSimple({ isOpen, onClose, merchantId }: QRC
                         value={manualCode}
                         onChange={(e) => setManualCode(e.target.value.toUpperCase())}
                         placeholder="RED-XXXXXXXX"
-                        className="w-full px-3 py-2 text-sm bg-black/50 border border-[#FF1493]/20 rounded-lg text-white placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#FF1493]/50"
+                        className="w-full px-3 py-2 text-sm bg-black/50 border border-[#2563EB]/20 rounded-lg text-white placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-[#2563EB]/50"
                         onKeyDown={(e) => {
                           if (e.key === 'Enter') {
                             handleManualSubmit()
@@ -875,12 +875,12 @@ export default function QRCodeScannerSimple({ isOpen, onClose, merchantId }: QRC
                     exit={{ opacity: 0, scale: 0.9, y: 20 }}
                     transition={{ type: "spring", duration: 0.5 }}
                     onClick={(e) => e.stopPropagation()}
-                    className="w-full max-w-md bg-black border border-[#FF1493]/20 rounded-lg overflow-hidden"
+                    className="w-full max-w-md bg-black border border-[#2563EB]/20 rounded-lg overflow-hidden"
                   >
                     {/* Header */}
-                    <div className="flex items-center justify-between p-4 border-b border-[#FF1493]/20">
+                    <div className="flex items-center justify-between p-4 border-b border-[#2563EB]/20">
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#FF1493] to-[#DC143C] flex items-center justify-center">
+                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#2563EB] to-[#1D4ED8] flex items-center justify-center">
                           <CheckCircle2 className="w-5 h-5 text-white" />
                         </div>
                         <div>
@@ -894,7 +894,7 @@ export default function QRCodeScannerSimple({ isOpen, onClose, merchantId }: QRC
                           setRedemptionData(null)
                           handleClose()
                         }}
-                        className="p-2 rounded-lg hover:bg-[#FF1493]/10 transition-colors"
+                        className="p-2 rounded-lg hover:bg-[#2563EB]/10 transition-colors"
                       >
                         <X className="w-5 h-5 text-gray-400" />
                       </button>
@@ -935,7 +935,7 @@ export default function QRCodeScannerSimple({ isOpen, onClose, merchantId }: QRC
                           <div className="flex gap-4">
                             <div>
                               <p className="text-xs text-gray-400 mb-1">Code</p>
-                              <p className="text-sm font-mono font-medium text-[#FF1493]">{redemptionData.code}</p>
+                              <p className="text-sm font-mono font-medium text-[#2563EB]">{redemptionData.code}</p>
                             </div>
                             <div>
                               <p className="text-xs text-gray-400 mb-1">Points</p>
@@ -1007,7 +1007,7 @@ export default function QRCodeScannerSimple({ isOpen, onClose, merchantId }: QRC
                     </div>
 
                     {/* Actions */}
-                    <div className="p-4 border-t border-[#FF1493]/20 flex gap-3">
+                    <div className="p-4 border-t border-[#2563EB]/20 flex gap-3">
                       <MerchantButton
                         variant="outline"
                         onClick={() => {
@@ -1051,7 +1051,7 @@ export default function QRCodeScannerSimple({ isOpen, onClose, merchantId }: QRC
                           }
                         }}
                         disabled={isProcessing || redemptionData.status === 'fulfilled'}
-                        className="flex-1 bg-gradient-to-r from-[#FF1493] to-[#DC143C]"
+                        className="flex-1 bg-gradient-to-r from-[#2563EB] to-[#1D4ED8]"
                       >
                         {isProcessing ? (
                           <Loader2 className="w-4 h-4 mr-2 animate-spin" />

@@ -162,7 +162,7 @@ export default function MerchantOffersEdit({ offer, categories }: OffersEditProp
                                             value={data.merchant_hub_category_id}
                                             onValueChange={(value) => setData('merchant_hub_category_id', value)}
                                         >
-                                            <SelectTrigger className={`mt-1 bg-gray-900/50 border-[#FF1493]/40 text-white ${errors.merchant_hub_category_id ? 'border-red-500' : ''}`}>
+                                            <SelectTrigger className={`mt-1 bg-gray-900/50 border-[#2563EB]/40 text-white ${errors.merchant_hub_category_id ? 'border-red-500' : ''}`}>
                                                 <SelectValue placeholder="Select a category" />
                                             </SelectTrigger>
                                             <SelectContent>
@@ -244,7 +244,7 @@ export default function MerchantOffersEdit({ offer, categories }: OffersEditProp
                                     </div>
 
                                     {/* BIU: Retail price + discount 1–10%; points auto-calculated */}
-                                    <div className="rounded-xl border border-[#FF1493]/30 bg-gray-900/50 p-4 space-y-4">
+                                    <div className="rounded-xl border border-[#2563EB]/30 bg-gray-900/50 p-4 space-y-4">
                                         <p className="text-sm font-medium text-gray-300">Pricing &amp; Discount (1–10% only; points calculated automatically)</p>
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                             <div>
@@ -270,7 +270,7 @@ export default function MerchantOffersEdit({ offer, categories }: OffersEditProp
                                                     value={String(data.discount_percentage)}
                                                     onValueChange={(value) => setData('discount_percentage', Number(value))}
                                                 >
-                                                    <SelectTrigger className={`mt-1 bg-gray-900/50 border-[#FF1493]/40 text-white ${errors.discount_percentage ? 'border-red-500' : ''}`}>
+                                                    <SelectTrigger className={`mt-1 bg-gray-900/50 border-[#2563EB]/40 text-white ${errors.discount_percentage ? 'border-red-500' : ''}`}>
                                                         <SelectValue placeholder="Select %" />
                                                     </SelectTrigger>
                                                     <SelectContent>
@@ -287,7 +287,7 @@ export default function MerchantOffersEdit({ offer, categories }: OffersEditProp
                                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 border-t border-gray-700">
                                             <div className="bg-gray-800/60 rounded-lg p-3">
                                                 <p className="text-xs text-gray-400 uppercase tracking-wide">Discount amount</p>
-                                                <p className="text-lg font-bold text-[#FF1493]">${discountAmount.toFixed(2)}</p>
+                                                <p className="text-lg font-bold text-[#2563EB]">${discountAmount.toFixed(2)}</p>
                                             </div>
                                             <div className="bg-gray-800/60 rounded-lg p-3">
                                                 <p className="text-xs text-gray-400 uppercase tracking-wide">Points required</p>
@@ -323,7 +323,7 @@ export default function MerchantOffersEdit({ offer, categories }: OffersEditProp
                                                 value={data.currency}
                                                 onValueChange={(value) => setData('currency', value)}
                                             >
-                                                <SelectTrigger className="mt-1 bg-gray-900/50 border-[#FF1493]/40 text-white">
+                                                <SelectTrigger className="mt-1 bg-gray-900/50 border-[#2563EB]/40 text-white">
                                                     <SelectValue />
                                                 </SelectTrigger>
                                                 <SelectContent>
@@ -391,7 +391,7 @@ export default function MerchantOffersEdit({ offer, categories }: OffersEditProp
                                             value={data.status}
                                             onValueChange={(value) => setData('status', value as 'draft' | 'active' | 'paused' | 'expired')}
                                         >
-                                            <SelectTrigger className={`mt-1 bg-gray-900/50 border-[#FF1493]/40 text-white ${errors.status ? 'border-red-500' : ''}`}>
+                                            <SelectTrigger className={`mt-1 bg-gray-900/50 border-[#2563EB]/40 text-white ${errors.status ? 'border-red-500' : ''}`}>
                                                 <SelectValue />
                                             </SelectTrigger>
                                             <SelectContent>
@@ -415,7 +415,7 @@ export default function MerchantOffersEdit({ offer, categories }: OffersEditProp
                                         Cancel
                                     </MerchantButton>
                                 </Link>
-                                <MerchantButton type="submit" disabled={processing} className="bg-gradient-to-r from-[#FF1493] via-[#DC143C] to-[#E97451] hover:from-[#FF1FA3] hover:via-[#EC1F4C] hover:to-[#F98461]">
+                                <MerchantButton type="submit" disabled={processing} className="bg-gradient-to-r from-[#2563EB] to-[#1D4ED8] hover:from-[#FF1FA3] hover:via-[#EC1F4C] hover:to-[#F98461]">
                                     {processing ? 'Updating...' : 'Update Offer'}
                                 </MerchantButton>
                             </div>

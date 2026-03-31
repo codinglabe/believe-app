@@ -131,7 +131,7 @@ export default function HubOfferDetail({ offer, relatedOffers = [] }: Props) {
     <>
       <Head title={`${offer.title} - Merchant Hub`} />
       <div className="min-h-screen bg-gradient-to-br from-black via-[#1a0a0a] to-[#2d1b1b] dark:from-black dark:via-[#1a0a0a] dark:to-[#2d1b1b] relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-r from-[#FF1493]/5 via-[#DC143C]/5 to-[#E97451]/5 pointer-events-none"></div>
+        <div className="absolute inset-0 bg-gradient-to-r from-[#2563EB]/4 to-[#2563EB]/2 pointer-events-none"></div>
 
         {/* Header */}
         <MerchantHeader
@@ -208,7 +208,7 @@ export default function HubOfferDetail({ offer, relatedOffers = [] }: Props) {
                         >
                           <motion.div
                             whileHover={{ scale: 1.02 }}
-                            className="bg-gray-800/50 rounded-lg overflow-hidden border border-gray-700 hover:border-[#FF1493]/50 transition-colors"
+                            className="bg-gray-800/50 rounded-lg overflow-hidden border border-gray-700 hover:border-[#2563EB]/50 transition-colors"
                           >
                             <div className="aspect-video bg-gray-700">
                               <img
@@ -225,7 +225,7 @@ export default function HubOfferDetail({ offer, relatedOffers = [] }: Props) {
                                 {relatedOffer.title}
                               </h3>
                               <div className="flex items-center justify-between text-sm">
-                                <span className="text-[#FF1493] font-bold">
+                                <span className="text-[#2563EB] font-bold">
                                   {relatedOffer.pointsRequired.toLocaleString()} pts
                                 </span>
                                 {relatedOffer.cashRequired && (
@@ -278,19 +278,19 @@ export default function HubOfferDetail({ offer, relatedOffers = [] }: Props) {
                             : "You don't have enough points — pay with cash (full amount)."}
                         </p>
 
-                        <div className="rounded-lg bg-gray-800/60 p-4 border border-[#FF1493]/20">
+                        <div className="rounded-lg bg-gray-800/60 p-4 border border-[#2563EB]/20">
                           <p className="text-xs font-medium text-gray-400 uppercase tracking-wide mb-1">Use points (if you have enough)</p>
                           <p className="text-lg text-white">
                             {offer.pointsRequired.toLocaleString()} points → {offer.currency || 'USD'} {(offer.discountAmount ?? 0).toFixed(2)} off
                           </p>
-                          <p className="text-xl font-bold text-[#FF1493] mt-1">
+                          <p className="text-xl font-bold text-[#2563EB] mt-1">
                             You pay: {offer.currency || 'USD'} {(offer.customerPriceWithPoints ?? 0).toFixed(2)}
                           </p>
                           {offer.isAvailable && (
                             <MerchantButton
                               onClick={() => handleRedeemOffer('points')}
                               disabled={isProcessing || userPoints < offer.pointsRequired}
-                              className="mt-3 w-full bg-gradient-to-r from-[#FF1493] via-[#DC143C] to-[#E97451] text-white disabled:opacity-50"
+                              className="mt-3 w-full bg-gradient-to-r from-[#2563EB] to-[#1D4ED8] text-white disabled:opacity-50"
                             >
                               {isProcessing && paymentMethod === 'points' ? 'Processing...' : userPoints >= offer.pointsRequired ? `Use ${offer.pointsRequired.toLocaleString()} points` : `Need ${offer.pointsRequired.toLocaleString()} points`}
                             </MerchantButton>
@@ -330,7 +330,7 @@ export default function HubOfferDetail({ offer, relatedOffers = [] }: Props) {
                     <div className="space-y-3">
                       <div className="flex items-center justify-between text-lg">
                         <span className="font-medium text-gray-300">Points Required:</span>
-                        <span className="font-bold text-[#FF1493]">{offer.pointsRequired.toLocaleString()}</span>
+                        <span className="font-bold text-[#2563EB]">{offer.pointsRequired.toLocaleString()}</span>
                       </div>
                       {offer.cashRequired != null && offer.cashRequired > 0 && (
                         <div className="flex items-center justify-between text-lg">
@@ -345,7 +345,7 @@ export default function HubOfferDetail({ offer, relatedOffers = [] }: Props) {
                     <MerchantButton
                       onClick={() => handleRedeemOffer('points')}
                       disabled={isProcessing}
-                      className="w-full bg-gradient-to-r from-[#FF1493] via-[#DC143C] to-[#E97451] text-white text-lg py-3 h-auto disabled:opacity-50"
+                      className="w-full bg-gradient-to-r from-[#2563EB] to-[#1D4ED8] text-white text-lg py-3 h-auto disabled:opacity-50"
                     >
                       {isProcessing ? 'Processing...' : 'Redeem Offer'}
                     </MerchantButton>
@@ -397,7 +397,7 @@ export default function HubOfferDetail({ offer, relatedOffers = [] }: Props) {
                   </MerchantCardHeader>
                   <MerchantCardContent className="space-y-4">
                     <div className="flex items-center gap-4">
-                      <div className="w-16 h-16 rounded-full bg-gradient-to-br from-[#FF1493] via-[#DC143C] to-[#E97451] flex items-center justify-center">
+                      <div className="w-16 h-16 rounded-full bg-gradient-to-br from-[#2563EB] to-[#1D4ED8] flex items-center justify-center">
                         <span className="text-white font-bold text-xl">
                           {offer.merchantName.charAt(0).toUpperCase()}
                         </span>

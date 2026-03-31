@@ -11,17 +11,16 @@ const MerchantTextarea = React.forwardRef<
       rows={4}
       data-slot="merchant-textarea"
       className={cn(
-        "border-[#FF1493]/40 file:text-foreground placeholder:text-gray-400 dark:placeholder:text-gray-500 selection:bg-[#FF1493] selection:text-white flex w-full min-w-0 rounded-md border-2 bg-gray-900/50 backdrop-blur px-3 py-2 text-base transition-all duration-300 outline-none disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 md:text-sm resize-none text-white",
-        "focus-visible:border-[#FF1493] focus-visible:ring-[#FF1493]/50 focus-visible:ring-[3px]",
-        "aria-invalid:ring-red-500/20 dark:aria-invalid:ring-red-500/40 aria-invalid:border-red-500",
+        "border-[#2563EB]/35 placeholder:text-gray-500 selection:bg-[#2563EB]/20 selection:text-[#0A2540] flex w-full min-w-0 rounded-md border-2 bg-white px-3 py-2 text-base transition-all duration-300 outline-none disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 md:text-sm resize-none text-[#0A2540]",
+        "focus-visible:border-[#2563EB] focus-visible:ring-[#2563EB]/30 focus-visible:ring-[3px]",
+        "aria-invalid:ring-red-500/20 aria-invalid:border-red-500",
         className
       )}
       {...props}
     />
-  );
-});
+  )
+})
 
-MerchantTextarea.displayName = "MerchantTextarea";
+MerchantTextarea.displayName = "MerchantTextarea"
 
-export { MerchantTextarea };
-
+export { MerchantTextarea }

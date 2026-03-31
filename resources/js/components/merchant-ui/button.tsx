@@ -9,15 +9,16 @@ const merchantButtonVariants = cva(
     variants: {
       variant: {
         default:
-          "bg-gradient-to-r from-[#FF1493] via-[#DC143C] to-[#E97451] text-white shadow-lg shadow-[#FF1493]/50 hover:from-[#FF1FA3] hover:via-[#EC1F4C] hover:to-[#F98461] focus-visible:ring-[#FF1493]/50 transition-all duration-300",
+          "bg-[#2563EB] text-white shadow-md shadow-[#2563EB]/25 hover:bg-[#1D4ED8] focus-visible:ring-[#2563EB]/40 transition-all duration-300",
         destructive:
           "bg-red-600 text-white shadow-xs hover:bg-red-700 focus-visible:ring-red-500/50",
         outline:
-          "border-2 border-[#FF1493] bg-transparent shadow-xs shadow-[#FF1493]/20 hover:bg-gradient-to-r hover:from-[#FF1493]/20 hover:via-[#DC143C]/20 hover:to-[#E97451]/20 hover:text-white hover:border-[#FF1493] text-[#FF1493] transition-all duration-300",
+          "border-2 border-white/20 bg-transparent text-white shadow-xs hover:bg-white/10 hover:border-white/30 transition-all duration-300",
         secondary:
-          "bg-gradient-to-r from-[#FF1493]/30 via-[#DC143C]/30 to-[#E97451]/30 text-white shadow-xs hover:from-[#FF1493]/50 hover:via-[#DC143C]/50 hover:to-[#E97451]/50 border border-[#FF1493]/30",
-        ghost: "hover:bg-[#FF1493]/20 hover:text-[#FF1493] text-white transition-all duration-300",
-        link: "text-[#FF1493] underline-offset-4 hover:text-[#DC143C] hover:underline transition-colors",
+          "bg-white/10 text-white border border-white/15 shadow-xs hover:bg-white/15",
+        ghost:
+          "hover:bg-white/10 hover:text-white text-white transition-all duration-300",
+        link: "text-[#2563EB] underline-offset-4 hover:text-[#1D4ED8] hover:underline transition-colors",
       },
       size: {
         default: "h-9 px-4 py-2 has-[>svg]:px-3",
@@ -55,4 +56,3 @@ function MerchantButton({
 }
 
 export { MerchantButton, merchantButtonVariants }
-

@@ -28,29 +28,7 @@ import {
     Loader2,
     ChevronDown,
     ChevronUp,
-    Store
 } from "lucide-react"
-
-interface PoolListing {
-    id: number;
-    name: string;
-    description: string;
-    price: number;
-    price_display: string;
-    image_url: string;
-    organization: {
-        id: number;
-        name: string;
-    };
-    merchant?: {
-        id?: number;
-        name?: string | null;
-    };
-    listing_type: string;
-    url: string;
-}
-
-type SellerType = "all" | "organization" | "merchant"
 
 interface Product {
     id: number;
@@ -89,14 +67,10 @@ interface Cart {
 
 interface PageProps {
     products: Product[];
-    poolListings?: PoolListing[];
     categories: any[];
     organizations: any[];
-    merchants?: { id: number; name: string }[];
     selectedCategories: number[];
     selectedOrganizations: number[];
-    selectedMerchants?: number[];
-    sellerType?: SellerType;
     search: string;
     cart?: Cart;
     total?: number;
@@ -111,14 +85,10 @@ const toNumber = (value: number | string): number => {
 
 export default function Marketplace({
     products,
-    poolListings = [],
     categories,
     organizations,
-    merchants = [],
     selectedCategories,
     selectedOrganizations,
-    selectedMerchants = [],
-    sellerType: sellerTypeProp = "all",
     search
 }: PageProps) {
     const [isFavorite, setIsFavorite] = useState(false)
@@ -128,9 +98,7 @@ export default function Marketplace({
     const [isLoading, setIsLoading] = useState(false)
     const [cartLoading, setCartLoading] = useState(false)
     const [cartModalLoading, setCartModalLoading] = useState(false)
-    const [isSellerTypeExpanded, setIsSellerTypeExpanded] = useState(true)
     const [isOrganizationsExpanded, setIsOrganizationsExpanded] = useState(true)
-    const [isMerchantsExpanded, setIsMerchantsExpanded] = useState(true)
     const [isCategoriesExpanded, setIsCategoriesExpanded] = useState(true)
     const productsPerPage = 6
 
@@ -139,7 +107,6 @@ export default function Marketplace({
 
 
     // Calculate pagination for products
-    const totalPool = poolListings?.length || 0
     const totalProducts = products?.length || 0
     const totalProductPages = Math.ceil(totalProducts / productsPerPage)
     const startProductIndex = (currentProductPage - 1) * productsPerPage
@@ -150,14 +117,10 @@ export default function Marketplace({
         search: string
         categories: number[]
         organizations: number[]
-        merchants: number[]
-        sellerType: SellerType
     }>({
         search: search || '',
         categories: (selectedCategories || []).map(Number),
         organizations: (selectedOrganizations || []).map(Number),
-        merchants: (selectedMerchants || []).map(Number),
-        sellerType: sellerTypeProp,
     })
 
     const toggleCategory = (categoryId: number) => {
@@ -178,20 +141,6 @@ export default function Marketplace({
         }))
     }
 
-    const toggleMerchant = (merchantId: number) => {
-        setFilters((prev) => ({
-            ...prev,
-            merchants: prev.merchants.includes(merchantId)
-                ? prev.merchants.filter(id => id !== merchantId)
-                : [...prev.merchants, merchantId]
-        }))
-    }
-
-    const setSellerType = (value: SellerType) => {
-        setFilters((prev) => ({ ...prev, sellerType: value }))
-        setCurrentProductPage(1)
-    }
-
     const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         setFilters((prev) => ({
             ...prev,
@@ -204,8 +153,6 @@ export default function Marketplace({
             search: '',
             categories: [],
             organizations: [],
-            merchants: [],
-            sellerType: 'all',
         })
         setCurrentProductPage(1)
     }
@@ -225,10 +172,6 @@ export default function Marketplace({
             search: filters.search,
             categories: filters.categories.length > 0 ? filters.categories.join(',') : '',
             organizations: filters.organizations.length > 0 ? filters.organizations.join(',') : '',
-            merchants: filters.merchants.length > 0 ? filters.merchants.join(',') : '',
-        }
-        if (filters.sellerType !== 'all') {
-            query.seller_type = filters.sellerType
         }
         debouncedFilter(pickBy(query))
     }, [filters])
@@ -237,20 +180,9 @@ export default function Marketplace({
         setCurrentProductPage(page);
     }
 
-    // Organizations: catalog (org / all) and pool (merchant / all) — listing nonprofit
-    const showOrganizationFilter =
-        filters.sellerType === 'all' ||
-        filters.sellerType === 'organization' ||
-        filters.sellerType === 'merchant'
-    // Merchants: pool only — hide when catalog-only mode
-    const showMerchantFilter = filters.sellerType === 'all' || filters.sellerType === 'merchant'
-
-    // Active filter count for badge
     const activeFilterCount =
         filters.categories.length +
         filters.organizations.length +
-        filters.merchants.length +
-        (filters.sellerType !== 'all' ? 1 : 0) +
         (filters.search ? 1 : 0)
 
     return (
@@ -275,7 +207,7 @@ export default function Marketplace({
                                 Marketplace
                             </h1>
                             <p className="text-base sm:text-lg md:text-xl text-white/90 max-w-2xl mx-auto">
-                                Discover amazing products from verified organizations and support causes you care about
+                                Shop catalog products from verified nonprofit organizations
                             </p>
                         </motion.div>
                     </div>
@@ -341,63 +273,6 @@ export default function Marketplace({
                                     )}
                                 </div>
 
-                                {/* Sold by — seller type (requirement: above org / merchant lists) */}
-                                <Card className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 shadow-md">
-                                    <CardHeader className="pb-3 bg-gradient-to-r from-purple-50 to-blue-50 dark:from-gray-700 dark:to-gray-700 rounded-t-lg">
-                                        <button
-                                            type="button"
-                                            onClick={() => setIsSellerTypeExpanded(!isSellerTypeExpanded)}
-                                            className="w-full flex items-center justify-between text-left"
-                                        >
-                                            <CardTitle className="text-base font-semibold text-gray-900 dark:text-white">
-                                                Sold by
-                                            </CardTitle>
-                                            {isSellerTypeExpanded ? (
-                                                <ChevronUp className="h-4 w-4 text-gray-600 dark:text-gray-300 shrink-0" />
-                                            ) : (
-                                                <ChevronDown className="h-4 w-4 text-gray-600 dark:text-gray-300 shrink-0" />
-                                            )}
-                                        </button>
-                                    </CardHeader>
-                                    <AnimatePresence>
-                                        {isSellerTypeExpanded && (
-                                            <motion.div
-                                                initial={{ height: 0, opacity: 0 }}
-                                                animate={{ height: 'auto', opacity: 1 }}
-                                                exit={{ height: 0, opacity: 0 }}
-                                                transition={{ duration: 0.3 }}
-                                                className="overflow-hidden"
-                                            >
-                                                <CardContent className="space-y-2 pt-2 pb-4">
-                                                    {([
-                                                        { value: 'all' as const, label: 'All sellers' },
-                                                        { value: 'organization' as const, label: 'Organizations' },
-                                                        { value: 'merchant' as const, label: 'Merchants' },
-                                                    ]).map(({ value, label }) => (
-                                                        <label
-                                                            key={value}
-                                                            className="flex items-center gap-3 cursor-pointer group p-2 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
-                                                        >
-                                                            <input
-                                                                type="radio"
-                                                                name="seller_type"
-                                                                checked={filters.sellerType === value}
-                                                                onChange={() => setSellerType(value)}
-                                                                className="h-4 w-4 text-purple-600 border-gray-300 focus:ring-purple-500 focus:ring-2"
-                                                            />
-                                                            <span className="text-sm text-gray-700 dark:text-gray-300 group-hover:text-gray-900 dark:group-hover:text-white">
-                                                                {label}
-                                                            </span>
-                                                        </label>
-                                                    ))}
-                                                </CardContent>
-                                            </motion.div>
-                                        )}
-                                    </AnimatePresence>
-                                </Card>
-
-                                {/* Organizations — catalog nonprofits; shown above Merchants per spec */}
-                                {showOrganizationFilter && (
                                 <Card className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 shadow-md">
                                     <CardHeader className="pb-3 bg-gradient-to-r from-purple-50 to-blue-50 dark:from-gray-700 dark:to-gray-700 rounded-t-lg">
                                         <button
@@ -446,65 +321,6 @@ export default function Marketplace({
                                         )}
                                     </AnimatePresence>
                                 </Card>
-                                )}
-
-                                {/* Merchants — pool / partner merchants */}
-                                {showMerchantFilter && (
-                                <Card className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 shadow-md">
-                                    <CardHeader className="pb-3 bg-gradient-to-r from-purple-50 to-blue-50 dark:from-gray-700 dark:to-gray-700 rounded-t-lg">
-                                        <button
-                                            type="button"
-                                            onClick={() => setIsMerchantsExpanded(!isMerchantsExpanded)}
-                                            className="w-full flex items-center justify-between text-left"
-                                        >
-                                            <CardTitle className="text-base font-semibold text-gray-900 dark:text-white flex items-center gap-2">
-                                                <Store className="h-4 w-4 text-purple-600 shrink-0" />
-                                                Merchants
-                                            </CardTitle>
-                                            {isMerchantsExpanded ? (
-                                                <ChevronUp className="h-4 w-4 text-gray-600 dark:text-gray-300 shrink-0" />
-                                            ) : (
-                                                <ChevronDown className="h-4 w-4 text-gray-600 dark:text-gray-300 shrink-0" />
-                                            )}
-                                        </button>
-                                    </CardHeader>
-                                    <AnimatePresence>
-                                        {isMerchantsExpanded && (
-                                            <motion.div
-                                                initial={{ height: 0, opacity: 0 }}
-                                                animate={{ height: 'auto', opacity: 1 }}
-                                                exit={{ height: 0, opacity: 0 }}
-                                                transition={{ duration: 0.3 }}
-                                                className="overflow-hidden"
-                                            >
-                                                <CardContent className="space-y-3 pt-4" style={{ height: '240px', maxHeight: '240px' }}>
-                                                    <div className="overflow-y-auto h-full pr-2" style={{ maxHeight: '240px' }}>
-                                                        {merchants.length === 0 ? (
-                                                            <p className="text-sm text-gray-500 dark:text-gray-400 px-2">
-                                                                No merchant pool listings match your account scope.
-                                                            </p>
-                                                        ) : (
-                                                            merchants.map((m) => (
-                                                                <label key={m.id} className="flex items-center space-x-3 cursor-pointer group p-2 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
-                                                                    <input
-                                                                        type="checkbox"
-                                                                        checked={filters.merchants.includes(m.id)}
-                                                                        onChange={() => toggleMerchant(m.id)}
-                                                                        className="h-4 w-4 text-purple-600 border-gray-300 rounded focus:ring-purple-500 focus:ring-2 shrink-0"
-                                                                    />
-                                                                    <span className="text-sm text-gray-700 dark:text-gray-300 group-hover:text-gray-900 dark:group-hover:text-white transition-colors truncate">
-                                                                        {m.name}
-                                                                    </span>
-                                                                </label>
-                                                            ))
-                                                        )}
-                                                    </div>
-                                                </CardContent>
-                                            </motion.div>
-                                        )}
-                                    </AnimatePresence>
-                                </Card>
-                                )}
 
                                 {/* Categories Filter */}
                                 <Card className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 shadow-md">
@@ -568,9 +384,9 @@ export default function Marketplace({
                                     <div>
                                         <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white">
                                             Marketplace
-                                            {(totalPool > 0 || totalProducts > 0) && (
+                                            {totalProducts > 0 && (
                                                 <span className="text-purple-600 dark:text-purple-400 text-lg font-semibold ml-2">
-                                                    ({totalPool > 0 ? `${totalPool} pool` : ''}{totalPool > 0 && totalProducts > 0 ? ', ' : ''}{totalProducts > 0 ? `${totalProducts} catalog` : ''})
+                                                    ({totalProducts} {totalProducts === 1 ? 'product' : 'products'})
                                                 </span>
                                             )}
                                         </h2>
@@ -582,75 +398,10 @@ export default function Marketplace({
                                     </div>
                                     <div className="text-sm text-gray-600 dark:text-gray-400 font-medium">
                                         {totalProducts > 0
-                                            ? `Showing ${startProductIndex + 1}-${endProductIndex} of ${totalProducts} catalog products`
-                                            : totalPool > 0
-                                                ? `${totalPool} pool listing${totalPool === 1 ? '' : 's'}`
-                                                : 'No listings'}
+                                            ? `Showing ${startProductIndex + 1}-${endProductIndex} of ${totalProducts} products`
+                                            : 'No products'}
                                     </div>
                                 </div>
-
-                                {totalPool > 0 && (
-                                    <div className="mb-10">
-                                        <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">
-                                            Merchant pool
-                                        </h3>
-                                        <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
-                                            Fulfilled by partner merchants; listed by nonprofits you support.
-                                        </p>
-                                        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6">
-                                            {poolListings.map((listing: PoolListing) => (
-                                                <Link href={listing.url} key={listing.id}>
-                                                    <Card className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 hover:shadow-xl transition-all duration-300 group hover:border-purple-300 dark:hover:border-purple-600 overflow-hidden h-full">
-                                                        <div className="relative overflow-hidden">
-                                                            <img
-                                                                src={listing.image_url || '/placeholder.svg'}
-                                                                alt={listing.name}
-                                                                className="w-full h-56 object-cover group-hover:scale-110 transition-transform duration-500"
-                                                            />
-                                                        <div className="absolute top-3 left-3 flex flex-col gap-1.5 items-start max-w-[85%]">
-                                                            <Badge
-                                                                variant="secondary"
-                                                                className="bg-emerald-600/95 text-white text-xs font-medium border-0 shadow-md"
-                                                            >
-                                                                Pool product
-                                                            </Badge>
-                                                            <Badge
-                                                                variant="secondary"
-                                                                className="bg-amber-600/95 text-white text-xs font-medium border-0 shadow-md"
-                                                            >
-                                                                Merchant
-                                                            </Badge>
-                                                        </div>
-                                                        <Badge
-                                                            variant="outline"
-                                                            className="absolute bottom-3 left-3 bg-white/95 dark:bg-gray-800/95 backdrop-blur-sm text-gray-800 dark:text-gray-200 text-xs font-medium border-0 shadow-md max-w-[90%] truncate"
-                                                        >
-                                                            Listed by {listing.organization.name}
-                                                            {listing.merchant?.name ? ` · ${listing.merchant.name}` : ''}
-                                                        </Badge>
-                                                        </div>
-                                                        <CardContent className="p-5 sm:p-6">
-                                                            <div className="flex justify-between items-start mb-2 gap-2">
-                                                                <h4 className="text-lg font-bold text-gray-900 dark:text-white group-hover:text-purple-600 dark:group-hover:text-purple-400 transition-colors line-clamp-2 flex-1">
-                                                                    {listing.name}
-                                                                </h4>
-                                                                <span className="text-xl font-bold text-purple-600 dark:text-purple-400 whitespace-nowrap">
-                                                                    {listing.price_display}
-                                                                </span>
-                                                            </div>
-                                                            <p className="text-gray-600 dark:text-gray-300 text-sm line-clamp-2 mb-4">
-                                                                {listing.description}
-                                                            </p>
-                                                            <Button className="w-full h-11 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-semibold shadow-md">
-                                                                View listing
-                                                            </Button>
-                                                        </CardContent>
-                                                    </Card>
-                                                </Link>
-                                            ))}
-                                        </div>
-                                    </div>
-                                )}
 
                                 {totalProducts > 0 ? (
                                     <>
@@ -800,7 +551,7 @@ export default function Marketplace({
                                             </div>
                                         )}
                                     </>
-                                ) : totalPool === 0 ? (
+                                ) : (
                                     <div className="text-center py-16 sm:py-20">
                                         <div className="inline-flex items-center justify-center w-20 h-20 bg-gray-100 dark:bg-gray-800 rounded-full mb-6">
                                             <ShoppingCart className="h-10 w-10 text-gray-400" />
@@ -819,10 +570,6 @@ export default function Marketplace({
                                             Clear all filters
                                         </Button>
                                     </div>
-                                ) : (
-                                    <p className="text-sm text-gray-600 dark:text-gray-400 py-4">
-                                        No catalog products match your filters. Browse pool listings above or clear filters.
-                                    </p>
                                 )}
                             </motion.div>
                         </div>

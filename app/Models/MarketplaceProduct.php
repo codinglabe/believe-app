@@ -63,10 +63,25 @@ class MarketplaceProduct extends Model
         return $this->hasMany(OrganizationProduct::class);
     }
 
+    /**
+     * Nonprofit pool tab / org adoption: active, nonprofit enabled, in stock.
+     */
     public function inPool(): bool
     {
         return $this->status === 'active'
             && $this->nonprofit_marketplace_enabled
             && ($this->inventory_quantity === null || $this->inventory_quantity > 0);
+    }
+
+    /**
+     * Merchant Hub checkout (supporter cart): active and in stock — independent of nonprofit pool opt-in.
+     */
+    public function isHubCheckoutEligible(): bool
+    {
+        if ($this->status !== 'active') {
+            return false;
+        }
+
+        return $this->inventory_quantity === null || (int) $this->inventory_quantity > 0;
     }
 }

@@ -64,7 +64,7 @@ export default function Analytics({ stats, weeklyRedemptions, revenueData, topOf
                   onClick={() => handleTimeRangeChange(range)}
                   className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                     timeRange === range
-                      ? 'bg-gradient-to-r from-[#FF1493] via-[#DC143C] to-[#E97451] text-white'
+                      ? 'bg-gradient-to-r from-[#2563EB] to-[#1D4ED8] text-white'
                       : 'bg-black/50 text-gray-400 hover:text-white hover:bg-black/70'
                   }`}
                 >
@@ -208,7 +208,7 @@ export default function Analytics({ stats, weeklyRedemptions, revenueData, topOf
                     className="flex items-center justify-between p-4 bg-black/30 rounded-lg hover:bg-black/50 transition-colors"
                   >
                     <div className="flex items-center gap-4">
-                      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#FF1493] via-[#DC143C] to-[#E97451] flex items-center justify-center text-white font-bold">
+                      <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#2563EB] to-[#1D4ED8] flex items-center justify-center text-white font-bold">
                         {index + 1}
                       </div>
                       <div>
@@ -217,7 +217,7 @@ export default function Analytics({ stats, weeklyRedemptions, revenueData, topOf
                       </div>
                     </div>
                     <div className="text-right">
-                      <p className="font-bold text-[#FF1493]">${offer.revenue.toLocaleString()}</p>
+                      <p className="font-bold text-[#2563EB]">${offer.revenue.toLocaleString()}</p>
                       <p className="text-sm text-gray-400">Revenue</p>
                     </div>
                   </motion.div>

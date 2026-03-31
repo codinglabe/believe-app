@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\Merchant;
 use App\Models\Order;
 use App\Models\OrderShippingInfo;
 use App\Models\Organization;
@@ -822,6 +823,38 @@ class ShippoService
     }
 
     /**
+     * Ship-from for merchant marketplace pool (checkout rates + labels): saved shipping address or business profile.
+     *
+     * @return array<string, mixed>
+     */
+    public function shipFromPayloadForMerchant(Merchant $merchant): array
+    {
+        $merchant->loadMissing('shippingAddresses');
+        $parts = $merchant->shipFromAddressForRates();
+        $contact = $this->getSellerContactForShippo(null, null);
+        $mEmail = trim((string) ($merchant->email ?? ''));
+        $mPhone = trim((string) ($merchant->phone ?? ''));
+        if ($mEmail !== '') {
+            $contact['email'] = $mEmail;
+        }
+        if ($mPhone !== '') {
+            $contact['phone'] = $mPhone;
+        }
+
+        return $this->addressPayload([
+            'name' => $parts['name'],
+            'street1' => $parts['street1'],
+            'street2' => $parts['street2'] ?? '',
+            'city' => $parts['city'],
+            'state' => $parts['state'],
+            'zip' => $parts['zip'],
+            'country' => $parts['country'] ?? 'US',
+            'phone' => $contact['phone'],
+            'email' => $contact['email'],
+        ]);
+    }
+
+    /**
      * Get ship-from address from product or organization.
      */
     protected function getShipFrom(Order $order): array
@@ -831,35 +864,22 @@ class ShippoService
             'items.product.organization.user',
             'items.product.user',
             'items.product.shipFromMerchant.shippingAddresses',
+            'items.marketplaceProduct.merchant.shippingAddresses',
             'items.organizationProduct.marketplaceProduct.merchant.shippingAddresses',
         ]);
         $firstItem = $order->items->first();
 
+        if ($firstItem?->marketplace_product_id) {
+            $merchant = $firstItem->marketplaceProduct?->merchant;
+            if ($merchant) {
+                return $this->shipFromPayloadForMerchant($merchant);
+            }
+        }
+
         if ($firstItem?->organization_product_id) {
             $merchant = $firstItem->organizationProduct?->marketplaceProduct?->merchant;
             if ($merchant) {
-                $parts = $merchant->shipFromAddressForRates();
-                $contact = $this->getSellerContactForShippo(null, null);
-                $mEmail = trim((string) ($merchant->email ?? ''));
-                $mPhone = trim((string) ($merchant->phone ?? ''));
-                if ($mEmail !== '') {
-                    $contact['email'] = $mEmail;
-                }
-                if ($mPhone !== '') {
-                    $contact['phone'] = $mPhone;
-                }
-
-                return $this->addressPayload([
-                    'name' => $parts['name'],
-                    'street1' => $parts['street1'],
-                    'street2' => $parts['street2'] ?? '',
-                    'city' => $parts['city'],
-                    'state' => $parts['state'],
-                    'zip' => $parts['zip'],
-                    'country' => $parts['country'],
-                    'phone' => $contact['phone'],
-                    'email' => $contact['email'],
-                ]);
+                return $this->shipFromPayloadForMerchant($merchant);
             }
         }
 

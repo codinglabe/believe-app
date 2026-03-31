@@ -4,11 +4,11 @@ namespace App\Http\Controllers;
 
 use App\Models\Cart;
 use App\Models\CartItem;
+use App\Models\MarketplaceProduct;
 use App\Models\OrganizationProduct;
 use App\Models\Product;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
 
@@ -21,19 +21,20 @@ class CartController extends Controller
     {
         try {
             $user = $request->user();
-            $cart = $user->cart()->with(['items.product', 'items.organizationProduct.marketplaceProduct'])->first();
+            $cart = $user->cart()->with(['items.product', 'items.organizationProduct.marketplaceProduct', 'items.marketplaceProduct'])->first();
 
-            if (!$cart) {
+            if (! $cart) {
                 $cart = $user->cart()->create();
             }
 
             return Inertia::render('Cart/Index', [
                 'cart' => $cart,
-                'cartData' => $this->getCartData($request, $cart)
+                'cartData' => $this->getCartData($request, $cart),
             ]);
 
         } catch (\Exception $e) {
             Log::error('Cart index error', ['error' => $e->getMessage()]);
+
             return redirect()->route('marketplace.index')->with('error', 'Error loading cart');
         }
     }
@@ -45,30 +46,31 @@ class CartController extends Controller
     {
         try {
             $user = $request->user();
-            $cart = $user->cart()->with(['items.product', 'items.organizationProduct.marketplaceProduct'])->first();
+            $cart = $user->cart()->with(['items.product', 'items.organizationProduct.marketplaceProduct', 'items.marketplaceProduct'])->first();
 
-            if (!$cart) {
+            if (! $cart) {
                 return response()->json([
                     'cartData' => [
                         'items' => [],
                         'subtotal' => 0,
-                        'item_count' => 0
-                    ]
+                        'item_count' => 0,
+                    ],
                 ]);
             }
 
             return response()->json([
-                'cartData' => $this->getCartData($request, $cart)
+                'cartData' => $this->getCartData($request, $cart),
             ]);
 
         } catch (\Exception $e) {
             Log::error('Get cart data API error', ['error' => $e->getMessage()]);
+
             return response()->json([
                 'cartData' => [
                     'items' => [],
                     'subtotal' => 0,
-                    'item_count' => 0
-                ]
+                    'item_count' => 0,
+                ],
             ]);
         }
     }
@@ -189,7 +191,6 @@ class CartController extends Controller
     //     }
     // }
 
-
     /**
      * Add item to cart with variant support
      */
@@ -201,13 +202,17 @@ class CartController extends Controller
             // Use firstOrCreate to ensure cart always exists
             $cart = $user->cart()->firstOrCreate();
 
+            if ($request->filled('marketplace_product_id')) {
+                return $this->addMarketplaceProduct($request, $cart);
+            }
+
             if ($request->filled('organization_product_id')) {
                 return $this->addOrganizationPoolListing($request, $cart);
             }
 
             // Get product first to determine if it's Printify or manual
             $product = Product::with('organization')->findOrFail($request->product_id);
-            $isPrintifyProduct = !empty($product->printify_product_id);
+            $isPrintifyProduct = ! empty($product->printify_product_id);
 
             // Conditional validation based on product type
             $rules = [
@@ -241,10 +246,10 @@ class CartController extends Controller
             $newProductOrganizationId = $product->organization_id;
 
             // Check if product is available
-            if (!$product->quantity_available || $product->quantity_available <= 0) {
+            if (! $product->quantity_available || $product->quantity_available <= 0) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'This product is currently unavailable'
+                    'message' => 'This product is currently unavailable',
                 ], 422);
             }
 
@@ -252,7 +257,7 @@ class CartController extends Controller
             if ($validated['quantity'] > $product->quantity_available) {
                 return response()->json([
                     'success' => false,
-                    'message' => "Only {$product->quantity_available} items available in stock"
+                    'message' => "Only {$product->quantity_available} items available in stock",
                 ], 422);
             }
 
@@ -266,11 +271,11 @@ class CartController extends Controller
             }
 
             // Check variant availability for Printify products
-            if ($isPrintifyProduct && !empty($validated['printify_variant_id'])) {
-                if (!$this->isVariantAvailable($product, $validated['printify_variant_id'])) {
+            if ($isPrintifyProduct && ! empty($validated['printify_variant_id'])) {
+                if (! $this->isVariantAvailable($product, $validated['printify_variant_id'])) {
                     return response()->json([
                         'success' => false,
-                        'message' => 'Selected variant is out of stock'
+                        'message' => 'Selected variant is out of stock',
                     ], 422);
                 }
             }
@@ -282,16 +287,79 @@ class CartController extends Controller
                 'success' => true,
                 'message' => 'Product added to cart',
                 'cartData' => $this->getCartData($request, $cart),
-                'cart_cleared' => $currentCartItems->isNotEmpty() // Flag if cart was cleared
+                'cart_cleared' => $currentCartItems->isNotEmpty(), // Flag if cart was cleared
             ]);
 
         } catch (\Exception $e) {
             Log::error('Add to cart error', ['error' => $e->getMessage()]);
+
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to add product to cart: ' . $e->getMessage()
+                'message' => 'Failed to add product to cart: '.$e->getMessage(),
             ], 422);
         }
+    }
+
+    /**
+     * Add a merchant marketplace product directly (no organization pool row).
+     */
+    private function addMarketplaceProduct(Request $request, Cart $cart): JsonResponse
+    {
+        $validated = $request->validate([
+            'marketplace_product_id' => 'required|exists:marketplace_products,id',
+            'quantity' => 'required|integer|min:1',
+        ]);
+
+        $mp = MarketplaceProduct::query()->findOrFail($validated['marketplace_product_id']);
+        if (! $mp->isHubCheckoutEligible()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'This product is not available.',
+            ], 422);
+        }
+
+        $qty = (int) $validated['quantity'];
+        if ($mp->inventory_quantity !== null && $qty > (int) $mp->inventory_quantity) {
+            return response()->json([
+                'success' => false,
+                'message' => "Only {$mp->inventory_quantity} available in stock.",
+            ], 422);
+        }
+
+        $price = (float) ($mp->suggested_retail_price ?? $mp->base_price);
+        if ($mp->min_resale_price !== null && $price < (float) $mp->min_resale_price) {
+            $price = (float) $mp->min_resale_price;
+        }
+
+        $cart->items()->delete();
+
+        $firstImage = null;
+        $imgs = $mp->images ?? [];
+        if (is_array($imgs) && count($imgs) > 0) {
+            $path = $imgs[0];
+            $firstImage = filter_var($path, FILTER_VALIDATE_URL) ? $path : asset('storage/'.ltrim((string) $path, '/'));
+        }
+
+        $cart->items()->create([
+            'product_id' => null,
+            'organization_product_id' => null,
+            'marketplace_product_id' => $mp->id,
+            'quantity' => $qty,
+            'unit_price' => $price,
+            'printify_variant_id' => null,
+            'printify_blueprint_id' => null,
+            'printify_print_provider_id' => null,
+            'variant_options' => null,
+            'variant_price_modifier' => 0,
+            'variant_image' => $firstImage,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Added to cart',
+            'cartData' => $this->getCartData($request, $cart->load(['items.product', 'items.organizationProduct.marketplaceProduct', 'items.marketplaceProduct'])),
+            'cart_cleared' => true,
+        ]);
     }
 
     /**
@@ -311,7 +379,7 @@ class CartController extends Controller
             ->firstOrFail();
 
         $mp = $op->marketplaceProduct;
-        if (! $mp || ! $mp->inPool()) {
+        if (! $mp || ! $mp->isHubCheckoutEligible()) {
             return response()->json([
                 'success' => false,
                 'message' => 'This listing is not available.',
@@ -351,7 +419,7 @@ class CartController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Added to cart',
-            'cartData' => $this->getCartData($request, $cart->load(['items.product', 'items.organizationProduct.marketplaceProduct'])),
+            'cartData' => $this->getCartData($request, $cart->load(['items.product', 'items.organizationProduct.marketplaceProduct', 'items.marketplaceProduct'])),
             'cart_cleared' => true,
         ]);
     }
@@ -366,7 +434,7 @@ class CartController extends Controller
         $totalPrice = $basePrice + $priceModifier;
 
         $variantOptions = $validated['variant_options'] ?? [];
-        $variantOptionsJson = !empty($variantOptions) ? json_encode($variantOptions) : null;
+        $variantOptionsJson = ! empty($variantOptions) ? json_encode($variantOptions) : null;
 
         $cartItemData = [
             'product_id' => $validated['product_id'],
@@ -401,34 +469,56 @@ class CartController extends Controller
             $variantData = json_decode($product->variants, true);
             $selectedVariant = collect($variantData)->firstWhere('id', $variantId);
 
-            if ($selectedVariant && isset($selectedVariant['is_available']) && !$selectedVariant['is_available']) {
+            if ($selectedVariant && isset($selectedVariant['is_available']) && ! $selectedVariant['is_available']) {
                 return false;
             }
         }
+
         return true;
     }
 
     /**
      * Get detailed cart data with variant info
      */
-    public function getCartData(Request $request, Cart $cart = null)
+    public function getCartData(Request $request, ?Cart $cart = null)
     {
-        if (!$cart) {
+        if (! $cart) {
             $user = $request->user();
-            $cart = $user->cart()->with(['items.product', 'items.organizationProduct.marketplaceProduct'])->first();
+            $cart = $user->cart()->with(['items.product', 'items.organizationProduct.marketplaceProduct', 'items.marketplaceProduct'])->first();
         }
 
-        if (!$cart) {
+        if (! $cart) {
             return [
                 'items' => [],
                 'subtotal' => 0,
-                'item_count' => 0
+                'item_count' => 0,
             ];
         }
 
-        $cart->loadMissing(['items.product', 'items.organizationProduct.organization', 'items.organizationProduct.marketplaceProduct']);
+        $cart->loadMissing(['items.product', 'items.organizationProduct.organization', 'items.organizationProduct.marketplaceProduct', 'items.marketplaceProduct']);
 
         $items = $cart->items->map(function ($item) {
+            if ($item->marketplace_product_id) {
+                $mp = $item->marketplaceProduct;
+
+                return [
+                    'id' => $item->id,
+                    'product_id' => null,
+                    'organization_product_id' => null,
+                    'marketplace_product_id' => $item->marketplace_product_id,
+                    'product_name' => $mp?->name ?? 'Product',
+                    'product_image' => $item->variant_image,
+                    'quantity' => $item->quantity,
+                    'unit_price' => $item->unit_price,
+                    'subtotal' => $item->unit_price * $item->quantity,
+                    'variant_options' => [],
+                    'printify_variant_id' => null,
+                    'variant_price_modifier' => $item->variant_price_modifier,
+                    'listing_type' => 'merchant_marketplace',
+                    'sold_by_organization' => null,
+                ];
+            }
+
             if ($item->organization_product_id) {
                 $op = $item->organizationProduct;
                 $mp = $op?->marketplaceProduct;
@@ -437,6 +527,7 @@ class CartController extends Controller
                     'id' => $item->id,
                     'product_id' => null,
                     'organization_product_id' => $item->organization_product_id,
+                    'marketplace_product_id' => null,
                     'product_name' => $mp?->name ?? 'Product',
                     'product_image' => $item->variant_image,
                     'quantity' => $item->quantity,
@@ -454,6 +545,7 @@ class CartController extends Controller
                 'id' => $item->id,
                 'product_id' => $item->product_id,
                 'organization_product_id' => null,
+                'marketplace_product_id' => null,
                 'product_name' => $item->product->name,
                 'product_image' => $item->product->image,
                 'quantity' => $item->quantity,
@@ -471,7 +563,7 @@ class CartController extends Controller
         return [
             'items' => $items,
             'subtotal' => $subtotal,
-            'item_count' => $cart->items->sum('quantity')
+            'item_count' => $cart->items->sum('quantity'),
         ];
     }
 
@@ -486,9 +578,16 @@ class CartController extends Controller
 
         $this->authorize('update', $cartItem);
 
-        $cartItem->loadMissing(['product', 'organizationProduct.marketplaceProduct']);
+        $cartItem->loadMissing(['product', 'organizationProduct.marketplaceProduct', 'marketplaceProduct']);
 
-        if ($cartItem->organization_product_id) {
+        if ($cartItem->marketplace_product_id) {
+            $mp = $cartItem->marketplaceProduct;
+            if ($mp && $mp->inventory_quantity !== null && $validated['quantity'] > (int) $mp->inventory_quantity) {
+                return response()->json([
+                    'error' => 'Only '.$mp->inventory_quantity.' items available in stock',
+                ], 422);
+            }
+        } elseif ($cartItem->organization_product_id) {
             $mp = $cartItem->organizationProduct?->marketplaceProduct;
             if ($mp && $mp->inventory_quantity !== null && $validated['quantity'] > (int) $mp->inventory_quantity) {
                 return response()->json([
@@ -497,12 +596,12 @@ class CartController extends Controller
             }
         } elseif ($cartItem->product && $validated['quantity'] > $cartItem->product->quantity_available) {
             return response()->json([
-                'error' => 'Only ' . $cartItem->product->quantity_available . ' items available in stock'
+                'error' => 'Only '.$cartItem->product->quantity_available.' items available in stock',
             ], 422);
         }
 
         $cartItem->update($validated);
-        $cart = $cartItem->cart->load(['items.product', 'items.variant', 'items.organizationProduct.marketplaceProduct']);
+        $cart = $cartItem->cart->load(['items.product', 'items.variant', 'items.organizationProduct.marketplaceProduct', 'items.marketplaceProduct']);
 
         return response()->json([
             'message' => 'Cart item updated',

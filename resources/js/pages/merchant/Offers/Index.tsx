@@ -128,7 +128,7 @@ export default function MerchantOffersIndex({ offers, filters: initialFilters }:
 
     const getStatusBadge = (status: string) => {
         const statusConfig = {
-            active: { label: 'Active', className: 'bg-gradient-to-r from-[#FF1493] via-[#DC143C] to-[#E97451] shadow-none' },
+            active: { label: 'Active', className: 'bg-gradient-to-r from-[#2563EB] to-[#1D4ED8] shadow-none' },
             draft: { label: 'Draft', className: 'bg-gray-500 shadow-none' },
             paused: { label: 'Paused', className: 'bg-yellow-500 shadow-none' },
             expired: { label: 'Expired', className: 'bg-red-500 shadow-none' },
@@ -158,7 +158,7 @@ export default function MerchantOffersIndex({ offers, filters: initialFilters }:
                             <p className="text-gray-400">Manage your merchant hub offers</p>
                         </div>
                         <Link href="/offers/create">
-                            <MerchantButton className="bg-gradient-to-r from-[#FF1493] via-[#DC143C] to-[#E97451] hover:from-[#FF1FA3] hover:via-[#EC1F4C] hover:to-[#F98461]">
+                            <MerchantButton className="bg-gradient-to-r from-[#2563EB] to-[#1D4ED8] hover:from-[#FF1FA3] hover:via-[#EC1F4C] hover:to-[#F98461]">
                                 <Plus className="h-4 w-4 mr-2" />
                                 Create Offer
                             </MerchantButton>
@@ -186,7 +186,7 @@ export default function MerchantOffersIndex({ offers, filters: initialFilters }:
                                 <div className="flex flex-col gap-2">
                                     <MerchantLabel>Status</MerchantLabel>
                                     <Select value={selectedStatus || 'all'} onValueChange={handleStatusFilter}>
-                                        <SelectTrigger className="mt-1 bg-gray-900/50 border-[#FF1493]/40 text-white">
+                                        <SelectTrigger className="mt-1 bg-gray-900/50 border-[#2563EB]/40 text-white">
                                             <SelectValue placeholder="All Statuses" />
                                         </SelectTrigger>
                                         <SelectContent>
@@ -234,7 +234,7 @@ export default function MerchantOffersIndex({ offers, filters: initialFilters }:
                                         </div>
                                     </div>
                                     {/* Bottom: Card with info only - no extra card padding so content sits flush */}
-                                    <MerchantCard className="rounded-t-none rounded-b-lg flex-1 shadow-lg transition-all duration-300 hover:shadow-[#FF1493]/20 !p-0 !gap-0">
+                                    <MerchantCard className="rounded-t-none rounded-b-lg flex-1 shadow-lg transition-all duration-300 hover:shadow-[#2563EB]/20 !p-0 !gap-0">
                                         <MerchantCardContent className="pt-3 pb-3 px-3">
                                             <h3 className="font-semibold text-sm text-white mb-1 line-clamp-2">
                                                 {offer.title}
@@ -250,7 +250,7 @@ export default function MerchantOffersIndex({ offers, filters: initialFilters }:
                                                 </MerchantBadge>
                                             )}
                                             <p className="text-xs text-gray-300 mb-2">
-                                                <span className="font-semibold text-[#FF1493]">{offer.points_required.toLocaleString()}</span> pts
+                                                <span className="font-semibold text-[#2563EB]">{offer.points_required.toLocaleString()}</span> pts
                                                 {offer.cash_required && (
                                                     <span> + ${typeof offer.cash_required === 'number' ? offer.cash_required.toFixed(2) : parseFloat(offer.cash_required).toFixed(2)}</span>
                                                 )}
@@ -296,7 +296,7 @@ export default function MerchantOffersIndex({ offers, filters: initialFilters }:
                                 </p>
                                 {!search && (!selectedStatus || selectedStatus === 'all') && (
                                     <Link href="/offers/create">
-                                        <MerchantButton className="bg-gradient-to-r from-[#FF1493] via-[#DC143C] to-[#E97451] hover:from-[#FF1FA3] hover:via-[#EC1F4C] hover:to-[#F98461]">
+                                        <MerchantButton className="bg-gradient-to-r from-[#2563EB] to-[#1D4ED8] hover:from-[#FF1FA3] hover:via-[#EC1F4C] hover:to-[#F98461]">
                                             <Plus className="h-4 w-4 mr-2" />
                                             Create Your First Offer
                                         </MerchantButton>
@@ -319,9 +319,9 @@ export default function MerchantOffersIndex({ offers, filters: initialFilters }:
                                         href={link.url || '#'}
                                         className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
                                             link.active
-                                                ? 'bg-gradient-to-r from-[#FF1493] via-[#DC143C] to-[#E97451] text-white'
+                                                ? 'bg-gradient-to-r from-[#2563EB] to-[#1D4ED8] text-white'
                                                 : link.url
-                                                ? 'bg-gray-900/50 border border-[#FF1493]/40 text-white hover:bg-gray-800'
+                                                ? 'bg-gray-900/50 border border-[#2563EB]/40 text-white hover:bg-gray-800'
                                                 : 'bg-gray-900/30 border border-gray-700 text-gray-500 cursor-not-allowed'
                                         }`}
                                         dangerouslySetInnerHTML={{ __html: link.label }}
@@ -333,7 +333,7 @@ export default function MerchantOffersIndex({ offers, filters: initialFilters }:
 
                     {/* Delete Confirmation Dialog */}
                     <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
-                        <DialogContent className="bg-gray-900 border-[#FF1493]/40 text-white">
+                        <DialogContent className="bg-gray-900 border-[#2563EB]/40 text-white">
                             <DialogHeader>
                                 <DialogTitle>Delete Offer</DialogTitle>
                                 <DialogDescription className="text-gray-400">

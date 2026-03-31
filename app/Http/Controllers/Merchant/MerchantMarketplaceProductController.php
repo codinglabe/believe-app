@@ -69,7 +69,8 @@ class MerchantMarketplaceProductController extends Controller
         $validated['images'] = $paths ?: null;
         $validated['merchant_id'] = $merchant->id;
 
-        MarketplaceProduct::create($validated);
+        $product = MarketplaceProduct::create($validated);
+        app(MerchantMarketplacePoolListingService::class)->sync($product);
 
         return redirect()->route('marketplace-products.index')
             ->with('success', 'Product saved.');

@@ -42,7 +42,7 @@ interface OfferShowProps {
 export default function MerchantOffersShow({ offer }: OfferShowProps) {
     const getStatusBadge = (status: string) => {
         const statusConfig = {
-            active: { label: 'Active', className: 'bg-gradient-to-r from-[#FF1493] via-[#DC143C] to-[#E97451] shadow-lg shadow-[#FF1493]/50' },
+            active: { label: 'Active', className: 'bg-gradient-to-r from-[#2563EB] to-[#1D4ED8] shadow-lg shadow-[#2563EB]/50' },
             draft: { label: 'Draft', className: 'bg-gray-500' },
             paused: { label: 'Paused', className: 'bg-yellow-500' },
             expired: { label: 'Expired', className: 'bg-red-500' },
@@ -92,7 +92,7 @@ export default function MerchantOffersShow({ offer }: OfferShowProps) {
                                 )}
                             </div>
                             <Link href={`/offers/${offer.id}/edit`}>
-                                <MerchantButton className="bg-gradient-to-r from-[#FF1493] via-[#DC143C] to-[#E97451] hover:from-[#FF1FA3] hover:via-[#EC1F4C] hover:to-[#F98461]">
+                                <MerchantButton className="bg-gradient-to-r from-[#2563EB] to-[#1D4ED8] hover:from-[#FF1FA3] hover:via-[#EC1F4C] hover:to-[#F98461]">
                                     <Edit className="h-4 w-4 mr-2" />
                                     Edit Offer
                                 </MerchantButton>
@@ -138,9 +138,9 @@ export default function MerchantOffersShow({ offer }: OfferShowProps) {
                                     </MerchantCardHeader>
                                     <MerchantCardContent className="space-y-4">
                                         {/* Points Required */}
-                                        <div className="flex items-center justify-between p-3 bg-gradient-to-r from-[#FF1493]/10 via-[#DC143C]/10 to-[#E97451]/10 rounded-lg border border-[#FF1493]/20">
+                                        <div className="flex items-center justify-between p-3 bg-gradient-to-r from-[#2563EB]/8 to-[#2563EB]/3 rounded-lg border border-[#2563EB]/20">
                                             <div className="flex items-center gap-2">
-                                                <Coins className="w-5 h-5 text-[#FF1493]" />
+                                                <Coins className="w-5 h-5 text-[#2563EB]" />
                                                 <span className="text-gray-300">Points Required</span>
                                             </div>
                                             <span className="font-semibold text-white text-lg">
@@ -150,9 +150,9 @@ export default function MerchantOffersShow({ offer }: OfferShowProps) {
 
                                         {/* Cash Required */}
                                         {offer.cash_required && (
-                                            <div className="flex items-center justify-between p-3 bg-gradient-to-r from-[#FF1493]/10 via-[#DC143C]/10 to-[#E97451]/10 rounded-lg border border-[#FF1493]/20">
+                                            <div className="flex items-center justify-between p-3 bg-gradient-to-r from-[#2563EB]/8 to-[#2563EB]/3 rounded-lg border border-[#2563EB]/20">
                                                 <div className="flex items-center gap-2">
-                                                    <DollarSign className="w-5 h-5 text-[#FF1493]" />
+                                                    <DollarSign className="w-5 h-5 text-[#2563EB]" />
                                                     <span className="text-gray-300">Cash Required</span>
                                                 </div>
                                                 <span className="font-semibold text-white text-lg">
@@ -163,7 +163,7 @@ export default function MerchantOffersShow({ offer }: OfferShowProps) {
 
                                         {/* Category */}
                                         {offer.category && (
-                                            <div className="flex items-center justify-between p-3 bg-gray-800/50 rounded-lg border border-[#FF1493]/20">
+                                            <div className="flex items-center justify-between p-3 bg-gray-800/50 rounded-lg border border-[#2563EB]/20">
                                                 <div className="flex items-center gap-2">
                                                     <Tag className="w-5 h-5 text-gray-400" />
                                                     <span className="text-gray-300">Category</span>
@@ -175,7 +175,7 @@ export default function MerchantOffersShow({ offer }: OfferShowProps) {
                                         )}
 
                                         {/* Inventory */}
-                                        <div className="flex items-center justify-between p-3 bg-gray-800/50 rounded-lg border border-[#FF1493]/20">
+                                        <div className="flex items-center justify-between p-3 bg-gray-800/50 rounded-lg border border-[#2563EB]/20">
                                             <div className="flex items-center gap-2">
                                                 <Package className="w-5 h-5 text-gray-400" />
                                                 <span className="text-gray-300">Inventory</span>
@@ -187,7 +187,7 @@ export default function MerchantOffersShow({ offer }: OfferShowProps) {
 
                                         {/* Start Date */}
                                         {offer.starts_at && (
-                                            <div className="flex items-center justify-between p-3 bg-gray-800/50 rounded-lg border border-[#FF1493]/20">
+                                            <div className="flex items-center justify-between p-3 bg-gray-800/50 rounded-lg border border-[#2563EB]/20">
                                                 <div className="flex items-center gap-2">
                                                     <Calendar className="w-5 h-5 text-gray-400" />
                                                     <span className="text-gray-300">Starts At</span>
@@ -200,7 +200,7 @@ export default function MerchantOffersShow({ offer }: OfferShowProps) {
 
                                         {/* End Date */}
                                         {offer.ends_at && (
-                                            <div className="flex items-center justify-between p-3 bg-gray-800/50 rounded-lg border border-[#FF1493]/20">
+                                            <div className="flex items-center justify-between p-3 bg-gray-800/50 rounded-lg border border-[#2563EB]/20">
                                                 <div className="flex items-center gap-2">
                                                     <Calendar className="w-5 h-5 text-gray-400" />
                                                     <span className="text-gray-300">Ends At</span>
@@ -212,7 +212,7 @@ export default function MerchantOffersShow({ offer }: OfferShowProps) {
                                         )}
 
                                         {/* Created Date */}
-                                        <div className="flex items-center justify-between p-3 bg-gray-800/50 rounded-lg border border-[#FF1493]/20">
+                                        <div className="flex items-center justify-between p-3 bg-gray-800/50 rounded-lg border border-[#2563EB]/20">
                                             <div className="flex items-center gap-2">
                                                 <Calendar className="w-5 h-5 text-gray-400" />
                                                 <span className="text-gray-300">Created</span>
@@ -237,7 +237,7 @@ export default function MerchantOffersShow({ offer }: OfferShowProps) {
                                             </MerchantButton>
                                         </Link>
                                         <Link href={`/offers/${offer.id}/edit`}>
-                                            <MerchantButton className="w-full bg-gradient-to-r from-[#FF1493] via-[#DC143C] to-[#E97451] hover:from-[#FF1FA3] hover:via-[#EC1F4C] hover:to-[#F98461]">
+                                            <MerchantButton className="w-full bg-gradient-to-r from-[#2563EB] to-[#1D4ED8] hover:from-[#FF1FA3] hover:via-[#EC1F4C] hover:to-[#F98461]">
                                                 <Edit className="w-4 h-4 mr-2" />
                                                 Edit Offer
                                             </MerchantButton>

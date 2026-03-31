@@ -2,19 +2,33 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\MerchantHubOffer;
+use App\Models\Category;
+use App\Models\MarketplaceProduct;
 use App\Models\MerchantHubCategory;
+use App\Models\MerchantHubOffer;
 use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 use Inertia\Inertia;
 use Inertia\Response;
 
 class MerchantHubOfferController extends Controller
 {
     /**
-     * Display a listing of offers.
+     * Merchant Hub home: tab "offers" (reward deals) or tab "products" (merchant marketplace catalog).
      */
     public function index(Request $request): Response
     {
+        $tab = $request->get('tab', 'offers');
+        if (! in_array($tab, ['offers', 'products'], true)) {
+            $tab = 'offers';
+        }
+
+        $perPage = (int) $request->get('per_page', 12);
+
+        if ($tab === 'products') {
+            return $this->merchantHubProductsIndex($request, $perPage, $tab);
+        }
+
         $query = MerchantHubOffer::query()
             ->with(['merchant', 'category'])
             ->active()
@@ -75,11 +89,9 @@ class MerchantHubOfferController extends Controller
                 break;
         }
 
-        $perPage = $request->get('per_page', 12);
         $offers = $query->paginate($perPage)->withQueryString();
 
         // Get categories directly from database that have offers
-        // Only show categories that have at least one active offer
         $categories = MerchantHubCategory::where('is_active', true)
             ->whereHas('offers', function ($query) {
                 $query->active()->withAvailableInventory();
@@ -98,12 +110,12 @@ class MerchantHubOfferController extends Controller
                 ];
             });
 
-        // Transform offers for frontend (image URL same-origin so it works locally and on live)
         $transformedOffers = $offers->through(function ($offer) {
             $imageUrl = $offer->image_url;
-            if ($imageUrl && !filter_var($imageUrl, FILTER_VALIDATE_URL)) {
-                $imageUrl = asset('storage/' . ltrim($imageUrl, '/'));
+            if ($imageUrl && ! filter_var($imageUrl, FILTER_VALIDATE_URL)) {
+                $imageUrl = asset('storage/'.ltrim($imageUrl, '/'));
             }
+
             return [
                 'id' => (string) $offer->id,
                 'title' => $offer->title,
@@ -117,16 +129,132 @@ class MerchantHubOfferController extends Controller
         });
 
         return Inertia::render('frontend/merchant-hub/Index', [
+            'tab' => $tab,
             'offers' => $transformedOffers,
+            'marketplaceProducts' => null,
             'categories' => $categories,
+            'productCategories' => [],
             'filters' => [
+                'tab' => $tab,
                 'category' => $request->get('category'),
                 'search' => $request->get('search'),
                 'min_points' => $request->get('min_points'),
                 'max_points' => $request->get('max_points'),
                 'has_cash' => $request->get('has_cash'),
                 'sort' => $sort,
-                'per_page' => (int) $perPage,
+                'per_page' => $perPage,
+                'pcategory' => null,
+            ],
+        ]);
+    }
+
+    private function merchantHubProductsIndex(Request $request, int $perPage, string $tab): Response
+    {
+        // Public hub: show active merchant catalog items (purchase rules are on product detail / checkout).
+        $mpQuery = MarketplaceProduct::query()
+            ->with(['merchant', 'productCategory'])
+            ->where('status', 'active')
+            ->where(function ($q) {
+                $q->whereNull('inventory_quantity')
+                    ->orWhere('inventory_quantity', '>', 0);
+            });
+
+        if ($request->filled('search')) {
+            $search = $request->string('search');
+            $mpQuery->where(function ($q) use ($search) {
+                $q->where('name', 'like', '%'.$search.'%')
+                    ->orWhere('description', 'like', '%'.$search.'%')
+                    ->orWhereHas('merchant', function ($mq) use ($search) {
+                        $mq->where('name', 'like', '%'.$search.'%')
+                            ->orWhere('business_name', 'like', '%'.$search.'%');
+                    });
+            });
+        }
+
+        $pcategory = $request->get('pcategory');
+        if ($pcategory !== null && $pcategory !== '') {
+            $cid = (int) $pcategory;
+            if ($cid > 0) {
+                $mpQuery->where('category_id', $cid);
+            }
+        }
+
+        $mpQuery->orderByDesc('created_at');
+
+        $marketplaceProducts = $mpQuery->paginate($perPage)->withQueryString();
+
+        $categoryIds = MarketplaceProduct::query()
+            ->where('status', 'active')
+            ->where(function ($q) {
+                $q->whereNull('inventory_quantity')
+                    ->orWhere('inventory_quantity', '>', 0);
+            })
+            ->whereNotNull('category_id')
+            ->distinct()
+            ->pluck('category_id');
+
+        $productCategories = Category::query()
+            ->where('status', 'active')
+            ->whereNull('parent_id')
+            ->whereIn('id', $categoryIds)
+            ->orderBy('name')
+            ->get()
+            ->map(function (Category $c) {
+                $count = MarketplaceProduct::query()
+                    ->where('category_id', $c->id)
+                    ->where('status', 'active')
+                    ->where(function ($q) {
+                        $q->whereNull('inventory_quantity')
+                            ->orWhere('inventory_quantity', '>', 0);
+                    })
+                    ->count();
+
+                return [
+                    'id' => $c->id,
+                    'name' => $c->name,
+                    'products_count' => $count,
+                ];
+            })
+            ->values();
+
+        $transformedProducts = $marketplaceProducts->through(function (MarketplaceProduct $mp) {
+            $images = $mp->images ?? [];
+            $first = is_array($images) && count($images) > 0 ? $images[0] : null;
+            $imageUrl = $first
+                ? (filter_var($first, FILTER_VALIDATE_URL) ? $first : asset('storage/'.ltrim((string) $first, '/')))
+                : '/placeholder.jpg';
+            $price = $mp->suggested_retail_price ?? $mp->base_price;
+            $merchant = $mp->merchant;
+
+            return [
+                'id' => $mp->id,
+                'name' => $mp->name,
+                'description' => Str::limit((string) ($mp->description ?? ''), 160),
+                'price' => (float) $price,
+                'price_display' => '$'.number_format((float) $price, 2),
+                'image' => $imageUrl,
+                'category' => $mp->productCategory?->name ?? '',
+                'merchantName' => $merchant ? ($merchant->business_name ?: $merchant->name) : '',
+                'url' => route('merchant-hub.product.show', $mp),
+            ];
+        });
+
+        return Inertia::render('frontend/merchant-hub/Index', [
+            'tab' => $tab,
+            'offers' => null,
+            'marketplaceProducts' => $transformedProducts,
+            'categories' => [],
+            'productCategories' => $productCategories,
+            'filters' => [
+                'tab' => $tab,
+                'category' => null,
+                'search' => $request->get('search'),
+                'min_points' => null,
+                'max_points' => null,
+                'has_cash' => null,
+                'sort' => 'newest',
+                'per_page' => $perPage,
+                'pcategory' => $pcategory ? (string) $pcategory : null,
             ],
         ]);
     }
@@ -143,7 +271,7 @@ class MerchantHubOfferController extends Controller
             if ($refRedemption) {
                 $isOwnLink = \Illuminate\Support\Facades\Auth::check()
                     && (int) $refRedemption->user_id === (int) \Illuminate\Support\Facades\Auth::id();
-                if (!$isOwnLink) {
+                if (! $isOwnLink) {
                     session(['merchant_hub_ref' => $request->get('ref')]);
                 }
             }
@@ -170,9 +298,10 @@ class MerchantHubOfferController extends Controller
             ->get()
             ->map(function ($relatedOffer) {
                 $relImage = $relatedOffer->image_url;
-                if ($relImage && !filter_var($relImage, FILTER_VALIDATE_URL)) {
-                    $relImage = asset('storage/' . ltrim($relImage, '/'));
+                if ($relImage && ! filter_var($relImage, FILTER_VALIDATE_URL)) {
+                    $relImage = asset('storage/'.ltrim($relImage, '/'));
                 }
+
                 return [
                     'id' => (string) $relatedOffer->id,
                     'title' => $relatedOffer->title,
@@ -187,8 +316,8 @@ class MerchantHubOfferController extends Controller
 
         // Convert image_url to same-origin URL (works locally and on live)
         $imageUrl = $offer->image_url;
-        if ($imageUrl && !filter_var($imageUrl, FILTER_VALIDATE_URL)) {
-            $imageUrl = asset('storage/' . ltrim($imageUrl, '/'));
+        if ($imageUrl && ! filter_var($imageUrl, FILTER_VALIDATE_URL)) {
+            $imageUrl = asset('storage/'.ltrim($imageUrl, '/'));
         }
 
         // Get eligible items for this merchant
@@ -228,7 +357,7 @@ class MerchantHubOfferController extends Controller
             $redemptionEligibility['hasExistingRedemption'] = false;
 
             // Check eligibility (can still pay with cash if not enough points)
-            if (!$offer->isAvailable()) {
+            if (! $offer->isAvailable()) {
                 $redemptionEligibility['canRedeem'] = false;
                 $redemptionEligibility['reason'] = 'This offer is no longer available.';
             } elseif ($userPoints < $offer->points_required) {
@@ -238,11 +367,11 @@ class MerchantHubOfferController extends Controller
                     // Allow redeem via cash even when not enough points (reason explains points shortfall)
                     $redemptionEligibility['canRedeem'] = true;
                     $redemptionEligibility['canPayWithCash'] = true;
-                    $redemptionEligibility['reason'] = "You need " . number_format($offer->points_required) . " points to redeem with points, but you have " . number_format($userPoints) . ". You can pay with cash below (full amount).";
+                    $redemptionEligibility['reason'] = 'You need '.number_format($offer->points_required).' points to redeem with points, but you have '.number_format($userPoints).'. You can pay with cash below (full amount).';
                 } else {
                     // Points-only offer: no monthly cap anymore, but still require enough points.
                     $redemptionEligibility['canRedeem'] = false;
-                    $redemptionEligibility['reason'] = "You need " . number_format($offer->points_required) . " points to redeem this offer.";
+                    $redemptionEligibility['reason'] = 'You need '.number_format($offer->points_required).' points to redeem this offer.';
                 }
             }
         }

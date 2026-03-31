@@ -4,20 +4,35 @@ import FrontendLayout from "@/layouts/frontend/frontend-layout";
 import axios from 'axios';
 import { showSuccessToast, showErrorToast } from '@/lib/toast';
 
+interface ProductLine {
+  id: number;
+  name: string;
+  description: string;
+  price: number;
+  image_url: string;
+  quantity_available: number;
+}
+
+interface MarketplaceProductLine {
+  id: number;
+  name: string;
+  description?: string | null;
+  inventory_quantity?: number | null;
+}
+
 interface CartItem {
   id: number;
-  product_id: number;
+  product_id: number | null;
+  marketplace_product_id?: number | null;
+  organization_product_id?: number | null;
   quantity: number;
-    unit_price: number | string;
-    variant_image: string | null;
-  product: {
-    id: number;
-    name: string;
-    description: string;
-    price: number;
-    image_url: string;
-    quantity_available: number;
-  };
+  unit_price: number | string;
+  variant_image: string | null;
+  product: ProductLine | null;
+  marketplace_product?: MarketplaceProductLine | null;
+  organization_product?: {
+    marketplace_product?: MarketplaceProductLine | null;
+  } | null;
 }
 
 interface CartProps {
@@ -34,6 +49,31 @@ const toNumber = (value: number | string): number => {
   if (typeof value === 'number') return value;
   return parseFloat(value) || 0;
 };
+
+function lineName(item: CartItem): string {
+  return (
+    item.product?.name ??
+    item.marketplace_product?.name ??
+    item.organization_product?.marketplace_product?.name ??
+    'Product'
+  );
+}
+
+function lineDescription(item: CartItem): string {
+  const d =
+    item.product?.description ??
+    item.marketplace_product?.description ??
+    item.organization_product?.marketplace_product?.description;
+  return typeof d === 'string' ? d : '';
+}
+
+/** Max qty customer can add (catalog stock, or marketplace inventory, or unlimited). */
+function maxQuantity(item: CartItem): number {
+  if (item.product) return item.product.quantity_available;
+  const mp = item.marketplace_product ?? item.organization_product?.marketplace_product;
+  if (mp && mp.inventory_quantity != null) return Math.max(0, mp.inventory_quantity);
+  return 999999;
+}
 
 export default function CartIndex({ cart: initialCart, total: initialTotal, itemCount: initialItemCount }: CartProps) {
   const [cart, setCart] = useState(initialCart);
@@ -176,7 +216,7 @@ export default function CartIndex({ cart: initialCart, total: initialTotal, item
                           <div className="flex-shrink-0">
                             <img
                               src={item.variant_image || "/placeholder.svg"}
-                              alt={item.product.name}
+                              alt={lineName(item)}
                               className="w-20 h-20 sm:w-24 sm:h-24 object-cover rounded-lg border border-gray-200 dark:border-gray-600"
                             />
                           </div>
@@ -184,16 +224,22 @@ export default function CartIndex({ cart: initialCart, total: initialTotal, item
                           {/* Product Details */}
                           <div className="flex-1 min-w-0">
                             <h3 className="text-lg font-semibold text-gray-900 dark:text-white line-clamp-2">
-                              {item.product.name}
+                              {lineName(item)}
                             </h3>
-                            <p className="mt-1 text-sm text-gray-600 dark:text-gray-400 line-clamp-2">
-                              {item.product.description}
-                            </p>
+                            {lineDescription(item) ? (
+                              <p className="mt-1 text-sm text-gray-600 dark:text-gray-400 line-clamp-2">
+                                {lineDescription(item)}
+                              </p>
+                            ) : null}
                             <p className="mt-2 text-lg font-bold text-blue-600 dark:text-blue-400">
                               ${toNumber(item.unit_price).toFixed(2)}
                             </p>
                             <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                              {item.product.quantity_available} in stock
+                              {item.product
+                                ? `${item.product.quantity_available} in stock`
+                                : maxQuantity(item) >= 999999
+                                  ? 'In stock'
+                                  : `${maxQuantity(item)} in stock`}
                             </p>
                           </div>
 
@@ -216,7 +262,7 @@ export default function CartIndex({ cart: initialCart, total: initialTotal, item
 
                               <button
                                 onClick={() => handleQuantityChange(item, item.quantity + 1)}
-                                disabled={loadingItem === item.id || item.quantity >= item.product.quantity_available}
+                                disabled={loadingItem === item.id || item.quantity >= maxQuantity(item)}
                                 className="w-8 h-8 flex items-center justify-center rounded-full border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
                               >
                                 <span className="sr-only">Increase quantity</span>

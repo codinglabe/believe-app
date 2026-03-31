@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Order;
+use App\Models\OrderItem;
 use App\Models\ShippoShipment;
 use App\Models\User;
 use App\Services\PrintifyService;
@@ -112,15 +113,21 @@ class OrderController extends Controller
         $items = $query->with([
             'product',
             'organization',
+            'marketplaceProduct',
+            'organizationProduct.marketplaceProduct',
         ])->get();
 
         $itemsData = $items->map(function ($item) {
+            $line = $this->orderItemDisplayLine($item);
+
             return [
                 'id' => $item->id,
                 'order_id' => $item->order_id,
                 'product_id' => $item->product_id,
+                'organization_product_id' => $item->organization_product_id,
+                'marketplace_product_id' => $item->marketplace_product_id,
                 'organization_id' => $item->organization_id,
-                'name' => $item->name,
+                'name' => $line['name'],
                 'quantity' => $item->quantity,
                 'unit_price' => $item->unit_price,
                 'subtotal' => $item->subtotal,
@@ -128,7 +135,11 @@ class OrderController extends Controller
                     'id' => $item->product->id,
                     'name' => $item->product->name,
                     'image' => $item->product->image,
-                ] : null,
+                ] : [
+                    'id' => null,
+                    'name' => $line['name'],
+                    'image' => $line['image'],
+                ],
                 'organization' => $item->organization ? [
                     'id' => $item->organization->id,
                     'name' => $item->organization->name,
@@ -179,6 +190,8 @@ class OrderController extends Controller
             'user',
             'shippingInfo',
             'items.product',
+            'items.marketplaceProduct',
+            'items.organizationProduct.marketplaceProduct',
         ]);
 
         // Calculate order subtotal (products only)
@@ -280,19 +293,22 @@ class OrderController extends Controller
                 'country' => $order->shippingInfo->country,
             ] : null,
             'items' => $order->items->map(function ($item) {
+                $line = $this->orderItemDisplayLine($item);
+
                 return [
                     'id' => $item->id,
                     'product_id' => $item->product_id,
-                    'name' => $item->product->name,
-                    'description' => $item->product->description,
-                    'image' => $item->product->image,
-                    'printify_product_id' => $item->product->printify_product_id,
+                    'organization_product_id' => $item->organization_product_id,
+                    'name' => $line['name'],
+                    'description' => $line['description'],
+                    'image' => $line['image'],
+                    'printify_product_id' => $line['printify_product_id'],
                     'quantity' => $item->quantity,
                     'unit_price' => $item->unit_price,
                     'total_price' => $item->subtotal,
                     'printify_variant_id' => $item->printify_variant_id,
                     'variant_data' => $this->getVariantData($item->variant_data),
-                    'is_manual_product' => empty($item->product->printify_product_id),
+                    'is_manual_product' => $line['is_manual_product'],
                 ];
             }),
         ];
@@ -314,7 +330,7 @@ class OrderController extends Controller
         $orderData['label_url'] = $order->label_url;
         $orderData['shipping_status'] = $order->shipping_status;
         $orderData['carrier'] = $order->carrier;
-        $hasManualProduct = $order->items->contains(fn ($item) => empty($item->product->printify_product_id));
+        $hasManualProduct = $this->orderHasManualOrPoolItem($order);
         $orderData['has_manual_product'] = $hasManualProduct;
         $orderData['can_create_shippo_label'] = $hasManualProduct
             && $order->payment_status === 'paid'
@@ -340,7 +356,7 @@ class OrderController extends Controller
         if (! $this->shippoService->isConfigured()) {
             return response()->json(['error' => 'Shipping is not configured.'], 503);
         }
-        $hasManual = $order->items->contains(fn ($item) => empty($item->product->printify_product_id));
+        $hasManual = $this->orderHasManualOrPoolItem($order);
         if (! $hasManual || $order->payment_status !== 'paid' || ! $order->shippingInfo) {
             return response()->json(['error' => 'Order is not eligible for Shippo labels.'], 400);
         }
@@ -406,7 +422,7 @@ class OrderController extends Controller
         if (! $this->shippoService->isConfigured()) {
             return response()->json(['error' => 'Shipping is not configured.'], 503);
         }
-        $hasManual = $order->items->contains(fn ($item) => empty($item->product->printify_product_id));
+        $hasManual = $this->orderHasManualOrPoolItem($order);
         if (! $hasManual || $order->payment_status !== 'paid' || ! $order->shippingInfo) {
             return response()->json(['error' => 'Order is not eligible for Shippo labels.'], 400);
         }
@@ -822,9 +838,7 @@ class OrderController extends Controller
         }
 
         // Check if order has any manual products
-        $hasManualProduct = $order->items->contains(function ($item) {
-            return empty($item->product->printify_product_id);
-        });
+        $hasManualProduct = $this->orderHasManualOrPoolItem($order);
 
         if (! $hasManualProduct) {
             return response()->json([
@@ -910,6 +924,49 @@ class OrderController extends Controller
             'message' => 'Order status updated successfully',
             'order' => $order->fresh(),
         ]);
+    }
+
+    /**
+     * @return array{name: string, description: string, image: ?string, printify_product_id: ?string, is_manual_product: bool}
+     */
+    private function orderItemDisplayLine(OrderItem $item): array
+    {
+        $p = $item->product;
+        $mp = $item->marketplaceProduct ?? $item->organizationProduct?->marketplaceProduct;
+        $details = is_array($item->product_details) ? $item->product_details : [];
+        $name = $p?->name ?? ($details['name'] ?? null) ?? $mp?->name ?? 'Product';
+        $description = $p?->description ?? $mp?->description ?? '';
+        $image = $p?->image ?? $item->primary_image;
+        if ($image === null && $mp && is_array($mp->images) && count($mp->images) > 0) {
+            $image = $mp->images[0];
+        }
+        $printifyId = $p?->printify_product_id;
+        $isManual = $item->marketplace_product_id || $item->organization_product_id
+            ? true
+            : ($p && empty($p->printify_product_id));
+
+        return [
+            'name' => $name,
+            'description' => $description,
+            'image' => $image,
+            'printify_product_id' => $printifyId,
+            'is_manual_product' => $isManual,
+        ];
+    }
+
+    /**
+     * Manual org catalog (no Printify) or merchant pool line (organization_product).
+     */
+    private function orderHasManualOrPoolItem(Order $order): bool
+    {
+        return $order->items->contains(function ($item) {
+            if ($item->marketplace_product_id || $item->organization_product_id) {
+                return true;
+            }
+            $p = $item->product;
+
+            return $p && empty($p->printify_product_id);
+        });
     }
 
     /**

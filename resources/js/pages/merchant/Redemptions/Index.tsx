@@ -120,7 +120,7 @@ export default function RedemptionsIndex({ redemptions, stats, filters: initialF
     const method = redemption.paymentMethod ?? (redemption.pointsUsed > 0 ? (redemption.cashPaid ? 'points_and_cash' : 'points') : 'cash')
     if (method === 'points') {
       return (
-        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#FF1493]/20 text-[#FF1493] border border-[#FF1493]/30 text-xs font-medium">
+        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#2563EB]/20 text-[#2563EB] border border-[#2563EB]/30 text-xs font-medium">
           <Coins className="w-3.5 h-3.5" />
           Points
         </span>
@@ -157,7 +157,7 @@ export default function RedemptionsIndex({ redemptions, stats, filters: initialF
             </div>
             <MerchantButton
               onClick={() => setIsScannerOpen(true)}
-              className="bg-gradient-to-r from-[#FF1493] to-[#DC143C] hover:from-[#FF1493]/90 hover:to-[#DC143C]/90"
+              className="bg-gradient-to-r from-[#2563EB] to-[#1D4ED8] hover:opacity-95"
             >
               <QrCode className="w-4 h-4 mr-2" />
               Scan QR Code
@@ -187,7 +187,7 @@ export default function RedemptionsIndex({ redemptions, stats, filters: initialF
             <MerchantCard>
               <MerchantCardContent className="p-4">
                 <p className="text-sm text-gray-400 mb-1">Total Points</p>
-                <p className="text-2xl font-bold text-[#FF1493]">{stats.totalPoints.toLocaleString()}</p>
+                <p className="text-2xl font-bold text-[#2563EB]">{stats.totalPoints.toLocaleString()}</p>
               </MerchantCardContent>
             </MerchantCard>
           </div>
@@ -219,7 +219,7 @@ export default function RedemptionsIndex({ redemptions, stats, filters: initialF
                         })
                       }
                     }}
-                    className="w-full pl-10 pr-4 py-2 bg-black/50 border border-[#FF1493]/20 rounded-lg text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#FF1493]/50 focus:border-[#FF1493]/50"
+                    className="w-full pl-10 pr-4 py-2 bg-black/50 border border-[#2563EB]/20 rounded-lg text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#2563EB]/50 focus:border-[#2563EB]/50"
                   />
                 </div>
                 <div className="flex gap-2">
@@ -278,7 +278,7 @@ export default function RedemptionsIndex({ redemptions, stats, filters: initialF
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead>
-                    <tr className="border-b border-[#FF1493]/20">
+                    <tr className="border-b border-[#2563EB]/20">
                       <th className="text-left py-3 px-4 text-sm font-semibold text-gray-400">Offer</th>
                       <th className="text-left py-3 px-4 text-sm font-semibold text-gray-400">Customer</th>
                       <th className="text-left py-3 px-4 text-sm font-semibold text-gray-400">Points</th>
@@ -297,7 +297,7 @@ export default function RedemptionsIndex({ redemptions, stats, filters: initialF
                         initial={{ opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ duration: 0.3, delay: index * 0.05 }}
-                        className="border-b border-[#FF1493]/10 hover:bg-[#FF1493]/5 transition-colors"
+                        className="border-b border-[#2563EB]/10 hover:bg-[#2563EB]/5 transition-colors"
                       >
                         <td className="py-4 px-4">
                           <p className="font-medium text-white">{redemption.offerTitle}</p>
@@ -310,7 +310,7 @@ export default function RedemptionsIndex({ redemptions, stats, filters: initialF
                           <p className="text-xs text-gray-400">{redemption.customerEmail}</p>
                         </td>
                         <td className="py-4 px-4">
-                          <p className="text-[#FF1493] font-semibold">{redemption.pointsUsed.toLocaleString()}</p>
+                          <p className="text-[#2563EB] font-semibold">{redemption.pointsUsed.toLocaleString()}</p>
                         </td>
                         <td className="py-4 px-4">
                           {redemption.cashPaid ? (
@@ -396,7 +396,7 @@ export default function RedemptionsIndex({ redemptions, stats, filters: initialF
 
               {/* Pagination */}
               {redemptions.last_page > 1 && (
-                <div className="flex items-center justify-between mt-4 pt-4 border-t border-[#FF1493]/20">
+                <div className="flex items-center justify-between mt-4 pt-4 border-t border-[#2563EB]/20">
                   <div className="text-sm text-gray-400">
                     Showing {((redemptions.current_page - 1) * redemptions.per_page) + 1} to {Math.min(redemptions.current_page * redemptions.per_page, redemptions.total)} of {redemptions.total} redemptions
                   </div>

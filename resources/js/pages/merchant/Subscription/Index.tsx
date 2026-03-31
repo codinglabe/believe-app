@@ -84,7 +84,7 @@ export default function MerchantSubscriptionIndex({
                         className="text-center mb-12"
                     >
                         <div className="flex items-center justify-center gap-3 mb-4">
-                            <div className="p-3 bg-gradient-to-br from-[#FF1493] via-[#DC143C] to-[#E97451] rounded-full">
+                            <div className="p-3 bg-gradient-to-br from-[#2563EB] to-[#1D4ED8] rounded-full">
                                 <Crown className="w-8 h-8 text-white" />
                             </div>
                             <h1 className="text-3xl sm:text-4xl font-bold text-white">
@@ -104,7 +104,7 @@ export default function MerchantSubscriptionIndex({
                             className="mb-8"
                         >
                             <div className="max-w-2xl mx-auto">
-                                <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 bg-gradient-to-br from-[#FF1493]/10 via-[#DC143C]/10 to-[#E97451]/10 border border-[#FF1493]/20 rounded-lg">
+                                <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 bg-gradient-to-br from-[#2563EB]/8 to-[#2563EB]/3 border border-[#2563EB]/20 rounded-lg">
                                     <div className="flex items-center gap-2">
                                         <Check className="w-5 h-5 text-green-400" />
                                         <div>
@@ -175,13 +175,13 @@ export default function MerchantSubscriptionIndex({
                                 <MerchantCard
                                     className={`h-full flex flex-col relative overflow-hidden ${
                                         plan.is_popular
-                                            ? 'border-2 border-[#FF1493] shadow-lg shadow-[#FF1493]/50'
+                                            ? 'border-2 border-[#2563EB] shadow-lg shadow-[#2563EB]/50'
                                             : ''
                                     }`}
                                 >
                                     {/* Popular Badge */}
                                     {plan.is_popular && (
-                                        <div className="absolute top-0 right-0 bg-gradient-to-r from-[#FF1493] via-[#DC143C] to-[#E97451] text-white px-4 py-1 text-xs font-semibold rounded-bl-lg rounded-tr-lg">
+                                        <div className="absolute top-0 right-0 bg-gradient-to-r from-[#2563EB] to-[#1D4ED8] text-white px-4 py-1 text-xs font-semibold rounded-bl-lg rounded-tr-lg">
                                             Most Popular
                                         </div>
                                     )}
@@ -192,7 +192,7 @@ export default function MerchantSubscriptionIndex({
                                                 {plan.name}
                                             </MerchantCardTitle>
                                             {plan.is_popular && (
-                                                <Sparkles className="w-5 h-5 text-[#FF1493]" />
+                                                <Sparkles className="w-5 h-5 text-[#2563EB]" />
                                             )}
                                         </div>
                                         <p className="text-gray-400 text-sm">{plan.description}</p>
@@ -241,7 +241,7 @@ export default function MerchantSubscriptionIndex({
                                 disabled={hasActiveSubscription && currentPlan?.id === plan.id}
                                 className={`w-full mt-auto ${
                                     plan.is_popular
-                                        ? 'bg-gradient-to-r from-[#FF1493] via-[#DC143C] to-[#E97451] hover:from-[#FF1493]/90 hover:via-[#DC143C]/90 hover:to-[#E97451]/90 text-white'
+                                        ? 'bg-gradient-to-r from-[#2563EB] to-[#1D4ED8] hover:opacity-95 text-white'
                                         : 'bg-gray-700 hover:bg-gray-600 text-white'
                                 } ${hasActiveSubscription && currentPlan?.id === plan.id ? 'opacity-50 cursor-not-allowed' : ''}`}
                             >

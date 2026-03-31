@@ -6,7 +6,7 @@ function MerchantCard({ className, ...props }: React.ComponentProps<"div">) {
     <div
       data-slot="merchant-card"
       className={cn(
-        "w-full text-card-foreground flex flex-col gap-6 py-6 bg-gradient-to-br from-black/90 via-gray-900/80 to-black/90 backdrop-blur px-6 rounded-2xl shadow-xl transition-all duration-300",
+        "w-full flex flex-col gap-6 py-6 bg-black/25 border border-[#2563EB]/20 text-white backdrop-blur px-6 rounded-2xl shadow-xl transition-all duration-300",
         className
       )}
       {...props}
@@ -38,7 +38,7 @@ function MerchantCardDescription({ className, ...props }: React.ComponentProps<"
   return (
     <div
       data-slot="merchant-card-description"
-      className={cn("text-gray-300 text-sm", className)}
+      className={cn("text-white/70 text-sm", className)}
       {...props}
     />
   )
@@ -64,12 +64,11 @@ function MerchantCardFooter({ className, ...props }: React.ComponentProps<"div">
   )
 }
 
-export { 
-  MerchantCard, 
-  MerchantCardHeader, 
-  MerchantCardFooter, 
-  MerchantCardTitle, 
-  MerchantCardDescription, 
-  MerchantCardContent 
+export {
+  MerchantCard,
+  MerchantCardHeader,
+  MerchantCardFooter,
+  MerchantCardTitle,
+  MerchantCardDescription,
+  MerchantCardContent,
 }
-

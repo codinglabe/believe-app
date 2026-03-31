@@ -67,7 +67,7 @@ export default function MerchantMarketplaceProductForm({ product, categories = [
     min_resale_price: product?.min_resale_price != null ? String(product.min_resale_price) : "",
     suggested_retail_price: product?.suggested_retail_price != null ? String(product.suggested_retail_price) : "",
     nonprofit_approval_type: product?.nonprofit_approval_type ?? "auto",
-    status: product?.status ?? "draft",
+    status: product?.status ?? "active",
   })
 
   const [imageFiles, setImageFiles] = useState<File[]>([])
@@ -191,7 +191,7 @@ export default function MerchantMarketplaceProductForm({ product, categories = [
                 <select
                   value={data.category_id}
                   onChange={(e) => setData("category_id", e.target.value)}
-                  className="w-full rounded-lg border border-[#FF1493]/30 bg-black/40 text-white px-3 py-2"
+                  className="w-full rounded-lg border border-[#2563EB]/30 bg-black/40 text-white px-3 py-2"
                 >
                   <option value="">Select a category</option>
                   {categories.map((c) => (
@@ -225,7 +225,7 @@ export default function MerchantMarketplaceProductForm({ product, categories = [
                   <select
                     value={data.product_type}
                     onChange={(e) => setData("product_type", e.target.value)}
-                    className="w-full rounded-lg border border-[#FF1493]/30 bg-black/40 text-white px-3 py-2"
+                    className="w-full rounded-lg border border-[#2563EB]/30 bg-black/40 text-white px-3 py-2"
                   >
                     <option value="physical">Physical</option>
                     <option value="digital">Digital</option>
@@ -238,13 +238,16 @@ export default function MerchantMarketplaceProductForm({ product, categories = [
                   <select
                     value={data.status}
                     onChange={(e) => setData("status", e.target.value)}
-                    className="w-full rounded-lg border border-[#FF1493]/30 bg-black/40 text-white px-3 py-2"
+                    className="w-full rounded-lg border border-[#2563EB]/30 bg-black/40 text-white px-3 py-2"
                   >
                     <option value="draft">Draft</option>
                     <option value="pending_review">Pending review</option>
                     <option value="active">Active</option>
                     <option value="inactive">Inactive</option>
                   </select>
+                  <p className="text-xs text-gray-400 mt-1.5">
+                    Active + stock (or unlimited) appears on the public Merchant Hub products tab.
+                  </p>
                 </div>
               </div>
               <div className="flex items-center gap-2">
@@ -305,19 +308,19 @@ export default function MerchantMarketplaceProductForm({ product, categories = [
                   className={`
                     flex flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed px-6 py-10 text-center cursor-pointer transition-all
                     ${isDragging
-                      ? "border-[#FF1493] bg-[#FF1493]/15 scale-[1.01]"
-                      : "border-[#FF1493]/35 bg-black/25 hover:border-[#FF1493]/60 hover:bg-[#FF1493]/5"
+                      ? "border-[#2563EB] bg-[#2563EB]/15 scale-[1.01]"
+                      : "border-[#2563EB]/35 bg-black/25 hover:border-[#2563EB]/60 hover:bg-[#2563EB]/5"
                     }
                   `}
                 >
-                  <div className="flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-[#FF1493]/30 via-[#DC143C]/20 to-[#E97451]/30 border border-[#FF1493]/30">
-                    <Upload className="h-7 w-7 text-[#FF69B4]" />
+                  <div className="flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-br from-[#2563EB]/25 to-[#1D4ED8]/15 border border-[#2563EB]/30">
+                    <Upload className="h-7 w-7 text-[#2563EB]" />
                   </div>
                   <div>
                     <span className="text-sm font-medium text-white">Drop images here or </span>
-                    <span className="text-sm font-semibold text-[#FF69B4] underline-offset-2 hover:underline">browse</span>
+                    <span className="text-sm font-semibold text-[#2563EB] underline-offset-2 hover:underline">browse</span>
                   </div>
-                  <span className="inline-flex items-center gap-2 rounded-md border-2 border-[#FF1493] bg-transparent px-4 py-2 text-sm font-medium text-[#FF1493] shadow-sm shadow-[#FF1493]/20">
+                  <span className="inline-flex items-center gap-2 rounded-md border-2 border-[#2563EB] bg-transparent px-4 py-2 text-sm font-medium text-[#2563EB] shadow-sm shadow-[#2563EB]/20">
                     <ImagePlus className="h-4 w-4" />
                     Choose files
                   </span>
@@ -330,7 +333,7 @@ export default function MerchantMarketplaceProductForm({ product, categories = [
                       {product.images.map((src, i) => (
                         <div
                           key={`saved-${i}`}
-                          className="relative h-20 w-20 overflow-hidden rounded-lg border border-[#FF1493]/25 bg-black/40"
+                          className="relative h-20 w-20 overflow-hidden rounded-lg border border-[#2563EB]/25 bg-black/40"
                         >
                           <img src={src} alt="" className="h-full w-full object-cover" />
                         </div>
@@ -389,7 +392,7 @@ export default function MerchantMarketplaceProductForm({ product, categories = [
                 <select
                   value={data.fulfillment_shipping_by}
                   onChange={(e) => setData("fulfillment_shipping_by", e.target.value)}
-                  className="w-full rounded-lg border border-[#FF1493]/30 bg-black/40 text-white px-3 py-2"
+                  className="w-full rounded-lg border border-[#2563EB]/30 bg-black/40 text-white px-3 py-2"
                 >
                   <option value="merchant">Merchant</option>
                   <option value="biu">BIU (future)</option>
@@ -458,7 +461,7 @@ export default function MerchantMarketplaceProductForm({ product, categories = [
                     <select
                       value={data.nonprofit_approval_type}
                       onChange={(e) => setData("nonprofit_approval_type", e.target.value)}
-                      className="w-full rounded-lg border border-[#FF1493]/30 bg-black/40 text-white px-3 py-2"
+                      className="w-full rounded-lg border border-[#2563EB]/30 bg-black/40 text-white px-3 py-2"
                     >
                       <option value="auto">Auto-approve nonprofits</option>
                       <option value="manual">Manual approval</option>

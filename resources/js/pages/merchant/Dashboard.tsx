@@ -82,7 +82,7 @@ export default function MerchantDashboard({ stats, weeklyRedemptions, recentRede
                 <MerchantCardHeader>
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <div className="p-2 bg-gradient-to-br from-[#FF1493] via-[#DC143C] to-[#E97451] rounded-lg shadow-lg shadow-[#FF1493]/50">
+                      <div className="p-2 bg-gradient-to-br from-[#2563EB] to-[#1D4ED8] rounded-lg shadow-lg shadow-[#2563EB]/50">
                         <Building2 className="w-5 h-5 text-white" />
                       </div>
                       <MerchantCardTitle className="text-base text-white">Active Offers</MerchantCardTitle>
@@ -92,7 +92,7 @@ export default function MerchantDashboard({ stats, weeklyRedemptions, recentRede
                 </MerchantCardHeader>
                 <MerchantCardContent>
                   <div className="flex items-center gap-2">
-                    <Building2 className="w-4 h-4 text-[#FF1493]" />
+                    <Building2 className="w-4 h-4 text-[#2563EB]" />
                     <span className="text-2xl font-bold text-white">
                       {stats?.activeOffers || 0} Active {stats?.activeOffers === 1 ? 'Offer' : 'Offers'}
                     </span>
@@ -104,7 +104,7 @@ export default function MerchantDashboard({ stats, weeklyRedemptions, recentRede
                 <MerchantCardHeader>
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <div className="p-2 bg-gradient-to-br from-[#FF1493] via-[#DC143C] to-[#E97451] rounded-lg shadow-lg shadow-[#FF1493]/50">
+                      <div className="p-2 bg-gradient-to-br from-[#2563EB] to-[#1D4ED8] rounded-lg shadow-lg shadow-[#2563EB]/50">
                         <Gift className="w-5 h-5 text-white" />
                       </div>
                       <MerchantCardTitle className="text-base text-white">Redemptions</MerchantCardTitle>
@@ -114,7 +114,7 @@ export default function MerchantDashboard({ stats, weeklyRedemptions, recentRede
                 </MerchantCardHeader>
                 <MerchantCardContent>
                   <div className="flex items-center gap-2">
-                    <Gift className="w-4 h-4 text-[#FF1493]" />
+                    <Gift className="w-4 h-4 text-[#2563EB]" />
                     <span className="text-2xl font-bold text-white">
                       {stats?.totalRedemptions?.toLocaleString() || 0} Redemptions
                     </span>
@@ -195,7 +195,7 @@ export default function MerchantDashboard({ stats, weeklyRedemptions, recentRede
                 <MerchantCard className="transition-all duration-300">
                   <MerchantCardHeader>
                     <div className="flex items-center gap-2">
-                      <TrendingUp className="w-5 h-5 text-[#FF1493]" />
+                      <TrendingUp className="w-5 h-5 text-[#2563EB]" />
                       <MerchantCardTitle className="text-lg text-white">Total Rewards Redeemed</MerchantCardTitle>
                     </div>
                   </MerchantCardHeader>
@@ -213,7 +213,7 @@ export default function MerchantDashboard({ stats, weeklyRedemptions, recentRede
                             transition={{ duration: 0.5, delay: index * 0.1 }}
                           >
                             <div
-                              className="w-full bg-gradient-to-t from-[#FF1493] via-[#DC143C] to-[#E97451] rounded-t hover:from-[#FF1FA3] hover:via-[#EC1F4C] hover:to-[#F98461] transition-all duration-300 cursor-pointer shadow-lg shadow-[#FF1493]/30"
+                              className="w-full bg-gradient-to-t from-[#2563EB] to-[#1D4ED8] rounded-t hover:from-[#FF1FA3] hover:via-[#EC1F4C] hover:to-[#F98461] transition-all duration-300 cursor-pointer shadow-lg shadow-[#2563EB]/30"
                               style={{ height: '100%' }}
                               title={`${item.week}: ${item.value}`}
                             />

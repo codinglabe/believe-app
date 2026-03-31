@@ -26,7 +26,7 @@ const appName = import.meta.env.VITE_APP_NAME || 'Laravel';
 const getProgressColor = () => {
     if (typeof window !== 'undefined') {
         if (isMerchantDomain()) {
-            return '#FF1493'; // French Rose - neon bright merchant theme
+            return '#2563EB'; // BIU Merchant Hub accent
         }
         if (isLivestockDomain()) {
             return '#f59e0b'; // Amber-600 to match livestock theme
@@ -107,9 +107,6 @@ if (typeof window !== 'undefined') {
     );
 }
 
-// This will set light / dark mode on load...
-initializeTheme();
-
 // Add domain class to body for conditional styling
 if (typeof window !== 'undefined') {
     if (isMerchantDomain()) {
@@ -120,6 +117,22 @@ if (typeof window !== 'undefined') {
         document.body.classList.add('main-domain');
     }
 }
+
+// Merchant Hub: default to dark (navy) UI unless explicitly overridden.
+if (typeof window !== 'undefined' && isMerchantDomain()) {
+    try {
+        const existing = localStorage.getItem('appearance');
+        if (!existing) {
+            localStorage.setItem('appearance', 'dark');
+            document.cookie = `appearance=dark;path=/;max-age=${365 * 24 * 60 * 60};SameSite=Lax`;
+        }
+    } catch {
+        // ignore
+    }
+}
+
+// This will set light / dark mode on load...
+initializeTheme();
 
 // Single service worker registration (firebase-messaging-sw.js). Do not register elsewhere.
 if (typeof window !== 'undefined' && !isLivestockDomain()) {

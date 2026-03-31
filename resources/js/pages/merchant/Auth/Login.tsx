@@ -32,9 +32,9 @@ export default function MerchantLogin({ status, canResetPassword }: LoginProps) 
   return (
     <>
       <Head title="Merchant Login - Believe" />
-      <div className="min-h-screen bg-gradient-to-br from-black via-gray-900 to-pink-900 dark:from-black dark:via-gray-900 dark:to-pink-900 relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-r from-[#FF1493]/10 via-[#DC143C]/10 to-[#E97451]/10 pointer-events-none"></div>
-        <MerchantHeader variant="public" className="fixed top-0 left-0 right-0 z-50 bg-black/50 backdrop-blur" />
+      <div className="min-h-screen bg-gradient-to-br from-[#0A2540] via-[#061a2f] to-black text-white relative overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-r from-[#2563EB]/12 via-transparent to-transparent pointer-events-none"></div>
+        <MerchantHeader variant="public" className="fixed top-0 left-0 right-0 z-50" />
         <div className="flex items-center justify-center min-h-screen pt-24 pb-8 px-4">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -95,7 +95,7 @@ export default function MerchantLogin({ status, canResetPassword }: LoginProps) 
                     {canResetPassword && (
                       <Link
                         href={route('merchant.password.request')}
-                        className="text-sm text-[#FF1493] hover:text-[#DC143C] hover:underline transition-colors"
+                        className="text-sm text-[#2563EB] hover:text-[#1D4ED8] hover:underline transition-colors"
                       >
                         Forgot password?
                       </Link>
@@ -148,7 +148,7 @@ export default function MerchantLogin({ status, canResetPassword }: LoginProps) 
               Don't have an account?{' '}
               <Link
                 href={route('merchant.register')}
-                className="text-[#FF1493] hover:text-[#DC143C] font-semibold hover:underline transition-colors"
+                className="text-[#2563EB] hover:text-[#1D4ED8] font-semibold hover:underline transition-colors"
               >
                 Sign up
               </Link>

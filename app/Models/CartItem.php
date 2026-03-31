@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class CartItem extends Model
 {
-    protected $fillable = ['cart_id', 'product_id', 'organization_product_id', 'quantity', 'unit_price', 'printify_variant_id', 'printify_blueprint_id', 'printify_print_provider_id', 'variant_options', 'variant_price_modifier', 'variant_image'];
+    protected $fillable = ['cart_id', 'product_id', 'organization_product_id', 'marketplace_product_id', 'quantity', 'unit_price', 'printify_variant_id', 'printify_blueprint_id', 'printify_print_provider_id', 'variant_options', 'variant_price_modifier', 'variant_image'];
 
     public function cart(): BelongsTo
     {
@@ -24,9 +24,14 @@ class CartItem extends Model
         return $this->belongsTo(OrganizationProduct::class);
     }
 
+    public function marketplaceProduct(): BelongsTo
+    {
+        return $this->belongsTo(MarketplaceProduct::class);
+    }
+
     public function isPooledListing(): bool
     {
-        return $this->organization_product_id !== null;
+        return $this->organization_product_id !== null || $this->marketplace_product_id !== null;
     }
 
     public function variant(): BelongsTo

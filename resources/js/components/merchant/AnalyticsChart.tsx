@@ -30,7 +30,7 @@ export function AnalyticsChart({
       <MerchantCardHeader>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            {icon || <BarChart3 className="w-5 h-5 text-[#FF1493]" />}
+            {icon || <BarChart3 className="w-5 h-5 text-[#2563EB]" />}
             <MerchantCardTitle className="text-lg text-white">{title}</MerchantCardTitle>
           </div>
         </div>
@@ -49,7 +49,7 @@ export function AnalyticsChart({
                   transition={{ duration: 0.5, delay: index * 0.1 }}
                 >
                             <div
-                              className="w-full bg-gradient-to-t from-[#FF1493] via-[#DC143C] to-[#E97451] rounded-t hover:from-[#FF1FA3] hover:via-[#EC1F4C] hover:to-[#F98461] transition-all duration-300 cursor-pointer shadow-lg shadow-[#FF1493]/30"
+                              className="w-full bg-gradient-to-t from-[#2563EB] to-[#1D4ED8] rounded-t hover:from-[#FF1FA3] hover:via-[#EC1F4C] hover:to-[#F98461] transition-all duration-300 cursor-pointer shadow-lg shadow-[#2563EB]/30"
                               style={{ height: '100%' }}
                               title={`${item.week}: ${item.value}`}
                             />
@@ -61,12 +61,12 @@ export function AnalyticsChart({
             })}
           </div>
           {totalLabel && totalValue && (
-            <div className="pt-4 border-t-2 border-[#FF1493]/30">
+            <div className="pt-4 border-t-2 border-[#2563EB]/30">
               <div className="flex items-center justify-between">
                 <span className="text-sm text-gray-200">
                   {totalLabel}
                 </span>
-                <span className="text-lg font-bold text-white bg-gradient-to-r from-[#FF1493] to-[#DC143C] bg-clip-text text-transparent">
+                <span className="text-lg font-bold text-white bg-gradient-to-r from-[#2563EB] to-[#1D4ED8] bg-clip-text text-transparent">
                   {typeof totalValue === 'number' ? totalValue.toLocaleString() : totalValue}
                 </span>
               </div>

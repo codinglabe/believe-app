@@ -68,7 +68,7 @@ export default function MerchantSubscriptionSuccess({ planId }: Props) {
                             }}
                             className="flex justify-center mb-8"
                         >
-                            <Sparkles className="w-12 h-12 text-[#FF1493]" />
+                            <Sparkles className="w-12 h-12 text-[#2563EB]" />
                         </motion.div>
 
                         {/* Action Buttons */}
@@ -79,7 +79,7 @@ export default function MerchantSubscriptionSuccess({ planId }: Props) {
                             className="flex flex-col sm:flex-row gap-4 justify-center"
                         >
                             <Link href="/dashboard">
-                                <MerchantButton className="bg-gradient-to-r from-[#FF1493] via-[#DC143C] to-[#E97451] hover:from-[#FF1493]/90 hover:via-[#DC143C]/90 hover:to-[#E97451]/90 text-white px-8">
+                                <MerchantButton className="bg-gradient-to-r from-[#2563EB] to-[#1D4ED8] hover:opacity-95 text-white px-8">
                                     Go to Dashboard
                                     <ArrowRight className="w-4 h-4 ml-2" />
                                 </MerchantButton>

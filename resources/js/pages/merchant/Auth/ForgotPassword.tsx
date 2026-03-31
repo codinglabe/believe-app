@@ -26,8 +26,8 @@ export default function MerchantForgotPassword({ status }: ForgotPasswordProps) 
   return (
     <>
       <Head title={`Forgot Password - ${import.meta.env.VITE_APP_NAME || 'Believe'} Merchant`} />
-      <div className="min-h-screen bg-gradient-to-br from-black via-gray-900 to-pink-900 dark:from-black dark:via-gray-900 dark:to-pink-900 relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-r from-[#FF1493]/10 via-[#DC143C]/10 to-[#E97451]/10 pointer-events-none"></div>
+      <div className="min-h-screen bg-gradient-to-br from-[#0A2540] via-[#061a2f] to-black text-white relative overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-r from-[#2563EB]/12 via-transparent to-transparent pointer-events-none"></div>
         <MerchantHeader variant="public" />
         <div className="flex items-center justify-center min-h-screen pt-24 pb-8 px-4">
           <motion.div
@@ -104,7 +104,7 @@ export default function MerchantForgotPassword({ status }: ForgotPasswordProps) 
           <div className="mt-6 text-center">
             <Link
               href={route('merchant.login')}
-              className="text-sm text-[#FF1493] hover:text-[#DC143C] hover:underline flex items-center justify-center gap-1 transition-colors"
+              className="text-sm text-[#2563EB] hover:text-[#1D4ED8] hover:underline flex items-center justify-center gap-1 transition-colors"
             >
               <ArrowLeft className="w-4 h-4" />
               Back to login

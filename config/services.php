@@ -139,6 +139,13 @@ return [
         'verify' => filter_var(env('DROPBOX_SSL_VERIFY', true), FILTER_VALIDATE_BOOLEAN),
     ],
 
+    /*
+    | Optional: nonprofit org pool listings (organization adopts merchant SKUs). Hub checkout no longer requires this.
+    */
+    'marketplace' => [
+        'pool_listing_organization_id' => env('MARKETPLACE_POOL_LISTING_ORGANIZATION_ID'),
+    ],
+
     'shippo' => [
         'api_key' => env('SHIPPO_API_KEY'),
         'api_base' => env('SHIPPO_API_BASE', 'https://api.goshippo.com'),

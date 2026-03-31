@@ -57,6 +57,14 @@
     --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
     --color-sidebar-border: var(--sidebar-border);
     --color-sidebar-ring: var(--sidebar-ring);
+
+    /* BIU Merchant Hub — corporate palette (use: bg-biu-*, text-biu-*, border-biu-*) */
+    --color-biu-primary: #0a2540;
+    --color-biu-secondary: #1f3a5f;
+    --color-biu-accent: #2563eb;
+    --color-biu-accent-hover: #1d4ed8;
+    --color-biu-success: #16a34a;
+    --color-biu-bg: #f9fafb;
 }
 
 /*
@@ -769,9 +777,9 @@ body.main-domain #nprogress .peg {
   box-shadow: 0 0 10px #7F03DB, 0 0 5px #7F03DB !important;
 }
 
-/* Merchant domain: neon bright gradient (French Rose, Valentino, Burnt Sienna) */
+/* Merchant domain: BIU accent */
 body.merchant-domain #nprogress .bar {
-  background: linear-gradient(to right, #FF1493, #DC143C, #E97451, #FF1493) !important;
+  background: linear-gradient(to right, #2563eb, #1d4ed8, #2563eb) !important;
   background-size: 200% 100% !important;
   animation: progress-gradient-merchant 2s ease infinite !important;
   height: 3px !important;
@@ -790,12 +798,12 @@ body.merchant-domain #nprogress .bar {
 }
 
 body.merchant-domain #nprogress .peg {
-  box-shadow: 0 0 10px #FF1493, 0 0 5px #DC143C, 0 0 3px #E97451 !important;
+  box-shadow: 0 0 10px #2563eb, 0 0 5px #1d4ed8 !important;
 }
 
 body.merchant-domain #nprogress .spinner-icon {
-  border-top-color: #FF1493 !important;
-  border-left-color: #DC143C !important;
+  border-top-color: #2563eb !important;
+  border-left-color: #1d4ed8 !important;
 }
 
 body.main-domain #nprogress .spinner-icon {

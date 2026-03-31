@@ -7,14 +7,11 @@ const merchantBadgeVariants = cva(
   {
     variants: {
       variant: {
-        default:
-          "border-transparent bg-gradient-to-r from-[#FF1493] via-[#DC143C] to-[#E97451] text-white shadow-none",
+        default: "border-transparent bg-[#2563EB] text-white shadow-none",
         secondary:
-          "border-transparent bg-gradient-to-r from-[#FF1493]/30 via-[#DC143C]/30 to-[#E97451]/30 text-white border border-[#FF1493]/30",
-        destructive:
-          "border-transparent bg-red-600 text-white",
-        outline:
-          "text-white border-2 border-[#FF1493]",
+          "border-transparent bg-[#2563EB]/12 text-[#0A2540] border border-[#2563EB]/25",
+        destructive: "border-transparent bg-red-600 text-white",
+        outline: "text-[#0A2540] border-2 border-[#2563EB] bg-white",
       },
     },
     defaultVariants: {
@@ -39,4 +36,3 @@ function MerchantBadge({
 }
 
 export { MerchantBadge, merchantBadgeVariants }
-

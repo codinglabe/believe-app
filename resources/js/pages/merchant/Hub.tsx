@@ -77,7 +77,7 @@ export default function MerchantHub() {
     <>
       <Head title="Merchant Hub - Believe" />
       <div className="min-h-screen bg-gradient-to-br from-black via-[#1a0a0a] to-[#2d1b1b] dark:from-black dark:via-[#1a0a0a] dark:to-[#2d1b1b] relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-r from-[#FF1493]/5 via-[#DC143C]/5 to-[#E97451]/5 pointer-events-none"></div>
+        <div className="absolute inset-0 bg-gradient-to-r from-[#2563EB]/4 to-[#2563EB]/2 pointer-events-none"></div>
         {/* Header */}
         <MerchantHeader 
           variant="public" 
@@ -105,7 +105,7 @@ export default function MerchantHub() {
                   placeholder="Search offers..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-10 pr-4 py-3 border-2 border-[#FF1493]/40 rounded-lg bg-gray-900/50 backdrop-blur text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#FF1493] focus:border-[#FF1493] shadow-lg shadow-[#FF1493]/20 transition-all duration-300"
+                  className="w-full pl-10 pr-4 py-3 border-2 border-[#2563EB]/40 rounded-lg bg-gray-900/50 backdrop-blur text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#2563EB] focus:border-[#2563EB] shadow-lg shadow-[#2563EB]/20 transition-all duration-300"
                 />
               </div>
 

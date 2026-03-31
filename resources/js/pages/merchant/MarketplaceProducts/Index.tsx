@@ -63,10 +63,16 @@ export default function MerchantMarketplaceProductsIndex({ products, filters: in
       <Head title="Marketplace products" />
       <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <h1 className="text-2xl font-bold text-white flex items-center gap-2">
-            <Package className="w-7 h-7 text-[#FF1493]" />
-            Nonprofit marketplace products
-          </h1>
+          <div>
+            <h1 className="text-2xl font-bold text-white flex items-center gap-2">
+              <Package className="w-7 h-7 text-[#2563EB]" />
+              Nonprofit marketplace products
+            </h1>
+            <p className="text-sm text-white/60 mt-1 max-w-xl">
+              Public Merchant Hub shows only <span className="text-white/80">Active</span> products with stock (or
+              unlimited inventory). Draft or inactive items stay private.
+            </p>
+          </div>
           <Link href="/marketplace-products/create">
             <MerchantButton>
               <Plus className="w-4 h-4 mr-2" />
@@ -93,7 +99,7 @@ export default function MerchantMarketplaceProductsIndex({ products, filters: in
             <select
               value={status}
               onChange={(e) => setStatus(e.target.value)}
-              className="rounded-lg border border-[#FF1493]/30 bg-black/40 text-white px-3 py-2"
+              className="rounded-lg border border-[#2563EB]/30 bg-black/40 text-white px-3 py-2"
             >
               <option value="">All statuses</option>
               <option value="draft">Draft</option>
@@ -138,7 +144,7 @@ export default function MerchantMarketplaceProductsIndex({ products, filters: in
                     {p.status}
                   </span>
                   {p.nonprofit_marketplace_enabled && (
-                    <span className="px-2 py-0.5 rounded bg-[#FF1493]/20 text-[#FF69B4]">Pool</span>
+                    <span className="px-2 py-0.5 rounded bg-[#2563EB]/20 text-[#2563EB]">Pool</span>
                   )}
                 </div>
                 <div className="flex gap-2">
@@ -165,7 +171,7 @@ export default function MerchantMarketplaceProductsIndex({ products, filters: in
                   type="button"
                   onClick={() => l.url && router.visit(l.url)}
                   className={`px-3 py-1 rounded-md text-sm ${
-                    l.active ? "bg-[#FF1493] text-white" : "bg-white/10 text-gray-300 hover:bg-white/20"
+                    l.active ? "bg-[#2563EB] text-white" : "bg-white/10 text-gray-300 hover:bg-white/20"
                   }`}
                   dangerouslySetInnerHTML={{ __html: l.label }}
                 />

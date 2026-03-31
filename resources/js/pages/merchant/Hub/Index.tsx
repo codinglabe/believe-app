@@ -120,8 +120,8 @@ export default function HubIndex({ offers, categories, filters: initialFilters }
   return (
     <>
       <Head title="Merchant Hub - Browse Offers" />
-      <div className="min-h-screen bg-gradient-to-br from-black via-[#1a0a0a] to-[#2d1b1b] dark:from-black dark:via-[#1a0a0a] dark:to-[#2d1b1b] relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-r from-[#FF1493]/5 via-[#DC143C]/5 to-[#E97451]/5 pointer-events-none"></div>
+      <div className="min-h-screen bg-gradient-to-br from-[#0A2540] via-[#061a2f] to-black text-white relative overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-r from-[#2563EB]/10 via-transparent to-transparent pointer-events-none"></div>
 
         {/* Header */}
         <MerchantHeader
@@ -133,10 +133,10 @@ export default function HubIndex({ offers, categories, filters: initialFilters }
         <div className="container mx-auto px-4 pt-24 pb-8">
           {/* Hero Section */}
           <div className="text-center mb-12">
-            <h1 className="text-4xl md:text-5xl font-bold text-white mb-4">
+            <h1 className="text-4xl md:text-5xl font-bold text-[#0A2540] mb-4">
               Browse Offers
             </h1>
-            <p className="text-gray-400 text-lg max-w-2xl mx-auto">
+            <p className="text-[#1F3A5F] text-lg max-w-2xl mx-auto">
               Discover amazing rewards and redeem them with your points
             </p>
           </div>
@@ -153,7 +153,7 @@ export default function HubIndex({ offers, categories, filters: initialFilters }
                     placeholder="Search offers..."
                     value={search}
                     onChange={(e) => handleSearch(e.target.value)}
-                    className="pl-10 bg-gray-900/50 border-[#FF1493]/40 text-white placeholder-gray-500"
+                    className="pl-10 bg-white border-[#2563EB]/30 text-[#0A2540] placeholder-gray-500"
                   />
                 </div>
               </div>
@@ -161,7 +161,7 @@ export default function HubIndex({ offers, categories, filters: initialFilters }
               {/* Category Filter */}
               <div className="w-full md:w-64">
                 <Select value={selectedCategory || 'all'} onValueChange={handleCategoryFilter}>
-                  <SelectTrigger className="bg-gray-900/50 border-[#FF1493]/40 text-white">
+                  <SelectTrigger className="bg-white border-[#2563EB]/30 text-[#0A2540]">
                     <Filter className="h-4 w-4 mr-2" />
                     <SelectValue placeholder="All Categories" />
                   </SelectTrigger>
@@ -179,7 +179,7 @@ export default function HubIndex({ offers, categories, filters: initialFilters }
               {/* Sort Filter */}
               <div className="w-full md:w-64">
                 <Select value={selectedSort || 'newest'} onValueChange={handleSortChange}>
-                  <SelectTrigger className="bg-gray-900/50 border-[#FF1493]/40 text-white">
+                  <SelectTrigger className="bg-white border-[#2563EB]/30 text-[#0A2540]">
                     <TrendingUp className="h-4 w-4 mr-2" />
                     <SelectValue placeholder="Sort by" />
                   </SelectTrigger>
@@ -205,8 +205,8 @@ export default function HubIndex({ offers, categories, filters: initialFilters }
                       whileHover={{ scale: 1.02, y: -4 }}
                       className="h-full"
                     >
-                      <MerchantCard className="overflow-hidden cursor-pointer h-full flex flex-col hover:border-[#FF1493]/50 transition-colors">
-                        <div className="aspect-video bg-gray-800 relative overflow-hidden">
+                      <MerchantCard className="overflow-hidden cursor-pointer h-full flex flex-col hover:border-[#2563EB]/50 transition-colors">
+                        <div className="aspect-video bg-gray-100 relative overflow-hidden">
                           <img
                             src={offer.image}
                             alt={offer.title}
@@ -222,21 +222,21 @@ export default function HubIndex({ offers, categories, filters: initialFilters }
                           </div>
                         </div>
                         <MerchantCardContent className="p-4 flex-1 flex flex-col">
-                          <h3 className="text-white font-semibold text-lg mb-2 line-clamp-2">
+                          <h3 className="text-[#0A2540] font-semibold text-lg mb-2 line-clamp-2">
                             {offer.title}
                           </h3>
-                          <p className="text-gray-400 text-sm mb-4 line-clamp-2 flex-1">
+                          <p className="text-gray-600 text-sm mb-4 line-clamp-2 flex-1">
                             {offer.description}
                           </p>
                           <div className="space-y-2 mt-auto">
                             <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-1 text-[#FF1493]">
+                              <div className="flex items-center gap-1 text-[#2563EB]">
                                 <Coins className="w-4 h-4" />
                                 <span className="font-bold">{offer.pointsRequired.toLocaleString()}</span>
                                 <span className="text-sm text-gray-400">pts</span>
                               </div>
                               {offer.cashRequired && (
-                                <div className="flex items-center gap-1 text-white">
+                                <div className="flex items-center gap-1 text-[#0A2540]">
                                   <DollarSign className="w-4 h-4" />
                                   <span className="font-bold">{offer.cashRequired.toFixed(2)}</span>
                                   <span className="text-xs text-gray-400">{offer.currency || 'USD'}</span>
@@ -264,10 +264,10 @@ export default function HubIndex({ offers, categories, filters: initialFilters }
                       disabled={!link.url || link.active}
                       className={`px-4 py-2 rounded-lg transition-colors ${
                         link.active
-                          ? 'bg-gradient-to-r from-[#FF1493] via-[#DC143C] to-[#E97451] text-white cursor-default'
+                          ? 'bg-gradient-to-r from-[#2563EB] to-[#1D4ED8] text-white cursor-default'
                           : link.url
-                          ? 'bg-gray-800 text-white hover:bg-gray-700 cursor-pointer'
-                          : 'bg-gray-900 text-gray-600 cursor-not-allowed'
+                          ? 'bg-gray-100 text-[#0A2540] hover:bg-gray-200 cursor-pointer border border-gray-200'
+                          : 'bg-gray-50 text-gray-400 cursor-not-allowed border border-gray-100'
                       }`}
                       dangerouslySetInnerHTML={{ __html: link.label }}
                     />
@@ -279,7 +279,7 @@ export default function HubIndex({ offers, categories, filters: initialFilters }
             <MerchantCard className="text-center py-12">
               <MerchantCardContent>
                 <Gift className="w-16 h-16 text-gray-600 mx-auto mb-4" />
-                <h3 className="text-xl font-semibold text-white mb-2">
+                <h3 className="text-xl font-semibold text-[#0A2540] mb-2">
                   {search || selectedCategory !== 'all' ? 'No offers found' : 'No offers available'}
                 </h3>
                 <p className="text-gray-400">

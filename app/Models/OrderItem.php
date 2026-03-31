@@ -11,6 +11,7 @@ class OrderItem extends Model
         'order_id',
         'product_id',
         'organization_product_id',
+        'marketplace_product_id',
         'organization_id',
         'per_organization_donation_amount',
         'quantity',
@@ -44,6 +45,11 @@ class OrderItem extends Model
     public function organizationProduct(): BelongsTo
     {
         return $this->belongsTo(OrganizationProduct::class);
+    }
+
+    public function marketplaceProduct(): BelongsTo
+    {
+        return $this->belongsTo(MarketplaceProduct::class);
     }
 
     public function organization(): BelongsTo

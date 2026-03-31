@@ -206,12 +206,12 @@ export default function QRCodeScanner({ isOpen, onClose, merchantId }: QRCodeSca
               exit={{ opacity: 0, scale: 0.9, y: 20 }}
               transition={{ type: "spring", duration: 0.5 }}
               onClick={(e) => e.stopPropagation()}
-              className="w-full max-w-md bg-black border border-[#FF1493]/20 rounded-lg overflow-hidden"
+              className="w-full max-w-md bg-black border border-[#2563EB]/20 rounded-lg overflow-hidden"
             >
               {/* Header */}
-              <div className="flex items-center justify-between p-4 border-b border-[#FF1493]/20">
+              <div className="flex items-center justify-between p-4 border-b border-[#2563EB]/20">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#FF1493] to-[#DC143C] flex items-center justify-center">
+                  <div className="w-10 h-10 rounded-full bg-gradient-to-br from-[#2563EB] to-[#1D4ED8] flex items-center justify-center">
                     <QrCode className="w-5 h-5 text-white" />
                   </div>
                   <div>
@@ -221,7 +221,7 @@ export default function QRCodeScanner({ isOpen, onClose, merchantId }: QRCodeSca
                 </div>
                 <button
                   onClick={handleClose}
-                  className="p-2 rounded-lg hover:bg-[#FF1493]/10 transition-colors"
+                  className="p-2 rounded-lg hover:bg-[#2563EB]/10 transition-colors"
                 >
                   <X className="w-5 h-5 text-gray-400" />
                 </button>
@@ -231,7 +231,7 @@ export default function QRCodeScanner({ isOpen, onClose, merchantId }: QRCodeSca
               <div className="p-4">
                 {!scanning && !scannedCode ? (
                   <div className="space-y-4">
-                    <div className="aspect-square bg-gray-900 rounded-lg flex items-center justify-center border-2 border-dashed border-[#FF1493]/30">
+                    <div className="aspect-square bg-gray-900 rounded-lg flex items-center justify-center border-2 border-dashed border-[#2563EB]/30">
                       <div className="text-center">
                         <Camera className="w-16 h-16 text-gray-600 mx-auto mb-4" />
                         <p className="text-gray-400 text-sm">Ready to scan</p>
@@ -250,7 +250,7 @@ export default function QRCodeScanner({ isOpen, onClose, merchantId }: QRCodeSca
                   </div>
                 ) : scanning ? (
                   <div className="space-y-4">
-                    <div className="relative aspect-square bg-black rounded-lg overflow-hidden border-2 border-[#FF1493]">
+                    <div className="relative aspect-square bg-black rounded-lg overflow-hidden border-2 border-[#2563EB]">
                       <video
                         ref={videoRef}
                         autoPlay
@@ -261,11 +261,11 @@ export default function QRCodeScanner({ isOpen, onClose, merchantId }: QRCodeSca
                       <canvas ref={canvasRef} className="hidden" />
                       {/* Scanning overlay */}
                       <div className="absolute inset-0 flex items-center justify-center">
-                        <div className="w-64 h-64 border-2 border-[#FF1493] rounded-lg">
-                          <div className="absolute top-0 left-0 w-8 h-8 border-t-2 border-l-2 border-[#FF1493]"></div>
-                          <div className="absolute top-0 right-0 w-8 h-8 border-t-2 border-r-2 border-[#FF1493]"></div>
-                          <div className="absolute bottom-0 left-0 w-8 h-8 border-b-2 border-l-2 border-[#FF1493]"></div>
-                          <div className="absolute bottom-0 right-0 w-8 h-8 border-b-2 border-r-2 border-[#FF1493]"></div>
+                        <div className="w-64 h-64 border-2 border-[#2563EB] rounded-lg">
+                          <div className="absolute top-0 left-0 w-8 h-8 border-t-2 border-l-2 border-[#2563EB]"></div>
+                          <div className="absolute top-0 right-0 w-8 h-8 border-t-2 border-r-2 border-[#2563EB]"></div>
+                          <div className="absolute bottom-0 left-0 w-8 h-8 border-b-2 border-l-2 border-[#2563EB]"></div>
+                          <div className="absolute bottom-0 right-0 w-8 h-8 border-b-2 border-r-2 border-[#2563EB]"></div>
                         </div>
                       </div>
                     </div>

@@ -6,6 +6,7 @@ use App\Models\Cart;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\OrderShippingInfo;
+use App\Models\OrderSplit;
 use App\Models\ShippoShipment;
 use App\Models\TempOrder;
 use App\Models\Transaction;
@@ -43,6 +44,7 @@ class CheckoutController extends Controller
         $cart = $user->cart()->with([
             'items.product',
             'items.variant',
+            'items.marketplaceProduct.merchant',
             'items.organizationProduct.marketplaceProduct',
             'items.organizationProduct.organization',
         ])->first();
@@ -57,6 +59,28 @@ class CheckoutController extends Controller
 
         return Inertia::render('Checkout/index', [
             'items' => $cart->items->map(function ($item) {
+                if ($item->marketplace_product_id) {
+                    $mp = $item->marketplaceProduct;
+
+                    return [
+                        'id' => $item->id,
+                        'quantity' => $item->quantity,
+                        'unit_price' => (float) $item->unit_price,
+                        'variant_image' => $item->variant_image,
+                        'product' => [
+                            'name' => $mp?->name ?? 'Product',
+                        ],
+                        'variant_data' => [
+                            'printify_variant_id' => null,
+                            'printify_blueprint_id' => null,
+                            'printify_print_provider_id' => null,
+                            'variant_options' => null,
+                        ],
+                        'listing_type' => 'merchant_marketplace',
+                        'sold_by_organization' => null,
+                    ];
+                }
+
                 if ($item->organization_product_id) {
                     $mp = $item->organizationProduct?->marketplaceProduct;
 
@@ -129,6 +153,7 @@ class CheckoutController extends Controller
         $cart = $user->cart()->with([
             'items.product',
             'items.variant',
+            'items.marketplaceProduct.merchant',
             'items.organizationProduct.marketplaceProduct',
             'items.organizationProduct.organization',
         ])->first();
@@ -229,10 +254,18 @@ class CheckoutController extends Controller
                     ];
                 }
             } else {
-                // For manual products: calculate shipping with Shippo (cheapest rate)
-                $manualProduct = $cart->items->first()?->product;
-                $shippingCost = config('app.manual_product_shipping_cost', 9.99);
+                // Manual org catalog, direct merchant marketplace, or pool listing: Shippo from seller ship-from
+                $firstCartItem = $cart->items->first();
+                $firstCartItem?->loadMissing([
+                    'marketplaceProduct.merchant.shippingAddresses',
+                    'organizationProduct.marketplaceProduct.merchant.shippingAddresses',
+                ]);
+                $mp = $firstCartItem?->marketplaceProduct ?? $firstCartItem?->organizationProduct?->marketplaceProduct;
+                $poolOp = $firstCartItem?->organizationProduct;
+                $merchant = $mp?->merchant;
+                $manualProduct = $firstCartItem?->product;
 
+                $shippingCost = (float) config('app.manual_product_shipping_cost', 9.99);
                 $shippingMethods = [
                     [
                         'id' => 'standard',
@@ -242,22 +275,64 @@ class CheckoutController extends Controller
                     ],
                 ];
 
-                if ($manualProduct && $this->shippoService->isConfigured() && $validated['country'] && $validated['zip']) {
+                $canQuoteShippo = $this->shippoService->isConfigured()
+                    && ! empty($validated['country'])
+                    && ! empty($validated['zip']);
+
+                $shipTo = [
+                    'name' => trim(($firstName ?? 'Customer').' '.($lastName ?? '')),
+                    'street1' => $validated['address'],
+                    'city' => $validated['city'],
+                    'state' => $validated['state'],
+                    'zip' => $validated['zip'],
+                    'country' => $this->shippoService->normalizeCountryToIso2((string) ($validated['country'] ?? 'US')),
+                    'phone' => $this->shippoService->ensureRecipientPhoneForShippo($validated['phone'] ?? null),
+                    'email' => $validated['email'],
+                ];
+
+                $defaultParcel = [
+                    'length' => '10',
+                    'width' => '8',
+                    'height' => '4',
+                    'distance_unit' => 'in',
+                    'weight' => '16',
+                    'mass_unit' => 'oz',
+                ];
+
+                if ($mp && $merchant && $mp->product_type === 'physical' && $canQuoteShippo) {
+                    $shipFrom = $this->shippoService->shipFromPayloadForMerchant($merchant);
+                    try {
+                        $ratesResult = $this->shippoService->getRatesForAddresses($shipFrom, $shipTo, $defaultParcel);
+                        if (! empty($ratesResult['success']) && ! empty($ratesResult['rates'])) {
+                            $shippingMethods = $this->shippoService->ratesToCheckoutMethods($ratesResult['rates']);
+                            if (! empty($shippingMethods)) {
+                                $first = $shippingMethods[0];
+                                $shippingCost = (float) $first['cost'];
+                                $shippoRateObjectId = (string) $first['id'];
+                                $shippoCarrier = $first['provider'] ?? null;
+                                $shippoRateAmount = $shippingCost;
+                                $shippoShipmentId = $ratesResult['shipment_id'] ?? null;
+                            }
+                        }
+                    } catch (\Exception $e) {
+                        $shippingCost = (float) config('app.manual_product_shipping_cost', 9.99);
+                        $shippingMethods = [
+                            [
+                                'id' => 'standard',
+                                'name' => 'Standard Shipping',
+                                'cost' => $shippingCost,
+                                'estimated_days' => '5-10 business days',
+                            ],
+                        ];
+                        \Log::warning('Shippo rates failed in checkout step1 (merchant pool)', [
+                            'error' => $e->getMessage(),
+                        ]);
+                    }
+                } elseif ($manualProduct && $canQuoteShippo) {
                     $manualProduct->load(['organization.user', 'user', 'shipFromMerchant.shippingAddresses']);
                     $org = $manualProduct->organization;
 
                     $shipFrom = $this->shippoService->shipFromForManualProduct($manualProduct, $org);
-
-                    $shipTo = [
-                        'name' => trim(($firstName ?? 'Customer').' '.($lastName ?? '')),
-                        'street1' => $validated['address'],
-                        'city' => $validated['city'],
-                        'state' => $validated['state'],
-                        'zip' => $validated['zip'],
-                        'country' => $this->shippoService->normalizeCountryToIso2((string) ($validated['country'] ?? 'US')),
-                        'phone' => $validated['phone'],
-                        'email' => $validated['email'],
-                    ];
 
                     $length = $manualProduct->parcel_length_in !== null ? (float) $manualProduct->parcel_length_in : 10.0;
                     $width = $manualProduct->parcel_width_in !== null ? (float) $manualProduct->parcel_width_in : 8.0;
@@ -290,7 +365,6 @@ class CheckoutController extends Controller
                             }
                         }
                     } catch (\Exception $e) {
-                        // Shippo failure: fallback platform default (shipping is not stored on manual products).
                         $shippingCost = (float) config('app.manual_product_shipping_cost', 9.99);
                         $shippingMethods = [
                             [
@@ -304,10 +378,18 @@ class CheckoutController extends Controller
                             'error' => $e->getMessage(),
                         ]);
                     }
+                } elseif ($mp && $mp->product_type !== 'physical') {
+                    $shippingCost = 0;
+                    $shippingMethods = [
+                        [
+                            'id' => 'digital',
+                            'name' => 'Digital / service delivery',
+                            'cost' => 0,
+                            'estimated_days' => '—',
+                        ],
+                    ];
                 } else {
-                    // No Shippo quote (missing address config, etc.): use platform default only
                     $shippingCost = (float) config('app.manual_product_shipping_cost', 9.99);
-
                     $shippingMethods = [
                         [
                             'id' => 'standard',
@@ -323,7 +405,6 @@ class CheckoutController extends Controller
                     'methods' => $shippingMethods,
                 ];
 
-                // Calculate state-wise sales tax for manual products
                 if (! empty($validated['state'])) {
                     $stateCode = strtoupper($validated['state']);
                     $stateTax = \App\Models\StateSalesTax::where('state_code', $stateCode)->first();
@@ -695,6 +776,7 @@ class CheckoutController extends Controller
         $tempOrder = TempOrder::where('user_id', $user->id)
             ->with([
                 'cart.items.product',
+                'cart.items.marketplaceProduct',
                 'cart.items.organizationProduct.marketplaceProduct',
                 'cart.items.organizationProduct.organization',
             ])
@@ -787,6 +869,7 @@ class CheckoutController extends Controller
 
             $tempOrder->loadMissing([
                 'cart.items.product',
+                'cart.items.marketplaceProduct',
                 'cart.items.organizationProduct.marketplaceProduct',
                 'cart.items.organizationProduct.organization',
             ]);
@@ -794,7 +877,9 @@ class CheckoutController extends Controller
             $firstItem = $tempOrder->cart->items->first();
             $orderOrganizationId = null;
             if ($firstItem) {
-                if ($firstItem->organization_product_id) {
+                if ($firstItem->marketplace_product_id) {
+                    $orderOrganizationId = null;
+                } elseif ($firstItem->organization_product_id) {
                     $orderOrganizationId = $firstItem->organizationProduct?->organization_id;
                 } else {
                     $orderOrganizationId = $firstItem->product?->organization_id;
@@ -844,7 +929,59 @@ class CheckoutController extends Controller
                 $donationPerItem = 0;
                 $lineSubtotal = (float) $cartItem->unit_price * (int) $cartItem->quantity;
 
-                if ($cartItem->organization_product_id) {
+                if ($cartItem->marketplace_product_id) {
+                    $mp = $cartItem->marketplaceProduct;
+
+                    if (! $mp) {
+                        throw new \Exception('Invalid merchant product in cart.');
+                    }
+
+                    $lineCents = (int) round($lineSubtotal * 100);
+                    $pctM = (float) ($mp->pct_merchant ?? 0);
+                    $pctN = (float) ($mp->pct_nonprofit ?? 0);
+                    $useNonprofitSplit = $mp->nonprofit_marketplace_enabled
+                        && abs($pctM + $pctN) > 0.01;
+                    if ($useNonprofitSplit) {
+                        $mCents = (int) round($lineCents * $pctM / 100);
+                        $nCents = (int) round($lineCents * $pctN / 100);
+                        $bCents = $lineCents - $mCents - $nCents;
+                    } else {
+                        $mCents = $lineCents;
+                        $nCents = 0;
+                        $bCents = 0;
+                    }
+
+                    $splitMerchantCents += $mCents;
+                    $splitOrgCents += $nCents;
+                    $splitBiuCents += $bCents;
+
+                    OrderItem::create([
+                        'order_id' => $order->id,
+                        'product_id' => null,
+                        'organization_product_id' => null,
+                        'marketplace_product_id' => $mp->id,
+                        'organization_id' => null,
+                        'printify_product_id' => null,
+                        'printify_variant_id' => null,
+                        'printify_blueprint_id' => null,
+                        'printify_print_provider_id' => null,
+                        'quantity' => $cartItem->quantity,
+                        'unit_price' => $cartItem->unit_price,
+                        'subtotal' => $lineSubtotal,
+                        'per_organization_donation_amount' => $donationPerItem,
+                        'variant_data' => $cartItem->variant_options,
+                        'primary_image' => $cartItem->variant_image,
+                        'product_details' => [
+                            'marketplace_product_id' => $mp->id,
+                            'merchant_id' => $mp->merchant_id,
+                            'name' => $mp->name,
+                        ],
+                    ]);
+
+                    if ($mp->inventory_quantity !== null) {
+                        $mp->decrement('inventory_quantity', (int) $cartItem->quantity);
+                    }
+                } elseif ($cartItem->organization_product_id) {
                     $op = $cartItem->organizationProduct;
                     $mp = $op?->marketplaceProduct;
 
@@ -855,9 +992,18 @@ class CheckoutController extends Controller
                     $lineCents = (int) round($lineSubtotal * 100);
                     $pctM = (float) ($mp->pct_merchant ?? 0);
                     $pctN = (float) ($mp->pct_nonprofit ?? 0);
-                    $mCents = (int) round($lineCents * $pctM / 100);
-                    $nCents = (int) round($lineCents * $pctN / 100);
-                    $bCents = $lineCents - $mCents - $nCents;
+                    $useNonprofitSplit = $mp->nonprofit_marketplace_enabled
+                        && abs($pctM + $pctN) > 0.01;
+                    if ($useNonprofitSplit) {
+                        $mCents = (int) round($lineCents * $pctM / 100);
+                        $nCents = (int) round($lineCents * $pctN / 100);
+                        $bCents = $lineCents - $mCents - $nCents;
+                    } else {
+                        // Merchant Hub direct sale (no nonprofit split): pay merchant 100% of line.
+                        $mCents = $lineCents;
+                        $nCents = 0;
+                        $bCents = 0;
+                    }
 
                     $splitMerchantCents += $mCents;
                     $splitOrgCents += $nCents;
@@ -867,6 +1013,7 @@ class CheckoutController extends Controller
                         'order_id' => $order->id,
                         'product_id' => null,
                         'organization_product_id' => $op->id,
+                        'marketplace_product_id' => null,
                         'organization_id' => $op->organization_id,
                         'printify_product_id' => null,
                         'printify_variant_id' => null,
@@ -899,6 +1046,7 @@ class CheckoutController extends Controller
                         'order_id' => $order->id,
                         'product_id' => $cartItem->product_id,
                         'organization_product_id' => null,
+                        'marketplace_product_id' => null,
                         'organization_id' => $product->organization_id,
                         'printify_product_id' => $product->printify_product_id,
                         'printify_variant_id' => $cartItem->printify_variant_id,

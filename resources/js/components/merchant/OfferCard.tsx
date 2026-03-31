@@ -55,15 +55,15 @@ export function OfferCard({
             </p>
           )}
           <div className="flex items-center gap-2 flex-wrap">
-            <div className="flex items-center gap-1 bg-gradient-to-r from-[#FF1493]/20 via-[#DC143C]/20 to-[#E97451]/20 border-2 border-[#FF1493]/40 px-3 py-1.5 rounded-full backdrop-blur">
-              <Coins className="w-4 h-4 text-[#FF1493]" />
+            <div className="flex items-center gap-1 bg-gradient-to-r from-[#2563EB]/10 to-[#2563EB]/4 border-2 border-[#2563EB]/40 px-3 py-1.5 rounded-full backdrop-blur">
+              <Coins className="w-4 h-4 text-[#2563EB]" />
               <span className="text-sm font-semibold text-white">
                 {pointsRequired.toLocaleString()} Points
               </span>
             </div>
             {cashRequired && (
-              <div className="flex items-center gap-1 bg-gradient-to-r from-[#FF1493]/20 via-[#DC143C]/20 to-[#E97451]/20 border-2 border-[#FF1493]/40 px-3 py-1.5 rounded-full backdrop-blur">
-                <DollarSign className="w-4 h-4 text-[#FF1493]" />
+              <div className="flex items-center gap-1 bg-gradient-to-r from-[#2563EB]/10 to-[#2563EB]/4 border-2 border-[#2563EB]/40 px-3 py-1.5 rounded-full backdrop-blur">
+                <DollarSign className="w-4 h-4 text-[#2563EB]" />
                 <span className="text-sm font-semibold text-white">
                   +${cashRequired}
                 </span>

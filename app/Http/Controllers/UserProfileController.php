@@ -10,6 +10,7 @@ use App\Models\FundraiseLead;
 use App\Models\JobApplication;
 use App\Models\MerchantHubOfferRedemption;
 use App\Models\Order;
+use App\Models\OrderItem;
 use App\Models\Organization;
 use App\Models\Post;
 use App\Models\PostComment;
@@ -596,10 +597,39 @@ class UserProfileController extends Controller
         ]);
     }
 
+    /**
+     * Line display for supporter order history (Printify catalog, manual org product, or merchant hub pool line).
+     *
+     * @return array{name: string, description: string|null, image: string|null, is_manual_product: bool}
+     */
+    private function supporterOrderItemLine(OrderItem $item): array
+    {
+        $p = $item->product;
+        $mp = $item->marketplaceProduct ?? $item->organizationProduct?->marketplaceProduct;
+        $details = is_array($item->product_details) ? $item->product_details : [];
+        $name = $p?->name ?? ($details['name'] ?? null) ?? $mp?->name ?? 'Product';
+        $description = $p?->description ?? $mp?->description ?? '';
+        $image = $p?->image ?? $item->primary_image;
+        if ($image === null && $mp && is_array($mp->images) && count($mp->images) > 0) {
+            $path = $mp->images[0];
+            $image = filter_var($path, FILTER_VALIDATE_URL) ? $path : asset('storage/'.ltrim((string) $path, '/'));
+        }
+        $isManual = $item->marketplace_product_id || $item->organization_product_id
+            ? true
+            : ($p && empty($p->printify_product_id));
+
+        return [
+            'name' => $name,
+            'description' => $description,
+            'image' => $image,
+            'is_manual_product' => $isManual,
+        ];
+    }
+
     public function orders(): Response
     {
         $orders = Order::where('user_id', auth()->id())
-            ->with(['items.product', 'shippingInfo'])
+            ->with(['items.product', 'items.marketplaceProduct', 'items.organizationProduct.marketplaceProduct', 'shippingInfo'])
             ->orderBy('created_at', 'desc')
             ->get()
             ->map(function ($order) {
@@ -622,10 +652,12 @@ class UserProfileController extends Controller
                     'carrier' => $order->carrier,
                     'shipping_status' => $order->shipping_status,
                     'items' => $order->items->take(2)->map(function ($item) {
+                        $line = $this->supporterOrderItemLine($item);
+
                         return [
                             'id' => $item->id,
-                            'name' => $item->product->name,
-                            'primary_image' => $item->primary_image,
+                            'name' => $line['name'],
+                            'primary_image' => $line['image'] ?? $item->primary_image,
                             'quantity' => $item->quantity,
                             'unit_price' => $item->unit_price,
                             'subtotal' => $item->subtotal,
@@ -881,7 +913,7 @@ class UserProfileController extends Controller
     public function orderDetails($id): Response
     {
         $order = Order::where('user_id', auth()->id())
-            ->with(['items.product', 'shippingInfo'])
+            ->with(['items.product', 'items.marketplaceProduct', 'items.organizationProduct.marketplaceProduct', 'shippingInfo'])
             ->findOrFail($id);
 
         $order->loadMissing('user');
@@ -937,18 +969,20 @@ class UserProfileController extends Controller
                     }
                 }
 
+                $line = $this->supporterOrderItemLine($item);
+
                 return [
                     'id' => $item->id,
                     'product_id' => $item->product_id,
-                    'name' => $item->product->name,
-                    'description' => $item->product->description,
-                    'primary_image' => $item->primary_image,
+                    'name' => $line['name'],
+                    'description' => $line['description'],
+                    'primary_image' => $line['image'] ?? $item->primary_image,
                     'quantity' => $item->quantity,
                     'unit_price' => $item->unit_price,
                     'subtotal' => $item->subtotal,
                     'printify_variant_id' => $item->printify_variant_id,
                     'variant_data' => $variantData,
-                    'is_manual_product' => empty($item->product->printify_product_id),
+                    'is_manual_product' => $line['is_manual_product'],
                 ];
             }),
         ];

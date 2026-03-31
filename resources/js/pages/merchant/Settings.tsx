@@ -281,8 +281,8 @@ export default function Settings({ billingData: initialBillingData, shippingAddr
                           onClick={() => setActiveTab(tab.id as any)}
                           className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-left transition-colors ${
                             activeTab === tab.id
-                              ? 'bg-gradient-to-r from-[#FF1493]/30 via-[#DC143C]/30 to-[#E97451]/30 text-white border-l-2 border-[#FF1493]'
-                              : 'text-gray-300 hover:bg-[#FF1493]/10 hover:text-white'
+                              ? 'bg-gradient-to-r from-[#2563EB]/12 to-[#2563EB]/6 text-white border-l-2 border-[#2563EB]'
+                              : 'text-gray-300 hover:bg-[#2563EB]/10 hover:text-white'
                           }`}
                         >
                           <Icon className="h-5 w-5" />
@@ -360,7 +360,7 @@ export default function Settings({ billingData: initialBillingData, shippingAddr
                   <MerchantCard>
                     <MerchantCardHeader>
                       <div className="flex items-center gap-2">
-                        <MapPin className="h-5 w-5 text-[#FF1493]" />
+                        <MapPin className="h-5 w-5 text-[#2563EB]" />
                         <MerchantCardTitle className="text-white">Shipping addresses</MerchantCardTitle>
                       </div>
                     </MerchantCardHeader>
@@ -376,7 +376,7 @@ export default function Settings({ billingData: initialBillingData, shippingAddr
                           {shippingAddresses.map((row) => (
                             <li
                               key={row.id}
-                              className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 p-4 rounded-lg border border-[#FF1493]/20 bg-black/40"
+                              className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 p-4 rounded-lg border border-[#2563EB]/20 bg-black/40"
                             >
                               <div className="min-w-0">
                                 <div className="flex flex-wrap items-center gap-2 mb-1">
@@ -384,7 +384,7 @@ export default function Settings({ billingData: initialBillingData, shippingAddr
                                     {row.label?.trim() || 'Shipping location'}
                                   </span>
                                   {row.is_default && (
-                                    <span className="text-xs px-2 py-0.5 rounded bg-[#FF1493]/20 text-[#FF1493]">
+                                    <span className="text-xs px-2 py-0.5 rounded bg-[#2563EB]/20 text-[#2563EB]">
                                       Default
                                     </span>
                                   )}
@@ -436,7 +436,7 @@ export default function Settings({ billingData: initialBillingData, shippingAddr
                         </ul>
                       )}
 
-                      <form onSubmit={submitShippingAddress} className="space-y-4 pt-2 border-t border-[#FF1493]/20">
+                      <form onSubmit={submitShippingAddress} className="space-y-4 pt-2 border-t border-[#2563EB]/20">
                         <h3 className="text-white font-medium">
                           {editingAddressId ? 'Edit address' : 'Add address'}
                         </h3>
@@ -539,7 +539,7 @@ export default function Settings({ billingData: initialBillingData, shippingAddr
                             type="checkbox"
                             checked={addressForm.data.is_default}
                             onChange={(e) => addressForm.setData('is_default', e.target.checked)}
-                            className="rounded border-gray-600 bg-black/50 text-[#FF1493] focus:ring-[#FF1493]"
+                            className="rounded border-gray-600 bg-black/50 text-[#2563EB] focus:ring-[#2563EB]"
                           />
                           Use as default ship-from address
                         </label>
@@ -686,7 +686,7 @@ export default function Settings({ billingData: initialBillingData, shippingAddr
                     <MerchantCardContent>
                       {billingData?.subscription ? (
                         <div className="space-y-4">
-                          <div className="flex items-start justify-between p-4 rounded-lg bg-gradient-to-br from-[#FF1493]/10 via-[#DC143C]/10 to-[#E97451]/10 border border-[#FF1493]/20">
+                          <div className="flex items-start justify-between p-4 rounded-lg bg-gradient-to-br from-[#2563EB]/8 to-[#2563EB]/3 border border-[#2563EB]/20">
                             <div className="flex-1">
                               <div className="flex items-center gap-3 mb-2">
                                 <h3 className="text-lg font-semibold text-white">
@@ -790,7 +790,7 @@ export default function Settings({ billingData: initialBillingData, shippingAddr
                           {billingData.invoices.map((invoice) => (
                             <div
                               key={invoice.id}
-                              className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 p-4 rounded-lg border border-[#FF1493]/20 bg-black/50 hover:bg-black/70 transition-colors"
+                              className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 p-4 rounded-lg border border-[#2563EB]/20 bg-black/50 hover:bg-black/70 transition-colors"
                             >
                               <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-3 mb-2">
@@ -842,7 +842,7 @@ export default function Settings({ billingData: initialBillingData, shippingAddr
                                       href={invoice.invoice_pdf}
                                       target="_blank"
                                       rel="noopener noreferrer"
-                                      className="p-2 rounded-lg border border-[#FF1493]/20 text-[#FF1493] hover:bg-[#FF1493]/10 transition-colors"
+                                      className="p-2 rounded-lg border border-[#2563EB]/20 text-[#2563EB] hover:bg-[#2563EB]/10 transition-colors"
                                       title="Download PDF"
                                     >
                                       <Download className="w-4 h-4" />

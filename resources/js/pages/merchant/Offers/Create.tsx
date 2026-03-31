@@ -108,7 +108,7 @@ export default function CreateOffer({ categories }: CreateOfferProps) {
                         value={data.merchant_hub_category_id}
                         onValueChange={(value) => setData('merchant_hub_category_id', value)}
                       >
-                        <SelectTrigger className={`mt-1 bg-gray-900/50 border-[#FF1493]/40 text-white ${errors.merchant_hub_category_id ? 'border-red-500' : ''}`}>
+                        <SelectTrigger className={`mt-1 bg-gray-900/50 border-[#2563EB]/40 text-white ${errors.merchant_hub_category_id ? 'border-red-500' : ''}`}>
                           <SelectValue placeholder="Select a category" />
                         </SelectTrigger>
                         <SelectContent>
@@ -213,7 +213,7 @@ export default function CreateOffer({ categories }: CreateOfferProps) {
                         value={String(data.discount_percentage)}
                         onValueChange={(value) => setData('discount_percentage', Number(value))}
                       >
-                        <SelectTrigger className={`mt-1 bg-gray-900/50 border-[#FF1493]/40 text-white ${errors.discount_percentage ? 'border-red-500' : ''}`}>
+                        <SelectTrigger className={`mt-1 bg-gray-900/50 border-[#2563EB]/40 text-white ${errors.discount_percentage ? 'border-red-500' : ''}`}>
                           <SelectValue placeholder="Select %" />
                         </SelectTrigger>
                         <SelectContent>
@@ -232,7 +232,7 @@ export default function CreateOffer({ categories }: CreateOfferProps) {
                         value={data.currency}
                         onValueChange={(value) => setData('currency', value)}
                       >
-                        <SelectTrigger className="mt-1 bg-gray-900/50 border-[#FF1493]/40 text-white">
+                        <SelectTrigger className="mt-1 bg-gray-900/50 border-[#2563EB]/40 text-white">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -246,7 +246,7 @@ export default function CreateOffer({ categories }: CreateOfferProps) {
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 rounded-lg bg-gray-900/50 border border-gray-700/50 p-4">
                     <div>
                       <p className="text-xs text-gray-400 uppercase tracking-wide">Discount amount</p>
-                      <p className="text-lg font-bold text-[#FF1493]">${discountAmount.toFixed(2)}</p>
+                      <p className="text-lg font-bold text-[#2563EB]">${discountAmount.toFixed(2)}</p>
                     </div>
                     <div>
                       <p className="text-xs text-gray-400 uppercase tracking-wide">Points required</p>
@@ -316,7 +316,7 @@ export default function CreateOffer({ categories }: CreateOfferProps) {
                       value={data.status}
                       onValueChange={(value) => setData('status', value as 'draft' | 'active' | 'paused' | 'expired')}
                     >
-                      <SelectTrigger className={`mt-1 bg-gray-900/50 border-[#FF1493]/40 text-white ${errors.status ? 'border-red-500' : ''}`}>
+                      <SelectTrigger className={`mt-1 bg-gray-900/50 border-[#2563EB]/40 text-white ${errors.status ? 'border-red-500' : ''}`}>
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -340,7 +340,7 @@ export default function CreateOffer({ categories }: CreateOfferProps) {
                     Cancel
                   </MerchantButton>
                 </Link>
-                <MerchantButton type="submit" disabled={processing} className="bg-gradient-to-r from-[#FF1493] via-[#DC143C] to-[#E97451] hover:from-[#FF1FA3] hover:via-[#EC1F4C] hover:to-[#F98461]">
+                <MerchantButton type="submit" disabled={processing} className="bg-gradient-to-r from-[#2563EB] to-[#1D4ED8] hover:from-[#FF1FA3] hover:via-[#EC1F4C] hover:to-[#F98461]">
                   {processing ? 'Creating...' : 'Create Offer'}
                 </MerchantButton>
               </div>
