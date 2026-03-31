@@ -71,7 +71,8 @@ import {
     Cloud,
     Monitor,
     LayoutGrid,
-    Layers
+    Layers,
+    ScrollText,
 } from 'lucide-react';
 import SiteTitle from './site-title';
 import { Button } from '@/components/ui/button';
@@ -670,6 +671,21 @@ const mainNavItems: (NavItem | NavGroup)[] = [
             },
         ],
         permission: "data.management.read"
+    },
+
+    // Transaction ledger (all admins — matches route role:admin)
+    {
+        title: 'Ledger',
+        icon: ScrollText,
+        role: 'admin',
+        items: [
+            {
+                title: 'Transaction Ledger',
+                href: '/admin/transactions/ledger',
+                icon: ScrollText,
+                role: 'admin',
+            },
+        ],
     },
 
     // Application Management Section

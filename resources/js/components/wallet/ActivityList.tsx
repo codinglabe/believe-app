@@ -80,6 +80,9 @@ export function ActivityList({
                     const isTransferReceived = activity.type === 'transfer_received'
                     const isDonation = activity.type === 'donation'
                     const isDeposit = activity.type === 'deposit'
+                    const isDonationOutgoing = isDonation && activity.is_outgoing === true
+                    const isDonationReceived = isDonation && activity.is_outgoing !== true
+                    const isOutgoing = isTransferSent || isDonationOutgoing
                     
                     return (
                         <motion.div

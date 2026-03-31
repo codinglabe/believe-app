@@ -9,6 +9,7 @@ use App\Models\CareAllianceDonation;
 use App\Models\Organization;
 use App\Services\CareAllianceSplitService;
 use App\Services\SeoService;
+use App\Services\StripeEnvironmentSyncService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -153,6 +154,18 @@ class CareAllianceDonationController extends Controller
         $amountDollars = $validated['amount_cents'] / 100;
 
         try {
+            if (! StripeEnvironmentSyncService::ensureUserStripeCustomer($user)) {
+                $donation->update(['status' => CareAllianceDonation::STATUS_FAILED]);
+                Log::error('Care Alliance Stripe checkout failed', [
+                    'error' => 'Could not prepare Stripe customer for current account',
+                ]);
+
+                return redirect()->back()->withErrors([
+                    'message' => 'Payment setup failed. Please try again in a moment.',
+                ]);
+            }
+            $user->refresh();
+
             $checkoutOptions = [
                 'success_url' => route('care-alliance.donations.success').'?session_id={CHECKOUT_SESSION_ID}',
                 'cancel_url' => route('care-alliance.campaigns.donate', [
@@ -177,10 +190,9 @@ class CareAllianceDonationController extends Controller
             $donation->update(['status' => CareAllianceDonation::STATUS_FAILED]);
             Log::error('Care Alliance Stripe checkout failed', ['e' => $e->getMessage()]);
 
-            return response()->json([
-                'success' => false,
+            return redirect()->back()->withErrors([
                 'message' => 'Payment could not be started: '.$e->getMessage(),
-            ], 500);
+            ]);
         }
     }
 
@@ -224,6 +236,30 @@ class CareAllianceDonationController extends Controller
                             $org = Organization::find($line['organization_id']);
                             if ($org && $org->user) {
                                 $org->user->increment('balance', $dollars);
+                                $payRef = (string) ($donation->payment_reference ?? '');
+                                $ledgerTxId = ($payRef !== '' && (str_starts_with($payRef, 'pi_')
+                                    || str_starts_with($payRef, 'cs_')
+                                    || str_starts_with($payRef, 'ch_'))) ? $payRef : null;
+                                $txPayload = [
+                                    'type' => 'deposit',
+                                    'amount' => $dollars,
+                                    'fee' => 0,
+                                    'payment_method' => 'care_alliance_campaign_donation',
+                                    'related_type' => CareAllianceDonation::class,
+                                    'related_id' => $donation->id,
+                                    'meta' => array_filter([
+                                        'care_alliance_donation_id' => $donation->id,
+                                        'organization_id' => $org->id,
+                                        'source' => 'care_alliance_campaign_split',
+                                        'campaign_name' => $donation->campaign?->name,
+                                        'care_alliance_name' => $donation->campaign?->careAlliance?->name,
+                                        'stripe_payment_intent' => str_starts_with($payRef, 'pi_') ? $payRef : null,
+                                    ]),
+                                ];
+                                if ($ledgerTxId !== null) {
+                                    $txPayload['transaction_id'] = $ledgerTxId;
+                                }
+                                $org->user->recordTransaction($txPayload);
                             }
                         }
                     }

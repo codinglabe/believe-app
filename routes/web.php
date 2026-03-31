@@ -6,6 +6,7 @@ use App\Http\Controllers\Admin\Form1023ApplicationController as AdminForm1023App
 use App\Http\Controllers\Admin\RewardPointController;
 use App\Http\Controllers\Admin\SeoController as AdminSeoController;
 use App\Http\Controllers\Admin\ServiceSellerController;
+use App\Http\Controllers\Admin\TransactionLedgerController;
 use App\Http\Controllers\AdminAboutPageController;
 use App\Http\Controllers\AiCampaignController;
 use App\Http\Controllers\AiChatController;
@@ -814,6 +815,15 @@ Route::prefix('admin/fees')
     ->group(function () {
         Route::get('/', [FeesController::class, 'index'])->name('index');
         Route::put('/', [FeesController::class, 'update'])->name('update');
+    });
+
+Route::prefix('admin/transactions')
+    ->middleware(['auth', 'EnsureEmailIsVerified', 'role:admin', 'topics.selected'])
+    ->name('admin.transactions.')
+    ->group(function () {
+        Route::get('/ledger', [TransactionLedgerController::class, 'index'])->name('ledger');
+        Route::get('/{transaction}', [TransactionLedgerController::class, 'show'])->name('show');
+        Route::delete('/{transaction}', [TransactionLedgerController::class, 'destroy'])->name('destroy');
     });
 
 Route::prefix('admin/reward-points')
