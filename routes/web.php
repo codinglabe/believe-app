@@ -147,6 +147,9 @@ Route::get('/robots.txt', function () {
     ]);
 })->name('robots');
 
+// Discover Care Alliances (public — same listing whether or not you’re logged in)
+Route::get('/find-care-alliances', [\App\Http\Controllers\FindCareAlliancesController::class, 'index'])->name('find-care-alliances.index');
+
 // Social Media Feed Routes
 Route::middleware(['auth', 'EnsureEmailIsVerified'])->group(function () {
     Route::get('/social-feed', [\App\Http\Controllers\PostController::class, 'index'])->name('social-feed.index');
@@ -461,7 +464,6 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin|use
 // Merchant Hub Routes (Public - for viewing offers)
 Route::prefix('merchant-hub')->name('merchant-hub.')->group(function () {
     Route::get('/', [App\Http\Controllers\MerchantHubOfferController::class, 'index'])->name('index');
-    Route::get('/products/{marketplace_product}', [App\Http\Controllers\MerchantHubMarketplaceProductController::class, 'show'])->name('product.show');
     // SEO-friendly referral: /merchant-hub/offers/8/ref/ABC123 — stores ref in session, redirects to offer
     Route::get('/offers/{id}/ref/{refCode}', [App\Http\Controllers\MerchantRedemptionController::class, 'offerRefRedirect'])->name('offer.show.ref');
     Route::get('/offers/{id}', [App\Http\Controllers\MerchantHubOfferController::class, 'show'])->name('offer.show');

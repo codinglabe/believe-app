@@ -133,6 +133,7 @@ class OrganizationController extends BaseController
         if (! empty($eins)) {
             $registeredOrgs = Organization::whereIn('ein', $eins)
                 ->where('registration_status', 'approved')
+                ->excludingCareAllianceHubs()
                 ->get()
                 ->keyBy('ein');
 
@@ -405,7 +406,7 @@ class OrganizationController extends BaseController
         if ($organization) {
             // If found by ID, check if registered (single query with eager load)
             $registeredOrg = Organization::where('ein', $organization->ein)
-                ->where('registration_status', 'approved')
+                ->where('registration_status', 'approved')->excludingCareAllianceHubs()
                 ->with('user:id,slug,name,email,image,cover_img')
                 ->first();
         } else {
@@ -414,7 +415,7 @@ class OrganizationController extends BaseController
 
             if ($user) {
                 $registeredOrg = Organization::where('user_id', $user->id)
-                    ->where('registration_status', 'approved')
+                    ->where('registration_status', 'approved')->excludingCareAllianceHubs()
                     ->with('user:id,slug,name,email,image,cover_img')
                     ->select('id', 'ein', 'user_id', 'name', 'description', 'mission', 'website', 'phone', 'email', 'contact_name', 'contact_title', 'social_accounts', 'city', 'state')
                     ->first();
@@ -848,7 +849,7 @@ class OrganizationController extends BaseController
             if ($ctx === 'organization') {
                 $org = Organization::query()
                     ->whereKey($id)
-                    ->where('registration_status', 'approved')
+                    ->where('registration_status', 'approved')->excludingCareAllianceHubs()
                     ->first();
                 if ($org === null) {
                     abort(404);
@@ -883,7 +884,7 @@ class OrganizationController extends BaseController
 
         $org = Organization::query()
             ->whereKey($id)
-            ->where('registration_status', 'approved')
+            ->where('registration_status', 'approved')->excludingCareAllianceHubs()
             ->first();
 
         if ($org === null) {
@@ -968,7 +969,7 @@ class OrganizationController extends BaseController
     private function toggleFavoriteViaExcelRow(Request $request, $user, int $id, ExcelData $excelDataOrg)
     {
         $org = Organization::where('ein', $excelDataOrg->ein)
-            ->where('registration_status', 'approved')
+            ->where('registration_status', 'approved')->excludingCareAllianceHubs()
             ->first();
 
         $userOrg = $user->organization ?? Organization::where('user_id', $user->id)->first();
@@ -1154,7 +1155,7 @@ class OrganizationController extends BaseController
 
     //     // Find the registered organization by EIN
     //     $org = Organization::where('ein', $excelDataOrg->ein)
-    //         ->where('registration_status', 'approved')
+    //         ->where('registration_status', 'approved')->excludingCareAllianceHubs()
     //         ->first();
 
     //     if (!$org) {
@@ -1261,7 +1262,7 @@ class OrganizationController extends BaseController
 
     //     // Find the registered organization by EIN
     //     $org = Organization::where('ein', $excelDataOrg->ein)
-    //         ->where('registration_status', 'approved')
+    //         ->where('registration_status', 'approved')->excludingCareAllianceHubs()
     //         ->first();
 
     //     if (!$org) {
@@ -1318,7 +1319,7 @@ class OrganizationController extends BaseController
             if ($ctx === 'organization') {
                 $org = Organization::query()
                     ->whereKey($id)
-                    ->where('registration_status', 'approved')
+                    ->where('registration_status', 'approved')->excludingCareAllianceHubs()
                     ->first();
             } elseif ($ctx === 'alliance') {
                 $alliance = CareAlliance::query()->whereKey($id)->where('status', 'active')->first();
@@ -1330,7 +1331,7 @@ class OrganizationController extends BaseController
                 if ($excelDataOrg !== null) {
                     $excelRowUsedForLookup = true;
                     $org = Organization::where('ein', $excelDataOrg->ein)
-                        ->where('registration_status', 'approved')
+                        ->where('registration_status', 'approved')->excludingCareAllianceHubs()
                         ->first();
                 }
             }
@@ -1339,12 +1340,12 @@ class OrganizationController extends BaseController
             if ($excelDataOrg !== null) {
                 $excelRowUsedForLookup = true;
                 $org = Organization::where('ein', $excelDataOrg->ein)
-                    ->where('registration_status', 'approved')
+                    ->where('registration_status', 'approved')->excludingCareAllianceHubs()
                     ->first();
             } else {
                 $org = Organization::query()
                     ->whereKey($id)
-                    ->where('registration_status', 'approved')
+                    ->where('registration_status', 'approved')->excludingCareAllianceHubs()
                     ->first();
                 if (! $org) {
                     $alliance = CareAlliance::query()->whereKey($id)->where('status', 'active')->first();
@@ -1627,7 +1628,7 @@ class OrganizationController extends BaseController
         if ($organization) {
             // Single query to get registered org if exists
             $registeredOrg = Organization::where('ein', $organization->ein)
-                ->where('registration_status', 'approved')
+                ->where('registration_status', 'approved')->excludingCareAllianceHubs()
                 ->with('user:id,slug,name,email,image,cover_img')
                 ->select('id', 'ein', 'user_id', 'name', 'description', 'mission', 'website', 'wefunder_project_url', 'phone', 'email', 'contact_name', 'contact_title', 'social_accounts', 'city', 'state')
                 ->first();
@@ -1637,7 +1638,7 @@ class OrganizationController extends BaseController
 
             if ($user) {
                 $registeredOrg = Organization::where('user_id', $user->id)
-                    ->where('registration_status', 'approved')
+                    ->where('registration_status', 'approved')->excludingCareAllianceHubs()
                     ->with('user:id,slug,name,email,image,cover_img')
                     ->select('id', 'ein', 'user_id', 'name', 'description', 'mission', 'website', 'wefunder_project_url', 'phone', 'email', 'contact_name', 'contact_title', 'social_accounts', 'city', 'state')
                     ->first();
@@ -1663,7 +1664,7 @@ class OrganizationController extends BaseController
         // Reuse registeredOrg if already loaded, otherwise query once with select for speed
         if (! $registeredOrg) {
             $registeredOrg = Organization::where('ein', $organization->ein)
-                ->where('registration_status', 'approved')
+                ->where('registration_status', 'approved')->excludingCareAllianceHubs()
                 ->with('user:id,slug,name,email,image,cover_img')
                 ->select('id', 'ein', 'user_id', 'name', 'description', 'mission', 'website', 'wefunder_project_url', 'phone', 'email', 'contact_name', 'contact_title', 'social_accounts', 'city', 'state')
                 ->first();
@@ -1769,7 +1770,7 @@ class OrganizationController extends BaseController
     {
         $organizationData = $this->getOrganizationData($id);
         $registeredOrg = Organization::where('ein', $organizationData['ein'])
-            ->where('registration_status', 'approved')
+            ->where('registration_status', 'approved')->excludingCareAllianceHubs()
             ->first();
 
         $products = [];
@@ -1826,7 +1827,7 @@ class OrganizationController extends BaseController
 
         if (! $registeredOrg && $organizationData['is_registered']) {
             $registeredOrg = Organization::where('ein', $organizationData['ein'])
-                ->where('registration_status', 'approved')
+                ->where('registration_status', 'approved')->excludingCareAllianceHubs()
                 ->select('id', 'user_id', 'name', 'description', 'mission', 'website', 'phone', 'email', 'contact_name', 'contact_title', 'social_accounts', 'city', 'state')
                 ->first();
         }
@@ -1915,7 +1916,7 @@ class OrganizationController extends BaseController
     {
         $organizationData = $this->getOrganizationData($id);
         $registeredOrg = Organization::where('ein', $organizationData['ein'])
-            ->where('registration_status', 'approved')
+            ->where('registration_status', 'approved')->excludingCareAllianceHubs()
             ->first();
 
         $eventsPaginator = new \Illuminate\Pagination\LengthAwarePaginator([], 0, 12);
@@ -1967,7 +1968,7 @@ class OrganizationController extends BaseController
     {
         $organizationData = $this->getOrganizationData($id);
         $registeredOrg = Organization::where('ein', $organizationData['ein'])
-            ->where('registration_status', 'approved')
+            ->where('registration_status', 'approved')->excludingCareAllianceHubs()
             ->first();
 
         if (! $registeredOrg) {
@@ -2000,7 +2001,7 @@ class OrganizationController extends BaseController
 
         if (! $registeredOrg && $organizationData['is_registered']) {
             $registeredOrg = Organization::where('ein', $organizationData['ein'])
-                ->where('registration_status', 'approved')
+                ->where('registration_status', 'approved')->excludingCareAllianceHubs()
                 ->select('id', 'user_id', 'name', 'description', 'mission', 'website', 'phone', 'email', 'contact_name', 'contact_title', 'social_accounts', 'city', 'state')
                 ->first();
         }
@@ -2052,7 +2053,7 @@ class OrganizationController extends BaseController
     {
         $organization = ExcelData::findOrFail($id);
         $registeredOrg = Organization::where('ein', $organization->ein)
-            ->where('registration_status', 'approved')
+            ->where('registration_status', 'approved')->excludingCareAllianceHubs()
             ->first();
 
         // Get impact data
@@ -2090,7 +2091,7 @@ class OrganizationController extends BaseController
 
         // Get all data needed for the main organization page
         $registeredOrg = Organization::where('ein', $organizationData['ein'])
-            ->where('registration_status', 'approved')
+            ->where('registration_status', 'approved')->excludingCareAllianceHubs()
             ->first();
         $postsCount = 0;
         $supportersCount = 0;
@@ -2139,7 +2140,7 @@ class OrganizationController extends BaseController
 
         if (! $registeredOrg && $organizationData['is_registered']) {
             $registeredOrg = Organization::where('ein', $organizationData['ein'])
-                ->where('registration_status', 'approved')
+                ->where('registration_status', 'approved')->excludingCareAllianceHubs()
                 ->select('id', 'user_id', 'name', 'description', 'mission', 'website', 'phone', 'email', 'contact_name', 'contact_title', 'social_accounts', 'city', 'state')
                 ->first();
         }
@@ -2306,6 +2307,7 @@ class OrganizationController extends BaseController
                 ->toArray();
 
             $suggestedOrgs = \App\Models\Organization::where('registration_status', 'approved')
+                ->excludingCareAllianceHubs()
                 ->whereNotIn('id', $userFavoriteOrgIds)
                 ->when($registeredOrg, function ($query) use ($registeredOrg) {
                     return $query->where('id', '!=', $registeredOrg->id);
@@ -2343,6 +2345,7 @@ class OrganizationController extends BaseController
 
         // Get trending organizations (by follower count)
         $trendingOrgs = \App\Models\Organization::where('registration_status', 'approved')
+            ->excludingCareAllianceHubs()
             ->withCount('followers')
             ->with('user:id,slug,name')
             ->orderBy('followers_count', 'desc')
@@ -2412,7 +2415,7 @@ class OrganizationController extends BaseController
 
             // Check if organization is already registered
             $registeredOrg = Organization::where('ein', $organization->ein)
-                ->where('registration_status', 'approved')
+                ->where('registration_status', 'approved')->excludingCareAllianceHubs()
                 ->first();
 
             if ($registeredOrg) {

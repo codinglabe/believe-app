@@ -192,7 +192,7 @@ class DonationController extends Controller
         $hasSearch = $search !== null && $search !== '';
 
         // Approved nonprofits available for donations
-        $orgQuery = Organization::where('registration_status', 'approved');
+        $orgQuery = Organization::where('registration_status', 'approved')->excludingCareAllianceHubs();
         if ($hasSearch) {
             $orgQuery->where(function ($q) use ($search) {
                 $q->where('name', 'like', '%'.$search.'%')

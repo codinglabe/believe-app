@@ -226,6 +226,7 @@ class HandleInertiaRequests extends Middleware
                         'push_token' => $user->push_token ?? null,
                         'timezone' => $user->timezone ?? 'UTC',
                         'care_alliance_wallet_eligible' => $user->careAllianceWalletEligible(),
+                        'wallet_header_visible' => $user->walletHeaderVisible(),
                         'care_alliance' => $careAllianceHub ? [
                             'slug' => $careAllianceHub->slug,
                             'name' => $careAllianceHub->name,

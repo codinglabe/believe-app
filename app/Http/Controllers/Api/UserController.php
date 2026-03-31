@@ -507,6 +507,7 @@ class UserController extends Controller
 
         // Get organizations with most donations or followers
         $organizations = Organization::where('registration_status', 'approved')
+            ->excludingCareAllianceHubs()
             ->withCount(['donations', 'users'])
             ->orderBy('donations_count', 'desc')
             ->orderBy('users_count', 'desc')

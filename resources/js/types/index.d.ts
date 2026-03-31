@@ -63,6 +63,8 @@ export interface User {
     login_status: boolean;
     /** false when user is Care Alliance without a valid 9-digit EIN (wallet blocked) */
     care_alliance_wallet_eligible?: boolean;
+    /** false when org/CA user lacks a valid 9-digit EIN for their context (header wallet hidden). */
+    wallet_header_visible?: boolean;
     /** Present when the user is the active Care Alliance hub creator */
     care_alliance?: { slug: string; name: string } | null;
     [key: string]: unknown; // This allows for additional properties...

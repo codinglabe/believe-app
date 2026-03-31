@@ -66,6 +66,7 @@ class OrganizationLookupController extends Controller
         // Prefer user slug for registered orgs so URL is human-friendly
         $registeredOrg = Organization::where('ein', $first->ein)
             ->where('registration_status', 'approved')
+            ->excludingCareAllianceHubs()
             ->with('user:id,slug')
             ->first();
 

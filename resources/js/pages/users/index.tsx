@@ -20,7 +20,8 @@ import {
   EyeOff,
   CheckCircle2,
   Mail,
-  Building2
+  Building2,
+  Handshake,
 } from "lucide-react"
 import AppLayout from "@/layouts/app-layout"
 import { Link, router, usePage, Head, useForm } from "@inertiajs/react"
@@ -58,6 +59,7 @@ interface User {
   joinedDate: string
   emailVerifiedAt: string | null
   organization_name?: string | null
+  care_alliance_name?: string | null
 }
 
 interface UsersPaginator {
@@ -304,13 +306,19 @@ export default function UsersIndex({ allRoles, filters = {} }: UsersListProps) {
       'admin': 'bg-purple-500/15 text-purple-700 dark:text-purple-300 border-purple-500/30',
       'organization': 'bg-blue-500/15 text-blue-700 dark:text-blue-300 border-blue-500/30',
       'organization_pending': 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30',
+      'care_alliance': 'bg-teal-500/15 text-teal-800 dark:text-teal-200 border-teal-500/30',
       'user': 'bg-slate-500/10 text-slate-700 dark:text-slate-300 border-slate-500/20',
+    }
+    const roleLabels: Record<string, string> = {
+      care_alliance: 'Care Alliance',
+      organization_pending: 'Organization Pending',
     }
     const key = role.toLowerCase().replace(/\s+/g, '_')
     const style = roleStyles[key] || roleStyles['user']
+    const label = roleLabels[key] ?? role.replace(/_/g, ' ')
     return (
       <span className={`inline-flex items-center rounded-md border px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${style}`}>
-        {role}
+        {label}
       </span>
     )
   }
@@ -320,6 +328,7 @@ export default function UsersIndex({ allRoles, filters = {} }: UsersListProps) {
       'admin': 'border-l-purple-500',
       'organization': 'border-l-blue-500',
       'organization_pending': 'border-l-amber-500',
+      'care_alliance': 'border-l-teal-500',
       'user': 'border-l-slate-400 dark:border-l-slate-500',
     }
     const key = role.toLowerCase().replace(/\s+/g, '_')
@@ -499,7 +508,12 @@ export default function UsersIndex({ allRoles, filters = {} }: UsersListProps) {
                       </Avatar>
                       <div className="min-w-0 flex-1 pt-0.5">
                         <h3 className="font-semibold text-foreground truncate leading-tight">{user.name}</h3>
-                        {user.organization_name ? (
+                        {user.care_alliance_name ? (
+                          <p className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground truncate">
+                            <Handshake className="h-3 w-3 shrink-0 text-teal-600/80 dark:text-teal-400/80" />
+                            {user.care_alliance_name}
+                          </p>
+                        ) : user.organization_name ? (
                           <p className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground truncate">
                             <Building2 className="h-3 w-3 shrink-0 text-muted-foreground/80" />
                             {user.organization_name}

@@ -1436,6 +1436,7 @@ class UserProfileController extends Controller
                     if ($excelData) {
                         $org = \App\Models\Organization::where('ein', $excelData->ein)
                             ->where('registration_status', 'approved')
+                            ->excludingCareAllianceHubs()
                             ->first();
 
                         return $org ? $org->user_id : null;
@@ -1603,7 +1604,7 @@ class UserProfileController extends Controller
                 ->pluck('organization_id')
                 ->toArray();
 
-            $suggestedOrgs = Organization::where('registration_status', 'approved')
+            $suggestedOrgs = Organization::where('registration_status', 'approved')->excludingCareAllianceHubs()
                 ->whereNotIn('id', $userFavoriteOrgIds)
                 ->with('user:id,slug,name,image')
                 ->limit(4)
@@ -1633,7 +1634,7 @@ class UserProfileController extends Controller
             }
 
             // Get trending organizations
-            $trendingOrgs = Organization::where('registration_status', 'approved')
+            $trendingOrgs = Organization::where('registration_status', 'approved')->excludingCareAllianceHubs()
                 ->withCount('followers')
                 ->with('user:id,slug,name')
                 ->orderBy('followers_count', 'desc')
@@ -1785,7 +1786,7 @@ class UserProfileController extends Controller
                 ->pluck('organization_id')
                 ->toArray();
 
-            $suggestedOrgs = Organization::where('registration_status', 'approved')
+            $suggestedOrgs = Organization::where('registration_status', 'approved')->excludingCareAllianceHubs()
                 ->whereNotIn('id', $userFavoriteOrgIds)
                 ->with('user:id,slug,name,image')
                 ->limit(4)
@@ -1814,7 +1815,7 @@ class UserProfileController extends Controller
                 })->toArray();
             }
 
-            $trendingOrgs = Organization::where('registration_status', 'approved')
+            $trendingOrgs = Organization::where('registration_status', 'approved')->excludingCareAllianceHubs()
                 ->withCount('followers')
                 ->with('user:id,slug,name')
                 ->orderBy('followers_count', 'desc')
@@ -1944,6 +1945,7 @@ class UserProfileController extends Controller
                     if ($excelData) {
                         $org = \App\Models\Organization::where('ein', $excelData->ein)
                             ->where('registration_status', 'approved')
+                            ->excludingCareAllianceHubs()
                             ->first();
 
                         return $org ? $org->user_id : null;
