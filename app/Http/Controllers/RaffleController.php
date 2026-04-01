@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Services\StripeProcessingFeeEstimator;
 use App\Models\Raffle;
 use App\Models\RaffleTicket;
 use App\Models\RaffleWinner;
@@ -216,7 +217,7 @@ class RaffleController extends BaseController
             $user = $request->user();
             
             // Stripe payment - create checkout session
-            $processingFee = ($totalAmount * 0.029) + 0.30;
+            $processingFee = StripeProcessingFeeEstimator::estimateCardFeeOnChargeUsd((float) $totalAmount);
             $totalWithFee = $totalAmount + $processingFee;
             $totalInCents = (int) ($totalWithFee * 100);
             

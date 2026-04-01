@@ -9,6 +9,7 @@ use App\Models\User;
 use App\Services\CareAllianceGeneralDonationDistributionService;
 use App\Services\CareAlliancePublicPageService;
 use App\Services\DonationLedgerSyncService;
+use App\Services\DonationProcessingFeeEstimator;
 use App\Services\ImpactScoreService;
 use App\Services\SeoService;
 use App\Services\StripeConfigService;
@@ -19,6 +20,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Validator;
 use Inertia\Inertia;
 use Laravel\Cashier\Cashier;
 
@@ -288,6 +290,21 @@ class DonationController extends Controller
                 ->all();
         }
 
+        $feePreview = null;
+        if ($request->filled('fee_preview_amount')) {
+            $validator = Validator::make($request->only(['fee_preview_amount', 'fee_preview_donor_covers', 'fee_preview_rail']), [
+                'fee_preview_amount' => 'required|numeric|min:0.01',
+                'fee_preview_donor_covers' => 'sometimes|boolean',
+                'fee_preview_rail' => 'nullable|in:card,bank',
+            ]);
+            if (! $validator->fails()) {
+                $base = round((float) $validator->validated()['fee_preview_amount'], 2);
+                $rail = $request->input('fee_preview_rail', 'card');
+                $rail = in_array($rail, ['card', 'bank'], true) ? $rail : 'card';
+                $feePreview = $this->feePreviewPayload($base, $request->boolean('fee_preview_donor_covers'), $rail);
+            }
+        }
+
         return Inertia::render('frontend/donate', [
             'seo' => SeoService::forPage('donate'),
             'organizations' => $organizations->values(),
@@ -300,7 +317,52 @@ class DonationController extends Controller
             'thisYearDonated' => $thisYearDonated,
             'givingGoal' => $givingGoal,
             'topOrganizations' => $topOrganizations,
+            'feePreview' => $feePreview,
         ]);
+    }
+
+    /**
+     * @return array{mode: string, rail: string, base_gift_usd: float, checkout_total_usd: float, processing_fee_estimate: float, estimated_net_to_org_usd: float}
+     */
+    private function feePreviewPayload(float $base, bool $donorCovers, string $rail = 'card'): array
+    {
+        $rail = in_array($rail, ['card', 'bank'], true) ? $rail : 'card';
+
+        if ($donorCovers) {
+            if ($rail === 'bank') {
+                $checkoutTotal = DonationProcessingFeeEstimator::grossUpAchChargeUsdForNetGiftUsd($base);
+                $feeAddon = DonationProcessingFeeEstimator::feeAddonWhenDonorCoversAchUsd($base);
+            } else {
+                $checkoutTotal = DonationProcessingFeeEstimator::grossUpCardChargeUsdForNetGiftUsd($base);
+                $feeAddon = DonationProcessingFeeEstimator::feeAddonWhenDonorCoversUsd($base);
+            }
+
+            return [
+                'mode' => 'donor_covers',
+                'rail' => $rail,
+                'base_gift_usd' => $base,
+                'checkout_total_usd' => round($checkoutTotal, 2),
+                'processing_fee_estimate' => round($feeAddon, 2),
+                'estimated_net_to_org_usd' => $base,
+            ];
+        }
+
+        if ($rail === 'bank') {
+            $fee = DonationProcessingFeeEstimator::estimateAchFeeOnChargeUsd($base);
+            $net = DonationProcessingFeeEstimator::estimateNetAfterAchFeeWhenOrgAbsorbsUsd($base);
+        } else {
+            $fee = DonationProcessingFeeEstimator::estimateCardFeeOnChargeUsd($base);
+            $net = DonationProcessingFeeEstimator::estimateNetAfterCardFeeWhenOrgAbsorbsUsd($base);
+        }
+
+        return [
+            'mode' => 'org_covers',
+            'rail' => $rail,
+            'base_gift_usd' => $base,
+            'checkout_total_usd' => $base,
+            'processing_fee_estimate' => round($fee, 2),
+            'estimated_net_to_org_usd' => $net,
+        ];
     }
 
     /**
@@ -420,10 +482,37 @@ class DonationController extends Controller
             'frequency' => 'required|in:one-time,weekly,monthly',
             'message' => 'nullable|string|max:500',
             'payment_method' => 'nullable|string|in:stripe,believe_points',
+            'donor_covers_processing_fees' => 'sometimes|boolean',
+            'donation_fee_rail' => 'nullable|in:card,bank',
         ]);
 
         $user = $request->user();
-        $amountInCents = (int) ($validated['amount'] * 100);
+        $paymentMethod = $validated['payment_method'] ?? 'stripe';
+        $baseGiftUsd = (float) $validated['amount'];
+        $donorCoversFees = $paymentMethod === 'stripe' && $request->boolean('donor_covers_processing_fees');
+        $feeRail = $validated['donation_fee_rail'] ?? 'card';
+        $feeRail = in_array($feeRail, ['card', 'bank'], true) ? $feeRail : 'card';
+
+        $checkoutTotalUsd = $baseGiftUsd;
+        $processingFeeEstimate = null;
+        if ($paymentMethod === 'stripe') {
+            if ($donorCoversFees) {
+                if ($feeRail === 'bank') {
+                    $checkoutTotalUsd = DonationProcessingFeeEstimator::grossUpAchChargeUsdForNetGiftUsd($baseGiftUsd);
+                    $processingFeeEstimate = DonationProcessingFeeEstimator::feeAddonWhenDonorCoversAchUsd($baseGiftUsd);
+                } else {
+                    $checkoutTotalUsd = DonationProcessingFeeEstimator::grossUpCardChargeUsdForNetGiftUsd($baseGiftUsd);
+                    $processingFeeEstimate = DonationProcessingFeeEstimator::feeAddonWhenDonorCoversUsd($baseGiftUsd);
+                }
+            } else {
+                $checkoutTotalUsd = $baseGiftUsd;
+                $processingFeeEstimate = $feeRail === 'bank'
+                    ? DonationProcessingFeeEstimator::estimateAchFeeOnChargeUsd($baseGiftUsd)
+                    : DonationProcessingFeeEstimator::estimateCardFeeOnChargeUsd($baseGiftUsd);
+            }
+        }
+
+        $amountInCents = (int) round($checkoutTotalUsd * 100);
         $organizationName = $organization->name;
         // Supporters and organization users can donate; block admin
         if ($user->hasRole('admin')) {
@@ -435,8 +524,6 @@ class DonationController extends Controller
         if ($donorOrg && (int) $donorOrg->id === (int) $organization->id) {
             return redirect()->back()->with('warning', 'You cannot donate to your own organization.');
         }
-
-        $paymentMethod = $validated['payment_method'] ?? 'stripe';
 
         // Validate Believe Points payment
         if ($paymentMethod === 'believe_points') {
@@ -464,12 +551,15 @@ class DonationController extends Controller
             ]);
         }
 
-        // Create donation record
+        // Create donation record (amount = intended gift to recipient; checkout may be higher if donor covers card fees)
         $donation = Donation::create([
             'user_id' => $user->id,
             'organization_id' => $organization->id,
             'care_alliance_id' => $allianceForCheckout?->id,
-            'amount' => $validated['amount'],
+            'amount' => $baseGiftUsd,
+            'donor_covers_processing_fees' => $paymentMethod === 'stripe' && $donorCoversFees,
+            'processing_fee_estimate' => $processingFeeEstimate,
+            'checkout_total' => $paymentMethod === 'stripe' ? round($checkoutTotalUsd, 2) : round($baseGiftUsd, 2),
             'frequency' => $validated['frequency'],
             'status' => 'pending',
             'payment_method' => $paymentMethod,
@@ -544,6 +634,9 @@ class DonationController extends Controller
             $metadata = [
                 'donation_id' => (string) $donation->id,
                 'organization_id' => (string) $organization->id,
+                'base_gift_amount' => (string) $baseGiftUsd,
+                'donor_covers_processing_fees' => $donorCoversFees ? '1' : '0',
+                'fee_rail' => $feeRail,
             ];
             if ($allianceForCheckout !== null) {
                 $metadata['care_alliance_id'] = (string) $allianceForCheckout->id;
@@ -554,8 +647,14 @@ class DonationController extends Controller
                 'success_url' => route('donations.success').'?session_id={CHECKOUT_SESSION_ID}',
                 'cancel_url' => route('donations.cancel'),
                 'metadata' => $metadata,
-                'payment_method_types' => ['card'],
+                'payment_method_types' => $feeRail === 'bank' ? ['us_bank_account'] : ['card'],
+                'billing_address_collection' => 'auto',
             ];
+
+            if (config('donations.stripe_automatic_tax')) {
+                $checkoutOptions['automatic_tax'] = ['enabled' => true];
+                $checkoutOptions['customer_update'] = ['address' => 'auto'];
+            }
 
             if ($validated['frequency'] !== 'one-time') {
                 $checkoutOptions['subscription_data'] = [
@@ -638,7 +737,7 @@ class DonationController extends Controller
                         DB::transaction(function () use ($donation, $session) {
                             $donation->update([
                                 'transaction_id' => $session->payment_intent,
-                                'payment_method' => $session->payment_method_types[0] ?? 'card',
+                                'payment_method' => $this->stripeCheckoutPaymentMethodLabel($session),
                                 'status' => 'completed',
                                 'donation_date' => now(),
                             ]);
@@ -725,7 +824,7 @@ class DonationController extends Controller
                         DB::transaction(function () use ($donation, $session) {
                             $donation->update([
                                 'transaction_id' => $session->subscription,
-                                'payment_method' => 'card',
+                                'payment_method' => $this->stripeCheckoutPaymentMethodLabel($session),
                                 'status' => 'active',
                                 'donation_date' => now(),
                             ]);
@@ -745,7 +844,7 @@ class DonationController extends Controller
                         DB::transaction(function () use ($donation, $session) {
                             $donation->update([
                                 'transaction_id' => $session->id,
-                                'payment_method' => $session->payment_method_types[0] ?? 'card',
+                                'payment_method' => $this->stripeCheckoutPaymentMethodLabel($session),
                                 'status' => 'completed',
                                 'donation_date' => now(),
                             ]);
@@ -835,6 +934,37 @@ class DonationController extends Controller
         ]);
 
         return $price->id;
+    }
+
+    /**
+     * Resolve Stripe payment method type (card, us_bank_account, …) from a completed Checkout Session.
+     */
+    private function stripeCheckoutPaymentMethodLabel(object $session): string
+    {
+        try {
+            if (! empty($session->payment_intent)) {
+                $piId = is_string($session->payment_intent) ? $session->payment_intent : $session->payment_intent->id;
+                $pi = Cashier::stripe()->paymentIntents->retrieve($piId, ['expand' => ['payment_method']]);
+                if ($pi->payment_method && is_object($pi->payment_method) && isset($pi->payment_method->type)) {
+                    return (string) $pi->payment_method->type;
+                }
+            }
+            if (! empty($session->subscription)) {
+                $subId = is_string($session->subscription) ? $session->subscription : $session->subscription->id;
+                $sub = Cashier::stripe()->subscriptions->retrieve($subId, ['expand' => ['default_payment_method']]);
+                if ($sub->default_payment_method && is_object($sub->default_payment_method) && isset($sub->default_payment_method->type)) {
+                    return (string) $sub->default_payment_method->type;
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::warning('stripeCheckoutPaymentMethodLabel failed', ['error' => $e->getMessage()]);
+        }
+
+        if (is_array($session->payment_method_types ?? null) && $session->payment_method_types !== []) {
+            return (string) $session->payment_method_types[0];
+        }
+
+        return 'card';
     }
 
     /**

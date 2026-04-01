@@ -871,6 +871,12 @@ const mainNavItems: (NavItem | NavGroup)[] = [
                 role: "admin"
             },
             {
+                title: 'Stripe processing fees',
+                href: '/admin/processing-fees',
+                icon: Percent,
+                role: "admin"
+            },
+            {
                 title: 'IRS Members',
                 href: '/admin/irs-members',
                 icon: FileText,

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Services\StripeProcessingFeeEstimator;
 use App\Models\NodeSell;
 use App\Models\NodeBoss;
 use App\Models\NodeReferral;
@@ -82,8 +83,7 @@ class NodeSellController extends Controller
         $user = Auth::user();
         $amount = $validated['amount'];
 
-        // Stripe fee calculation
-        $processingFee = ($amount * 0.029) + 0.30;
+        $processingFee = StripeProcessingFeeEstimator::estimateCardFeeOnChargeUsd((float) $amount);
         $totalAmount = $amount + $processingFee;
         $totalAmountInCents = (int) ($totalAmount * 100);
         $stripeSecret = app()->environment('production')

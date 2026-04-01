@@ -214,6 +214,10 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:admin'])->group(functi
     Route::put('/admin/about', [AdminAboutPageController::class, 'update'])->name('admin.about.update');
     Route::get('/admin/seo', [AdminSeoController::class, 'index'])->name('admin.seo.index');
     Route::put('/admin/seo', [AdminSeoController::class, 'update'])->name('admin.seo.update');
+    Route::get('/admin/processing-fees', [\App\Http\Controllers\Admin\ProcessingFeeSettingsController::class, 'index'])->name('admin.processing-fees.index');
+    Route::put('/admin/processing-fees', [\App\Http\Controllers\Admin\ProcessingFeeSettingsController::class, 'update'])->name('admin.processing-fees.update');
+    Route::redirect('/admin/donation-fees', '/admin/processing-fees', 301);
+    Route::put('/admin/donation-fees', [\App\Http\Controllers\Admin\ProcessingFeeSettingsController::class, 'update'])->name('admin.donation-fees.update');
     Route::get('/admin/kiosk', [App\Http\Controllers\Admin\KioskManagementController::class, 'index'])->name('admin.kiosk.index');
     Route::put('/admin/kiosk/hero', [App\Http\Controllers\Admin\KioskManagementController::class, 'updateHero'])->name('admin.kiosk.update-hero');
     Route::get('/admin/kiosk/categories/create', [App\Http\Controllers\Admin\KioskManagementController::class, 'create'])->name('admin.kiosk.categories.create');
@@ -311,6 +315,7 @@ Route::get('/nodeboss', [NodeBossController::class, 'frontendIndex'])->name('nod
 Route::get('/nodeboss/{id}/buy', [NodeBossController::class, 'frontendShow'])->name('buy.nodeboss');
 
 Route::get('/donate', [DonationController::class, 'index'])->name('donate');
+Route::redirect('/donation', '/donate', 302);
 
 // Care Alliance — public campaign donation + preview (no auth)
 Route::get('/care-alliance/{allianceSlug}/campaigns/{campaign}/donate', [CareAllianceDonationController::class, 'donatePage'])
