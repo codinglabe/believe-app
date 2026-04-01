@@ -32,6 +32,7 @@ class CommunityVideosController extends Controller
         try {
             // Organizations with connected YouTube (for Non-Profits tab dropdown)
             $nonprofitOrganizations = Organization::query()
+                ->excludingCareAllianceHubs()
                 ->whereNotNull('youtube_channel_url')
                 ->orderBy('name')
                 ->get(['id', 'name'])
@@ -255,6 +256,7 @@ class CommunityVideosController extends Controller
     {
         $search = trim((string) $request->input('search', ''));
         $query = Organization::query()
+            ->excludingCareAllianceHubs()
             ->whereNotNull('youtube_channel_url')
             ->orderBy('name')
             ->limit(50);
@@ -274,6 +276,7 @@ class CommunityVideosController extends Controller
     private function getChannelBannersForIndex(): array
     {
         $orgs = Organization::query()
+            ->excludingCareAllianceHubs()
             ->select('id', 'name', 'youtube_channel_url', 'user_id')
             ->whereNotNull('youtube_channel_url')
             ->with('user:id,slug')
@@ -346,6 +349,7 @@ class CommunityVideosController extends Controller
     private function fetchAllYouTubeVideos(): Collection
     {
         $orgs = Organization::query()
+            ->excludingCareAllianceHubs()
             ->select('id', 'name', 'registered_user_image', 'user_id', 'youtube_channel_url')
             ->whereNotNull('youtube_channel_url')
             ->with('user:id,slug')

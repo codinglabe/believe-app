@@ -6,6 +6,7 @@ use App\Http\Controllers\Admin\Form1023ApplicationController as AdminForm1023App
 use App\Http\Controllers\Admin\RewardPointController;
 use App\Http\Controllers\Admin\SeoController as AdminSeoController;
 use App\Http\Controllers\Admin\ServiceSellerController;
+use App\Http\Controllers\Admin\TransactionLedgerController;
 use App\Http\Controllers\AdminAboutPageController;
 use App\Http\Controllers\AiCampaignController;
 use App\Http\Controllers\AiChatController;
@@ -145,6 +146,9 @@ Route::get('/robots.txt', function () {
         'Content-Type' => 'text/plain',
     ]);
 })->name('robots');
+
+// Discover Care Alliances (public — same listing whether or not you’re logged in)
+Route::get('/find-care-alliances', [\App\Http\Controllers\FindCareAlliancesController::class, 'index'])->name('find-care-alliances.index');
 
 // Social Media Feed Routes
 Route::middleware(['auth', 'EnsureEmailIsVerified'])->group(function () {
@@ -460,7 +464,6 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin|use
 // Merchant Hub Routes (Public - for viewing offers)
 Route::prefix('merchant-hub')->name('merchant-hub.')->group(function () {
     Route::get('/', [App\Http\Controllers\MerchantHubOfferController::class, 'index'])->name('index');
-    Route::get('/products/{marketplace_product}', [App\Http\Controllers\MerchantHubMarketplaceProductController::class, 'show'])->name('product.show');
     // SEO-friendly referral: /merchant-hub/offers/8/ref/ABC123 — stores ref in session, redirects to offer
     Route::get('/offers/{id}/ref/{refCode}', [App\Http\Controllers\MerchantRedemptionController::class, 'offerRefRedirect'])->name('offer.show.ref');
     Route::get('/offers/{id}', [App\Http\Controllers\MerchantHubOfferController::class, 'show'])->name('offer.show');
@@ -814,6 +817,15 @@ Route::prefix('admin/fees')
     ->group(function () {
         Route::get('/', [FeesController::class, 'index'])->name('index');
         Route::put('/', [FeesController::class, 'update'])->name('update');
+    });
+
+Route::prefix('admin/transactions')
+    ->middleware(['auth', 'EnsureEmailIsVerified', 'role:admin', 'topics.selected'])
+    ->name('admin.transactions.')
+    ->group(function () {
+        Route::get('/ledger', [TransactionLedgerController::class, 'index'])->name('ledger');
+        Route::get('/{transaction}', [TransactionLedgerController::class, 'show'])->name('show');
+        Route::delete('/{transaction}', [TransactionLedgerController::class, 'destroy'])->name('destroy');
     });
 
 Route::prefix('admin/reward-points')

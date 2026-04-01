@@ -32,7 +32,7 @@ class CareAllianceGeneralDonationDistributionService
      *
      * @param  array<int, array{organization_id: int, cents: int}>  $orgShares
      */
-    public function creditSplitToWallets(CareAlliance $alliance, array $orgShares, int $feeCents): void
+    public function creditSplitToWallets(CareAlliance $alliance, array $orgShares, int $feeCents, ?int $donationId = null): void
     {
         if ($feeCents > 0) {
             $alliance->increment('balance_cents', $feeCents);
@@ -47,12 +47,13 @@ class CareAllianceGeneralDonationDistributionService
                         'type' => 'deposit',
                         'amount' => $feeDollars,
                         'payment_method' => 'care_alliance_split',
-                        'meta' => [
+                        'meta' => array_filter([
                             'source' => 'care_alliance_split',
                             'role' => 'alliance_fee',
                             'care_alliance_id' => $alliance->id,
                             'care_alliance_name' => $alliance->name,
-                        ],
+                            'donation_id' => $donationId,
+                        ]),
                     ]);
                 } else {
                     Log::warning('Care Alliance fee: creator user balance not updated (missing user?)', [
@@ -110,13 +111,14 @@ class CareAllianceGeneralDonationDistributionService
                     'type' => 'deposit',
                     'amount' => $dollars,
                     'payment_method' => 'care_alliance_split',
-                    'meta' => [
+                    'meta' => array_filter([
                         'source' => 'care_alliance_split',
                         'role' => 'member_share',
                         'care_alliance_id' => $alliance->id,
                         'care_alliance_name' => $alliance->name,
                         'organization_id' => $oid,
-                    ],
+                        'donation_id' => $donationId,
+                    ]),
                 ]);
             } else {
                 Log::warning('Care Alliance split: user balance not updated (missing user?)', [
@@ -135,7 +137,7 @@ class CareAllianceGeneralDonationDistributionService
     public function distributeCompletedDonation(Donation $donation, CareAlliance $alliance, array $orgShares, int $feeCents): void
     {
         DB::transaction(function () use ($donation, $alliance, $orgShares, $feeCents) {
-            $this->creditSplitToWallets($alliance, $orgShares, $feeCents);
+            $this->creditSplitToWallets($alliance, $orgShares, $feeCents, $donation->id);
         });
 
         Log::info('Care Alliance general donation distributed', [

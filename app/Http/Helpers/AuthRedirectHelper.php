@@ -2,6 +2,7 @@
 
 namespace App\Http\Helpers;
 
+use App\Models\CareAlliance;
 use Illuminate\Contracts\Auth\Authenticatable;
 use Illuminate\Support\Facades\Route;
 
@@ -13,7 +14,9 @@ class AuthRedirectHelper
 {
     /**
      * Get the default redirect URL for the authenticated user (by role).
+     *
      * - Supporter (user): public profile
+     * - Care Alliance (Spatie role care_alliance): public alliance hub (/alliances/{slug})
      * - Organization / organization_pending: public org page
      * - Admin: dashboard
      */
@@ -31,6 +34,26 @@ class AuthRedirectHelper
             return Route::has('users.show') ? route('users.show', $slug) : '/';
         }
 
+        $isCareAlliance = $role === 'care_alliance'
+            || (method_exists($user, 'hasRole') && $user->hasRole('care_alliance'));
+
+        if ($isCareAlliance) {
+            $alliance = CareAlliance::query()
+                ->where('creator_user_id', $user->id)
+                ->orderBy('id')
+                ->first();
+
+            if ($alliance && filled($alliance->slug) && Route::has('alliances.show')) {
+                return route('alliances.show', $alliance->slug);
+            }
+
+            if (Route::has('care-alliance.workspace.members')) {
+                return route('care-alliance.workspace.members');
+            }
+
+            return Route::has('dashboard') ? route('dashboard') : '/';
+        }
+
         if (in_array($role, ['organization', 'organization_pending'], true)) {
             $slug = $user->slug ?? $user->id;
 
@@ -38,10 +61,6 @@ class AuthRedirectHelper
         }
 
         if ($role === 'admin') {
-            return Route::has('dashboard') ? route('dashboard') : '/';
-        }
-
-        if ($role === 'care_alliance') {
             return Route::has('dashboard') ? route('dashboard') : '/';
         }
 

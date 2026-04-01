@@ -2,9 +2,9 @@
 
 namespace App\Http\Controllers;
 
-use Illuminate\Http\Request;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Foundation\Validation\ValidatesRequests;
+use Illuminate\Http\Request;
 use Illuminate\Routing\Controller as LaravelBaseController;
 
 abstract class BaseController extends LaravelBaseController
@@ -25,13 +25,16 @@ abstract class BaseController extends LaravelBaseController
     protected function hasAnyPermission(Request $request, array $permissions): bool
     {
         $user = $request->user();
-        if (!$user) return false;
+        if (! $user) {
+            return false;
+        }
 
         foreach ($permissions as $permission) {
             if ($user->can($permission)) {
                 return true;
             }
         }
+
         return false;
     }
 
@@ -41,13 +44,16 @@ abstract class BaseController extends LaravelBaseController
     protected function hasAllPermissions(Request $request, array $permissions): bool
     {
         $user = $request->user();
-        if (!$user) return false;
+        if (! $user) {
+            return false;
+        }
 
         foreach ($permissions as $permission) {
-            if (!$user->can($permission)) {
+            if (! $user->can($permission)) {
                 return false;
             }
         }
+
         return true;
     }
 
@@ -80,7 +86,7 @@ abstract class BaseController extends LaravelBaseController
      */
     protected function authorizePermission(Request $request, string $permission): void
     {
-        if (!$this->hasPermission($request, $permission)) {
+        if (! $this->hasPermission($request, $permission)) {
             // If it's an AJAX request, return JSON response
             if ($request->expectsJson()) {
                 abort(403, "You do not have permission to perform this action. Required permission: {$permission}");
@@ -96,7 +102,7 @@ abstract class BaseController extends LaravelBaseController
      */
     protected function authorizeRole(Request $request, string $role): void
     {
-        if (!$this->hasRole($request, $role)) {
+        if (! $this->hasRole($request, $role)) {
             abort(403, "You do not have the required role to perform this action. Required role: {$role}");
         }
     }
@@ -106,8 +112,8 @@ abstract class BaseController extends LaravelBaseController
      */
     protected function authorizeAnyRole(Request $request, array $roles): void
     {
-        if (!$this->hasAnyRole($request, $roles)) {
-            abort(403, "You do not have any of the required roles to perform this action. Required roles: " . implode(', ', $roles));
+        if (! $this->hasAnyRole($request, $roles)) {
+            abort(403, 'You do not have any of the required roles to perform this action. Required roles: '.implode(', ', $roles));
         }
     }
 
@@ -120,11 +126,11 @@ abstract class BaseController extends LaravelBaseController
     }
 
     /**
-     * Check if user is organization
+     * Check if user acts as a nonprofit dashboard user (organization, pending, or Care Alliance).
      */
     protected function isOrganization(Request $request): bool
     {
-        return $this->hasRole($request, 'organization');
+        return $request->user()?->hasNonprofitDashboardRole() ?? false;
     }
 
     /**
@@ -141,7 +147,9 @@ abstract class BaseController extends LaravelBaseController
     protected function getAccessibleModules(Request $request): array
     {
         $user = $request->user();
-        if (!$user) return [];
+        if (! $user) {
+            return [];
+        }
 
         $permissions = $user->getAllPermissions()->pluck('name')->toArray();
         $modules = [];
@@ -162,11 +170,14 @@ abstract class BaseController extends LaravelBaseController
     protected function getModulePermissions(Request $request, string $module): array
     {
         $user = $request->user();
-        if (!$user) return [];
+        if (! $user) {
+            return [];
+        }
 
         $permissions = $user->getAllPermissions()->pluck('name')->toArray();
-        return array_filter($permissions, function($permission) use ($module) {
-            return str_starts_with($permission, $module . '.');
+
+        return array_filter($permissions, function ($permission) use ($module) {
+            return str_starts_with($permission, $module.'.');
         });
     }
 
@@ -176,14 +187,14 @@ abstract class BaseController extends LaravelBaseController
     protected function canCrud(Request $request, string $module): array
     {
         $permissions = $this->getModulePermissions($request, $module);
-        
+
         return [
-            'read' => in_array($module . '.read', $permissions),
-            'create' => in_array($module . '.create', $permissions),
-            'edit' => in_array($module . '.edit', $permissions),
-            'update' => in_array($module . '.update', $permissions),
-            'delete' => in_array($module . '.delete', $permissions),
-            'manage' => in_array($module . '.manage', $permissions),
+            'read' => in_array($module.'.read', $permissions),
+            'create' => in_array($module.'.create', $permissions),
+            'edit' => in_array($module.'.edit', $permissions),
+            'update' => in_array($module.'.update', $permissions),
+            'delete' => in_array($module.'.delete', $permissions),
+            'manage' => in_array($module.'.manage', $permissions),
         ];
     }
 
@@ -193,7 +204,9 @@ abstract class BaseController extends LaravelBaseController
     protected function getRoleHierarchy(Request $request): int
     {
         $user = $request->user();
-        if (!$user) return 0;
+        if (! $user) {
+            return 0;
+        }
 
         $roleHierarchy = [
             'admin' => 3,
@@ -202,6 +215,7 @@ abstract class BaseController extends LaravelBaseController
         ];
 
         $userRole = $user->getRoleNames()->first();
+
         return $roleHierarchy[$userRole] ?? 0;
     }
 
@@ -211,7 +225,7 @@ abstract class BaseController extends LaravelBaseController
     protected function hasHigherOrEqualRole(Request $request, string $requiredRole): bool
     {
         $userHierarchy = $this->getRoleHierarchy($request);
-        
+
         $roleHierarchy = [
             'admin' => 3,
             'organization' => 2,
@@ -219,6 +233,7 @@ abstract class BaseController extends LaravelBaseController
         ];
 
         $requiredHierarchy = $roleHierarchy[$requiredRole] ?? 0;
+
         return $userHierarchy >= $requiredHierarchy;
     }
 }

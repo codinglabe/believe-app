@@ -103,7 +103,7 @@ class PostController extends Controller
                 ->pluck('organization_id')
                 ->toArray();
 
-            $suggestedOrgs = Organization::where('registration_status', 'approved')
+            $suggestedOrgs = Organization::where('registration_status', 'approved')->excludingCareAllianceHubs()
                 ->whereNotIn('id', $userFavoriteOrgIds)
                 ->with('user:id,slug,name,image')
                 ->limit(4)
@@ -133,7 +133,7 @@ class PostController extends Controller
             }
 
             // Get trending organizations
-            $trendingOrgs = Organization::where('registration_status', 'approved')
+            $trendingOrgs = Organization::where('registration_status', 'approved')->excludingCareAllianceHubs()
                 ->withCount('followers')
                 ->with('user:id,slug,name')
                 ->orderBy('followers_count', 'desc')
@@ -518,7 +518,7 @@ class PostController extends Controller
                 ->pluck('organization_id')
                 ->toArray();
 
-            $suggestedOrgs = Organization::where('registration_status', 'approved')
+            $suggestedOrgs = Organization::where('registration_status', 'approved')->excludingCareAllianceHubs()
                 ->whereNotIn('id', $userFavoriteOrgIds)
                 ->with('user:id,slug,name,image')
                 ->limit(4)
@@ -548,7 +548,7 @@ class PostController extends Controller
             }
 
             // Get trending organizations
-            $trendingOrgs = Organization::where('registration_status', 'approved')
+            $trendingOrgs = Organization::where('registration_status', 'approved')->excludingCareAllianceHubs()
                 ->withCount('followers')
                 ->with('user:id,slug,name')
                 ->orderBy('followers_count', 'desc')
@@ -649,7 +649,7 @@ class PostController extends Controller
 
         // Search registered organizations
         if ($type === 'all' || $type === 'organizations') {
-            $organizations = Organization::where('registration_status', 'approved')
+            $organizations = Organization::where('registration_status', 'approved')->excludingCareAllianceHubs()
                 ->where(function ($query) use ($searchTerm) {
                     $query->where('name', 'LIKE', '%'.$searchTerm.'%')
                         ->orWhere('email', 'LIKE', '%'.$searchTerm.'%')

@@ -21,9 +21,19 @@ export type ProfileCompletion = {
   completeSetupHref: string | null
 }
 
-export default function ProfileCompletionBanner({ profileCompletion }: { profileCompletion: ProfileCompletion }) {
+export default function ProfileCompletionBanner({
+  profileCompletion,
+  variant = "organization",
+}: {
+  profileCompletion: ProfileCompletion
+  variant?: "organization" | "care_alliance"
+}) {
   if (!profileCompletion || profileCompletion.percent >= 100) return null
   const { percent, completed, total, missing, completeSetupHref } = profileCompletion
+  const headline =
+    variant === "care_alliance"
+      ? `Your Care Alliance profile is ${percent}% Complete`
+      : `Your Organization Profile is ${percent}% Complete`
 
   return (
     <div className="relative overflow-hidden rounded-2xl border border-amber-200/80 dark:border-amber-800/60 bg-gradient-to-br from-amber-50 via-white to-orange-50/50 dark:from-amber-950/40 dark:via-neutral-950/50 dark:to-amber-950/30 shadow-lg shadow-amber-500/5 dark:shadow-amber-500/10 ring-1 ring-black/5 dark:ring-white/5">
@@ -41,7 +51,7 @@ export default function ProfileCompletionBanner({ profileCompletion }: { profile
                   Profile completion
                 </p>
                 <h2 className="text-xl md:text-2xl font-bold text-amber-900 dark:text-amber-50 tracking-tight">
-                  Your Organization Profile is {percent}% Complete
+                  {headline}
                 </h2>
                 <p className="text-sm text-amber-700/90 dark:text-amber-300/80 mt-1">
                   {completed} of {total} integrations connected — unlock the full ecosystem.

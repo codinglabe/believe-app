@@ -1052,7 +1052,9 @@ class WalletController extends Controller
             }
 
             // Search organizations
-            $organizations = Organization::where(function ($query) use ($searchTerm) {
+            $organizations = Organization::query()
+                ->excludingCareAllianceHubs()
+                ->where(function ($query) use ($searchTerm) {
                     $query->where('name', 'LIKE', $searchTerm)
                         ->orWhere('email', 'LIKE', $searchTerm);
                 })

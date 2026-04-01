@@ -219,6 +219,8 @@ class PlansController extends Controller
         }
 
         try {
+            $user->refresh();
+
             // Calculate total amount including Currency custom fields
             $totalAmount = (float) $plan->price;
             $currencyFields = [];
@@ -415,6 +417,8 @@ class PlansController extends Controller
         }
 
         try {
+            $user->refresh();
+
             // Check if user already has an active subscription
             if ($user->current_plan_id && $user->subscribed()) {
                 return response()->json([

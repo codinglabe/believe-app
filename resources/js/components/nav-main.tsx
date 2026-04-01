@@ -15,6 +15,9 @@ type PageProps = {
     auth: {
         permissions?: string[];
         roles?: string[];
+        user?: {
+            care_alliance?: { slug?: string; name?: string } | null;
+        };
     };
     url: string;
 };
@@ -74,10 +77,13 @@ export function NavMain({ items = [] }: NavMainProps) {
 
     const userPermissions = page.props.auth.permissions ?? [];
     const userRoles = page.props.auth.roles ?? [];
+    const careAllianceHubPayload = !!(
+        page.props.auth?.user?.care_alliance?.slug && String(page.props.auth.user.care_alliance.slug).length > 0
+    );
 
     const hasDirectAccess = (entry: NavEntry): boolean => {
         if ('excludeCareAllianceHub' in entry && entry.excludeCareAllianceHub === true) {
-            if (userRoles.some((ur) => ur.toLowerCase() === 'care_alliance')) {
+            if (userRoles.some((ur) => ur.toLowerCase() === 'care_alliance') || careAllianceHubPayload) {
                 return false;
             }
         }
@@ -98,18 +104,19 @@ export function NavMain({ items = [] }: NavMainProps) {
         let roleAllowed = true;
         if (entry.role) {
             if (entry.organizationOnlyNav) {
-                const isCareAllianceHub = userRoles.some((ur) => ur.toLowerCase() === 'care_alliance');
+                const isCareAllianceHub =
+                    userRoles.some((ur) => ur.toLowerCase() === 'care_alliance') || careAllianceHubPayload;
                 if (isCareAllianceHub) {
                     roleAllowed = false;
                 } else if (Array.isArray(entry.role)) {
-                    roleAllowed = entry.role.some((r) => roleRequirementMatches(r, userRoles, true));
+                    roleAllowed = entry.role.some((r) => roleRequirementMatches(r, userRoles, true, careAllianceHubPayload));
                 } else {
-                    roleAllowed = roleRequirementMatches(entry.role, userRoles, true);
+                    roleAllowed = roleRequirementMatches(entry.role, userRoles, true, careAllianceHubPayload);
                 }
             } else if (Array.isArray(entry.role)) {
-                roleAllowed = entry.role.some((r) => roleRequirementMatches(r, userRoles, false));
+                roleAllowed = entry.role.some((r) => roleRequirementMatches(r, userRoles, false, careAllianceHubPayload));
             } else {
-                roleAllowed = roleRequirementMatches(entry.role, userRoles, false);
+                roleAllowed = roleRequirementMatches(entry.role, userRoles, false, careAllianceHubPayload);
             }
         }
 

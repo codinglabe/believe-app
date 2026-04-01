@@ -1,0 +1,1817 @@
+<?php
+
+namespace App\Http\Controllers\Admin;
+
+use App\Http\Controllers\Controller;
+use App\Models\CareAlliance;
+use App\Models\CareAllianceDonation;
+use App\Models\Donation;
+use App\Models\Enrollment;
+use App\Models\FundMeDonation;
+use App\Models\GiftCard;
+use App\Models\MerchantHubOfferRedemption;
+use App\Models\MerchantHubReferralReward;
+use App\Models\Order;
+use App\Models\Organization;
+use App\Models\Plan;
+use App\Models\Raffle;
+use App\Models\ServiceOrder;
+use App\Models\Transaction;
+use App\Models\User;
+use Carbon\Carbon;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Str;
+use Inertia\Inertia;
+use Inertia\Response;
+use Laravel\Cashier\Cashier;
+
+class TransactionLedgerController extends Controller
+{
+    public function index(Request $request): Response
+    {
+        $query = Transaction::query()->with(['user:id,name,email']);
+
+        if ($request->filled('search')) {
+            $s = $request->string('search')->trim();
+            $query->where(function ($q) use ($s) {
+                $q->where('transaction_id', 'like', '%'.$s.'%')
+                    ->orWhere('payment_method', 'like', '%'.$s.'%')
+                    ->orWhere('meta', 'like', '%'.$s.'%')
+                    ->orWhere('related_type', 'like', '%'.$s.'%');
+                if (ctype_digit($s)) {
+                    $id = (int) $s;
+                    $q->orWhere('related_id', $id)
+                        ->orWhere('meta->donation_id', $id)
+                        ->orWhere('meta->care_alliance_donation_id', $id);
+                }
+                $q->orWhereHas('user', function ($uq) use ($s) {
+                    $uq->where('name', 'like', '%'.$s.'%')
+                        ->orWhere('email', 'like', '%'.$s.'%');
+                });
+            });
+        }
+
+        if ($request->filled('type') && $request->string('type') !== 'all') {
+            $query->where('type', $request->string('type'));
+        }
+
+        if ($request->filled('status') && $request->string('status') !== 'all') {
+            $query->where('status', $request->string('status'));
+        }
+
+        $perPage = $request->integer('per_page', 10);
+        if (! in_array($perPage, [10, 25, 50, 100], true)) {
+            $perPage = 10;
+        }
+
+        $transactions = $query
+            ->orderByDesc('id')
+            ->paginate($perPage)
+            ->withQueryString()
+            ->through(function (Transaction $t) {
+                $related = $this->resolveRelatedDetails($t->related_type, $t->related_id, $t->meta);
+                $donationPayload = $this->resolveDonationForLedger($t);
+                $donationBadge = $donationPayload !== null;
+                $donationBadgeLabel = $this->resolveDonationBadgeLabel($t, $donationPayload);
+                $donationLedgerPerspective = $this->resolveDonationLedgerPerspective($t, $donationPayload);
+                if ($donationPayload !== null && ! $this->shouldKeepStrongPolymorphicOnlyForRelated($t)) {
+                    $related = $this->overlayLedgerRelatedWithDonation($t, $related, $donationPayload);
+                }
+
+                return [
+                    'id' => $t->id,
+                    'transaction_id' => $t->transaction_id,
+                    'type' => $t->type,
+                    'status' => $t->status,
+                    'amount' => (float) $t->amount,
+                    'fee' => (float) $t->fee,
+                    'currency' => $t->currency,
+                    'payment_method' => $t->payment_method,
+                    'related_kind' => $related['related_kind'],
+                    'related_purpose' => $related['related_purpose'],
+                    'related_display_name' => $related['related_display_name'],
+                    'related_label' => $related['related_label'],
+                    'related_source' => $related['related_source'],
+                    'donation_badge' => $donationBadge,
+                    'donation_badge_label' => $donationBadgeLabel,
+                    'donation_ledger_perspective' => $donationLedgerPerspective,
+                    'processed_at' => $t->processed_at?->toIso8601String(),
+                    'created_at' => $t->created_at->toIso8601String(),
+                    'user' => $t->user ? [
+                        'id' => $t->user->id,
+                        'name' => $t->user->name,
+                        'email' => $t->user->email,
+                    ] : null,
+                    'meta' => $t->meta,
+                    'ledger_report' => $this->buildLedgerReportRow($t, $donationPayload),
+                ];
+            });
+
+        $stats = [
+            'total_records' => Transaction::count(),
+            'completed_sum' => (float) Transaction::query()
+                ->where('status', Transaction::STATUS_COMPLETED)
+                ->where(function ($q) {
+                    $q->whereNull('meta')
+                        ->orWhereNull('meta->exclude_from_wallet_stats')
+                        ->orWhere('meta->exclude_from_wallet_stats', false);
+                })
+                ->sum('amount'),
+            'pending_count' => Transaction::query()
+                ->where('status', Transaction::STATUS_PENDING)
+                ->count(),
+            'failed_count' => Transaction::query()
+                ->where('status', Transaction::STATUS_FAILED)
+                ->count(),
+        ];
+
+        return Inertia::render('admin/transactions/ledger', [
+            'transactions' => $transactions,
+            'stats' => $stats,
+            'filters' => [
+                'search' => $request->string('search')->toString(),
+                'type' => $request->filled('type') ? $request->string('type')->toString() : 'all',
+                'status' => $request->filled('status') ? $request->string('status')->toString() : 'all',
+                'per_page' => $perPage,
+            ],
+            'typeOptions' => [
+                'deposit',
+                'withdrawal',
+                'purchase',
+                'refund',
+                'commission',
+                'transfer_out',
+                'transfer_in',
+            ],
+            'statusOptions' => [
+                'pending',
+                'completed',
+                'failed',
+                'cancelled',
+                'withdrawal',
+                'refund',
+                'deposit',
+                'rejected',
+            ],
+        ]);
+    }
+
+    public function show(Transaction $transaction): Response
+    {
+        $transaction->load(['user:id,name,email,stripe_id']);
+
+        return Inertia::render('admin/transactions/show', [
+            'transaction' => $this->serializeTransaction($transaction),
+        ]);
+    }
+
+    public function destroy(Transaction $transaction): RedirectResponse
+    {
+        $ref = $transaction->transaction_id;
+        $transaction->delete();
+
+        return redirect()
+            ->route('admin.transactions.ledger')
+            ->with('success', 'Transaction '.$ref.' was removed from the ledger.');
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function serializeTransaction(Transaction $t): array
+    {
+        $related = $this->resolveRelatedDetails($t->related_type, $t->related_id, $t->meta);
+        $donationLedger = $this->resolveDonationForLedger($t);
+        if ($donationLedger !== null && ! $this->shouldKeepStrongPolymorphicOnlyForRelated($t)) {
+            $related = $this->overlayLedgerRelatedWithDonation($t, $related, $donationLedger);
+        }
+
+        return [
+            'id' => $t->id,
+            'transaction_id' => $t->transaction_id,
+            'type' => $t->type,
+            'status' => $t->status,
+            'amount' => (float) $t->amount,
+            'fee' => (float) $t->fee,
+            'currency' => $t->currency,
+            'payment_method' => $t->payment_method,
+            'related_type' => $t->related_type,
+            'related_id' => $t->related_id,
+            'related_kind' => $related['related_kind'],
+            'related_purpose' => $related['related_purpose'],
+            'related_display_name' => $related['related_display_name'],
+            'related_label' => $related['related_label'],
+            'related_source' => $related['related_source'],
+            'processed_at' => $t->processed_at?->toIso8601String(),
+            'created_at' => $t->created_at->toIso8601String(),
+            'updated_at' => $t->updated_at->toIso8601String(),
+            'user' => $t->user ? [
+                'id' => $t->user->id,
+                'name' => $t->user->name,
+                'email' => $t->user->email,
+            ] : null,
+            'meta' => $t->meta,
+            'stripe' => $this->buildStripePresentation($t),
+            'donation' => $donationLedger,
+            'donation_badge_label' => $this->resolveDonationBadgeLabel($t, $donationLedger),
+            'donation_ledger_perspective' => $this->resolveDonationLedgerPerspective($t, $donationLedger),
+            'ledger_actor_context' => $this->resolveLedgerActorContext($t, $donationLedger),
+            'ledger_report' => $this->buildLedgerReportRow($t, $donationLedger),
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function resolveDonationForLedger(Transaction $t): ?array
+    {
+        $meta = is_array($t->meta) ? $t->meta : [];
+
+        $donationId = $this->extractMetaDonationId($meta);
+        if (! $donationId && $t->related_type === Donation::class && $t->related_id) {
+            $donationId = (int) $t->related_id;
+        }
+        if ($donationId > 0) {
+            $d = Donation::query()->with(['organization:id,name,user_id', 'careAlliance:id,name,slug'])->find($donationId);
+
+            return $this->serializeMainDonation($d, $donationId);
+        }
+
+        if (! empty($meta['care_alliance_donation_id'])) {
+            $cad = CareAllianceDonation::query()
+                ->with(['campaign.careAlliance'])
+                ->find((int) $meta['care_alliance_donation_id']);
+            if ($cad) {
+                return $this->serializeCareAllianceCampaignDonation($cad);
+            }
+        }
+
+        foreach ($this->stripePaymentIntentCandidatesFromTransaction($t, $meta) as $pi) {
+            $d = Donation::query()
+                ->with(['organization:id,name,user_id', 'careAlliance:id,name,slug'])
+                ->where('transaction_id', $pi)
+                ->first();
+            if ($d) {
+                return $this->serializeMainDonation($d, null);
+            }
+        }
+
+        $inferred = $this->inferDonationFromCareAllianceSplit($t);
+        if ($inferred) {
+            return $this->serializeMainDonation($inferred, null);
+        }
+
+        return null;
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function serializeMainDonation(?Donation $d, ?int $requestedId): ?array
+    {
+        if (! $d) {
+            return $requestedId !== null && $requestedId > 0
+                ? [
+                    'kind' => 'donation',
+                    'missing' => true,
+                    'donation_id' => $requestedId,
+                ]
+                : null;
+        }
+
+        $rawRef = (string) ($d->transaction_id ?? '');
+
+        return [
+            'kind' => 'donation',
+            'id' => $d->id,
+            'status' => $d->status,
+            'frequency' => $d->frequency,
+            'amount_display' => $d->formatted_amount,
+            'amount_raw' => $d->amount,
+            'payment_method' => $d->payment_method,
+            'stripe_reference' => $rawRef !== '' ? $rawRef : null,
+            'organization_id' => $d->organization_id ? (int) $d->organization_id : null,
+            'organization_name' => $d->organization?->name,
+            'care_alliance_name' => $d->careAlliance?->name,
+            'donor_user_id' => $d->user_id ? (int) $d->user_id : null,
+            'recipient_user_id' => $d->organization?->user_id ? (int) $d->organization->user_id : null,
+            'message' => $d->message ?? $d->messages,
+            'donation_date' => $d->donation_date?->toIso8601String(),
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function serializeCareAllianceCampaignDonation(CareAllianceDonation $cad): array
+    {
+        $campaign = $cad->campaign;
+        $amount = (int) ($cad->amount_cents ?? 0) / 100;
+
+        return [
+            'kind' => 'care_alliance_campaign',
+            'id' => $cad->id,
+            'status' => $cad->status,
+            'amount_display' => number_format($amount, 2, '.', ''),
+            'currency' => strtoupper((string) ($cad->currency ?? 'USD')),
+            'payment_reference' => $cad->payment_reference,
+            'campaign_name' => $campaign?->name,
+            'care_alliance_name' => $campaign?->careAlliance?->name,
+        ];
+    }
+
+    private function extractMetaDonationId(array $meta): ?int
+    {
+        foreach (['donation_id', 'donationId'] as $key) {
+            if (! isset($meta[$key]) || $meta[$key] === '' || $meta[$key] === null) {
+                continue;
+            }
+            $v = $meta[$key];
+            if (is_numeric($v)) {
+                $id = (int) $v;
+
+                return $id > 0 ? $id : null;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Stripe PaymentIntent ids found only in JSON meta (no transaction row column).
+     *
+     * @return array<int, string>
+     */
+    private function stripePaymentIntentCandidatesFromMetaArray(array $meta): array
+    {
+        $out = [];
+        foreach (['stripe_payment_intent', 'stripe_payment_intent_id', 'payment_intent', 'original_payment_intent'] as $k) {
+            if (! empty($meta[$k]) && is_string($meta[$k]) && str_starts_with($meta[$k], 'pi_')) {
+                $out[] = $meta[$k];
+            }
+        }
+
+        return array_values(array_unique($out));
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function stripePaymentIntentCandidatesFromTransaction(Transaction $t, array $meta): array
+    {
+        $out = $this->stripePaymentIntentCandidatesFromMetaArray($meta);
+        $tid = (string) ($t->transaction_id ?? '');
+        if (str_starts_with($tid, 'pi_')) {
+            $out[] = $tid;
+        }
+
+        return array_values(array_unique($out));
+    }
+
+    private function inferDonationFromCareAllianceSplit(Transaction $t): ?Donation
+    {
+        $meta = is_array($t->meta) ? $t->meta : [];
+        if (($meta['source'] ?? '') !== 'care_alliance_split') {
+            return null;
+        }
+        $aid = (int) ($meta['care_alliance_id'] ?? 0);
+        if ($aid < 1) {
+            return null;
+        }
+        $role = (string) ($meta['role'] ?? '');
+        $txAt = $t->created_at;
+
+        $q = Donation::query()
+            ->where('care_alliance_id', $aid)
+            ->whereIn('status', ['completed', 'active'])
+            ->where('created_at', '<=', $txAt);
+
+        if ($role === 'member_share' && ! empty($meta['organization_id'])) {
+            $q->where('organization_id', (int) $meta['organization_id']);
+        }
+
+        return $q->orderByDesc('id')->first();
+    }
+
+    private function shouldKeepStrongPolymorphicOnlyForRelated(Transaction $t): bool
+    {
+        if (! $t->related_type || $t->related_id === null || $t->related_id === '') {
+            return false;
+        }
+        $type = ltrim((string) $t->related_type, '\\');
+        if (! str_contains($type, '\\') || ! class_exists($type)) {
+            return false;
+        }
+        $basename = class_basename($type);
+
+        return in_array($basename, [
+            'Order',
+            'Enrollment',
+            'GiftCard',
+            'Plan',
+            'Raffle',
+            'MerchantHubOfferRedemption',
+            'MerchantHubReferralReward',
+        ], true);
+    }
+
+    /**
+     * Donor vs recipient (and split) for Believe / Care Alliance donation ledger rows.
+     *
+     * @param  array<string, mixed>|null  $donationPayload
+     * @return string|null  donor|recipient_direct|recipient_split|alliance_fee|campaign
+     */
+    private function resolveDonationLedgerPerspective(Transaction $t, ?array $donationPayload): ?string
+    {
+        if ($donationPayload === null || ($donationPayload['missing'] ?? false)) {
+            return null;
+        }
+        if (($donationPayload['kind'] ?? '') === 'care_alliance_campaign') {
+            return 'campaign';
+        }
+
+        $meta = is_array($t->meta) ? $t->meta : [];
+        if (($meta['ledger_role'] ?? '') === 'donor_payment') {
+            return 'donor';
+        }
+        if (($meta['source'] ?? '') === 'organization_donation') {
+            return 'recipient_direct';
+        }
+        if (($meta['source'] ?? '') === 'care_alliance_split') {
+            return (($meta['role'] ?? '') === 'alliance_fee') ? 'alliance_fee' : 'recipient_split';
+        }
+
+        if (($donationPayload['kind'] ?? '') === 'donation') {
+            $donorId = $donationPayload['donor_user_id'] ?? null;
+            $recipientId = $donationPayload['recipient_user_id'] ?? null;
+            $uid = $t->user_id;
+            if ($donorId && $uid === $donorId && $t->type === 'purchase') {
+                return 'donor';
+            }
+            if ($recipientId && $uid === $recipientId && $t->type === 'deposit') {
+                return 'recipient_direct';
+            }
+        }
+
+        if ($t->type === 'deposit' && ($t->payment_method === 'donation')) {
+            return 'recipient_direct';
+        }
+        if ($t->type === 'deposit' && ($t->payment_method === 'care_alliance_split')) {
+            return (($meta['role'] ?? '') === 'alliance_fee') ? 'alliance_fee' : 'recipient_split';
+        }
+        if ($t->type === 'purchase' && ($t->payment_method === 'donation')) {
+            return 'donor';
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  array<string, mixed>|null  $donationPayload
+     */
+    private function resolveDonationBadgeLabel(Transaction $t, ?array $donationPayload): string
+    {
+        if ($donationPayload === null) {
+            return 'Donation';
+        }
+        if (($donationPayload['missing'] ?? false)) {
+            return 'Donation (missing)';
+        }
+        if (($donationPayload['kind'] ?? '') === 'care_alliance_campaign') {
+            return 'Campaign gift';
+        }
+
+        return match ($this->resolveDonationLedgerPerspective($t, $donationPayload)) {
+            'donor' => 'Donation sent',
+            'recipient_direct' => 'Donation received',
+            'recipient_split' => 'Donation received (split)',
+            'alliance_fee' => 'Alliance fee (donation)',
+            'campaign' => 'Campaign gift',
+            default => 'Donation',
+        };
+    }
+
+    /**
+     * Whether this row is primarily about a personal user, a nonprofit (organization wallet), or Care Alliance.
+     *
+     * @param  array<string, mixed>|null  $donationLedger
+     * @return array{kind: string, label: string, detail: string|null, organization_id: int|null, care_alliance_id: int|null, care_alliance_name: string|null}
+     */
+    private function resolveLedgerActorContext(Transaction $t, ?array $donationLedger): array
+    {
+        $meta = is_array($t->meta) ? $t->meta : [];
+        $uid = $t->user_id;
+        $dl = $donationLedger ?? [];
+
+        $perspective = $this->resolveDonationLedgerPerspective($t, $donationLedger);
+
+        $caId = (int) ($meta['care_alliance_id'] ?? 0);
+        $caFromMeta = $caId > 0
+            || (($meta['source'] ?? '') === 'care_alliance_split')
+            || ($t->payment_method === 'care_alliance_split');
+        $caFromPerspective = in_array($perspective, ['recipient_split', 'alliance_fee'], true);
+
+        if ($caFromMeta || $caFromPerspective) {
+            $name = $meta['care_alliance_name'] ?? ($dl['care_alliance_name'] ?? null);
+            if ($caId > 0 && $name === null) {
+                $name = CareAlliance::query()->where('id', $caId)->value('name');
+            }
+
+            return [
+                'kind' => 'care_alliance',
+                'label' => 'Care Alliance',
+                'detail' => $name,
+                'organization_id' => null,
+                'care_alliance_id' => $caId > 0 ? $caId : null,
+                'care_alliance_name' => $name,
+            ];
+        }
+
+        $isCampaignDonor = (($dl['kind'] ?? '') === 'care_alliance_campaign' && $t->type === 'purchase');
+        if (($meta['ledger_role'] ?? '') === 'donor_payment' || $perspective === 'donor' || $isCampaignDonor) {
+            return [
+                'kind' => 'user',
+                'label' => 'User',
+                'detail' => $isCampaignDonor ? 'Campaign donor' : 'Donor / personal wallet',
+                'organization_id' => null,
+                'care_alliance_id' => null,
+                'care_alliance_name' => null,
+            ];
+        }
+
+        if ($t->related_type && $t->related_id !== null && $t->related_id !== '' && $this->relatedIsOrganization($t)) {
+            $org = Organization::query()->find($t->related_id);
+            if ($org) {
+                return [
+                    'kind' => 'organization',
+                    'label' => 'Organization',
+                    'detail' => $org->name,
+                    'organization_id' => $org->id,
+                    'care_alliance_id' => null,
+                    'care_alliance_name' => null,
+                ];
+            }
+        }
+
+        $ownedOrg = $uid ? Organization::query()->where('user_id', $uid)->first(['id', 'name']) : null;
+        $metaOrgId = (int) ($meta['organization_id'] ?? 0);
+        $orgMatch = $ownedOrg && $metaOrgId > 0 && $metaOrgId === $ownedOrg->id;
+        $orgRecipient = $perspective === 'recipient_direct' && $donationLedger
+            && (($dl['kind'] ?? '') === 'donation')
+            && $uid && ($uid === ($dl['recipient_user_id'] ?? null));
+        $srcOrgDonation = (($meta['source'] ?? '') === 'organization_donation');
+
+        if ($ownedOrg && ($orgMatch || $orgRecipient || $srcOrgDonation)) {
+            return [
+                'kind' => 'organization',
+                'label' => 'Organization',
+                'detail' => $ownedOrg->name,
+                'organization_id' => $ownedOrg->id,
+                'care_alliance_id' => null,
+                'care_alliance_name' => null,
+            ];
+        }
+
+        if (($dl['kind'] ?? '') === 'care_alliance_campaign' && $perspective === 'campaign') {
+            $name = $dl['care_alliance_name'] ?? $dl['campaign_name'] ?? null;
+
+            return [
+                'kind' => 'care_alliance',
+                'label' => 'Care Alliance',
+                'detail' => $name,
+                'organization_id' => null,
+                'care_alliance_id' => null,
+                'care_alliance_name' => $dl['care_alliance_name'] ?? null,
+            ];
+        }
+
+        return [
+            'kind' => 'user',
+            'label' => 'User',
+            'detail' => $ownedOrg ? 'Personal wallet (also owns an organization)' : 'Personal Believe wallet',
+            'organization_id' => null,
+            'care_alliance_id' => null,
+            'care_alliance_name' => null,
+        ];
+    }
+
+    private function relatedIsOrganization(Transaction $t): bool
+    {
+        if (! $t->related_type || $t->related_id === null || $t->related_id === '') {
+            return false;
+        }
+        $rt = ltrim((string) $t->related_type, '\\');
+
+        return $rt === Organization::class || str_ends_with($rt, '\\Organization');
+    }
+
+    /**
+     * Client-facing ledger report columns: source type, fee breakdown (from metadata when present), org, payout hint.
+     *
+     * @param  array<string, mixed>|null  $donationPayload
+     * @return array<string, mixed>
+     */
+    private function buildLedgerReportRow(Transaction $t, ?array $donationPayload): array
+    {
+        $fin = $this->ledgerReportFinancials($t);
+        $org = $this->ledgerReportOrganization($t, $donationPayload);
+
+        $date = $t->processed_at ?? $t->created_at;
+
+        return [
+            'date' => $date->toIso8601String(),
+            'reference' => (string) ($t->transaction_id ?? ''),
+            'source_type' => $this->resolveLedgerSourceType($t, $donationPayload),
+            'gross_amount' => $fin['gross_amount'],
+            'stripe_fee' => $fin['stripe_fee'],
+            'bridge_fee' => $fin['bridge_fee'],
+            'biu_fee' => $fin['biu_fee'],
+            'split_deduction' => $fin['split_deduction'],
+            'refund_amount' => $fin['refund_amount'],
+            'net_to_organization' => $fin['net_to_organization'],
+            'payout_status' => $fin['payout_status'],
+            'organization_id' => $org['organization_id'],
+            'organization_name' => $org['organization_name'],
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>|null  $donationPayload
+     */
+    private function resolveLedgerSourceType(Transaction $t, ?array $donationPayload): string
+    {
+        $meta = is_array($t->meta) ? $t->meta : [];
+        $rt = $t->related_type ? ltrim((string) $t->related_type, '\\') : '';
+
+        if ($rt === CareAllianceDonation::class || str_ends_with($rt, 'CareAllianceDonation')) {
+            return 'care_alliance_donation';
+        }
+        if (! empty($meta['care_alliance_donation_id'])) {
+            return 'care_alliance_donation';
+        }
+        if ($rt === FundMeDonation::class || str_ends_with($rt, 'FundMeDonation')) {
+            return 'fundme_donation';
+        }
+        if (! empty($meta['fundme_donation_id']) || ! empty($meta['fundme_campaign_id'])) {
+            return 'fundme_donation';
+        }
+        if ($rt === ServiceOrder::class || str_ends_with($rt, 'ServiceOrder')) {
+            return 'service_order';
+        }
+        if ($rt === Order::class || str_ends_with($rt, 'Order')) {
+            return 'order';
+        }
+        if ($rt === Donation::class || str_ends_with($rt, 'Donation')) {
+            return 'donation';
+        }
+        if (($meta['source'] ?? '') === 'care_alliance_split'
+            || ($meta['source'] ?? '') === 'care_alliance_campaign_split') {
+            return 'care_alliance_donation';
+        }
+        if (($meta['source'] ?? '') === 'organization_donation' || ($meta['ledger_role'] ?? '') === 'donor_payment') {
+            return 'donation';
+        }
+        if (($t->payment_method ?? '') === 'donation') {
+            return 'donation';
+        }
+        if (($donationPayload['kind'] ?? '') === 'care_alliance_campaign') {
+            return 'care_alliance_donation';
+        }
+        if (($donationPayload['kind'] ?? '') === 'donation') {
+            return 'donation';
+        }
+
+        return 'other';
+    }
+
+    /**
+     * @param  array<string, mixed>  $meta
+     */
+    private function ledgerMetaFloat(array $meta, array $keys): float
+    {
+        foreach ($keys as $k) {
+            if (! array_key_exists($k, $meta) || $meta[$k] === null || $meta[$k] === '') {
+                continue;
+            }
+            $v = $meta[$k];
+            if (is_numeric($v)) {
+                return round((float) $v, 2);
+            }
+        }
+
+        return 0.0;
+    }
+
+    /**
+     * @return array{gross_amount: float, stripe_fee: float, bridge_fee: float, biu_fee: float, split_deduction: float, refund_amount: float, net_to_organization: float|null, payout_status: string|null}
+     */
+    private function ledgerReportFinancials(Transaction $t): array
+    {
+        $meta = is_array($t->meta) ? $t->meta : [];
+
+        $gross = $this->ledgerMetaFloat($meta, ['gross_amount', 'amount_gross', 'total_amount', 'subtotal']);
+        if ($gross <= 0) {
+            $gross = (float) $t->amount;
+        }
+
+        $stripeFee = $this->ledgerMetaFloat($meta, [
+            'stripe_fee', 'stripe_fee_amount', 'payment_processor_fee', 'processor_fee', 'stripe_processing_fee',
+        ]);
+        $bridgeFee = $this->ledgerMetaFloat($meta, ['bridge_fee', 'bridge_fee_amount', 'bridge_transaction_fee']);
+        $biuFee = $this->ledgerMetaFloat($meta, ['biu_fee', 'biu_amount', 'biu', 'believe_biu_fee']);
+        $splitDed = $this->ledgerMetaFloat($meta, [
+            'split_deduction', 'split_amount', 'allocation_deduction', 'care_alliance_split_amount', 'member_pool_deduction',
+        ]);
+
+        $feeCol = (float) $t->fee;
+        if ($stripeFee <= 0 && $feeCol > 0 && $bridgeFee <= 0 && $biuFee <= 0) {
+            $stripeFee = $feeCol;
+        }
+
+        $refund = 0.0;
+        if ($t->type === 'refund') {
+            $refund = (float) $t->amount;
+        } else {
+            $refund = $this->ledgerMetaFloat($meta, ['refund_amount', 'refunded_amount', 'refund_total']);
+        }
+
+        $netMeta = $this->ledgerMetaFloat($meta, [
+            'net_to_organization', 'net_amount', 'net', 'org_net', 'amount_net', 'nonprofit_net', 'organization_net',
+        ]);
+        $hasFeeBreakdown = $stripeFee > 0 || $bridgeFee > 0 || $biuFee > 0 || $splitDed > 0;
+        if ($netMeta > 0) {
+            $net = $netMeta;
+        } elseif ($hasFeeBreakdown) {
+            $net = $gross - $stripeFee - $bridgeFee - $biuFee - $splitDed;
+        } else {
+            $net = (float) $t->amount;
+        }
+
+        $payout = null;
+        foreach (['payout_status', 'settlement_status', 'bridge_payout_status', 'payout_state', 'transfer_status'] as $k) {
+            if (! empty($meta[$k])) {
+                $v = $meta[$k];
+                $payout = is_scalar($v) ? (string) $v : json_encode($v);
+
+                break;
+            }
+        }
+        if ($payout === null) {
+            $payout = match ($t->status) {
+                Transaction::STATUS_PENDING => 'pending',
+                Transaction::STATUS_COMPLETED => 'completed',
+                Transaction::STATUS_FAILED => 'failed',
+                default => $t->status,
+            };
+        }
+
+        return [
+            'gross_amount' => round($gross, 2),
+            'stripe_fee' => round($stripeFee, 2),
+            'bridge_fee' => round($bridgeFee, 2),
+            'biu_fee' => round($biuFee, 2),
+            'split_deduction' => round($splitDed, 2),
+            'refund_amount' => round($refund, 2),
+            'net_to_organization' => round($net, 2),
+            'payout_status' => $payout,
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>|null  $donationPayload
+     * @return array{organization_id: int|null, organization_name: string|null}
+     */
+    private function ledgerReportOrganization(Transaction $t, ?array $donationPayload): array
+    {
+        $meta = is_array($t->meta) ? $t->meta : [];
+        $oid = (int) ($meta['organization_id'] ?? 0);
+        $oname = isset($meta['organization_name']) && is_string($meta['organization_name']) ? $meta['organization_name'] : null;
+
+        $dl = $donationPayload ?? [];
+        if (($dl['kind'] ?? '') === 'donation') {
+            if ($oid < 1 && ! empty($dl['organization_id'])) {
+                $oid = (int) $dl['organization_id'];
+            }
+            if ($oname === null && ! empty($dl['organization_name']) && is_string($dl['organization_name'])) {
+                $oname = $dl['organization_name'];
+            }
+        }
+
+        if ($oid > 0 && $oname === null) {
+            $oname = Organization::query()->where('id', $oid)->value('name');
+        }
+
+        return [
+            'organization_id' => $oid > 0 ? $oid : null,
+            'organization_name' => $oname,
+        ];
+    }
+
+    /**
+     * @param  array{related_kind: string, related_purpose: string, related_display_name: string, related_label: string, related_source: string}  $related
+     * @param  array<string, mixed>  $donationPayload
+     * @return array{related_kind: string, related_purpose: string, related_display_name: string, related_label: string, related_source: string}
+     */
+    private function overlayLedgerRelatedWithDonation(Transaction $t, array $related, array $donationPayload): array
+    {
+        if ($donationPayload['missing'] ?? false) {
+            return [
+                'related_kind' => 'Donation',
+                'related_purpose' => 'Donation id in metadata was referenced but the row is missing.',
+                'related_display_name' => 'Donation #'.($donationPayload['donation_id'] ?? '?').' (missing)',
+                'related_label' => 'Missing donation',
+                'related_source' => 'meta',
+            ];
+        }
+
+        if (($donationPayload['kind'] ?? '') === 'care_alliance_campaign') {
+            $campaign = trim((string) ($donationPayload['campaign_name'] ?? 'Campaign'));
+            $caName = trim((string) ($donationPayload['care_alliance_name'] ?? ''));
+            $label = $caName !== '' ? $campaign.' · '.$caName : $campaign;
+
+            return [
+                'related_kind' => 'Campaign donation',
+                'related_purpose' => 'Campaign donation checkout (Care Alliance). Shows as a gift from the donor’s side; recipient org lines may appear separately.',
+                'related_display_name' => $label,
+                'related_label' => (string) ($donationPayload['campaign_name'] ?? 'Campaign'),
+                'related_source' => 'meta',
+            ];
+        }
+
+        $org = $donationPayload['organization_name'] ?? '';
+        $ca = $donationPayload['care_alliance_name'] ?? '';
+        $parts = array_filter([
+            $org !== '' ? $org : null,
+            $ca !== '' ? $ca : null,
+        ]);
+        $display = trim(implode(' · ', $parts));
+        if ($display === '') {
+            $display = 'Donation #'.($donationPayload['id'] ?? '');
+        }
+
+        $perspective = $this->resolveDonationLedgerPerspective($t, $donationPayload);
+        $purpose = match ($perspective) {
+            'donor' => 'Donation sent: payment from the donor (card, points, or subscription). Audit row may not change wallet balance.',
+            'recipient_direct' => 'Donation received: credit to this nonprofit’s wallet from the gift.',
+            'recipient_split' => 'Donation received: member share of a Care Alliance–distributed gift.',
+            'alliance_fee' => 'Care Alliance fee share from a distributed donation (credited per alliance rules).',
+            default => 'Believe donation (Stripe payment, points, or Care Alliance distribution).',
+        };
+
+        return [
+            'related_kind' => 'Donation',
+            'related_purpose' => $purpose,
+            'related_display_name' => $display,
+            'related_label' => $org !== '' ? $org : ('Donation #'.($donationPayload['id'] ?? '')),
+            'related_source' => 'meta',
+        ];
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function otherLedgerTransactionsForUser(?int $userId, int $excludeId): array
+    {
+        if (! $userId) {
+            return [];
+        }
+
+        return Transaction::query()
+            ->where('user_id', $userId)
+            ->where('id', '!=', $excludeId)
+            ->orderByDesc('id')
+            ->limit(8)
+            ->get()
+            ->map(fn (Transaction $row) => [
+                'id' => $row->id,
+                'transaction_id' => $row->transaction_id,
+                'type' => $row->type,
+                'status' => $row->status,
+                'amount' => (float) $row->amount,
+                'currency' => $row->currency,
+                'created_at' => $row->created_at->toIso8601String(),
+            ])
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @return array<int, array<string, mixed>>
+     */
+    private function cashierSubscriptionsForUser(?User $user): array
+    {
+        if (! $user) {
+            return [];
+        }
+
+        try {
+            return $user->subscriptions()
+                ->orderByDesc('created_at')
+                ->limit(6)
+                ->get()
+                ->map(fn ($s) => [
+                    'id' => $s->id,
+                    'name' => (string) ($s->type ?? 'default'),
+                    'stripe_id' => $s->stripe_id,
+                    'stripe_status' => $s->stripe_status,
+                    'dashboard_url' => $s->stripe_id
+                        ? 'https://dashboard.stripe.com/subscriptions/'.$s->stripe_id
+                        : null,
+                ])
+                ->values()
+                ->all();
+        } catch (\Throwable) {
+            return [];
+        }
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function buildStripePresentation(Transaction $t): array
+    {
+        $identifiers = $this->collectStripeIdentifiers($t);
+
+        $out = [
+            'customer_id' => $t->user?->stripe_id,
+            'customer_dashboard_url' => $this->stripeCustomerDashboardUrl($t->user?->stripe_id),
+            'payment_intent' => null,
+            'checkout_session' => null,
+            'charge' => null,
+            'subscription' => null,
+            'payment_intent_dashboard_url' => null,
+            'identifiers_found' => $identifiers,
+            'fetch_error' => null,
+        ];
+
+        $hasIds = $identifiers['payment_intent_ids'] !== []
+            || $identifiers['session_ids'] !== []
+            || $identifiers['charge_ids'] !== []
+            || $identifiers['subscription_ids'] !== [];
+
+        if (! $hasIds) {
+            return $out;
+        }
+
+        try {
+            $stripe = Cashier::stripe();
+
+            if ($identifiers['payment_intent_ids'] !== []) {
+                $pi = $stripe->paymentIntents->retrieve($identifiers['payment_intent_ids'][0]);
+                $out['payment_intent'] = $this->serializeStripePaymentIntent($pi);
+                $out['payment_intent_dashboard_url'] = $this->stripePaymentIntentDashboardUrl($pi->id);
+            } elseif ($identifiers['session_ids'] !== []) {
+                $cs = $stripe->checkout->sessions->retrieve($identifiers['session_ids'][0]);
+                $out['checkout_session'] = $this->serializeStripeCheckoutSession($cs);
+                if (! empty($cs->payment_intent) && is_string($cs->payment_intent)) {
+                    $pi = $stripe->paymentIntents->retrieve($cs->payment_intent);
+                    $out['payment_intent'] = $this->serializeStripePaymentIntent($pi);
+                    $out['payment_intent_dashboard_url'] = $this->stripePaymentIntentDashboardUrl($pi->id);
+                }
+            } elseif ($identifiers['charge_ids'] !== []) {
+                $ch = $stripe->charges->retrieve($identifiers['charge_ids'][0]);
+                $out['charge'] = $this->serializeStripeCharge($ch);
+                if (! empty($ch->payment_intent) && is_string($ch->payment_intent)) {
+                    $pi = $stripe->paymentIntents->retrieve($ch->payment_intent);
+                    $out['payment_intent'] = $this->serializeStripePaymentIntent($pi);
+                    $out['payment_intent_dashboard_url'] = $this->stripePaymentIntentDashboardUrl($pi->id);
+                }
+            } elseif ($identifiers['subscription_ids'] !== []) {
+                $sub = $stripe->subscriptions->retrieve($identifiers['subscription_ids'][0]);
+                $out['subscription'] = $this->serializeStripeSubscription($sub);
+            }
+        } catch (\Throwable $e) {
+            $out['fetch_error'] = $e->getMessage();
+        }
+
+        return $out;
+    }
+
+    /**
+     * @return array{payment_intent_ids: array<int, string>, session_ids: array<int, string>, charge_ids: array<int, string>, subscription_ids: array<int, string>}
+     */
+    private function collectStripeIdentifiers(Transaction $t): array
+    {
+        $meta = is_array($t->meta) ? $t->meta : [];
+        $pi = [];
+        $cs = [];
+        $ch = [];
+        $sub = [];
+
+        foreach (['stripe_payment_intent', 'stripe_payment_intent_id', 'payment_intent', 'original_payment_intent'] as $k) {
+            if (! empty($meta[$k]) && is_string($meta[$k]) && str_starts_with($meta[$k], 'pi_')) {
+                $pi[] = $meta[$k];
+            }
+        }
+
+        if (! empty($meta['stripe_session_id']) && is_string($meta['stripe_session_id'])) {
+            $cs[] = $meta['stripe_session_id'];
+        }
+
+        $tid = (string) ($t->transaction_id ?? '');
+        if (str_starts_with($tid, 'pi_')) {
+            $pi[] = $tid;
+        }
+        if (str_starts_with($tid, 'cs_')) {
+            $cs[] = $tid;
+        }
+        if (str_starts_with($tid, 'ch_')) {
+            $ch[] = $tid;
+        }
+        if (str_starts_with($tid, 'sub_')) {
+            $sub[] = $tid;
+        }
+
+        $this->mergeStripeIdentifiersFromDonation($t, $pi, $cs, $ch, $sub);
+        $this->mergeStripeIdentifiersFromCareAllianceDonationMeta($t, $pi, $cs, $ch, $sub);
+
+        return [
+            'payment_intent_ids' => array_values(array_unique($pi)),
+            'session_ids' => array_values(array_unique($cs)),
+            'charge_ids' => array_values(array_unique($ch)),
+            'subscription_ids' => array_values(array_unique($sub)),
+        ];
+    }
+
+    /**
+     * @param  array<int, string>  $pi
+     * @param  array<int, string>  $cs
+     * @param  array<int, string>  $ch
+     * @param  array<int, string>  $sub
+     */
+    private function mergeStripeIdentifiersFromDonation(Transaction $t, array &$pi, array &$cs, array &$ch, array &$sub): void
+    {
+        $meta = is_array($t->meta) ? $t->meta : [];
+        $donationId = $this->extractMetaDonationId($meta);
+        if (! $donationId && $t->related_type === Donation::class && $t->related_id) {
+            $donationId = (int) $t->related_id;
+        }
+        if ($donationId) {
+            $d = Donation::query()->find($donationId);
+            if ($d && ! empty($d->transaction_id)) {
+                $this->pushStripeRefFromString((string) $d->transaction_id, $pi, $cs, $ch, $sub);
+            }
+
+            return;
+        }
+
+        foreach ($this->stripePaymentIntentCandidatesFromTransaction($t, $meta) as $candidate) {
+            $d = Donation::query()->where('transaction_id', $candidate)->first();
+            if ($d && ! empty($d->transaction_id)) {
+                $this->pushStripeRefFromString((string) $d->transaction_id, $pi, $cs, $ch, $sub);
+            }
+        }
+
+        $inferred = $this->inferDonationFromCareAllianceSplit($t);
+        if ($inferred && ! empty($inferred->transaction_id)) {
+            $this->pushStripeRefFromString((string) $inferred->transaction_id, $pi, $cs, $ch, $sub);
+        }
+    }
+
+    /**
+     * @param  array<int, string>  $pi
+     * @param  array<int, string>  $cs
+     * @param  array<int, string>  $ch
+     * @param  array<int, string>  $sub
+     */
+    private function mergeStripeIdentifiersFromCareAllianceDonationMeta(Transaction $t, array &$pi, array &$cs, array &$ch, array &$sub): void
+    {
+        $meta = is_array($t->meta) ? $t->meta : [];
+        if (empty($meta['care_alliance_donation_id'])) {
+            return;
+        }
+        $cad = CareAllianceDonation::query()->find((int) $meta['care_alliance_donation_id']);
+        if (! $cad || empty($cad->payment_reference)) {
+            return;
+        }
+        $this->pushStripeRefFromString((string) $cad->payment_reference, $pi, $cs, $ch, $sub);
+    }
+
+    /**
+     * @param  array<int, string>  $pi
+     * @param  array<int, string>  $cs
+     * @param  array<int, string>  $ch
+     * @param  array<int, string>  $sub
+     */
+    private function pushStripeRefFromString(string $ref, array &$pi, array &$cs, array &$ch, array &$sub): void
+    {
+        if (str_starts_with($ref, 'pi_')) {
+            $pi[] = $ref;
+        } elseif (str_starts_with($ref, 'cs_')) {
+            $cs[] = $ref;
+        } elseif (str_starts_with($ref, 'ch_')) {
+            $ch[] = $ref;
+        } elseif (str_starts_with($ref, 'sub_')) {
+            $sub[] = $ref;
+        }
+    }
+
+    private function stripeCustomerDashboardUrl(?string $customerId): ?string
+    {
+        if (! $customerId || ! str_starts_with($customerId, 'cus_')) {
+            return null;
+        }
+
+        return 'https://dashboard.stripe.com/customers/'.$customerId;
+    }
+
+    private function stripePaymentIntentDashboardUrl(string $paymentIntentId): string
+    {
+        return 'https://dashboard.stripe.com/payments/'.$paymentIntentId;
+    }
+
+    /**
+     * @param  \Stripe\PaymentIntent  $pi
+     * @return array<string, mixed>
+     */
+    private function serializeStripePaymentIntent(object $pi): array
+    {
+        $amount = (int) ($pi->amount ?? 0);
+
+        return [
+            'id' => $pi->id,
+            'amount_cents' => $amount,
+            'amount_display' => number_format($amount / 100, 2, '.', ''),
+            'currency' => strtoupper((string) ($pi->currency ?? '')),
+            'status' => $pi->status,
+            'created' => isset($pi->created) ? Carbon::createFromTimestamp($pi->created)->toIso8601String() : null,
+            'description' => $pi->description ?? null,
+            'livemode' => $pi->livemode ?? null,
+        ];
+    }
+
+    /**
+     * @param  \Stripe\Checkout\Session  $cs
+     * @return array<string, mixed>
+     */
+    private function serializeStripeCheckoutSession(object $cs): array
+    {
+        $total = (int) ($cs->amount_total ?? 0);
+
+        return [
+            'id' => $cs->id,
+            'amount_total_cents' => $total,
+            'amount_total_display' => number_format($total / 100, 2, '.', ''),
+            'currency' => strtoupper((string) ($cs->currency ?? '')),
+            'payment_status' => $cs->payment_status,
+            'status' => $cs->status ?? null,
+            'created' => isset($cs->created) ? Carbon::createFromTimestamp($cs->created)->toIso8601String() : null,
+            'payment_intent_id' => $cs->payment_intent ?? null,
+            'customer' => $cs->customer ?? null,
+        ];
+    }
+
+    /**
+     * @param  \Stripe\Charge  $ch
+     * @return array<string, mixed>
+     */
+    private function serializeStripeCharge(object $ch): array
+    {
+        $amount = (int) ($ch->amount ?? 0);
+
+        return [
+            'id' => $ch->id,
+            'amount_cents' => $amount,
+            'amount_display' => number_format($amount / 100, 2, '.', ''),
+            'currency' => strtoupper((string) ($ch->currency ?? '')),
+            'status' => $ch->status,
+            'paid' => $ch->paid ?? null,
+            'created' => isset($ch->created) ? Carbon::createFromTimestamp($ch->created)->toIso8601String() : null,
+        ];
+    }
+
+    /**
+     * @param  \Stripe\Subscription  $subscription
+     * @return array<string, mixed>
+     */
+    private function serializeStripeSubscription(object $subscription): array
+    {
+        $items = $subscription->items->data ?? [];
+        $firstItem = is_array($items) && $items !== [] ? $items[0] : null;
+        $price = $firstItem && isset($firstItem->price) ? $firstItem->price : null;
+
+        return [
+            'id' => $subscription->id,
+            'status' => $subscription->status,
+            'currency' => strtoupper((string) ($subscription->currency ?? '')),
+            'customer' => $subscription->customer ?? null,
+            'current_period_end' => isset($subscription->current_period_end)
+                ? Carbon::createFromTimestamp($subscription->current_period_end)->toIso8601String()
+                : null,
+            'cancel_at_period_end' => $subscription->cancel_at_period_end ?? null,
+            'price_id' => $price->id ?? null,
+            'unit_amount_cents' => isset($price->unit_amount) ? (int) $price->unit_amount : null,
+            'unit_amount_display' => isset($price->unit_amount)
+                ? number_format(((int) $price->unit_amount) / 100, 2, '.', '')
+                : null,
+        ];
+    }
+
+    /**
+     * @return array{related_kind: string, related_purpose: string, related_display_name: string, related_label: string, related_source: string}
+     */
+    private function resolveRelatedDetails(?string $relatedType, mixed $relatedId, ?array $meta): array
+    {
+        $fromMeta = $this->resolveRelatedDetailsFromMeta($meta);
+
+        if (! $relatedType || $relatedId === null || $relatedId === '') {
+            if ($fromMeta !== null) {
+                return array_merge($fromMeta, ['related_source' => 'meta']);
+            }
+
+            return $this->emptyRelated();
+        }
+
+        if (! str_contains($relatedType, '\\')) {
+            $resolved = $this->resolveRelatedDetailsForStringType($relatedType, $relatedId);
+
+            return $this->applyMetaOverlayWhenWeak($resolved, $fromMeta, 'polymorphic');
+        }
+
+        $class = ltrim($relatedType, '\\');
+        if (! class_exists($class)) {
+            $short = class_basename($relatedType);
+            $resolved = [
+                'related_kind' => 'Unknown type',
+                'related_purpose' => 'The stored related_type is not a loadable PHP class. Inspect the raw related_type column and metadata to interpret this row.',
+                'related_display_name' => $short.' #'.$relatedId,
+                'related_label' => $short.' #'.$relatedId,
+            ];
+
+            return $this->applyMetaOverlayWhenWeak($resolved, $fromMeta, 'polymorphic');
+        }
+
+        $kindPurpose = $this->relatedKindAndPurposeForClass($class);
+        $model = $this->loadRelatedModel($class, $relatedId);
+        $basename = class_basename($class);
+        $displayName = $this->relatedDisplayNameFromModel($model, $basename, $relatedId);
+
+        $resolved = [
+            'related_kind' => $kindPurpose['kind'],
+            'related_purpose' => $kindPurpose['purpose'],
+            'related_display_name' => $displayName,
+            'related_label' => $displayName,
+        ];
+
+        if ($model === null && $fromMeta !== null) {
+            return [
+                'related_kind' => $resolved['related_kind'],
+                'related_purpose' => $resolved['related_purpose'].' Metadata also describes: '.$fromMeta['related_display_name'].'.',
+                'related_display_name' => $fromMeta['related_display_name'],
+                'related_label' => $fromMeta['related_label'],
+                'related_source' => 'meta',
+            ];
+        }
+
+        if ($this->displayNameLooksMissing($displayName) && $fromMeta !== null) {
+            return $this->applyMetaOverlayWhenWeak($resolved, $fromMeta, 'polymorphic');
+        }
+
+        return array_merge($resolved, ['related_source' => 'polymorphic']);
+    }
+
+    /**
+     * @return array{related_kind: string, related_purpose: string, related_display_name: string, related_label: string}
+     */
+    private function resolveRelatedDetailsFromMeta(?array $meta): ?array
+    {
+        if ($meta === null || $meta === []) {
+            return null;
+        }
+
+        $m = $meta;
+
+        $donationIdFromMeta = $this->extractMetaDonationId($m);
+        if ($donationIdFromMeta !== null && $donationIdFromMeta > 0) {
+            $d = Donation::query()->with(['organization:id,name'])->find($donationIdFromMeta);
+            if ($d) {
+                $org = $d->organization?->name ?? ('Organization #'.$d->organization_id);
+                $purpose = $d->care_alliance_id
+                    ? 'Believe donation (Care Alliance general give). Recipient credit or split lines follow alliance financial rules when configured.'
+                    : 'Believe donation to a nonprofit (direct recipient credit, or Believe Points).';
+
+                return [
+                    'related_kind' => 'Donation',
+                    'related_purpose' => $purpose,
+                    'related_display_name' => $org,
+                    'related_label' => 'Donation #'.$d->id,
+                ];
+            }
+
+            return [
+                'related_kind' => 'Donation',
+                'related_purpose' => 'Metadata references a donation id that could not be loaded.',
+                'related_display_name' => 'Donation #'.$donationIdFromMeta.' (missing)',
+                'related_label' => 'Donation #'.$donationIdFromMeta,
+            ];
+        }
+
+        if (! empty($m['care_alliance_donation_id'])) {
+            $cad = CareAllianceDonation::query()
+                ->with(['campaign.careAlliance'])
+                ->find((int) $m['care_alliance_donation_id']);
+            if ($cad) {
+                $camp = $cad->campaign?->name ?? 'Campaign';
+                $alliance = $cad->campaign?->careAlliance?->name;
+                $label = $camp.($alliance !== null ? ' · '.$alliance : '');
+
+                return [
+                    'related_kind' => 'Campaign donation',
+                    'related_purpose' => 'Care Alliance campaign checkout donation (care_alliance_donations).',
+                    'related_display_name' => $label,
+                    'related_label' => $camp,
+                ];
+            }
+        }
+
+        if (($m['source'] ?? '') === 'care_alliance_split' && ! empty($m['care_alliance_id'])) {
+            $aid = (int) $m['care_alliance_id'];
+            $alliance = CareAlliance::query()->find($aid);
+            $name = is_string($m['care_alliance_name'] ?? null)
+                ? (string) $m['care_alliance_name']
+                : ($alliance?->name ?? ('Alliance #'.$aid));
+            $role = isset($m['role']) && is_string($m['role']) ? $m['role'] : null;
+            $roleLabel = $role === 'alliance_fee'
+                ? 'Alliance fee'
+                : ($role === 'member_share' ? 'Member share' : ($role ?? 'split'));
+
+            return [
+                'related_kind' => 'Donation',
+                'related_purpose' => $role === 'alliance_fee'
+                    ? 'Wallet credit from a Believe donation: Care Alliance fee share (split distribution).'
+                    : ($role === 'member_share'
+                        ? 'Wallet credit from a Believe donation: member nonprofit share (Care Alliance split).'
+                        : 'Wallet credit from a Believe donation (Care Alliance split; see role in metadata).'),
+                'related_display_name' => $name.' · '.$roleLabel,
+                'related_label' => $name,
+            ];
+        }
+
+        foreach ($this->stripePaymentIntentCandidatesFromMetaArray($m) as $pi) {
+            $d = Donation::query()->with(['organization:id,name'])->where('transaction_id', $pi)->first();
+            if ($d) {
+                $org = $d->organization?->name ?? ('Organization #'.$d->organization_id);
+                $purpose = $d->care_alliance_id
+                    ? 'Believe donation matched by Stripe PaymentIntent (Care Alliance general give may apply).'
+                    : 'Believe donation matched by Stripe PaymentIntent (normal nonprofit gift).';
+
+                return [
+                    'related_kind' => 'Donation',
+                    'related_purpose' => $purpose,
+                    'related_display_name' => $org,
+                    'related_label' => 'Donation #'.$d->id,
+                ];
+            }
+        }
+
+        if (! empty($m['care_alliance_name']) && is_string($m['care_alliance_name'])) {
+            $role = isset($m['role']) && is_string($m['role']) ? $m['role'] : null;
+            $cid = $m['care_alliance_id'] ?? null;
+            $label = $m['care_alliance_name'].($cid !== null ? ' · alliance #'.$cid : '');
+
+            return [
+                'related_kind' => 'Donation',
+                'related_purpose' => $role === 'alliance_fee'
+                    ? 'Donation-related wallet movement: Care Alliance fee context in metadata.'
+                    : ($role === 'member_share'
+                        ? 'Donation-related wallet movement: member share (Care Alliance context in metadata).'
+                        : 'Donation-related wallet movement (Care Alliance name in metadata).'),
+                'related_display_name' => $label,
+                'related_label' => $label,
+            ];
+        }
+
+        if (! empty($m['course_name']) && is_string($m['course_name'])) {
+            $cid = $m['course_id'] ?? null;
+            $label = $m['course_name'].($cid !== null ? ' · course #'.$cid : '');
+
+            return [
+                'related_kind' => 'Course (metadata)',
+                'related_purpose' => 'Course enrollment or tuition context stored in meta when the polymorphic link may be absent or redundant.',
+                'related_display_name' => $label,
+                'related_label' => $label,
+            ];
+        }
+
+        if (! empty($m['plan_name']) && is_string($m['plan_name'])) {
+            $pid = $m['plan_id'] ?? null;
+            $label = 'Plan: '.$m['plan_name'].($pid !== null ? ' · #'.$pid : '');
+
+            return [
+                'related_kind' => 'Subscription plan (metadata)',
+                'related_purpose' => 'Plan subscription details captured at checkout (name, frequency, add-ons).',
+                'related_display_name' => $label,
+                'related_label' => $label,
+            ];
+        }
+
+        if (! empty($m['plan_id']) && is_numeric($m['plan_id'])) {
+            $plan = Plan::query()->find((int) $m['plan_id']);
+            if ($plan) {
+                $label = 'Plan: '.$plan->name;
+
+                return [
+                    'related_kind' => 'Subscription plan (metadata)',
+                    'related_purpose' => 'Resolved plan from plan_id in metadata.',
+                    'related_display_name' => $label,
+                    'related_label' => $label,
+                ];
+            }
+        }
+
+        if (! empty($m['raffle_id']) && is_numeric($m['raffle_id'])) {
+            $rid = (int) $m['raffle_id'];
+            $raffle = Raffle::query()->find($rid);
+            $title = $raffle && ($raffle->title ?? null) ? (string) $raffle->title : 'Raffle #'.$rid;
+
+            return [
+                'related_kind' => 'Raffle tickets',
+                'related_purpose' => 'Raffle context from metadata (ticket quantity may also be in meta).',
+                'related_display_name' => $title,
+                'related_label' => $title,
+            ];
+        }
+
+        if (! empty($m['order_id']) && is_numeric($m['order_id'])) {
+            $oid = (int) $m['order_id'];
+            $order = Order::query()->find($oid);
+            $label = $order && $order->reference_number
+                ? 'Order '.$order->reference_number
+                : 'Order #'.$oid;
+
+            return [
+                'related_kind' => 'Marketplace order (metadata)',
+                'related_purpose' => 'Order reference taken from metadata (e.g. Believe Points checkout sidecar).',
+                'related_display_name' => $label,
+                'related_label' => $label,
+            ];
+        }
+
+        if (! empty($m['gift_card_id']) || ! empty($m['brand'])) {
+            $gid = $m['gift_card_id'] ?? null;
+            $brand = isset($m['brand']) && is_string($m['brand']) ? $m['brand'] : null;
+            $gc = is_numeric($gid) ? GiftCard::query()->find((int) $gid) : null;
+            $parts = array_filter([
+                $brand,
+                $gc ? ($gc->brand_name ?? $gc->brand) : null,
+                $gid !== null ? 'Gift card #'.$gid : null,
+            ]);
+            $label = $parts !== [] ? implode(' · ', $parts) : 'Gift card';
+
+            return [
+                'related_kind' => 'Gift card (metadata)',
+                'related_purpose' => 'Gift card purchase or refund context from Phaze/Stripe metadata.',
+                'related_display_name' => $label,
+                'related_label' => $label,
+            ];
+        }
+
+        if (! empty($m['bridge_transfer_id'])) {
+            $tid = (string) $m['bridge_transfer_id'];
+            $extra = isset($m['recipient_name']) ? ' · to '.$m['recipient_name'] : '';
+            $extra .= isset($m['sender_name']) ? ' · from '.$m['sender_name'] : '';
+
+            return [
+                'related_kind' => 'Bridge transfer',
+                'related_purpose' => 'On/off-ramp or internal Bridge movement; use bridge_transfer_id with Bridge tools.',
+                'related_display_name' => 'Transfer '.$tid.$extra,
+                'related_label' => 'Bridge '.$tid,
+            ];
+        }
+
+        if (! empty($m['offer_id']) || ! empty($m['receipt_code'])) {
+            $bits = array_filter([
+                isset($m['receipt_code']) ? 'Receipt '.$m['receipt_code'] : null,
+                isset($m['offer_id']) ? 'Offer #'.$m['offer_id'] : null,
+            ]);
+            $label = $bits !== [] ? implode(' · ', $bits) : 'Merchant offer';
+
+            return [
+                'related_kind' => 'Merchant Hub (metadata)',
+                'related_purpose' => 'Offer redemption context stored alongside the transaction.',
+                'related_display_name' => $label,
+                'related_label' => $label,
+            ];
+        }
+
+        if (! empty($m['recipient_email']) || ! empty($m['recipient_name'])) {
+            $name = trim((string) ($m['recipient_name'] ?? ''));
+            $email = trim((string) ($m['recipient_email'] ?? ''));
+            $rid = $m['recipient_id'] ?? null;
+            $label = $name !== '' ? $name : 'Recipient';
+            if ($email !== '') {
+                $label .= ' · '.$email;
+            }
+            if ($rid !== null && $rid !== '') {
+                $label .= ' · #'.$rid;
+            }
+
+            return [
+                'related_kind' => 'Wallet transfer (recipient)',
+                'related_purpose' => 'Peer or org wallet send: counterparty from metadata.',
+                'related_display_name' => $label,
+                'related_label' => $label,
+            ];
+        }
+
+        if (! empty($m['sender_email']) || ! empty($m['sender_name'])) {
+            $name = trim((string) ($m['sender_name'] ?? ''));
+            $email = trim((string) ($m['sender_email'] ?? ''));
+            $sid = $m['sender_id'] ?? null;
+            $label = $name !== '' ? $name : 'Sender';
+            if ($email !== '') {
+                $label .= ' · '.$email;
+            }
+            if ($sid !== null && $sid !== '') {
+                $label .= ' · #'.$sid;
+            }
+
+            return [
+                'related_kind' => 'Wallet transfer (sender)',
+                'related_purpose' => 'Incoming transfer: sender details from metadata.',
+                'related_display_name' => $label,
+                'related_label' => $label,
+            ];
+        }
+
+        if (! empty($m['sender_organization_name'])) {
+            $label = (string) $m['sender_organization_name'];
+            if (! empty($m['sender_organization_id'])) {
+                $label .= ' · org #'.$m['sender_organization_id'];
+            }
+
+            return [
+                'related_kind' => 'Organization wallet',
+                'related_purpose' => 'Org-to-user or org transfer context from metadata.',
+                'related_display_name' => $label,
+                'related_label' => $label,
+            ];
+        }
+
+        if (! empty($m['description']) && is_string($m['description'])) {
+            $d = trim($m['description']);
+
+            return [
+                'related_kind' => 'Checkout note',
+                'related_purpose' => 'Human-readable description saved on the transaction (often from Stripe or internal checkout).',
+                'related_display_name' => Str::limit($d, 160),
+                'related_label' => Str::limit($d, 80),
+            ];
+        }
+
+        $hints = $this->compactMetaHints($m);
+        if ($hints !== null) {
+            return [
+                'related_kind' => 'Metadata hints',
+                'related_purpose' => 'No polymorphic link; we surfaced a short summary from scalar fields in the JSON payload.',
+                'related_display_name' => $hints,
+                'related_label' => Str::limit($hints, 120),
+            ];
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  array{related_kind: string, related_purpose: string, related_display_name: string, related_label: string}  $resolved
+     * @param  array{related_kind: string, related_purpose: string, related_display_name: string, related_label: string}|null  $fromMeta
+     * @return array{related_kind: string, related_purpose: string, related_display_name: string, related_label: string, related_source: string}
+     */
+    private function applyMetaOverlayWhenWeak(array $resolved, ?array $fromMeta, string $baseSource): array
+    {
+        if ($fromMeta === null) {
+            return array_merge($resolved, ['related_source' => $baseSource]);
+        }
+
+        if ($this->displayNameLooksMissing($resolved['related_display_name'])) {
+            return [
+                'related_kind' => $resolved['related_kind'],
+                'related_purpose' => $resolved['related_purpose'].' Also from metadata: '.$fromMeta['related_display_name'].'.',
+                'related_display_name' => $fromMeta['related_display_name'],
+                'related_label' => $fromMeta['related_label'],
+                'related_source' => 'meta',
+            ];
+        }
+
+        return array_merge($resolved, ['related_source' => $baseSource]);
+    }
+
+    private function displayNameLooksMissing(string $displayName): bool
+    {
+        return str_contains($displayName, '(record missing)') || str_contains($displayName, '(missing)');
+    }
+
+    private function compactMetaHints(array $meta): ?string
+    {
+        $skip = [
+            'stripe_session_id', 'stripe_payment_intent', 'stripe_customer_id', 'stripe_refund_id',
+            'stripe_payment_intent_id', 'phaze_order_id', 'phaze_purchase_id', 'phaze_status',
+        ];
+        $parts = [];
+        foreach ($meta as $k => $v) {
+            if (in_array($k, $skip, true)) {
+                continue;
+            }
+            if (is_scalar($v) && $v !== '' && ! is_bool($v)) {
+                $parts[] = $k.': '.Str::limit((string) $v, 48);
+            }
+            if (count($parts) >= 5) {
+                break;
+            }
+        }
+
+        return $parts === [] ? null : implode(' · ', $parts);
+    }
+
+    /**
+     * @return array{related_kind: string, related_purpose: string, related_display_name: string, related_label: string, related_source: string}
+     */
+    private function emptyRelated(): array
+    {
+        return [
+            'related_kind' => '—',
+            'related_purpose' => 'No polymorphic link and no recognizable fields in metadata. If JSON exists below, read it for gateway ids, session ids, and custom keys.',
+            'related_display_name' => '—',
+            'related_label' => '—',
+            'related_source' => 'none',
+        ];
+    }
+
+    /**
+     * @return array{related_kind: string, related_purpose: string, related_display_name: string, related_label: string}
+     */
+    private function resolveRelatedDetailsForStringType(string $type, mixed $relatedId): array
+    {
+        $id = is_numeric($relatedId) ? (int) $relatedId : $relatedId;
+
+        if ($type === 'raffle') {
+            $raffle = Raffle::query()->find($id);
+            $name = $raffle && ($raffle->title ?? null)
+                ? (string) $raffle->title
+                : ('Raffle #'.$id.($raffle ? '' : ' (missing)'));
+
+            return [
+                'related_kind' => 'Raffle tickets',
+                'related_purpose' => 'Payment for raffle ticket(s). The raffle record holds title, draw schedule, ticket counts, and prize configuration.',
+                'related_display_name' => $name,
+                'related_label' => $name,
+            ];
+        }
+
+        return [
+            'related_kind' => ucfirst(str_replace('_', ' ', $type)),
+            'related_purpose' => 'A custom or legacy related_type marker. Use the related id and metadata JSON to see how this transaction was created.',
+            'related_display_name' => $type.' #'.$id,
+            'related_label' => $type.' #'.$id,
+        ];
+    }
+
+    private function loadRelatedModel(string $class, mixed $relatedId): ?Model
+    {
+        $id = is_numeric($relatedId) ? (int) $relatedId : $relatedId;
+
+        try {
+            return match (class_basename($class)) {
+                'Enrollment' => $class::query()->with('course')->find($id),
+                'MerchantHubOfferRedemption' => $class::query()->with('offer')->find($id),
+                default => $class::query()->find($id),
+            };
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    private function relatedDisplayNameFromModel(?Model $model, string $basename, mixed $relatedId): string
+    {
+        $suffix = is_scalar($relatedId) ? (string) $relatedId : '';
+
+        if (! $model) {
+            return $basename.' #'.$suffix.' (record missing)';
+        }
+
+        return match ($basename) {
+            'Order' => $model->reference_number
+                ? 'Order '.$model->reference_number
+                : 'Order #'.$model->id,
+            'Plan' => $model->name ? 'Plan: '.$model->name : 'Plan #'.$model->id,
+            'Enrollment' => $this->enrollmentDisplayName($model),
+            'GiftCard' => $this->giftCardDisplayName($model),
+            'User' => $model->name ? $model->name.' (user)' : 'User #'.$model->id,
+            'Organization' => $model->name ? $model->name.' (organization)' : 'Organization #'.$model->id,
+            'MerchantHubOfferRedemption' => $this->merchantRedemptionDisplayName($model),
+            'MerchantHubReferralReward' => 'Referral reward #'.$model->id,
+            'Raffle' => ($model->title ?? null) ? (string) $model->title : 'Raffle #'.$model->id,
+            'Donation' => $this->donationRelatedDisplayName($model),
+            default => $basename.' #'.$model->id,
+        };
+    }
+
+    private function donationRelatedDisplayName(Model $model): string
+    {
+        if (! $model instanceof Donation) {
+            return 'Donation #'.$model->getKey();
+        }
+        $model->loadMissing('organization:id,name', 'careAlliance:id,name');
+        $org = $model->organization?->name;
+        $ca = $model->careAlliance?->name;
+        $parts = array_filter([
+            $org,
+            $ca ? 'Care Alliance: '.$ca : null,
+        ]);
+
+        return $parts !== [] ? implode(' · ', $parts) : ('Donation #'.$model->id);
+    }
+
+    private function enrollmentDisplayName(Model $enrollment): string
+    {
+        $courseName = $enrollment->relationLoaded('course') && $enrollment->course
+            ? $enrollment->course->name
+            : null;
+
+        $parts = array_filter([
+            $courseName,
+            'Enrollment #'.$enrollment->id,
+        ]);
+
+        return implode(' · ', $parts);
+    }
+
+    private function giftCardDisplayName(Model $giftCard): string
+    {
+        $brand = trim((string) ($giftCard->brand_name ?? $giftCard->brand ?? ''));
+        $bits = array_filter([
+            $brand !== '' ? $brand : null,
+            $giftCard->voucher ? 'Code '.$giftCard->voucher : null,
+        ]);
+
+        return $bits !== [] ? implode(' · ', $bits) : 'Gift card #'.$giftCard->id;
+    }
+
+    private function merchantRedemptionDisplayName(Model $redemption): string
+    {
+        if ($redemption->relationLoaded('offer') && $redemption->offer && ($redemption->offer->title ?? null)) {
+            return (string) $redemption->offer->title;
+        }
+
+        if ($redemption->receipt_code) {
+            return 'Redemption '.$redemption->receipt_code;
+        }
+
+        return 'Merchant redemption #'.$redemption->id;
+    }
+
+    /**
+     * @return array{kind: string, purpose: string}
+     */
+    private function relatedKindAndPurposeForClass(string $class): array
+    {
+        return match ($class) {
+            Order::class => [
+                'kind' => 'Marketplace order',
+                'purpose' => 'Connects this payment to a Believe storefront checkout (line items, shipping, tax, optional donation). Use the order reference in Orders to audit fulfillment and refunds.',
+            ],
+            Plan::class => [
+                'kind' => 'Subscription plan',
+                'purpose' => 'Billing for a membership or recurring plan (Stripe product/price on the plan record). Often used for platform access or premium features.',
+            ],
+            Enrollment::class => [
+                'kind' => 'Course enrollment',
+                'purpose' => 'Tuition or fee for a course: links the learner, the course schedule, and payment state (active, refunded, etc.).',
+            ],
+            GiftCard::class => [
+                'kind' => 'Gift card',
+                'purpose' => 'Gift card purchase or partner flow (e.g. Phaze): ties commission splits and brand metadata to this ledger row.',
+            ],
+            User::class => [
+                'kind' => 'User (counterparty)',
+                'purpose' => 'Another Believe member in a wallet transfer—usually the recipient or sender referenced by this side of the transfer pair.',
+            ],
+            Organization::class => [
+                'kind' => 'Organization',
+                'purpose' => 'A nonprofit or business profile: common in org wallet sends, transfers, or payouts involving an org account.',
+            ],
+            MerchantHubOfferRedemption::class => [
+                'kind' => 'Merchant Hub redemption',
+                'purpose' => 'A user redeemed an offer (points/cash, verified receipt). The redemption links to the offer and merchant workflow.',
+            ],
+            MerchantHubReferralReward::class => [
+                'kind' => 'Merchant referral reward',
+                'purpose' => 'Points or wallet value issued when a referral completes an eligible Merchant Hub redemption.',
+            ],
+            Raffle::class => [
+                'kind' => 'Raffle',
+                'purpose' => 'Ticket purchase or settlement tied to a raffle campaign (pool, draw date, organization).',
+            ],
+            Donation::class => [
+                'kind' => 'Donation',
+                'purpose' => 'Believe donation (card, subscription, or points); may route through Care Alliance splits.',
+            ],
+            default => [
+                'kind' => class_basename($class),
+                'purpose' => 'Linked polymorphic record of type '.class_basename($class).'. Open that table by id in admin or the database for full detail.',
+            ],
+        };
+    }
+}

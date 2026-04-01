@@ -71,6 +71,14 @@ function firstInertiaFieldError(errors: Record<string, string | string[]> | unde
   return ""
 }
 
+function orgLocationLine(o: Pick<OrganizationSearchHit, "city" | "state">): string | null {
+  const city = (o.city ?? "").trim()
+  const state = (o.state ?? "").trim()
+  if (!city && !state) return null
+  if (city && state) return `${city}, ${state}`
+  return city || state
+}
+
 function formatListDate(iso: string | null): string | null {
   if (!iso) return null
   const d = new Date(iso)
@@ -371,8 +379,8 @@ export default function CareAllianceWorkspaceMembers() {
           <CardHeader>
             <CardTitle>Invite organizations</CardTitle>
             <CardDescription>
-              Search and add organizations, then set the invitation email for each before sending. Only{" "}
-              <strong>approved</strong> organizations appear in search.
+              Search by name, EIN, email, city, state, or primary action category, then set the invitation email for each before
+              sending. Only <strong>approved</strong> organizations appear in search.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -391,7 +399,7 @@ export default function CareAllianceWorkspaceMembers() {
                       setSearchDropdownOpen(true)
                     }
                   }}
-                  placeholder="Search organizations…"
+                  placeholder="Search by name, EIN, email, city, state, or category…"
                   autoComplete="off"
                   aria-busy={searching}
                   aria-expanded={showSearchDropdown}
@@ -453,7 +461,21 @@ export default function CareAllianceWorkspaceMembers() {
                               <div className="mt-0.5 text-xs text-muted-foreground">
                                 EIN {o.ein ?? "—"}
                                 {o.email ? ` · ${o.email}` : ""}
+                                {orgLocationLine(o) ? ` · ${orgLocationLine(o)}` : ""}
                               </div>
+                              {o.primary_action_categories && o.primary_action_categories.length > 0 ? (
+                                <div className="mt-1.5 flex flex-wrap gap-1">
+                                  {o.primary_action_categories.map((c) => (
+                                    <span
+                                      key={c.id}
+                                      className="max-w-full truncate rounded-md border border-border/80 bg-muted/50 px-1.5 py-0.5 text-[10px] leading-tight text-muted-foreground"
+                                      title={c.name}
+                                    >
+                                      {c.name}
+                                    </span>
+                                  ))}
+                                </div>
+                              ) : null}
                             </div>
                             {added ? (
                               <span className="shrink-0 text-xs font-medium text-primary">Added</span>
@@ -502,8 +524,8 @@ export default function CareAllianceWorkspaceMembers() {
               )}
             </div>
             <p className="text-xs text-muted-foreground">
-              Type at least 2 characters to search the server for organizations. Click a row to add it; you can add several and edit
-              each invitation email before sending.
+              Type at least 2 characters to search (including city, state, and primary action categories). Click a row to add it;
+              you can add several and edit each invitation email before sending.
             </p>
 
             {inviteDrafts.length > 0 && (
@@ -523,7 +545,22 @@ export default function CareAllianceWorkspaceMembers() {
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0 flex-1">
                           <p className="font-medium text-foreground">{row.org.name}</p>
-                          <p className="mt-0.5 text-xs text-muted-foreground">EIN {row.org.ein ?? "—"}</p>
+                          <p className="mt-0.5 text-xs text-muted-foreground">
+                            EIN {row.org.ein ?? "—"}
+                            {orgLocationLine(row.org) ? ` · ${orgLocationLine(row.org)}` : ""}
+                          </p>
+                          {row.org.primary_action_categories && row.org.primary_action_categories.length > 0 ? (
+                            <div className="mt-1 flex flex-wrap gap-1">
+                              {row.org.primary_action_categories.map((c) => (
+                                <span
+                                  key={c.id}
+                                  className="max-w-full truncate rounded-md border border-border/80 bg-muted/40 px-1.5 py-0.5 text-[10px] text-muted-foreground"
+                                >
+                                  {c.name}
+                                </span>
+                              ))}
+                            </div>
+                          ) : null}
                         </div>
                         <Button
                           type="button"
@@ -833,6 +870,20 @@ export default function CareAllianceWorkspaceMembers() {
                             </div>
                             {m.organization?.ein ? (
                               <p className="text-xs text-muted-foreground">EIN {m.organization.ein}</p>
+                            ) : null}
+                            {m.organization?.primary_action_categories &&
+                            m.organization.primary_action_categories.length > 0 ? (
+                              <div className="flex flex-wrap gap-1">
+                                {m.organization.primary_action_categories.map((c) => (
+                                  <span
+                                    key={c.id}
+                                    className="max-w-full truncate rounded-md border border-border/80 bg-muted/50 px-1.5 py-0.5 text-[10px] leading-tight text-muted-foreground"
+                                    title={c.name}
+                                  >
+                                    {c.name}
+                                  </span>
+                                ))}
+                              </div>
                             ) : null}
                             <div className="flex flex-col gap-1.5 text-xs text-muted-foreground sm:flex-row sm:flex-wrap sm:gap-x-4 sm:gap-y-1">
                               {invited ? (

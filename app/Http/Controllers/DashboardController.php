@@ -40,7 +40,7 @@ class DashboardController extends Controller
             // Admin Dashboard Statistics
             $stats = [
                 'totalOrganizations' => Organization::count(),
-                'approvedOrganizations' => Organization::where('registration_status', 'approved')->count(),
+                'approvedOrganizations' => Organization::where('registration_status', 'approved')->excludingCareAllianceHubs()->count(),
                 'pendingOrganizations' => Organization::where('registration_status', 'pending')->count(),
                 'totalUsers' => User::count(),
                 'totalForm1023Applications' => Form1023Application::count(),
@@ -214,13 +214,19 @@ class DashboardController extends Controller
         }
 
         // Organization User Dashboard
+        $careAlliance = CareAlliance::query()
+            ->where('creator_user_id', $user->id)
+            ->first();
+        $isCareAllianceCreator = $careAlliance !== null;
+
         $organization = $user->organization ?? null;
         $totalFav = 0;
         $volunteers = 0;
         $donations = 0;
         $events = 0;
 
-        if ($organization) {
+        // Hub org exists for Care Alliance creators but dashboard metrics / compliance here are nonprofit-org–scoped; skip org table for CA dashboard.
+        if ($organization && ! $isCareAllianceCreator) {
             $organization = $this->refreshComplianceIfNeeded($organization);
             $totalFav = UserFavoriteOrganization::where('organization_id', $organization->id)->count();
 
@@ -239,13 +245,15 @@ class DashboardController extends Controller
 
             // 3. Total Events Count
             $events = Event::where('organization_id', $organization->id)->count();
+        } elseif ($organization && $isCareAllianceCreator) {
+            $organization = $this->refreshComplianceIfNeeded($organization);
         }
 
         $user->load('interestedTopics');
 
         // Get latest Form 1023 application status
         $form1023Application = null;
-        if ($organization) {
+        if ($organization && ! $isCareAllianceCreator) {
             $latestApplication = $organization->form1023Applications()
                 ->latest()
                 ->first();
@@ -270,8 +278,7 @@ class DashboardController extends Controller
         // Get Form 990 filing status
         $form990Filings = null;
         $overdueForm990Filings = [];
-        if ($organization) {
-            $currentYear = (string) Carbon::now()->year;
+        if ($organization && ! $isCareAllianceCreator) {
             $overdueFilings = $organization->getOverdueForm990Filings();
 
             $overdueForm990Filings = $overdueFilings->map(function ($filing) {
@@ -311,9 +318,6 @@ class DashboardController extends Controller
 
         // Care Alliance hub (creator): dashboard totals + pool balance for /dashboard
         $careAllianceDashboard = null;
-        $careAlliance = CareAlliance::query()
-            ->where('creator_user_id', $user->id)
-            ->first();
         if ($careAlliance) {
             $aid = (int) $careAlliance->id;
 
@@ -353,9 +357,9 @@ class DashboardController extends Controller
             ];
         }
 
-        // Profile completion (integrations) for behavior nudge banner – organization users only
+        // Profile completion (integrations) – from hub org only for plain nonprofit org users, not Care Alliance dashboard (CA uses care_alliances elsewhere).
         $profileCompletion = null;
-        if ($organization) {
+        if ($organization && ! $isCareAllianceCreator) {
             $hasDropbox = ! empty($organization->dropbox_refresh_token) || ! empty($organization->dropbox_access_token);
             $hasYoutube = ! empty($organization->youtube_refresh_token) || ! empty($organization->youtube_access_token);
             $hasEmail = $organization->emailConnections()->where('is_active', true)->exists();
@@ -461,6 +465,16 @@ class DashboardController extends Controller
             }),
             'hasSubscription' => $hasSubscription,
             'careAllianceDashboard' => $careAllianceDashboard,
+            'careAllianceProfile' => $careAlliance ? [
+                'id' => $careAlliance->id,
+                'name' => $careAlliance->name,
+                'slug' => $careAlliance->slug,
+                'ein' => $careAlliance->ein,
+                'description' => $careAlliance->description,
+                'city' => $careAlliance->city,
+                'state' => $careAlliance->state,
+                'website' => $careAlliance->website,
+            ] : null,
         ]);
     }
 
@@ -560,14 +574,15 @@ class DashboardController extends Controller
 
         // If there's an approved Form 1023 application, ensure user has organization role
         if ($hasApprovedForm1023) {
-            if (! $user->hasRole('organization') || $user->role !== 'organization') {
+            $expectedColumnRole = $hasCareAlliance ? 'care_alliance' : 'organization';
+            if (! $user->hasRole('organization') || $user->role !== $expectedColumnRole) {
                 // Remove organization_pending role if it exists
                 if ($user->hasRole('organization_pending')) {
                     $user->removeRole('organization_pending');
                 }
 
                 $this->syncOrganizationSpatieRoles($user, ['organization']);
-                $user->role = 'organization';
+                $user->role = $expectedColumnRole;
                 $user->save();
 
                 // Ensure registration_status is approved
@@ -588,9 +603,9 @@ class DashboardController extends Controller
 
         // If user has organization role and has Form 1023 application, keep it
         if ($hasForm1023Application && $user->hasRole('organization')) {
-            // Don't change the role - keep organization role
-            if ($user->role !== 'organization') {
-                $user->role = 'organization';
+            $expectedColumnRole = $hasCareAlliance ? 'care_alliance' : 'organization';
+            if ($user->role !== $expectedColumnRole) {
+                $user->role = $expectedColumnRole;
                 $user->save();
             }
             $this->syncOrganizationSpatieRoles($user, ['organization']);
@@ -604,15 +619,16 @@ class DashboardController extends Controller
 
         Role::findOrCreate($targetRole);
 
+        $expectedColumnRole = $hasCareAlliance ? 'care_alliance' : $targetRole;
         $expectedRoleCount = 1 + ($hasCareAlliance ? 1 : 0);
-        if ($user->hasRole($targetRole) && $user->role === $targetRole && $user->roles()->count() === $expectedRoleCount && (! $hasCareAlliance || $user->hasRole('care_alliance'))) {
+        if ($user->hasRole($targetRole) && $user->role === $expectedColumnRole && $user->roles()->count() === $expectedRoleCount && (! $hasCareAlliance || $user->hasRole('care_alliance'))) {
             return;
         }
 
         $this->syncOrganizationSpatieRoles($user, [$targetRole]);
 
-        if ($user->role !== $targetRole) {
-            $user->role = $targetRole;
+        if ($user->role !== $expectedColumnRole) {
+            $user->role = $expectedColumnRole;
             $user->save();
         }
     }

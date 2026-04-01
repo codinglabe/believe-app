@@ -8,15 +8,17 @@ use App\Models\Organization;
 use App\Models\User;
 use App\Services\CareAllianceGeneralDonationDistributionService;
 use App\Services\CareAlliancePublicPageService;
+use App\Services\DonationLedgerSyncService;
 use App\Services\ImpactScoreService;
 use App\Services\SeoService;
 use App\Services\StripeConfigService;
+use App\Services\StripeEnvironmentSyncService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
-use Illuminate\Support\Collection;
 use Inertia\Inertia;
 use Laravel\Cashier\Cashier;
 
@@ -190,7 +192,7 @@ class DonationController extends Controller
         $hasSearch = $search !== null && $search !== '';
 
         // Approved nonprofits available for donations
-        $orgQuery = Organization::where('registration_status', 'approved');
+        $orgQuery = Organization::where('registration_status', 'approved')->excludingCareAllianceHubs();
         if ($hasSearch) {
             $orgQuery->where(function ($q) use ($search) {
                 $q->where('name', 'like', '%'.$search.'%')
@@ -363,7 +365,7 @@ class DonationController extends Controller
         $organization = Organization::find($organizationId);
 
         // If not found, it might be an ExcelData ID - try to find by EIN
-        if (!$organization) {
+        if (! $organization) {
             $excelData = \App\Models\ExcelData::find($organizationId);
             if ($excelData) {
                 // Find Organization by EIN
@@ -374,9 +376,9 @@ class DonationController extends Controller
         }
 
         // Validate organization exists and is approved
-        if (!$organization || $organization->registration_status !== 'approved') {
+        if (! $organization || $organization->registration_status !== 'approved') {
             return redirect()->back()->withErrors([
-                'organization_id' => 'The selected organization is invalid or not approved for donations.'
+                'organization_id' => 'The selected organization is invalid or not approved for donations.',
             ]);
         }
 
@@ -441,7 +443,7 @@ class DonationController extends Controller
             // Believe Points only available for one-time donations
             if ($validated['frequency'] !== 'one-time') {
                 return redirect()->back()->withErrors([
-                    'payment_method' => 'Believe Points can only be used for one-time donations. Please select "One-time" frequency or use Stripe for recurring donations.'
+                    'payment_method' => 'Believe Points can only be used for one-time donations. Please select "One-time" frequency or use Stripe for recurring donations.',
                 ]);
             }
 
@@ -450,7 +452,7 @@ class DonationController extends Controller
 
             if ($user->believe_points < $pointsRequired) {
                 return redirect()->back()->withErrors([
-                    'payment_method' => "Insufficient Believe Points. You need {$pointsRequired} points but only have {$user->believe_points} points."
+                    'payment_method' => "Insufficient Believe Points. You need {$pointsRequired} points but only have {$user->believe_points} points.",
                 ]);
             }
         }
@@ -484,18 +486,19 @@ class DonationController extends Controller
                 $pointsRequired = $validated['amount'];
 
                 // Deduct points
-                if (!$user->deductBelievePoints($pointsRequired)) {
+                if (! $user->deductBelievePoints($pointsRequired)) {
                     \Illuminate\Support\Facades\DB::rollBack();
                     $donation->update(['status' => 'failed']);
+
                     return redirect()->back()->withErrors([
-                        'payment_method' => 'Failed to deduct Believe Points. Please try again.'
+                        'payment_method' => 'Failed to deduct Believe Points. Please try again.',
                     ]);
                 }
 
                 // Complete donation with Believe Points
                 $donation->update([
                     'status' => 'completed',
-                    'transaction_id' => 'believe_points_donation_' . $donation->id,
+                    'transaction_id' => 'believe_points_donation_'.$donation->id,
                 ]);
 
                 $this->applyDonationToBalances($donation);
@@ -505,20 +508,34 @@ class DonationController extends Controller
 
                 \Illuminate\Support\Facades\DB::commit();
 
-                return redirect(route('donations.success') . '?donation_id=' . $donation->id)
+                return redirect(route('donations.success').'?donation_id='.$donation->id)
                     ->with('success', 'Donation completed successfully using Believe Points!');
             } catch (\Exception $e) {
                 \Illuminate\Support\Facades\DB::rollBack();
                 $donation->update(['status' => 'failed']);
-                Log::error('Believe Points donation failed: ' . $e->getMessage());
+                Log::error('Believe Points donation failed: '.$e->getMessage());
+
                 return redirect()->back()->withErrors([
-                    'payment_method' => 'Failed to process donation: ' . $e->getMessage()
+                    'payment_method' => 'Failed to process donation: '.$e->getMessage(),
                 ]);
             }
         }
 
         // Handle Stripe payment
         try {
+            if (! StripeEnvironmentSyncService::ensureUserStripeCustomer($user)) {
+                $donation->update(['status' => 'failed']);
+                Log::error('Donation Stripe checkout failed', [
+                    'user_id' => $user->id,
+                    'error' => 'Could not prepare Stripe customer for current account',
+                ]);
+
+                return redirect()->back()->withErrors([
+                    'message' => 'Payment setup failed. Please try again in a moment.',
+                ]);
+            }
+            $user->refresh();
+
             // Stripe line item: alliance donations show only the Care Alliance name (no member list or payout copy).
             $checkoutLineTitle = $allianceForCheckout !== null
                 ? sprintf('Donation to %s', $allianceForCheckout->name)
@@ -534,7 +551,7 @@ class DonationController extends Controller
             }
 
             $checkoutOptions = [
-                'success_url' => route('donations.success') . '?session_id={CHECKOUT_SESSION_ID}',
+                'success_url' => route('donations.success').'?session_id={CHECKOUT_SESSION_ID}',
                 'cancel_url' => route('donations.cancel'),
                 'metadata' => $metadata,
                 'payment_method_types' => ['card'],
@@ -567,13 +584,13 @@ class DonationController extends Controller
             return Inertia::location($checkout->url);
         } catch (\Exception $e) {
             $donation->update(['status' => 'failed']);
+            Log::error('Donation Stripe checkout failed', ['user_id' => $user->id, 'error' => $e->getMessage()]);
 
-            return response()->json([
-                'error' => 'Payment processing failed: ' . $e->getMessage()
-            ], 500);
+            return redirect()->back()->withErrors([
+                'message' => 'Payment processing failed: '.$e->getMessage(),
+            ]);
         }
     }
-
 
     /**
      * Handle successful payment
@@ -584,7 +601,7 @@ class DonationController extends Controller
         $donationId = $request->get('donation_id');
 
         // Handle Believe Points donation success (no session_id needed)
-        if ($donationId && !$sessionId) {
+        if ($donationId && ! $sessionId) {
             $donation = Donation::with(['organization', 'user', 'careAlliance:id,name,slug'])->find($donationId);
 
             if ($donation && $donation->payment_method === 'believe_points' && $donation->status === 'completed') {
@@ -594,15 +611,15 @@ class DonationController extends Controller
                 ]);
             } elseif ($donation && $donation->payment_method === 'believe_points' && $donation->status !== 'completed') {
                 return redirect()->route('donate')->withErrors([
-                    'message' => 'Donation is still processing. Please wait a moment.'
+                    'message' => 'Donation is still processing. Please wait a moment.',
                 ]);
             }
         }
 
         // Handle Stripe payment success
-        if (!$sessionId) {
+        if (! $sessionId) {
             return redirect()->route('donate')->withErrors([
-                'message' => 'Invalid donation session'
+                'message' => 'Invalid donation session',
             ]);
         }
         try {
@@ -634,7 +651,7 @@ class DonationController extends Controller
                     // Recurring payment - store subscription using Laravel Cashier
                     try {
                         // Ensure user has stripe_id (required for Cashier)
-                        if (!$user->stripe_id && $session->customer) {
+                        if (! $user->stripe_id && $session->customer) {
                             $user->stripe_id = $session->customer;
                             $user->save();
                         }
@@ -645,7 +662,7 @@ class DonationController extends Controller
                         ]);
 
                         // If subscription doesn't exist, retrieve from Stripe and sync using Cashier
-                        if (!$subscription->exists) {
+                        if (! $subscription->exists) {
                             $stripeSubscription = Cashier::stripe()->subscriptions->retrieve($session->subscription);
 
                             // Get the price ID from the subscription
@@ -757,7 +774,7 @@ class DonationController extends Controller
             ]);
         } catch (\Exception $e) {
             return Inertia::render('frontend/organization/donation/success')->withErrors([
-                'message' => 'Error verifying payment: ' . $e->getMessage()
+                'message' => 'Error verifying payment: '.$e->getMessage(),
             ]);
         }
     }
@@ -778,7 +795,7 @@ class DonationController extends Controller
                 }
             } catch (\Exception $e) {
                 // Log error but continue to cancel page
-                Log::error('Error updating canceled donation: ' . $e->getMessage());
+                Log::error('Error updating canceled donation: '.$e->getMessage());
             }
         }
 
@@ -792,11 +809,11 @@ class DonationController extends Controller
     {
         // Map your app frequencies to Stripe-recognized intervals
         $intervalMap = [
-            'weekly'  => 'week',
+            'weekly' => 'week',
             'monthly' => 'month',
         ];
 
-        if (!array_key_exists($frequency, $intervalMap)) {
+        if (! array_key_exists($frequency, $intervalMap)) {
             throw new \InvalidArgumentException("Invalid recurring frequency: {$frequency}");
         }
 
@@ -805,16 +822,16 @@ class DonationController extends Controller
         // Get donation product ID dynamically based on current environment
         $productId = StripeConfigService::getDonationProductId();
 
-        if (!$productId) {
-            throw new \Exception("Failed to get or create donation product. Please check your Stripe configuration.");
+        if (! $productId) {
+            throw new \Exception('Failed to get or create donation product. Please check your Stripe configuration.');
         }
 
         // Create dynamic price with Stripe
         $price = Cashier::stripe()->prices->create([
             'unit_amount' => $amountInCents,
-            'currency'    => 'usd',
-            'recurring'   => ['interval' => $interval],
-            'product'     => $productId,
+            'currency' => 'usd',
+            'recurring' => ['interval' => $interval],
+            'product' => $productId,
         ]);
 
         return $price->id;
@@ -826,29 +843,41 @@ class DonationController extends Controller
      */
     private function applyDonationToBalances(Donation $donation): void
     {
-        $donation->loadMissing('organization.user');
-        if ($donation->care_alliance_id) {
-            $alliance = CareAlliance::query()->find($donation->care_alliance_id);
-            if ($alliance && $alliance->financial_settings_completed_at) {
-                $amountCents = (int) round((float) $donation->amount * 100);
-                $svc = app(CareAllianceGeneralDonationDistributionService::class);
-                $dist = $svc->computeDistribution($alliance, $amountCents);
-                if (CareAllianceGeneralDonationDistributionService::distributionIsScheduled($alliance->distribution_frequency)) {
-                    $svc->accumulatePendingDistribution($alliance, $dist['org_shares'], $dist['fee_cents']);
-                } else {
-                    $svc->distributeCompletedDonation($donation, $alliance, $dist['org_shares'], $dist['fee_cents']);
-                }
+        try {
+            $donation->loadMissing('organization.user');
+            if ($donation->care_alliance_id) {
+                $alliance = CareAlliance::query()->find($donation->care_alliance_id);
+                if ($alliance && $alliance->financial_settings_completed_at) {
+                    $amountCents = (int) round((float) $donation->amount * 100);
+                    $svc = app(CareAllianceGeneralDonationDistributionService::class);
+                    $dist = $svc->computeDistribution($alliance, $amountCents);
+                    if (CareAllianceGeneralDonationDistributionService::distributionIsScheduled($alliance->distribution_frequency)) {
+                        $svc->accumulatePendingDistribution($alliance, $dist['org_shares'], $dist['fee_cents']);
+                    } else {
+                        $svc->distributeCompletedDonation($donation, $alliance, $dist['org_shares'], $dist['fee_cents']);
+                    }
 
-                return;
+                    return;
+                }
             }
-        }
-        if ($donation->organization && $donation->organization->user) {
-            $donation->organization->user->increment('balance', $donation->amount);
-            Log::info('Donation added to organization user balance', [
-                'donation_id' => $donation->id,
-                'organization_id' => $donation->organization->id,
-                'amount' => $donation->amount,
-            ]);
+            if ($donation->organization && $donation->organization->user) {
+                DonationLedgerSyncService::recordRecipientDepositIfMissing($donation, true);
+
+                Log::info('Donation added to organization user balance', [
+                    'donation_id' => $donation->id,
+                    'organization_id' => $donation->organization->id,
+                    'amount' => $donation->amount,
+                ]);
+            }
+        } finally {
+            try {
+                DonationLedgerSyncService::recordDonorAuditIfMissing($donation);
+            } catch (\Throwable $e) {
+                Log::error('Donor donation ledger audit row failed', [
+                    'donation_id' => $donation->id,
+                    'message' => $e->getMessage(),
+                ]);
+            }
         }
     }
 
@@ -860,7 +889,7 @@ class DonationController extends Controller
         $user = $request->user();
         $organization = Organization::where('user_id', $user->id)->first();
 
-        if (!$organization) {
+        if (! $organization) {
             abort(404, 'Organization not found');
         }
 

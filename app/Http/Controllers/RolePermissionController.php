@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use Inertia\Inertia;
 use Inertia\Response;
 use App\Models\User; // Assuming your User model is in App\Models
+use App\Models\CareAlliance;
 use App\Models\Organization;
 use App\Models\BoardMember;
 use Illuminate\Http\Request;
@@ -152,11 +153,28 @@ class RolePermissionController extends BaseController
                 ->filter();
         }
 
+        $careAlliancesByCreator = CareAlliance::query()
+            ->whereIn('creator_user_id', $userIds)
+            ->get(['creator_user_id', 'name'])
+            ->keyBy('creator_user_id');
+
         // Transform the paginator's collection:
-        $users->getCollection()->transform(function ($user) use ($ownerOrgNames, $boardMemberOrgNames) {
-            $primaryRole = $user->roles->first();
-            $organizationName = $ownerOrgNames->get($user->id)?->name
-                ?? $boardMemberOrgNames->get($user->id);
+        $users->getCollection()->transform(function ($user) use ($ownerOrgNames, $boardMemberOrgNames, $careAlliancesByCreator) {
+            $roles = $user->roles;
+            // Prefer a single clear role for display: care_alliance over organization when both exist (Spatie order is not guaranteed).
+            $primaryRole = $roles->firstWhere('name', 'care_alliance')
+                ?? $roles->firstWhere('name', 'organization')
+                ?? $roles->firstWhere('name', 'organization_pending')
+                ?? $roles->first();
+
+            $isCareAlliance = $roles->contains('name', 'care_alliance');
+            $organizationName = $isCareAlliance
+                ? null
+                : ($ownerOrgNames->get($user->id)?->name
+                    ?? $boardMemberOrgNames->get($user->id));
+            $careAllianceName = $isCareAlliance
+                ? $careAlliancesByCreator->get($user->id)?->name
+                : null;
 
             return [
                 'id' => (string) $user->id,
@@ -172,6 +190,7 @@ class RolePermissionController extends BaseController
                 'joinedDate' => $user->created_at->toDateString(),
                 'emailVerifiedAt' => $user->email_verified_at ? $user->email_verified_at->toISOString() : null,
                 'organization_name' => $organizationName,
+                'care_alliance_name' => $careAllianceName,
             ];
         });
 

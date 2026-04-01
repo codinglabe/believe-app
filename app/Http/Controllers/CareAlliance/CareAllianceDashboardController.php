@@ -183,22 +183,7 @@ class CareAllianceDashboardController extends Controller
                     ]);
                 break;
             case 'memberships':
-                $memberships = CareAllianceMembership::query()
-                    ->where('care_alliance_id', $alliance->id)
-                    ->with(['organization:id,name,ein,user_id'])
-                    ->orderByDesc('created_at')
-                    ->get()
-                    ->map(fn (CareAllianceMembership $m) => [
-                        'id' => $m->id,
-                        'status' => $m->status,
-                        'invited_at' => $m->invited_at?->toIso8601String(),
-                        'responded_at' => $m->responded_at?->toIso8601String(),
-                        'organization' => $m->organization ? [
-                            'id' => $m->organization->id,
-                            'name' => $m->organization->name,
-                            'ein' => $m->organization->ein,
-                        ] : null,
-                    ]);
+                $memberships = $this->membershipsForCareAllianceWorkspace($alliance);
                 break;
         }
 
@@ -228,7 +213,11 @@ class CareAllianceDashboardController extends Controller
     {
         return CareAllianceMembership::query()
             ->where('care_alliance_id', $alliance->id)
-            ->with(['organization:id,name,ein,user_id'])
+            ->with([
+                'organization' => fn ($q) => $q->select('id', 'name', 'ein', 'user_id')->with([
+                    'primaryActionCategories' => fn ($q) => $q->orderBy('sort_order')->orderBy('name'),
+                ]),
+            ])
             ->orderByDesc('created_at')
             ->get()
             ->map(fn (CareAllianceMembership $m) => [
@@ -240,6 +229,10 @@ class CareAllianceDashboardController extends Controller
                     'id' => $m->organization->id,
                     'name' => $m->organization->name,
                     'ein' => $m->organization->ein,
+                    'primary_action_categories' => $m->organization->primaryActionCategories->map(fn ($c) => [
+                        'id' => $c->id,
+                        'name' => $c->name,
+                    ])->values()->all(),
                 ] : null,
             ])
             ->values()

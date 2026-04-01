@@ -2,11 +2,13 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Schema;
 
 class Organization extends Model
 {
@@ -119,6 +121,14 @@ class Organization extends Model
     public function careAllianceJoinRequests(): \Illuminate\Database\Eloquent\Relations\HasMany
     {
         return $this->hasMany(CareAllianceJoinRequest::class);
+    }
+
+    /**
+     * Care Alliance that uses this row as its hub organization (internal record; not a standalone public nonprofit).
+     */
+    public function careAllianceAsHub(): HasOne
+    {
+        return $this->hasOne(CareAlliance::class, 'hub_organization_id');
     }
 
     public function users()
@@ -248,6 +258,22 @@ class Organization extends Model
         return $query->where('registration_status', 'approved');
     }
 
+    /**
+     * Exclude rows that only exist as a Care Alliance hub (still used internally; hidden from public org discovery).
+     */
+    public function scopeExcludingCareAllianceHubs(Builder $query): Builder
+    {
+        if (! Schema::hasTable('care_alliances') || ! Schema::hasColumn('care_alliances', 'hub_organization_id')) {
+            return $query;
+        }
+
+        return $query->whereNotExists(function ($sub) {
+            $sub->from('care_alliances')
+                ->whereColumn('care_alliances.hub_organization_id', 'organizations.id')
+                ->whereNotNull('care_alliances.hub_organization_id');
+        });
+    }
+
     /** Approved registration and operational status (for Care Alliance invite search, etc.). */
     public function scopeActiveRegistered($query)
     {
@@ -257,16 +283,27 @@ class Organization extends Model
 
     /**
      * Approved registration + linked platform user (owner or board). Does not filter organizations.status.
+     * Excludes Care Alliance hub orgs and any org owned by a Care Alliance creator (internal hub row; covers legacy rows without hub_organization_id).
      */
-    public function scopeCareAllianceInviteEligible($query)
+    public function scopeCareAllianceInviteEligible(Builder $query): Builder
     {
-        return $query->active()
+        $query->active()
             ->where(function ($q) {
                 $q->whereNotNull('user_id')
                     ->orWhereHas('boardMembers', function ($sub) {
                         $sub->whereNotNull('user_id');
                     });
+            })
+            ->excludingCareAllianceHubs();
+
+        if (Schema::hasTable('care_alliances') && Schema::hasColumn('care_alliances', 'creator_user_id')) {
+            $query->whereNotExists(function ($sub) {
+                $sub->from('care_alliances')
+                    ->whereColumn('care_alliances.creator_user_id', 'organizations.user_id');
             });
+        }
+
+        return $query;
     }
 
     /**
@@ -276,21 +313,35 @@ class Organization extends Model
      * When {@see $careAllianceId} is set, excludes organizations that already have a pending invitation
      * or a pending/active membership with that alliance (so you cannot double-invite or re-pick current members).
      *
-     * @return array<int, array{id: int, name: string, ein: string|null, email: string|null}>
+     * @return array<int, array{id: int, name: string, ein: string|null, email: string|null, city: string|null, state: string|null, primary_action_categories: array<int, array{id: int, name: string}>}>
      */
     public static function careAllianceSearchResults(string $q, ?int $careAllianceId = null, int $limit = 20): array
     {
-        $q = trim($q);
-        if (strlen($q) < 2) {
+        $term = trim($q);
+        if (strlen($term) < 2) {
             return [];
         }
 
+        $einDigits = preg_replace('/\D/', '', $term);
+
         $query = static::query()
             ->careAllianceInviteEligible()
-            ->where(function ($query) use ($q) {
-                $query->where('name', 'like', '%'.$q.'%')
-                    ->orWhere('ein', 'like', '%'.preg_replace('/\D/', '', $q).'%')
-                    ->orWhere('email', 'like', '%'.$q.'%');
+            ->where(function ($w) use ($term, $einDigits) {
+                $w->where('name', 'like', '%'.$term.'%')
+                    ->orWhere('email', 'like', '%'.$term.'%')
+                    ->orWhere('city', 'like', '%'.$term.'%')
+                    ->orWhere('state', 'like', '%'.$term.'%');
+
+                if ($einDigits !== '') {
+                    $w->orWhere('ein', 'like', '%'.$einDigits.'%');
+                }
+
+                $w->orWhereHas('primaryActionCategories', function ($pac) use ($term) {
+                    $pac->where(function ($p) use ($term) {
+                        $p->where('name', 'like', '%'.$term.'%')
+                            ->orWhere('slug', 'like', '%'.$term.'%');
+                    });
+                });
             });
 
         if ($careAllianceId !== null) {
@@ -306,14 +357,21 @@ class Organization extends Model
         }
 
         return $query
+            ->with(['primaryActionCategories' => fn ($q) => $q->orderBy('sort_order')->orderBy('name')])
             ->orderBy('name')
             ->limit($limit)
-            ->get(['id', 'name', 'ein', 'email'])
+            ->get(['id', 'name', 'ein', 'email', 'city', 'state'])
             ->map(fn ($o) => [
                 'id' => $o->id,
                 'name' => $o->name,
                 'ein' => $o->ein,
                 'email' => $o->email,
+                'city' => $o->city,
+                'state' => $o->state,
+                'primary_action_categories' => $o->primaryActionCategories->map(fn ($c) => [
+                    'id' => $c->id,
+                    'name' => $c->name,
+                ])->values()->all(),
             ])
             ->values()
             ->all();

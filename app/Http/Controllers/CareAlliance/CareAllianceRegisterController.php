@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\CareAlliance;
 
 use App\Http\Controllers\Controller;
+use App\Http\Helpers\AuthRedirectHelper;
 use App\Models\BoardMember;
 use App\Models\CareAlliance;
 use App\Models\ChatTopic;
@@ -76,7 +77,26 @@ class CareAllianceRegisterController extends Controller
             'city' => 'nullable|string|max:128',
             'state' => 'nullable|string|max:64',
             'website' => 'nullable|url|max:500',
-            'ein' => 'nullable|string|max:32',
+            'ein' => [
+                'nullable',
+                'string',
+                'max:32',
+                function (string $attribute, mixed $value, \Closure $fail): void {
+                    if ($value === null || $value === '') {
+                        return;
+                    }
+                    $digits = preg_replace('/\D/', '', (string) $value);
+                    if (strlen($digits) !== 9) {
+                        $fail('The EIN must be exactly 9 digits (e.g. 12-3456789).');
+                    }
+                    if (Organization::query()->where('ein', $digits)->exists()) {
+                        $fail('This EIN is already registered to an organization.');
+                    }
+                    if (CareAlliance::query()->where('ein', $digits)->exists()) {
+                        $fail('This EIN is already registered to a Care Alliance.');
+                    }
+                },
+            ],
             'management_fee_percent' => 'nullable|numeric|min:0|max:100',
             'fund_model' => ['required', Rule::in(['direct', 'campaign_split'])],
             'primary_action_category_ids' => ['required', 'array', 'min:1', 'max:8'],
@@ -88,9 +108,18 @@ class CareAllianceRegisterController extends Controller
         }
 
         $validated = $validator->validated();
+        $einRaw = $validated['ein'] ?? null;
+        /** @var string $hubOrgEin digits-only — internal hub org record only when user omits EIN */
+        /** @var string|null $allianceEin null until user adds EIN on Care Alliance (wallet/header use alliance row) */
+        if (is_string($einRaw) && trim($einRaw) !== '') {
+            $hubOrgEin = preg_replace('/\D/', '', $einRaw);
+            $allianceEin = $hubOrgEin;
+        } else {
+            $hubOrgEin = $this->generateUniquePlaceholderEin();
+            $allianceEin = null;
+        }
 
         Role::findOrCreate('care_alliance', 'web');
-        Role::findOrCreate('organization', 'web');
 
         $baseSlug = Str::slug($validated['name']);
         $slug = $baseSlug ?: 'care-alliance';
@@ -118,8 +147,8 @@ class CareAllianceRegisterController extends Controller
                 'slug' => $userSlug,
                 'email' => $validated['email'],
                 'password' => Hash::make($validated['password']),
-                'role' => 'organization',
-                'organization_role' => 'admin',
+                'role' => 'care_alliance',
+                'organization_role' => null,
             ]);
 
             $alliance = CareAlliance::create([
@@ -130,7 +159,7 @@ class CareAllianceRegisterController extends Controller
                 'city' => $validated['city'] ?? null,
                 'state' => $validated['state'] ?? null,
                 'website' => $validated['website'] ?? null,
-                'ein' => $validated['ein'] ?? null,
+                'ein' => $allianceEin,
                 'management_fee_bps' => $feeBps,
                 'fund_model' => $validated['fund_model'],
                 'status' => 'active',
@@ -139,14 +168,9 @@ class CareAllianceRegisterController extends Controller
 
             $alliance->primaryActionCategories()->sync($validated['primary_action_category_ids']);
 
-            $einDigits = ! empty($validated['ein']) ? preg_replace('/\D/', '', $validated['ein']) : '';
-            $orgEin = strlen($einDigits) >= 9
-                ? substr($einDigits, 0, 9)
-                : ('9'.str_pad((string) ($user->id % 100000000), 8, '0', STR_PAD_LEFT));
-
             $organization = Organization::create([
                 'user_id' => $user->id,
-                'ein' => $orgEin,
+                'ein' => $hubOrgEin,
                 'name' => $validated['name'],
                 'street' => 'N/A',
                 'city' => ! empty($validated['city']) ? $validated['city'] : 'N/A',
@@ -184,7 +208,7 @@ class CareAllianceRegisterController extends Controller
                 $user->interestedTopics()->sync($topicIds);
             }
 
-            $user->syncRoles(['organization', 'care_alliance']);
+            $user->syncRoles(['care_alliance']);
 
             DB::commit();
         } catch (\Throwable $e) {
@@ -205,8 +229,33 @@ class CareAllianceRegisterController extends Controller
 
         Auth::login($user);
 
-        return redirect()
-            ->route('dashboard')
+        return redirect(AuthRedirectHelper::defaultRedirectForUser($user))
             ->with('success', 'Care Alliance registered successfully!');
+    }
+
+    /**
+     * Unique 9-digit value for organizations/care_alliances when the registrant does not provide an EIN.
+     */
+    private function generateUniquePlaceholderEin(): string
+    {
+        for ($attempt = 0; $attempt < 150; $attempt++) {
+            $digits = '';
+            for ($i = 0; $i < 9; $i++) {
+                $digits .= (string) random_int(0, 9);
+            }
+            if ($digits === '000000000') {
+                continue;
+            }
+            if (Organization::query()->where('ein', $digits)->exists()) {
+                continue;
+            }
+            if (CareAlliance::query()->where('ein', $digits)->exists()) {
+                continue;
+            }
+
+            return $digits;
+        }
+
+        throw new \RuntimeException('Could not allocate a unique placeholder EIN.');
     }
 }

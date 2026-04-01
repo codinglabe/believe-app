@@ -475,6 +475,35 @@ class User extends Authenticatable implements MustVerifyEmail
         return strlen($digits) === 9;
     }
 
+    /**
+     * Whether the app header (navbar + dashboard sidebar) should show the wallet control.
+     * Care Alliance hubs need a 9-digit EIN on the alliance row; organizations need a 9-digit org EIN.
+     */
+    public function walletHeaderVisible(): bool
+    {
+        if ($this->hasRole('care_alliance')) {
+            $alliance = CareAlliance::query()->where('creator_user_id', $this->id)->first();
+            if (! $alliance) {
+                return false;
+            }
+            $digits = $alliance->ein ? preg_replace('/\D/', '', (string) $alliance->ein) : '';
+
+            return strlen($digits) === 9;
+        }
+
+        if ($this->hasRole('organization') || $this->hasRole('organization_pending')) {
+            $org = Organization::forAuthUser($this);
+            if (! $org) {
+                return false;
+            }
+            $digits = $org->ein ? preg_replace('/\D/', '', (string) $org->ein) : '';
+
+            return strlen($digits) === 9;
+        }
+
+        return true;
+    }
+
     public function sendJobs()
     {
         return $this->hasMany(SendJob::class);

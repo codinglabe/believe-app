@@ -637,6 +637,7 @@ export default function Dashboard({
   hasSubscription = false,
   profileCompletion = null,
   careAllianceDashboard = null,
+  careAllianceProfile = null,
 }: {
   totalOrg?: number
   orgInfo?: any
@@ -662,6 +663,16 @@ export default function Dashboard({
     campaigns_count: number
     pending_join_requests_count: number
     completed_gift_count: number
+  } | null
+  careAllianceProfile?: {
+    id: number
+    name: string
+    slug: string
+    ein: string | null
+    description: string | null
+    city: string | null
+    state: string | null
+    website: string | null
   } | null
 } & AdminDashboardProps) {
   const auth = usePage().props.auth
@@ -861,6 +872,7 @@ export default function Dashboard({
   // 2. Form 1023 has been submitted (status is not 'draft')
   const shouldRestrictDashboard = Boolean(
     organization &&
+    !isCareAllianceHub &&
     (isComplianceLocked || isRegistrationPending) &&
     !hasSubmittedForm1023 &&
     !hasOrganizationRole
@@ -940,10 +952,18 @@ export default function Dashboard({
   const showHubWalletLoading =
     Boolean(isCareAllianceHub && careAllianceDashboard && hubWalletUsd === null && isCheckingWallet)
 
-  const welcomeMessages = {
+  const formatAllianceEin = (ein: string | null | undefined) => {
+    if (!ein) return "—"
+    const d = String(ein).replace(/\D/g, "")
+    if (d.length !== 9) return ein
+    return `${d.slice(0, 2)}-${d.slice(2)}`
+  }
+
+  const welcomeMessages: Record<string, string> = {
     admin: `Welcome back, Administrator ${auth.user?.name}!`,
     organization: `Welcome, ${organization?.name}!`,
     organization_pending: `Welcome, ${organization?.name}!`,
+    care_alliance: `Welcome, ${careAllianceProfile?.name ?? auth.user?.name ?? "Care Alliance"}!`,
   }
 
   const quickActions = {
@@ -1134,9 +1154,9 @@ export default function Dashboard({
       <div className="flex flex-col gap-6 m-3 md:m-6">
         {/* Pending Care Alliance invites — org dashboard: sign in → /dashboard → this card (also linked from invitation emails) */}
         {showOrgAllianceMembershipUi && <CareAllianceOrgInvitesInline />}
-        {/* Profile Completion Banner – top of dashboard nudge for organization users */}
+        {/* Profile completion: hub org integrations — not shown on Care Alliance dashboard (use care_alliances-driven flows only). */}
         {isOrgUser && profileCompletion && profileCompletion.percent < 100 && (
-          <ProfileCompletionBanner profileCompletion={profileCompletion} />
+          <ProfileCompletionBanner profileCompletion={profileCompletion} variant="organization" />
         )}
         {/* Promotional Banner - Only shown for organization users */}
         {isOrgUser && (promotionalBanners || promotionalBanner) && (
@@ -1155,26 +1175,26 @@ export default function Dashboard({
         {isCareAllianceHub && careAllianceDashboard ? (
           <div className="bg-card border-border mb-6 flex flex-col gap-6 rounded-lg border p-6 shadow-sm lg:flex-row lg:items-stretch lg:gap-8">
             <div className="flex min-w-0 flex-1 flex-col gap-6 md:flex-row md:items-start">
-              {isOrgUser && (
-                <div className="flex-shrink-0">
-                  <div className="h-24 w-24 overflow-hidden rounded-full border-4 border-white shadow-lg md:h-32 md:w-32">
-                    <img
-                      src={organization?.registered_user_image ? organization?.registered_user_image : "/placeholder-user.jpg"}
-                      alt={auth.user?.name || "User"}
-                      className="h-full w-full object-cover"
-                    />
-                  </div>
+              <div className="flex-shrink-0">
+                <div className="h-24 w-24 overflow-hidden rounded-full border-4 border-white shadow-lg md:h-32 md:w-32">
+                  <img
+                    src={auth?.user?.image ? auth.user.image : "/placeholder-user.jpg"}
+                    alt={auth.user?.name || "User"}
+                    className="h-full w-full object-cover"
+                  />
                 </div>
-              )}
+              </div>
               <div className="flex-1 text-center md:text-left">
                 <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                   <div>
                     <h1 className="text-2xl font-bold text-white md:text-3xl">
-                      {welcomeMessages[userRole as keyof typeof welcomeMessages] || "Welcome!"}
+                      {(userRole && welcomeMessages[userRole]) || "Welcome!"}
                     </h1>
                     <VerificationBanner user={auth?.user} />
                     <p className="text-muted-foreground mt-2">
-                      {userRole === "admin" ? "System overview and management tools" : "EIN: " + organization?.ein}
+                      {userRole === "admin"
+                        ? "System overview and management tools"
+                        : `EIN: ${formatAllianceEin(careAllianceProfile?.ein ?? null)}`}
                     </p>
                   </div>
                 </div>
@@ -1255,8 +1275,8 @@ export default function Dashboard({
           </div>
         )}
 
-        {/* Form 990 Filing Alert */}
-        {(overdueForm990Filings && overdueForm990Filings.length > 0) && (
+        {/* Form 990 Filing Alert — nonprofit org records only, not Care Alliance dashboard */}
+        {!isCareAllianceHub && overdueForm990Filings && overdueForm990Filings.length > 0 && (
           <Card className="border-red-200 bg-red-50 text-red-900 dark:border-red-800 dark:bg-red-900/20 dark:text-red-100">
             <CardHeader>
               <div className="flex items-start gap-3">
@@ -1311,7 +1331,13 @@ export default function Dashboard({
         )}
 
         {/* Form 990 Filing Status (if not overdue but due soon) */}
-        {form990Filings && !form990Filings.is_filed && !form990Filings.is_overdue && form990Filings.days_until_due !== null && form990Filings.days_until_due > 0 && form990Filings.days_until_due <= 30 && (
+        {!isCareAllianceHub &&
+          form990Filings &&
+          !form990Filings.is_filed &&
+          !form990Filings.is_overdue &&
+          form990Filings.days_until_due !== null &&
+          form990Filings.days_until_due > 0 &&
+          form990Filings.days_until_due <= 30 && (
           <Card className="border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-100">
             <CardHeader>
               <div className="flex items-start gap-3">
@@ -1539,29 +1565,6 @@ export default function Dashboard({
                 value={careAllianceDashboard.pending_join_requests_count}
                 icon={<Inbox className="h-6 w-6" />}
               />
-            </div>
-
-            <div className="space-y-3">
-              <h2 className="text-foreground text-base font-semibold">Your organization</h2>
-              <p className="text-muted-foreground text-sm">
-                The same activity metrics as your nonprofit profile (hub organization).
-              </p>
-              <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
-                <StatCard
-                  title="Completed donations"
-                  value={localStats.totalDonations}
-                  change={localStats.donationChange}
-                  icon={<DollarSign className="h-6 w-6" />}
-                />
-                <StatCard
-                  title="Total Events"
-                  value={localStats.totalEvents}
-                  change={localStats.eventsChange}
-                  icon={<Calendar className="h-6 w-6" />}
-                />
-                <StatCard title="My Volunteers" value={localStats.myVolunteers} icon={<User className="h-6 w-6" />} />
-                <StatCard title="Total Followers" value={localStats.totalFav} icon={<UserCheck className="h-6 w-6" />} />
-              </div>
             </div>
           </div>
         ) : (

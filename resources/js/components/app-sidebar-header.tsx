@@ -21,6 +21,7 @@ export function AppSidebarHeader({ breadcrumbs = [] }: { breadcrumbs?: Breadcrum
                 role?: string;
                 balance?: number;
                 believe_points?: number;
+                wallet_header_visible?: boolean;
             };
         };
         hasSubscription?: boolean;
@@ -32,7 +33,12 @@ export function AppSidebarHeader({ breadcrumbs = [] }: { breadcrumbs?: Breadcrum
     const [hasSubscription, setHasSubscription] = useState<boolean | null>(propHasSubscription ?? null);
     const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
 
-    const isOrgUser = auth?.user?.role === 'organization' || auth?.user?.role === 'organization_pending';
+    const isOrgUser =
+        auth?.user?.role === 'organization' ||
+        auth?.user?.role === 'organization_pending' ||
+        auth?.user?.role === 'care_alliance';
+
+    const walletHeaderVisible = auth?.user?.wallet_header_visible !== false;
 
     // Get sidebar state - wrapped in try-catch since header might render outside provider
     let sidebarCollapsed = false;
@@ -45,7 +51,7 @@ export function AppSidebarHeader({ breadcrumbs = [] }: { breadcrumbs?: Breadcrum
 
     // Fetch organization balance directly (no wallet connection checks)
     const fetchOrganizationBalance = useCallback(async () => {
-            if (!isOrgUser) return;
+            if (!isOrgUser || !walletHeaderVisible) return;
 
             try {
                 // Fetch organization balance directly
@@ -75,7 +81,7 @@ export function AppSidebarHeader({ breadcrumbs = [] }: { breadcrumbs?: Breadcrum
                 console.error('Failed to fetch organization balance:', error);
                 setWalletBalance(0);
             }
-    }, [isOrgUser]);
+    }, [isOrgUser, walletHeaderVisible]);
 
     // Update hasSubscription when prop changes
     useEffect(() => {
@@ -91,14 +97,14 @@ export function AppSidebarHeader({ breadcrumbs = [] }: { breadcrumbs?: Breadcrum
     // Refresh subscription status when page becomes visible or regains focus (user returns from Stripe checkout)
     useEffect(() => {
         const handleVisibilityChange = () => {
-            if (document.visibilityState === 'visible' && isOrgUser) {
+            if (document.visibilityState === 'visible' && isOrgUser && walletHeaderVisible) {
                 // Refresh balance/subscription status when user returns to the page
                 fetchOrganizationBalance();
             }
         };
 
         const handleFocus = () => {
-            if (isOrgUser) {
+            if (isOrgUser && walletHeaderVisible) {
                 // Refresh balance/subscription status when window regains focus
         fetchOrganizationBalance();
             }
@@ -111,7 +117,7 @@ export function AppSidebarHeader({ breadcrumbs = [] }: { breadcrumbs?: Breadcrum
             document.removeEventListener('visibilitychange', handleVisibilityChange);
             window.removeEventListener('focus', handleFocus);
         };
-    }, [isOrgUser, fetchOrganizationBalance]);
+    }, [isOrgUser, walletHeaderVisible, fetchOrganizationBalance]);
 
     const handleStopImpersonate = () => {
         router.post(route('users.stop-impersonate'), {}, {
@@ -156,8 +162,8 @@ export function AppSidebarHeader({ breadcrumbs = [] }: { breadcrumbs?: Breadcrum
                     <NotificationBell userId={auth.user.id} emailVerified={!!auth?.user?.email_verified_at} />
                 )}
 
-                {/* Wallet Balance Display for Organization Users - Always visible */}
-                {isOrgUser && (
+                {/* Wallet — org / CA users with a valid EIN context for wallet */}
+                {isOrgUser && walletHeaderVisible && (
                     <button
                         onClick={() => {
                             // If no subscription, show subscription modal instead
@@ -194,7 +200,7 @@ export function AppSidebarHeader({ breadcrumbs = [] }: { breadcrumbs?: Breadcrum
                 )}
 
                 {/* Wallet Popup - Only show if has subscription */}
-                {isOrgUser && hasSubscription && (
+                {isOrgUser && walletHeaderVisible && hasSubscription && (
                     <WalletPopup
                         isOpen={walletPopupOpen}
                         onClose={() => setWalletPopupOpen(false)}
@@ -203,7 +209,7 @@ export function AppSidebarHeader({ breadcrumbs = [] }: { breadcrumbs?: Breadcrum
                 )}
 
                 {/* Subscription Required Modal */}
-                {isOrgUser && (
+                {isOrgUser && walletHeaderVisible && (
                     <SubscriptionRequiredModal
                         isOpen={showSubscriptionModal}
                         onClose={() => {

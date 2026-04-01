@@ -620,10 +620,14 @@ export default function RegisterCareAlliancePage() {
                             id="ein"
                             value={form.data.ein}
                             onChange={(e) => form.setData("ein", e.target.value)}
-                            placeholder="9 digits"
+                            placeholder="e.g. 12-3456789 (leave blank to assign automatically)"
                             className={inputClass}
                           />
                         </div>
+                        <p className="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                          If you do not have an EIN yet, leave this empty — we will create a unique identifier for your
+                          records.
+                        </p>
                         <InputError message={errors.ein} className="mt-2" />
                       </div>
                       <div className="md:col-span-1">

@@ -19,7 +19,12 @@ export type CareAllianceMembershipRow = {
   status: string
   invited_at: string | null
   responded_at: string | null
-  organization: { id: number; name: string; ein: string | null } | null
+  organization: {
+    id: number
+    name: string
+    ein: string | null
+    primary_action_categories?: Array<{ id: number; name: string }>
+  } | null
 }
 
 export type CareAllianceInvitationRow = {
@@ -63,6 +68,9 @@ export type OrganizationSearchHit = {
   name: string
   ein: string | null
   email: string | null
+  city?: string | null
+  state?: string | null
+  primary_action_categories?: Array<{ id: number; name: string }>
 }
 
 /** Care Alliance workspace Members page URL `tab` (each tab loads its own payload). */

@@ -83,6 +83,7 @@ class MarketplaceController extends Controller
         $categories = Category::query()->where('status', 'active')->parents()->orderBy('name')->get();
 
         $organizations = Organization::query()
+            ->excludingCareAllianceHubs()
             ->when($user && ! empty($allowedOrganizationIds), function ($query) use ($allowedOrganizationIds) {
                 $query->whereIn('id', $allowedOrganizationIds);
             })

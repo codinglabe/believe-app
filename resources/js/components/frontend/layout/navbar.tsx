@@ -78,6 +78,10 @@ interface SharedData extends Record<string, unknown> {
       role?: string // Ensure role is also present
       email_verified_at?: string | null // Email verification status
       care_alliance?: { slug: string; name: string } | null
+      /** false when care_alliance user lacks a valid 9-digit alliance EIN (dashboard messaging). */
+      care_alliance_wallet_eligible?: boolean
+      /** false when org/CA user lacks a valid 9-digit EIN for wallet in header. */
+      wallet_header_visible?: boolean
       service_seller_profile?: {
         id: number
         verification_status?: string
@@ -104,6 +108,11 @@ export default function Navbar() {
           ? route("users.show", u.slug ?? u.id)
           : "/"
 
+  const showWalletInHeader =
+    isLoggedIn &&
+    auth?.user?.role !== "admin" &&
+    auth?.user?.wallet_header_visible !== false
+
   // Wallet specific states
   const [showBalance, setShowBalance] = useState(false)
   const [walletBalance, setWalletBalance] = useState<number | null>(null)
@@ -124,6 +133,7 @@ export default function Navbar() {
     { name: "Unity Live & Meet", href: "/unity-live", icon: Radio },
     { name: "News", href: "/nonprofit-news", icon: Newspaper },
     { name: "Unity Videos", href: "/unity-videos", icon: Video },
+    { name: "Find Care Alliances", href: route("find-care-alliances.index"), icon: HeartHandshake },
     ...(isLoggedIn ? [
       { name: "Social Feed", href: route("social-feed.index"), icon: Users },
       { name: "Find Supporters", href: route("find-supporters.index"), icon: UserPlus },
@@ -170,7 +180,7 @@ export default function Navbar() {
       return
     }
 
-    if (auth?.user?.care_alliance_wallet_eligible === false) {
+    if (auth?.user?.wallet_header_visible === false) {
       setWalletBalance(null)
       return
     }
@@ -224,7 +234,7 @@ export default function Navbar() {
     fetchBalance()
     const interval = setInterval(fetchBalance, 30000)
     return () => clearInterval(interval)
-  }, [isLoggedIn, auth?.user?.id, auth?.user?.balance, auth?.user?.care_alliance_wallet_eligible])
+  }, [isLoggedIn, auth?.user?.id, auth?.user?.balance, auth?.user?.wallet_header_visible])
 
   // Fetch balance function for manual refresh
   const fetchBalance = async () => {
@@ -233,7 +243,7 @@ export default function Navbar() {
       return
     }
 
-    if (auth?.user?.care_alliance_wallet_eligible === false) {
+    if (auth?.user?.wallet_header_visible === false) {
       setWalletBalance(null)
       return
     }
@@ -287,11 +297,12 @@ export default function Navbar() {
 
   // Handle wallet button click - check subscription first
   const handleWalletClick = () => {
-    if (
-      (auth?.user?.role === "organization" || auth?.user?.role === "organization_pending") &&
-      auth?.user?.care_alliance_wallet_eligible === false
-    ) {
-      toast.error("Add a valid 9-digit EIN under Settings → Alliance Settings (profile) to use the wallet.")
+    if (auth?.user?.wallet_header_visible === false) {
+      toast.error(
+        hasCareAllianceRole
+          ? "Add a valid 9-digit EIN under Settings → Alliance Settings (profile) to use the wallet."
+          : "Add a valid 9-digit EIN under your organization profile to use the wallet.",
+      )
       return
     }
 
@@ -415,8 +426,8 @@ export default function Navbar() {
                               </Button> */}
                               <NotificationBell userId={auth.user.id} emailVerified={!!auth.user.email_verified_at} />
 
-                {/* Wallet Balance Button - Hide for admin users */}
-                {isLoggedIn && auth?.user?.role !== "admin" && (
+                {/* Wallet Balance Button — hidden for admin; hidden when wallet_header_visible is false (no valid EIN context) */}
+                {showWalletInHeader && (
                   <div
                     onClick={handleWalletClick}
                     className="h-9 px-3 flex items-center gap-2 bg-gray-100 dark:bg-gray-800 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 cursor-pointer transition-colors"
@@ -766,8 +777,8 @@ export default function Navbar() {
                                               </div>
                                           )}
 
-                                          {/* Wallet section for mobile - Hide for admin users */}
-                                          {isLoggedIn && auth?.user?.role !== 'admin' && (
+                                          {/* Wallet section for mobile — same rules as desktop wallet */}
+                                          {showWalletInHeader && (
                                               <Button
                                                   variant="ghost"
                                                   className="w-full justify-start rounded-md bg-gray-50 dark:bg-gray-800"
