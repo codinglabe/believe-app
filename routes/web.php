@@ -1155,10 +1155,6 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin|org
     ]);
 
     /* Product Routes */
-    Route::get('products/merchant-hub/merchants/{merchant}/marketplace-products', [ProductController::class, 'merchantHubMarketplaceProducts'])
-        ->name('products.merchant-hub.marketplace-products')
-        ->middleware(['permission:product.create']);
-
     Route::resource('products', ProductController::class)->except(['show'])->middleware([
         'index' => 'permission:product.read',
         'create' => 'permission:product.create',
