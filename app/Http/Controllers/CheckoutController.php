@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Cart;
+use App\Models\MarketplaceProduct;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\OrderShippingInfo;
@@ -1042,11 +1043,44 @@ class CheckoutController extends Controller
                         throw new \Exception('Invalid catalog product in cart.');
                     }
 
+                    $mp = null;
+                    if ($product->marketplace_product_id) {
+                        $mp = MarketplaceProduct::query()->find($product->marketplace_product_id);
+                        if (! $mp) {
+                            throw new \Exception('Linked merchant product not found for catalog item.');
+                        }
+                        if ($product->organization_id && ! $mp->nonprofit_marketplace_enabled) {
+                            throw new \Exception(
+                                'This nonprofit listing is no longer available: the merchant has disabled nonprofit resale for the source product. Remove it from your cart.'
+                            );
+                        }
+                    }
+
+                    if ($mp) {
+                        $lineCents = (int) round($lineSubtotal * 100);
+                        $pctM = (float) ($mp->pct_merchant ?? 0);
+                        $pctN = (float) ($mp->pct_nonprofit ?? 0);
+                        $useNonprofitSplit = $mp->nonprofit_marketplace_enabled
+                            && abs($pctM + $pctN) > 0.01;
+                        if ($useNonprofitSplit) {
+                            $mCents = (int) round($lineCents * $pctM / 100);
+                            $nCents = (int) round($lineCents * $pctN / 100);
+                            $bCents = $lineCents - $mCents - $nCents;
+                        } else {
+                            $mCents = $lineCents;
+                            $nCents = 0;
+                            $bCents = 0;
+                        }
+                        $splitMerchantCents += $mCents;
+                        $splitOrgCents += $nCents;
+                        $splitBiuCents += $bCents;
+                    }
+
                     OrderItem::create([
                         'order_id' => $order->id,
                         'product_id' => $cartItem->product_id,
                         'organization_product_id' => null,
-                        'marketplace_product_id' => null,
+                        'marketplace_product_id' => $mp?->id,
                         'organization_id' => $product->organization_id,
                         'printify_product_id' => $product->printify_product_id,
                         'printify_variant_id' => $cartItem->printify_variant_id,
@@ -1058,6 +1092,12 @@ class CheckoutController extends Controller
                         'per_organization_donation_amount' => $donationPerItem,
                         'variant_data' => $cartItem->variant_options,
                         'primary_image' => $cartItem->variant_image,
+                        'product_details' => $mp ? [
+                            'merchant_hub_org_catalog' => true,
+                            'marketplace_product_id' => $mp->id,
+                            'merchant_id' => $mp->merchant_id,
+                            'name' => $product->name,
+                        ] : null,
                     ]);
 
                     $product->update([

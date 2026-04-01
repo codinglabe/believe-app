@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Bid;
 use App\Models\Category;
+use App\Models\MarketplaceProduct;
 use App\Models\Merchant;
 use App\Models\Order;
 use App\Models\OrderItem;
@@ -24,6 +25,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -117,6 +119,57 @@ class ProductController extends BaseController
             'blueprints' => $blueprints,
             'printify_enabled' => ! empty($blueprints),
         ]);
+    }
+
+    /**
+     * JSON list of active Merchant Hub marketplace products for a merchant (organization product create flow).
+     */
+    public function merchantHubMarketplaceProducts(Request $request, Merchant $merchant): JsonResponse
+    {
+        $this->authorizePermission($request, 'product.create');
+        $user = Auth::user();
+        if (! in_array($user->role, ['organization', 'organization_pending'], true)) {
+            abort(403);
+        }
+        if ($merchant->status !== 'active') {
+            abort(404);
+        }
+
+        $products = MarketplaceProduct::query()
+            ->where('merchant_id', $merchant->id)
+            ->where('status', 'active')
+            ->where('nonprofit_marketplace_enabled', true)
+            ->where(function ($q) {
+                $q->whereNull('inventory_quantity')
+                    ->orWhere('inventory_quantity', '>', 0);
+            })
+            ->with('productCategory:id,name')
+            ->orderByDesc('created_at')
+            ->get();
+
+        $payload = $products->map(function (MarketplaceProduct $p) {
+            $plain = strip_tags((string) $p->description);
+
+            return [
+                'id' => $p->id,
+                'name' => $p->name,
+                'description' => $p->description,
+                'short_description' => Str::limit($plain, 200),
+                'base_price' => (string) $p->base_price,
+                'suggested_retail_price' => $p->suggested_retail_price !== null ? (string) $p->suggested_retail_price : null,
+                'min_resale_price' => $p->min_resale_price !== null ? (string) $p->min_resale_price : null,
+                'inventory_quantity' => $p->inventory_quantity,
+                'product_type' => $p->product_type,
+                'category_id' => $p->category_id,
+                'images' => array_map(
+                    fn ($path) => filter_var($path, FILTER_VALIDATE_URL) ? $path : asset('storage/'.ltrim($path, '/')),
+                    $p->images ?? []
+                ),
+                'category_name' => $p->productCategory?->name,
+            ];
+        });
+
+        return response()->json($payload);
     }
 
     /**
@@ -726,18 +779,65 @@ class ProductController extends BaseController
         $isPrintifyProduct = $request->boolean('is_printify_product', false);
 
         $pricingModel = $request->input('pricing_model', 'fixed');
+
+        $mp = null;
+        if (! $isPrintifyProduct && $request->input('product_source_type') === 'merchant_hub') {
+            if (! in_array($user->role, ['organization', 'organization_pending'], true)) {
+                throw ValidationException::withMessages([
+                    'product_source_type' => 'Merchant Hub sourcing is only available for organization accounts.',
+                ]);
+            }
+            $request->validate([
+                'marketplace_product_id' => ['required', 'exists:marketplace_products,id'],
+            ]);
+            $mp = MarketplaceProduct::with('merchant')->findOrFail((int) $request->input('marketplace_product_id'));
+            if (! $mp->isHubCheckoutEligible()) {
+                throw ValidationException::withMessages([
+                    'marketplace_product_id' => 'This merchant product is not available for listing.',
+                ]);
+            }
+            if (! $mp->nonprofit_marketplace_enabled) {
+                throw ValidationException::withMessages([
+                    'marketplace_product_id' => 'The merchant has not allowed nonprofit resale for this product. They must turn on “Allow nonprofits to sell” on the product before your organization can list it.',
+                ]);
+            }
+            if (! $mp->merchant || $mp->merchant->status !== 'active') {
+                throw ValidationException::withMessages([
+                    'marketplace_product_id' => 'The merchant is not active.',
+                ]);
+            }
+            if ($pricingModel !== 'fixed') {
+                throw ValidationException::withMessages([
+                    'pricing_model' => 'Merchant Hub sourcing is only available for fixed-price listings.',
+                ]);
+            }
+        }
+
         $productTypeInput = $request->input('type', 'physical');
+        if ($mp) {
+            $productTypeInput = $this->productTypeFromMarketplaceProduct($mp);
+        }
+
+        $quantityRule = 'required|integer|min:0';
+        if ($mp && $mp->inventory_quantity !== null) {
+            $quantityRule = 'required|integer|min:0|max:'.(int) $mp->inventory_quantity;
+        }
+
+        $unitPriceRule = $pricingModel === 'fixed' ? 'required|numeric|min:0' : 'nullable|numeric|min:0';
+        if ($mp && $mp->min_resale_price !== null && (float) $mp->min_resale_price > 0) {
+            $unitPriceRule = 'required|numeric|min:'.(float) $mp->min_resale_price;
+        }
 
         // Base validation rules for all products
         $rules = [
             'name' => 'required|string|max:255|unique:products,name',
             'description' => 'required|string|max:1000',
-            'quantity' => 'required|integer|min:0',
+            'quantity' => $quantityRule,
             'owned_by' => 'required|in:admin,organization',
             'organization_id' => 'nullable|integer|exists:organizations,id',
             'status' => 'required|in:active,inactive,archived',
             'sku' => 'required|string|max:255|unique:products,sku',
-            'type' => 'required|in:digital,physical',
+            'type' => $mp ? 'nullable|in:digital,physical' : 'required|in:digital,physical',
             'tags' => 'nullable|string',
             'categories' => [
                 'required',
@@ -750,6 +850,8 @@ class ProductController extends BaseController
             ],
             'is_printify_product' => 'nullable|boolean',
             'pricing_model' => 'nullable|in:fixed,auction,blind_bid,offer',
+            'product_source_type' => 'nullable|in:own,merchant_hub',
+            'marketplace_product_id' => 'nullable|exists:marketplace_products,id',
         ];
 
         // Conditional validation based on product type
@@ -766,8 +868,8 @@ class ProductController extends BaseController
         } else {
             // Manual product validation — shipping is from Shippo at checkout, not stored on the product
             $rules = array_merge($rules, [
-                'unit_price' => $pricingModel === 'fixed' ? 'required|numeric|min:0' : 'nullable|numeric|min:0',
-                'image' => 'required|image|mimes:jpeg,png,jpg,gif,svg', // Required for manual products
+                'unit_price' => $unitPriceRule,
+                'image' => $mp ? 'nullable|image|mimes:jpeg,png,jpg,gif,svg' : 'required|image|mimes:jpeg,png,jpg,gif,svg', // Merchant Hub can copy from listing
             ]);
             if ($pricingModel === 'auction') {
                 $rules = array_merge($rules, [
@@ -849,6 +951,20 @@ class ProductController extends BaseController
         }
 
         $validated = $request->validate($rules, $messages);
+        if ($mp) {
+            $validated['type'] = $this->productTypeFromMarketplaceProduct($mp);
+            if ($validated['type'] === 'physical') {
+                $validated['ship_from_mode'] = 'merchant';
+                $validated['ship_from_merchant_id'] = $mp->merchant_id;
+            }
+            if ($mp->category_id) {
+                $cats = $validated['categories'] ?? [];
+                if (! in_array($mp->category_id, $cats, true)) {
+                    $cats[] = $mp->category_id;
+                }
+                $validated['categories'] = array_values(array_unique($cats));
+            }
+        }
         $validated = $this->normalizeValidatedManualPhysicalShipFrom($validated, $isPrintifyProduct);
 
         try {
@@ -857,10 +973,21 @@ class ProductController extends BaseController
                 $image = $request->file('image');
                 $imageName = time().'_'.$image->getClientOriginalName();
                 $imagePath = $image->storeAs('products', $imageName, 'public');
+            } elseif ($mp) {
+                $imagePath = $this->copyFirstMarketplaceProductImageToProductFolder($mp);
+                if (! $imagePath) {
+                    return back()->withErrors([
+                        'image' => 'Could not copy an image from the merchant product. Upload a product image or choose a listing that includes images.',
+                    ]);
+                }
             }
 
             $categories = $validated['categories'] ?? [];
             unset($validated['categories']);
+            unset($validated['product_source_type']);
+            if ($mp) {
+                $validated['marketplace_product_id'] = $mp->id;
+            }
 
             // Handle Printify product creation
             $printifyProductId = null;
@@ -2283,6 +2410,56 @@ class ProductController extends BaseController
         }
 
         return ['success' => true, 'methods' => $methods];
+    }
+
+    protected function productTypeFromMarketplaceProduct(MarketplaceProduct $mp): string
+    {
+        return match ($mp->product_type) {
+            'digital' => 'digital',
+            'physical', 'service' => 'physical',
+            'media' => 'digital',
+            default => 'physical',
+        };
+    }
+
+    /**
+     * Copy first image from a merchant marketplace listing into public products storage.
+     */
+    protected function copyFirstMarketplaceProductImageToProductFolder(MarketplaceProduct $mp): ?string
+    {
+        $images = $mp->images ?? [];
+        if (empty($images[0])) {
+            return null;
+        }
+        $first = $images[0];
+        $disk = Storage::disk('public');
+        if (filter_var($first, FILTER_VALIDATE_URL)) {
+            try {
+                $response = Http::timeout(30)->get($first);
+                if (! $response->successful()) {
+                    return null;
+                }
+                $ext = pathinfo(parse_url($first, PHP_URL_PATH) ?? '', PATHINFO_EXTENSION);
+                $ext = $ext && strlen($ext) <= 5 ? strtolower($ext) : 'jpg';
+                $name = 'products/'.time().'_hub_'.uniqid('', true).'.'.$ext;
+                $disk->put($name, $response->body());
+
+                return $name;
+            } catch (\Throwable $e) {
+                \Log::warning('Merchant hub product image copy failed', ['url' => $first, 'error' => $e->getMessage()]);
+
+                return null;
+            }
+        }
+        $path = ltrim($first, '/');
+        if ($disk->exists($path)) {
+            $dest = 'products/'.time().'_hub_'.$mp->id.'_'.basename($path);
+            $disk->copy($path, $dest);
+
+            return $dest;
+        }
+
+        return null;
     }
 
     /**

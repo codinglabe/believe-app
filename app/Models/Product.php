@@ -23,6 +23,7 @@ class Product extends Model
         'ship_from_zip',
         'ship_from_country',
         'ship_from_merchant_id',
+        'marketplace_product_id',
         'parcel_length_in',
         'parcel_width_in',
         'parcel_height_in',
@@ -147,6 +148,11 @@ class Product extends Model
     public function shipFromMerchant(): BelongsTo
     {
         return $this->belongsTo(Merchant::class, 'ship_from_merchant_id');
+    }
+
+    public function sourceMarketplaceProduct(): BelongsTo
+    {
+        return $this->belongsTo(MarketplaceProduct::class, 'marketplace_product_id');
     }
 
     public function productCategory()

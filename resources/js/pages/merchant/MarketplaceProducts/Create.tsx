@@ -424,9 +424,12 @@ export default function MerchantMarketplaceProductForm({ product, categories = [
                   className="rounded border-gray-600"
                 />
                 <label htmlFor="pool" className="text-sm text-gray-300">
-                  Allow nonprofits to sell this product (enters BIU product pool when active)
+                  Allow nonprofits to sell this product
                 </label>
               </div>
+              <p className="text-xs text-gray-500 leading-relaxed">
+                When enabled, verified nonprofits can adopt this into the BIU product pool and create their own listings from it. When disabled, only you can sell it (e.g. direct Merchant Hub checkout)—nonprofits cannot list it.
+              </p>
               {data.nonprofit_marketplace_enabled && (
                 <>
                   <div className="grid sm:grid-cols-3 gap-4">

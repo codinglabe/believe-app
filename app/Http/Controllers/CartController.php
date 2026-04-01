@@ -261,6 +261,16 @@ class CartController extends Controller
                 ], 422);
             }
 
+            if ($product->marketplace_product_id && $product->organization_id) {
+                $sourceMp = MarketplaceProduct::query()->find($product->marketplace_product_id);
+                if (! $sourceMp || ! $sourceMp->nonprofit_marketplace_enabled) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'This nonprofit listing is not available. The merchant must allow nonprofit resale on the source product.',
+                    ], 422);
+                }
+            }
+
             // Get current cart items
             $currentCartItems = $cart->items()->with('product')->get();
 

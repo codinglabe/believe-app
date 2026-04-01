@@ -40,19 +40,34 @@ interface Product {
     printify_product_id: string;
 }
 
+interface MerchantHubRevenue {
+    line_subtotal: number;
+    pct_merchant: number;
+    pct_organization: number;
+    pct_biu: number;
+    amount_merchant: number;
+    amount_organization: number;
+    amount_biu: number;
+    nonprofit_split_enabled: boolean;
+    merchant_name: string | null;
+    marketplace_product_name: string;
+}
+
 interface OrderItem {
     id: number;
-    product: Product;
+    product?: Product;
     name: string;
     description: string;
     image: string;
-    printify_product_id: string;
+    printify_product_id: string | null;
     quantity: number;
     unit_price: number;
     total_price: number;
     printify_variant_id: string;
     variant_data: any;
     is_manual_product?: boolean;
+    marketplace_product_id?: number | null;
+    merchant_hub_revenue?: MerchantHubRevenue | null;
 }
 
 interface ShippingInfo {
@@ -148,6 +163,17 @@ interface Order {
     printify_details?: PrintifyDetails | null;
     printify_error?: string;
     financial_breakdown?: FinancialBreakdown;
+    merchant_hub_order_summary?: {
+        line_subtotal: number;
+        organization: number;
+        merchant: number;
+        biu: number;
+    } | null;
+    order_split?: {
+        merchant_amount: number;
+        organization_amount: number;
+        biu_amount: number;
+    } | null;
 }
 
 interface Props extends PageProps {
@@ -715,6 +741,55 @@ export default function Show({ order, userRole }: Props) {
                     </CardContent>
                 </Card>
 
+                {/* Merchant Hub revenue (org catalog / pool / hub lines) */}
+                {(userRole === 'admin' || userRole === 'organization') && order.merchant_hub_order_summary && (
+                    <Card className="border-amber-200 dark:border-amber-900/50">
+                        <CardHeader>
+                            <CardTitle className="flex items-center gap-2">
+                                <Percent className="h-5 w-5 text-amber-600" />
+                                Merchant product revenue split
+                            </CardTitle>
+                            <CardDescription>
+                                Line totals for items sourced from Merchant Hub listings. Amounts use the percentages the merchant set on the product
+                                (nonprofit / merchant / BIU). Shipping and tax are not included here.
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                                <div className="rounded-lg border bg-white p-4 dark:border-gray-700 dark:bg-gray-900">
+                                    <p className="text-muted-foreground text-xs font-medium">Line subtotal (products)</p>
+                                    <p className="text-xl font-bold">{formatCurrency(order.merchant_hub_order_summary.line_subtotal)}</p>
+                                </div>
+                                <div className="rounded-lg border border-emerald-200 bg-emerald-50/80 p-4 dark:border-emerald-900 dark:bg-emerald-950/30">
+                                    <p className="text-xs font-medium text-emerald-800 dark:text-emerald-200">Your organization</p>
+                                    <p className="text-xl font-bold text-emerald-900 dark:text-emerald-100">
+                                        {formatCurrency(order.merchant_hub_order_summary.organization)}
+                                    </p>
+                                    <p className="text-muted-foreground mt-1 text-xs">Nonprofit share of product total</p>
+                                </div>
+                                <div className="rounded-lg border border-sky-200 bg-sky-50/80 p-4 dark:border-sky-900 dark:bg-sky-950/30">
+                                    <p className="text-xs font-medium text-sky-800 dark:text-sky-200">Merchant</p>
+                                    <p className="text-xl font-bold text-sky-900 dark:text-sky-100">
+                                        {formatCurrency(order.merchant_hub_order_summary.merchant)}
+                                    </p>
+                                </div>
+                                <div className="rounded-lg border border-violet-200 bg-violet-50/80 p-4 dark:border-violet-900 dark:bg-violet-950/30">
+                                    <p className="text-xs font-medium text-violet-800 dark:text-violet-200">Platform (BIU)</p>
+                                    <p className="text-xl font-bold text-violet-900 dark:text-violet-100">
+                                        {formatCurrency(order.merchant_hub_order_summary.biu)}
+                                    </p>
+                                </div>
+                            </div>
+                            {order.order_split && (
+                                <p className="text-muted-foreground text-xs">
+                                    Recorded payout split for this order: merchant {formatCurrency(order.order_split.merchant_amount)}, organization{' '}
+                                    {formatCurrency(order.order_split.organization_amount)}, BIU {formatCurrency(order.order_split.biu_amount)}.
+                                </p>
+                            )}
+                        </CardContent>
+                    </Card>
+                )}
+
                 {/* Order Products */}
                 <Card>
                     <CardHeader>
@@ -726,19 +801,17 @@ export default function Show({ order, userRole }: Props) {
                     <CardContent>
                         <div className="space-y-4">
                             {order.items.map((item) => (
-                                <div key={item.id} className="flex items-start gap-4 p-4 border rounded-lg">
+                                <div key={item.id} className="flex flex-col gap-3 rounded-lg border p-4 sm:flex-row sm:items-start">
                                     {item.image && (
                                         <img
                                             src={item.image}
                                             alt={item.name}
-                                            className="w-16 h-16 rounded-lg object-cover border"
+                                            className="h-16 w-16 shrink-0 rounded-lg border object-cover"
                                         />
                                     )}
-                                    <div className="flex-1">
+                                    <div className="min-w-0 flex-1">
                                         <h5 className="font-medium">{item.name}</h5>
-                                        <p className="text-sm text-gray-600 line-clamp-2">
-                                            {item.description}
-                                        </p>
+                                        <p className="text-sm text-gray-600 line-clamp-2 dark:text-gray-400">{item.description}</p>
                                         {item.variant_data && (
                                             <div className="mt-1">
                                                 <span className="text-xs text-gray-500">
@@ -746,20 +819,53 @@ export default function Show({ order, userRole }: Props) {
                                                 </span>
                                             </div>
                                         )}
-                                        <div className="mt-2 text-sm text-gray-600">
-                                            Printify Product ID: {item.printify_product_id}
-                                        </div>
+                                        {item.printify_product_id ? (
+                                            <div className="mt-2 text-sm text-gray-600 dark:text-gray-400">
+                                                Printify Product ID: {item.printify_product_id}
+                                            </div>
+                                        ) : null}
+                                        {item.merchant_hub_revenue && (userRole === 'admin' || userRole === 'organization') && (
+                                            <div className="mt-3 rounded-lg border border-amber-200/80 bg-amber-50/50 p-3 text-sm dark:border-amber-900/40 dark:bg-amber-950/20">
+                                                <p className="mb-2 font-semibold text-amber-900 dark:text-amber-100">
+                                                    Merchant listing: {item.merchant_hub_revenue.marketplace_product_name}
+                                                    {item.merchant_hub_revenue.merchant_name
+                                                        ? ` · ${item.merchant_hub_revenue.merchant_name}`
+                                                        : ''}
+                                                </p>
+                                                <p className="text-muted-foreground mb-2 text-xs">
+                                                    {item.merchant_hub_revenue.nonprofit_split_enabled
+                                                        ? `Split: ${item.merchant_hub_revenue.pct_merchant}% merchant · ${item.merchant_hub_revenue.pct_organization}% organization · ${item.merchant_hub_revenue.pct_biu}% BIU (remainder)`
+                                                        : 'No nonprofit pool split on this listing — merchant share is 100% of this line.'}
+                                                </p>
+                                                <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                                                    <div>
+                                                        <span className="text-xs text-gray-600 dark:text-gray-400">Organization</span>
+                                                        <p className="font-semibold text-emerald-700 dark:text-emerald-300">
+                                                            {formatCurrency(item.merchant_hub_revenue.amount_organization)}
+                                                        </p>
+                                                    </div>
+                                                    <div>
+                                                        <span className="text-xs text-gray-600 dark:text-gray-400">Merchant</span>
+                                                        <p className="font-semibold text-sky-700 dark:text-sky-300">
+                                                            {formatCurrency(item.merchant_hub_revenue.amount_merchant)}
+                                                        </p>
+                                                    </div>
+                                                    <div>
+                                                        <span className="text-xs text-gray-600 dark:text-gray-400">BIU / platform</span>
+                                                        <p className="font-semibold text-violet-700 dark:text-violet-300">
+                                                            {formatCurrency(item.merchant_hub_revenue.amount_biu)}
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
                                     </div>
-                                    <div className="text-right">
-                                        <div className="font-medium">
-                                            {formatCurrency(item.total_price)}
-                                        </div>
-                                        <div className="text-sm text-gray-600">
+                                    <div className="text-right sm:shrink-0">
+                                        <div className="font-medium">{formatCurrency(item.total_price)}</div>
+                                        <div className="text-sm text-gray-600 dark:text-gray-400">
                                             {item.quantity} × {formatCurrency(item.unit_price)}
                                         </div>
-                                        <div className="text-xs text-gray-500 mt-1">
-                                            Unit Price
-                                        </div>
+                                        <div className="mt-1 text-xs text-gray-500">Line subtotal</div>
                                     </div>
                                 </div>
                             ))}

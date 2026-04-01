@@ -187,11 +187,12 @@ class OrderController extends Controller
         }
 
         $order->load([
+            'orderSplit',
             'user',
             'shippingInfo',
-            'items.product',
-            'items.marketplaceProduct',
-            'items.organizationProduct.marketplaceProduct',
+            'items.product.sourceMarketplaceProduct.merchant',
+            'items.marketplaceProduct.merchant',
+            'items.organizationProduct.marketplaceProduct.merchant',
         ]);
 
         // Calculate order subtotal (products only)
@@ -299,6 +300,7 @@ class OrderController extends Controller
                     'id' => $item->id,
                     'product_id' => $item->product_id,
                     'organization_product_id' => $item->organization_product_id,
+                    'marketplace_product_id' => $item->marketplace_product_id,
                     'name' => $line['name'],
                     'description' => $line['description'],
                     'image' => $line['image'],
@@ -309,8 +311,15 @@ class OrderController extends Controller
                     'printify_variant_id' => $item->printify_variant_id,
                     'variant_data' => $this->getVariantData($item->variant_data),
                     'is_manual_product' => $line['is_manual_product'],
+                    'merchant_hub_revenue' => $this->merchantHubRevenueSplitForItem($item),
                 ];
             }),
+            'merchant_hub_order_summary' => $this->merchantHubOrderSummary($order),
+            'order_split' => $order->orderSplit ? [
+                'merchant_amount' => (float) $order->orderSplit->merchant_amount,
+                'organization_amount' => (float) $order->orderSplit->organization_amount,
+                'biu_amount' => (float) $order->orderSplit->biu_amount,
+            ] : null,
         ];
 
         // Get Printify order details if available
@@ -924,6 +933,105 @@ class OrderController extends Controller
             'message' => 'Order status updated successfully',
             'order' => $order->fresh(),
         ]);
+    }
+
+    /**
+     * Revenue share for a line tied to a Merchant Hub marketplace product (pool, direct hub, or org catalog sourced from MP).
+     * Uses the same cent split rules as checkout.
+     *
+     * @return array{
+     *     line_subtotal: float,
+     *     pct_merchant: float,
+     *     pct_organization: float,
+     *     pct_biu: float,
+     *     amount_merchant: float,
+     *     amount_organization: float,
+     *     amount_biu: float,
+     *     nonprofit_split_enabled: bool,
+     *     merchant_name: ?string,
+     *     marketplace_product_name: string
+     * }|null
+     */
+    private function merchantHubRevenueSplitForItem(OrderItem $item): ?array
+    {
+        $mp = null;
+        if ($item->marketplace_product_id) {
+            $mp = $item->marketplaceProduct;
+        }
+        if (! $mp && $item->organization_product_id) {
+            $mp = $item->organizationProduct?->marketplaceProduct;
+        }
+        if (! $mp && $item->product_id && $item->product?->marketplace_product_id) {
+            $mp = $item->product->sourceMarketplaceProduct;
+        }
+        if (! $mp) {
+            return null;
+        }
+        $mp->loadMissing('merchant');
+
+        $lineSubtotal = (float) $item->subtotal;
+        $lineCents = (int) round($lineSubtotal * 100);
+        $pctMRaw = (float) ($mp->pct_merchant ?? 0);
+        $pctNRaw = (float) ($mp->pct_nonprofit ?? 0);
+        $useNonprofitSplit = $mp->nonprofit_marketplace_enabled
+            && abs($pctMRaw + $pctNRaw) > 0.01;
+        if ($useNonprofitSplit) {
+            $mCents = (int) round($lineCents * $pctMRaw / 100);
+            $nCents = (int) round($lineCents * $pctNRaw / 100);
+            $bCents = $lineCents - $mCents - $nCents;
+            $displayPctBiu = $lineCents > 0 ? round(($bCents / $lineCents) * 100, 2) : 0.0;
+        } else {
+            $mCents = $lineCents;
+            $nCents = 0;
+            $bCents = 0;
+            $displayPctBiu = 0.0;
+        }
+
+        $m = $mp->merchant;
+
+        return [
+            'line_subtotal' => round($lineSubtotal, 2),
+            'pct_merchant' => round($useNonprofitSplit ? $pctMRaw : 100.0, 2),
+            'pct_organization' => round($useNonprofitSplit ? $pctNRaw : 0.0, 2),
+            'pct_biu' => round($useNonprofitSplit ? $displayPctBiu : 0.0, 2),
+            'amount_merchant' => round($mCents / 100, 2),
+            'amount_organization' => round($nCents / 100, 2),
+            'amount_biu' => round($bCents / 100, 2),
+            'nonprofit_split_enabled' => $useNonprofitSplit,
+            'merchant_name' => $m ? (string) ($m->business_name ?: $m->name) : null,
+            'marketplace_product_name' => (string) $mp->name,
+        ];
+    }
+
+    /**
+     * @return array{line_subtotal: float, organization: float, merchant: float, biu: float}|null
+     */
+    private function merchantHubOrderSummary(Order $order): ?array
+    {
+        $org = 0.0;
+        $mer = 0.0;
+        $biu = 0.0;
+        $sub = 0.0;
+        foreach ($order->items as $item) {
+            $row = $this->merchantHubRevenueSplitForItem($item);
+            if ($row === null) {
+                continue;
+            }
+            $org += $row['amount_organization'];
+            $mer += $row['amount_merchant'];
+            $biu += $row['amount_biu'];
+            $sub += $row['line_subtotal'];
+        }
+        if ($sub <= 0) {
+            return null;
+        }
+
+        return [
+            'line_subtotal' => round($sub, 2),
+            'organization' => round($org, 2),
+            'merchant' => round($mer, 2),
+            'biu' => round($biu, 2),
+        ];
     }
 
     /**
