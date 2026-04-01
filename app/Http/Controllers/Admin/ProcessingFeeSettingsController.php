@@ -24,16 +24,17 @@ class ProcessingFeeSettingsController extends Controller
     public function update(Request $request): RedirectResponse
     {
         $validated = $request->validate([
-            'card_percent' => ['required', 'numeric', 'min:0', 'max:0.2'],
+            // Human-friendly percent values (e.g. 2.9 = 2.9%, stored as 0.029)
+            'card_percent' => ['required', 'numeric', 'min:0', 'max:20'],
             'card_fixed_usd' => ['required', 'numeric', 'min:0', 'max:25'],
-            'ach_percent' => ['required', 'numeric', 'min:0', 'max:0.1'],
+            'ach_percent' => ['required', 'numeric', 'min:0', 'max:10'],
             'ach_fee_cap_usd' => ['required', 'numeric', 'min:0', 'max:100'],
         ]);
 
         $payload = [
-            'card_percent' => (float) $validated['card_percent'],
+            'card_percent' => round((float) $validated['card_percent'] / 100, 6),
             'card_fixed_usd' => (float) $validated['card_fixed_usd'],
-            'ach_percent' => (float) $validated['ach_percent'],
+            'ach_percent' => round((float) $validated['ach_percent'] / 100, 6),
             'ach_fee_cap_usd' => (float) $validated['ach_fee_cap_usd'],
         ];
 

@@ -19,11 +19,19 @@ const breadcrumbs: BreadcrumbItem[] = [
   { title: "Stripe processing fees", href: "/admin/processing-fees" },
 ]
 
+/** Stored rates are decimals (0.029); form uses plain percent (2.9). */
+function decimalRateToPercentString(decimal: number): string {
+  const pct = decimal * 100
+  const rounded = Math.round(pct * 1_000_000) / 1_000_000
+  const s = rounded.toFixed(6).replace(/\.?0+$/, "")
+  return s === "" ? "0" : s
+}
+
 export default function AdminProcessingFeesIndex({ rates }: Props) {
   const { data, setData, put, processing, errors } = useForm({
-    card_percent: String(rates.card_percent),
+    card_percent: decimalRateToPercentString(rates.card_percent),
     card_fixed_usd: String(rates.card_fixed_usd),
-    ach_percent: String(rates.ach_percent),
+    ach_percent: decimalRateToPercentString(rates.ach_percent),
     ach_fee_cap_usd: String(rates.ach_fee_cap_usd),
   })
 
@@ -57,20 +65,18 @@ export default function AdminProcessingFeesIndex({ rates }: Props) {
               </CardHeader>
               <CardContent className="flex flex-1 flex-col space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="card_percent">Percent (decimal)</Label>
+                  <Label htmlFor="card_percent">Percent (%)</Label>
                   <Input
                     id="card_percent"
                     type="number"
-                    step="0.0001"
+                    step="0.01"
                     min={0}
-                    max={0.2}
+                    max={20}
                     value={data.card_percent}
                     onChange={(e) => setData("card_percent", e.target.value)}
                     className="font-mono"
                   />
-                  <p className="text-xs text-muted-foreground">
-                    Example: 0.029 = 2.9%. Enter as a decimal, not as 2.9.
-                  </p>
+                  <p className="text-xs text-muted-foreground">Enter as a plain number, e.g. 2.9 for 2.9%.</p>
                   {errors.card_percent && <p className="text-sm text-red-600">{errors.card_percent}</p>}
                 </div>
                 <div className="space-y-2">
@@ -100,18 +106,18 @@ export default function AdminProcessingFeesIndex({ rates }: Props) {
               </CardHeader>
               <CardContent className="flex flex-1 flex-col space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="ach_percent">Percent (decimal)</Label>
+                  <Label htmlFor="ach_percent">Percent (%)</Label>
                   <Input
                     id="ach_percent"
                     type="number"
-                    step="0.0001"
+                    step="0.01"
                     min={0}
-                    max={0.1}
+                    max={10}
                     value={data.ach_percent}
                     onChange={(e) => setData("ach_percent", e.target.value)}
                     className="font-mono"
                   />
-                  <p className="text-xs text-muted-foreground">Example: 0.008 = 0.8%.</p>
+                  <p className="text-xs text-muted-foreground">Enter as a plain number, e.g. 0.8 for 0.8%.</p>
                   {errors.ach_percent && <p className="text-sm text-red-600">{errors.ach_percent}</p>}
                 </div>
                 <div className="space-y-2">
