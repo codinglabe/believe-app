@@ -45,6 +45,7 @@ import {
   Heart,
   TrendingUp,
   Monitor,
+  Compass,
 } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 import { ThemeToggle } from "@/components/frontend/theme-toggle"
@@ -156,6 +157,7 @@ export default function Navbar() {
     { name: "Jobs", href: "/jobs", icon: Briefcase },
     { name: "Courses & Events", href: route("course.index"), icon: GraduationCap },
     { name: "Event Calendar", href: "/all-events", icon: Calendar },
+    { name: "Explore Causes", href: "/explore-by-cause", icon: Compass },
   ]
 
   // More dropdown items (Fractional Ownership commented out)
