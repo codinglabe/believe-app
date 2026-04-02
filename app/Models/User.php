@@ -778,6 +778,12 @@ class User extends Authenticatable implements MustVerifyEmail
         return $this->hasMany(Gig::class);
     }
 
+    public function interestCategories(): BelongsToMany
+    {
+        return $this->belongsToMany(InterestCategory::class, 'interest_category_user')
+            ->withTimestamps();
+    }
+
     /**
      * Get the favorite gigs for this user
      */

@@ -1284,6 +1284,14 @@ Route::put('job-applications/{jobApplication}/update-status', [JobApplicationCon
     ->middleware(['role:organization|care_alliance', 'permission:job.posts.read']);
 
 // Volunteers Routes
+Route::get('explore-by-cause', [\App\Http\Controllers\ExploreByCauseController::class, 'index'])
+    ->name('explore-by-cause.index')
+    ->middleware(['auth', 'EnsureEmailIsVerified']);
+
+Route::post('explore-by-cause/toggle-interest/{category}', [\App\Http\Controllers\ExploreByCauseController::class, 'toggleUserInterest'])
+    ->name('explore-by-cause.toggle-interest')
+    ->middleware(['auth', 'EnsureEmailIsVerified']);
+
 Route::get('supporter-activity', [SupporterActivityController::class, 'index'])
     ->name('supporter-activity.index')
     ->middleware(['role:organization|admin|care_alliance', 'permission:dashboard.read']);
