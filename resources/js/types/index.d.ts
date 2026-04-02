@@ -323,3 +323,11 @@ export interface ChatMessage {
   meeting_id: number
   created_at: string
 }
+
+/** Admin-configured Stripe card/ACH fee estimates (shared via HandleInertiaRequests as `processingFeeRates`). */
+export interface ProcessingFeeRates {
+  card_percent: number
+  card_fixed_usd: number
+  ach_percent: number
+  ach_fee_cap_usd: number
+}

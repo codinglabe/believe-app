@@ -3,6 +3,7 @@
 namespace App\Http\Middleware;
 
 use App\Models\CareAlliance;
+use App\Services\StripeProcessingFeeEstimator;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
@@ -322,6 +323,7 @@ class HandleInertiaRequests extends Middleware
             'livestockDomain' => config('livestock.domain'),
             'merchantDomain' => config('merchant.domain'),
             'footerSettings' => $footerSettings,
+            'processingFeeRates' => StripeProcessingFeeEstimator::ratesForFrontend(),
         ];
     }
 }

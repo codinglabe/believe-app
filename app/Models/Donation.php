@@ -12,6 +12,9 @@ class Donation extends Model
         'organization_id',
         'care_alliance_id',
         'amount',
+        'donor_covers_processing_fees',
+        'processing_fee_estimate',
+        'checkout_total',
         'frequency',
         'payment_method',
         'transaction_id',
@@ -24,6 +27,9 @@ class Donation extends Model
     protected $casts = [
         'donation_date' => 'datetime',
         'amount' => 'decimal:2',
+        'donor_covers_processing_fees' => 'boolean',
+        'processing_fee_estimate' => 'decimal:2',
+        'checkout_total' => 'decimal:2',
     ];
 
     /**
@@ -41,7 +47,7 @@ class Donation extends Model
      */
     public function user()
     {
-        return $this->belongsTo(User::class);  
+        return $this->belongsTo(User::class);
     }
 
     /**

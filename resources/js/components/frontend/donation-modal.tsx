@@ -44,8 +44,16 @@ interface DonationModalProps {
 
 const donationAmounts = [25, 50, 100, 250, 500, 1000]
 
+const DEFAULT_PROCESSING_FEE_RATES = {
+  card_percent: 0.029,
+  card_fixed_usd: 0.3,
+  ach_percent: 0.008,
+  ach_fee_cap_usd: 5,
+} as const
+
 export default function DonationModal({ isOpen, onClose, organization }: DonationModalProps) {
   const pageProps = usePage().props as any
+  const processingFeeRates = pageProps.processingFeeRates ?? DEFAULT_PROCESSING_FEE_RATES
   const user = pageProps.auth?.user || null
   const flash = usePage().props
   const { showNotification } = useNotification()
@@ -174,7 +182,10 @@ export default function DonationModal({ isOpen, onClose, organization }: Donatio
   }
 
   const amount = getCurrentAmount()
-  const stripeFee = paymentMethod === "stripe" && amount > 0 ? amount * 0.029 + 0.3 : 0
+  const stripeFee =
+    paymentMethod === "stripe" && amount > 0
+      ? amount * processingFeeRates.card_percent + processingFeeRates.card_fixed_usd
+      : 0
   const total = amount + stripeFee
 
   const orgAvatar =
