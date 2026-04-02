@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, FormEvent } from "react"
+import React, { useState, useEffect, FormEvent } from "react"
 import { Head, router, usePage } from "@inertiajs/react"
 import ProfileLayout from "@/components/frontend/layout/user-profile-layout"
 import AppSidebarLayout from "@/layouts/app/app-sidebar-layout"
@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Coins, DollarSign, ArrowRight, CheckCircle2, AlertCircle, History, TrendingUp, RefreshCw, FileText } from "lucide-react"
+import { Coins, DollarSign, ArrowRight, CheckCircle2, AlertCircle, History, TrendingUp, RefreshCw, FileText, CreditCard } from "lucide-react"
 import { showSuccessToast, showErrorToast } from "@/lib/toast"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { cn } from "@/lib/utils"
@@ -32,6 +32,19 @@ interface Purchase {
   points: string
   status: string
   created_at: string
+  source?: string
+  failure_code?: string | null
+  failure_message?: string | null
+}
+
+interface AutoReplenishProps {
+  enabled: boolean
+  threshold: number | null
+  amount: number | null
+  has_payment_method: boolean
+  card_brand: string | null
+  card_last4: string | null
+  last_replenish_at: string | null
 }
 
 interface PageProps {
@@ -43,18 +56,31 @@ interface PageProps {
     links: any
     meta: any
   }
+  autoReplenish?: AutoReplenishProps
   flash?: {
     success?: string
     error?: string
   }
 }
 
+const defaultAutoReplenish: AutoReplenishProps = {
+  enabled: false,
+  threshold: null,
+  amount: null,
+  has_payment_method: false,
+  card_brand: null,
+  card_last4: null,
+  last_replenish_at: null,
+}
+
 export default function BelievePointsIndex({
   currentBalance,
   minPurchaseAmount,
   maxPurchaseAmount,
-  purchases
+  purchases,
+  autoReplenish: autoReplenishProp,
 }: PageProps) {
+  const autoReplenish = { ...defaultAutoReplenish, ...autoReplenishProp }
   const { flash, auth } = usePage().props as any
   const isSupporter = auth?.user?.role === 'user' || !auth?.user?.role
   const [formData, setFormData] = useState({
@@ -64,6 +90,39 @@ export default function BelievePointsIndex({
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [policyDialogOpen, setPolicyDialogOpen] = useState(false)
+  const [arState, setArState] = useState({
+    enabled: autoReplenish.enabled,
+    threshold:
+      autoReplenish.threshold != null && !Number.isNaN(autoReplenish.threshold)
+        ? String(autoReplenish.threshold)
+        : "",
+    amount:
+      autoReplenish.amount != null && !Number.isNaN(autoReplenish.amount)
+        ? String(autoReplenish.amount)
+        : "",
+    policyAccepted: false,
+  })
+  const [arSubmitting, setArSubmitting] = useState(false)
+
+  useEffect(() => {
+    setArState({
+      enabled: autoReplenish.enabled,
+      threshold:
+        autoReplenish.threshold != null && !Number.isNaN(autoReplenish.threshold)
+          ? String(autoReplenish.threshold)
+          : "",
+      amount:
+        autoReplenish.amount != null && !Number.isNaN(autoReplenish.amount)
+          ? String(autoReplenish.amount)
+          : "",
+      policyAccepted: false,
+    })
+  }, [
+    autoReplenish.enabled,
+    autoReplenish.threshold,
+    autoReplenish.amount,
+    autoReplenish.has_payment_method,
+  ])
 
   const handleChange = (value: string) => {
     // Allow only numbers and one decimal point
@@ -98,6 +157,53 @@ export default function BelievePointsIndex({
 
     setErrors(newErrors)
     return Object.keys(newErrors).length === 0
+  }
+
+  const saveAutoReplenish = (e: FormEvent) => {
+    e.preventDefault()
+    if (arState.enabled) {
+      if (!autoReplenish.has_payment_method) {
+        showErrorToast("Add a saved card before enabling auto top-up.")
+        return
+      }
+      const th = parseFloat(arState.threshold)
+      const amt = parseFloat(arState.amount)
+      if (arState.threshold === "" || Number.isNaN(th) || th < 0) {
+        showErrorToast("Enter a valid threshold (0 or higher).")
+        return
+      }
+      if (arState.amount === "" || Number.isNaN(amt) || amt < minPurchaseAmount || amt > maxPurchaseAmount) {
+        showErrorToast(
+          `Top-up amount must be between ${formatCurrency(minPurchaseAmount)} and ${formatCurrency(maxPurchaseAmount)}.`
+        )
+        return
+      }
+      if (!arState.policyAccepted) {
+        showErrorToast("Accept the auto top-up terms to continue.")
+        return
+      }
+    }
+
+    setArSubmitting(true)
+    router.post(
+      route("believe-points.auto-replenish.settings"),
+      arState.enabled
+        ? {
+            enabled: true,
+            threshold: parseFloat(arState.threshold),
+            amount: parseFloat(arState.amount),
+            auto_replenish_policy_accepted: true,
+          }
+        : { enabled: false },
+      {
+        preserveScroll: true,
+        onFinish: () => setArSubmitting(false),
+        onError: () => {
+          showErrorToast("Could not save auto top-up settings.")
+          setArSubmitting(false)
+        },
+      }
+    )
   }
 
   const handleSubmit = (e: FormEvent) => {
@@ -214,6 +320,139 @@ export default function BelievePointsIndex({
                     {formatCurrency(currentBalance)} worth of Believe Points
                   </p>
                 </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <TrendingUp className="h-5 w-5" />
+                  Auto top-up
+                </CardTitle>
+                <CardDescription>
+                  We charge your saved card when your Believe Points balance is at or below the threshold (same 1:1 USD
+                  ratio). If your balance is already at or below the threshold when you save settings, we try to top up
+                  immediately. Otherwise it runs after your next purchase that brings you at or below the threshold. At
+                  most one charge per hour. This does not fund the same checkout that reduced your balance.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <p className="text-xs text-muted-foreground">
+                  If an auto top-up shows <span className="font-medium">failed</span>, use{" "}
+                  <span className="font-medium">Replace saved card</span> so your bank can approve off-session charges
+                  (3D Secure when needed).
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => router.visit(route("believe-points.auto-replenish.setup"))}
+                  >
+                    <CreditCard className="h-4 w-4 mr-2" />
+                    {autoReplenish.has_payment_method ? "Replace saved card" : "Add saved card"}
+                  </Button>
+                  {autoReplenish.has_payment_method && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="text-destructive"
+                      onClick={() => {
+                        if (!confirm("Remove saved card and turn off auto top-up?")) return
+                        router.post(route("believe-points.auto-replenish.remove-payment"), {}, { preserveScroll: true })
+                      }}
+                    >
+                      Remove card
+                    </Button>
+                  )}
+                </div>
+                {autoReplenish.has_payment_method && (
+                  <p className="text-sm text-muted-foreground">
+                    Saved card:{" "}
+                    <span className="font-medium text-foreground">
+                      {(autoReplenish.card_brand || "Card").toUpperCase()} ···· {autoReplenish.card_last4 || "????"}
+                    </span>
+                  </p>
+                )}
+                {autoReplenish.last_replenish_at && (
+                  <p className="text-xs text-muted-foreground">
+                    Last auto top-up: {new Date(autoReplenish.last_replenish_at).toLocaleString()}
+                  </p>
+                )}
+                <form onSubmit={saveAutoReplenish} className="space-y-4">
+                  <div className="flex items-start gap-3 p-3 border rounded-lg bg-muted/20">
+                    <Checkbox
+                      id="ar-enabled"
+                      checked={arState.enabled}
+                      onCheckedChange={(checked) =>
+                        setArState((s) => ({ ...s, enabled: checked === true }))
+                      }
+                      className="mt-1 size-5 min-h-5 min-w-5"
+                    />
+                    <Label htmlFor="ar-enabled" className="text-sm font-medium cursor-pointer leading-snug">
+                      Enable automatic top-up when my balance is at or below the threshold
+                    </Label>
+                  </div>
+                  {arState.enabled && (
+                    <>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="ar-threshold">When balance is at or below</Label>
+                          <div className="relative">
+                            <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                            <Input
+                              id="ar-threshold"
+                              className="pl-9"
+                              value={arState.threshold}
+                              onChange={(e) =>
+                                setArState((s) => ({ ...s, threshold: e.target.value.replace(/[^0-9.]/g, "") }))
+                              }
+                              placeholder="e.g. 25"
+                              disabled={arSubmitting}
+                            />
+                          </div>
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="ar-amount">Top-up amount</Label>
+                          <div className="relative">
+                            <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                            <Input
+                              id="ar-amount"
+                              className="pl-9"
+                              value={arState.amount}
+                              onChange={(e) =>
+                                setArState((s) => ({ ...s, amount: e.target.value.replace(/[^0-9.]/g, "") }))
+                              }
+                              placeholder="e.g. 50"
+                              disabled={arSubmitting}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Top-up must be between {formatCurrency(minPurchaseAmount)} and {formatCurrency(maxPurchaseAmount)}.
+                      </p>
+                      <div className="flex items-start gap-3 p-3 border rounded-lg">
+                        <Checkbox
+                          id="ar-policy"
+                          checked={arState.policyAccepted}
+                          onCheckedChange={(checked) =>
+                            setArState((s) => ({ ...s, policyAccepted: checked === true }))
+                          }
+                          className="mt-1 size-5 min-h-5 min-w-5"
+                        />
+                        <Label htmlFor="ar-policy" className="text-sm cursor-pointer leading-snug">
+                          I authorize Believe to charge my saved card for automatic Believe Points top-ups under these
+                          rules. Failed charges turn off auto top-up until I add a card and enable again.
+                        </Label>
+                      </div>
+                    </>
+                  )}
+                  <Button type="submit" disabled={arSubmitting} variant="secondary">
+                    {arSubmitting ? "Saving…" : "Save auto top-up settings"}
+                  </Button>
+                </form>
               </CardContent>
             </Card>
 
@@ -539,10 +778,15 @@ export default function BelievePointsIndex({
                   <div className="space-y-4">
                     {purchases.data.map((purchase) => (
                       <div key={purchase.id} className="border rounded-lg p-3 space-y-2">
-                        <div className="flex items-center justify-between">
+                        <div className="flex items-center justify-between gap-2 flex-wrap">
                           <div className="flex items-center gap-2">
                             <Coins className="h-4 w-4 text-primary" />
                             <span className="font-semibold">{formatPoints(purchase.points)} Points</span>
+                            {purchase.source === "auto_replenish" && (
+                              <Badge variant="outline" className="text-xs">
+                                Auto
+                              </Badge>
+                            )}
                           </div>
                           {getStatusBadge(purchase.status)}
                         </div>
@@ -552,6 +796,12 @@ export default function BelievePointsIndex({
                             {new Date(purchase.created_at).toLocaleDateString()}
                           </span>
                         </div>
+                        {purchase.status === "failed" && purchase.failure_message && (
+                          <p className="text-xs text-destructive leading-snug">
+                            {purchase.failure_message}
+                            {purchase.failure_code ? ` (${purchase.failure_code})` : ""}
+                          </p>
+                        )}
                       </div>
                     ))}
                   </div>

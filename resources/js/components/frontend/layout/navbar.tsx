@@ -25,6 +25,7 @@ import {
   ShoppingBag,
   Gift,
   ChevronDown,
+  ChevronRight,
   Newspaper,
   Calendar,
   Briefcase,
@@ -127,24 +128,30 @@ export default function Navbar() {
     { name: "Donate", href: "/donate" },
   ]
 
-  // Community dropdown items
+  // Community: Social Feed → Find Supporters → Find Care Alliances → Chat
   const communityItems = [
-    { name: "Kiosk", href: "/kiosk", icon: Monitor },
-    { name: "Unity Live & Meet", href: "/unity-live", icon: Radio },
+    ...(isLoggedIn
+      ? [
+          { name: "Social Feed", href: route("social-feed.index"), icon: Users },
+          { name: "Find Supporters", href: route("find-supporters.index"), icon: UserPlus },
+        ]
+      : []),
+    { name: "Find Care Alliances", href: route("find-care-alliances.index"), icon: HeartHandshake },
+    ...(isLoggedIn ? [{ name: "Chat", href: route("chat.index"), icon: MessageSquare }] : []),
+  ]
+
+  // Media: News → Unity Videos → Unity Live & Meet
+  const mediaItems = [
     { name: "News", href: "/nonprofit-news", icon: Newspaper },
     { name: "Unity Videos", href: "/unity-videos", icon: Video },
-    { name: "Find Care Alliances", href: route("find-care-alliances.index"), icon: HeartHandshake },
-    ...(isLoggedIn ? [
-      { name: "Social Feed", href: route("social-feed.index"), icon: Users },
-      { name: "Find Supporters", href: route("find-supporters.index"), icon: UserPlus },
-      { name: "Chat", href: route("chat.index"), icon: MessageSquare },
-    ] : []),
+    { name: "Unity Live & Meet", href: "/unity-live", icon: Radio },
   ]
 
   // Services dropdown items (Nonprofit Barter only when organization is logged in)
   const isOrgUser = auth?.user?.role === "organization" || auth?.user?.role === "organization_pending"
   const showCommunityProjects = isOrgUser || hasCareAllianceRole
   const servicesItems = [
+    { name: "Kiosk", href: "/kiosk", icon: Monitor },
     { name: "Support a Project", href: route("support-a-project"), icon: Heart },
     ...(showCommunityProjects ? [{ name: "Community Projects", href: "/fundraise/community-projects", icon: Building2 }] : []),
     ...(isOrgUser ? [{ name: "Nonprofit Barter", href: route("barter.index"), icon: Handshake }] : []),
@@ -375,6 +382,26 @@ export default function Navbar() {
                           </DropdownMenu>
                       )}
 
+                      {/* Media Dropdown */}
+                      <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" className="hover:bg-accent cursor-pointer text-sm font-medium">
+                                  Media
+                                  <ChevronDown className="ml-1 h-3 w-3" />
+                              </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="start" className="w-48">
+                              {mediaItems.map((item) => (
+                                  <DropdownMenuItem key={item.name} asChild>
+                                      <Link href={item.href} className="flex cursor-pointer items-center">
+                                          {item.icon && <item.icon className="mr-2 h-4 w-4" />}
+                                          <span>{item.name}</span>
+                                      </Link>
+                                  </DropdownMenuItem>
+                              ))}
+                          </DropdownMenuContent>
+                      </DropdownMenu>
+
                       {/* Services Dropdown */}
                       <DropdownMenu>
                           <DropdownMenuTrigger asChild>
@@ -493,21 +520,28 @@ export default function Navbar() {
                                                   </div>
                                               )}
 
-                                              {/* Believe Points */}
+                                              {/* Believe Points — tap to buy / manage */}
                                               {auth?.user?.believe_points !== undefined && (
-                                                  <div className="flex items-center justify-between p-2 rounded-lg bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-950/20 dark:to-pink-950/20 border border-purple-200 dark:border-purple-800">
-                                                      <div className="flex items-center gap-2">
-                                                          <div className="h-8 w-8 rounded-full bg-purple-500 flex items-center justify-center">
+                                                  <Link
+                                                      href={route("believe-points.index")}
+                                                      className="flex items-center justify-between gap-2 p-2 rounded-lg bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-950/20 dark:to-pink-950/20 border border-purple-200 dark:border-purple-800 hover:border-purple-400 dark:hover:border-purple-600 hover:shadow-sm transition-all"
+                                                  >
+                                                      <div className="flex items-center gap-2 min-w-0">
+                                                          <div className="h-8 w-8 shrink-0 rounded-full bg-purple-500 flex items-center justify-center">
                                                               <Sparkles className="h-4 w-4 text-white" />
                                                           </div>
-                                                          <div>
+                                                          <div className="min-w-0">
                                                               <p className="text-xs text-muted-foreground">Believe Points</p>
                                                               <p className="text-sm font-semibold text-purple-700 dark:text-purple-300">
                                                                   {(auth.user.believe_points || 0).toLocaleString()}
                                                               </p>
                                                           </div>
                                                       </div>
-                                                  </div>
+                                                      <span className="flex shrink-0 items-center gap-0.5 text-xs font-semibold text-purple-600 dark:text-purple-400">
+                                                          Buy
+                                                          <ChevronRight className="h-4 w-4" />
+                                                      </span>
+                                                  </Link>
                                               )}
                                           </div>
                                       </DropdownMenuContent>
@@ -689,6 +723,22 @@ export default function Navbar() {
                                   </div>
                               )}
 
+                              {/* Media section */}
+                              <div className="border-t px-3 py-2">
+                                  <p className="text-muted-foreground mb-2 text-xs font-semibold tracking-wider uppercase">Media</p>
+                                  {mediaItems.map((item) => (
+                                      <Link
+                                          key={item.name}
+                                          href={item.href}
+                                          className="text-foreground hover:bg-accent flex cursor-pointer items-center rounded-md px-3 py-2 text-base font-medium"
+                                          onClick={() => setIsOpen(false)}
+                                      >
+                                          {item.icon && <item.icon className="mr-2 h-4 w-4" />}
+                                          {item.name}
+                                      </Link>
+                                  ))}
+                              </div>
+
                               {/* Services section */}
                               <div className="border-t px-3 py-2">
                                   <p className="text-muted-foreground mb-2 text-xs font-semibold tracking-wider uppercase">Services</p>
@@ -758,21 +808,28 @@ export default function Navbar() {
                                                       </div>
                                                   )}
 
-                                                  {/* Believe Points */}
+                                                  {/* Believe Points — tap to buy / manage */}
                                                   {auth?.user?.believe_points !== undefined && (
-                                                      <div className="flex items-center justify-between p-2 rounded-lg bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-950/20 dark:to-pink-950/20 border border-purple-200 dark:border-purple-800">
-                                                          <div className="flex items-center gap-2">
-                                                              <div className="h-8 w-8 rounded-full bg-purple-500 flex items-center justify-center">
+                                                      <Link
+                                                          href={route("believe-points.index")}
+                                                          className="flex items-center justify-between gap-2 p-2 rounded-lg bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-950/20 dark:to-pink-950/20 border border-purple-200 dark:border-purple-800 hover:border-purple-400 dark:hover:border-purple-600"
+                                                      >
+                                                          <div className="flex items-center gap-2 min-w-0">
+                                                              <div className="h-8 w-8 shrink-0 rounded-full bg-purple-500 flex items-center justify-center">
                                                                   <Sparkles className="h-4 w-4 text-white" />
                                                               </div>
-                                                              <div>
+                                                              <div className="min-w-0">
                                                                   <p className="text-xs text-muted-foreground">Believe Points</p>
                                                                   <p className="text-sm font-semibold text-purple-700 dark:text-purple-300">
                                                                       {(auth.user.believe_points || 0).toLocaleString()}
                                                                   </p>
                                                               </div>
                                                           </div>
-                                                      </div>
+                                                          <span className="flex shrink-0 items-center gap-0.5 text-xs font-semibold text-purple-600 dark:text-purple-400">
+                                                              Buy
+                                                              <ChevronRight className="h-4 w-4" />
+                                                          </span>
+                                                      </Link>
                                                   )}
                                               </div>
                                           )}

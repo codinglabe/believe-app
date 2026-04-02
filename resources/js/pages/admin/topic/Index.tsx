@@ -19,7 +19,7 @@ import { Label } from "@/components/ui/label"
 import { PlusCircle, Search, Trash2, Edit } from "lucide-react"
 import { motion } from "framer-motion"
 import { debounce } from "lodash"
-import type { User } from "@/types"
+import type { Auth } from "@/types"
 import { Pagination, PaginationContent, PaginationEllipsis, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from "@/components/admin/Pagination"
 import AppLayout from "@/layouts/app-layout"
 
@@ -45,9 +45,19 @@ interface TopicsIndexProps {
     }
 }
 
+const NONPROFIT_DASHBOARD_ROLES = new Set(["organization", "organization_pending", "care_alliance"])
+
 export default function TopicsIndex() {
     const { topics, filters } = usePage<TopicsIndexProps>().props
-    const { auth } = usePage().props as { auth: { user: User } }
+    const { auth } = usePage().props as { auth: Auth }
+    const permissions = auth?.permissions ?? []
+    const userRole = auth?.user?.role
+    const isNonprofitTopicReadOnly =
+        (userRole != null && NONPROFIT_DASHBOARD_ROLES.has(userRole)) ||
+        (auth?.roles?.some((r) => NONPROFIT_DASHBOARD_ROLES.has(r)) ?? false)
+    const canCreateTopic = !isNonprofitTopicReadOnly && permissions.includes("topic.create")
+    const canUpdateTopic = !isNonprofitTopicReadOnly && permissions.includes("topic.update")
+    const canDeleteTopic = !isNonprofitTopicReadOnly && permissions.includes("topic.delete")
 
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
     const [isEditModalOpen, setIsEditModalOpen] = useState(false)
@@ -194,9 +204,11 @@ export default function TopicsIndex() {
                                     className="flex-grow bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 border-gray-300 dark:border-gray-700"
                                 />
                             </div>
-                            <Button onClick={openCreateModal} className="w-full md:w-auto">
-                                <PlusCircle className="mr-2 h-4 w-4" /> Add New Topic
-                            </Button>
+                            {canCreateTopic && (
+                                <Button onClick={openCreateModal} className="w-full md:w-auto">
+                                    <PlusCircle className="mr-2 h-4 w-4" /> Add New Topic
+                                </Button>
+                            )}
                         </motion.div>
 
                         <motion.div variants={itemVariants}>
@@ -205,13 +217,18 @@ export default function TopicsIndex() {
                                     <TableRow className="">
                                         <TableHead className="text-gray-700 dark:text-gray-200">ID</TableHead>
                                         <TableHead className="text-gray-700 dark:text-gray-200">Name</TableHead>
-                                        <TableHead className="text-gray-700 dark:text-gray-200">Actions</TableHead>
+                                        {(canUpdateTopic || canDeleteTopic) && (
+                                            <TableHead className="text-gray-700 dark:text-gray-200">Actions</TableHead>
+                                        )}
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
                                     {topics.data.length === 0 ? (
                                         <TableRow>
-                                            <TableCell colSpan={3} className="text-center py-4 text-gray-500 dark:text-gray-400">
+                                            <TableCell
+                                                colSpan={canUpdateTopic || canDeleteTopic ? 3 : 2}
+                                                className="text-center py-4 text-gray-500 dark:text-gray-400"
+                                            >
                                                 No topics found.
                                             </TableCell>
                                         </TableRow>
@@ -224,21 +241,25 @@ export default function TopicsIndex() {
                                             >
                                                 <TableCell className="text-gray-900 dark:text-gray-100">{topic.id}</TableCell>
                                                 <TableCell className="font-medium text-gray-900 dark:text-gray-100">{topic.name}</TableCell>
-                                                <TableCell className="flex gap-2">
-                                                    <Button
-                                                        variant="outline"
-                                                        size="sm"
-                                                        onClick={() => openEditModal(topic)}
-                                                        className="bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200 border-gray-300 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700"
-                                                    >
-                                                        <Edit className="h-4 w-4 mr-1" /> Edit
-                                                    </Button>
-                                                    {auth?.user?.role === 'admin' && (
-                                                        <Button variant="destructive" size="sm" onClick={() => openDeleteModal(topic)}>
-                                                            <Trash2 className="h-4 w-4 mr-1" /> Delete
-                                                        </Button>
-                                                    )}
-                                                </TableCell>
+                                                {(canUpdateTopic || canDeleteTopic) && (
+                                                    <TableCell className="flex gap-2">
+                                                        {canUpdateTopic && (
+                                                            <Button
+                                                                variant="outline"
+                                                                size="sm"
+                                                                onClick={() => openEditModal(topic)}
+                                                                className="bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200 border-gray-300 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700"
+                                                            >
+                                                                <Edit className="h-4 w-4 mr-1" /> Edit
+                                                            </Button>
+                                                        )}
+                                                        {canDeleteTopic && (
+                                                            <Button variant="destructive" size="sm" onClick={() => openDeleteModal(topic)}>
+                                                                <Trash2 className="h-4 w-4 mr-1" /> Delete
+                                                            </Button>
+                                                        )}
+                                                    </TableCell>
+                                                )}
                                             </motion.tr>
                                         ))
                                     )}

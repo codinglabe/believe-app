@@ -4,22 +4,42 @@ namespace App\Http\Controllers;
 
 use App\Models\Topic;
 use Illuminate\Http\Request;
-use Inertia\Inertia;
 use Illuminate\Support\Facades\Log;
+use Inertia\Inertia;
 
 class TopicController extends BaseController
 {
+    /**
+     * Organizations and other nonprofit dashboard roles may list topics for course setup but must not mutate the catalog.
+     */
+    protected function assertCanMutateTopics(Request $request): void
+    {
+        $user = $request->user();
+        if ($user && $user->hasNonprofitDashboardRole() && ! $user->hasRole('admin')) {
+            abort(403, 'You can view course topics but cannot add, edit, or delete them.');
+        }
+    }
+
     /**
      * Display a listing of the resource.
      */
     public function index(Request $request)
     {
-        $this->authorizePermission($request, 'topic.read');
+        $user = $request->user();
+        if ($user === null) {
+            abort(403);
+        }
+
+        // Allow topic.read, admins, or nonprofit dashboard actors (shared catalog for courses; avoids 403 when Spatie is out of sync with users.role).
+        if (! $user->can('topic.read') && ! $user->hasNonprofitDashboardRole() && ! $user->hasRole('admin')) {
+            abort(403, 'You do not have permission to view course topics.');
+        }
+
         $filters = $request->only(['search']);
 
         $topics = Topic::query()
             ->when($filters['search'] ?? null, function ($query, $search) {
-                $query->where('name', 'like', '%' . $search . '%');
+                $query->where('name', 'like', '%'.$search.'%');
             })
             ->orderBy('name')
             ->paginate(10)
@@ -36,6 +56,7 @@ class TopicController extends BaseController
      */
     public function store(Request $request)
     {
+        $this->assertCanMutateTopics($request);
         $this->authorizePermission($request, 'topic.create');
         $validated = $request->validate([
             'name' => 'required|string|max:255|unique:topics,name',
@@ -51,9 +72,10 @@ class TopicController extends BaseController
      */
     public function update(Request $request, Topic $topic)
     {
+        $this->assertCanMutateTopics($request);
         $this->authorizePermission($request, 'topic.update');
         $validated = $request->validate([
-            'name' => 'required|string|max:255|unique:topics,name,' . $topic->id,
+            'name' => 'required|string|max:255|unique:topics,name,'.$topic->id,
         ]);
 
         $topic->update($validated);
@@ -66,6 +88,7 @@ class TopicController extends BaseController
      */
     public function destroy(Request $request, Topic $topic)
     {
+        $this->assertCanMutateTopics($request);
         $this->authorizePermission($request, 'topic.delete');
         try {
             // Check if the topic is associated with any courses
@@ -73,9 +96,11 @@ class TopicController extends BaseController
                 return redirect()->back()->with('error', 'Cannot delete topic: It is associated with existing courses.');
             }
             $topic->delete();
+
             return redirect()->route('topics.index')->with('success', 'Topic deleted successfully!');
         } catch (\Exception $e) {
-            Log::error("Error deleting topic: " . $e->getMessage());
+            Log::error('Error deleting topic: '.$e->getMessage());
+
             return redirect()->back()->with('error', 'Failed to delete topic. An unexpected error occurred.');
         }
     }

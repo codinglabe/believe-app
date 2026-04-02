@@ -48,7 +48,6 @@ export default function Footer() {
     ],
     contact_email: "wendhi@stuttiegroup.com",
     contact_phone: "+1 (555) 123-4567",
-    contact_address: "123 Charity Lane\nNew York, NY 10001",
     copyright_text: `${new Date().getFullYear()} ${import.meta.env.VITE_APP_NAME}. All rights reserved.`,
     legal_links: [
       { title: "Privacy Policy", url: "/privacy-policy" },

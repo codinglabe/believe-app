@@ -485,6 +485,12 @@ const mainNavItems: (NavItem | NavGroup)[] = [
                         icon: BookOpen,
                         permission: "topic.read"
                     },
+                    {
+                        title: 'Event Types',
+                        href: '/event-types',
+                        icon: Calendar,
+                        permission: "event_type.read"
+                    },
                 ],
                 permission: "course.read"
             },

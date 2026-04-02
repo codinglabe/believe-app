@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Jobs\ProcessBelievePointsAutoReplenishJob;
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -45,6 +46,14 @@ class User extends Authenticatable implements MustVerifyEmail
         'balance',
         'reward_points',
         'believe_points',
+        'believe_points_auto_replenish_enabled',
+        'believe_points_auto_replenish_threshold',
+        'believe_points_auto_replenish_amount',
+        'believe_points_auto_replenish_pm_id',
+        'believe_points_auto_replenish_card_brand',
+        'believe_points_auto_replenish_card_last4',
+        'believe_points_auto_replenish_agreed_at',
+        'believe_points_last_auto_replenish_at',
         'user_id',
         'slug',
         'email',
@@ -127,6 +136,11 @@ class User extends Authenticatable implements MustVerifyEmail
             'ai_tokens_included' => 'integer',
             'ai_tokens_used' => 'integer',
             'believe_points' => 'decimal:2',
+            'believe_points_auto_replenish_enabled' => 'boolean',
+            'believe_points_auto_replenish_threshold' => 'decimal:2',
+            'believe_points_auto_replenish_amount' => 'decimal:2',
+            'believe_points_auto_replenish_agreed_at' => 'datetime',
+            'believe_points_last_auto_replenish_at' => 'datetime',
             'youtube_token_expires_at' => 'datetime',
             'dropbox_token_expires_at' => 'datetime',
         ];
@@ -504,6 +518,19 @@ class User extends Authenticatable implements MustVerifyEmail
         return true;
     }
 
+    /**
+     * Nonprofit-side dashboard users: approved org, Form 1023 pending, or Care Alliance hub.
+     * Uses Spatie roles and falls back to the legacy {@see $fillable} `role` column when out of sync.
+     */
+    public function hasNonprofitDashboardRole(): bool
+    {
+        if ($this->hasAnyRole(['organization', 'organization_pending', 'care_alliance'])) {
+            return true;
+        }
+
+        return in_array((string) $this->role, ['organization', 'organization_pending', 'care_alliance'], true);
+    }
+
     public function sendJobs()
     {
         return $this->hasMany(SendJob::class);
@@ -811,6 +838,8 @@ class User extends Authenticatable implements MustVerifyEmail
             return false;
         }
         $this->decrement('believe_points', $points);
+
+        ProcessBelievePointsAutoReplenishJob::dispatch($this->id)->afterResponse();
 
         return true;
     }

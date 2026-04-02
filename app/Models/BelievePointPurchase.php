@@ -14,6 +14,9 @@ class BelievePointPurchase extends Model
         'stripe_session_id',
         'stripe_payment_intent_id',
         'status',
+        'source',
+        'failure_code',
+        'failure_message',
         'stripe_refund_id',
         'refunded_at',
         'refund_status',
@@ -47,7 +50,7 @@ class BelievePointPurchase extends Model
         }
 
         // Must have payment intent for Stripe refund
-        if (!$this->stripe_payment_intent_id) {
+        if (! $this->stripe_payment_intent_id) {
             return false;
         }
 
@@ -60,7 +63,7 @@ class BelievePointPurchase extends Model
     public function userHasPointsInBalance(): bool
     {
         $user = $this->user;
-        if (!$user) {
+        if (! $user) {
             return false;
         }
 

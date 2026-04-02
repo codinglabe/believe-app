@@ -2,7 +2,6 @@
 
 namespace Database\Seeders;
 
-use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
@@ -49,6 +48,7 @@ class ComprehensivePermissionsSeeder extends Seeder
             // Educational modules
             'course' => ['read', 'create', 'edit', 'update', 'delete', 'enroll', 'manage'],
             'topic' => ['read', 'create', 'edit', 'update', 'delete'],
+            'event_type' => ['read', 'create', 'edit', 'update', 'delete'],
             'node.boss' => ['read', 'create', 'edit', 'update', 'delete'],
 
             // NTEE and Classification
@@ -126,7 +126,6 @@ class ComprehensivePermissionsSeeder extends Seeder
             'volunteer' => ['read', 'create', 'edit', 'update', 'delete', 'manage'],
             'volunteer.timesheet' => ['read', 'create', 'edit', 'update', 'delete', 'manage'],
 
-
             'organization.followers' => ['read'],
 
             // Reward Point Management
@@ -152,7 +151,7 @@ class ComprehensivePermissionsSeeder extends Seeder
         // Create all permissions
         foreach ($modules as $module => $actions) {
             foreach ($actions as $action) {
-                $permissionName = $module . '.' . $action;
+                $permissionName = $module.'.'.$action;
 
                 Permission::firstOrCreate([
                     'name' => $permissionName,
@@ -198,7 +197,10 @@ class ComprehensivePermissionsSeeder extends Seeder
 
             // Course Management - Full access
             'course.read', 'course.create', 'course.edit', 'course.update', 'course.delete', 'course.manage',
-            'topic.read', 'topic.create', 'topic.edit', 'topic.update', 'topic.delete',
+            // Topics: view only (shared catalog; admins manage via admin role)
+            'topic.read',
+            // Event types: view only (shared catalog for courses & events)
+            'event_type.read',
 
             // Job Management - Full access
             'job.posts.read', 'job.posts.create', 'job.posts.edit', 'job.posts.update', 'job.posts.delete',
@@ -249,7 +251,6 @@ class ComprehensivePermissionsSeeder extends Seeder
 
             // Email Invite Management - Full access
             'email.invite.read', 'email.invite.create', 'email.invite.edit', 'email.invite.update', 'email.invite.delete', 'email.invite.manage', 'email.invite.sync', 'email.invite.send',
-
 
             // organization followers
             'organization.followers.read',
