@@ -3,15 +3,21 @@
 namespace App\Http\Controllers;
 
 use App\Jobs\ProcessBelievePointsAutoReplenishJob;
+use App\Jobs\RetryBelievePointPurchaseSettlementJob;
 use App\Models\AdminSetting;
 use App\Models\BelievePointPurchase;
+use App\Models\Transaction;
+use App\Services\BelievePointPurchaseSettlementService;
 use App\Services\BelievePointsPaymentMethodSyncService;
+use App\Services\DonationProcessingFeeEstimator;
+use App\Services\StripeEnvironmentSyncService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Validator;
 use Inertia\Inertia;
 use Laravel\Cashier\Cashier;
 use Stripe\Exception\ApiErrorException;
@@ -46,11 +52,26 @@ class BelievePointController extends Controller
             ->orderBy('created_at', 'desc')
             ->paginate(10);
 
+        $feePreview = null;
+        if ($request->filled('fee_preview_amount')) {
+            $validator = Validator::make($request->only(['fee_preview_amount', 'fee_preview_rail']), [
+                'fee_preview_amount' => ['required', 'numeric', 'min:'.$minPurchaseAmount, 'max:'.$maxPurchaseAmount],
+                'fee_preview_rail' => ['nullable', 'in:card,bank'],
+            ]);
+            if (! $validator->fails()) {
+                $base = round((float) $validator->validated()['fee_preview_amount'], 2);
+                $rail = $request->input('fee_preview_rail', 'bank');
+                $rail = in_array($rail, ['card', 'bank'], true) ? $rail : 'bank';
+                $feePreview = $this->believePointsFeePreviewPayload($base, $rail);
+            }
+        }
+
         return Inertia::render('BelievePoints/Index', [
             'currentBalance' => $currentBalance,
             'minPurchaseAmount' => $minPurchaseAmount,
             'maxPurchaseAmount' => $maxPurchaseAmount,
             'purchases' => $purchases,
+            'feePreview' => $feePreview,
             'autoReplenish' => [
                 'enabled' => (bool) $user->believe_points_auto_replenish_enabled,
                 'threshold' => $user->believe_points_auto_replenish_threshold !== null
@@ -65,6 +86,49 @@ class BelievePointController extends Controller
                 'last_replenish_at' => $user->believe_points_last_auto_replenish_at?->toIso8601String(),
             ],
         ]);
+    }
+
+    /**
+     * Fee preview: buyer pays Stripe checkout gross-up (same model as donations when donor covers fees).
+     * `amount` / points credited = net; `checkout_total_usd` = what Stripe charges.
+     *
+     * @return array{
+     *     mode: string,
+     *     rail: string,
+     *     base_gift_usd: float,
+     *     checkout_total_usd: float,
+     *     processing_fee_estimate: float,
+     *     card_processing_fee_usd: float,
+     *     ach_processing_fee_usd: float,
+     *     bank_reward_points: float,
+     *     believe_points_credit_usd: float
+     * }
+     */
+    private function believePointsFeePreviewPayload(float $netPointsUsd, string $rail): array
+    {
+        $rail = in_array($rail, ['card', 'bank'], true) ? $rail : 'bank';
+        $netPointsUsd = round(max(0, $netPointsUsd), 2);
+
+        $checkoutTotal = $rail === 'bank'
+            ? DonationProcessingFeeEstimator::grossUpAchChargeUsdForNetGiftUsd($netPointsUsd)
+            : DonationProcessingFeeEstimator::grossUpCardChargeUsdForNetGiftUsd($netPointsUsd);
+        $checkoutTotal = round($checkoutTotal, 2);
+        $feeAddon = round(max(0, $checkoutTotal - $netPointsUsd), 2);
+
+        $cardCheckout = round(DonationProcessingFeeEstimator::grossUpCardChargeUsdForNetGiftUsd($netPointsUsd), 2);
+        $achCheckout = round(DonationProcessingFeeEstimator::grossUpAchChargeUsdForNetGiftUsd($netPointsUsd), 2);
+
+        return [
+            'mode' => 'buyer_covers',
+            'rail' => $rail,
+            'base_gift_usd' => $netPointsUsd,
+            'checkout_total_usd' => $checkoutTotal,
+            'processing_fee_estimate' => $feeAddon,
+            'card_processing_fee_usd' => round(DonationProcessingFeeEstimator::estimateCardFeeOnChargeUsd($cardCheckout), 2),
+            'ach_processing_fee_usd' => round(DonationProcessingFeeEstimator::estimateAchFeeOnChargeUsd($achCheckout), 2),
+            'bank_reward_points' => BelievePointPurchaseSettlementService::bankPurchaseRewardPointsFromAmountUsd($netPointsUsd),
+            'believe_points_credit_usd' => $netPointsUsd,
+        ];
     }
 
     /**
@@ -89,38 +153,68 @@ class BelievePointController extends Controller
 
         $validated = $request->validate([
             'amount' => ['required', 'numeric', 'min:'.$minPurchaseAmount, 'max:'.$maxPurchaseAmount],
+            'payment_rail' => ['required', 'in:card,bank'],
         ]);
 
-        $amount = (float) $validated['amount'];
-        $points = $amount; // 1 Believe Point = $1
+        $netPointsUsd = round((float) $validated['amount'], 2);
+        $points = $netPointsUsd; // 1 Believe Point = $1 USD credited (net)
+        $feeRail = $validated['payment_rail'] === 'bank' ? 'bank' : 'card';
+
+        $checkoutTotalUsd = $feeRail === 'bank'
+            ? DonationProcessingFeeEstimator::grossUpAchChargeUsdForNetGiftUsd($netPointsUsd)
+            : DonationProcessingFeeEstimator::grossUpCardChargeUsdForNetGiftUsd($netPointsUsd);
+        $checkoutTotalUsd = round($checkoutTotalUsd, 2);
+        $processingFeeAddon = round(max(0, $checkoutTotalUsd - $netPointsUsd), 2);
 
         try {
-            // Create purchase record
+            if (! StripeEnvironmentSyncService::ensureUserStripeCustomer($user)) {
+                return redirect()->back()
+                    ->withInput()
+                    ->with('error', 'Could not prepare your billing profile. Please try again in a moment.');
+            }
+            $user->refresh();
+
+            // Create purchase record (amount/points = net credited; Stripe charges checkout_total)
             $purchase = BelievePointPurchase::create([
                 'user_id' => $user->id,
-                'amount' => $amount,
+                'amount' => $netPointsUsd,
+                'checkout_total' => $checkoutTotalUsd,
+                'processing_fee_estimate' => $processingFeeAddon,
                 'points' => $points,
                 'status' => 'pending',
                 'source' => 'manual',
+                'payment_rail' => $feeRail,
             ]);
 
-            // Create Stripe checkout session
-            $amountInCents = (int) ($amount * 100);
+            $amountInCents = (int) round($checkoutTotalUsd * 100);
 
             $checkoutOptions = [
                 'success_url' => route('believe-points.success').'?session_id={CHECKOUT_SESSION_ID}',
-                'cancel_url' => route('believe-points.index'),
+                'cancel_url' => route('believe-points.cancel').'?session_id={CHECKOUT_SESSION_ID}',
                 'metadata' => [
-                    'purchase_id' => $purchase->id,
-                    'user_id' => $user->id,
+                    'purchase_id' => (string) $purchase->id,
+                    'user_id' => (string) $user->id,
                     'type' => 'believe_points_purchase',
+                    'payment_rail' => $feeRail,
+                    'base_points_usd' => (string) $netPointsUsd,
+                    'checkout_total_usd' => (string) $checkoutTotalUsd,
                 ],
-                'payment_method_types' => ['card'],
+                'payment_method_types' => $feeRail === 'bank' ? ['us_bank_account'] : ['card'],
+                'billing_address_collection' => 'auto',
+                'payment_intent_data' => [
+                    'metadata' => [
+                        'purchase_id' => (string) $purchase->id,
+                        'user_id' => (string) $user->id,
+                        'type' => 'believe_points_purchase',
+                        'base_points_usd' => (string) $netPointsUsd,
+                        'checkout_total_usd' => (string) $checkoutTotalUsd,
+                    ],
+                ],
             ];
 
             $checkout = $user->checkoutCharge(
                 $amountInCents,
-                "Purchase {$points} Believe Points",
+                "Purchase {$points} Believe Points (incl. est. processing)",
                 1,
                 $checkoutOptions
             );
@@ -154,41 +248,202 @@ class BelievePointController extends Controller
         }
 
         try {
-            $session = Cashier::stripe()->checkout->sessions->retrieve($sessionId);
-            $purchase = BelievePointPurchase::with('user')->findOrFail($session->metadata->purchase_id);
+            $sessionIdStr = (string) $sessionId;
 
-            // Check payment status from Stripe session
-            if ($session->payment_status === 'paid' && $session->payment_intent) {
-                // Update purchase record
-                $purchase->update([
-                    'stripe_payment_intent_id' => $session->payment_intent,
-                    'status' => 'completed',
-                ]);
+            $session = Cashier::stripe()->checkout->sessions->retrieve($sessionIdStr, [
+                'expand' => ['payment_intent'],
+            ]);
 
-                // Add believe points to user's account
-                $purchase->user->addBelievePoints($purchase->points);
+            $purchase = $this->resolveBelievePointPurchaseFromCheckoutSession($sessionIdStr, $session);
 
-                Log::info('Believe Points added to user account', [
-                    'purchase_id' => $purchase->id,
-                    'user_id' => $purchase->user_id,
-                    'points' => $purchase->points,
-                    'new_balance' => $purchase->user->fresh()->believe_points,
+            if (! $purchase) {
+                Log::warning('Believe Points success: could not resolve purchase', [
+                    'session_id' => $sessionIdStr,
+                    'user_id' => Auth::id(),
+                    'metadata_purchase_id' => $session->metadata->purchase_id ?? null,
                 ]);
 
                 return redirect()->route('believe-points.index')
+                    ->with('error', 'We could not match this checkout to a purchase. Please contact support with your receipt.');
+            }
+
+            if ((int) $purchase->user_id !== (int) Auth::id()) {
+                return redirect()->route('believe-points.index')
+                    ->with('error', 'This purchase does not belong to your account.');
+            }
+
+            if ($purchase->status === 'completed') {
+                return redirect()->route('believe-points.index')
                     ->with('success', "Successfully purchased {$purchase->points} Believe Points!");
-            } else {
-                $purchase->update(['status' => 'failed']);
+            }
+
+            $isCardRail = ($purchase->payment_rail ?? 'card') === 'card';
+            $maxPollAttempts = $isCardRail ? 20 : 1;
+            $paymentIntentId = null;
+            $piStatus = '';
+            $paidOrSucceeded = false;
+
+            for ($attempt = 0; $attempt < $maxPollAttempts; $attempt++) {
+                if ($attempt > 0) {
+                    usleep(250000);
+                    $session = Cashier::stripe()->checkout->sessions->retrieve($sessionIdStr, [
+                        'expand' => ['payment_intent'],
+                    ]);
+                }
+
+                $paymentIntentId = $this->checkoutSessionPaymentIntentId($session);
+                $piStatus = '';
+
+                if ($paymentIntentId) {
+                    try {
+                        $pi = Cashier::stripe()->paymentIntents->retrieve($paymentIntentId);
+                        $piStatus = (string) ($pi->status ?? '');
+                    } catch (\Throwable $e) {
+                        Log::warning('Believe Points success: could not retrieve PaymentIntent', [
+                            'purchase_id' => $purchase->id,
+                            'payment_intent_id' => $paymentIntentId,
+                            'message' => $e->getMessage(),
+                        ]);
+                    }
+                }
+
+                $paidOrSucceeded = ($session->payment_status === 'paid')
+                    || ($piStatus === 'succeeded');
+
+                if ($paidOrSucceeded && $paymentIntentId) {
+                    break;
+                }
+
+                if ($paymentIntentId && in_array($piStatus, ['canceled', 'failed'], true)) {
+                    break;
+                }
+
+                if (! $isCardRail) {
+                    break;
+                }
+            }
+
+            if ($paidOrSucceeded && $paymentIntentId) {
+                $settled = BelievePointPurchaseSettlementService::settleCheckoutPurchase(
+                    $purchase->id,
+                    $paymentIntentId
+                );
+                $purchase->refresh();
+
+                if (! $settled && $purchase->status !== 'completed') {
+                    Log::error('Believe Points success: settleCheckoutPurchase returned false', [
+                        'purchase_id' => $purchase->id,
+                        'payment_intent_id' => $paymentIntentId,
+                        'purchase_status' => $purchase->status,
+                        'session_payment_status' => $session->payment_status ?? null,
+                        'pi_status' => $piStatus,
+                    ]);
+                }
+
+                if ($purchase->status === 'completed') {
+                    $message = "Successfully purchased {$purchase->points} Believe Points!";
+                    if ((float) ($purchase->reward_points_awarded ?? 0) > 0) {
+                        $rp = round((float) $purchase->reward_points_awarded, 2);
+                        $message .= ' You earned '.number_format($rp, 2).' reward points for paying with your bank (Merchant Hub balance).';
+                    }
+
+                    return redirect()->route('believe-points.index')->with('success', $message);
+                }
+            }
+
+            if ($paymentIntentId && in_array($piStatus, ['canceled', 'failed'], true)) {
+                $purchase->update([
+                    'status' => 'failed',
+                    'failure_code' => $piStatus,
+                    'failure_message' => 'Payment was canceled or failed.',
+                ]);
 
                 return redirect()->route('believe-points.index')
                     ->with('error', 'Payment was not completed. Please try again.');
             }
+
+            $metaRail = (string) ($session->metadata->payment_rail ?? '');
+            $methodTypes = $session->payment_method_types ?? [];
+            $isBankCheckout = $metaRail === 'bank'
+                || (is_array($methodTypes) && in_array('us_bank_account', $methodTypes, true));
+
+            if ($paymentIntentId && $purchase->status === 'pending') {
+                Bus::dispatchAfterResponse(
+                    new RetryBelievePointPurchaseSettlementJob($purchase->id, $paymentIntentId)
+                );
+
+                return redirect()->route('believe-points.index')
+                    ->with('info', $isBankCheckout
+                        ? 'Your bank payment is processing. Believe Points and Merchant Hub reward points (for bank checkout) are added automatically as soon as Stripe marks the payment successful—often 1–3 business days for ACH.'
+                        : 'Your payment is still confirming. Believe Points will be added automatically in a moment.');
+            }
+
+            if (! $paymentIntentId) {
+                $purchase->update(['status' => 'failed', 'failure_message' => 'Missing payment intent from checkout session.']);
+
+                return redirect()->route('believe-points.index')
+                    ->with('error', 'Payment was not completed. Please try again.');
+            }
+
+            $purchase->update(['status' => 'failed']);
+
+            return redirect()->route('believe-points.index')
+                ->with('error', 'Payment was not completed. Please try again.');
         } catch (\Exception $e) {
             Log::error('Believe Points success handler error: '.$e->getMessage());
 
             return redirect()->route('believe-points.index')
                 ->with('error', 'An error occurred while processing your purchase. Please contact support.');
         }
+    }
+
+    /**
+     * Prefer DB link by stripe_session_id (reliable); fall back to session metadata.
+     */
+    private function resolveBelievePointPurchaseFromCheckoutSession(string $sessionIdStr, \Stripe\Checkout\Session $session): ?BelievePointPurchase
+    {
+        $uid = Auth::id();
+        if (! $uid) {
+            return null;
+        }
+
+        $bySession = BelievePointPurchase::with('user')
+            ->where('stripe_session_id', $sessionIdStr)
+            ->where('user_id', $uid)
+            ->first();
+
+        if ($bySession) {
+            return $bySession;
+        }
+
+        $purchaseId = (int) ($session->metadata->purchase_id ?? 0);
+
+        return $purchaseId > 0
+            ? BelievePointPurchase::with('user')->find($purchaseId)
+            : null;
+    }
+
+    private function checkoutSessionPaymentIntentId(\Stripe\Checkout\Session $session): ?string
+    {
+        $pi = $session->payment_intent ?? null;
+        if (is_string($pi) && $pi !== '') {
+            return $pi;
+        }
+        if (is_object($pi) && ! empty($pi->id)) {
+            return (string) $pi->id;
+        }
+
+        return null;
+    }
+
+    private function checkoutSessionPaymentIntentStatus(\Stripe\Checkout\Session $session): ?string
+    {
+        $pi = $session->payment_intent ?? null;
+        if (is_object($pi) && isset($pi->status)) {
+            return (string) $pi->status;
+        }
+
+        return null;
     }
 
     /**
@@ -200,11 +455,29 @@ class BelievePointController extends Controller
 
         if ($sessionId) {
             try {
-                $session = Cashier::stripe()->checkout->sessions->retrieve($sessionId);
-                if (isset($session->metadata->purchase_id)) {
-                    $purchase = BelievePointPurchase::find($session->metadata->purchase_id);
-                    if ($purchase && $purchase->status === 'pending') {
+                $session = Cashier::stripe()->checkout->sessions->retrieve((string) $sessionId, [
+                    'expand' => ['payment_intent'],
+                ]);
+                $purchaseId = (int) ($session->metadata->purchase_id ?? 0);
+                $purchase = $purchaseId ? BelievePointPurchase::find($purchaseId) : null;
+
+                if ($purchase && (int) $purchase->user_id === (int) Auth::id()) {
+                    $paymentIntentId = $this->checkoutSessionPaymentIntentId($session);
+                    $piStatus = $this->checkoutSessionPaymentIntentStatus($session);
+                    if ($paymentIntentId && ($piStatus === null || $piStatus === '')) {
+                        try {
+                            $pi = Cashier::stripe()->paymentIntents->retrieve($paymentIntentId);
+                            $piStatus = (string) ($pi->status ?? '');
+                        } catch (\Throwable $e) {
+                            // ignore
+                        }
+                    }
+
+                    if ($purchase->status === 'pending') {
                         $purchase->update(['status' => 'cancelled']);
+                    } elseif ($purchase->status === 'completed'
+                        && in_array($piStatus, ['canceled', 'failed'], true)) {
+                        BelievePointPurchaseSettlementService::reverseCompletedPurchaseCredits($purchase);
                     }
                 }
             } catch (\Exception $e) {
@@ -374,7 +647,6 @@ class BelievePointController extends Controller
             $stripe = Cashier::stripe();
             $refund = $stripe->refunds->create([
                 'payment_intent' => $purchase->stripe_payment_intent_id,
-                'amount' => (int) ($purchase->amount * 100), // Convert to cents
                 'reason' => 'requested_by_customer',
             ]);
 
@@ -401,12 +673,61 @@ class BelievePointController extends Controller
                         ->with('error', 'Failed to deduct points from balance. Please contact support.');
                 }
 
+                $rewardClaw = round((float) ($purchase->reward_points_awarded ?? 0), 2);
+                if ($rewardClaw > 0) {
+                    if (! $user->deductRewardPoints(
+                        $rewardClaw,
+                        'believe_points_purchase_refund',
+                        $purchase->id,
+                        'Reward points reversed for refunded Believe Points bank purchase',
+                        ['purchase_id' => $purchase->id]
+                    )) {
+                        Log::warning('Believe Points refund: Could not deduct reward points', [
+                            'purchase_id' => $purchase->id,
+                            'user_id' => $user->id,
+                            'reward_points' => $rewardClaw,
+                        ]);
+                    }
+                }
+
                 // Update purchase record
                 $purchase->update([
                     'stripe_refund_id' => $refund->id,
                     'refunded_at' => now(),
                     'refund_status' => $refund->status,
                 ]);
+
+                $refundedUsd = $purchase->checkout_total !== null
+                    ? (float) $purchase->checkout_total
+                    : (float) $purchase->amount;
+
+                if (! Transaction::query()
+                    ->where('related_type', BelievePointPurchase::class)
+                    ->where('related_id', $purchase->id)
+                    ->where('type', 'refund')
+                    ->exists()) {
+                    Transaction::create([
+                        'user_id' => $user->id,
+                        'related_id' => $purchase->id,
+                        'related_type' => BelievePointPurchase::class,
+                        'type' => 'refund',
+                        'status' => Transaction::STATUS_COMPLETED,
+                        'amount' => round(max(0, $refundedUsd), 2),
+                        'fee' => 0,
+                        'currency' => 'USD',
+                        'payment_method' => 'stripe',
+                        'transaction_id' => $refund->id,
+                        'processed_at' => now(),
+                        'meta' => [
+                            'source' => 'believe_points_purchase_refund',
+                            'believe_point_purchase_id' => $purchase->id,
+                            'stripe_refund_id' => $refund->id,
+                            'stripe_payment_intent_id' => $purchase->stripe_payment_intent_id,
+                            'points_deducted' => (float) $purchase->points,
+                            'description' => 'Believe Points purchase refund (Stripe)',
+                        ],
+                    ]);
+                }
 
                 DB::commit();
 
@@ -419,11 +740,11 @@ class BelievePointController extends Controller
                     'refund_id' => $refund->id,
                     'refund_status' => $refund->status,
                     'new_balance' => $user->believe_points,
-                    'refund_amount' => $purchase->amount,
+                    'refund_amount_usd' => $refundedUsd,
                 ]);
 
                 return redirect()->route('believe-points.refunds')
-                    ->with('success', "Refund processed successfully! {$purchase->points} Believe Points have been deducted from your balance. The refund of {$purchase->amount} will be processed to your original payment method within 5-10 business days.");
+                    ->with('success', 'Refund processed successfully! '.number_format((float) $purchase->points, 2).' Believe Points have been deducted from your balance. The full Stripe charge of $'.number_format($refundedUsd, 2).' will be returned to your original payment method within 5-10 business days.');
             } else {
                 DB::rollBack();
                 Log::error('Believe Points refund: Invalid refund status', [

@@ -12,7 +12,7 @@ use Illuminate\Console\Command;
 class AuditDonationsLedgerCommand extends Command
 {
     protected $signature = 'donations:ledger-audit
-                            {--fix : Create missing donor/recipient ledger rows for completed donations (no double balance credit)}';
+                            {--fix : Create missing recipient deposit ledger rows for completed donations (no double balance credit)}';
 
     protected $description = 'Report donations vs ledger coverage; optionally backfill missing transaction rows';
 
@@ -37,7 +37,7 @@ class AuditDonationsLedgerCommand extends Command
         $this->info('Donations referenced on the ledger (any transaction with donation id): '.$withLedger.'.');
         $this->info('Donations with no ledger row at all: '.$missing.'.');
         $this->newLine();
-        $this->comment('The ledger is the `transactions` table, not `donations`. One donation can create multiple rows (donor + recipient + splits), or none yet (pending payment, scheduled Care Alliance pool, or legacy data before ledger logging).');
+        $this->comment('The ledger is the `transactions` table, not `donations`. A standard gift creates one recipient deposit row; Care Alliance may add split rows; pending/scheduled flows may have none yet.');
         $this->newLine();
 
         if ($missing > 0) {
@@ -57,7 +57,7 @@ class AuditDonationsLedgerCommand extends Command
         if (! $this->option('fix')) {
             if ($missing > 0) {
                 $this->newLine();
-                $this->info('Run with --fix to add missing donor audit rows and (where safe) recipient deposit rows without incrementing balance again.');
+                $this->info('Run with --fix to add missing recipient deposit rows without incrementing balance again (where safe).');
             }
 
             return self::SUCCESS;
@@ -72,11 +72,9 @@ class AuditDonationsLedgerCommand extends Command
             }
 
             try {
-                DonationLedgerSyncService::recordDonorAuditIfMissing($donation);
-                $fixed++;
-
                 if (! DonationLedgerSyncService::donationUsesCareAllianceDistribution($donation)) {
                     DonationLedgerSyncService::recordRecipientDepositIfMissing($donation, false);
+                    $fixed++;
                 } else {
                     $this->line('Skip recipient backfill id='.$donation->id.' (Care Alliance distribution — use split rows / release job).');
                 }
@@ -86,7 +84,7 @@ class AuditDonationsLedgerCommand extends Command
         }
 
         $this->newLine();
-        $this->info('Processed '.$fixed.' donation(s) (donor audit attempted for each; recipient only when not CA distribution).');
+        $this->info('Processed '.$fixed.' donation(s) (recipient deposit backfill when not Care Alliance distribution).');
 
         return self::SUCCESS;
     }

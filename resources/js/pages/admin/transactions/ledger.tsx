@@ -1,38 +1,38 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { Head, Link, router } from "@inertiajs/react"
 import { ConfirmationModal } from "@/components/admin/confirmation-modal"
+import type { UnifiedLedgerRow } from "@/components/admin/unified-ledger-card"
 import { motion } from "framer-motion"
 import AppLayout from "@/layouts/app-layout"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
+import { LedgerOrganizationCombobox } from "@/components/admin/ledger-organization-combobox"
 import { Label } from "@/components/ui/label"
-import { Separator } from "@/components/ui/separator"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import {
   ArrowRightLeft,
   Ban,
   AlertCircle,
-  CalendarClock,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
   Clock,
-  CreditCard,
+  Coins,
   Info,
   Layers,
-  Link2,
   ScrollText,
   Search,
   TrendingUp,
-  User,
   Wallet,
   XCircle,
   Eye,
   Trash2,
   Heart,
+  Building2,
 } from "lucide-react"
 import type { BreadcrumbItem } from "@/types"
 import { cn } from "@/lib/utils"
@@ -67,6 +67,8 @@ interface LedgerRow {
   meta: Record<string, unknown> | null
   /** Server-computed report columns (fees from metadata when stored). */
   ledger_report?: LedgerReport
+  /** BIU unified row for finance / client export alignment */
+  unified_ledger?: UnifiedLedgerRow
 }
 
 interface LedgerReport {
@@ -118,9 +120,15 @@ interface Props {
     type: string
     status: string
     per_page?: number
+    organization_id: number | null
+    module: string
+    period: string
   }
   typeOptions: string[]
   statusOptions: string[]
+  moduleOptions: string[]
+  /** Selected org label when URL has organization_id (combobox display before open). */
+  ledgerOrganizationInitial: Array<{ value: string; label: string }>
 }
 
 const container = {
@@ -148,6 +156,18 @@ function formatMoney(n: number, currency: string) {
   }
 }
 
+function formatAmountForLedger(pointsPay: boolean, n: number, currency: string, className?: string) {
+  if (pointsPay) {
+    return (
+      <span className={cn("inline-flex items-center justify-end gap-1.5 tabular-nums", className)}>
+        <Coins className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" aria-hidden />
+        {n.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })} pts
+      </span>
+    )
+  }
+  return formatMoney(n, currency)
+}
+
 function formatLedgerDate(iso: string) {
   try {
     return new Date(iso).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })
@@ -160,16 +180,16 @@ function statusIcon(status: string) {
   switch (status) {
     case "completed":
     case "deposit":
-      return <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+      return <CheckCircle2 className="h-4 w-4 shrink-0" />
     case "pending":
-      return <Clock className="h-3.5 w-3.5 shrink-0" />
+      return <Clock className="h-4 w-4 shrink-0" />
     case "failed":
     case "rejected":
-      return <XCircle className="h-3.5 w-3.5 shrink-0" />
+      return <XCircle className="h-4 w-4 shrink-0" />
     case "cancelled":
-      return <Ban className="h-3.5 w-3.5 shrink-0" />
+      return <Ban className="h-4 w-4 shrink-0" />
     default:
-      return <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+      return <AlertCircle className="h-4 w-4 shrink-0" />
   }
 }
 
@@ -199,57 +219,133 @@ function typeClass(type: string) {
   return "border-primary/35 bg-primary/12 text-primary"
 }
 
-function typeAccentBar(type: string) {
-  if (type === "refund") return "bg-sky-500"
-  if (type === "withdrawal" || type === "transfer_out") return "bg-orange-500"
-  if (type === "deposit" || type === "transfer_in") return "bg-teal-500"
-  if (type === "commission") return "bg-violet-500"
-  return "bg-primary"
-}
-
-/** Donor audit rows are stored as `purchase`; show Donation instead of Purchase when it is a gift. */
-function ledgerRowTypeDisplay(row: LedgerRow): { label: string; className: string } {
+/** Wallet row type for the table: one pill only — icon + label (no stacked donation badge). */
+function ledgerRowTypeDisplay(row: LedgerRow): { label: string; className: string; icon: "arrows" | "heart" } {
   const meta = row.meta && typeof row.meta === "object" ? (row.meta as Record<string, unknown>) : {}
-  if (meta.ledger_role === "donor_payment" || row.donation_ledger_perspective === "donor") {
+  const perspective = row.donation_ledger_perspective
+
+  if (meta.ledger_role === "donor_payment" || perspective === "donor") {
     return {
       label: "Donation",
       className: "border-rose-500/40 bg-rose-500/[0.12] text-rose-900 shadow-sm shadow-rose-500/10 dark:text-rose-100",
+      icon: "heart",
     }
   }
-  if (row.donation_ledger_perspective === "campaign" && row.type === "purchase") {
+  if (perspective === "campaign" && row.type === "purchase") {
     return {
       label: "Campaign gift",
       className: "border-amber-500/40 bg-amber-500/[0.12] text-amber-950 shadow-sm shadow-amber-500/10 dark:text-amber-100",
+      icon: "heart",
     }
   }
-  return { label: row.type.replace(/_/g, " "), className: typeClass(row.type) }
+
+  // Deposit / wallet credit from a donation: show a clear label — not a bare "Deposit" + mystery heart.
+  if (row.donation_badge && row.type === "deposit") {
+    if (perspective === "recipient_direct") {
+      return {
+        label: "Donation received",
+        className: "border-emerald-500/45 bg-emerald-500/[0.12] text-emerald-900 shadow-sm shadow-emerald-500/10 dark:text-emerald-100",
+        icon: "heart",
+      }
+    }
+    if (perspective === "recipient_split") {
+      return {
+        label: "Donation received (split)",
+        className: "border-teal-500/45 bg-teal-500/[0.12] text-teal-900 shadow-sm shadow-teal-500/10 dark:text-teal-100",
+        icon: "heart",
+      }
+    }
+    if (perspective === "alliance_fee") {
+      return {
+        label: "Alliance fee",
+        className: "border-violet-500/45 bg-violet-500/[0.12] text-violet-900 shadow-sm shadow-violet-500/10 dark:text-violet-100",
+        icon: "arrows",
+      }
+    }
+  }
+
+  return {
+    label: row.type.replace(/_/g, " "),
+    className: typeClass(row.type),
+    icon: "arrows",
+  }
 }
 
-function ledgerRowAccentBar(row: LedgerRow): string {
-  const meta = row.meta && typeof row.meta === "object" ? (row.meta as Record<string, unknown>) : {}
-  if (meta.ledger_role === "donor_payment" || row.donation_ledger_perspective === "donor") {
-    return "bg-rose-500"
+function moduleTableLabel(m: string) {
+  const map: Record<string, string> = {
+    donation: "Donation",
+    fundme: "FundMe",
+    campaign: "Campaign",
+    believe_points: "Believe Points",
+    marketplace: "Marketplace",
+    servicehub: "Service Hub",
+    course: "Course",
+    merchant_hub: "Merchant Hub",
+    organization_subscription: "Org sub",
+    merchant_subscription: "Merchant sub",
+    payout: "Payout",
+    refund: "Refund",
+    adjustment: "Adjustment",
   }
-  if (row.donation_ledger_perspective === "campaign" && row.type === "purchase") {
-    return "bg-amber-500"
-  }
-  return typeAccentBar(row.type)
+  return map[m] ?? m.replace(/_/g, " ")
 }
 
-function donationLedgerBadgeClass(perspective: string | null | undefined): string {
-  switch (perspective) {
-    case "recipient_direct":
-      return "border-emerald-500/45 bg-emerald-500/[0.12] text-emerald-900 shadow-sm shadow-emerald-500/10 dark:text-emerald-100"
-    case "recipient_split":
-      return "border-teal-500/45 bg-teal-500/[0.12] text-teal-900 shadow-sm shadow-teal-500/10 dark:text-teal-100"
-    case "alliance_fee":
-      return "border-violet-500/45 bg-violet-500/[0.12] text-violet-900 shadow-sm shadow-violet-500/10 dark:text-violet-100"
-    case "campaign":
-      return "border-amber-500/45 bg-amber-500/[0.12] text-amber-950 shadow-sm shadow-amber-500/10 dark:text-amber-100"
-    case "donor":
+function providerBadgeClassTable(p: string) {
+  switch (p) {
+    case "stripe":
+      return "border-violet-500/35 bg-violet-500/10 text-violet-900 dark:text-violet-100"
+    case "bridge":
+      return "border-sky-500/35 bg-sky-500/10 text-sky-900 dark:text-sky-100"
+    case "points":
+      return "border-amber-500/35 bg-amber-500/10 text-amber-950 dark:text-amber-100"
     default:
-      return "border-rose-500/45 bg-rose-500/[0.12] text-rose-900 shadow-sm shadow-rose-500/10 dark:text-rose-100"
+      return "border-border/50 bg-muted/40 text-foreground"
   }
+}
+
+function processorFeeRailBadgeClass(kind: "stripe" | "bridge") {
+  return kind === "stripe" ? providerBadgeClassTable("stripe") : providerBadgeClassTable("bridge")
+}
+
+function partiesSummary(u: UnifiedLedgerRow | undefined): string {
+  if (!u) return "—"
+  const from = u.from_name ?? u.from_type
+  const to = u.to_name ?? u.to_type
+  return `${from} → ${to}`
+}
+
+function isBelievePointsRow(u: UnifiedLedgerRow | undefined, paymentMethod: string | null | undefined): boolean {
+  return u?.provider === "points" || paymentMethod === "believe_points"
+}
+
+function moduleLabel(key: string): string {
+  const map: Record<string, string> = {
+    donation: "Donation",
+    fundme: "FundMe",
+    campaign: "Campaign",
+    believe_points: "Believe Points",
+    marketplace: "Marketplace",
+    servicehub: "Service hub",
+    course: "Course",
+    merchant_hub: "Merchant hub",
+    organization_subscription: "Organization subscription",
+    merchant_subscription: "Merchant subscription",
+    payout: "Payout",
+    refund: "Refund",
+    adjustment: "Adjustment",
+  }
+  return map[key] ?? key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
+}
+
+function periodLabel(key: string): string {
+  const map: Record<string, string> = {
+    all: "All time",
+    day: "Today",
+    week: "This week",
+    month: "This month",
+    year: "This year",
+  }
+  return map[key] ?? key
 }
 
 export default function TransactionLedger({
@@ -258,11 +354,18 @@ export default function TransactionLedger({
   filters,
   typeOptions,
   statusOptions,
+  moduleOptions,
+  ledgerOrganizationInitial,
 }: Props) {
   const [search, setSearch] = useState(filters.search || "")
   const [type, setType] = useState(filters.type || "all")
   const [status, setStatus] = useState(filters.status || "all")
   const [perPage, setPerPage] = useState(String(filters.per_page ?? 10))
+  const [organizationId, setOrganizationId] = useState(
+    filters.organization_id != null ? String(filters.organization_id) : "all",
+  )
+  const [module, setModule] = useState(filters.module ?? "all")
+  const [period, setPeriod] = useState(filters.period ?? "all")
   const skipSearchDebounceOnce = useRef(true)
   const [deleteModal, setDeleteModal] = useState<{ open: boolean; id: number | null; ref: string }>({
     open: false,
@@ -271,14 +374,25 @@ export default function TransactionLedger({
   })
   const [isDeleting, setIsDeleting] = useState(false)
 
+  const filterSelectClass =
+    "flex h-9 w-full min-w-0 rounded-md border border-border/60 bg-background px-2 py-1.5 text-xs text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 sm:h-10 sm:text-sm"
+
   const ledgerQueryParams = (): Record<string, string> => {
     const params: Record<string, string> = {}
     if (search.trim()) params.search = search.trim()
     if (type && type !== "all") params.type = type
     if (status && status !== "all") params.status = status
     if (perPage && perPage !== "10") params.per_page = perPage
+    if (organizationId && organizationId !== "all") params.organization_id = organizationId
+    if (module && module !== "all") params.module = module
+    if (period && period !== "all") params.period = period
     return params
   }
+
+  const orgPickerBaseParams = useMemo(
+    () => ledgerQueryParams(),
+    [search, type, status, perPage, organizationId, module, period],
+  )
 
   useEffect(() => {
     if (skipSearchDebounceOnce.current) {
@@ -302,6 +416,9 @@ export default function TransactionLedger({
     if (nextType && nextType !== "all") params.type = nextType
     if (nextStatus && nextStatus !== "all") params.status = nextStatus
     if (perPage && perPage !== "10") params.per_page = perPage
+    if (organizationId && organizationId !== "all") params.organization_id = organizationId
+    if (module && module !== "all") params.module = module
+    if (period && period !== "all") params.period = period
 
     router.get(route("admin.transactions.ledger"), params, {
       preserveState: true,
@@ -317,6 +434,33 @@ export default function TransactionLedger({
     if (type && type !== "all") params.type = type
     if (status && status !== "all") params.status = status
     if (next && next !== "10") params.per_page = next
+    if (organizationId && organizationId !== "all") params.organization_id = organizationId
+    if (module && module !== "all") params.module = module
+    if (period && period !== "all") params.period = period
+    router.get(route("admin.transactions.ledger"), params, {
+      preserveState: true,
+      preserveScroll: true,
+      replace: true,
+    })
+  }
+
+  const applyLedgerFilter = (patch: Partial<{ organizationId: string; module: string; period: string }>) => {
+    const nextOrg = patch.organizationId ?? organizationId
+    const nextMod = patch.module ?? module
+    const nextPeriod = patch.period ?? period
+    if (patch.organizationId !== undefined) setOrganizationId(patch.organizationId)
+    if (patch.module !== undefined) setModule(patch.module)
+    if (patch.period !== undefined) setPeriod(patch.period)
+
+    const params: Record<string, string> = {}
+    if (search.trim()) params.search = search.trim()
+    if (type && type !== "all") params.type = type
+    if (status && status !== "all") params.status = status
+    if (perPage && perPage !== "10") params.per_page = perPage
+    if (nextOrg && nextOrg !== "all") params.organization_id = nextOrg
+    if (nextMod && nextMod !== "all") params.module = nextMod
+    if (nextPeriod && nextPeriod !== "all") params.period = nextPeriod
+
     router.get(route("admin.transactions.ledger"), params, {
       preserveState: true,
       preserveScroll: true,
@@ -361,7 +505,9 @@ export default function TransactionLedger({
             </div>
             <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">Transaction ledger</h1>
             <p className="max-w-2xl text-sm text-muted-foreground sm:text-base">
-              Every wallet transaction in one place — filtered on the server and loaded with Inertia.
+              Every wallet transaction in one place — each row includes a{" "}
+              <span className="font-medium text-foreground">unified finance summary</span> (module, From → To, gross/net,
+              Stripe/Bridge) aligned with the BIU ledger workbook and client exports.
             </p>
           </div>
         </motion.div>
@@ -426,90 +572,159 @@ export default function TransactionLedger({
           <div className="flex flex-col gap-1 border-b border-border/60 pb-4">
             <h2 className="flex flex-wrap items-center gap-2 text-base font-semibold text-foreground sm:text-lg">
               <Wallet className="h-4 w-4 shrink-0 text-muted-foreground" />
-              Activity feed
+              Ledger table
               <span className="font-normal text-muted-foreground">· {transactions.total} entries</span>
             </h2>
             <p className="max-w-2xl text-sm text-muted-foreground">
-              Each card is a quick snapshot. Open <span className="font-medium text-foreground">View</span> for the full financial
-              report—gross, Stripe / Bridge / BIU fees, splits, refunds, net to organization, and payout details.
+              Scroll horizontally on smaller screens. Use <span className="font-medium text-foreground">View</span> for the full
+              unified finance row, fee breakdown, and Stripe details.
             </p>
           </div>
 
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-            <div className="relative flex-1">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                placeholder="Search ref, user, email, payment method…"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="h-10 border-border/60 bg-background pl-9 pr-3 text-sm"
-              />
+          <div className="space-y-4">
+            {/* Row 1: Search + Type + Status + Per page (inputs aligned) */}
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:gap-3">
+              <div className="min-w-0 flex-1 space-y-1.5">
+                <Label htmlFor="ledger-search" className="text-xs uppercase tracking-wide text-muted-foreground">
+                  Search
+                </Label>
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    id="ledger-search"
+                    placeholder="Ref, user, email, payment method…"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    className="h-10 border-border/60 bg-background pl-9 pr-3 text-sm"
+                    autoComplete="off"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-1 gap-3 min-[480px]:grid-cols-3 lg:flex lg:shrink-0 lg:gap-3">
+                <div className="min-w-0 space-y-1 min-[480px]:min-w-[7.5rem] lg:w-[9.5rem]">
+                  <Label htmlFor="ledger-type" className="text-xs uppercase tracking-wide text-muted-foreground">
+                    Type
+                  </Label>
+                  <select
+                    id="ledger-type"
+                    aria-label="Filter by transaction type"
+                    title="Transaction type"
+                    value={type}
+                    onChange={(e) => {
+                      const v = e.target.value
+                      setType(v)
+                      applySelectFilters(v, status)
+                    }}
+                    className={filterSelectClass}
+                  >
+                    <option value="all">All types</option>
+                    {typeOptions.map((ot) => (
+                      <option key={ot} value={ot}>
+                        {ot.replace(/_/g, " ")}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="min-w-0 space-y-1 min-[480px]:min-w-[7.5rem] lg:w-[9.5rem]">
+                  <Label htmlFor="ledger-status" className="text-xs uppercase tracking-wide text-muted-foreground">
+                    Status
+                  </Label>
+                  <select
+                    id="ledger-status"
+                    aria-label="Filter by transaction status"
+                    title="Transaction status"
+                    value={status}
+                    onChange={(e) => {
+                      const v = e.target.value
+                      setStatus(v)
+                      applySelectFilters(type, v)
+                    }}
+                    className={filterSelectClass}
+                  >
+                    <option value="all">All statuses</option>
+                    {statusOptions.map((s) => (
+                      <option key={s} value={s}>
+                        {s}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="min-w-0 space-y-1 min-[480px]:min-w-[5.5rem] lg:w-[6.5rem]">
+                  <Label htmlFor="ledger-per-page" className="text-xs uppercase tracking-wide text-muted-foreground">
+                    Per page
+                  </Label>
+                  <select
+                    id="ledger-per-page"
+                    aria-label="Rows per page"
+                    title="Rows per page"
+                    value={perPage}
+                    onChange={(e) => applyPerPage(e.target.value)}
+                    className={filterSelectClass}
+                  >
+                    <option value="10">10</option>
+                    <option value="25">25</option>
+                    <option value="50">50</option>
+                    <option value="100">100</option>
+                  </select>
+                </div>
+              </div>
             </div>
-            <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-end sm:gap-3 lg:max-w-4xl">
-              <div className="space-y-1">
-                <Label htmlFor="ledger-type" className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                  Type
+
+            {/* Row 2: Period, Organization, Module */}
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              <div className="min-w-0 space-y-1">
+                <Label htmlFor="ledger-period" className="text-xs uppercase tracking-wide text-muted-foreground">
+                  Period
                 </Label>
                 <select
-                  id="ledger-type"
-                  aria-label="Filter by transaction type"
-                  title="Transaction type"
-                  value={type}
-                  onChange={(e) => {
-                    const v = e.target.value
-                    setType(v)
-                    applySelectFilters(v, status)
-                  }}
-                  className="flex h-9 w-full rounded-md border border-border/60 bg-background px-2 py-1.5 text-xs text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 sm:h-10 sm:text-sm"
+                  id="ledger-period"
+                  aria-label="Filter by date range"
+                  title="Period"
+                  value={period}
+                  onChange={(e) => applyLedgerFilter({ period: e.target.value })}
+                  className={filterSelectClass}
                 >
-                  <option value="all">All types</option>
-                  {typeOptions.map((ot) => (
-                    <option key={ot} value={ot}>
-                      {ot.replace(/_/g, " ")}
-                    </option>
-                  ))}
+                  <option value="all">{periodLabel("all")}</option>
+                  <option value="day">{periodLabel("day")}</option>
+                  <option value="week">{periodLabel("week")}</option>
+                  <option value="month">{periodLabel("month")}</option>
+                  <option value="year">{periodLabel("year")}</option>
                 </select>
               </div>
-              <div className="space-y-1">
-                <Label htmlFor="ledger-status" className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                  Status
+              <div className="min-w-0 space-y-1">
+                <Label className="text-xs uppercase tracking-wide text-muted-foreground">
+                  <span className="inline-flex items-center gap-1.5">
+                    <Building2 className="h-3.5 w-3.5" aria-hidden />
+                    Organization
+                  </span>
+                </Label>
+                <LedgerOrganizationCombobox
+                  key={filters.organization_id != null ? `org-${filters.organization_id}` : "org-all"}
+                  ledgerQueryParams={orgPickerBaseParams}
+                  initialOptions={ledgerOrganizationInitial}
+                  value={organizationId}
+                  onValueChange={(v) => applyLedgerFilter({ organizationId: v === "" ? "all" : v })}
+                  className="h-9 min-h-9 border-border/60 text-xs sm:h-10 sm:min-h-10 sm:text-sm"
+                />
+              </div>
+              <div className="min-w-0 space-y-1 sm:col-span-2 lg:col-span-1">
+                <Label htmlFor="ledger-module" className="text-xs uppercase tracking-wide text-muted-foreground">
+                  Module
                 </Label>
                 <select
-                  id="ledger-status"
-                  aria-label="Filter by transaction status"
-                  title="Transaction status"
-                  value={status}
-                  onChange={(e) => {
-                    const v = e.target.value
-                    setStatus(v)
-                    applySelectFilters(type, v)
-                  }}
-                  className="flex h-9 w-full rounded-md border border-border/60 bg-background px-2 py-1.5 text-xs text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 sm:h-10 sm:text-sm"
+                  id="ledger-module"
+                  aria-label="Filter by unified ledger module"
+                  title="Module"
+                  value={module}
+                  onChange={(e) => applyLedgerFilter({ module: e.target.value })}
+                  className={filterSelectClass}
                 >
-                  <option value="all">All statuses</option>
-                  {statusOptions.map((s) => (
-                    <option key={s} value={s}>
-                      {s}
+                  <option value="all">All modules</option>
+                  {moduleOptions.map((m) => (
+                    <option key={m} value={m}>
+                      {moduleLabel(m)}
                     </option>
                   ))}
-                </select>
-              </div>
-              <div className="space-y-1">
-                <Label htmlFor="ledger-per-page" className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                  Per page
-                </Label>
-                <select
-                  id="ledger-per-page"
-                  aria-label="Rows per page"
-                  title="Rows per page"
-                  value={perPage}
-                  onChange={(e) => applyPerPage(e.target.value)}
-                  className="flex h-9 w-full rounded-md border border-border/60 bg-background px-2 py-1.5 text-xs text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 sm:h-10 sm:text-sm"
-                >
-                  <option value="10">10</option>
-                  <option value="25">25</option>
-                  <option value="50">50</option>
-                  <option value="100">100</option>
                 </select>
               </div>
             </div>
@@ -523,213 +738,262 @@ export default function TransactionLedger({
                   <p className="max-w-sm text-xs text-muted-foreground">Try adjusting search or filters.</p>
                 </div>
               ) : (
-                <ul className="space-y-2.5">
-                  {transactions.data.map((row, idx) => {
-                    const rep = row.ledger_report
-                    const cur = row.currency || "USD"
-                    const typeDisplay = ledgerRowTypeDisplay(row)
-                    return (
-                      <li key={row.id} className="group relative list-none">
-                        <motion.div
-                          initial={{ opacity: 0, y: 10 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          transition={{ delay: Math.min(idx * 0.04, 0.2), duration: 0.28 }}
-                          className="relative overflow-hidden rounded-lg border border-border/60 bg-card/50 shadow-sm ring-1 ring-border/30 transition-all hover:border-primary/25 hover:shadow-md"
-                        >
-                          <div
-                            className={cn(
-                              "absolute left-0 top-0 bottom-0 w-1 rounded-l-none rounded-r-sm transition-all group-hover:w-1.5",
-                              ledgerRowAccentBar(row),
-                            )}
-                          />
-                          <div
-                            className={cn(
-                              "flex flex-col space-y-2 px-3 py-3 pl-4 sm:px-4 sm:py-3 sm:pl-5",
-                              idx % 2 === 1 ? "bg-muted/[0.35]" : "bg-transparent",
-                            )}
-                          >
-                            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
-                              <div className="min-w-0 flex-1 space-y-2">
-                                <div className="flex flex-wrap items-center gap-1.5">
+                <div className="overflow-hidden rounded-xl border border-border/60 bg-card shadow-sm ring-1 ring-border/20">
+                  <div className="overflow-x-auto">
+                    <table className="w-full min-w-[1320px] border-collapse text-left text-base">
+                      <thead>
+                        <tr className="border-b border-border/60 bg-muted/50 text-xs font-semibold uppercase tracking-wide text-muted-foreground sm:text-sm">
+                          <th className="sticky left-0 z-[1] whitespace-nowrap bg-muted/50 px-4 py-3.5 pl-4 shadow-[4px_0_12px_-4px_rgba(0,0,0,0.08)] dark:shadow-[4px_0_12px_-4px_rgba(0,0,0,0.35)]">
+                            Txn
+                          </th>
+                          <th className="whitespace-nowrap px-4 py-3.5">When</th>
+                          <th className="min-w-[8rem] whitespace-nowrap px-4 py-3.5">Reference</th>
+                          <th className="whitespace-nowrap px-4 py-3.5">Type</th>
+                          <th className="whitespace-nowrap px-4 py-3.5">Status</th>
+                          <th className="whitespace-nowrap px-4 py-3.5">Module</th>
+                          <th className="min-w-[7rem] whitespace-nowrap px-4 py-3.5">Event</th>
+                          <th className="min-w-[12rem] px-4 py-3.5">From → To</th>
+                          <th className="whitespace-nowrap px-4 py-3.5 text-right">Amount</th>
+                          <th className="whitespace-nowrap px-4 py-3.5 text-right">Gross</th>
+                          <th className="whitespace-nowrap px-4 py-3.5 text-right">Net</th>
+                          <th className="min-w-[10rem] whitespace-nowrap px-4 py-3.5 text-right">Stripe / Bridge</th>
+                          <th className="whitespace-nowrap px-4 py-3.5">Provider</th>
+                          <th className="min-w-[6rem] whitespace-nowrap px-4 py-3.5">Payment</th>
+                          <th className="min-w-[8rem] px-4 py-3.5">Related</th>
+                          <th className="sticky right-0 z-[1] whitespace-nowrap bg-muted/50 px-4 py-3.5 pr-4 text-right shadow-[-4px_0_12px_-4px_rgba(0,0,0,0.08)] dark:shadow-[-4px_0_12px_-4px_rgba(0,0,0,0.35)]">
+                            Actions
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {transactions.data.map((row, idx) => {
+                          const rep = row.ledger_report
+                          const cur = row.currency || "USD"
+                          const typeDisplay = ledgerRowTypeDisplay(row)
+                          const u = row.unified_ledger
+                          const grossDisplayPlain = u != null ? u.gross_amount : rep?.gross_amount
+                          const netDisplayPlain = u != null ? u.net_amount : rep?.net_to_organization ?? null
+                          const stripeFeeAmt = u != null ? u.stripe_fee_amount : rep?.stripe_fee ?? 0
+                          const bridgeFeeAmt = u != null ? u.bridge_fee_amount : rep?.bridge_fee ?? 0
+                          const pointsPay = isBelievePointsRow(u, row.payment_method)
+
+                          return (
+                            <tr
+                              key={row.id}
+                              className={cn(
+                                "border-b border-border/40 transition-colors hover:bg-muted/30",
+                                idx % 2 === 1 && "bg-muted/[0.2]",
+                              )}
+                            >
+                              <td
+                                className={cn(
+                                  "sticky left-0 z-[1] whitespace-nowrap border-r border-border/30 px-4 py-3 pl-4 font-mono text-sm font-semibold tabular-nums shadow-[4px_0_12px_-4px_rgba(0,0,0,0.06)] dark:shadow-[4px_0_12px_-4px_rgba(0,0,0,0.3)]",
+                                  idx % 2 === 1 ? "bg-muted/[0.25]" : "bg-card",
+                                )}
+                              >
+                                <span className="text-foreground">#{row.id}</span>
+                              </td>
+                              <td className="whitespace-nowrap px-4 py-3 text-sm text-muted-foreground">
+                                {rep ? formatLedgerDate(rep.date) : new Date(row.created_at).toLocaleString()}
+                              </td>
+                              <td className="max-w-[11rem] truncate px-4 py-3 font-mono text-sm text-foreground" title={row.transaction_id}>
+                                {row.transaction_id}
+                              </td>
+                              <td className="px-4 py-3 align-middle">
+                                <div className="flex max-w-[15rem] flex-nowrap items-center">
                                   <span
                                     className={cn(
-                                      "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-semibold uppercase tracking-wide",
+                                      "inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-semibold uppercase leading-tight tracking-wide",
                                       typeDisplay.className,
                                     )}
+                                    title={
+                                      row.donation_badge && row.donation_badge_label
+                                        ? `${typeDisplay.label} — ${row.donation_badge_label}`
+                                        : typeDisplay.label
+                                    }
                                   >
-                                    <ArrowRightLeft className="h-3 w-3 opacity-80" />
-                                    {typeDisplay.label}
+                                    {typeDisplay.icon === "heart" ? (
+                                      <Heart className="h-4 w-4 shrink-0 opacity-90" aria-hidden />
+                                    ) : (
+                                      <ArrowRightLeft className="h-4 w-4 shrink-0 opacity-80" aria-hidden />
+                                    )}
+                                    <span className="truncate">{typeDisplay.label}</span>
                                   </span>
+                                </div>
+                              </td>
+                              <td className="whitespace-nowrap px-4 py-3">
+                                <span
+                                  className={cn(
+                                    "inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-semibold capitalize",
+                                    statusClass(row.status),
+                                  )}
+                                >
+                                  {statusIcon(row.status)}
+                                  {row.status}
+                                </span>
+                              </td>
+                              <td className="whitespace-nowrap px-4 py-3 text-sm">
+                                {u ? (
+                                  <span className="font-medium text-foreground">{moduleTableLabel(u.module)}</span>
+                                ) : (
+                                  <span className="text-muted-foreground">—</span>
+                                )}
+                              </td>
+                              <td className="max-w-[10rem] truncate px-4 py-3 font-mono text-sm text-foreground" title={u?.transaction_type}>
+                                {u ? u.transaction_type.replace(/_/g, " ") : "—"}
+                              </td>
+                              <td className="max-w-[16rem] px-4 py-3 text-sm leading-snug text-foreground" title={partiesSummary(u)}>
+                                {partiesSummary(u)}
+                              </td>
+                              <td className="whitespace-nowrap px-4 py-3 text-right text-base font-semibold tabular-nums text-foreground">
+                                {formatAmountForLedger(pointsPay, row.amount, cur)}
+                              </td>
+                              <td className="whitespace-nowrap px-4 py-3 text-right text-sm tabular-nums text-muted-foreground">
+                                {grossDisplayPlain != null && grossDisplayPlain !== undefined
+                                  ? formatAmountForLedger(pointsPay, Number(grossDisplayPlain), cur, "text-muted-foreground")
+                                  : "—"}
+                              </td>
+                              <td className="whitespace-nowrap px-4 py-3 text-right text-sm font-semibold tabular-nums text-foreground">
+                                {netDisplayPlain != null && netDisplayPlain !== undefined
+                                  ? formatAmountForLedger(pointsPay, Number(netDisplayPlain), cur)
+                                  : "—"}
+                              </td>
+                              <td className="px-4 py-3 text-right align-middle">
+                                {pointsPay ? (
+                                  <Badge
+                                    variant="outline"
+                                    className={cn(
+                                      "inline-flex items-center gap-1 tabular-nums text-[10px] font-medium leading-tight",
+                                      providerBadgeClassTable("points"),
+                                    )}
+                                  >
+                                    <Coins className="h-3 w-3 shrink-0" aria-hidden />
+                                    No Fee
+                                  </Badge>
+                                ) : (
+                                  <div className="inline-flex flex-col items-end gap-1.5">
+                                    <Badge
+                                      variant="outline"
+                                      className={cn("justify-end tabular-nums text-xs font-semibold", processorFeeRailBadgeClass("stripe"))}
+                                    >
+                                      Stripe {formatMoney(stripeFeeAmt, cur)}
+                                    </Badge>
+                                    <Badge
+                                      variant="outline"
+                                      className={cn("justify-end tabular-nums text-xs font-semibold", processorFeeRailBadgeClass("bridge"))}
+                                    >
+                                      Bridge {formatMoney(bridgeFeeAmt, cur)}
+                                    </Badge>
+                                  </div>
+                                )}
+                              </td>
+                              <td className="whitespace-nowrap px-4 py-3">
+                                {u ? (
                                   <span
                                     className={cn(
-                                      "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-semibold capitalize",
-                                      statusClass(row.status),
+                                      "inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium capitalize",
+                                      providerBadgeClassTable(u.provider),
                                     )}
                                   >
-                                    {statusIcon(row.status)}
-                                    {row.status}
+                                    {u.provider === "points" && <Coins className="h-4 w-4 shrink-0" aria-hidden />}
+                                    {u.provider === "points" ? "Believe Points" : u.provider}
                                   </span>
-                                  {row.donation_badge && (
-                                    <span
-                                      className={cn(
-                                        "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-semibold uppercase tracking-wide",
-                                        donationLedgerBadgeClass(row.donation_ledger_perspective),
-                                      )}
-                                    >
-                                      <Heart className="h-3 w-3 opacity-90" aria-hidden />
-                                      {row.donation_badge_label ?? "Donation"}
-                                    </span>
-                                  )}
-                                </div>
-
-                                <div className="space-y-1">
-                                  <div className="flex flex-col gap-1 sm:flex-row sm:flex-wrap sm:items-baseline sm:gap-x-3 sm:gap-y-1">
-                                    <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-                                      <span className="font-mono text-sm font-semibold tracking-tight text-foreground">
-                                        {row.transaction_id}
-                                      </span>
-                                      <span className="text-xs text-muted-foreground">· internal #{row.id}</span>
-                                    </div>
-                                    <p className="flex flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground sm:border-l sm:border-border/50 sm:pl-3">
-                                      <CalendarClock className="inline h-3.5 w-3.5 shrink-0" aria-hidden />
-                                      {rep ? formatLedgerDate(rep.date) : new Date(row.created_at).toLocaleString()}
-                                    </p>
-                                  </div>
-                                  {rep && (
-                                    <p className="text-xs leading-snug">
-                                      <span className="font-medium text-muted-foreground">Source </span>
-                                      <span className="rounded-md bg-muted/80 px-1.5 py-0.5 font-mono text-[11px] text-foreground">
-                                        {rep.source_type}
-                                      </span>
-                                      {rep.organization_name && (
-                                        <>
-                                          <span className="mx-1.5 text-muted-foreground">·</span>
-                                          <span className="text-foreground">{rep.organization_name}</span>
-                                          {rep.organization_id != null && (
-                                            <span className="ml-1 font-mono text-[10px] text-muted-foreground">
-                                              #{rep.organization_id}
-                                            </span>
-                                          )}
-                                        </>
-                                      )}
-                                    </p>
-                                  )}
-                                  {row.user ? (
-                                    <div className="flex items-start gap-2 text-sm">
-                                      <User className="mt-0.5 h-4 w-4 shrink-0 text-primary/70" />
-                                      <div>
-                                        <p className="font-medium leading-tight text-foreground">{row.user.name}</p>
-                                        <p className="text-xs text-muted-foreground">{row.user.email}</p>
-                                      </div>
-                                    </div>
-                                  ) : (
-                                    <p className="text-sm text-muted-foreground">No linked user</p>
-                                  )}
-                                </div>
-                              </div>
-
-                              <div className="shrink-0 rounded-md border border-border/50 bg-background/80 px-3 py-2 text-right shadow-inner sm:min-w-[132px]">
-                                <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Amount</p>
-                                <p className="text-2xl font-bold tabular-nums tracking-tight text-foreground">
-                                  {formatMoney(row.amount, cur)}
-                                </p>
-                                <p className="text-[11px] text-muted-foreground">Fee {formatMoney(row.fee, cur)}</p>
-                                <p className="mt-1 text-[10px] leading-snug text-muted-foreground">
-                                  Full breakdown on detail page →
-                                </p>
-                              </div>
-                            </div>
-
-                            <Separator className="bg-border/50" />
-
-                            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                              <div className="flex items-start gap-2 text-xs sm:text-sm">
-                                <CreditCard className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                                <div>
-                                  <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                                    Payment
-                                  </p>
-                                  <p className="capitalize text-foreground">
-                                    {row.payment_method ? row.payment_method.replace(/_/g, " ") : "—"}
-                                  </p>
-                                </div>
-                              </div>
-                              <div className="flex items-start gap-2 text-xs sm:text-sm">
-                                <Link2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                                <div className="min-w-0 flex-1">
-                                  <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                                    Related
-                                  </p>
-                                  <div className="flex items-start gap-2">
-                                    <div className="min-w-0 space-y-0.5">
-                                      <p className="truncate text-[11px] font-medium text-primary/90">
-                                        {row.related_kind && row.related_kind !== "—" ? row.related_kind : "—"}
-                                      </p>
-                                      <p className="truncate text-xs text-foreground">
-                                        {row.related_display_name && row.related_display_name !== "—"
-                                          ? row.related_display_name
-                                          : "—"}
-                                      </p>
-                                    </div>
-                                    {(row.related_source !== "none" ||
-                                      (row.meta && Object.keys(row.meta).length > 0)) && (
-                                      <Tooltip delayDuration={200}>
-                                        <TooltipTrigger asChild>
-                                          <button
-                                            type="button"
-                                            className="mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-border/60 bg-background text-muted-foreground transition-colors hover:bg-muted/40 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25"
-                                            aria-label="Related details"
-                                          >
-                                            <Info className="h-3.5 w-3.5" />
-                                          </button>
-                                        </TooltipTrigger>
-                                        <TooltipContent className="max-w-md px-3 py-2 text-xs leading-relaxed">
-                                          <p className="text-[10px] font-semibold uppercase text-primary-foreground/80">
-                                            {row.related_source === "meta"
-                                              ? "From metadata"
-                                              : row.related_source === "polymorphic"
-                                                ? "Database link"
-                                                : "—"}
-                                          </p>
-                                          <p className="mt-1 text-primary-foreground/95">{row.related_purpose}</p>
-                                        </TooltipContent>
-                                      </Tooltip>
+                                ) : pointsPay ? (
+                                  <span
+                                    className={cn(
+                                      "inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium",
+                                      providerBadgeClassTable("points"),
                                     )}
+                                  >
+                                    <Coins className="h-4 w-4 shrink-0" aria-hidden />
+                                    Believe Points
+                                  </span>
+                                ) : (
+                                  <span className="text-sm text-muted-foreground">—</span>
+                                )}
+                              </td>
+                              <td className="max-w-[10rem] px-4 py-3">
+                                {row.payment_method === "believe_points" ? (
+                                  <span
+                                    className={cn(
+                                      "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-xs font-semibold",
+                                      providerBadgeClassTable("points"),
+                                    )}
+                                  >
+                                    <Coins className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                                    Believe Points
+                                  </span>
+                                ) : row.payment_method ? (
+                                  <span className="text-sm capitalize text-muted-foreground">{row.payment_method.replace(/_/g, " ")}</span>
+                                ) : (
+                                  <span className="text-sm text-muted-foreground">—</span>
+                                )}
+                              </td>
+                              <td className="max-w-[11rem] px-4 py-3">
+                                <div className="flex items-start gap-1.5">
+                                  <div className="min-w-0 flex-1 truncate text-sm text-foreground" title={row.related_display_name}>
+                                    {row.related_display_name && row.related_display_name !== "—"
+                                      ? row.related_display_name
+                                      : row.related_kind && row.related_kind !== "—"
+                                        ? row.related_kind
+                                        : "—"}
                                   </div>
+                                  {(row.related_source !== "none" || (row.meta && Object.keys(row.meta).length > 0)) && (
+                                    <Tooltip delayDuration={200}>
+                                      <TooltipTrigger asChild>
+                                        <button
+                                          type="button"
+                                          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-border/60 bg-background text-muted-foreground hover:bg-muted/50"
+                                          aria-label="Related details"
+                                        >
+                                          <Info className="h-4 w-4" />
+                                        </button>
+                                      </TooltipTrigger>
+                                      <TooltipContent className="max-w-md px-3 py-2.5 text-sm leading-relaxed text-popover-foreground">
+                                        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                                          {row.related_source === "meta"
+                                            ? "From metadata"
+                                            : row.related_source === "polymorphic"
+                                              ? "Database link"
+                                              : "—"}
+                                        </p>
+                                        <p className="mt-1.5 text-popover-foreground">{row.related_purpose}</p>
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  )}
                                 </div>
-                              </div>
-                            </div>
-
-                            <div className="flex flex-wrap items-center justify-end gap-1.5 border-t border-border/40 pt-2">
-                              <Link href={route("admin.transactions.show", row.id)}>
-                                <Button
-                                  type="button"
-                                  size="sm"
-                                  className="h-8 gap-1.5 rounded-full px-3 shadow-sm"
-                                >
-                                  <Eye className="h-3.5 w-3.5" />
-                                  View full details
-                                </Button>
-                              </Link>
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                className="h-8 rounded-full border-destructive/35 px-3 text-destructive hover:bg-destructive/10"
-                                onClick={() =>
-                                  setDeleteModal({ open: true, id: row.id, ref: row.transaction_id })
-                                }
+                              </td>
+                              <td
+                                className={cn(
+                                  "sticky right-0 z-[1] whitespace-nowrap border-l border-border/30 px-4 py-3 pr-4 text-right shadow-[-4px_0_12px_-4px_rgba(0,0,0,0.06)] dark:shadow-[-4px_0_12px_-4px_rgba(0,0,0,0.3)]",
+                                  idx % 2 === 1 ? "bg-muted/[0.25]" : "bg-card",
+                                )}
                               >
-                                <Trash2 className="h-3.5 w-3.5" />
-                                Delete
-                              </Button>
-                            </div>
-                          </div>
-                        </motion.div>
-                      </li>
-                    )
-                  })}
-                </ul>
+                                <div className="inline-flex flex-col items-end gap-1.5 sm:flex-row sm:items-center sm:justify-end sm:gap-2">
+                                  <Link href={route("admin.transactions.show", row.id)}>
+                                    <Button type="button" size="default" variant="secondary" className="h-9 gap-1.5 px-3 text-sm">
+                                      <Eye className="h-4 w-4" />
+                                      View
+                                    </Button>
+                                  </Link>
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="default"
+                                    className="h-9 border-destructive/30 px-3 text-sm text-destructive hover:bg-destructive/10"
+                                    onClick={() => setDeleteModal({ open: true, id: row.id, ref: row.transaction_id })}
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
               )}
 
               {transactions.total > 0 && (

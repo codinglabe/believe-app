@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useEffect, FormEvent } from "react"
+import React, { useState, useEffect, useRef, FormEvent } from "react"
 import { Head, router, usePage } from "@inertiajs/react"
 import ProfileLayout from "@/components/frontend/layout/user-profile-layout"
 import AppSidebarLayout from "@/layouts/app/app-sidebar-layout"
@@ -8,14 +8,29 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Coins, DollarSign, ArrowRight, CheckCircle2, AlertCircle, History, TrendingUp, RefreshCw, FileText, CreditCard } from "lucide-react"
+import {
+  Coins,
+  DollarSign,
+  ArrowRight,
+  CheckCircle2,
+  AlertCircle,
+  History,
+  TrendingUp,
+  RefreshCw,
+  FileText,
+  CreditCard,
+  Landmark,
+  Gift,
+  Loader2,
+  Receipt,
+  CircleHelp,
+} from "lucide-react"
 import { showSuccessToast, showErrorToast } from "@/lib/toast"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Separator } from "@/components/ui/separator"
 import { Checkbox } from "@/components/ui/checkbox"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
   Dialog,
   DialogContent,
@@ -47,6 +62,19 @@ interface AutoReplenishProps {
   last_replenish_at: string | null
 }
 
+/** Matches `BelievePointController@index` `feePreview` (buyer pays gross-up like donate “cover fees”). */
+interface BelievePointsFeePreview {
+  mode: "buyer_covers"
+  rail: "card" | "bank"
+  base_gift_usd: number
+  checkout_total_usd: number
+  processing_fee_estimate: number
+  card_processing_fee_usd: number
+  ach_processing_fee_usd: number
+  bank_reward_points: number
+  believe_points_credit_usd: number
+}
+
 interface PageProps {
   currentBalance: number
   minPurchaseAmount: number
@@ -56,10 +84,13 @@ interface PageProps {
     links: any
     meta: any
   }
+  auth?: { user?: { role?: string } }
+  feePreview?: BelievePointsFeePreview | null
   autoReplenish?: AutoReplenishProps
   flash?: {
     success?: string
     error?: string
+    info?: string
   }
 }
 
@@ -81,12 +112,16 @@ export default function BelievePointsIndex({
   autoReplenish: autoReplenishProp,
 }: PageProps) {
   const autoReplenish = { ...defaultAutoReplenish, ...autoReplenishProp }
-  const { flash, auth } = usePage().props as any
+  const page = usePage<PageProps>()
+  const { flash, auth, feePreview: feePreviewProp } = page.props
+  const feePreview = feePreviewProp ?? null
   const isSupporter = auth?.user?.role === 'user' || !auth?.user?.role
   const [formData, setFormData] = useState({
     amount: "",
     policyAccepted: false,
   })
+  const [paymentRail, setPaymentRail] = useState<"bank" | "card">("bank")
+  const [feePreviewLoading, setFeePreviewLoading] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [policyDialogOpen, setPolicyDialogOpen] = useState(false)
@@ -103,6 +138,37 @@ export default function BelievePointsIndex({
     policyAccepted: false,
   })
   const [arSubmitting, setArSubmitting] = useState(false)
+
+  const believePointsFeePreviewSkipRef = useRef(true)
+
+  /** Inertia partial reload: feePreview from backend (same pattern as /donate). */
+  useEffect(() => {
+    if (believePointsFeePreviewSkipRef.current) {
+      believePointsFeePreviewSkipRef.current = false
+      return
+    }
+    const t = window.setTimeout(() => {
+      const q: Record<string, string | number> = {}
+      const raw = formData.amount.trim()
+      const n = parseFloat(raw)
+      const inRange =
+        raw !== "" && !Number.isNaN(n) && n >= minPurchaseAmount && n <= maxPurchaseAmount
+      if (inRange) {
+        q.fee_preview_amount = n
+        q.fee_preview_rail = paymentRail
+      }
+      setFeePreviewLoading(true)
+      router.get(route("believe-points.index"), q, {
+        preserveScroll: true,
+        preserveState: true,
+        replace: true,
+        only: ["feePreview"],
+        onFinish: () => setFeePreviewLoading(false),
+        onCancel: () => setFeePreviewLoading(false),
+      })
+    }, 300)
+    return () => window.clearTimeout(t)
+  }, [formData.amount, paymentRail, minPurchaseAmount, maxPurchaseAmount])
 
   useEffect(() => {
     setArState({
@@ -123,6 +189,13 @@ export default function BelievePointsIndex({
     autoReplenish.amount,
     autoReplenish.has_payment_method,
   ])
+
+  const amountNum = parseFloat(formData.amount)
+  const validPurchaseAmount =
+    formData.amount !== "" &&
+    !Number.isNaN(amountNum) &&
+    amountNum >= minPurchaseAmount &&
+    amountNum <= maxPurchaseAmount
 
   const handleChange = (value: string) => {
     // Allow only numbers and one decimal point
@@ -220,6 +293,7 @@ export default function BelievePointsIndex({
       route("believe-points.purchase"),
       {
         amount: parseFloat(formData.amount),
+        payment_rail: paymentRail,
       },
       {
         onError: (errors) => {
@@ -270,219 +344,113 @@ export default function BelievePointsIndex({
 
   const content = (
     <>
-      {/* Success/Error Messages */}
+      <div className="mx-auto w-full min-w-0 max-w-6xl space-y-6">
+        <div className="space-y-3">
+          {flash?.success && (
+            <Alert className="border border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950/25">
+              <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400" />
+              <AlertDescription className="text-green-900 dark:text-green-100">{flash.success}</AlertDescription>
+            </Alert>
+          )}
+          {flash?.error && (
+            <Alert className="border border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950/25">
+              <AlertCircle className="h-4 w-4 text-red-600 dark:text-red-400" />
+              <AlertDescription className="text-red-900 dark:text-red-100">{flash.error}</AlertDescription>
+            </Alert>
+          )}
+          {flash?.info && (
+            <Alert className="border border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-950/25">
+              <AlertCircle className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+              <AlertDescription className="text-blue-900 dark:text-blue-100">{flash.info}</AlertDescription>
+            </Alert>
+          )}
+        </div>
 
-      {flash?.success && (
-          <Alert className="bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800">
-            <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-            <AlertDescription className="text-emerald-800 dark:text-emerald-200">
-              {flash.success}
-            </AlertDescription>
-          </Alert>
-        )}
-
-      {flash?.error && (
-        <Alert className="bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800">
-          <AlertCircle className="h-4 w-4 text-red-600" />
-          <AlertDescription className="text-red-800 dark:text-red-200">
-            {flash.error}
-          </AlertDescription>
-        </Alert>
-      )}
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Purchase Form */}
-          <div className="lg:col-span-2 space-y-6">
-            {/* Current Balance Card */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Coins className="h-5 w-5" />
-                    Your Believe Points Balance
+        <div className="grid min-w-0 grid-cols-1 gap-6 lg:grid-cols-12 lg:gap-8">
+          <div className="min-w-0 space-y-6 sm:space-y-8 lg:col-span-8">
+            <Card className="border border-gray-200 bg-white shadow-sm dark:border-gray-700 dark:bg-gray-800">
+              <CardContent className="p-4 sm:p-6">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between sm:gap-5">
+                  <div className="flex min-w-0 items-center gap-3 sm:gap-4">
+                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-purple-500 text-white shadow-sm sm:h-14 sm:w-14">
+                      <Coins className="h-6 w-6 sm:h-7 sm:w-7" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                        Balance
+                      </p>
+                      <p className="mt-0.5 text-3xl font-bold tracking-tight text-gray-900 tabular-nums dark:text-white sm:text-4xl">
+                        {formatPoints(currentBalance)}
+                      </p>
+                      <p className="mt-1 text-xs text-gray-600 dark:text-gray-300 sm:text-sm">
+                        ≈ {formatCurrency(currentBalance)} in Believe Points (1:1 with USD)
+                      </p>
+                    </div>
                   </div>
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => router.visit(route('believe-points.refunds'))}
+                    className="w-full shrink-0 border-gray-300 bg-white text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700/80 sm:w-auto"
+                    onClick={() => router.visit(route("believe-points.refunds"))}
                   >
-                    <RefreshCw className="h-4 w-4 mr-2" />
+                    <RefreshCw className="mr-2 h-4 w-4" />
                     Refunds
                   </Button>
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-center py-6">
-                  <div className="text-5xl font-bold text-primary mb-2">
-                    {formatPoints(currentBalance)}
-                  </div>
-                  <p className="text-sm text-muted-foreground">
-                    {formatCurrency(currentBalance)} worth of Believe Points
-                  </p>
                 </div>
               </CardContent>
             </Card>
 
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <TrendingUp className="h-5 w-5" />
-                  Auto top-up
-                </CardTitle>
-                <CardDescription>
-                  We charge your saved card when your Believe Points balance is at or below the threshold (same 1:1 USD
-                  ratio). If your balance is already at or below the threshold when you save settings, we try to top up
-                  immediately. Otherwise it runs after your next purchase that brings you at or below the threshold. At
-                  most one charge per hour. This does not fund the same checkout that reduced your balance.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <p className="text-xs text-muted-foreground">
-                  If an auto top-up shows <span className="font-medium">failed</span>, use{" "}
-                  <span className="font-medium">Replace saved card</span> so your bank can approve off-session charges
-                  (3D Secure when needed).
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => router.visit(route("believe-points.auto-replenish.setup"))}
-                  >
-                    <CreditCard className="h-4 w-4 mr-2" />
-                    {autoReplenish.has_payment_method ? "Replace saved card" : "Add saved card"}
-                  </Button>
-                  {autoReplenish.has_payment_method && (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="text-destructive"
-                      onClick={() => {
-                        if (!confirm("Remove saved card and turn off auto top-up?")) return
-                        router.post(route("believe-points.auto-replenish.remove-payment"), {}, { preserveScroll: true })
-                      }}
-                    >
-                      Remove card
-                    </Button>
-                  )}
-                </div>
-                {autoReplenish.has_payment_method && (
-                  <p className="text-sm text-muted-foreground">
-                    Saved card:{" "}
-                    <span className="font-medium text-foreground">
-                      {(autoReplenish.card_brand || "Card").toUpperCase()} ···· {autoReplenish.card_last4 || "????"}
-                    </span>
-                  </p>
-                )}
-                {autoReplenish.last_replenish_at && (
-                  <p className="text-xs text-muted-foreground">
-                    Last auto top-up: {new Date(autoReplenish.last_replenish_at).toLocaleString()}
-                  </p>
-                )}
-                <form onSubmit={saveAutoReplenish} className="space-y-4">
-                  <div className="flex items-start gap-3 p-3 border rounded-lg bg-muted/20">
-                    <Checkbox
-                      id="ar-enabled"
-                      checked={arState.enabled}
-                      onCheckedChange={(checked) =>
-                        setArState((s) => ({ ...s, enabled: checked === true }))
-                      }
-                      className="mt-1 size-5 min-h-5 min-w-5"
-                    />
-                    <Label htmlFor="ar-enabled" className="text-sm font-medium cursor-pointer leading-snug">
-                      Enable automatic top-up when my balance is at or below the threshold
-                    </Label>
+            <Card className="gap-0 overflow-hidden rounded-2xl border border-gray-200 bg-white px-0 py-0 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+              <CardHeader className="border-b border-gray-200 bg-gray-50/80 px-4 pb-5 pt-5 dark:border-gray-700 dark:bg-gray-900/40 sm:px-6 sm:pb-6 sm:pt-6">
+                <div className="flex items-start gap-4">
+                  <div className="mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-purple-500 text-white shadow-sm ring-4 ring-purple-500/10 dark:ring-purple-400/15">
+                    <DollarSign className="h-5 w-5" aria-hidden />
                   </div>
-                  {arState.enabled && (
-                    <>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                          <Label htmlFor="ar-threshold">When balance is at or below</Label>
-                          <div className="relative">
-                            <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                            <Input
-                              id="ar-threshold"
-                              className="pl-9"
-                              value={arState.threshold}
-                              onChange={(e) =>
-                                setArState((s) => ({ ...s, threshold: e.target.value.replace(/[^0-9.]/g, "") }))
-                              }
-                              placeholder="e.g. 25"
-                              disabled={arSubmitting}
-                            />
-                          </div>
-                        </div>
-                        <div className="space-y-2">
-                          <Label htmlFor="ar-amount">Top-up amount</Label>
-                          <div className="relative">
-                            <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                            <Input
-                              id="ar-amount"
-                              className="pl-9"
-                              value={arState.amount}
-                              onChange={(e) =>
-                                setArState((s) => ({ ...s, amount: e.target.value.replace(/[^0-9.]/g, "") }))
-                              }
-                              placeholder="e.g. 50"
-                              disabled={arSubmitting}
-                            />
-                          </div>
-                        </div>
-                      </div>
-                      <p className="text-xs text-muted-foreground">
-                        Top-up must be between {formatCurrency(minPurchaseAmount)} and {formatCurrency(maxPurchaseAmount)}.
+                  <div className="min-w-0 flex-1 space-y-3">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-baseline sm:justify-between sm:gap-x-4 sm:gap-y-2">
+                      <CardTitle className="text-xl font-semibold leading-tight tracking-tight text-gray-900 dark:text-white">
+                        Purchase Believe Points
+                      </CardTitle>
+                      <Badge
+                        variant="outline"
+                        className="w-fit shrink-0 border-gray-300 bg-white/80 font-normal text-gray-600 dark:border-gray-600 dark:bg-gray-900/60 dark:text-gray-300"
+                      >
+                        Secure checkout · Stripe
+                      </Badge>
+                    </div>
+                    <CardDescription className="max-w-2xl text-sm leading-relaxed text-gray-600 dark:text-gray-300">
+                      Pick <span className="font-medium text-gray-800 dark:text-gray-200">Bank</span> or{" "}
+                      <span className="font-medium text-gray-800 dark:text-gray-200">Card</span> below. You receive 1
+                      Believe Point per $1 USD. Bank (ACH) checkout earns Merchant Hub reward points; card does not.
+                    </CardDescription>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="p-0">
+                <form onSubmit={handleSubmit} className="divide-y divide-gray-200 dark:divide-gray-700">
+                  <div className="space-y-4 p-4 sm:p-6">
+                    <div className="space-y-1">
+                      <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                        Step 1
                       </p>
-                      <div className="flex items-start gap-3 p-3 border rounded-lg">
-                        <Checkbox
-                          id="ar-policy"
-                          checked={arState.policyAccepted}
-                          onCheckedChange={(checked) =>
-                            setArState((s) => ({ ...s, policyAccepted: checked === true }))
-                          }
-                          className="mt-1 size-5 min-h-5 min-w-5"
-                        />
-                        <Label htmlFor="ar-policy" className="text-sm cursor-pointer leading-snug">
-                          I authorize Believe to charge my saved card for automatic Believe Points top-ups under these
-                          rules. Failed charges turn off auto top-up until I add a card and enable again.
-                        </Label>
-                      </div>
-                    </>
-                  )}
-                  <Button type="submit" disabled={arSubmitting} variant="secondary">
-                    {arSubmitting ? "Saving…" : "Save auto top-up settings"}
-                  </Button>
-                </form>
-              </CardContent>
-            </Card>
-
-            {/* Purchase Card */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <DollarSign className="h-5 w-5" />
-                  Purchase Believe Points
-                </CardTitle>
-                <CardDescription>
-                  Enter the amount you want to spend. You'll receive the same amount in Believe Points (1:1 ratio).
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <form onSubmit={handleSubmit} className="space-y-6">
-                  <div className="space-y-2">
-                    <Label htmlFor="amount" className="text-base font-semibold">
-                      Purchase Amount
-                    </Label>
+                      <Label
+                        htmlFor="amount"
+                        className="text-base font-semibold text-gray-900 dark:text-white"
+                      >
+                        Amount
+                      </Label>
+                    </div>
                     <div className="relative">
-                      <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+                      <DollarSign className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-500 dark:text-gray-400" />
                       <Input
                         id="amount"
                         type="text"
                         value={formData.amount}
                         onChange={(e) => handleChange(e.target.value)}
                         className={cn(
-                          "h-14 text-xl pl-10",
-                          errors.amount && "border-red-500 focus-visible:ring-red-500"
+                          "h-14 border-2 border-gray-300 bg-white pl-10 text-xl font-medium tabular-nums text-gray-900 shadow-sm placeholder:text-gray-400 focus-visible:border-purple-500 focus-visible:ring-2 focus-visible:ring-purple-500/25 dark:border-gray-500 dark:bg-gray-950 dark:text-white dark:placeholder:text-gray-500 dark:focus-visible:border-purple-400 dark:focus-visible:ring-purple-400/30",
+                          errors.amount &&
+                            "border-red-500 focus-visible:border-red-500 focus-visible:ring-red-500/30 dark:border-red-500",
                         )}
                         placeholder="0.00"
                         disabled={isSubmitting}
@@ -494,45 +462,217 @@ export default function BelievePointsIndex({
                         {errors.amount}
                       </p>
                     )}
-                    <p className="text-sm text-muted-foreground">
-                      Minimum: {formatCurrency(minPurchaseAmount)} • Maximum: {formatCurrency(maxPurchaseAmount)}
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      Allowed range {formatCurrency(minPurchaseAmount)} – {formatCurrency(maxPurchaseAmount)}
                     </p>
                   </div>
 
-                  {formData.amount && !errors.amount && parseFloat(formData.amount) >= minPurchaseAmount && (
-                    <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="text-sm font-semibold text-blue-900 dark:text-blue-100">
-                            You'll receive:
-                          </p>
-                          <p className="text-2xl font-bold text-blue-600 dark:text-blue-400 mt-1">
-                            {formatPoints(parseFloat(formData.amount))} Believe Points
+                  <div className="space-y-4 p-4 sm:p-6">
+                    <div>
+                      <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                        Step 2
+                      </p>
+                      <p className="mt-1 text-base font-semibold text-gray-900 dark:text-white">Payment method</p>
+                      <p className="mt-1 text-sm leading-relaxed text-gray-600 dark:text-gray-300">
+                        ACH is cheaper for us to process. Paying by bank also earns Merchant Hub reward points on your
+                        purchase.
+                      </p>
+                    </div>
+                    <Tabs
+                      value={paymentRail}
+                      onValueChange={(v) => setPaymentRail(v as "bank" | "card")}
+                      className="w-full"
+                    >
+                      <TabsList className="grid h-auto min-h-12 w-full grid-cols-2 gap-1 rounded-lg border-2 border-gray-300 bg-gray-100 p-1 dark:border-gray-600 dark:bg-gray-800">
+                        <TabsTrigger
+                          value="bank"
+                          className="gap-1.5 rounded-md px-2 py-2.5 text-xs text-gray-700 data-[state=active]:bg-white data-[state=active]:text-gray-900 data-[state=active]:shadow-md dark:text-gray-200 dark:data-[state=active]:bg-gray-950 dark:data-[state=active]:text-white sm:gap-2 sm:px-3 sm:text-sm"
+                        >
+                          <Landmark className="h-4 w-4 shrink-0" aria-hidden />
+                          <span className="min-w-0 text-left leading-tight">
+                            <span className="sm:hidden">Bank</span>
+                            <span className="hidden sm:inline">Bank (ACH)</span>
+                          </span>
+                        </TabsTrigger>
+                        <TabsTrigger
+                          value="card"
+                          className="gap-1.5 rounded-md px-2 py-2.5 text-xs text-gray-700 data-[state=active]:bg-white data-[state=active]:text-gray-900 data-[state=active]:shadow-md dark:text-gray-200 dark:data-[state=active]:bg-gray-950 dark:data-[state=active]:text-white sm:gap-2 sm:px-3 sm:text-sm"
+                        >
+                          <CreditCard className="h-4 w-4 shrink-0" aria-hidden />
+                          Card
+                        </TabsTrigger>
+                      </TabsList>
+                      <TabsContent
+                        value="bank"
+                        className="mt-3 rounded-lg border border-purple-200 bg-purple-50/80 px-4 py-3 text-sm focus-visible:outline-none dark:border-purple-800 dark:bg-purple-950/30"
+                      >
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
+                          <Badge className="w-fit border-0 bg-purple-600 text-white hover:bg-purple-600">
+                            Recommended
+                          </Badge>
+                          <p className="text-gray-700 dark:text-gray-200">
+                            Lower processing fees · Earns Merchant Hub reward points ($1 = 0.10) on this purchase
                           </p>
                         </div>
-                        <Coins className="h-8 w-8 text-blue-600" />
+                      </TabsContent>
+                      <TabsContent
+                        value="card"
+                        className="mt-3 rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm focus-visible:outline-none dark:border-gray-600 dark:bg-gray-800/60"
+                      >
+                        <p className="text-gray-700 dark:text-gray-200">
+                          Pay with debit or credit card. No Merchant Hub reward bonus on card checkout.
+                        </p>
+                      </TabsContent>
+                    </Tabs>
+                    <p className="flex items-start gap-1.5 text-xs leading-snug text-gray-500 dark:text-gray-400">
+                      <CircleHelp className="mt-0.5 h-3.5 w-3.5 shrink-0 opacity-80" aria-hidden />
+                      <span>
+                        Stripe Checkout will only show{" "}
+                        {paymentRail === "bank" ? "US bank account (ACH)" : "card"} for this purchase.
+                      </span>
+                    </p>
+                  </div>
+
+                  <div className="space-y-5 bg-gray-50 p-4 sm:p-6 dark:bg-gray-900/35">
+                    <div>
+                      <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                        Summary
+                      </p>
+                      <p className="mt-1 text-sm font-medium text-gray-900 dark:text-white">Fees &amp; what you get</p>
+                    </div>
+
+                  {feePreview && (
+                    <div
+                      className={cn(
+                        "relative overflow-hidden rounded-lg border border-gray-200 bg-white p-5 text-sm shadow-sm dark:border-gray-600 dark:bg-gray-800",
+                        feePreviewLoading && "opacity-60",
+                      )}
+                    >
+                      {feePreviewLoading && (
+                        <div className="absolute right-3 top-3 flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          Updating
+                        </div>
+                      )}
+                      <div className="mb-3 flex items-center gap-2 font-semibold text-gray-900 dark:text-white">
+                        <Receipt className="h-4 w-4 text-gray-400 dark:text-gray-500" />
+                        Checkout total (you pay processing)
+                      </div>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                        The amount you type is how many Believe Points you receive. Stripe checkout includes an estimated
+                        processing add-on so pricing matches card vs bank rates (same model as covering fees on donations).
+                      </p>
+                      <ul className="mt-3 space-y-2 text-sm text-gray-600 dark:text-gray-300">
+                        <li className="flex flex-wrap justify-between gap-2 border-b border-gray-100 pb-2 dark:border-gray-700">
+                          <span>Believe Points credit</span>
+                          <span className="font-semibold tabular-nums text-gray-900 dark:text-white">
+                            {formatCurrency(feePreview.base_gift_usd)}
+                          </span>
+                        </li>
+                        <li className="flex flex-wrap justify-between gap-2 border-b border-gray-100 pb-2 dark:border-gray-700">
+                          <span>Est. processing add-on ({paymentRail === "bank" ? "ACH" : "card"})</span>
+                          <span className="font-semibold tabular-nums text-gray-900 dark:text-white">
+                            {formatCurrency(feePreview.processing_fee_estimate)}
+                          </span>
+                        </li>
+                        <li className="flex flex-wrap justify-between gap-2 pt-0.5">
+                          <span className="font-medium text-gray-900 dark:text-white">Total charged in Stripe</span>
+                          <span className="text-lg font-bold tabular-nums text-gray-900 dark:text-white">
+                            {formatCurrency(feePreview.checkout_total_usd)}
+                          </span>
+                        </li>
+                      </ul>
+                      <p className="mt-3 text-xs text-gray-500 dark:text-gray-400">
+                        Modeled Stripe fee on that {paymentRail === "bank" ? "ACH" : "card"} charge (informational):{" "}
+                        <span className="font-medium tabular-nums text-gray-700 dark:text-gray-300">
+                          {formatCurrency(
+                            paymentRail === "bank"
+                              ? feePreview.ach_processing_fee_usd
+                              : feePreview.card_processing_fee_usd,
+                          )}
+                        </span>
+                        .
+                      </p>
+                      {paymentRail === "bank" && (
+                        <div className="mt-3 flex items-start gap-3 rounded-lg border border-blue-200 bg-gradient-to-r from-blue-50 to-indigo-50 px-3 py-3 text-sm dark:border-blue-800 dark:from-blue-950/30 dark:to-indigo-950/30">
+                          <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-500">
+                            <Gift className="h-4 w-4 text-white" />
+                          </div>
+                          <div>
+                            <p className="font-medium text-gray-900 dark:text-white">Reward points with bank payment</p>
+                            <p className="text-gray-600 dark:text-gray-300">
+                              For this amount you&apos;ll earn{" "}
+                              <span className="font-semibold tabular-nums text-blue-800 dark:text-blue-200">
+                                {feePreview.bank_reward_points.toLocaleString("en-US", {
+                                  minimumFractionDigits: 0,
+                                  maximumFractionDigits: 2,
+                                })}
+                              </span>{" "}
+                              reward points ($1 = 0.10 reward points). These credit your Merchant Hub balance. Card
+                              checkout does not include this bonus.
+                            </p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {validPurchaseAmount && (
+                    <div className="flex flex-col gap-4 rounded-lg border border-purple-200 bg-gradient-to-r from-purple-50 to-pink-50 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5 dark:border-purple-800 dark:from-purple-950/25 dark:to-pink-950/25">
+                      <div className="min-w-0">
+                        <p className="text-xs font-medium uppercase tracking-wide text-purple-700 dark:text-purple-300">
+                          You receive
+                        </p>
+                        <p className="mt-1 break-words text-2xl font-bold tracking-tight text-purple-800 tabular-nums dark:text-purple-200 sm:text-3xl">
+                          {formatPoints(amountNum)}{" "}
+                          <span className="text-base font-semibold text-purple-600/90 dark:text-purple-300/90 sm:text-lg">
+                            Believe Points
+                          </span>
+                        </p>
+                        <p className="mt-1 text-xs text-gray-600 dark:text-gray-300 sm:text-sm">
+                          1:1 with the amount you enter above (points credit; checkout total may be higher with fees)
+                        </p>
+                      </div>
+                      <div className="flex h-12 w-12 shrink-0 items-center justify-center self-start rounded-full bg-purple-500 text-white shadow-sm sm:h-14 sm:w-14 sm:self-center">
+                        <Coins className="h-6 w-6 sm:h-7 sm:w-7" />
                       </div>
                     </div>
                   )}
 
-                  <Separator />
-
-                  {/* Information */}
-                  <div className="bg-muted/50 rounded-lg p-4 space-y-2">
-                    <h4 className="text-sm font-semibold">How it works:</h4>
-                    <ul className="text-sm text-muted-foreground space-y-1 list-disc list-inside">
-                      <li>1 Believe Point = $1 USD (1:1 ratio)</li>
-                      <li>Payment is processed securely through Stripe</li>
-                      <li>Points are added to your account immediately after payment</li>
-                      <li>You can use Believe Points to support causes and organizations</li>
+                  <div className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-600 dark:bg-gray-800/80">
+                    <h4 className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-white">
+                      <CircleHelp className="h-4 w-4 shrink-0 text-gray-400 dark:text-gray-500" />
+                      Quick facts
+                    </h4>
+                    <ul className="mt-3 grid gap-2 text-xs text-gray-600 sm:text-sm dark:text-gray-300">
+                      <li className="flex gap-2 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 dark:border-gray-700 dark:bg-gray-900/40">
+                        <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-purple-500 dark:text-purple-400" />
+                        <span>1 Believe Point = $1 USD for donations and eligible purchases on Believe.</span>
+                      </li>
+                      <li className="flex gap-2 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 dark:border-gray-700 dark:bg-gray-900/40">
+                        <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-purple-500 dark:text-purple-400" />
+                        <span>
+                          Bank (ACH) usually has a lower add-on than card; bank checkout earns Merchant Hub reward points
+                          ($1 = 0.10) on the points amount.
+                        </span>
+                      </li>
+                      <li className="flex gap-2 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 dark:border-gray-700 dark:bg-gray-900/40">
+                        <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-purple-500 dark:text-purple-400" />
+                        <span>Points usually credit when Stripe confirms; bank debits can take a few business days.</span>
+                      </li>
                     </ul>
                   </div>
+                </div>
 
-                  <Separator />
-
-                  {/* Points Policy Acceptance */}
+                <div className="space-y-5 p-4 sm:p-6">
+                  <div>
+                    <p className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                      Step 3
+                    </p>
+                    <p className="mt-1 text-base font-semibold text-gray-900 dark:text-white">Agree &amp; pay</p>
+                  </div>
                   <div className="space-y-3">
-                    <div className="flex items-start gap-3 p-4 border rounded-lg bg-muted/30">
+                    <div className="flex items-start gap-3 rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-gray-600 dark:bg-gray-900/40">
                       <Checkbox
                         id="policy-accept"
                         checked={formData.policyAccepted}
@@ -545,17 +685,20 @@ export default function BelievePointsIndex({
                         className="mt-1 size-5 min-h-5 min-w-5"
                       />
                       <div className="flex-1 space-y-2">
-                        <Label htmlFor="policy-accept" className="text-sm font-medium cursor-pointer">
+                        <Label
+                          htmlFor="policy-accept"
+                          className="cursor-pointer text-sm font-medium text-gray-900 dark:text-white"
+                        >
                           I have read and agree to the Believe Points Policy
                         </Label>
-                        <div className="text-xs text-muted-foreground space-y-1">
+                        <div className="space-y-1 text-xs text-gray-600 dark:text-gray-300">
                           <p className="font-semibold">Summary:</p>
                           <p>Points are platform credits used only inside Believe. They are not money, cannot be cashed out, and never interact with wallets or bank accounts. Limited refunds available within 7 days for unused points only.</p>
                           <Dialog open={policyDialogOpen} onOpenChange={setPolicyDialogOpen}>
                             <DialogTrigger asChild>
                               <button
                                 type="button"
-                                className="text-primary hover:underline font-medium mt-1"
+                                className="mt-1 font-medium text-purple-600 hover:underline dark:text-purple-400"
                                 onClick={(e) => {
                                   e.preventDefault()
                                   setPolicyDialogOpen(true)
@@ -565,7 +708,7 @@ export default function BelievePointsIndex({
                                 Read Full Policy
                               </button>
                             </DialogTrigger>
-                            <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
+                            <DialogContent className="max-h-[85vh] w-[calc(100vw-1.5rem)] max-w-[calc(100vw-1.5rem)] overflow-y-auto p-4 sm:max-w-3xl sm:p-6">
                               <DialogHeader>
                                 <DialogTitle>Believe Platform – Points Policy</DialogTitle>
                                 <DialogDescription>
@@ -600,7 +743,7 @@ export default function BelievePointsIndex({
                                   <p className="text-muted-foreground font-semibold">Points cannot:</p>
                                   <ul className="text-muted-foreground space-y-1 list-disc list-inside">
                                     <li>Be purchased using wallet balances</li>
-                                    <li>Be funded via ACH, debit cards, virtual accounts, or Bridge</li>
+                                    <li>Be funded via Believe wallet balances, virtual accounts, or Bridge (purchases on this page use Stripe card or US bank)</li>
                                     <li>Be transferred from or to the Believe wallet system</li>
                                   </ul>
                                 </div>
@@ -740,48 +883,200 @@ export default function BelievePointsIndex({
                   <Button
                     type="submit"
                     disabled={isSubmitting || !formData.amount || !!errors.amount || !formData.policyAccepted}
-                    className="w-full h-12 text-lg"
+                    className="h-auto min-h-12 w-full rounded-lg bg-purple-600 px-4 py-3 text-base font-semibold leading-snug text-white shadow-sm hover:bg-purple-700 disabled:opacity-50 dark:bg-purple-600 dark:hover:bg-purple-500 sm:py-3.5"
                     size="lg"
                   >
                     {isSubmitting ? (
                       <>
-                        <span className="animate-spin mr-2">⏳</span>
-                        Processing...
+                        <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                        Processing…
                       </>
                     ) : (
                       <>
                         Purchase Believe Points
-                        <ArrowRight className="h-5 w-5 ml-2" />
+                        <ArrowRight className="ml-2 h-5 w-5" />
                       </>
                     )}
+                  </Button>
+                </div>
+                </form>
+              </CardContent>
+            </Card>
+
+            <Card className="border border-dashed border-gray-300 bg-gray-50/80 dark:border-gray-600 dark:bg-gray-800/50">
+              <CardHeader className="pb-3">
+                <div className="flex items-center gap-2">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-300">
+                    <TrendingUp className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <CardTitle className="text-base text-gray-900 dark:text-white">Auto top-up</CardTitle>
+                    <CardDescription className="text-xs leading-snug text-gray-600 dark:text-gray-300">
+                      Optional — we charge your saved card when you drop below a threshold (1:1 points). Max once per hour.
+                    </CardDescription>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4 pt-0">
+                <p className="text-xs leading-relaxed text-gray-600 dark:text-gray-300">
+                  If a charge shows <span className="font-medium text-gray-900 dark:text-white">failed</span>, use{" "}
+                  <span className="font-medium text-gray-900 dark:text-white">Replace saved card</span> so your bank can
+                  approve off-session payments (e.g. 3D Secure).
+                </p>
+                <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="w-full justify-center sm:w-auto"
+                    onClick={() => router.visit(route("believe-points.auto-replenish.setup"))}
+                  >
+                    <CreditCard className="mr-2 h-4 w-4 shrink-0" />
+                    {autoReplenish.has_payment_method ? "Replace saved card" : "Add saved card"}
+                  </Button>
+                  {autoReplenish.has_payment_method && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="w-full text-destructive sm:w-auto"
+                      onClick={() => {
+                        if (!confirm("Remove saved card and turn off auto top-up?")) return
+                        router.post(route("believe-points.auto-replenish.remove-payment"), {}, { preserveScroll: true })
+                      }}
+                    >
+                      Remove card
+                    </Button>
+                  )}
+                </div>
+                {autoReplenish.has_payment_method && (
+                  <p className="text-sm text-gray-600 dark:text-gray-300">
+                    Saved:{" "}
+                    <span className="font-medium text-gray-900 dark:text-white">
+                      {(autoReplenish.card_brand || "Card").toUpperCase()} ···· {autoReplenish.card_last4 || "????"}
+                    </span>
+                  </p>
+                )}
+                {autoReplenish.last_replenish_at && (
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    Last top-up: {new Date(autoReplenish.last_replenish_at).toLocaleString()}
+                  </p>
+                )}
+                <form onSubmit={saveAutoReplenish} className="space-y-4 border-t border-gray-200 pt-4 dark:border-gray-700">
+                  <div className="flex items-start gap-3 rounded-lg border border-gray-200 bg-white p-3 dark:border-gray-600 dark:bg-gray-800/60">
+                    <Checkbox
+                      id="ar-enabled"
+                      checked={arState.enabled}
+                      onCheckedChange={(checked) => setArState((s) => ({ ...s, enabled: checked === true }))}
+                      className="mt-1 size-5 min-h-5 min-w-5"
+                    />
+                    <Label htmlFor="ar-enabled" className="cursor-pointer text-sm font-medium leading-snug">
+                      Enable automatic top-up when my balance is at or below the threshold
+                    </Label>
+                  </div>
+                  {arState.enabled && (
+                    <>
+                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                        <div className="space-y-2">
+                          <Label htmlFor="ar-threshold">When balance ≤</Label>
+                          <div className="relative">
+                            <DollarSign className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500 dark:text-gray-400" />
+                            <Input
+                              id="ar-threshold"
+                              className="h-11 border-2 border-gray-300 bg-white pl-9 font-medium tabular-nums text-gray-900 shadow-sm placeholder:text-gray-400 focus-visible:border-purple-500 focus-visible:ring-2 focus-visible:ring-purple-500/25 dark:border-gray-500 dark:bg-gray-950 dark:text-white dark:placeholder:text-gray-500 dark:focus-visible:border-purple-400 dark:focus-visible:ring-purple-400/30"
+                              value={arState.threshold}
+                              onChange={(e) =>
+                                setArState((s) => ({ ...s, threshold: e.target.value.replace(/[^0-9.]/g, "") }))
+                              }
+                              placeholder="e.g. 25"
+                              disabled={arSubmitting}
+                            />
+                          </div>
+                        </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="ar-amount">Top-up amount</Label>
+                          <div className="relative">
+                            <DollarSign className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500 dark:text-gray-400" />
+                            <Input
+                              id="ar-amount"
+                              className="h-11 border-2 border-gray-300 bg-white pl-9 font-medium tabular-nums text-gray-900 shadow-sm placeholder:text-gray-400 focus-visible:border-purple-500 focus-visible:ring-2 focus-visible:ring-purple-500/25 dark:border-gray-500 dark:bg-gray-950 dark:text-white dark:placeholder:text-gray-500 dark:focus-visible:border-purple-400 dark:focus-visible:ring-purple-400/30"
+                              value={arState.amount}
+                              onChange={(e) =>
+                                setArState((s) => ({ ...s, amount: e.target.value.replace(/[^0-9.]/g, "") }))
+                              }
+                              placeholder="e.g. 50"
+                              disabled={arSubmitting}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                        Between {formatCurrency(minPurchaseAmount)} and {formatCurrency(maxPurchaseAmount)}.
+                      </p>
+                      <div className="flex items-start gap-3 rounded-lg border border-gray-200 bg-white p-3 dark:border-gray-600 dark:bg-gray-800/60">
+                        <Checkbox
+                          id="ar-policy"
+                          checked={arState.policyAccepted}
+                          onCheckedChange={(checked) =>
+                            setArState((s) => ({ ...s, policyAccepted: checked === true }))
+                          }
+                          className="mt-1 size-5 min-h-5 min-w-5"
+                        />
+                        <Label htmlFor="ar-policy" className="cursor-pointer text-sm leading-snug">
+                          I authorize Believe to charge my saved card for automatic top-ups. Failed charges turn auto
+                          top-up off until I add a card again.
+                        </Label>
+                      </div>
+                    </>
+                  )}
+                  <Button
+                    type="submit"
+                    disabled={arSubmitting}
+                    variant="secondary"
+                    className="h-auto min-h-10 w-full rounded-lg px-4 py-2.5 sm:w-auto"
+                  >
+                    {arSubmitting ? "Saving…" : "Save auto top-up settings"}
                   </Button>
                 </form>
               </CardContent>
             </Card>
           </div>
 
-          {/* Purchase History */}
-          <div className="lg:col-span-1">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <History className="h-5 w-5" />
-                  Purchase History
+          <aside className="min-w-0 lg:col-span-4 lg:sticky lg:top-6 lg:self-start">
+            <Card className="gap-0 overflow-hidden rounded-2xl border border-gray-200 bg-white px-0 py-0 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+              <CardHeader className="border-b border-gray-200 px-4 pb-4 pt-5 dark:border-gray-700 sm:px-6 sm:pt-6">
+                <CardTitle className="flex items-center gap-2 text-lg text-gray-900 dark:text-white">
+                  <History className="h-5 w-5 text-gray-400 dark:text-gray-500" />
+                  Recent purchases
                 </CardTitle>
+                <CardDescription className="text-gray-600 dark:text-gray-300">
+                  Your latest Believe Point purchases
+                </CardDescription>
               </CardHeader>
-              <CardContent>
+              <CardContent className="px-4 pb-5 pt-4 sm:px-6 sm:pb-6 sm:pt-5">
                 {purchases.data.length === 0 ? (
-                  <p className="text-sm text-muted-foreground text-center py-8">
-                    No purchases yet
-                  </p>
+                  <div className="flex flex-col items-center justify-center py-10 text-center">
+                    <div className="mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-purple-100 dark:bg-purple-950/50">
+                      <Coins className="h-7 w-7 text-purple-600 dark:text-purple-400" />
+                    </div>
+                    <p className="text-sm font-medium text-gray-900 dark:text-white">No purchases yet</p>
+                    <p className="mt-1 max-w-[220px] text-xs text-gray-500 dark:text-gray-400">
+                      Complete a purchase to see it listed here.
+                    </p>
+                  </div>
                 ) : (
-                  <div className="space-y-4">
+                  <ul className="space-y-2">
                     {purchases.data.map((purchase) => (
-                      <div key={purchase.id} className="border rounded-lg p-3 space-y-2">
-                        <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <li
+                        key={purchase.id}
+                        className="rounded-lg border border-gray-200 bg-white p-3 transition-colors hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:hover:bg-gray-800/80"
+                      >
+                        <div className="flex flex-wrap items-center justify-between gap-2">
                           <div className="flex items-center gap-2">
-                            <Coins className="h-4 w-4 text-primary" />
-                            <span className="font-semibold">{formatPoints(purchase.points)} Points</span>
+                            <Coins className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+                            <span className="font-semibold text-gray-900 dark:text-white">
+                              {formatPoints(purchase.points)} Points
+                            </span>
                             {purchase.source === "auto_replenish" && (
                               <Badge variant="outline" className="text-xs">
                                 Auto
@@ -790,26 +1085,27 @@ export default function BelievePointsIndex({
                           </div>
                           {getStatusBadge(purchase.status)}
                         </div>
-                        <div className="flex items-center justify-between text-sm">
-                          <span className="text-muted-foreground">{formatCurrency(purchase.amount)}</span>
-                          <span className="text-muted-foreground">
+                        <div className="flex items-center justify-between text-sm text-gray-600 dark:text-gray-300">
+                          <span>{formatCurrency(purchase.amount)}</span>
+                          <span>
                             {new Date(purchase.created_at).toLocaleDateString()}
                           </span>
                         </div>
                         {purchase.status === "failed" && purchase.failure_message && (
-                          <p className="text-xs text-destructive leading-snug">
+                          <p className="mt-2 text-xs leading-snug text-destructive">
                             {purchase.failure_message}
                             {purchase.failure_code ? ` (${purchase.failure_code})` : ""}
                           </p>
                         )}
-                      </div>
+                      </li>
                     ))}
-                  </div>
+                  </ul>
                 )}
               </CardContent>
             </Card>
-          </div>
+          </aside>
         </div>
+      </div>
     </>
   )
 
@@ -828,11 +1124,12 @@ export default function BelievePointsIndex({
   return (
     <AppSidebarLayout>
       <Head title="Believe Points" />
-      <div className="m-3 md:m-6 space-y-6">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Believe Points</h1>
-          <p className="text-sm text-muted-foreground mt-2">
-            Purchase Believe Points to support causes you care about. 1 Believe Point = $1 USD
+      <div className="m-3 min-w-0 space-y-6 md:m-6">
+        <div className="mx-auto max-w-6xl border-b border-gray-200 pb-5 dark:border-gray-700 sm:pb-6">
+          <h1 className="text-2xl font-bold tracking-tight text-gray-900 dark:text-white sm:text-3xl">Believe Points</h1>
+          <p className="mt-2 max-w-2xl text-sm leading-relaxed text-gray-600 dark:text-gray-300">
+            Buy platform credits (1 Point = $1 USD) for donations and eligible purchases. Card or bank checkout via
+            Stripe.
           </p>
         </div>
         {content}

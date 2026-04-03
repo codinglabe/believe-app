@@ -60,7 +60,7 @@ class CareAlliancePublicPageService
     {
         $desc = $alliance->description ?? '';
 
-        // Toggle-favorite POST id: Excel row id, else hub organizations.id; else care_alliances.id (controller resolves hub).
+        // Excel row id still used for favorite lookup (legacy rows keyed by excel_data_id / org).
         $excelIdForToggle = null;
         if ($creatorOrg && $creatorOrg->ein) {
             $excelIdForToggle = ExcelData::query()
@@ -69,7 +69,12 @@ class CareAlliancePublicPageService
                 ->orderByDesc('id')
                 ->value('id');
         }
-        $toggleFavoriteId = $excelIdForToggle ?? ($creatorOrg?->id) ?? (int) $alliance->id;
+        /**
+         * Follow POST must use care_alliances.id + context "alliance". Using context "organization" with the hub's
+         * organizations.id fails: OrganizationController looks up approved orgs with excludingCareAllianceHubs(), and
+         * hub nonprofits are excluded → 404 "page not found" on follow.
+         */
+        $toggleFavoriteId = (int) $alliance->id;
 
         // Favorites row may key off hub org id, Excel-linked org id, or excel_data_id — match what toggleFavorite stores.
         $orgIdsForFavoriteLookup = [];
@@ -117,15 +122,11 @@ class CareAlliancePublicPageService
         }
 
         $toggleFavoriteContext = 'alliance';
-        if ($excelIdForToggle !== null) {
-            $toggleFavoriteContext = 'excel';
-        } elseif ($creatorOrg !== null) {
-            $toggleFavoriteContext = 'organization';
-        }
 
         return [
-            'id' => $toggleFavoriteId,
-            /** Explicit id for POST /organizations/{id}/toggle-favorite (same as id here; kept for clarity). */
+            /** Hub org id when present (display / compatibility); not used for toggle-favorite URL (see toggle_favorite_id). */
+            'id' => $creatorOrg !== null ? (int) $creatorOrg->id : (int) $alliance->id,
+            /** POST /organizations/{id}/toggle-favorite — always care_alliances.id with toggle_favorite_context=alliance. */
             'toggle_favorite_id' => $toggleFavoriteId,
             /**
              * Disambiguates numeric id vs excel_data / organizations / care_alliances primary keys.

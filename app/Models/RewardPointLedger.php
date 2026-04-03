@@ -28,7 +28,7 @@ class RewardPointLedger extends Model
      * @var array<string, string>
      */
     protected $casts = [
-        'points' => 'integer',
+        'points' => 'decimal:2',
         'metadata' => 'array',
     ];
 
@@ -42,20 +42,15 @@ class RewardPointLedger extends Model
 
     /**
      * Create a credit entry (points added).
-     * 
-     * @param int $userId
-     * @param string $source (e.g., 'nonprofit_assessment')
-     * @param int|null $referenceId (e.g., assessment_id)
-     * @param int $points
-     * @param string|null $description
-     * @param array|null $metadata
-     * @return self
+     *
+     * @param  string  $source  (e.g., 'nonprofit_assessment')
+     * @param  int|null  $referenceId  (e.g., assessment_id)
      */
     public static function createCredit(
         int $userId,
         string $source,
         ?int $referenceId,
-        int $points,
+        int|float $points,
         ?string $description = null,
         ?array $metadata = null
     ): self {
@@ -64,7 +59,7 @@ class RewardPointLedger extends Model
             'source' => $source,
             'type' => 'credit',
             'reference_id' => $referenceId,
-            'points' => $points,
+            'points' => round((float) $points, 2),
             'description' => $description,
             'metadata' => $metadata,
         ]);
@@ -72,20 +67,15 @@ class RewardPointLedger extends Model
 
     /**
      * Create a debit entry (points deducted).
-     * 
-     * @param int $userId
-     * @param string $source (e.g., 'merchant_reward_redemption')
-     * @param int|null $referenceId (e.g., redemption_id)
-     * @param int $points
-     * @param string|null $description
-     * @param array|null $metadata
-     * @return self
+     *
+     * @param  string  $source  (e.g., 'merchant_reward_redemption')
+     * @param  int|null  $referenceId  (e.g., redemption_id)
      */
     public static function createDebit(
         int $userId,
         string $source,
         ?int $referenceId,
-        int $points,
+        int|float $points,
         ?string $description = null,
         ?array $metadata = null
     ): self {
@@ -94,7 +84,7 @@ class RewardPointLedger extends Model
             'source' => $source,
             'type' => 'debit',
             'reference_id' => $referenceId,
-            'points' => $points,
+            'points' => round((float) $points, 2),
             'description' => $description,
             'metadata' => $metadata,
         ]);

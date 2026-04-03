@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Models\BelievePointPurchase;
 use App\Models\CareAlliance;
 use App\Models\CareAllianceDonation;
 use App\Models\Donation;
@@ -18,6 +19,8 @@ use App\Models\Raffle;
 use App\Models\ServiceOrder;
 use App\Models\Transaction;
 use App\Models\User;
+use App\Services\Admin\LedgerListFilters;
+use App\Services\Admin\UnifiedLedgerPresenter;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\RedirectResponse;
@@ -25,12 +28,23 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 use Inertia\Inertia;
 use Inertia\Response;
+use Inertia\Support\Header;
 use Laravel\Cashier\Cashier;
 
 class TransactionLedgerController extends Controller
 {
+    public function __construct(
+        private readonly UnifiedLedgerPresenter $unifiedLedgerPresenter,
+    ) {}
+
     public function index(Request $request): Response
     {
+        if ($this->isLedgerOrgPickerPartialOnly($request)) {
+            return Inertia::render('admin/transactions/ledger', [
+                'ledgerOrgPicker' => $this->buildLedgerOrgPickerPayload($request),
+            ]);
+        }
+
         $query = Transaction::query()->with(['user:id,name,email']);
 
         if ($request->filled('search')) {
@@ -61,6 +75,25 @@ class TransactionLedgerController extends Controller
             $query->where('status', $request->string('status'));
         }
 
+        $orgId = $request->integer('organization_id');
+        // Same eligibility as /donate: approved nonprofits, excluding Care Alliance hub org rows.
+        $organizationFilterActive = $orgId > 0 && Organization::query()
+            ->whereKey($orgId)
+            ->where('registration_status', 'approved')
+            ->excludingCareAllianceHubs()
+            ->exists();
+        if ($organizationFilterActive) {
+            LedgerListFilters::applyOrganization($query, $orgId);
+        }
+
+        if ($request->filled('module') && $request->string('module') !== 'all') {
+            LedgerListFilters::applyModule($query, $request->string('module')->toString());
+        }
+
+        if ($request->filled('period') && $request->string('period') !== 'all') {
+            LedgerListFilters::applyPeriod($query, $request->string('period')->toString());
+        }
+
         $perPage = $request->integer('per_page', 10);
         if (! in_array($perPage, [10, 25, 50, 100], true)) {
             $perPage = 10;
@@ -79,6 +112,13 @@ class TransactionLedgerController extends Controller
                 if ($donationPayload !== null && ! $this->shouldKeepStrongPolymorphicOnlyForRelated($t)) {
                     $related = $this->overlayLedgerRelatedWithDonation($t, $related, $donationPayload);
                 }
+
+                $ledgerReport = $this->buildLedgerReportRow($t, $donationPayload);
+                $unifiedRelated = [
+                    'related_kind' => $related['related_kind'],
+                    'related_label' => $related['related_label'],
+                    'related_display_name' => $related['related_display_name'],
+                ];
 
                 return [
                     'id' => $t->id,
@@ -105,7 +145,14 @@ class TransactionLedgerController extends Controller
                         'email' => $t->user->email,
                     ] : null,
                     'meta' => $t->meta,
-                    'ledger_report' => $this->buildLedgerReportRow($t, $donationPayload),
+                    'ledger_report' => $ledgerReport,
+                    'unified_ledger' => $this->unifiedLedgerPresenter->present(
+                        $t,
+                        $ledgerReport,
+                        $donationPayload,
+                        $donationLedgerPerspective,
+                        $unifiedRelated,
+                    ),
                 ];
             });
 
@@ -135,7 +182,19 @@ class TransactionLedgerController extends Controller
                 'type' => $request->filled('type') ? $request->string('type')->toString() : 'all',
                 'status' => $request->filled('status') ? $request->string('status')->toString() : 'all',
                 'per_page' => $perPage,
+                'organization_id' => $organizationFilterActive ? $orgId : null,
+                'module' => $request->filled('module') ? $request->string('module')->toString() : 'all',
+                'period' => $request->filled('period') ? $request->string('period')->toString() : 'all',
             ],
+            'moduleOptions' => LedgerListFilters::moduleOptions(),
+            'ledgerOrganizationInitial' => $organizationFilterActive
+                ? [
+                    [
+                        'value' => (string) $orgId,
+                        'label' => Organization::query()->whereKey($orgId)->value('name') ?? 'Organization #'.$orgId,
+                    ],
+                ]
+                : [],
             'typeOptions' => [
                 'deposit',
                 'withdrawal',
@@ -156,6 +215,63 @@ class TransactionLedgerController extends Controller
                 'rejected',
             ],
         ]);
+    }
+
+    /**
+     * Inertia partial reload: only `ledgerOrgPicker` — skips the heavy transaction query.
+     */
+    private function isLedgerOrgPickerPartialOnly(Request $request): bool
+    {
+        if (! $request->header(Header::INERTIA)) {
+            return false;
+        }
+        $only = $request->header(Header::PARTIAL_ONLY, '');
+        if ($only === '') {
+            return false;
+        }
+        $props = array_values(array_filter(array_map('trim', explode(',', $only))));
+
+        return $props === ['ledgerOrgPicker'];
+    }
+
+    /**
+     * @return array{items: array<int, array{value: string, label: string}>, has_more: bool, page: int, search: string}
+     */
+    private function buildLedgerOrgPickerPayload(Request $request): array
+    {
+        $perPage = 20;
+        $page = max(1, $request->integer('org_picker_page', 1));
+        $search = $request->string('org_picker_q')->trim();
+
+        $orgQuery = Organization::query()
+            ->where('registration_status', 'approved')
+            ->excludingCareAllianceHubs()
+            ->orderBy('name');
+
+        if ($search !== '') {
+            $orgQuery->where('name', 'like', '%'.$search.'%');
+        }
+
+        $paginator = $orgQuery->paginate($perPage, ['id', 'name'], 'page', $page);
+
+        $items = $paginator->getCollection()
+            ->map(fn (Organization $o) => [
+                'value' => (string) $o->id,
+                'label' => $o->name,
+            ])
+            ->values()
+            ->all();
+
+        if ($page === 1) {
+            array_unshift($items, ['value' => 'all', 'label' => 'All organizations']);
+        }
+
+        return [
+            'items' => $items,
+            'has_more' => $paginator->hasMorePages(),
+            'page' => $page,
+            'search' => $search,
+        ];
     }
 
     public function show(Transaction $transaction): Response
@@ -188,6 +304,14 @@ class TransactionLedgerController extends Controller
             $related = $this->overlayLedgerRelatedWithDonation($t, $related, $donationLedger);
         }
 
+        $ledgerReportRow = $this->buildLedgerReportRow($t, $donationLedger);
+        $donationPerspective = $this->resolveDonationLedgerPerspective($t, $donationLedger);
+        $unifiedRelated = [
+            'related_kind' => $related['related_kind'],
+            'related_label' => $related['related_label'],
+            'related_display_name' => $related['related_display_name'],
+        ];
+
         return [
             'id' => $t->id,
             'transaction_id' => $t->transaction_id,
@@ -216,9 +340,16 @@ class TransactionLedgerController extends Controller
             'stripe' => $this->buildStripePresentation($t),
             'donation' => $donationLedger,
             'donation_badge_label' => $this->resolveDonationBadgeLabel($t, $donationLedger),
-            'donation_ledger_perspective' => $this->resolveDonationLedgerPerspective($t, $donationLedger),
+            'donation_ledger_perspective' => $donationPerspective,
             'ledger_actor_context' => $this->resolveLedgerActorContext($t, $donationLedger),
-            'ledger_report' => $this->buildLedgerReportRow($t, $donationLedger),
+            'ledger_report' => $ledgerReportRow,
+            'unified_ledger' => $this->unifiedLedgerPresenter->present(
+                $t,
+                $ledgerReportRow,
+                $donationLedger,
+                $donationPerspective,
+                $unifiedRelated,
+            ),
         ];
     }
 
@@ -289,7 +420,10 @@ class TransactionLedgerController extends Controller
             'status' => $d->status,
             'frequency' => $d->frequency,
             'amount_display' => $d->formatted_amount,
-            'amount_raw' => $d->amount,
+            'amount_raw' => (float) $d->amount,
+            'checkout_total' => $d->checkout_total !== null ? (float) $d->checkout_total : null,
+            'processing_fee_estimate' => $d->processing_fee_estimate !== null ? (float) $d->processing_fee_estimate : null,
+            'donor_covers_processing_fees' => (bool) $d->donor_covers_processing_fees,
             'payment_method' => $d->payment_method,
             'stripe_reference' => $rawRef !== '' ? $rawRef : null,
             'organization_id' => $d->organization_id ? (int) $d->organization_id : null,
@@ -414,6 +548,7 @@ class TransactionLedgerController extends Controller
             'Raffle',
             'MerchantHubOfferRedemption',
             'MerchantHubReferralReward',
+            'BelievePointPurchase',
         ], true);
     }
 
@@ -421,7 +556,7 @@ class TransactionLedgerController extends Controller
      * Donor vs recipient (and split) for Believe / Care Alliance donation ledger rows.
      *
      * @param  array<string, mixed>|null  $donationPayload
-     * @return string|null  donor|recipient_direct|recipient_split|alliance_fee|campaign
+     * @return string|null donor|recipient_direct|recipient_split|alliance_fee|campaign
      */
     private function resolveDonationLedgerPerspective(Transaction $t, ?array $donationPayload): ?string
     {
@@ -615,7 +750,7 @@ class TransactionLedgerController extends Controller
      */
     private function buildLedgerReportRow(Transaction $t, ?array $donationPayload): array
     {
-        $fin = $this->ledgerReportFinancials($t);
+        $fin = $this->ledgerReportFinancials($t, $donationPayload);
         $org = $this->ledgerReportOrganization($t, $donationPayload);
 
         $date = $t->processed_at ?? $t->created_at;
@@ -644,6 +779,14 @@ class TransactionLedgerController extends Controller
     {
         $meta = is_array($t->meta) ? $t->meta : [];
         $rt = $t->related_type ? ltrim((string) $t->related_type, '\\') : '';
+
+        if ($rt === BelievePointPurchase::class || str_ends_with($rt, 'BelievePointPurchase')) {
+            return 'believe_points_purchase';
+        }
+        if (($meta['source'] ?? '') === 'believe_points_purchase'
+            || ($meta['source'] ?? '') === 'believe_points_purchase_refund') {
+            return 'believe_points_purchase';
+        }
 
         if ($rt === CareAllianceDonation::class || str_ends_with($rt, 'CareAllianceDonation')) {
             return 'care_alliance_donation';
@@ -683,7 +826,49 @@ class TransactionLedgerController extends Controller
             return 'donation';
         }
 
-        return 'other';
+        if ($rt === Enrollment::class || str_ends_with($rt, 'Enrollment')) {
+            return 'enrollment';
+        }
+        if (! empty($meta['enrollment_id'])) {
+            return 'enrollment';
+        }
+
+        if ($rt === Plan::class || str_ends_with($rt, 'Plan')) {
+            return 'plan_subscription';
+        }
+        if (! empty($meta['wallet_plan_id']) || ($meta['type'] ?? '') === 'wallet_subscription') {
+            return 'wallet_plan_subscription';
+        }
+
+        if ($rt === GiftCard::class || str_ends_with($rt, 'GiftCard')) {
+            return 'gift_card';
+        }
+
+        if (! empty($meta['raffle_id']) || strtolower((string) $rt) === 'raffle'
+            || $rt === Raffle::class || str_ends_with($rt, 'Raffle')) {
+            return 'raffle';
+        }
+
+        if ($t->type === 'commission') {
+            return 'commission';
+        }
+
+        if ($t->type === 'wallet_subscription') {
+            return 'wallet_plan_subscription';
+        }
+        if (in_array($t->type, ['plan_subscription', 'kyc_fee'], true)) {
+            return 'plan_subscription';
+        }
+
+        if (! empty($meta['service_order_id'])) {
+            return 'service_order';
+        }
+
+        if (! empty($meta['order_id']) && empty($meta['donation_id']) && empty($meta['care_alliance_donation_id'])) {
+            return 'order';
+        }
+
+        return 'ledger_unclassified';
     }
 
     /**
@@ -705,9 +890,10 @@ class TransactionLedgerController extends Controller
     }
 
     /**
+     * @param  array<string, mixed>|null  $donationPayload
      * @return array{gross_amount: float, stripe_fee: float, bridge_fee: float, biu_fee: float, split_deduction: float, refund_amount: float, net_to_organization: float|null, payout_status: string|null}
      */
-    private function ledgerReportFinancials(Transaction $t): array
+    private function ledgerReportFinancials(Transaction $t, ?array $donationPayload = null): array
     {
         $meta = is_array($t->meta) ? $t->meta : [];
 
@@ -718,6 +904,7 @@ class TransactionLedgerController extends Controller
 
         $stripeFee = $this->ledgerMetaFloat($meta, [
             'stripe_fee', 'stripe_fee_amount', 'payment_processor_fee', 'processor_fee', 'stripe_processing_fee',
+            'processing_fee_estimate',
         ]);
         $bridgeFee = $this->ledgerMetaFloat($meta, ['bridge_fee', 'bridge_fee_amount', 'bridge_transaction_fee']);
         $biuFee = $this->ledgerMetaFloat($meta, ['biu_fee', 'biu_amount', 'biu', 'believe_biu_fee']);
@@ -747,6 +934,24 @@ class TransactionLedgerController extends Controller
             $net = $gross - $stripeFee - $bridgeFee - $biuFee - $splitDed;
         } else {
             $net = (float) $t->amount;
+        }
+
+        // Believe donation: fee + charge totals live on donations table — hydrate when row/meta omitted (older rows).
+        if ($donationPayload !== null && ($donationPayload['kind'] ?? '') === 'donation') {
+            $feeEst = (float) ($donationPayload['processing_fee_estimate'] ?? 0);
+            if ($feeEst > 0 && $stripeFee <= 0) {
+                $stripeFee = $feeEst;
+                $hasFeeBreakdown = $stripeFee > 0 || $bridgeFee > 0 || $biuFee > 0 || $splitDed > 0;
+            }
+            $giftToOrg = (float) ($donationPayload['amount_raw'] ?? $t->amount);
+            $checkout = $donationPayload['checkout_total'] ?? null;
+            if ($checkout !== null && (float) $checkout > 0) {
+                $gross = round((float) $checkout, 2);
+            } elseif ($feeEst > 0) {
+                $gross = round($giftToOrg + $feeEst, 2);
+            }
+            // Wallet credit on the ledger row is the intended gift amount (not charge − fee).
+            $net = round($giftToOrg, 2);
         }
 
         $payout = null;
@@ -1807,6 +2012,10 @@ class TransactionLedgerController extends Controller
             Donation::class => [
                 'kind' => 'Donation',
                 'purpose' => 'Believe donation (card, subscription, or points); may route through Care Alliance splits.',
+            ],
+            BelievePointPurchase::class => [
+                'kind' => 'Believe Points purchase',
+                'purpose' => 'Stripe card or ACH purchase of Believe Points wallet balance; links to gross checkout, fees, and points credited.',
             ],
             default => [
                 'kind' => class_basename($class),

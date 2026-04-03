@@ -10,11 +10,15 @@ class BelievePointPurchase extends Model
     protected $fillable = [
         'user_id',
         'amount',
+        'checkout_total',
+        'processing_fee_estimate',
         'points',
         'stripe_session_id',
         'stripe_payment_intent_id',
         'status',
         'source',
+        'payment_rail',
+        'reward_points_awarded',
         'failure_code',
         'failure_message',
         'stripe_refund_id',
@@ -24,8 +28,11 @@ class BelievePointPurchase extends Model
 
     protected $casts = [
         'amount' => 'decimal:2',
+        'checkout_total' => 'decimal:2',
+        'processing_fee_estimate' => 'decimal:2',
         'points' => 'decimal:2',
         'refunded_at' => 'datetime',
+        'reward_points_awarded' => 'decimal:2',
     ];
 
     /**

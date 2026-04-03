@@ -862,15 +862,21 @@ class User extends Authenticatable implements MustVerifyEmail
      * Add reward points to the user's balance and create a ledger entry.
      *
      * @param  string  $source  (e.g., 'nonprofit_assessment')
+     * @param  int|float  $points  Supports fractional reward points (e.g. 0.10 per $1 USD).
      * @param  int|null  $referenceId  (e.g., assessment_id)
      */
     public function addRewardPoints(
-        int $points,
+        int|float $points,
         string $source,
         ?int $referenceId = null,
         ?string $description = null,
         ?array $metadata = null
     ): void {
+        $points = round((float) $points, 2);
+        if ($points <= 0) {
+            return;
+        }
+
         $this->increment('reward_points', $points);
 
         RewardPointLedger::createCredit(
@@ -891,13 +897,19 @@ class User extends Authenticatable implements MustVerifyEmail
      * @return bool Returns true if deduction was successful, false if insufficient points
      */
     public function deductRewardPoints(
-        int $points,
+        int|float $points,
         string $source,
         ?int $referenceId = null,
         ?string $description = null,
         ?array $metadata = null
     ): bool {
-        if ($this->reward_points < $points) {
+        $points = round((float) $points, 2);
+        if ($points <= 0) {
+            return true;
+        }
+
+        $balance = round((float) ($this->reward_points ?? 0), 2);
+        if ($balance < $points) {
             return false;
         }
 
@@ -918,9 +930,9 @@ class User extends Authenticatable implements MustVerifyEmail
     /**
      * Get the current reward points balance of the user.
      */
-    public function currentRewardPoints(): int
+    public function currentRewardPoints(): float
     {
-        return (int) ($this->reward_points ?? 0);
+        return round((float) ($this->reward_points ?? 0), 2);
     }
 
     /**
