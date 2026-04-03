@@ -89,7 +89,10 @@ const sortOptions = [
 export default function ServiceHubIndex() {
   const pageProps = usePage<PageProps>().props as any
   const { gigs, categories, favoriteIds, totalUnread: initialUnreadCount = 0, filters: initialFilters } = pageProps
-  const isAdmin = pageProps?.auth?.user?.role === "admin"
+  const authUser = pageProps?.auth?.user as { role?: string; service_seller_profile?: unknown } | undefined
+  const isAdmin = authUser?.role === "admin"
+  const isLoggedIn = !!authUser
+  const isServiceHubSeller = !!authUser?.service_seller_profile
 
   const [searchQuery, setSearchQuery] = useState(initialFilters.search || "")
   const [selectedCategory, setSelectedCategory] = useState(initialFilters.category || "all")
@@ -241,14 +244,16 @@ export default function ServiceHubIndex() {
 
               {/* Desktop Navigation */}
               <div className="hidden md:flex items-center gap-2">
-                {!isAdmin && (
+                {!isAdmin && isLoggedIn && (
+                  <Link href="/service-hub/my-orders">
+                    <Button variant="ghost" size="sm" className="gap-2">
+                      <Package className="h-4 w-4" />
+                      <span className="hidden lg:inline">My Orders</span>
+                    </Button>
+                  </Link>
+                )}
+                {!isAdmin && isServiceHubSeller && (
                   <>
-                    <Link href="/service-hub/my-orders">
-                      <Button variant="ghost" size="sm" className="gap-2">
-                        <Package className="h-4 w-4" />
-                        <span className="hidden lg:inline">My Orders</span>
-                      </Button>
-                    </Link>
                     <Link href="/service-hub/seller-dashboard">
                       <Button variant="ghost" size="sm" className="gap-2">
                         <BarChart3 className="h-4 w-4" />
@@ -277,30 +282,36 @@ export default function ServiceHubIndex() {
             </div>
 
             {/* Mobile Navigation */}
-            {isMobileMenuOpen && !isAdmin && (
+            {isMobileMenuOpen && !isAdmin && (isLoggedIn || isServiceHubSeller) && (
               <motion.div
                 initial={{ opacity: 0, y: -10 }}
                 animate={{ opacity: 1, y: 0 }}
                 className="md:hidden flex flex-col gap-2 mt-4 pt-4 border-t"
               >
-                <Link href="/service-hub/my-orders" className="w-full">
-                  <Button variant="outline" className="w-full gap-2 justify-start bg-transparent">
-                    <Package className="h-4 w-4" />
-                    My Orders
-                  </Button>
-                </Link>
-                <Link href="/service-hub/seller-dashboard" className="w-full">
-                  <Button variant="outline" className="w-full gap-2 justify-start bg-transparent">
-                    <BarChart3 className="h-4 w-4" />
-                    Seller Dashboard
-                  </Button>
-                </Link>
-                <Link href="/service-hub/seller-orders" className="w-full">
-                  <Button variant="outline" className="w-full gap-2 justify-start bg-transparent">
-                    <ShoppingBag className="h-4 w-4" />
-                    My Sales
-                  </Button>
-                </Link>
+                {isLoggedIn && (
+                  <Link href="/service-hub/my-orders" className="w-full">
+                    <Button variant="outline" className="w-full gap-2 justify-start bg-transparent">
+                      <Package className="h-4 w-4" />
+                      My Orders
+                    </Button>
+                  </Link>
+                )}
+                {isServiceHubSeller && (
+                  <>
+                    <Link href="/service-hub/seller-dashboard" className="w-full">
+                      <Button variant="outline" className="w-full gap-2 justify-start bg-transparent">
+                        <BarChart3 className="h-4 w-4" />
+                        Seller Dashboard
+                      </Button>
+                    </Link>
+                    <Link href="/service-hub/seller-orders" className="w-full">
+                      <Button variant="outline" className="w-full gap-2 justify-start bg-transparent">
+                        <ShoppingBag className="h-4 w-4" />
+                        My Sales
+                      </Button>
+                    </Link>
+                  </>
+                )}
               </motion.div>
             )}
           </div>
@@ -322,15 +333,17 @@ export default function ServiceHubIndex() {
                   </p>
                 </div>
                 <div className="flex items-center gap-3 flex-shrink-0 w-full sm:w-auto flex-col sm:flex-row">
-                  <Link href="/service-hub/seller-dashboard" className="w-full sm:w-auto">
-                    <Button
-                      size="lg"
-                      className="w-full bg-blue-600 hover:bg-blue-700 text-white shadow-lg hover:shadow-xl transition-all duration-200"
-                    >
-                      <BarChart3 className="mr-2 h-4 w-4" />
-                      Dashboard
-                    </Button>
-                  </Link>
+                  {isServiceHubSeller && (
+                    <Link href="/service-hub/seller-dashboard" className="w-full sm:w-auto">
+                      <Button
+                        size="lg"
+                        className="w-full bg-blue-600 hover:bg-blue-700 text-white shadow-lg hover:shadow-xl transition-all duration-200"
+                      >
+                        <BarChart3 className="mr-2 h-4 w-4" />
+                        Dashboard
+                      </Button>
+                    </Link>
+                  )}
                   <Link href="/service-hub/create" className="w-full sm:w-auto">
                     <Button
                       size="lg"

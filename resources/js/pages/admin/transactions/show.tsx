@@ -8,25 +8,20 @@ import AppLayout from "@/layouts/app-layout"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Separator } from "@/components/ui/separator"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { ConfirmationModal } from "@/components/admin/confirmation-modal"
+import { UnifiedLedgerCard, type UnifiedLedgerRow } from "@/components/admin/unified-ledger-card"
 import {
   ArrowLeft,
-  ArrowRightLeft,
-  BookOpen,
   CalendarClock,
   CheckCircle2,
   Clock,
-  CreditCard,
-  Database,
-  Hash,
   Info,
   Link2,
   ScrollText,
   Trash2,
   User,
-  Wallet,
   XCircle,
   Ban,
   AlertCircle,
@@ -34,7 +29,7 @@ import {
   Heart,
   Building2,
   Network,
-  Receipt,
+  ChevronDown,
 } from "lucide-react"
 import type { BreadcrumbItem } from "@/types"
 import { cn } from "@/lib/utils"
@@ -170,77 +165,13 @@ interface TransactionDetail {
   donation_ledger_perspective?: string | null
   ledger_actor_context?: LedgerActorContext | null
   ledger_report?: LedgerReportRow | null
+  /** BIU unified ledger row (workbook + client export shape) — admin only */
+  unified_ledger?: UnifiedLedgerRow | null
   stripe: StripeSnapshot
 }
 
 interface Props {
   transaction: TransactionDetail
-}
-
-const TYPE_COPY: Record<string, { title: string; body: string }> = {
-  deposit: {
-    title: "Deposit",
-    body: "Money or value credited into the user’s wallet balance (for example after a successful card payment or transfer in).",
-  },
-  withdrawal: {
-    title: "Withdrawal",
-    body: "Funds leaving the platform toward an external destination (for example a bank or PayPal payout).",
-  },
-  purchase: {
-    title: "Purchase",
-    body: "A charge for goods, services, or digital items inside Believe (orders, gigs, courses, etc.).",
-  },
-  refund: {
-    title: "Refund",
-    body: "Money returned to the payer or credited back—often tied to a cancelled order or dispute resolution.",
-  },
-  commission: {
-    title: "Commission",
-    body: "A fee or revenue share taken by the platform or a partner on a qualifying transaction.",
-  },
-  transfer_out: {
-    title: "Transfer out",
-    body: "Internal movement of balance from this user toward another wallet or settlement bucket.",
-  },
-  transfer_in: {
-    title: "Transfer in",
-    body: "Internal movement of balance received from another wallet or settlement bucket.",
-  },
-}
-
-const STATUS_COPY: Record<string, { title: string; body: string }> = {
-  pending: {
-    title: "Pending",
-    body: "The operation is recorded but not finalized—waiting for payment, settlement, or manual review.",
-  },
-  completed: {
-    title: "Completed",
-    body: "The transaction finished successfully and balances (if any) should reflect this entry.",
-  },
-  failed: {
-    title: "Failed",
-    body: "The attempt did not succeed (card declined, gateway error, or validation failure).",
-  },
-  cancelled: {
-    title: "Cancelled",
-    body: "The transaction was voided before completion and should not settle.",
-  },
-  withdrawal: {
-    title: "Withdrawal (status)",
-    body: "Used in some flows to mark payout or withdrawal-specific processing—check related records for detail.",
-  },
-  refund: {
-    title: "Refund (status)",
-    body: "Indicates this row represents or tracks a refund lifecycle.",
-  },
-  deposit: {
-    title: "Deposit (status)",
-    body: "Sometimes used when the row is categorized as an inbound funds event.",
-  },
-  rejected: {
-    title: "Rejected",
-    body: "Blocked by policy, risk checks, or admin decision—no funds should move.",
-  },
 }
 
 function formatMoney(n: number, currency: string) {
@@ -275,36 +206,23 @@ function typeBadgeClass(type: string): string {
 }
 
 /** Donor gifts are stored as purchase-type rows; surface “Donation” in the UI when metadata says so. */
-function adminTransactionTypeDisplay(t: TransactionDetail): {
-  badgeLabel: string
-  badgeClass: string
-  typeExplainBody: string
-} {
+function adminTransactionTypeDisplay(t: TransactionDetail): { badgeLabel: string; badgeClass: string } {
   const meta = t.meta && typeof t.meta === "object" ? (t.meta as Record<string, unknown>) : {}
   if (meta.ledger_role === "donor_payment" || t.donation_ledger_perspective === "donor") {
     return {
       badgeLabel: "Donation",
       badgeClass: "border-rose-500/40 bg-rose-500/[0.1] text-rose-900 dark:text-rose-100",
-      typeExplainBody:
-        "This is a donor-side gift. The database stores it as a purchase-type row for audit (see metadata such as ledger_role: donor_payment); wallet impact follows your rules (e.g. exclude_from_wallet_stats).",
     }
   }
   if (t.donation_ledger_perspective === "campaign" && t.type === "purchase") {
     return {
       badgeLabel: "Campaign gift",
       badgeClass: "border-amber-500/40 bg-amber-500/[0.1] text-amber-950 dark:text-amber-100",
-      typeExplainBody:
-        "Care Alliance campaign checkout. The row may be purchase-typed for processor alignment; see the donation section below for campaign context.",
     }
-  }
-  const copy = TYPE_COPY[t.type] ?? {
-    title: t.type.replace(/_/g, " "),
-    body: "Classification of how this row affects balances and reporting.",
   }
   return {
     badgeLabel: t.type.replace(/_/g, " "),
     badgeClass: typeBadgeClass(t.type),
-    typeExplainBody: copy.body,
   }
 }
 
@@ -404,32 +322,17 @@ function statusIcon(status: string) {
   }
 }
 
-function ExplainBlock({
-  label,
-  value,
-  explanation,
-  icon: Icon,
-}: {
-  label: string
-  value: React.ReactNode
-  explanation: string
-  icon?: React.ComponentType<{ className?: string }>
-}) {
-  return (
-    <div className="rounded-2xl border border-border/50 bg-gradient-to-b from-muted/[0.35] to-card/60 p-5 shadow-sm ring-1 ring-border/25 dark:from-muted/15 dark:to-card/50">
-      <div className="flex items-start gap-3">
-        {Icon && (
-          <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/[0.08] text-primary ring-1 ring-primary/20">
-            <Icon className="h-4 w-4" />
-          </span>
-        )}
-        <div className="min-w-0 flex-1 space-y-2">
-          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</p>
-          <div className="text-base font-medium leading-snug text-foreground">{value}</div>
-          <p className="text-sm leading-relaxed text-muted-foreground">{explanation}</p>
-        </div>
-      </div>
-    </div>
+function stripePanelOpen(s: TransactionDetail["stripe"]): boolean {
+  return !!(
+    s.customer_id ||
+    s.payment_intent ||
+    s.subscription ||
+    s.checkout_session ||
+    s.charge ||
+    s.identifiers_found.payment_intent_ids.length > 0 ||
+    s.identifiers_found.session_ids.length > 0 ||
+    s.identifiers_found.charge_ids.length > 0 ||
+    s.identifiers_found.subscription_ids.length > 0
   )
 }
 
@@ -444,10 +347,6 @@ export default function TransactionShow({ transaction: t }: Props) {
   ]
 
   const txType = adminTransactionTypeDisplay(t)
-  const statusInfo = STATUS_COPY[t.status] ?? {
-    title: t.status,
-    body: "Current lifecycle state for this ledger row.",
-  }
 
   const metaJson =
     t.meta && Object.keys(t.meta).length > 0 ? JSON.stringify(t.meta, null, 2) : null
@@ -493,7 +392,7 @@ export default function TransactionShow({ transaction: t }: Props) {
               className="gap-1.5 rounded-full border-primary/25 bg-primary/[0.07] px-3 py-1 text-xs font-medium text-primary"
             >
               <ScrollText className="h-3.5 w-3.5" />
-              Full record
+              Transaction
             </Badge>
             <h1 className="font-mono text-2xl font-bold tracking-tight text-foreground sm:text-3xl">{t.transaction_id}</h1>
             <div className="flex flex-wrap items-center gap-2">
@@ -523,7 +422,7 @@ export default function TransactionShow({ transaction: t }: Props) {
               )}
             </div>
             <p className="max-w-2xl text-sm text-muted-foreground">
-              This page explains every field so you can audit money movement with confidence.
+              Unified finance summary first; expand sections below only when you need Stripe, donation detail, or raw metadata.
             </p>
           </div>
           <div className="flex flex-wrap gap-2 sm:justify-end">
@@ -541,343 +440,131 @@ export default function TransactionShow({ transaction: t }: Props) {
           </div>
         </motion.div>
 
+        {t.unified_ledger && (
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.04, duration: 0.35 }}
+          >
+            <UnifiedLedgerCard data={t.unified_ledger} />
+          </motion.div>
+        )}
+
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.05 }}
-          className="grid gap-6 lg:grid-cols-3"
         >
-          <Card className="border-border/50 bg-gradient-to-br from-primary/[0.08] via-card to-card shadow-lg ring-1 ring-primary/12 lg:col-span-1">
-            <CardHeader>
-              <CardTitle className="flex w-full flex-wrap items-center justify-between gap-2 text-lg">
-                <span className="inline-flex items-center gap-2">
-                  <Wallet className="h-5 w-5 text-primary/90" />
-                  Amounts
-                </span>
-                <Badge variant="outline" className="font-mono text-xs font-semibold tracking-wide">
-                  {t.currency}
-                </Badge>
-              </CardTitle>
-              <CardDescription>What was charged, credited, or reserved.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div>
-                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Principal amount</p>
-                <p className="mt-1 text-3xl font-bold tabular-nums tracking-tight text-foreground">{formatMoney(t.amount, t.currency)}</p>
-                <p className="mt-2 text-sm text-muted-foreground">
-                  The main monetary value of this event in <span className="font-medium text-foreground">{t.currency}</span>.
-                  This is the figure used for totals and most reports.
-                </p>
-              </div>
-              <Separator className="bg-border/45" />
-              <div>
-                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Platform / network fee</p>
-                <p className="mt-1 text-xl font-semibold tabular-nums text-foreground/75">{formatMoney(t.fee, t.currency)}</p>
-                <p className="mt-2 text-sm text-muted-foreground">
-                  Fees captured by Stripe, PayPal, or Believe—used for reconciliation. Net to the user may differ from the principal
-                  amount when fees apply.
-                </p>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="border-border/50 bg-card/40 shadow-md ring-1 ring-border/30 lg:col-span-2">
-            <CardHeader>
+          <Card className="border-border/50 bg-card/40 shadow-md ring-1 ring-border/30">
+            <CardHeader className="pb-3">
               <CardTitle className="flex items-center gap-2 text-lg">
-                <ArrowRightLeft className="h-5 w-5 text-primary/90" />
-                Type &amp; status
+                <Link2 className="h-5 w-5 text-primary/90" />
+                Record details
               </CardTitle>
-              <CardDescription>How this row is categorized and where it sits in the payment lifecycle.</CardDescription>
+              <CardDescription>Type, amounts, links, and user—fees are in the unified block above.</CardDescription>
             </CardHeader>
-            <CardContent className="grid gap-4 sm:grid-cols-2">
-              <ExplainBlock
-                label="Transaction type"
-                value={
+            <CardContent className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+              <div className="space-y-2">
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Type &amp; status</p>
+                <div className="flex flex-wrap items-center gap-2">
                   <Badge variant="outline" className={cn("capitalize", txType.badgeClass)}>
                     {txType.badgeLabel}
                   </Badge>
-                }
-                explanation={txType.typeExplainBody}
-                icon={ArrowRightLeft}
-              />
-              <ExplainBlock
-                label="Status"
-                value={
                   <Badge variant="outline" className={cn("capitalize", statusBadgeClass(t.status))}>
                     <span className="inline-flex items-center gap-1.5">
                       {statusIcon(t.status)}
                       {t.status}
                     </span>
                   </Badge>
-                }
-                explanation={statusInfo.body}
-                icon={Clock}
-              />
-            </CardContent>
-          </Card>
-        </motion.div>
-
-        {t.ledger_report && (
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.07 }}
-          >
-            <Card className="border-border/50 bg-card/40 shadow-md ring-1 ring-border/30">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-lg">
-                  <Receipt className="h-5 w-5 text-primary/90" />
-                  Financial report
-                </CardTitle>
-                <CardDescription>
-                  Reconciliation-style breakdown. Individual fee lines appear when your flows store them in transaction metadata
-                  (e.g. <span className="font-mono text-[11px]">stripe_fee</span>,{" "}
-                  <span className="font-mono text-[11px]">bridge_fee</span>); otherwise values derive from this row’s amount and
-                  fee.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                  <div className="rounded-xl border border-border/50 bg-muted/20 p-4">
-                    <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Report date</p>
-                    <p className="mt-1 text-sm font-medium text-foreground">
-                      {new Date(t.ledger_report.date).toLocaleString(undefined, {
-                        dateStyle: "medium",
-                        timeStyle: "short",
-                      })}
-                    </p>
-                  </div>
-                  <div className="rounded-xl border border-border/50 bg-muted/20 p-4 sm:col-span-2">
-                    <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Reference #</p>
-                    <p className="mt-1 break-all font-mono text-sm text-foreground">{t.ledger_report.reference}</p>
-                  </div>
-                  <div className="rounded-xl border border-border/50 bg-muted/20 p-4">
-                    <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Source type</p>
-                    <p className="mt-1 font-mono text-sm text-foreground">{t.ledger_report.source_type}</p>
-                  </div>
                 </div>
+              </div>
+              <div className="space-y-2">
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Row amount / fee</p>
+                <p className="text-sm tabular-nums text-foreground">
+                  <span className="font-semibold">{formatMoney(t.amount, t.currency)}</span>
+                  <span className="text-muted-foreground"> · fee </span>
+                  {formatMoney(t.fee, t.currency)}
+                </p>
+              </div>
+              <div className="space-y-2">
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Payment method</p>
+                {t.payment_method ? (
+                  <Badge variant="outline" className="w-fit capitalize">
+                    {t.payment_method.replace(/_/g, " ")}
+                  </Badge>
+                ) : (
+                  <span className="text-sm text-muted-foreground">—</span>
+                )}
+              </div>
 
-                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                  {[
-                    { label: "Gross amount", value: formatMoney(t.ledger_report.gross_amount, t.currency) },
-                    { label: "Stripe fee", value: formatMoney(t.ledger_report.stripe_fee, t.currency) },
-                    { label: "Bridge fee", value: formatMoney(t.ledger_report.bridge_fee, t.currency) },
-                    { label: "BIU fee", value: formatMoney(t.ledger_report.biu_fee, t.currency) },
-                    { label: "Split deduction", value: formatMoney(t.ledger_report.split_deduction, t.currency) },
-                    { label: "Refund amount", value: formatMoney(t.ledger_report.refund_amount, t.currency) },
-                    {
-                      label: "Net to organization",
-                      value:
-                        t.ledger_report.net_to_organization != null
-                          ? formatMoney(t.ledger_report.net_to_organization, t.currency)
-                          : "—",
-                      emphasize: true,
-                    },
-                    {
-                      label: "Payout status",
-                      value: t.ledger_report.payout_status ?? "—",
-                    },
-                  ].map((cell) => (
-                    <div
-                      key={cell.label}
+              {actorCtx && (
+                <div className="space-y-2 sm:col-span-2">
+                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Ledger context</p>
+                  <div className="flex flex-wrap items-center gap-2 text-sm">
+                    <Badge
+                      variant="outline"
                       className={cn(
-                        "rounded-xl border p-4",
-                        cell.emphasize
-                          ? "border-primary/30 bg-primary/[0.06] ring-1 ring-primary/15"
-                          : "border-border/50 bg-background/60",
+                        "gap-1.5 font-sans font-semibold normal-case tracking-normal",
+                        ledgerActorBadgeClass(actorCtx.kind),
                       )}
                     >
-                      <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{cell.label}</p>
-                      <p
-                        className={cn(
-                          "mt-1 text-sm font-medium tabular-nums text-foreground",
-                          cell.emphasize && "text-base font-semibold",
-                        )}
-                      >
-                        {cell.value}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="rounded-xl border border-border/50 bg-muted/15 p-4">
-                  <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Organization</p>
-                  <p className="mt-1 text-sm text-foreground">
-                    {t.ledger_report.organization_id != null && (
-                      <span className="mr-2 font-mono text-xs text-muted-foreground">ID {t.ledger_report.organization_id}</span>
+                      <ActorHeaderIcon className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                      {actorCtx.label}
+                    </Badge>
+                    {actorCtx.detail && <span className="text-muted-foreground">{actorCtx.detail}</span>}
+                    {actorCtx.organization_id != null && (
+                      <span className="font-mono text-xs text-muted-foreground">org #{actorCtx.organization_id}</span>
                     )}
-                    {t.ledger_report.organization_name ?? "—"}
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
-          </motion.div>
-        )}
-
-        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.08 }}>
-          <Card className="border-border/50 bg-card/40 shadow-md ring-1 ring-border/30">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-lg">
-                <User className="h-5 w-5 text-primary/90" />
-                User account
-              </CardTitle>
-              <CardDescription>Who this ledger entry belongs to in Believe.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {actorCtx && (
-                <ExplainBlock
-                  label="Ledger context"
-                  value={
-                    <span className="inline-flex flex-wrap items-center gap-2">
-                      <Badge
-                        variant="outline"
-                        className={cn(
-                          "gap-1.5 font-sans font-semibold normal-case tracking-normal",
-                          ledgerActorBadgeClass(actorCtx.kind),
-                        )}
-                      >
-                        <ActorHeaderIcon className="h-3.5 w-3.5 shrink-0" aria-hidden />
-                        {actorCtx.label}
-                      </Badge>
-                      {actorCtx.detail && (
-                        <span className="text-[15px] font-normal text-muted-foreground">{actorCtx.detail}</span>
-                      )}
-                      {actorCtx.organization_id != null && (
-                        <Badge variant="secondary" className="font-mono text-[10px] font-normal">
-                          org #{actorCtx.organization_id}
-                        </Badge>
-                      )}
-                      {actorCtx.care_alliance_id != null && (
-                        <Badge variant="secondary" className="font-mono text-[10px] font-normal">
-                          alliance #{actorCtx.care_alliance_id}
-                        </Badge>
-                      )}
-                    </span>
-                  }
-                  explanation={
-                    actorCtx.kind === "organization"
-                      ? "This row is tied to a nonprofit’s wallet (organization owner account). Deposits here are usually gifts to that org."
-                      : actorCtx.kind === "care_alliance"
-                        ? "This row is part of Care Alliance pooling, splits, fees, or campaign flows—not only a single personal wallet."
-                        : "This row reflects a personal Believe user (donor, shopper, or general wallet activity)."
-                  }
-                  icon={ActorHeaderIcon}
-                />
-              )}
-              {t.user ? (
-                <ExplainBlock
-                  label="Linked user"
-                  value={
-                    <span>
-                      <span className="inline-flex flex-wrap items-center gap-2">
-                        <span className="font-medium text-foreground">{t.user.name}</span>
-                        <Badge variant="outline" className="font-mono text-[10px] uppercase tracking-wide">
-                          ID {t.user.id}
-                        </Badge>
-                      </span>
-                      <span className="mt-1 block text-sm font-normal text-muted-foreground">{t.user.email}</span>
-                    </span>
-                  }
-                  explanation="The Believe user whose wallet or activity this transaction is attributed to. Use this when contacting someone about a payment."
-                  icon={User}
-                />
-              ) : (
-                <ExplainBlock
-                  label="Linked user"
-                  value={
-                    <Badge variant="outline" className="border-border/50 bg-muted/40 text-muted-foreground">
-                      Unassigned
-                    </Badge>
-                  }
-                  explanation="Some system or batch rows may not map to a single end-user (for example migrations or internal adjustments)."
-                  icon={User}
-                />
-              )}
-            </CardContent>
-          </Card>
-        </motion.div>
-
-        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
-          <Card className="border-border/50 bg-card/40 shadow-md ring-1 ring-border/30">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-lg">
-                <Link2 className="h-5 w-5 text-primary/90" />
-                Links &amp; references
-              </CardTitle>
-              <CardDescription>
-                Polymorphic link when present; otherwise we infer context from{" "}
-                <span className="font-medium text-primary/90">metadata JSON</span> (course name, plan, transfers, Care Alliance,
-                etc.).
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="grid gap-4 md:grid-cols-2">
-              <ExplainBlock
-                label="Public reference (transaction_id)"
-                value={<span className="break-all font-mono text-sm">{t.transaction_id}</span>}
-                explanation="Human-readable identifier generated when the row is created. Shown in emails, exports, and support tickets. Not the same as a Stripe charge id unless copied into meta."
-                icon={Hash}
-              />
-              <ExplainBlock
-                label="Payment method"
-                value={
-                  t.payment_method ? (
-                    <Badge variant="outline" className="border-border/55 bg-muted/30 capitalize text-foreground">
-                      {t.payment_method.replace(/_/g, " ")}
-                    </Badge>
-                  ) : (
-                    <span className="text-muted-foreground">—</span>
-                  )
-                }
-                explanation="Channel used for money movement: card (Stripe), wallet, PayPal, points, etc. Helps filter and reconcile by provider."
-                icon={CreditCard}
-              />
-              <ExplainBlock
-                label="Purpose of the link"
-                value={
-                  <span className="flex flex-wrap items-center gap-2">
-                    <span className="text-foreground">{t.related_kind}</span>
-                    <Badge variant="outline" className={cn("text-[10px] font-normal uppercase tracking-wide", relatedSource.className)}>
-                      {relatedSource.label}
-                    </Badge>
-                  </span>
-                }
-                explanation={
-                  t.related_purpose +
-                  (t.related_source === "meta"
-                    ? " Source: inferred from JSON metadata (no usable polymorphic link, or the linked row was missing)."
-                    : t.related_source === "polymorphic"
-                      ? " Source: polymorphic related_type / related_id in the database."
-                      : "")
-                }
-                icon={BookOpen}
-              />
-              <ExplainBlock
-                label="Linked record (actual name)"
-                value={
-                  <span className="text-foreground">
-                    {t.related_display_name !== "—" ? t.related_display_name : "—"}
-                  </span>
-                }
-                explanation="Title, reference, plan name, course, counterparty name, or other human-readable label loaded from the related database row, or parsed from metadata when no link exists. If the row was deleted, you will see “missing” unless metadata still names the intent."
-                icon={Database}
-              />
-              <ExplainBlock
-                label="Technical reference (polymorphic)"
-                value={
-                  <span className="break-all font-mono text-sm">
-                    {t.related_type ? (
-                      <>
-                        {t.related_type}
-                        {t.related_id != null && t.related_id !== "" ? ` · id ${t.related_id}` : ""}
-                      </>
-                    ) : (
-                      "—"
+                    {actorCtx.care_alliance_id != null && (
+                      <span className="font-mono text-xs text-muted-foreground">alliance #{actorCtx.care_alliance_id}</span>
                     )}
-                  </span>
-                }
-                explanation="Stored related_type and related_id for developers and SQL joins. Lists may show the same content as “Linked record” when a name was resolved."
-                icon={Link2}
-              />
+                  </div>
+                </div>
+              )}
+
+              <div className="space-y-2 sm:col-span-2 lg:col-span-3">
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Linked user</p>
+                {t.user ? (
+                  <div className="text-sm">
+                    <span className="font-medium text-foreground">{t.user.name}</span>
+                    <span className="text-muted-foreground"> · </span>
+                    <span className="text-muted-foreground">{t.user.email}</span>
+                    <Badge variant="secondary" className="ml-2 font-mono text-xs">
+                      #{t.user.id}
+                    </Badge>
+                  </div>
+                ) : (
+                  <span className="text-sm text-muted-foreground">Unassigned</span>
+                )}
+              </div>
+
+              <div className="space-y-2 lg:col-span-2">
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Related</p>
+                <div className="flex flex-wrap items-center gap-2 text-sm">
+                  <span className="text-foreground">{t.related_kind}</span>
+                  <Badge variant="outline" className={cn("text-xs uppercase", relatedSource.className)}>
+                    {relatedSource.label}
+                  </Badge>
+                </div>
+                <p className="mt-1 text-sm text-foreground">
+                  {t.related_display_name !== "—" ? t.related_display_name : "—"}
+                </p>
+                <p className="mt-1 line-clamp-3 text-xs text-muted-foreground">{t.related_purpose}</p>
+              </div>
+
+              <div className="space-y-2">
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Polymorphic</p>
+                <p className="break-all font-mono text-xs text-foreground">
+                  {t.related_type
+                    ? `${t.related_type}${t.related_id != null && t.related_id !== "" ? ` #${t.related_id}` : ""}`
+                    : "—"}
+                </p>
+              </div>
+
+              <div className="space-y-2 sm:col-span-2 lg:col-span-3">
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Reference (transaction_id)</p>
+                <p className="break-all font-mono text-sm text-foreground">{t.transaction_id}</p>
+              </div>
             </CardContent>
           </Card>
         </motion.div>
@@ -907,19 +594,9 @@ export default function TransactionShow({ transaction: t }: Props) {
                   </Badge>
                 </CardTitle>
                 <CardDescription>
-                  {t.donation.kind === "care_alliance_campaign" ? (
-                    <>
-                      Resolved from <span className="font-medium text-primary/90">care_alliance_donation_id</span> in metadata, or
-                      Stripe payment reference on that row.
-                    </>
-                  ) : (
-                    <>
-                      Linked from <span className="font-medium text-primary/90">donation_id</span> / polymorphic Donation, matching{" "}
-                      <span className="font-mono text-xs">pi_</span> on the ledger to{" "}
-                      <span className="font-medium text-primary/90">donations.transaction_id</span>, or inferred from Care Alliance
-                      wallet splits when metadata has no id.
-                    </>
-                  )}
+                  {t.donation.kind === "care_alliance_campaign"
+                    ? "Care Alliance campaign donation record."
+                    : "Believe donation record linked to this ledger row."}
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -992,9 +669,6 @@ export default function TransactionShow({ transaction: t }: Props) {
                         <p className="mt-1 break-all font-mono text-sm text-foreground">
                           {t.donation.stripe_reference ?? t.donation.payment_reference}
                         </p>
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          Used below to load PaymentIntent / subscription from Stripe (same keys as checkout).
-                        </p>
                       </div>
                     )}
                     {t.donation.message && (
@@ -1021,22 +695,17 @@ export default function TransactionShow({ transaction: t }: Props) {
 
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.11 }}>
           <Card className="border-border/50 bg-card/40 shadow-md ring-1 ring-border/30">
-            <CardHeader>
+            <CardHeader className="pb-2">
               <CardTitle className="flex flex-wrap items-center gap-2 text-lg">
                 <ExternalLink className="h-5 w-5 text-primary/90" />
-                Stripe &amp; Cashier
-                <Badge variant="secondary" className="font-mono text-[10px] font-normal uppercase tracking-wide">
-                  Stripe
+                Stripe
+                <Badge variant="secondary" className="font-mono text-xs font-normal uppercase tracking-wide">
+                  API
                 </Badge>
               </CardTitle>
-              <CardDescription>
-                Live Stripe objects loaded with Laravel Cashier’s client: PaymentIntent, Checkout session, Charge, or recurring{" "}
-                <span className="font-medium text-primary/90">Subscription</span> (donations often store{" "}
-                <span className="font-mono text-xs">pi_</span> or <span className="font-mono text-xs">sub_</span> on the Donation
-                row—we merge those ids automatically).
-              </CardDescription>
+              <CardDescription>Live objects from Cashier when ids exist on this row or the linked donation.</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-6">
+            <CardContent className="space-y-4">
               {t.stripe.fetch_error && (
                 <Alert variant="destructive" className="border-destructive/40">
                   <AlertCircle className="h-4 w-4" />
@@ -1044,6 +713,14 @@ export default function TransactionShow({ transaction: t }: Props) {
                   <AlertDescription className="text-sm">{t.stripe.fetch_error}</AlertDescription>
                 </Alert>
               )}
+
+              {stripePanelOpen(t.stripe) ? (
+                <Collapsible defaultOpen className="rounded-xl border border-border/50 bg-muted/10">
+                  <CollapsibleTrigger className="flex w-full items-center gap-2 px-4 py-3 text-left text-sm font-medium text-foreground hover:bg-muted/30 [&[data-state=open]_svg]:rotate-180">
+                    <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground transition-transform" />
+                    PaymentIntent, customer, subscription, checkout…
+                  </CollapsibleTrigger>
+                  <CollapsibleContent className="space-y-4 border-t border-border/40 p-4">
 
               {t.stripe.customer_id && (
                 <div className="rounded-xl border border-border/50 bg-muted/20 p-4">
@@ -1179,8 +856,7 @@ export default function TransactionShow({ transaction: t }: Props) {
                 !t.stripe.subscription &&
                 !t.stripe.fetch_error && (
                   <p className="text-sm text-muted-foreground">
-                    Stripe ids were detected on this row but could not be loaded. Check API keys and that ids belong to this Stripe
-                    account.
+                    Stripe ids were found but not loaded—check API keys and account.
                   </p>
                 )}
 
@@ -1195,48 +871,49 @@ export default function TransactionShow({ transaction: t }: Props) {
                 t.stripe.identifiers_found.charge_ids.length === 0 &&
                 t.stripe.identifiers_found.subscription_ids.length === 0 && (
                   <p className="text-sm text-muted-foreground">
-                    No Stripe PaymentIntent, Checkout session, charge, or subscription id on this ledger row. If the Donation section
-                    above appears, Stripe ids may be merged from the linked donation row. Otherwise check{" "}
-                    <span className="font-medium text-foreground">metadata JSON</span> for{" "}
-                    <span className="font-mono text-xs">pi_</span> / session ids or Care Alliance split context.
+                    No Stripe objects loaded. Check donation above or raw metadata for ids.
                   </p>
                 )}
+                  </CollapsibleContent>
+                </Collapsible>
+              ) : !t.stripe.fetch_error ? (
+                <p className="text-sm text-muted-foreground">
+                  No Stripe ids on this row. Use donation or metadata if you need gateway details.
+                </p>
+              ) : null}
             </CardContent>
           </Card>
         </motion.div>
 
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.12 }}>
           <Card className="border-border/50 bg-card/40 shadow-md ring-1 ring-border/30">
-            <CardHeader>
+            <CardHeader className="pb-2">
               <CardTitle className="flex items-center gap-2 text-lg">
                 <CalendarClock className="h-5 w-5 text-primary/90" />
                 Timestamps
               </CardTitle>
-              <CardDescription>When things happened in the app and when money was considered settled.</CardDescription>
             </CardHeader>
             <CardContent className="grid gap-4 md:grid-cols-3">
-              <ExplainBlock
-                label="Created at"
-                value={new Date(t.created_at).toLocaleString(undefined, { dateStyle: "full", timeStyle: "short" })}
-                explanation="When this row was first written—usually when the user completed checkout or the system created the entry."
-                icon={CalendarClock}
-              />
-              <ExplainBlock
-                label="Processed at"
-                value={
-                  t.processed_at
-                    ? new Date(t.processed_at).toLocaleString(undefined, { dateStyle: "full", timeStyle: "short" })
-                    : "—"
-                }
-                explanation="Optional time when the gateway or admin marked the funds as captured or settled. May be empty for pending events."
-                icon={Clock}
-              />
-              <ExplainBlock
-                label="Updated at"
-                value={new Date(t.updated_at).toLocaleString(undefined, { dateStyle: "full", timeStyle: "short" })}
-                explanation="Last time any column on this row changed (status updates, fee corrections, etc.)."
-                icon={Info}
-              />
+              <div className="rounded-lg border border-border/50 bg-muted/10 p-3">
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Created</p>
+                <p className="mt-1 text-sm text-foreground">
+                  {new Date(t.created_at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}
+                </p>
+              </div>
+              <div className="rounded-lg border border-border/50 bg-muted/10 p-3">
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Processed</p>
+                <p className="mt-1 text-sm text-foreground">
+                  {t.processed_at
+                    ? new Date(t.processed_at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })
+                    : "—"}
+                </p>
+              </div>
+              <div className="rounded-lg border border-border/50 bg-muted/10 p-3">
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Updated</p>
+                <p className="mt-1 text-sm text-foreground">
+                  {new Date(t.updated_at).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}
+                </p>
+              </div>
             </CardContent>
           </Card>
         </motion.div>
@@ -1244,23 +921,27 @@ export default function TransactionShow({ transaction: t }: Props) {
         {metaJson && (
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.14 }}>
             <Card className="border-border/50 bg-card/40 shadow-md ring-1 ring-border/30">
-              <CardHeader>
+              <CardHeader className="pb-2">
                 <CardTitle className="flex flex-wrap items-center gap-2 text-lg">
-                  Raw metadata (JSON)
-                  <Badge variant="secondary" className="font-mono text-[10px] font-normal uppercase tracking-wide">
+                  Metadata
+                  <Badge variant="secondary" className="font-mono text-xs font-normal uppercase tracking-wide">
                     JSON
                   </Badge>
                 </CardTitle>
-                <CardDescription>
-                  Extra structured data from the payment flow (Stripe ids, line items, risk flags). The{" "}
-                  <span className="font-medium text-primary/90">Related</span> section above may be derived from these keys when
-                  polymorphic fields are empty—compare side by side.
-                </CardDescription>
+                <CardDescription>Structured extras from checkout or webhooks—expand only when debugging.</CardDescription>
               </CardHeader>
               <CardContent>
-                <pre className="max-h-96 overflow-auto rounded-xl border border-border/50 bg-muted/25 p-4 font-mono text-xs leading-relaxed text-foreground/95 dark:bg-muted/20">
-                  {metaJson}
-                </pre>
+                <Collapsible className="rounded-xl border border-border/50 bg-muted/10">
+                  <CollapsibleTrigger className="flex w-full items-center gap-2 px-4 py-3 text-left text-sm font-medium text-foreground hover:bg-muted/30 [&[data-state=open]_svg]:rotate-180">
+                    <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground transition-transform" />
+                    Show raw JSON
+                  </CollapsibleTrigger>
+                  <CollapsibleContent>
+                    <pre className="max-h-96 overflow-auto border-t border-border/40 bg-muted/25 p-4 font-mono text-xs leading-relaxed text-foreground/95 dark:bg-muted/20">
+                      {metaJson}
+                    </pre>
+                  </CollapsibleContent>
+                </Collapsible>
               </CardContent>
             </Card>
           </motion.div>

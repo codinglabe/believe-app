@@ -8,8 +8,8 @@ use App\Models\Transaction;
 
 /**
  * Links Believe {@see Donation} records to wallet {@see Transaction} rows (ledger).
- * The ledger is not the donations table: one donation can produce 0, 1, or many transactions
- * (donor audit, recipient deposit, Care Alliance splits, scheduled pool with no wallet rows yet).
+ * The ledger is not the donations table: a simple completed gift creates one recipient deposit
+ * row; Care Alliance can add additional split lines; scheduled pool flows may have none yet.
  */
 class DonationLedgerSyncService
 {
@@ -51,7 +51,8 @@ class DonationLedgerSyncService
     }
 
     /**
-     * Donor-side audit row (does not change wallet balance). Idempotent.
+     * Legacy donor-side audit row (second ledger line per donation). No longer called from checkout;
+     * kept idempotent for rare manual/backfill use. Prefer a single recipient deposit via recordRecipientDepositIfMissing.
      */
     public static function recordDonorAuditIfMissing(Donation $donation): void
     {
@@ -149,12 +150,25 @@ class DonationLedgerSyncService
         }
 
         $amountDollars = (float) $donation->amount;
+        $feeEstimate = $donation->processing_fee_estimate !== null ? (float) $donation->processing_fee_estimate : 0.0;
+        $checkoutTotal = $donation->checkout_total !== null ? (float) $donation->checkout_total : null;
 
         $meta = [
             'donation_id' => $donation->id,
             'organization_id' => $donation->organization_id,
             'source' => 'organization_donation',
         ];
+        if ($feeEstimate > 0) {
+            $meta['processing_fee_estimate'] = round($feeEstimate, 2);
+            $meta['stripe_fee'] = round($feeEstimate, 2);
+        }
+        if ($checkoutTotal !== null && $checkoutTotal > 0) {
+            $meta['gross_amount'] = round($checkoutTotal, 2);
+        } elseif ($feeEstimate > 0) {
+            $meta['gross_amount'] = round($amountDollars + $feeEstimate, 2);
+        }
+        $meta['net_to_organization'] = round($amountDollars, 2);
+        $meta['donation_payment_method'] = $donation->payment_method;
         if ($donation->organization->name) {
             $meta['organization_name'] = $donation->organization->name;
         }
@@ -187,11 +201,13 @@ class DonationLedgerSyncService
             $meta['backfilled_at'] = now()->toIso8601String();
         }
 
+        $ledgerPaymentMethod = $donation->payment_method === 'believe_points' ? 'believe_points' : 'donation';
+
         $txPayload = [
             'type' => 'deposit',
             'amount' => $amountDollars,
-            'fee' => 0,
-            'payment_method' => 'donation',
+            'fee' => round($feeEstimate, 2),
+            'payment_method' => $ledgerPaymentMethod,
             'related_type' => Donation::class,
             'related_id' => $donation->id,
             'meta' => $meta,

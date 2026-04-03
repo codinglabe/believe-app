@@ -262,7 +262,7 @@ Example route:
 /explore-by-cause?interest=housing
 Suggested Laravel Structure
 Route
-Route::get('/explore-by-cause', [ExploreByCauseController::class, 'index'])->name('explore.by.cause');
+Route::get('/explore-by-cause', [ExploreByCauseController::class, 'index'])->name('explore-by-cause.index');
 Controller
 The controller should load:
 

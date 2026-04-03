@@ -73,7 +73,7 @@ class StripeCustomerLookupService
 
         try {
             foreach ($stripe->customers->all(['email' => $email, 'limit' => 100])->autoPagingIterator() as $c) {
-                if ($c->deleted) {
+                if ($c['deleted'] ?? false) {
                     continue;
                 }
                 if (strtolower(trim((string) ($c->email ?? ''))) !== $normalizedEmail) {
@@ -107,7 +107,7 @@ class StripeCustomerLookupService
             ]);
             $out = [];
             foreach ($result->data as $c) {
-                if ($c->deleted) {
+                if ($c['deleted'] ?? false) {
                     continue;
                 }
                 if (strtolower(trim((string) ($c->email ?? ''))) === $normalizedEmail) {
@@ -141,7 +141,7 @@ class StripeCustomerLookupService
                 ]);
                 $out = [];
                 foreach ($result->data as $c) {
-                    if ($c->deleted) {
+                    if ($c['deleted'] ?? false) {
                         continue;
                     }
                     $out[] = $c;

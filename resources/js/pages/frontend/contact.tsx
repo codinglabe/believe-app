@@ -2,7 +2,7 @@
 
 import FrontendLayout from "@/layouts/frontend/frontend-layout"
 import { motion } from "framer-motion"
-import { MapPin, Send, MessageCircle, HelpCircle, Users, CheckCircle2, ArrowRight, Globe } from "lucide-react"
+import { Send, MessageCircle, HelpCircle, Users, CheckCircle2, ArrowRight } from "lucide-react"
 import { Button } from "@/components/frontend/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/frontend/ui/card"
 import { Input } from "@/components/frontend/ui/input"
@@ -40,14 +40,6 @@ interface ContactPageProps {
     saturday_hours?: string
     sunday_day?: string
     sunday_status?: string
-  }
-  officeLocation?: {
-    address_line1?: string
-    address_line2?: string
-    city?: string
-    state?: string
-    zip?: string
-    country?: string
   }
   cta?: {
     title?: string
@@ -91,7 +83,6 @@ export default function ContactPage({
   contactMethods = [],
   faqItems = [],
   officeHours,
-  officeLocation,
   cta
 }: ContactPageProps) {
   const { data, setData, post, processing, errors, wasSuccessful } = useForm({
@@ -339,51 +330,6 @@ export default function ContactPage({
                       </div>
                     </CardContent>
                   </Card>
-                </motion.div>
-
-                {/* Office Location */}
-                <motion.div
-                initial={{ opacity: 0, x: 30 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ duration: 0.8, delay: 0.4 }}
-                >
-                <Card className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 shadow-lg">
-                  <CardHeader className="pb-4">
-                    <CardTitle className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                      <MapPin className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-                        Our Office
-                    </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                    <div className="space-y-2 text-gray-700 dark:text-gray-300">
-                      {officeLocation ? (
-                        <>
-                          {officeLocation.address_line1 && <p className="font-medium">{officeLocation.address_line1}</p>}
-                          {officeLocation.address_line2 && <p>{officeLocation.address_line2}</p>}
-                          {(officeLocation.city || officeLocation.state || officeLocation.zip) && (
-                            <p>{[officeLocation.city, officeLocation.state, officeLocation.zip].filter(Boolean).join(', ')}</p>
-                          )}
-                          {officeLocation.country && (
-                            <p className="pt-2 flex items-center gap-2 text-blue-600 dark:text-blue-400">
-                              <Globe className="h-4 w-4" />
-                              <span className="text-sm">{officeLocation.country}</span>
-                            </p>
-                          )}
-                        </>
-                      ) : (
-                        <>
-                          <p className="font-medium">123 Charity Lane</p>
-                        <p>Suite 456</p>
-                        <p>New York, NY 10001</p>
-                          <p className="pt-2 flex items-center gap-2 text-blue-600 dark:text-blue-400">
-                            <Globe className="h-4 w-4" />
-                            <span className="text-sm">United States</span>
-                          </p>
-                        </>
-                      )}
-                    </div>
-                    </CardContent>
-                </Card>
                 </motion.div>
             </div>
             </div>

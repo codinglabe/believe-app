@@ -6,8 +6,8 @@ use App\Models\ContactPageContent;
 use App\Models\ContactSubmission;
 use App\Services\SeoService;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 use Inertia\Inertia;
 
 class ContactController extends Controller
@@ -19,16 +19,14 @@ class ContactController extends Controller
         $contactMethods = ContactPageContent::bySection('contact_methods')->active()->ordered()->get();
         $faqItems = ContactPageContent::bySection('faq')->active()->ordered()->get();
         $officeHours = ContactPageContent::bySection('office_hours')->active()->first();
-        $officeLocation = ContactPageContent::bySection('office_location')->active()->first();
         $cta = ContactPageContent::bySection('cta')->active()->first();
 
         return Inertia::render('frontend/contact', [
             'seo' => SeoService::forPage('contact'),
             'hero' => $hero ? $hero->content : null,
-            'contactMethods' => $contactMethods->map(fn($item) => $item->content),
-            'faqItems' => $faqItems->map(fn($item) => $item->content),
+            'contactMethods' => $contactMethods->map(fn ($item) => $item->content),
+            'faqItems' => $faqItems->map(fn ($item) => $item->content),
             'officeHours' => $officeHours ? $officeHours->content : null,
-            'officeLocation' => $officeLocation ? $officeLocation->content : null,
             'cta' => $cta ? $cta->content : null,
         ]);
     }
@@ -59,15 +57,15 @@ class ContactController extends Controller
 
             Mail::send([], [], function ($message) use ($validated, $adminEmail) {
                 $message->to($adminEmail)
-                        ->subject("Contact Form: {$validated['subject']}")
-                        ->html("
+                    ->subject("Contact Form: {$validated['subject']}")
+                    ->html("
                             <h2>New Contact Form Submission</h2>
                             <p><strong>Name:</strong> {$validated['first_name']} {$validated['last_name']}</p>
                             <p><strong>Email:</strong> {$validated['email']}</p>
                             <p><strong>Subject:</strong> {$validated['subject']}</p>
                             <p><strong>Message:</strong></p>
-                            <p>" . nl2br(e($validated['message'])) . "</p>
-                        ");
+                            <p>".nl2br(e($validated['message'])).'</p>
+                        ');
             });
 
             Log::info('Contact form submitted', [
@@ -89,4 +87,3 @@ class ContactController extends Controller
         }
     }
 }
-

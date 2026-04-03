@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Jobs\ProcessBelievePointsAutoReplenishJob;
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -45,6 +46,14 @@ class User extends Authenticatable implements MustVerifyEmail
         'balance',
         'reward_points',
         'believe_points',
+        'believe_points_auto_replenish_enabled',
+        'believe_points_auto_replenish_threshold',
+        'believe_points_auto_replenish_amount',
+        'believe_points_auto_replenish_pm_id',
+        'believe_points_auto_replenish_card_brand',
+        'believe_points_auto_replenish_card_last4',
+        'believe_points_auto_replenish_agreed_at',
+        'believe_points_last_auto_replenish_at',
         'user_id',
         'slug',
         'email',
@@ -127,6 +136,11 @@ class User extends Authenticatable implements MustVerifyEmail
             'ai_tokens_included' => 'integer',
             'ai_tokens_used' => 'integer',
             'believe_points' => 'decimal:2',
+            'believe_points_auto_replenish_enabled' => 'boolean',
+            'believe_points_auto_replenish_threshold' => 'decimal:2',
+            'believe_points_auto_replenish_amount' => 'decimal:2',
+            'believe_points_auto_replenish_agreed_at' => 'datetime',
+            'believe_points_last_auto_replenish_at' => 'datetime',
             'youtube_token_expires_at' => 'datetime',
             'dropbox_token_expires_at' => 'datetime',
         ];
@@ -504,6 +518,19 @@ class User extends Authenticatable implements MustVerifyEmail
         return true;
     }
 
+    /**
+     * Nonprofit-side dashboard users: approved org, Form 1023 pending, or Care Alliance hub.
+     * Uses Spatie roles and falls back to the legacy {@see $fillable} `role` column when out of sync.
+     */
+    public function hasNonprofitDashboardRole(): bool
+    {
+        if ($this->hasAnyRole(['organization', 'organization_pending', 'care_alliance'])) {
+            return true;
+        }
+
+        return in_array((string) $this->role, ['organization', 'organization_pending', 'care_alliance'], true);
+    }
+
     public function sendJobs()
     {
         return $this->hasMany(SendJob::class);
@@ -818,6 +845,8 @@ class User extends Authenticatable implements MustVerifyEmail
         }
         $this->decrement('believe_points', $points);
 
+        ProcessBelievePointsAutoReplenishJob::dispatch($this->id)->afterResponse();
+
         return true;
     }
 
@@ -833,15 +862,21 @@ class User extends Authenticatable implements MustVerifyEmail
      * Add reward points to the user's balance and create a ledger entry.
      *
      * @param  string  $source  (e.g., 'nonprofit_assessment')
+     * @param  int|float  $points  Supports fractional reward points (e.g. 0.10 per $1 USD).
      * @param  int|null  $referenceId  (e.g., assessment_id)
      */
     public function addRewardPoints(
-        int $points,
+        int|float $points,
         string $source,
         ?int $referenceId = null,
         ?string $description = null,
         ?array $metadata = null
     ): void {
+        $points = round((float) $points, 2);
+        if ($points <= 0) {
+            return;
+        }
+
         $this->increment('reward_points', $points);
 
         RewardPointLedger::createCredit(
@@ -862,13 +897,19 @@ class User extends Authenticatable implements MustVerifyEmail
      * @return bool Returns true if deduction was successful, false if insufficient points
      */
     public function deductRewardPoints(
-        int $points,
+        int|float $points,
         string $source,
         ?int $referenceId = null,
         ?string $description = null,
         ?array $metadata = null
     ): bool {
-        if ($this->reward_points < $points) {
+        $points = round((float) $points, 2);
+        if ($points <= 0) {
+            return true;
+        }
+
+        $balance = round((float) ($this->reward_points ?? 0), 2);
+        if ($balance < $points) {
             return false;
         }
 
@@ -889,9 +930,9 @@ class User extends Authenticatable implements MustVerifyEmail
     /**
      * Get the current reward points balance of the user.
      */
-    public function currentRewardPoints(): int
+    public function currentRewardPoints(): float
     {
-        return (int) ($this->reward_points ?? 0);
+        return round((float) ($this->reward_points ?? 0), 2);
     }
 
     /**

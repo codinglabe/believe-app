@@ -57,6 +57,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'barter.access' => \App\Http\Middleware\BarterNetworkAccess::class,
             'care_alliance.wallet' => \App\Http\Middleware\EnsureCareAllianceWalletEligible::class,
             'deny.care_alliance.hub' => \App\Http\Middleware\DenyCareAllianceHubUser::class,
+            'ensure.service.hub.seller' => \App\Http\Middleware\EnsureServiceHubSeller::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {

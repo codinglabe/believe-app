@@ -40,6 +40,7 @@ use App\Http\Controllers\DonationController;
 use App\Http\Controllers\EnrollmentController;
 use App\Http\Controllers\EventController;
 use App\Http\Controllers\ExcelDataController;
+use App\Http\Controllers\ExploreByCauseController;
 use App\Http\Controllers\Facebook\AuthController;
 use App\Http\Controllers\Facebook\ConfigurationController;
 use App\Http\Controllers\Facebook\PostController;
@@ -317,6 +318,14 @@ Route::get('/nodeboss/{id}/buy', [NodeBossController::class, 'frontendShow'])->n
 Route::get('/donate', [DonationController::class, 'index'])->name('donate');
 Route::redirect('/donation', '/donate', 302);
 
+Route::get('/explore-by-cause', [ExploreByCauseController::class, 'index'])->name('explore-by-cause.index');
+Route::post('/explore-by-cause/toggle-interest/{category}', [ExploreByCauseController::class, 'toggleUserInterest'])
+    ->middleware(['auth', 'EnsureEmailIsVerified'])
+    ->name('explore-by-cause.toggle-interest');
+
+// Public short URL: group chats are served from /chat (auth + topics). Explore-by-cause links here as "Join Group".
+Route::redirect('/groups', '/chat', 302)->name('groups');
+
 // Care Alliance — public campaign donation + preview (no auth)
 Route::get('/care-alliance/{allianceSlug}/campaigns/{campaign}/donate', [CareAllianceDonationController::class, 'donatePage'])
     ->name('care-alliance.campaigns.donate')
@@ -464,6 +473,10 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin|use
     Route::get('/cancel', [App\Http\Controllers\BelievePointController::class, 'cancel'])->name('cancel');
     Route::get('/refunds', [App\Http\Controllers\BelievePointController::class, 'refunds'])->name('refunds');
     Route::post('/refunds/{purchaseId}', [App\Http\Controllers\BelievePointController::class, 'refund'])->name('refund');
+    Route::post('/auto-replenish/settings', [App\Http\Controllers\BelievePointController::class, 'updateAutoReplenishSettings'])->name('auto-replenish.settings');
+    Route::get('/auto-replenish/setup', [App\Http\Controllers\BelievePointController::class, 'autoReplenishSetupPayment'])->name('auto-replenish.setup');
+    Route::get('/auto-replenish/setup-success', [App\Http\Controllers\BelievePointController::class, 'autoReplenishSetupSuccess'])->name('auto-replenish.setup-success');
+    Route::post('/auto-replenish/remove-payment', [App\Http\Controllers\BelievePointController::class, 'autoReplenishRemovePaymentMethod'])->name('auto-replenish.remove-payment');
 });
 
 // Merchant Hub Routes (Public - for viewing offers)

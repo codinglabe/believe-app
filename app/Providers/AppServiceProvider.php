@@ -3,6 +3,7 @@
 namespace App\Providers;
 
 use App\Listeners\AwardInviteRewardPoints;
+use App\Models\BelievePointPurchase;
 use App\Models\Donation;
 use App\Models\Enrollment;
 use App\Models\FundMeDonation;
@@ -10,6 +11,7 @@ use App\Models\JobApplication;
 use App\Models\NodeSell;
 use App\Models\User;
 use App\Notifications\Channels\FirebaseChannel;
+use App\Observers\BelievePointPurchaseObserver;
 use App\Observers\DonationObserver;
 use App\Observers\EnrollmentObserver;
 use App\Observers\FundMeDonationObserver;
@@ -40,6 +42,7 @@ class AppServiceProvider extends ServiceProvider
     {
         NodeSell::observe(NodeSellObserver::class);
         FundMeDonation::observe(FundMeDonationObserver::class);
+        BelievePointPurchase::observe(BelievePointPurchaseObserver::class);
         Donation::observe(DonationObserver::class);
         Enrollment::observe(EnrollmentObserver::class);
         JobApplication::observe(JobApplicationObserver::class);

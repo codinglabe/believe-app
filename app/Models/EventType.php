@@ -22,4 +22,9 @@ class EventType extends Model
     {
         return $this->hasMany(Event::class);
     }
+
+    public function courses(): HasMany
+    {
+        return $this->hasMany(Course::class);
+    }
 }
