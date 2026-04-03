@@ -1,8 +1,10 @@
+# Defaults below match your cPanel deploy; optional repo Variables (same names) override without editing YAML.
+# Secret: CPANEL_SSH_KEY = SSH private key for DEPLOY_USER.
 name: Deploy Laravel to cPanel
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, production ]
   workflow_dispatch:
 
 jobs:
@@ -11,13 +13,31 @@ jobs:
 
     env:
       PHP_VERSION: '8.3'
-      DEPLOY_HOST: 501c3ers.com
-      DEPLOY_USER: c3ers
-      DEPLOY_PATH: /home/c3ers/backup
-      SSH_PORT: 22
+      DEPLOY_HOST: ${{ vars.DEPLOY_HOST != '' && vars.DEPLOY_HOST || '501c3ers.com' }}
+      DEPLOY_USER: ${{ vars.DEPLOY_USER != '' && vars.DEPLOY_USER || 'c3ers' }}
+      DEPLOY_PATH: ${{ vars.DEPLOY_PATH != '' && vars.DEPLOY_PATH || '/home/c3ers/backup' }}
+      APP_URL: ${{ vars.APP_URL != '' && vars.APP_URL || 'https://501c3ers.com' }}
+      SSH_PORT: ${{ vars.SSH_PORT != '' && vars.SSH_PORT || '22' }}
+      # Used by all ssh/rsync steps (Host alias: cpanel-deploy)
+      SSH_CMD: ssh -F ~/.ssh/config -o BatchMode=yes -o ConnectTimeout=30
+      RSYNC_RSH: ssh -F ~/.ssh/config -o BatchMode=yes -o ConnectTimeout=30
 
     steps:
       - uses: actions/checkout@v4
+
+      - name: Deploy target
+        run: |
+          echo "Deploy target: ${{ env.DEPLOY_USER }}@${{ env.DEPLOY_HOST }}:${{ env.DEPLOY_PATH }} (APP_URL=${{ env.APP_URL }})"
+
+      - name: Cache Composer
+        uses: actions/cache@v4
+        with:
+          path: |
+            vendor
+            ~/.composer/cache
+          key: ${{ runner.os }}-php${{ env.PHP_VERSION }}-composer-${{ hashFiles('composer.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-php${{ env.PHP_VERSION }}-composer-
 
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
@@ -26,9 +46,16 @@ jobs:
           tools: composer:v2
           extensions: mbstring, intl, bcmath, ctype, curl, dom, fileinfo, json, openssl, pdo, pdo_mysql, tokenizer, xml
 
+      - name: Setup Node
+        if: hashFiles('package.json') != ''
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
       - name: Install Dependencies
         run: |
-          composer install --no-dev --prefer-dist --no-interaction --optimize-autoloader
+          composer install --no-dev --prefer-dist --no-interaction --optimize-autoloader --no-ansi
           mkdir -p resources/views storage/framework/views
           php artisan config:cache
           php artisan route:cache
@@ -37,9 +64,9 @@ jobs:
       - name: Build Assets
         if: hashFiles('package.json') != ''
         run: |
-          npm ci --legacy-peer-deps
+          npm ci --legacy-peer-deps --no-audit --no-fund
           # Set APP_URL for production build
-          export APP_URL=https://501c3ers.com
+          export APP_URL="${{ env.APP_URL }}"
           npm run build
           # Verify build output exists
           if [ ! -d "public/build" ]; then
@@ -49,21 +76,40 @@ jobs:
           echo "Build completed. Build files:"
           ls -la public/build/ | head -20
 
-      - name: Setup SSH Key
+      - name: Setup SSH (key + config for all deploy commands)
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.CPANEL_SSH_KEY }}
         run: |
+          set -e
+          if [ -z "${SSH_PRIVATE_KEY}" ]; then
+            echo "::error::Set repository secret CPANEL_SSH_KEY (private key for ${{ env.DEPLOY_USER }}@${{ env.DEPLOY_HOST }})."
+            exit 1
+          fi
           mkdir -p ~/.ssh
-          echo "${{ secrets.CPANEL_SSH_KEY }}" > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan -p ${{ env.SSH_PORT }} -H ${{ env.DEPLOY_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
-
-      - name: Test SSH Connection
-        run: |
-          ssh -p ${{ env.SSH_PORT }} -o StrictHostKeyChecking=no ${{ env.DEPLOY_USER }}@${{ env.DEPLOY_HOST }} "echo 'SSH OK'"
+          chmod 700 ~/.ssh
+          install -m 600 /dev/null ~/.ssh/cpanel_deploy
+          printf '%s\n' "${SSH_PRIVATE_KEY}" > ~/.ssh/cpanel_deploy
+          # Trust host key on first connect; keyscan avoids extra noise when it works
+          ssh-keyscan -p "${{ env.SSH_PORT }}" -H "${{ env.DEPLOY_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null || true
+          chmod 644 ~/.ssh/known_hosts 2>/dev/null || true
+          {
+            echo "Host cpanel-deploy"
+            echo "  HostName ${{ env.DEPLOY_HOST }}"
+            echo "  User ${{ env.DEPLOY_USER }}"
+            echo "  Port ${{ env.SSH_PORT }}"
+            echo "  IdentityFile ~/.ssh/cpanel_deploy"
+            echo "  IdentitiesOnly yes"
+            echo "  StrictHostKeyChecking accept-new"
+            echo "  ServerAliveInterval 60"
+            echo "  ServerAliveCountMax 3"
+          } > ~/.ssh/config
+          chmod 600 ~/.ssh/config
+          ${{ env.SSH_CMD }} cpanel-deploy "echo SSH_OK && whoami && hostname"
 
       - name: Check Storage Folder Exists
         id: check_storage
         run: |
-          STORAGE_EXISTS=$(ssh -p ${{ env.SSH_PORT }} -o StrictHostKeyChecking=no ${{ env.DEPLOY_USER }}@${{ env.DEPLOY_HOST }} "test -d ${{ env.DEPLOY_PATH }}/storage && echo 'yes' || echo 'no'")
+          STORAGE_EXISTS=$(${{ env.SSH_CMD }} cpanel-deploy "test -d ${{ env.DEPLOY_PATH }}/storage && echo yes || echo no")
           echo "storage_exists=$STORAGE_EXISTS" >> $GITHUB_OUTPUT
           echo "Storage folder exists: $STORAGE_EXISTS"
 
@@ -72,7 +118,7 @@ jobs:
           if [ "${{ steps.check_storage.outputs.storage_exists }}" == "yes" ]; then
             echo "Storage folder exists on server, excluding from upload"
             rsync -avz --delete \
-              -e "ssh -p ${{ env.SSH_PORT }} -o StrictHostKeyChecking=no" \
+              -e "${{ env.RSYNC_RSH }}" \
               --exclude='.git*' \
               --exclude='.github' \
               --exclude='node_modules' \
@@ -80,34 +126,35 @@ jobs:
               --exclude='.env' \
               --exclude='.env.*' \
               --exclude='storage/' \
-              --exclude='/.htaccess' \
-              . ${{ env.DEPLOY_USER }}@${{ env.DEPLOY_HOST }}:${{ env.DEPLOY_PATH }}/
+              --exclude='.htaccess' \
+              --exclude='public/.htaccess' \
+              . cpanel-deploy:${{ env.DEPLOY_PATH }}/
           else
             echo "Storage folder does not exist on server, will upload it"
             rsync -avz --delete \
-              -e "ssh -p ${{ env.SSH_PORT }} -o StrictHostKeyChecking=no" \
+              -e "${{ env.RSYNC_RSH }}" \
               --exclude='.git*' \
               --exclude='.github' \
               --exclude='node_modules' \
               --exclude='tests' \
               --exclude='.env' \
               --exclude='.env.*' \
-              --exclude='/.htaccess' \
-              . ${{ env.DEPLOY_USER }}@${{ env.DEPLOY_HOST }}:${{ env.DEPLOY_PATH }}/
+              --exclude='.htaccess' \
+              --exclude='public/.htaccess' \
+              . cpanel-deploy:${{ env.DEPLOY_PATH }}/
           fi
           # Verify build directory and manifest were uploaded
           echo "Verifying build files on server..."
-          ssh -p ${{ env.SSH_PORT }} -o StrictHostKeyChecking=no ${{ env.DEPLOY_USER }}@${{ env.DEPLOY_HOST }} "cd ${{ env.DEPLOY_PATH }} && if [ -d 'public/build' ]; then echo '✓ public/build directory exists'; ls -la public/build/ | head -5; else echo '✗ ERROR: public/build directory not found!'; fi"
+          ${{ env.SSH_CMD }} cpanel-deploy "cd ${{ env.DEPLOY_PATH }} && if [ -d 'public/build' ]; then echo '✓ public/build directory exists'; ls -la public/build/ | head -5; else echo '✗ ERROR: public/build directory not found!'; fi"
 
       - name: Post-Deploy
         run: |
-          ssh -p ${{ env.SSH_PORT }} ${{ env.DEPLOY_USER }}@${{ env.DEPLOY_HOST }} << 'EOF'
+          ${{ env.SSH_CMD }} cpanel-deploy << 'EOF'
             cd ${{ env.DEPLOY_PATH }}
-            find . -type f -exec chmod 644 {} \;
-            find . -type d -exec chmod 755 {} \;
-            # Ensure storage directory structure exists but preserve existing files
+            # Avoid `find . -exec chmod` on vendor/ — tens of thousands of processes and very slow
             mkdir -p storage/app/public storage/framework/{sessions,views,cache/data} storage/logs
-            chmod -R 775 storage bootstrap/cache
+            chmod -R 775 storage bootstrap/cache 2>/dev/null || true
+            chmod -R 755 public 2>/dev/null || true
             # Ensure .htaccess files are preserved (restore from backup if accidentally deleted)
             if [ ! -f .htaccess ] && [ -f .htaccess.backup ]; then
               cp .htaccess.backup .htaccess
@@ -122,9 +169,9 @@ jobs:
             if [ -f .env ]; then
               # Update APP_URL if it exists, or add it if it doesn't
               if grep -q "^APP_URL=" .env; then
-                sed -i 's|^APP_URL=.*|APP_URL=https://501c3ers.com|' .env
+                sed -i 's|^APP_URL=.*|APP_URL=${{ env.APP_URL }}|' .env
               else
-                echo "APP_URL=https://501c3ers.com" >> .env
+                echo "APP_URL=${{ env.APP_URL }}" >> .env
               fi
             fi
             # Run database migrations
@@ -137,5 +184,5 @@ jobs:
             # Ensure public/build directory has correct permissions
             chmod -R 755 public/build 2>/dev/null || true
             [ ! -f .env ] && cp .env.example .env && php artisan key:generate --force
-            echo "Deployed to 501c3ers.com!"
+            echo "Deploy finished (${{ env.APP_URL }})"
           EOF
