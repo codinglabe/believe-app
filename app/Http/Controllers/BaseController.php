@@ -2,10 +2,13 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Organization;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Foundation\Validation\ValidatesRequests;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller as LaravelBaseController;
+use Illuminate\Validation\Rule;
 
 abstract class BaseController extends LaravelBaseController
 {
@@ -235,5 +238,61 @@ abstract class BaseController extends LaravelBaseController
         $requiredHierarchy = $roleHierarchy[$requiredRole] ?? 0;
 
         return $userHierarchy >= $requiredHierarchy;
+    }
+
+    /**
+     * Primary Action categories the org selected (Category Grid). Used as "causes" on courses, jobs, FundMe.
+     *
+     * @return array<string, mixed>
+     */
+    protected function primaryActionCategoryIdsValidation(Request $request): array
+    {
+        $orgId = Organization::forAuthUser($request->user())?->id;
+
+        return [
+            'primary_action_category_ids' => ['nullable', 'array'],
+            'primary_action_category_ids.*' => [
+                'integer',
+                Rule::exists('primary_action_categories', 'id')->where('is_active', true),
+                Rule::exists('org_primary_action_category', 'primary_action_category_id')->where(
+                    fn ($q) => $orgId ? $q->where('organization_id', $orgId) : $q->whereRaw('1 = 0')
+                ),
+            ],
+        ];
+    }
+
+    protected function syncPrimaryActionCategories(?Model $model, Request $request): void
+    {
+        if ($model === null || ! method_exists($model, 'primaryActionCategories')) {
+            return;
+        }
+        if (! Organization::forAuthUser($request->user())) {
+            return;
+        }
+        $ids = $request->input('primary_action_category_ids', []);
+        if (! is_array($ids)) {
+            return;
+        }
+        $model->primaryActionCategories()->sync(array_values(array_filter(array_map('intval', $ids))));
+    }
+
+    /**
+     * @return array{organizationPrimaryActionCategories: list<array{id: int, name: string}>}
+     */
+    protected function organizationPrimaryActionCategoriesPageProps(Request $request): array
+    {
+        $org = Organization::forAuthUser($request->user());
+
+        return [
+            'organizationPrimaryActionCategories' => $org
+                ? $org->primaryActionCategories()
+                    ->where('primary_action_categories.is_active', true)
+                    ->orderBy('primary_action_categories.sort_order')
+                    ->orderBy('primary_action_categories.name')
+                    ->get(['primary_action_categories.id', 'primary_action_categories.name'])
+                    ->values()
+                    ->all()
+                : [],
+        ];
     }
 }

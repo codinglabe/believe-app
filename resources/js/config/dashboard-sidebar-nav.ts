@@ -351,13 +351,8 @@ export const dashboardSidebarNavItems: (NavItem | NavGroup)[] = [
                         title: 'Course topics',
                         href: '/topics',
                         icon: BookOpen,
-                        permission: 'topic.read',
-                    },
-                    {
-                        title: 'Event types',
-                        href: '/event-types',
-                        icon: Calendar,
-                        permission: 'event_type.read',
+                        // Match event types: show catalog when org dashboard or explicit read (avoids hidden link if Spatie is stale)
+                        permission: ['topic.read', 'dashboard.organization'],
                     },
                 ],
                 permission: 'course.read',
@@ -373,10 +368,23 @@ export const dashboardSidebarNavItems: (NavItem | NavGroup)[] = [
                         permission: 'event.read',
                     },
                     {
+                        title: 'Event types',
+                        href: '/event-types',
+                        icon: Layers,
+                        // Organization dashboard: show catalog for read (fallback if event_type.read not in session)
+                        permission: ['event_type.read', 'dashboard.organization'],
+                    },
+                    {
                         title: 'Create event',
-                        href: '/events/create',
                         icon: Plus,
-                        permission: 'event.create',
+                        items: [
+                            {
+                                title: 'New event',
+                                href: '/events/create',
+                                icon: Plus,
+                                permission: 'event.create',
+                            },
+                        ],
                     },
                 ],
                 permission: 'event.read',

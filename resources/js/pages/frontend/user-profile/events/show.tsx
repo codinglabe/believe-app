@@ -269,7 +269,7 @@ export default function EventShow() {
 
                 {event.event_type && (
                   <div>
-                    <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Event Type</p>
+                    <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Event Topic</p>
                     <p className="text-gray-900 dark:text-white">{event.event_type.name}</p>
                     <p className="text-xs text-gray-500 dark:text-gray-500">{event.event_type.category}</p>
                   </div>

@@ -3,8 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Jobs\SendJobPostNotification;
-use App\Models\JobPost;
 use App\Models\JobPosition;
+use App\Models\JobPost;
 use App\Models\Organization;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -12,6 +12,29 @@ use Inertia\Response;
 
 class JobPostController extends BaseController
 {
+    /**
+     * Organization for job-post scoping: primary owner (organizations.user_id) or board-linked org.
+     * Aligns with {@see Organization::forAuthUser()} used for Category Grid (causes) props.
+     */
+    protected function organizationIdForJobPosts(Request $request): ?int
+    {
+        $user = $request->user();
+        if ($user === null) {
+            return null;
+        }
+
+        $fromForAuth = Organization::forAuthUser($user)?->id;
+
+        return $fromForAuth ?? $user->organization?->id;
+    }
+
+    protected function assertJobPostBelongsToUserOrg(Request $request, JobPost $jobPost): void
+    {
+        $orgId = $this->organizationIdForJobPosts($request);
+        if ($orgId === null || (int) $jobPost->organization_id !== (int) $orgId) {
+            abort(403, 'Unauthorized action.');
+        }
+    }
 
     /**
      * Display a listing of job posts.
@@ -24,19 +47,23 @@ class JobPostController extends BaseController
         $search = $request->get('search', '');
         $status = $request->get('status', '');
 
-        $query = JobPost::where("organization_id", $request->user()->organization?->id)->with(['position', 'position.category', 'organization'])
+        $orgId = $this->organizationIdForJobPosts($request);
+
+        $query = JobPost::query()
+            ->when($orgId, fn ($q) => $q->where('organization_id', $orgId), fn ($q) => $q->whereRaw('1 = 0'))
+            ->with(['position', 'position.category', 'organization'])
             ->orderByDesc('created_at');
 
-        if (!empty($search)) {
+        if (! empty($search)) {
             $query->where(function ($q) use ($search) {
-                $q->where('title', 'LIKE', '%' . $search . '%')
+                $q->where('title', 'LIKE', '%'.$search.'%')
                     ->orWhereHas('position', function ($q) use ($search) {
-                        $q->where('title', 'LIKE', '%' . $search . '%');
+                        $q->where('title', 'LIKE', '%'.$search.'%');
                     });
             });
         }
 
-        if (!empty($status) && in_array($status, ['draft', 'open', 'closed', 'filled'])) {
+        if (! empty($status) && in_array($status, ['draft', 'open', 'closed', 'filled'])) {
             $query->where('status', $status);
         }
 
@@ -67,7 +94,8 @@ class JobPostController extends BaseController
     public function create(Request $request): Response
     {
         $this->authorizePermission($request, 'job.posts.create');
-        return Inertia::render('job-posts/create', [
+
+        return Inertia::render('job-posts/create', array_merge([
             'positions' => JobPosition::select('id', 'title')->get(),
             'typeOptions' => [
                 'volunteer' => 'Volunteer',
@@ -91,7 +119,7 @@ class JobPostController extends BaseController
                 'EUR' => 'EUR',
                 'GBP' => 'GBP',
             ],
-        ]);
+        ], $this->organizationPrimaryActionCategoriesPageProps($request)));
     }
 
     /**
@@ -100,7 +128,7 @@ class JobPostController extends BaseController
     public function store(Request $request)
     {
         $this->authorizePermission($request, 'job.posts.create');
-        $validated = $request->validate([
+        $validated = $request->validate(array_merge([
             'position_id' => 'required|exists:job_positions,id',
             'title' => 'required|string|max:255',
             'description' => 'required|string',
@@ -116,11 +144,13 @@ class JobPostController extends BaseController
             'time_commitment_min_hours' => 'nullable|integer|min:0',
             'application_deadline' => 'nullable|date|after_or_equal:today',
             'status' => 'required|in:draft,open,closed,filled',
-        ]);
+        ], $this->primaryActionCategoryIdsValidation($request)));
 
-        if ($request->user()) {
-            $validated['organization_id'] = $request->user()->organization?->id;
+        $orgId = $this->organizationIdForJobPosts($request);
+        if ($orgId === null) {
+            abort(403, 'No organization associated with your account.');
         }
+        $validated['organization_id'] = $orgId;
 
         // Force points to 100 for volunteer jobs
         if ($validated['type'] === 'volunteer') {
@@ -130,6 +160,8 @@ class JobPostController extends BaseController
         $validated['date_posted'] = now()->toDateString();
 
         $jobPost = JobPost::create($validated);
+
+        $this->syncPrimaryActionCategories($jobPost, $request);
 
         // Dispatch job to queue for sending notifications
         if ($jobPost->status === 'open') {
@@ -146,13 +178,14 @@ class JobPostController extends BaseController
     public function edit(Request $request, JobPost $jobPost): Response
     {
         $this->authorizePermission($request, 'job.posts.edit');
-        // Check if the current user's organization owns this job post
-        if ($jobPost->organization_id !== $request->user()->organization?->id) {
-            abort(403, 'Unauthorized action.');
-        }
+        $this->assertJobPostBelongsToUserOrg($request, $jobPost);
 
-        return Inertia::render('job-posts/edit', [
-            'jobPost' => $jobPost,
+        $jobPost->load('primaryActionCategories');
+        $jobPostPayload = $jobPost->toArray();
+        $jobPostPayload['primary_action_category_ids'] = $jobPost->primaryActionCategories->pluck('id')->map(fn ($id) => (int) $id)->values()->all();
+
+        return Inertia::render('job-posts/edit', array_merge([
+            'jobPost' => $jobPostPayload,
             'positions' => JobPosition::select('id', 'title')->get(),
             'typeOptions' => [
                 'volunteer' => 'Volunteer',
@@ -176,7 +209,7 @@ class JobPostController extends BaseController
                 'EUR' => 'EUR',
                 'GBP' => 'GBP',
             ],
-        ]);
+        ], $this->organizationPrimaryActionCategoriesPageProps($request)));
     }
 
     /**
@@ -185,11 +218,9 @@ class JobPostController extends BaseController
     public function update(Request $request, JobPost $jobPost)
     {
         $this->authorizePermission($request, 'job.posts.update');
-        if ($jobPost->organization_id !== $request->user()->organization?->id) {
-            abort(403, 'Unauthorized action.');
-        }
+        $this->assertJobPostBelongsToUserOrg($request, $jobPost);
 
-        $validated = $request->validate([
+        $validated = $request->validate(array_merge([
             'position_id' => 'required|exists:job_positions,id',
             'title' => 'required|string|max:255',
             'description' => 'required|string',
@@ -205,7 +236,7 @@ class JobPostController extends BaseController
             'time_commitment_min_hours' => 'nullable|integer|min:0',
             'application_deadline' => 'nullable|date|after_or_equal:today',
             'status' => 'required|in:draft,open,closed,filled',
-        ]);
+        ], $this->primaryActionCategoryIdsValidation($request)));
 
         // Force points to 100 for volunteer jobs
         if ($validated['type'] === 'volunteer') {
@@ -213,6 +244,8 @@ class JobPostController extends BaseController
         }
 
         $jobPost->update($validated);
+
+        $this->syncPrimaryActionCategories($jobPost, $request);
 
         return redirect()->route('job-posts.index')
             ->with('success', 'Job post updated successfully.');
@@ -224,9 +257,7 @@ class JobPostController extends BaseController
     public function destroy(Request $request, JobPost $jobPost)
     {
         $this->authorizePermission($request, 'job.posts.delete');
-        if ($jobPost->organization_id !== $request->user()->organization?->id) {
-            abort(403, 'Unauthorized action.');
-        }
+        $this->assertJobPostBelongsToUserOrg($request, $jobPost);
 
         $jobPost->delete();
 

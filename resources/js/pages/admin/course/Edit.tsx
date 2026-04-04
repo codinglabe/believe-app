@@ -1,7 +1,7 @@
 "use client"
 import type React from "react"
 import { Head, useForm, usePage, Link } from "@inertiajs/react"
-import { ArrowLeft, Save, Heart, Calendar, Users, BookOpen, Settings, AlertCircle, CheckCircle } from "lucide-react"
+import { ArrowLeft, Save, Heart, Calendar, BookOpen, Settings, AlertCircle, CheckCircle } from "lucide-react"
 import { Button } from "@/components/admin/ui/button"
 import { Input } from "@/components/admin/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -9,12 +9,15 @@ import { Switch } from "@/components/admin/ui/switch"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/admin/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import RichTextEditor from "@/components/admin/rich-text-editor"
-import ArrayInput from "@/components/admin/array-input"
 import { ImageUpload } from "@/components/admin/ImageUpload"
 import type { User } from "@/types"
 import { toast } from "sonner"
 import AppLayout from "@/layouts/app-layout"
 import { useState, useEffect } from "react"
+import {
+  OrganizationPrimaryActionCategoriesField,
+  type PrimaryActionCategoryOption,
+} from "@/components/organization-primary-action-categories-field"
 
 interface Topic {
   id: number
@@ -76,6 +79,7 @@ interface Course {
   formatted_duration: string
   formatted_format: string
   meeting_link?: string | null
+  primary_action_category_ids?: number[]
 }
 
 interface EventType {
@@ -88,10 +92,12 @@ interface AdminCoursesEditProps {
   course: Course
   topics: Topic[]
   eventTypes: EventType[]
+  organizationPrimaryActionCategories: PrimaryActionCategoryOption[]
 }
 
 export default function AdminCoursesEdit() {
-  const { course, topics, eventTypes } = usePage<AdminCoursesEditProps>().props
+  const { course, topics, eventTypes, organizationPrimaryActionCategories } =
+    usePage<AdminCoursesEditProps>().props
   const { auth } = usePage().props as { auth: { user: User } }
 
   const [currentTab, setCurrentTab] = useState("basics")
@@ -152,6 +158,8 @@ export default function AdminCoursesEdit() {
 
     // Laravel method spoofing for updates
     _method: "PUT",
+
+    primary_action_category_ids: (course.primary_action_category_ids ?? []).map(String),
   })
 
   const validateTab = (tab: string): boolean => {
@@ -171,8 +179,6 @@ export default function AdminCoursesEdit() {
           data.duration &&
           data.max_participants
         )
-      case "content":
-        return data.learning_outcomes.length > 0
       case "settings":
         return true
       default:
@@ -184,7 +190,6 @@ export default function AdminCoursesEdit() {
     const newTabErrors = {
       basics: !validateTab("basics"),
       schedule: !validateTab("schedule"),
-      content: !validateTab("content"),
       settings: !validateTab("settings"),
     }
     setTabErrors(newTabErrors)
@@ -203,8 +208,6 @@ export default function AdminCoursesEdit() {
         )
       ) {
         setCurrentTab("schedule")
-      } else if (errorFields.some((field) => ["learning_outcomes"].includes(field))) {
-        setCurrentTab("content")
       }
     }
   }, [errors])
@@ -303,7 +306,7 @@ export default function AdminCoursesEdit() {
 
         <form onSubmit={handleSubmit}>
           <Tabs value={currentTab} onValueChange={handleTabChange} className="space-y-6">
-            <TabsList className="grid w-full grid-cols-4">
+            <TabsList className="grid w-full grid-cols-3">
               <TabTriggerWithStatus value="basics">
                 <BookOpen className="h-4 w-4" />
                 Basics
@@ -311,10 +314,6 @@ export default function AdminCoursesEdit() {
               <TabTriggerWithStatus value="schedule">
                 <Calendar className="h-4 w-4" />
                 Schedule
-              </TabTriggerWithStatus>
-              <TabTriggerWithStatus value="content">
-                <Users className="h-4 w-4" />
-                Content
               </TabTriggerWithStatus>
               <TabsTrigger value="settings" className="flex items-center gap-2">
                 <Settings className="h-4 w-4" />
@@ -397,11 +396,11 @@ export default function AdminCoursesEdit() {
                     {data.type === "event" && (
                       <div className="space-y-2">
                         <label htmlFor="event_type_id" className="text-sm font-medium">
-                          Event Type *
+                          Event Topic *
                         </label>
                         <Select value={data.event_type_id || ""} onValueChange={(value) => setData("event_type_id", value)}>
                           <SelectTrigger className={errors.event_type_id ? "border-destructive" : ""}>
-                            <SelectValue placeholder="Select event type" />
+                            <SelectValue placeholder="Select event topic" />
                           </SelectTrigger>
                           <SelectContent>
                             {Object.entries(groupedEventTypes).map(([category, types]) => (
@@ -461,6 +460,17 @@ export default function AdminCoursesEdit() {
                       </div>
                     </div>
                   </div>
+
+                  <OrganizationPrimaryActionCategoriesField
+                    categories={organizationPrimaryActionCategories}
+                    selectedIds={data.primary_action_category_ids}
+                    onSelectionChange={(ids) => setData("primary_action_category_ids", ids)}
+                    error={
+                      typeof errors.primary_action_category_ids === "string"
+                        ? errors.primary_action_category_ids
+                        : undefined
+                    }
+                  />
 
                   <div className="space-y-2">
                     <label htmlFor="description" className="text-sm font-medium">
@@ -618,66 +628,6 @@ export default function AdminCoursesEdit() {
                       </Select>
                     </div>
                   </div>
-                </CardContent>
-              </Card>
-            </TabsContent>
-
-            <TabsContent value="content">
-              <Card>
-                <CardHeader>
-                  <CardTitle>{data.type === "course" ? "Course Content & Impact" : "Event Content & Impact"}</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                  <ArrayInput
-                    id="learning_outcomes"
-                    label={data.type === "course" ? "Learning Outcomes *" : "Event Outcomes *"}
-                    values={data.learning_outcomes}
-                    onChange={(values) => setData("learning_outcomes", values)}
-                    error={errors.learning_outcomes}
-                    placeholder={data.type === "course" ? "What will participants learn?" : "What will participants experience or gain?"}
-                  />
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <ArrayInput
-                      id="prerequisites"
-                      label="Prerequisites"
-                      values={data.prerequisites}
-                      onChange={(values) => setData("prerequisites", values)}
-                      error={errors.prerequisites}
-                      placeholder="Required skills or knowledge"
-                    />
-
-                    <ArrayInput
-                      id="materials_needed"
-                      label="Materials Needed"
-                      values={data.materials_needed}
-                      onChange={(values) => setData("materials_needed", values)}
-                      error={errors.materials_needed}
-                      placeholder="What should participants bring?"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <label htmlFor="community_impact" className="text-sm font-medium">
-                      Community Impact
-                    </label>
-                    <RichTextEditor
-                      label=""
-                      value={data.community_impact}
-                      onChange={(value) => setData("community_impact", value)}
-                      error={errors.community_impact}
-                      className="mt-1"
-                    />
-                  </div>
-
-                  <ArrayInput
-                    id="accessibility_features"
-                    label="Accessibility Features"
-                    values={data.accessibility_features}
-                    onChange={(values) => setData("accessibility_features", values)}
-                    error={errors.accessibility_features}
-                    placeholder="Sign language, large print, etc."
-                  />
                 </CardContent>
               </Card>
             </TabsContent>

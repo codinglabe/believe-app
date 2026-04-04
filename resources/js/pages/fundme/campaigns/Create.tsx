@@ -14,6 +14,10 @@ import type { BreadcrumbItem } from "@/types";
 import { ArrowLeft, Loader2, Upload } from "lucide-react";
 import { showErrorToast } from "@/lib/toast";
 import { route } from "ziggy-js";
+import {
+  OrganizationPrimaryActionCategoriesField,
+  type PrimaryActionCategoryOption,
+} from "@/components/organization-primary-action-categories-field";
 
 const breadcrumbs: BreadcrumbItem[] = [
   { title: "Dashboard", href: "/dashboard" },
@@ -32,6 +36,12 @@ interface Props {
   categories: Category[];
   narrativeMinLength: number;
   narrativeMinWords: number;
+  organizationPrimaryActionCategories: PrimaryActionCategoryOption[];
+}
+
+function firstError(err: string | string[] | undefined): string | undefined {
+  if (err == null) return undefined;
+  return typeof err === "string" ? err : err[0];
 }
 
 const helperPrompts = {
@@ -43,7 +53,12 @@ const helperPrompts = {
     "What outcomes do you expect in the next 3–12 months? How will lives or the community improve?",
 };
 
-export default function FundMeCampaignCreate({ categories, narrativeMinLength, narrativeMinWords }: Props) {
+export default function FundMeCampaignCreate({
+  categories,
+  narrativeMinLength,
+  narrativeMinWords,
+  organizationPrimaryActionCategories,
+}: Props) {
   const [formData, setFormData] = useState({
     title: "",
     fundme_category_id: "",
@@ -54,8 +69,9 @@ export default function FundMeCampaignCreate({ categories, narrativeMinLength, n
     expected_impact: "",
     use_of_funds_confirmation: false,
     status: "draft",
+    primary_action_category_ids: [] as string[],
   });
-  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [errors, setErrors] = useState<Record<string, string | string[]>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
@@ -78,6 +94,9 @@ export default function FundMeCampaignCreate({ categories, narrativeMinLength, n
     if (formData.cover_image) {
       payload.set("cover_image", formData.cover_image);
     }
+    formData.primary_action_category_ids
+      .filter((id) => id !== "")
+      .forEach((id) => payload.append("primary_action_category_ids[]", id));
 
     router.post(route("fundme.campaigns.store"), payload, {
       forceFormData: true,
@@ -145,6 +164,22 @@ export default function FundMeCampaignCreate({ categories, narrativeMinLength, n
                   {errors.fundme_category_id && (
                     <p className="text-sm text-destructive">{errors.fundme_category_id}</p>
                   )}
+                </div>
+
+                <div className="md:col-span-2">
+                  <OrganizationPrimaryActionCategoriesField
+                    categories={organizationPrimaryActionCategories}
+                    selectedIds={formData.primary_action_category_ids}
+                    onSelectionChange={(ids) => {
+                      setFormData((prev) => ({ ...prev, primary_action_category_ids: ids }));
+                      setErrors((prev) => {
+                        const next = { ...prev };
+                        delete next.primary_action_category_ids;
+                        return next;
+                      });
+                    }}
+                    error={firstError(errors.primary_action_category_ids)}
+                  />
                 </div>
               </div>
 

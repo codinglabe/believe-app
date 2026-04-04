@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\FundMeCampaign;
 use App\Models\FundMeCategory;
 use App\Models\FundMeDonation;
+use App\Models\Organization;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
@@ -18,12 +19,25 @@ class FundMeCampaignController extends BaseController
     protected const NARRATIVE_MIN_LENGTH = 300;
 
     /**
+     * Primary org owner or board-linked org (matches {@see Organization::forAuthUser()} and job-post / causes props).
+     */
+    protected function fundMeOrganization(Request $request): ?Organization
+    {
+        $user = $request->user();
+        if ($user === null) {
+            return null;
+        }
+
+        return Organization::forAuthUser($user) ?? $user->organization;
+    }
+
+    /**
      * Display Believe FundMe campaigns for the organization.
      */
     public function index(Request $request): Response
     {
-        $org = $request->user()?->organization;
-        if (!$org) {
+        $org = $this->fundMeOrganization($request);
+        if (! $org) {
             abort(403, 'No organization associated with your account.');
         }
 
@@ -52,7 +66,7 @@ class FundMeCampaignController extends BaseController
                 'raised_amount_dollars' => $c->raisedAmountDollars(),
                 'progress_percent' => $c->progressPercent(),
                 'status' => $c->status,
-                'cover_image' => $c->cover_image ? asset('storage/' . $c->cover_image) : null,
+                'cover_image' => $c->cover_image ? asset('storage/'.$c->cover_image) : null,
                 'category' => $c->category ? ['id' => $c->category->id, 'name' => $c->category->name, 'slug' => $c->category->slug] : null,
                 'submitted_at' => $c->submitted_at?->toIso8601String(),
                 'approved_at' => $c->approved_at?->toIso8601String(),
@@ -92,18 +106,18 @@ class FundMeCampaignController extends BaseController
      */
     public function create(Request $request): Response
     {
-        $org = $request->user()?->organization;
-        if (!$org) {
+        $org = $this->fundMeOrganization($request);
+        if (! $org) {
             abort(403, 'No organization associated with your account.');
         }
 
         $categories = FundMeCategory::active()->orderBy('sort_order')->get(['id', 'name', 'slug', 'description']);
 
-        return Inertia::render('fundme/campaigns/Create', [
+        return Inertia::render('fundme/campaigns/Create', array_merge([
             'categories' => $categories,
             'narrativeMinLength' => self::NARRATIVE_MIN_LENGTH,
             'narrativeMinWords' => 50,
-        ]);
+        ], $this->organizationPrimaryActionCategoriesPageProps($request)));
     }
 
     /**
@@ -111,26 +125,26 @@ class FundMeCampaignController extends BaseController
      */
     public function store(Request $request)
     {
-        $org = $request->user()?->organization;
-        if (!$org) {
+        $org = $this->fundMeOrganization($request);
+        if (! $org) {
             abort(403, 'No organization associated with your account.');
         }
 
-        $rules = [
+        $rules = array_merge([
             'title' => 'required|string|max:120',
             'fundme_category_id' => 'required|exists:fundme_categories,id',
             'goal_amount' => 'required|numeric|min:1',
             'cover_image' => 'required|image|mimes:jpeg,png,jpg,gif,webp|max:5120',
-            'helps_who' => 'required|string|min:' . self::NARRATIVE_MIN_LENGTH,
-            'fund_usage' => 'required|string|min:' . self::NARRATIVE_MIN_LENGTH,
-            'expected_impact' => 'required|string|min:' . self::NARRATIVE_MIN_LENGTH,
+            'helps_who' => 'required|string|min:'.self::NARRATIVE_MIN_LENGTH,
+            'fund_usage' => 'required|string|min:'.self::NARRATIVE_MIN_LENGTH,
+            'expected_impact' => 'required|string|min:'.self::NARRATIVE_MIN_LENGTH,
             'use_of_funds_confirmation' => 'required|accepted',
             'status' => 'nullable|in:draft,in_review',
-        ];
+        ], $this->primaryActionCategoryIdsValidation($request));
         $messages = [
-            'helps_who.min' => 'Who this helps must be at least ' . self::NARRATIVE_MIN_LENGTH . ' characters.',
-            'fund_usage.min' => 'What funds will be used for must be at least ' . self::NARRATIVE_MIN_LENGTH . ' characters.',
-            'expected_impact.min' => 'Expected impact must be at least ' . self::NARRATIVE_MIN_LENGTH . ' characters.',
+            'helps_who.min' => 'Who this helps must be at least '.self::NARRATIVE_MIN_LENGTH.' characters.',
+            'fund_usage.min' => 'What funds will be used for must be at least '.self::NARRATIVE_MIN_LENGTH.' characters.',
+            'expected_impact.min' => 'Expected impact must be at least '.self::NARRATIVE_MIN_LENGTH.' characters.',
         ];
         $validated = $request->validate($rules, $messages);
 
@@ -159,6 +173,8 @@ class FundMeCampaignController extends BaseController
             ]);
         }
 
+        $this->syncPrimaryActionCategories($campaign, $request);
+
         return redirect()->route('fundme.campaigns.index')
             ->with('success', $isPublish ? 'Campaign is live and visible on Believe FundMe.' : 'Believe FundMe campaign saved as draft.');
     }
@@ -168,26 +184,26 @@ class FundMeCampaignController extends BaseController
      */
     public function edit(Request $request, FundMeCampaign $fundme_campaign): Response
     {
-        $org = $request->user()?->organization;
-        if (!$org || (int) $fundme_campaign->organization_id !== (int) $org->id) {
+        $org = $this->fundMeOrganization($request);
+        if (! $org || (int) $fundme_campaign->organization_id !== (int) $org->id) {
             abort(403, 'You cannot edit this campaign.');
         }
-        if (!in_array($fundme_campaign->status, ['draft', 'rejected'])) {
+        if (! in_array($fundme_campaign->status, ['draft', 'rejected'])) {
             return redirect()->route('fundme.campaigns.index')
                 ->with('error', 'Only draft or rejected campaigns can be edited.');
         }
 
-        $fundme_campaign->load('category:id,name,slug,description');
+        $fundme_campaign->load(['category:id,name,slug,description', 'primaryActionCategories']);
         $categories = FundMeCategory::active()->orderBy('sort_order')->get(['id', 'name', 'slug', 'description']);
 
-        return Inertia::render('fundme/campaigns/Edit', [
+        return Inertia::render('fundme/campaigns/Edit', array_merge([
             'campaign' => [
                 'id' => $fundme_campaign->id,
                 'title' => $fundme_campaign->title,
                 'slug' => $fundme_campaign->slug,
                 'fundme_category_id' => $fundme_campaign->fundme_category_id,
                 'goal_amount' => $fundme_campaign->goalAmountDollars(),
-                'cover_image' => $fundme_campaign->cover_image ? asset('storage/' . $fundme_campaign->cover_image) : null,
+                'cover_image' => $fundme_campaign->cover_image ? asset('storage/'.$fundme_campaign->cover_image) : null,
                 'cover_image_path' => $fundme_campaign->cover_image,
                 'helps_who' => $fundme_campaign->helps_who,
                 'fund_usage' => $fundme_campaign->fund_usage,
@@ -195,11 +211,12 @@ class FundMeCampaignController extends BaseController
                 'use_of_funds_confirmation' => $fundme_campaign->use_of_funds_confirmation,
                 'status' => $fundme_campaign->status,
                 'rejection_reason' => $fundme_campaign->rejection_reason,
+                'primary_action_category_ids' => $fundme_campaign->primaryActionCategories->pluck('id')->map(fn ($id) => (int) $id)->values()->all(),
             ],
             'categories' => $categories,
             'narrativeMinLength' => self::NARRATIVE_MIN_LENGTH,
             'narrativeMinWords' => 50,
-        ]);
+        ], $this->organizationPrimaryActionCategoriesPageProps($request)));
     }
 
     /**
@@ -207,37 +224,37 @@ class FundMeCampaignController extends BaseController
      */
     public function update(Request $request, FundMeCampaign $fundme_campaign)
     {
-        $org = $request->user()?->organization;
-        if (!$org || (int) $fundme_campaign->organization_id !== (int) $org->id) {
+        $org = $this->fundMeOrganization($request);
+        if (! $org || (int) $fundme_campaign->organization_id !== (int) $org->id) {
             abort(403, 'You cannot update this campaign.');
         }
-        if (!in_array($fundme_campaign->status, ['draft', 'rejected'])) {
+        if (! in_array($fundme_campaign->status, ['draft', 'rejected'])) {
             return redirect()->route('fundme.campaigns.index')
                 ->with('error', 'Only draft or rejected campaigns can be updated.');
         }
 
         $coverRules = ['image', 'mimes:jpeg,png,jpg,gif,webp', 'max:5120'];
-        if (!$fundme_campaign->cover_image) {
+        if (! $fundme_campaign->cover_image) {
             array_unshift($coverRules, 'required');
         } else {
             array_unshift($coverRules, 'nullable');
         }
 
-        $rules = [
+        $rules = array_merge([
             'title' => 'required|string|max:120',
             'fundme_category_id' => 'required|exists:fundme_categories,id',
             'goal_amount' => 'required|numeric|min:1',
             'cover_image' => $coverRules,
-            'helps_who' => 'required|string|min:' . self::NARRATIVE_MIN_LENGTH,
-            'fund_usage' => 'required|string|min:' . self::NARRATIVE_MIN_LENGTH,
-            'expected_impact' => 'required|string|min:' . self::NARRATIVE_MIN_LENGTH,
+            'helps_who' => 'required|string|min:'.self::NARRATIVE_MIN_LENGTH,
+            'fund_usage' => 'required|string|min:'.self::NARRATIVE_MIN_LENGTH,
+            'expected_impact' => 'required|string|min:'.self::NARRATIVE_MIN_LENGTH,
             'use_of_funds_confirmation' => 'required|accepted',
             'status' => 'nullable|in:draft,in_review',
-        ];
+        ], $this->primaryActionCategoryIdsValidation($request));
         $messages = [
-            'helps_who.min' => 'Who this helps must be at least ' . self::NARRATIVE_MIN_LENGTH . ' characters.',
-            'fund_usage.min' => 'What funds will be used for must be at least ' . self::NARRATIVE_MIN_LENGTH . ' characters.',
-            'expected_impact.min' => 'Expected impact must be at least ' . self::NARRATIVE_MIN_LENGTH . ' characters.',
+            'helps_who.min' => 'Who this helps must be at least '.self::NARRATIVE_MIN_LENGTH.' characters.',
+            'fund_usage.min' => 'What funds will be used for must be at least '.self::NARRATIVE_MIN_LENGTH.' characters.',
+            'expected_impact.min' => 'Expected impact must be at least '.self::NARRATIVE_MIN_LENGTH.' characters.',
         ];
         $validated = $request->validate($rules, $messages);
 
@@ -273,6 +290,8 @@ class FundMeCampaignController extends BaseController
             $fundme_campaign->update(['status' => FundMeCampaign::STATUS_DRAFT]);
         }
 
+        $this->syncPrimaryActionCategories($fundme_campaign, $request);
+
         return redirect()->route('fundme.campaigns.index')
             ->with('success', 'Campaign updated successfully.');
     }
@@ -282,15 +301,15 @@ class FundMeCampaignController extends BaseController
      */
     public function submit(Request $request, FundMeCampaign $fundme_campaign)
     {
-        $org = $request->user()?->organization;
-        if (!$org || (int) $fundme_campaign->organization_id !== (int) $org->id) {
+        $org = $this->fundMeOrganization($request);
+        if (! $org || (int) $fundme_campaign->organization_id !== (int) $org->id) {
             abort(403, 'You cannot submit this campaign.');
         }
         if ($fundme_campaign->status !== FundMeCampaign::STATUS_DRAFT) {
             return redirect()->route('fundme.campaigns.index')
                 ->with('error', 'Only draft campaigns can be submitted.');
         }
-        if (!$fundme_campaign->cover_image) {
+        if (! $fundme_campaign->cover_image) {
             return redirect()->route('fundme.campaigns.index')
                 ->with('error', 'Add a cover image before publishing. Edit the campaign and add a cover image.');
         }
@@ -310,8 +329,8 @@ class FundMeCampaignController extends BaseController
      */
     public function destroy(Request $request, FundMeCampaign $fundme_campaign)
     {
-        $org = $request->user()?->organization;
-        if (!$org || (int) $fundme_campaign->organization_id !== (int) $org->id) {
+        $org = $this->fundMeOrganization($request);
+        if (! $org || (int) $fundme_campaign->organization_id !== (int) $org->id) {
             abort(403, 'You cannot delete this campaign.');
         }
         if ($fundme_campaign->status !== FundMeCampaign::STATUS_DRAFT) {

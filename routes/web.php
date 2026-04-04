@@ -39,6 +39,7 @@ use App\Http\Controllers\DeductibilityCodeController;
 use App\Http\Controllers\DonationController;
 use App\Http\Controllers\EnrollmentController;
 use App\Http\Controllers\EventController;
+use App\Http\Controllers\EventTypeController;
 use App\Http\Controllers\ExcelDataController;
 use App\Http\Controllers\ExploreByCauseController;
 use App\Http\Controllers\Facebook\AuthController;
@@ -1336,11 +1337,11 @@ Route::get('volunteers/{volunteer}', [VolunteerController::class, 'show'])
     ->name('volunteers.show')
     ->middleware(['role:organization|care_alliance', 'permission:volunteer.read']);
 
-// Events Routes
+// Events Routes (create/store: nonprofit roles + event.create — see EnsureCanCreateEvents)
 Route::resource('events', EventController::class)->middleware([
     'index' => 'permission:event.read',
-    'create' => 'permission:event.create',
-    'store' => 'permission:event.create',
+    'create' => 'can.create.events',
+    'store' => 'can.create.events',
     'show' => 'permission:event.read',
     'edit' => 'permission:event.edit',
     'update' => 'permission:event.update',
@@ -1565,10 +1566,18 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected'])->group(f
 
     // Topic Management Routes (Admin Only)
     Route::resource('topics', TopicController::class)->only(['index', 'store', 'update', 'destroy'])->middleware([
-        'index' => 'permission:topic.read',
+        'index' => 'can.read.topics',
         'store' => 'permission:topic.create',
         'update' => 'permission:topic.update',
         'destroy' => 'permission:topic.delete',
+    ]);
+
+    // Event types (admin CRUD; org / Care Alliance read — index matches EnsureCanReadEventTypes + controller)
+    Route::resource('event-types', EventTypeController::class)->only(['index', 'store', 'update', 'destroy'])->middleware([
+        'index' => 'can.read.event_types',
+        'store' => 'permission:event_type.create',
+        'update' => 'permission:event_type.update',
+        'destroy' => 'permission:event_type.delete',
     ]);
 });
 

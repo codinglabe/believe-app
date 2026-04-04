@@ -57,6 +57,9 @@ return Application::configure(basePath: dirname(__DIR__))
             'barter.access' => \App\Http\Middleware\BarterNetworkAccess::class,
             'care_alliance.wallet' => \App\Http\Middleware\EnsureCareAllianceWalletEligible::class,
             'deny.care_alliance.hub' => \App\Http\Middleware\DenyCareAllianceHubUser::class,
+            'can.read.event_types' => \App\Http\Middleware\EnsureCanReadEventTypes::class,
+            'can.read.topics' => \App\Http\Middleware\EnsureCanReadTopics::class,
+            'can.create.events' => \App\Http\Middleware\EnsureCanCreateEvents::class,
             'ensure.service.hub.seller' => \App\Http\Middleware\EnsureServiceHubSeller::class,
         ]);
     })
