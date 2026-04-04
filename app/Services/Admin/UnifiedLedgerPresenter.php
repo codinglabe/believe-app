@@ -362,17 +362,34 @@ class UnifiedLedgerPresenter
             $defaultTo['to_name'] = $orgName ?? $related['related_display_name'] ?? $defaultTo['to_name'];
         }
 
+        if ($module === 'marketplace') {
+            if ($walletUser) {
+                $payerOrg = Organization::forAuthUser($walletUser);
+                if ($payerOrg) {
+                    $defaultFrom['from_type'] = 'organization';
+                    $defaultFrom['from_name'] = $payerOrg->name;
+                    $defaultFrom['from_email'] = $payerOrg->email ?: $walletUser->email;
+                    $defaultFrom['from_id'] = $payerOrg->id;
+                }
+            }
+            if ($orgName !== null && $orgName !== '') {
+                $defaultTo['to_type'] = 'organization';
+                $defaultTo['to_name'] = $orgName;
+                $defaultTo['to_id'] = $orgId ?? $defaultTo['to_id'];
+                $defaultTo['to_email'] = $orgEmail ?? $defaultTo['to_email'];
+            }
+        }
+
         if ($module === 'believe_points' && $walletUser) {
-            $party = $this->resolveBelievePointsPayerFromUser($walletUser);
             $defaultFrom = [
-                'from_type' => $party['from_type'],
-                'from_name' => $party['from_name'],
-                'from_email' => $party['from_email'],
-                'from_id' => $party['from_id'],
+                'from_type' => 'buyer',
+                'from_name' => $walletUser->name,
+                'from_email' => $walletUser->email,
+                'from_id' => (int) $walletUser->id,
             ];
             $defaultTo = [
-                'to_type' => 'platform',
-                'to_name' => 'BIU Platform',
+                'to_type' => '',
+                'to_name' => null,
                 'to_email' => null,
                 'to_id' => null,
             ];
@@ -444,6 +461,19 @@ class UnifiedLedgerPresenter
         $subtotal = $this->metaFloat($meta, ['subtotal_amount', 'subtotal', 'line_subtotal']);
         $tax = $this->metaFloat($meta, ['sales_tax_amount', 'sales_tax', 'tax_amount', 'tax_total']);
         $shipping = $this->metaFloat($meta, ['shipping_amount', 'shipping', 'shipping_total']);
+
+        $lrSub = $ledgerReport['subtotal_amount'] ?? null;
+        if ($lrSub !== null && is_numeric($lrSub) && (float) $lrSub > 0) {
+            $subtotal = round((float) $lrSub, 2);
+        }
+        $lrTax = $ledgerReport['sales_tax_amount'] ?? null;
+        if ($lrTax !== null && is_numeric($lrTax) && (float) $lrTax > 0) {
+            $tax = round((float) $lrTax, 2);
+        }
+        $lrShip = $ledgerReport['shipping_amount'] ?? null;
+        if ($lrShip !== null && is_numeric($lrShip) && (float) $lrShip > 0) {
+            $shipping = round((float) $lrShip, 2);
+        }
 
         if ($subtotal <= 0 && $gross > 0) {
             $subtotal = $gross - $tax - $shipping;

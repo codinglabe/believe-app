@@ -11,6 +11,7 @@ use App\Models\OrderSplit;
 use App\Models\ShippoShipment;
 use App\Models\TempOrder;
 use App\Models\Transaction;
+use App\Services\MarketplaceOrderLedgerService;
 use App\Services\PrintifyService;
 use App\Services\ShippoService;
 use App\Services\StripeConfigService;
@@ -1126,23 +1127,56 @@ class CheckoutController extends Controller
             //     'organization_donations' => $organizationDonations
             // ]);
 
-            // Create transaction record for Believe Points payment
+            $stripeFeeUsd = 0.0;
+            if ($paymentMethod === 'stripe' && $paymentIntent !== null) {
+                try {
+                    $expanded = PaymentIntent::retrieve($paymentIntent->id, [
+                        'expand' => ['latest_charge.balance_transaction'],
+                    ]);
+                    $charge = $expanded->latest_charge ?? null;
+                    $bt = is_object($charge) ? ($charge->balance_transaction ?? null) : null;
+                    if (is_object($bt) && isset($bt->fee)) {
+                        $stripeFeeUsd = (float) $bt->fee / 100;
+                    }
+                } catch (\Throwable $e) {
+                    \Log::warning('Marketplace checkout: could not read Stripe processing fee from PaymentIntent', [
+                        'order_id' => $order->id,
+                        'payment_intent_id' => $paymentIntent->id ?? null,
+                        'message' => $e->getMessage(),
+                    ]);
+                }
+            }
+
+            $ledgerMeta = MarketplaceOrderLedgerService::transactionMeta(
+                $order->fresh(['orderSplit']),
+                $stripeFeeUsd
+            );
             if ($paymentMethod === 'believe_points') {
-                Transaction::record([
+                $ledgerMeta['believe_points_used'] = $pointsRequired;
+            }
+            if (! empty($tempOrder->printify_order_id)) {
+                $ledgerMeta['printify_order_id'] = $tempOrder->printify_order_id;
+            }
+
+            if (! Transaction::query()
+                ->where('related_type', Order::class)
+                ->where('related_id', $order->id)
+                ->where('type', 'purchase')
+                ->exists()) {
+                Transaction::create([
                     'user_id' => $user->id,
                     'related_id' => $order->id,
                     'related_type' => Order::class,
                     'type' => 'purchase',
                     'status' => Transaction::STATUS_COMPLETED,
-                    'amount' => $tempOrder->total_amount,
-                    'fee' => 0,
+                    'amount' => $order->total_amount,
+                    'fee' => $paymentMethod === 'stripe' ? round($stripeFeeUsd, 2) : 0,
                     'currency' => 'USD',
-                    'payment_method' => 'believe_points',
-                    'meta' => [
-                        'order_id' => $order->id,
-                        'believe_points_used' => $pointsRequired,
-                        'printify_order_id' => $tempOrder->printify_order_id,
-                    ],
+                    'payment_method' => $paymentMethod === 'stripe' ? 'stripe' : 'believe_points',
+                    'transaction_id' => $paymentMethod === 'stripe' && $paymentIntent !== null
+                        ? $paymentIntent->id
+                        : 'mp_order_'.$order->id.'_points',
+                    'meta' => $ledgerMeta,
                     'processed_at' => now(),
                 ]);
             }

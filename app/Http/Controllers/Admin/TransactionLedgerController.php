@@ -21,6 +21,7 @@ use App\Models\Transaction;
 use App\Models\User;
 use App\Services\Admin\LedgerListFilters;
 use App\Services\Admin\UnifiedLedgerPresenter;
+use App\Services\MarketplaceOrderLedgerService;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\RedirectResponse;
@@ -769,6 +770,9 @@ class TransactionLedgerController extends Controller
             'payout_status' => $fin['payout_status'],
             'organization_id' => $org['organization_id'],
             'organization_name' => $org['organization_name'],
+            'subtotal_amount' => $fin['subtotal_amount'] ?? null,
+            'sales_tax_amount' => $fin['sales_tax_amount'] ?? null,
+            'shipping_amount' => $fin['shipping_amount'] ?? null,
         ];
     }
 
@@ -972,7 +976,7 @@ class TransactionLedgerController extends Controller
             };
         }
 
-        return [
+        $out = [
             'gross_amount' => round($gross, 2),
             'stripe_fee' => round($stripeFee, 2),
             'bridge_fee' => round($bridgeFee, 2),
@@ -982,6 +986,24 @@ class TransactionLedgerController extends Controller
             'net_to_organization' => round($net, 2),
             'payout_status' => $payout,
         ];
+
+        if (
+            ($donationPayload === null || ($donationPayload['kind'] ?? '') !== 'donation')
+            && $t->type !== 'refund'
+            && $t->related_id !== null
+            && (int) $t->related_id > 0
+        ) {
+            $rt = $t->related_type ? ltrim((string) $t->related_type, '\\') : '';
+            $isOrder = $rt === Order::class;
+            if ($isOrder) {
+                $order = Order::query()->with('orderSplit')->find((int) $t->related_id);
+                if ($order) {
+                    $out = MarketplaceOrderLedgerService::mergeLedgerFinancials($order, $t, $out);
+                }
+            }
+        }
+
+        return $out;
     }
 
     /**
@@ -1001,6 +1023,22 @@ class TransactionLedgerController extends Controller
             }
             if ($oname === null && ! empty($dl['organization_name']) && is_string($dl['organization_name'])) {
                 $oname = $dl['organization_name'];
+            }
+        }
+
+        if (($oid < 1 || $oname === null) && $t->related_id !== null && (int) $t->related_id > 0 && $t->related_type) {
+            $rt = ltrim((string) $t->related_type, '\\');
+            if ($rt === Order::class) {
+                $order = Order::query()->find((int) $t->related_id);
+                if ($order) {
+                    $ctx = MarketplaceOrderLedgerService::organizationContextFromOrder($order);
+                    if ($oid < 1 && $ctx['organization_id'] !== null) {
+                        $oid = (int) $ctx['organization_id'];
+                    }
+                    if ($oname === null && $ctx['organization_name'] !== null) {
+                        $oname = $ctx['organization_name'];
+                    }
+                }
             }
         }
 
