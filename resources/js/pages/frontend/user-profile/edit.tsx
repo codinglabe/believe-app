@@ -2,17 +2,24 @@
 
 import type React from "react"
 import ProfileLayout from "@/components/frontend/layout/user-profile-layout"
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo, useCallback } from "react"
 import { Button } from "@/components/frontend/ui/button"
 import { Input } from "@/components/frontend/ui/input"
 import { Label } from "@/components/frontend/ui/label"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/frontend/ui/card"
-import { Save, X, Upload, CheckCircle } from "lucide-react"
+import { Save, X, Upload, CheckCircle, AlertCircle } from "lucide-react"
 import { useForm, usePage } from "@inertiajs/react"
 import { toast } from "sonner"
 import { Transition } from "@headlessui/react"
 import { Alert, AlertDescription } from "@/components/frontend/ui/alert"
 import { MultiSelect } from "@/components/ui/multi-select"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/frontend/ui/select"
 
 interface User {
   id: number
@@ -118,10 +125,35 @@ export default function ProfileEdit() {
     value: position.id.toString()
   }))
 
-  const supporterInterestOptions = availableSupporterInterests.map((row) => ({
-    label: row.name,
-    value: row.id.toString(),
-  }))
+  const selectedSupporterInterestCategories = useMemo(
+    () =>
+      availableSupporterInterests.filter((c) => data.supporter_interests.includes(c.id)),
+    [availableSupporterInterests, data.supporter_interests],
+  )
+
+  const remainingSupporterInterestCategories = useMemo(
+    () =>
+      availableSupporterInterests.filter((c) => !data.supporter_interests.includes(c.id)),
+    [availableSupporterInterests, data.supporter_interests],
+  )
+
+  const addSupporterInterestTag = useCallback(
+    (id: number) => {
+      if (data.supporter_interests.includes(id)) return
+      setData("supporter_interests", [...data.supporter_interests, id])
+    },
+    [data.supporter_interests, setData],
+  )
+
+  const removeSupporterInterestTag = useCallback(
+    (id: number) => {
+      setData(
+        "supporter_interests",
+        data.supporter_interests.filter((x) => x !== id),
+      )
+    },
+    [data.supporter_interests, setData],
+  )
 
   return (
     <ProfileLayout title="Edit Profile" description="Update your personal information and preferences">
@@ -314,23 +346,84 @@ export default function ProfileEdit() {
               </p>
             </div>
 
-            {/* Supporters Interest — same categories as Org Primary Action (admin-managed) */}
-            <div>
-              <Label className="text-gray-900 dark:text-white mb-2 block">
+            {/* Supporters Interest — same chip + dropdown UX as organization Causes & Interest on /settings/profile */}
+            <div className="space-y-2 min-w-0">
+              <Label className="text-gray-900 dark:text-white text-sm font-medium">
                 Supporters Interest
               </Label>
-              <MultiSelect
-                options={supporterInterestOptions}
-                selected={data.supporter_interests.map(String)}
-                onChange={(selected) => setData("supporter_interests", selected.map(Number))}
-                placeholder="Select causes you care about (multiple allowed)"
-              />
-              {errors.supporter_interests && (
-                <p className="text-red-600 text-sm mt-2">{errors.supporter_interests}</p>
+              {availableSupporterInterests.length === 0 ? (
+                <Alert className="border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950">
+                  <AlertCircle className="h-4 w-4 text-amber-600" />
+                  <AlertDescription className="text-amber-800 dark:text-amber-200 text-sm">
+                    No categories are available yet. An administrator must add them under Admin → Org Primary
+                    Action Categories, or run the database seeder.
+                  </AlertDescription>
+                </Alert>
+              ) : (
+                <div
+                  role="group"
+                  aria-label="Supporters interest"
+                  className="flex min-h-10 w-full flex-wrap items-center gap-1 rounded-md border border-gray-300 bg-white px-2 py-1 text-sm text-gray-900 ring-offset-background transition-colors focus-within:outline-none focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                >
+                  {selectedSupporterInterestCategories.map((c) => (
+                    <span
+                      key={c.id}
+                      className="tagify-tag inline-flex max-w-full items-center gap-0.5 rounded-md border border-white/25 bg-gradient-to-r from-purple-600 to-blue-600 px-1.5 py-0.5 text-[13px] leading-tight text-white shadow-sm"
+                    >
+                      <span className="truncate">{c.name}</span>
+                      <button
+                        type="button"
+                        onClick={() => removeSupporterInterestTag(c.id)}
+                        className="tagify-tag__removeBtn ml-0.5 inline-flex size-[14px] shrink-0 cursor-pointer items-center justify-center rounded-sm text-white/85 transition-colors hover:bg-white/20 hover:text-white focus:outline-none focus:ring-2 focus:ring-white/50"
+                        aria-label={`Remove ${c.name}`}
+                      >
+                        <X className="h-2.5 w-2.5" strokeWidth={2.5} />
+                      </button>
+                    </span>
+                  ))}
+                  {remainingSupporterInterestCategories.length > 0 ? (
+                    <>
+                      <label className="sr-only" htmlFor="supporter-interest-add">
+                        Add cause or interest
+                      </label>
+                      <Select
+                        key={data.supporter_interests.join(",")}
+                        onValueChange={(v) => {
+                          if (v) addSupporterInterestTag(Number(v))
+                        }}
+                      >
+                        <SelectTrigger
+                          id="supporter-interest-add"
+                          className="tagify__input h-7 min-w-[7rem] flex-1 justify-start border-0 bg-transparent px-1 py-0.5 text-sm text-gray-600 shadow-none ring-0 ring-offset-0 hover:bg-transparent focus:ring-0 focus:ring-offset-0 data-[placeholder]:text-gray-500 dark:text-gray-300 dark:data-[placeholder]:text-gray-400 [&_svg]:hidden"
+                        >
+                          <SelectValue placeholder="Add category…" />
+                        </SelectTrigger>
+                        <SelectContent className="max-h-60 rounded-md border border-gray-300 bg-white text-gray-900 shadow-md dark:border-gray-600 dark:bg-gray-700 dark:text-white">
+                          {remainingSupporterInterestCategories.map((c) => (
+                            <SelectItem
+                              key={c.id}
+                              value={String(c.id)}
+                              className="cursor-pointer focus:bg-accent focus:text-accent-foreground"
+                            >
+                              {c.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </>
+                  ) : selectedSupporterInterestCategories.length > 0 ? (
+                    <span className="px-1 text-xs text-gray-500 dark:text-gray-400">
+                      All categories selected
+                    </span>
+                  ) : null}
+                </div>
               )}
-              <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
-                Choose all that apply — Housing, Food, Mental Health, Education, Faith-Based, Jobs, Youth,
-                Aging, and more as your organization adds them.
+              {errors.supporter_interests && (
+                <p className="text-red-600 text-sm mt-1">{errors.supporter_interests}</p>
+              )}
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                Choose all that apply — same causes as organization profiles (Housing, Food, Mental Health,
+                Education, and more as admins add them).
               </p>
             </div>
           </CardContent>
