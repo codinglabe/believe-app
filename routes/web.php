@@ -39,8 +39,8 @@ use App\Http\Controllers\DeductibilityCodeController;
 use App\Http\Controllers\DonationController;
 use App\Http\Controllers\EnrollmentController;
 use App\Http\Controllers\EventController;
-use App\Http\Controllers\EventTypeController;
 use App\Http\Controllers\ExcelDataController;
+use App\Http\Controllers\ExploreByCauseController;
 use App\Http\Controllers\Facebook\AuthController;
 use App\Http\Controllers\Facebook\ConfigurationController;
 use App\Http\Controllers\Facebook\PostController;
@@ -318,6 +318,14 @@ Route::get('/nodeboss/{id}/buy', [NodeBossController::class, 'frontendShow'])->n
 Route::get('/donate', [DonationController::class, 'index'])->name('donate');
 Route::redirect('/donation', '/donate', 302);
 
+Route::get('/explore-by-cause', [ExploreByCauseController::class, 'index'])->name('explore-by-cause.index');
+Route::post('/explore-by-cause/toggle-interest/{category}', [ExploreByCauseController::class, 'toggleUserInterest'])
+    ->middleware(['auth', 'EnsureEmailIsVerified'])
+    ->name('explore-by-cause.toggle-interest');
+
+// Public short URL: group chats are served from /chat (auth + topics). Explore-by-cause links here as "Join Group".
+Route::redirect('/groups', '/chat', 302)->name('groups');
+
 // Care Alliance — public campaign donation + preview (no auth)
 Route::get('/care-alliance/{allianceSlug}/campaigns/{campaign}/donate', [CareAllianceDonationController::class, 'donatePage'])
     ->name('care-alliance.campaigns.donate')
@@ -382,11 +390,11 @@ Route::get('/service-hub/create', [App\Http\Controllers\ServiceHubController::cl
 Route::post('/service-hub', [App\Http\Controllers\ServiceHubController::class, 'store'])->name('service-hub.store')->middleware(['auth', 'EnsureEmailIsVerified']);
 
 // Seller Profile Routes
-Route::get('/service-hub/seller-dashboard', [App\Http\Controllers\ServiceHubController::class, 'sellerDashboard'])->name('service-hub.seller-dashboard')->middleware(['auth', 'EnsureEmailIsVerified', 'ensure.service.hub.seller']);
+Route::get('/service-hub/seller-dashboard', [App\Http\Controllers\ServiceHubController::class, 'sellerDashboard'])->name('service-hub.seller-dashboard')->middleware(['auth', 'EnsureEmailIsVerified']);
 Route::get('/service-hub/seller-profile/create', [App\Http\Controllers\ServiceHubController::class, 'sellerProfileCreate'])->name('service-hub.seller-profile.create')->middleware(['auth', 'EnsureEmailIsVerified']);
 Route::post('/service-hub/seller-profile', [App\Http\Controllers\ServiceHubController::class, 'sellerProfileStore'])->name('service-hub.seller-profile.store')->middleware(['auth', 'EnsureEmailIsVerified']);
-Route::get('/service-hub/seller-profile/edit', [App\Http\Controllers\ServiceHubController::class, 'sellerProfileEdit'])->name('service-hub.seller-profile.edit')->middleware(['auth', 'EnsureEmailIsVerified', 'ensure.service.hub.seller']);
-Route::post('/service-hub/seller-profile/update', [App\Http\Controllers\ServiceHubController::class, 'sellerProfileUpdate'])->name('service-hub.seller-profile.update')->middleware(['auth', 'EnsureEmailIsVerified', 'ensure.service.hub.seller']);
+Route::get('/service-hub/seller-profile/edit', [App\Http\Controllers\ServiceHubController::class, 'sellerProfileEdit'])->name('service-hub.seller-profile.edit')->middleware(['auth', 'EnsureEmailIsVerified']);
+Route::post('/service-hub/seller-profile/update', [App\Http\Controllers\ServiceHubController::class, 'sellerProfileUpdate'])->name('service-hub.seller-profile.update')->middleware(['auth', 'EnsureEmailIsVerified']);
 Route::get('/service-hub/{slug}/edit', [App\Http\Controllers\ServiceHubController::class, 'edit'])->name('service-hub.edit')->middleware(['auth', 'EnsureEmailIsVerified']);
 Route::put('/service-hub/{slug}', [App\Http\Controllers\ServiceHubController::class, 'update'])->name('service-hub.update')->middleware(['auth', 'EnsureEmailIsVerified']);
 Route::delete('/service-hub/services/{gig}', [App\Http\Controllers\ServiceHubController::class, 'destroyService'])
@@ -408,7 +416,7 @@ Route::get('/service-hub/order/success', [App\Http\Controllers\ServiceHubControl
 Route::get('/service-hub/seller/{id}', [App\Http\Controllers\ServiceHubController::class, 'sellerProfile'])->name('service-hub.seller.profile');
 Route::get('/service-hub/seller/{id}/reviews', [App\Http\Controllers\ServiceHubController::class, 'sellerReviews'])->name('service-hub.seller.reviews');
 Route::get('/service-hub/my-orders', [App\Http\Controllers\ServiceHubController::class, 'myOrders'])->name('service-hub.my-orders')->middleware(['auth', 'EnsureEmailIsVerified']);
-Route::get('/service-hub/seller-orders', [App\Http\Controllers\ServiceHubController::class, 'sellerOrders'])->name('service-hub.seller-orders')->middleware(['auth', 'EnsureEmailIsVerified', 'ensure.service.hub.seller']);
+Route::get('/service-hub/seller-orders', [App\Http\Controllers\ServiceHubController::class, 'sellerOrders'])->name('service-hub.seller-orders')->middleware(['auth', 'EnsureEmailIsVerified']);
 Route::get('/service-hub/orders/{orderId}', [App\Http\Controllers\ServiceHubController::class, 'orderDetail'])->name('service-hub.order.detail')->middleware(['auth', 'EnsureEmailIsVerified']);
 Route::post('/service-hub/orders/{orderId}/deliver', [App\Http\Controllers\ServiceHubController::class, 'deliverOrder'])->name('service-hub.order.deliver')->middleware(['auth', 'EnsureEmailIsVerified']);
 Route::post('/service-hub/orders/{orderId}/accept-delivery', [App\Http\Controllers\ServiceHubController::class, 'acceptDelivery'])->name('service-hub.order.accept-delivery')->middleware(['auth', 'EnsureEmailIsVerified']);
@@ -466,9 +474,9 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin|use
     Route::get('/refunds', [App\Http\Controllers\BelievePointController::class, 'refunds'])->name('refunds');
     Route::post('/refunds/{purchaseId}', [App\Http\Controllers\BelievePointController::class, 'refund'])->name('refund');
     Route::post('/auto-replenish/settings', [App\Http\Controllers\BelievePointController::class, 'updateAutoReplenishSettings'])->name('auto-replenish.settings');
-    Route::get('/auto-replenish/setup-payment', [App\Http\Controllers\BelievePointController::class, 'autoReplenishSetupPayment'])->name('auto-replenish.setup');
+    Route::get('/auto-replenish/setup', [App\Http\Controllers\BelievePointController::class, 'autoReplenishSetupPayment'])->name('auto-replenish.setup');
     Route::get('/auto-replenish/setup-success', [App\Http\Controllers\BelievePointController::class, 'autoReplenishSetupSuccess'])->name('auto-replenish.setup-success');
-    Route::post('/auto-replenish/remove-payment-method', [App\Http\Controllers\BelievePointController::class, 'autoReplenishRemovePaymentMethod'])->name('auto-replenish.remove-payment');
+    Route::post('/auto-replenish/remove-payment', [App\Http\Controllers\BelievePointController::class, 'autoReplenishRemovePaymentMethod'])->name('auto-replenish.remove-payment');
 });
 
 // Merchant Hub Routes (Public - for viewing offers)
@@ -477,7 +485,6 @@ Route::prefix('merchant-hub')->name('merchant-hub.')->group(function () {
     // SEO-friendly referral: /merchant-hub/offers/8/ref/ABC123 — stores ref in session, redirects to offer
     Route::get('/offers/{id}/ref/{refCode}', [App\Http\Controllers\MerchantRedemptionController::class, 'offerRefRedirect'])->name('offer.show.ref');
     Route::get('/offers/{id}', [App\Http\Controllers\MerchantHubOfferController::class, 'show'])->name('offer.show');
-    Route::get('/products/{marketplace_product}', [App\Http\Controllers\MerchantHubMarketplaceProductController::class, 'show'])->name('product.show');
 });
 
 // Merchant Hub Redemption Routes (Requires auth)
@@ -1556,17 +1563,13 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected'])->group(f
         Route::delete('/{course:slug}', [CourseController::class, 'destroy'])->name('destroy')->middleware('permission:course.delete');
     });
 
-    // Topic catalog: do not use Route::resource()->middleware([action => ...]) — Laravel merges those onto every action,
-    // so GET /topics incorrectly required topic.create|update|delete and Spatie returned 403 for org users.
-    Route::get('/topics', [TopicController::class, 'index'])->name('topics.index');
-    Route::post('/topics', [TopicController::class, 'store'])->middleware('permission:topic.create')->name('topics.store');
-    Route::match(['put', 'patch'], '/topics/{topic}', [TopicController::class, 'update'])->middleware('permission:topic.update')->name('topics.update');
-    Route::delete('/topics/{topic}', [TopicController::class, 'destroy'])->middleware('permission:topic.delete')->name('topics.destroy');
-
-    Route::get('/event-types', [EventTypeController::class, 'index'])->name('event-types.index');
-    Route::post('/event-types', [EventTypeController::class, 'store'])->middleware('permission:event_type.create')->name('event-types.store');
-    Route::match(['put', 'patch'], '/event-types/{event_type}', [EventTypeController::class, 'update'])->middleware('permission:event_type.update')->name('event-types.update');
-    Route::delete('/event-types/{event_type}', [EventTypeController::class, 'destroy'])->middleware('permission:event_type.delete')->name('event-types.destroy');
+    // Topic Management Routes (Admin Only)
+    Route::resource('topics', TopicController::class)->only(['index', 'store', 'update', 'destroy'])->middleware([
+        'index' => 'permission:topic.read',
+        'store' => 'permission:topic.create',
+        'update' => 'permission:topic.update',
+        'destroy' => 'permission:topic.delete',
+    ]);
 });
 
 // Plaid Verification routes

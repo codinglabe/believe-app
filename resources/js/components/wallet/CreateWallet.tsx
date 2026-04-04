@@ -16,6 +16,14 @@ export function CreateWallet({
     verificationType,
     onCreateWallet
 }: CreateWalletProps) {
+    const isOrganization = verificationType === 'kyb'
+    const primaryLabel = isOrganization ? 'Add Organization Virtual Account' : isSandbox ? 'Create Virtual Account' : 'Create Wallet'
+    const loadingLabel = isOrganization
+        ? 'Adding Organization Virtual Account…'
+        : isSandbox
+          ? 'Creating Virtual Account…'
+          : 'Creating Wallet…'
+
     return (
         <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -73,12 +81,12 @@ export function CreateWallet({
                         {isLoading ? (
                             <>
                                 <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                                {isSandbox ? 'Creating Virtual Account...' : 'Creating Wallet...'}
+                                {loadingLabel}
                             </>
                         ) : (
                             <>
                                 <Wallet className="h-4 w-4 mr-2" />
-                                {isSandbox ? 'Create Virtual Account' : 'Create Wallet'}
+                                {primaryLabel}
                             </>
                         )}
                     </Button>
@@ -93,7 +101,9 @@ export function CreateWallet({
                                         Sandbox Mode
                                     </p>
                                     <p className="text-xs text-blue-700 dark:text-blue-300 mt-1">
-                                        In sandbox mode, a virtual account will be created instead of a wallet. This allows you to test deposits and transfers.
+                                        {isOrganization
+                                            ? 'Creates a test organization virtual account (and related wallet records) so you can try deposits and transfers.'
+                                            : 'In sandbox mode, a virtual account will be created instead of a wallet. This allows you to test deposits and transfers.'}
                                     </p>
                                 </div>
                             </div>
@@ -103,7 +113,9 @@ export function CreateWallet({
                     {/* Info */}
                     {!isSandbox && (
                         <p className="text-xs text-muted-foreground">
-                            Your wallet and virtual account will be created automatically
+                            {isOrganization
+                                ? 'Your organization wallet and USD virtual account details will be set up for incoming transfers.'
+                                : 'Your wallet and virtual account will be created automatically'}
                         </p>
                     )}
                 </div>

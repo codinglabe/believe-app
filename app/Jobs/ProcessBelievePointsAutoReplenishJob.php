@@ -6,6 +6,7 @@ use App\Models\AdminSetting;
 use App\Models\BelievePointPurchase;
 use App\Models\User;
 use App\Services\BelievePointsPaymentMethodSyncService;
+use App\Services\DonationProcessingFeeEstimator;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Cache;
@@ -60,16 +61,22 @@ class ProcessBelievePointsAutoReplenishJob
                 return;
             }
 
+            $checkoutTotal = round(DonationProcessingFeeEstimator::grossUpCardChargeUsdForNetGiftUsd($amount), 2);
+            $feeAddon = round(max(0, $checkoutTotal - $amount), 2);
+
             $purchase = BelievePointPurchase::create([
                 'user_id' => $user->id,
                 'amount' => $amount,
+                'checkout_total' => $checkoutTotal,
+                'processing_fee_estimate' => $feeAddon,
                 'points' => $amount,
                 'status' => 'pending',
                 'source' => 'auto_replenish',
+                'payment_rail' => 'card',
             ]);
 
             $stripe = Cashier::stripe();
-            $amountCents = (int) round($amount * 100);
+            $amountCents = (int) round($checkoutTotal * 100);
 
             try {
                 BelievePointsPaymentMethodSyncService::ensurePaymentMethodBelongsToCustomer($user, $pmId);

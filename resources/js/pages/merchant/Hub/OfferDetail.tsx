@@ -57,7 +57,8 @@ export default function HubOfferDetail({ offer, relatedOffers = [] }: Props) {
   const [isFavorite, setIsFavorite] = useState(false)
   const [isProcessing, setIsProcessing] = useState(false)
   const [paymentMethod, setPaymentMethod] = useState<'points' | 'cash' | null>(null)
-  const userPoints = (auth?.user as any)?.believe_points ?? (auth?.user as any)?.reward_points ?? 0
+  /** Merchant Hub redemptions use `users.reward_points` only (not believe_points). */
+  const userPoints = Number((auth?.user as any)?.reward_points ?? 0)
   // Show points + cash options when we have retail price or at least a cash price (backend may derive reference from points/discount)
   const hasReferencePrice = (offer.referencePrice != null && offer.referencePrice > 0) ||
     (offer.communityCashPrice != null && offer.communityCashPrice > 0)

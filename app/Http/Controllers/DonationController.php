@@ -973,41 +973,30 @@ class DonationController extends Controller
      */
     private function applyDonationToBalances(Donation $donation): void
     {
-        try {
-            $donation->loadMissing('organization.user');
-            if ($donation->care_alliance_id) {
-                $alliance = CareAlliance::query()->find($donation->care_alliance_id);
-                if ($alliance && $alliance->financial_settings_completed_at) {
-                    $amountCents = (int) round((float) $donation->amount * 100);
-                    $svc = app(CareAllianceGeneralDonationDistributionService::class);
-                    $dist = $svc->computeDistribution($alliance, $amountCents);
-                    if (CareAllianceGeneralDonationDistributionService::distributionIsScheduled($alliance->distribution_frequency)) {
-                        $svc->accumulatePendingDistribution($alliance, $dist['org_shares'], $dist['fee_cents']);
-                    } else {
-                        $svc->distributeCompletedDonation($donation, $alliance, $dist['org_shares'], $dist['fee_cents']);
-                    }
-
-                    return;
+        $donation->loadMissing('organization.user');
+        if ($donation->care_alliance_id) {
+            $alliance = CareAlliance::query()->find($donation->care_alliance_id);
+            if ($alliance && $alliance->financial_settings_completed_at) {
+                $amountCents = (int) round((float) $donation->amount * 100);
+                $svc = app(CareAllianceGeneralDonationDistributionService::class);
+                $dist = $svc->computeDistribution($alliance, $amountCents);
+                if (CareAllianceGeneralDonationDistributionService::distributionIsScheduled($alliance->distribution_frequency)) {
+                    $svc->accumulatePendingDistribution($alliance, $dist['org_shares'], $dist['fee_cents']);
+                } else {
+                    $svc->distributeCompletedDonation($donation, $alliance, $dist['org_shares'], $dist['fee_cents']);
                 }
-            }
-            if ($donation->organization && $donation->organization->user) {
-                DonationLedgerSyncService::recordRecipientDepositIfMissing($donation, true);
 
-                Log::info('Donation added to organization user balance', [
-                    'donation_id' => $donation->id,
-                    'organization_id' => $donation->organization->id,
-                    'amount' => $donation->amount,
-                ]);
+                return;
             }
-        } finally {
-            try {
-                DonationLedgerSyncService::recordDonorAuditIfMissing($donation);
-            } catch (\Throwable $e) {
-                Log::error('Donor donation ledger audit row failed', [
-                    'donation_id' => $donation->id,
-                    'message' => $e->getMessage(),
-                ]);
-            }
+        }
+        if ($donation->organization && $donation->organization->user) {
+            DonationLedgerSyncService::recordRecipientDepositIfMissing($donation, true);
+
+            Log::info('Donation added to organization user balance', [
+                'donation_id' => $donation->id,
+                'organization_id' => $donation->organization->id,
+                'amount' => $donation->amount,
+            ]);
         }
     }
 
