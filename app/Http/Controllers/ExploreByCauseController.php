@@ -2,70 +2,93 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\InterestCategory;
-use App\Models\Organization;
-use App\Models\Event;
-use App\Models\Course;
-use App\Models\JobPost;
-use App\Models\User;
+use App\Models\PrimaryActionCategory;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 
 class ExploreByCauseController extends Controller
 {
     public function index(Request $request)
     {
-        $allCategories = InterestCategory::active()->get();
+        // ── All active causes (from the real PAC table) ──────────────────
+        $allCategories = PrimaryActionCategory::where('is_active', true)
+            ->orderBy('sort_order')
+            ->get();
 
         $slug = $request->get('interest', optional($allCategories->first())->slug);
 
-        $selectedCategory = InterestCategory::where('slug', $slug)
-            ->where('is_active', true)
-            ->first();
+        $selectedCategory = $allCategories->firstWhere('slug', $slug)
+            ?? $allCategories->first();
 
-        if (! $selectedCategory && $allCategories->isNotEmpty()) {
-            $selectedCategory = $allCategories->first();
+        // ── User's chosen causes (from profile/edit → Supporters Interest) ─
+        $myCauses = [];
+        if (auth()->check()) {
+            $myCauses = auth()->user()
+                ->supporterInterestCategories()
+                ->select('primary_action_categories.id', 'primary_action_categories.name', 'primary_action_categories.slug')
+                ->orderBy('sort_order')
+                ->get()
+                ->map(fn($c) => [
+                    'id'   => $c->id,
+                    'name' => $c->name,
+                    'slug' => $c->slug,
+                ]);
         }
 
+        // ── Content filtered by selected PAC ─────────────────────────────
         $organizations = [];
         $events        = [];
         $courses       = [];
         $volunteers    = [];
         $impactCounts  = [];
-        $myCauses      = [];
 
         if ($selectedCategory) {
-            $organizations = $selectedCategory->organizations()
-                ->select('organizations.id', 'organizations.name', 'organizations.ico', 'organizations.email', 'organizations.city', 'organizations.state', 'organizations.website')
+            // Organizations via org_primary_action_category pivot
+            $orgIds = DB::table('org_primary_action_category')
+                ->where('primary_action_category_id', $selectedCategory->id)
+                ->pluck('organization_id');
+
+            $organizations = DB::table('organizations')
+                ->whereIn('id', $orgIds)
+                ->select('id', 'name', 'ico', 'description', 'city', 'state', 'website')
                 ->limit(10)
                 ->get()
-                ->map(fn($org) => [
-                    'id'          => $org->id,
-                    'name'        => $org->name,
-                    'logo'        => $org->ico,
-                    'description' => $org->email ? "Contact: {$org->email}" : null,
-                    'city'        => $org->city,
-                    'state'       => $org->state,
-                    'website'     => $org->website,
+                ->map(fn($o) => [
+                    'id'          => $o->id,
+                    'name'        => $o->name,
+                    'logo'        => $o->ico,
+                    'description' => $o->description,
+                    'city'        => $o->city,
+                    'state'       => $o->state,
+                    'website'     => $o->website,
                 ]);
 
-            $events = $selectedCategory->events()
-                ->select('events.id', 'events.name', 'events.description', 'events.start_date', 'events.end_date', 'events.city', 'events.state', 'events.address')
-                ->where('events.status', 'active')
-                ->orderBy('events.start_date')
+            // Events: from organizations linked to this PAC
+            $events = DB::table('events')
+                ->whereIn('organization_id', $orgIds)
+                ->where('status', 'active')
+                ->select('id', 'name', 'description', 'start_date', 'end_date', 'address', 'city', 'state')
+                ->orderBy('start_date')
                 ->limit(10)
                 ->get()
                 ->map(fn($e) => [
                     'id'          => $e->id,
                     'title'       => $e->name,
                     'description' => $e->description,
-                    'start_date'  => $e->start_date?->format('M d, Y'),
-                    'end_date'    => $e->end_date?->format('M d, Y'),
-                    'location'    => trim("{$e->address}, {$e->city}, {$e->state}", ', '),
+                    'start_date'  => $e->start_date ? date('M d, Y', strtotime($e->start_date)) : null,
+                    'end_date'    => $e->end_date   ? date('M d, Y', strtotime($e->end_date))   : null,
+                    'location'    => implode(', ', array_filter([$e->address, $e->city, $e->state])),
                 ]);
 
-            $courses = $selectedCategory->courses()
-                ->select('courses.id', 'courses.name', 'courses.slug', 'courses.description', 'courses.start_date', 'courses.format', 'courses.pricing_type', 'courses.course_fee')
+            // Courses via course_pac pivot
+            $courseIds = DB::table('course_pac')
+                ->where('primary_action_category_id', $selectedCategory->id)
+                ->pluck('course_id');
+
+            $courses = DB::table('courses')
+                ->whereIn('id', $courseIds)
+                ->select('id', 'name', 'slug', 'description', 'start_date', 'format', 'pricing_type', 'course_fee')
                 ->limit(10)
                 ->get()
                 ->map(fn($c) => [
@@ -79,69 +102,58 @@ class ExploreByCauseController extends Controller
                     'fee'         => $c->course_fee,
                 ]);
 
-            $volunteers = $selectedCategory->jobPosts()
-                ->select('job_posts.id', 'job_posts.title', 'job_posts.description', 'job_posts.city', 'job_posts.state', 'job_posts.date_posted', 'job_posts.application_deadline', 'job_posts.organization_id')
-                ->where('job_posts.status', 'active')
+            // Volunteer/Job posts via job_post_pac pivot
+            $jobIds = DB::table('job_post_pac')
+                ->where('primary_action_category_id', $selectedCategory->id)
+                ->pluck('job_post_id');
+
+            $volunteers = DB::table('job_posts')
+                ->whereIn('id', $jobIds)
+                ->where('status', 'active')
+                ->select('id', 'title', 'description', 'city', 'state', 'date_posted', 'application_deadline')
                 ->limit(10)
                 ->get()
                 ->map(fn($v) => [
                     'id'          => $v->id,
                     'title'       => $v->title,
                     'description' => $v->description,
-                    'location'    => trim("{$v->city}, {$v->state}", ', '),
+                    'location'    => implode(', ', array_filter([$v->city, $v->state])),
                     'date_posted' => $v->date_posted,
                     'deadline'    => $v->application_deadline,
                 ]);
 
             $impactCounts = [
-                'organizations' => $selectedCategory->organizations()->count(),
-                'events'        => $selectedCategory->events()->where('events.status', 'active')->count(),
-                'courses'       => $selectedCategory->courses()->count(),
-                'volunteers'    => $selectedCategory->jobPosts()->where('job_posts.status', 'active')->count(),
+                'organizations' => $orgIds->count(),
+                'events'        => DB::table('events')->whereIn('organization_id', $orgIds)->where('status', 'active')->count(),
+                'courses'       => $courseIds->count(),
+                'volunteers'    => $jobIds->count(),
             ];
         }
 
-        if (auth()->check()) {
-            $myCauses = auth()->user()->interestCategories()
-                ->select('interest_categories.id', 'interest_categories.name', 'interest_categories.slug', 'interest_categories.color')
-                ->get()
-                ->map(fn($c) => [
-                    'id'    => $c->id,
-                    'name'  => $c->name,
-                    'slug'  => $c->slug,
-                    'color' => $c->color,
-                ]);
-        }
-
         return Inertia::render('explore-by-cause/index', [
-            'categories'       => $allCategories->map(fn($c) => [
-                'id'          => $c->id,
-                'name'        => $c->name,
-                'slug'        => $c->slug,
-                'description' => $c->description,
-                'color'       => $c->color,
-                'icon'        => $c->icon,
+            'categories' => $allCategories->map(fn($c) => [
+                'id'   => $c->id,
+                'name' => $c->name,
+                'slug' => $c->slug,
             ]),
             'selectedCategory' => $selectedCategory ? [
                 'id'          => $selectedCategory->id,
                 'name'        => $selectedCategory->name,
                 'slug'        => $selectedCategory->slug,
-                'description' => $selectedCategory->description,
-                'color'       => $selectedCategory->color,
+                'description' => null,
             ] : null,
-            'organizations'    => $organizations,
-            'events'           => $events,
-            'courses'          => $courses,
-            'volunteers'       => $volunteers,
-            'impactCounts'     => $impactCounts,
-            'myCauses'         => $myCauses,
+            'organizations' => $organizations,
+            'events'        => $events,
+            'courses'       => $courses,
+            'volunteers'    => $volunteers,
+            'impactCounts'  => $impactCounts,
+            'myCauses'      => $myCauses,
         ]);
     }
 
-    public function toggleUserInterest(Request $request, InterestCategory $category)
+    public function toggleUserInterest(Request $request, PrimaryActionCategory $category)
     {
-        $user = $request->user();
-        $user->interestCategories()->toggle($category->id);
+        $request->user()->supporterInterestCategories()->toggle($category->id);
 
         return back()->with('success', 'Your interest has been updated.');
     }

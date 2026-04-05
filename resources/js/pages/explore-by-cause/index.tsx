@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Head, router, Link } from '@inertiajs/react';
 import FrontendLayout from '@/layouts/frontend/frontend-layout';
 import { Button } from '@/components/ui/button';
@@ -16,9 +16,7 @@ interface InterestCategory {
     id: number;
     name: string;
     slug: string;
-    description: string | null;
-    color: string;
-    icon: string | null;
+    description?: string | null;
 }
 
 interface OrgItem {
@@ -247,14 +245,46 @@ export default function ExploreByCause({
     impactCounts,
     myCauses,
 }: Props) {
+    const validTabs: TabType[] = ['all', 'organizations', 'events', 'courses', 'volunteers'];
+
+    // Read tab from URL on first load so it survives cause changes
+    const getTabFromUrl = (): TabType => {
+        const params = new URLSearchParams(window.location.search);
+        const t = params.get('tab') as TabType;
+        return validTabs.includes(t) ? t : 'all';
+    };
+
     const [activeTab, setActiveTab] = useState<TabType>('all');
 
+    useEffect(() => {
+        setActiveTab(getTabFromUrl());
+    }, []);
+
+    // When user changes tab, update URL query param (no page reload)
+    const handleTabChange = (tab: TabType) => {
+        setActiveTab(tab);
+        const params = new URLSearchParams(window.location.search);
+        if (tab === 'all') {
+            params.delete('tab');
+        } else {
+            params.set('tab', tab);
+        }
+        const newUrl = `${window.location.pathname}?${params.toString()}`;
+        window.history.replaceState({}, '', newUrl);
+    };
+
+    // When cause changes, keep the current tab in the URL
     const handleCauseChange = (slug: string) => {
-        router.get('/explore-by-cause', { interest: slug }, { preserveScroll: false });
+        const params: Record<string, string> = { interest: slug };
+        if (activeTab !== 'all') params.tab = activeTab;
+        router.get('/explore-by-cause', params, { preserveScroll: false });
     };
 
     const handleToggleInterest = (categoryId: number) => {
-        router.post(`/explore-by-cause/toggle-interest/${categoryId}`, {}, { preserveScroll: true });
+        router.post(`/explore-by-cause/toggle-interest/${categoryId}`, {}, {
+            preserveScroll: true,
+            onSuccess: () => router.reload({ only: ['myCauses'] }),
+        });
     };
 
     const tabs: { key: TabType; label: string; count: number; icon: React.ReactNode }[] = [
@@ -362,7 +392,7 @@ export default function ExploreByCause({
                                 {tabs.map(tab => (
                                     <button
                                         key={tab.key}
-                                        onClick={() => setActiveTab(tab.key)}
+                                        onClick={() => handleTabChange(tab.key)}
                                         className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${
                                             activeTab === tab.key
                                                 ? 'bg-blue-600 text-white shadow-sm'
@@ -411,7 +441,7 @@ export default function ExploreByCause({
                                                 <Building2 className="w-4 h-4 text-blue-500" />
                                                 Organizations
                                             </h2>
-                                            <button onClick={() => setActiveTab('organizations')} className="text-xs text-blue-500 hover:underline flex items-center gap-1">
+                                            <button onClick={() => handleTabChange('organizations')} className="text-xs text-blue-500 hover:underline flex items-center gap-1">
                                                 View all <ArrowRight className="w-3 h-3" />
                                             </button>
                                         </div>
@@ -433,7 +463,7 @@ export default function ExploreByCause({
                                                 <Calendar className="w-4 h-4 text-purple-500" />
                                                 Events
                                             </h2>
-                                            <button onClick={() => setActiveTab('events')} className="text-xs text-blue-500 hover:underline flex items-center gap-1">
+                                            <button onClick={() => handleTabChange('events')} className="text-xs text-blue-500 hover:underline flex items-center gap-1">
                                                 View all <ArrowRight className="w-3 h-3" />
                                             </button>
                                         </div>
@@ -455,7 +485,7 @@ export default function ExploreByCause({
                                                 <BookOpen className="w-4 h-4 text-green-500" />
                                                 Courses
                                             </h2>
-                                            <button onClick={() => setActiveTab('courses')} className="text-xs text-blue-500 hover:underline flex items-center gap-1">
+                                            <button onClick={() => handleTabChange('courses')} className="text-xs text-blue-500 hover:underline flex items-center gap-1">
                                                 View all <ArrowRight className="w-3 h-3" />
                                             </button>
                                         </div>
@@ -477,7 +507,7 @@ export default function ExploreByCause({
                                                 <HandHeart className="w-4 h-4 text-orange-500" />
                                                 Volunteer Opportunities
                                             </h2>
-                                            <button onClick={() => setActiveTab('volunteers')} className="text-xs text-blue-500 hover:underline flex items-center gap-1">
+                                            <button onClick={() => handleTabChange('volunteers')} className="text-xs text-blue-500 hover:underline flex items-center gap-1">
                                                 View all <ArrowRight className="w-3 h-3" />
                                             </button>
                                         </div>
@@ -497,41 +527,54 @@ export default function ExploreByCause({
                             {/* Your Causes */}
                             <Card>
                                 <CardContent className="p-4">
-                                    <h2 className="font-semibold text-gray-900 dark:text-white mb-3">Your Causes</h2>
+                                    <div className="flex items-center justify-between mb-3">
+                                        <h2 className="font-semibold text-gray-900 dark:text-white">Your Causes</h2>
+                                        {myCauses.length === 0 && (
+                                            <Link href="/profile/edit" className="text-xs text-blue-500 hover:underline">
+                                                Set interests
+                                            </Link>
+                                        )}
+                                    </div>
+
+                                    {/* Show user's profile interests if logged in and they have some */}
                                     {myCauses.length > 0 ? (
                                         <div className="flex flex-wrap gap-2">
                                             {myCauses.map(cause => (
                                                 <button
                                                     key={cause.id}
                                                     onClick={() => handleCauseChange(cause.slug)}
-                                                    className={`px-3 py-1 rounded-full text-sm font-medium transition-colors ${
+                                                    className={`px-3 py-1.5 rounded-full text-sm font-medium transition-all border ${
                                                         selectedCategory?.slug === cause.slug
-                                                            ? 'text-white shadow-sm'
-                                                            : 'bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 hover:bg-blue-100'
+                                                            ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
+                                                            : 'bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-700 hover:bg-blue-100'
                                                     }`}
-                                                    style={selectedCategory?.slug === cause.slug ? { backgroundColor: cause.color || '#3B82F6' } : {}}
                                                 >
                                                     {cause.name}
                                                 </button>
                                             ))}
                                         </div>
                                     ) : (
-                                        <div className="space-y-2">
-                                            {categories.slice(0, 5).map(cat => (
-                                                <button
-                                                    key={cat.id}
-                                                    onClick={() => handleCauseChange(cat.slug)}
-                                                    className={`px-3 py-1 rounded-full text-sm font-medium transition-colors mr-2 mb-1 ${
-                                                        selectedCategory?.slug === cat.slug
-                                                            ? 'text-white'
-                                                            : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200'
-                                                    }`}
-                                                    style={selectedCategory?.slug === cat.slug ? { backgroundColor: cat.color || '#3B82F6' } : {}}
-                                                >
-                                                    {cat.name}
-                                                </button>
-                                            ))}
-                                        </div>
+                                        /* Fallback: show all categories when user has no profile interests */
+                                        <>
+                                            <p className="text-xs text-gray-400 dark:text-gray-500 mb-2">
+                                                Set your interests in your profile to personalise this list.
+                                            </p>
+                                            <div className="flex flex-wrap gap-2">
+                                                {categories.map(cat => (
+                                                    <button
+                                                        key={cat.id}
+                                                        onClick={() => handleCauseChange(cat.slug)}
+                                                        className={`px-3 py-1.5 rounded-full text-sm font-medium transition-all border ${
+                                                            selectedCategory?.slug === cat.slug
+                                                                ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
+                                                                : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-600 hover:bg-gray-200 dark:hover:bg-gray-600'
+                                                        }`}
+                                                    >
+                                                        {cat.name}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </>
                                     )}
                                 </CardContent>
                             </Card>

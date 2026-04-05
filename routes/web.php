@@ -1298,7 +1298,8 @@ Route::get('explore-by-cause', [\App\Http\Controllers\ExploreByCauseController::
 
 Route::post('explore-by-cause/toggle-interest/{category}', [\App\Http\Controllers\ExploreByCauseController::class, 'toggleUserInterest'])
     ->name('explore-by-cause.toggle-interest')
-    ->middleware(['auth', 'EnsureEmailIsVerified']);
+    ->middleware(['auth', 'EnsureEmailIsVerified'])
+    ->where('category', '[0-9]+');
 
 Route::get('supporter-activity', [SupporterActivityController::class, 'index'])
     ->name('supporter-activity.index')
