@@ -85,6 +85,10 @@ interface LedgerReport {
   payout_status: string | null
   organization_id: number | null
   organization_name: string | null
+  /** Marketplace orders: line subtotal, tax, shipping (from Order) */
+  subtotal_amount?: number | null
+  sales_tax_amount?: number | null
+  shipping_amount?: number | null
 }
 
 interface LaravelPagination<T> {
@@ -309,6 +313,10 @@ function processorFeeRailBadgeClass(kind: "stripe" | "bridge") {
 
 function partiesSummary(u: UnifiedLedgerRow | undefined): string {
   if (!u) return "—"
+  if (u.module === "believe_points") {
+    const name = (u.from_name ?? u.from_type)?.trim()
+    return name ? `Purchaser: ${name}` : "—"
+  }
   const from = u.from_name ?? u.from_type
   const to = u.to_name ?? u.to_type
   return `${from} → ${to}`
