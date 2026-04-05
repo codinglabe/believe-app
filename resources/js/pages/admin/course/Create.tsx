@@ -1,7 +1,7 @@
 "use client"
 import type React from "react"
 import { Head, useForm, usePage, Link } from "@inertiajs/react"
-import { ArrowLeft, Save, Heart, Calendar, Users, BookOpen, Settings, AlertCircle } from "lucide-react"
+import { ArrowLeft, Save, Heart, Calendar, BookOpen, Settings, AlertCircle } from "lucide-react"
 import { Button } from "@/components/admin/ui/button"
 import { Input } from "@/components/admin/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -9,12 +9,15 @@ import { Switch } from "@/components/admin/ui/switch"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/admin/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import RichTextEditor from "@/components/admin/rich-text-editor"
-import ArrayInput from "@/components/admin/array-input"
 import { ImageUpload } from "@/components/admin/ImageUpload"
 import type { User } from "@/types"
 import { toast } from "sonner"
 import AppLayout from "@/layouts/app-layout"
 import { useState, useEffect } from "react"
+import {
+  OrganizationPrimaryActionCategoriesField,
+  type PrimaryActionCategoryOption,
+} from "@/components/organization-primary-action-categories-field"
 
 interface Topic {
   id: number
@@ -30,10 +33,11 @@ interface EventType {
 interface AdminCoursesCreateProps {
   topics: Topic[]
   eventTypes: EventType[]
+  organizationPrimaryActionCategories: PrimaryActionCategoryOption[]
 }
 
 export default function NonprofitCoursesCreate() {
-  const { topics, eventTypes } = usePage<AdminCoursesCreateProps>().props
+  const { topics, eventTypes, organizationPrimaryActionCategories } = usePage<AdminCoursesCreateProps>().props
   const { auth } = usePage().props as { auth: { user: User } }
 
   const [currentTab, setCurrentTab] = useState("basics")
@@ -74,6 +78,7 @@ export default function NonprofitCoursesCreate() {
     volunteer_opportunities: false,
     certificate_provided: false,
     image: null as File | null,
+    primary_action_category_ids: [] as string[],
   })
 
   const validateTab = (tab: string): boolean => {
@@ -94,8 +99,6 @@ export default function NonprofitCoursesCreate() {
           data.duration &&
           data.max_participants
         )
-      case "content":
-        return data.learning_outcomes.length > 0
       case "settings":
         return true
       default:
@@ -107,7 +110,6 @@ export default function NonprofitCoursesCreate() {
     const newTabErrors = {
       basics: !validateTab("basics"),
       schedule: !validateTab("schedule"),
-      content: !validateTab("content"),
       settings: !validateTab("settings"),
     }
     setTabErrors(newTabErrors)
@@ -128,8 +130,6 @@ export default function NonprofitCoursesCreate() {
         )
       ) {
         setCurrentTab("schedule")
-      } else if (errorFields.some((field) => ["learning_outcomes"].includes(field))) {
-        setCurrentTab("content")
       }
     }
   }, [errors])
@@ -142,10 +142,9 @@ export default function NonprofitCoursesCreate() {
     }
   }
 
-  // Check if all required tabs are valid
-  const isFormValid = () => {
-    return validateTab("basics") && validateTab("schedule") && validateTab("content")
-  }
+  const isFormValid = () => validateTab("basics") && validateTab("schedule")
+
+  const tabOrder = ["basics", "schedule", "settings"] as const
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -162,13 +161,7 @@ export default function NonprofitCoursesCreate() {
       toast.error("Please complete all required fields in the Schedule tab before submitting.")
       return
     }
-    
-    if (!validateTab("content")) {
-      setCurrentTab("content")
-      toast.error("Please complete all required fields in the Content tab before submitting.")
-      return
-    }
-    
+
     post(route("admin.courses.store"), {
       forceFormData: true,
       onSuccess: () => {
@@ -215,7 +208,7 @@ export default function NonprofitCoursesCreate() {
 
         <form onSubmit={handleSubmit}>
           <Tabs value={currentTab} onValueChange={handleTabChange} className="space-y-6">
-            <TabsList className="grid w-full grid-cols-4">
+            <TabsList className="grid w-full grid-cols-3">
               <TabsTrigger value="basics" className="flex items-center gap-2">
                 <BookOpen className="h-4 w-4" />
                 Basics
@@ -225,11 +218,6 @@ export default function NonprofitCoursesCreate() {
                 <Calendar className="h-4 w-4" />
                 Schedule
                 {tabErrors.schedule && <AlertCircle className="h-3 w-3 text-destructive" />}
-              </TabsTrigger>
-              <TabsTrigger value="content" className="flex items-center gap-2">
-                <Users className="h-4 w-4" />
-                Content
-                {tabErrors.content && <AlertCircle className="h-3 w-3 text-destructive" />}
               </TabsTrigger>
               <TabsTrigger value="settings" className="flex items-center gap-2">
                 <Settings className="h-4 w-4" />
@@ -308,11 +296,11 @@ export default function NonprofitCoursesCreate() {
                     {data.type === "event" && (
                       <div className="space-y-2">
                         <label htmlFor="event_type_id" className="text-sm font-medium">
-                          Event Type *
+                          Event Topic *
                         </label>
                         <Select value={data.event_type_id || ""} onValueChange={(value) => setData("event_type_id", value)}>
                           <SelectTrigger className={errors.event_type_id ? "border-destructive" : ""}>
-                            <SelectValue placeholder="Select event type" />
+                            <SelectValue placeholder="Select event topic" />
                           </SelectTrigger>
                           <SelectContent>
                             {Object.entries(groupedEventTypes).map(([category, types]) => (
@@ -372,6 +360,17 @@ export default function NonprofitCoursesCreate() {
                       </div>
                     </div>
                   </div>
+
+                  <OrganizationPrimaryActionCategoriesField
+                    categories={organizationPrimaryActionCategories}
+                    selectedIds={data.primary_action_category_ids}
+                    onSelectionChange={(ids) => setData("primary_action_category_ids", ids)}
+                    error={
+                      typeof errors.primary_action_category_ids === "string"
+                        ? errors.primary_action_category_ids
+                        : undefined
+                    }
+                  />
 
                   <div className="space-y-2">
                     <label htmlFor="description" className="text-sm font-medium">
@@ -533,66 +532,6 @@ export default function NonprofitCoursesCreate() {
               </Card>
             </TabsContent>
 
-            <TabsContent value="content">
-              <Card>
-                <CardHeader>
-                  <CardTitle>{data.type === "course" ? "Course Content & Impact" : "Event Content & Impact"}</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                  <ArrayInput
-                    id="learning_outcomes"
-                    label={data.type === "course" ? "Learning Outcomes *" : "Event Outcomes *"}
-                    values={data.learning_outcomes}
-                    onChange={(values) => setData("learning_outcomes", values)}
-                    error={errors.learning_outcomes}
-                    placeholder={data.type === "course" ? "What will participants learn?" : "What will participants experience or gain?"}
-                  />
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <ArrayInput
-                      id="prerequisites"
-                      label="Prerequisites"
-                      values={data.prerequisites}
-                      onChange={(values) => setData("prerequisites", values)}
-                      error={errors.prerequisites}
-                      placeholder="Required skills or knowledge"
-                    />
-
-                    <ArrayInput
-                      id="materials_needed"
-                      label="Materials Needed"
-                      values={data.materials_needed}
-                      onChange={(values) => setData("materials_needed", values)}
-                      error={errors.materials_needed}
-                      placeholder="What should participants bring?"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <label htmlFor="community_impact" className="text-sm font-medium">
-                      Community Impact
-                    </label>
-                    <RichTextEditor
-                      label=""
-                      value={data.community_impact}
-                      onChange={(value) => setData("community_impact", value)}
-                      error={errors.community_impact}
-                      className="mt-1"
-                    />
-                  </div>
-
-                  <ArrayInput
-                    id="accessibility_features"
-                    label="Accessibility Features"
-                    values={data.accessibility_features}
-                    onChange={(values) => setData("accessibility_features", values)}
-                    error={errors.accessibility_features}
-                    placeholder="Sign language, large print, etc."
-                  />
-                </CardContent>
-              </Card>
-            </TabsContent>
-
             <TabsContent value="settings">
               <Card>
                 <CardHeader>
@@ -646,10 +585,9 @@ export default function NonprofitCoursesCreate() {
               disabled={processing || (currentTab === "settings" && !isFormValid()) || (currentTab !== "settings" && !validateTab(currentTab))} 
               onClick={currentTab !== "settings" ? () => {
                 if (validateTab(currentTab)) {
-                  const tabs = ["basics", "schedule", "content", "settings"]
-                  const currentIndex = tabs.indexOf(currentTab)
-                  if (currentIndex < tabs.length - 1) {
-                    setCurrentTab(tabs[currentIndex + 1])
+                  const currentIndex = tabOrder.indexOf(currentTab as (typeof tabOrder)[number])
+                  if (currentIndex >= 0 && currentIndex < tabOrder.length - 1) {
+                    setCurrentTab(tabOrder[currentIndex + 1])
                   }
                 } else {
                   toast.error("Please complete all required fields in the current tab before proceeding.")

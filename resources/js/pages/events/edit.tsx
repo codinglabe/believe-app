@@ -8,6 +8,7 @@ import { Input } from '@/components/frontend/ui/input';
 import { Textarea } from '@/components/frontend/ui/textarea';
 import { Label } from '@/components/frontend/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/frontend/ui/select';
+import { OrganizationPrimaryActionCategoriesField } from '@/components/organization-primary-action-categories-field';
 import { useState, useEffect } from 'react';
 import { showErrorToast } from '@/lib/toast';
 
@@ -53,21 +54,32 @@ type Event = {
     birthday?: string;
     visibility?: 'public' | 'private';
     event_type_id?: number;
+    primary_action_category_id?: number | null;
     created_at: string;
     updated_at: string;
 };
 
+type PrimaryActionCategoryOption = { id: number; name: string };
+
 type Props = {
     event: Event;
     eventTypes: EventType[];
+    organizationPrimaryActionCategories: PrimaryActionCategoryOption[];
+    showOrganizationCauses?: boolean;
 };
 
-export default function EditEvent({ event, eventTypes }: Props) {
+export default function EditEvent({
+    event,
+    eventTypes,
+    organizationPrimaryActionCategories,
+    showOrganizationCauses = false,
+}: Props) {
     const [imagePreview, setImagePreview] = useState<string | null>(null);
 
     const { data, setData, post, processing, errors } = useForm({
         _method: 'put',
         event_type_id: event.event_type_id?.toString() || '',
+        primary_action_category_id: event.primary_action_category_id != null ? String(event.primary_action_category_id) : '',
         name: event.name,
         description: event.description,
         start_date: event.start_date.slice(0, 16), // Format for datetime-local input
@@ -148,10 +160,10 @@ export default function EditEvent({ event, eventTypes }: Props) {
                                 </CardHeader>
                                 <CardContent className="space-y-4">
                                     <div>
-                                        <Label htmlFor="event_type_id">Event Type *</Label>
+                                        <Label htmlFor="event_type_id">Event Topic *</Label>
                                         <Select value={data.event_type_id} onValueChange={(value) => setData('event_type_id', value)}>
                                             <SelectTrigger className={errors.event_type_id ? 'border-red-500' : ''}>
-                                                <SelectValue placeholder="Select event type" />
+                                                <SelectValue placeholder="Select event topic" />
                                             </SelectTrigger>
                                             <SelectContent>
                                                 {Object.entries(eventTypes.reduce((acc, eventType) => {
@@ -177,6 +189,27 @@ export default function EditEvent({ event, eventTypes }: Props) {
                                         </Select>
                                         {errors.event_type_id && <p className="text-red-500 text-sm mt-1">{errors.event_type_id}</p>}
                                     </div>
+
+                                    {showOrganizationCauses ? (
+                                        <OrganizationPrimaryActionCategoriesField
+                                            label="Cause"
+                                            maxSelections={1}
+                                            categories={organizationPrimaryActionCategories}
+                                            selectedIds={
+                                                data.primary_action_category_id
+                                                    ? [data.primary_action_category_id]
+                                                    : []
+                                            }
+                                            onSelectionChange={(ids) =>
+                                                setData('primary_action_category_id', ids[0] ?? '')
+                                            }
+                                            error={
+                                                typeof errors.primary_action_category_id === 'string'
+                                                    ? errors.primary_action_category_id
+                                                    : undefined
+                                            }
+                                        />
+                                    ) : null}
 
                                     <div>
                                         <Label htmlFor="name">Event Name *</Label>

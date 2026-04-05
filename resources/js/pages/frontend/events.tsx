@@ -383,7 +383,7 @@ export default function EventsPage({ seo, events, eventTypes, organizations, cit
                                     </div>
                                     {/* Event Type */}
                                     <div className="space-y-1.5">
-                                        <label className="text-sm font-medium text-slate-700 dark:text-gray-300">Event type</label>
+                                        <label className="text-sm font-medium text-slate-700 dark:text-gray-300">Event topic</label>
                                         <Select value={filters.event_type_id} onValueChange={handleEventTypeChange}>
                                             <SelectTrigger className="w-full h-11 rounded-xl border-slate-200 dark:border-gray-700 bg-slate-50/50 dark:bg-gray-800/50 text-slate-900 dark:text-white">
                                                 <SelectValue placeholder="All types" />

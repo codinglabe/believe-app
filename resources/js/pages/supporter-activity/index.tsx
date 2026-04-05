@@ -363,7 +363,7 @@ export default function SupporterActivityIndex({
                             </button>
                         </div>
 
-                        <Card className="border-violet-200/80 dark:border-violet-900/50">
+                        <Card id="transaction-ledger" className="border-violet-200/80 dark:border-violet-900/50 scroll-mt-4">
                             <CardHeader>
                                 <CardTitle className="flex items-center gap-2 text-lg">
                                     <BookOpen className="h-5 w-5 text-violet-600 dark:text-violet-400" />

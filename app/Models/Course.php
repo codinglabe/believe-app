@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Facades\Storage;
 
@@ -99,9 +100,14 @@ class Course extends Model
             ->whereIn('status', ['active', 'completed', 'pending']);
     }
 
+    public function primaryActionCategories(): BelongsToMany
+    {
+        return $this->belongsToMany(PrimaryActionCategory::class, 'course_pac');
+    }
+
     public function getImageUrlAttribute()
     {
-        if (!$this->image) {
+        if (! $this->image) {
             return null;
         }
 
@@ -124,17 +130,18 @@ class Course extends Model
             return Storage::disk('public')->url($this->image);
         }
     }
-    //formated_price return from here
+
+    // formated_price return from here
     public function getFormattedPriceAttribute(): string
     {
-        return $this->pricing_type === "paid"
-            ? "$" . number_format($this->course_fee, 2)
-            : "Free";
+        return $this->pricing_type === 'paid'
+            ? '$'.number_format($this->course_fee, 2)
+            : 'Free';
     }
 
     public function getFormattedDurationAttribute(): string
     {
-        return match($this->duration) {
+        return match ($this->duration) {
             '1_session' => '1 Session',
             '1_week' => '1 Week',
             '2_weeks' => '2 Weeks',
@@ -147,7 +154,7 @@ class Course extends Model
 
     public function getFormattedFormatAttribute(): string
     {
-        return match($this->format) {
+        return match ($this->format) {
             'online' => 'Online',
             'in_person' => 'In-Person',
             'hybrid' => 'Hybrid',

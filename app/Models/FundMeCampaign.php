@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Str;
 
@@ -41,9 +42,13 @@ class FundMeCampaign extends Model
     ];
 
     public const STATUS_DRAFT = 'draft';
+
     public const STATUS_IN_REVIEW = 'in_review';
+
     public const STATUS_LIVE = 'live';
+
     public const STATUS_REJECTED = 'rejected';
+
     public const STATUS_FROZEN = 'frozen';
 
     public function organization(): BelongsTo
@@ -61,6 +66,16 @@ class FundMeCampaign extends Model
         return $this->hasMany(FundMeDonation::class, 'fundme_campaign_id');
     }
 
+    public function primaryActionCategories(): BelongsToMany
+    {
+        return $this->belongsToMany(
+            PrimaryActionCategory::class,
+            'fundme_campaign_pac',
+            'fundme_campaign_id',
+            'primary_action_category_id'
+        );
+    }
+
     public function scopeLive($query)
     {
         return $query->where('status', self::STATUS_LIVE);
@@ -76,6 +91,7 @@ class FundMeCampaign extends Model
         if ($this->goal_amount <= 0) {
             return 0;
         }
+
         return min(100, round((float) $this->raised_amount / $this->goal_amount * 100, 1));
     }
 
@@ -94,7 +110,7 @@ class FundMeCampaign extends Model
         static::creating(function (FundMeCampaign $model) {
             if (empty($model->slug)) {
                 $base = Str::slug($model->title);
-                $model->slug = Str::slug($model->title) . '-' . Str::lower(Str::random(6));
+                $model->slug = Str::slug($model->title).'-'.Str::lower(Str::random(6));
             }
         });
     }

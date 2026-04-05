@@ -199,7 +199,7 @@ export default function AdminCourseEnrollments({
               </div>
               <div>
                 <span className="text-sm text-muted-foreground">
-                  {course.type === "course" ? "Topic" : "Event Type"}
+                  {course.type === "course" ? "Topic" : "Event Topic"}
                 </span>
                 <div className="font-semibold">
                   {course.type === "course" ? course.topic?.name : course.event_type?.name || "N/A"}

@@ -13,16 +13,37 @@ interface MultiSelectProps {
   onChange: (selected: string[]) => void
   placeholder?: string
   className?: string
+  /** Placeholder inside the search input */
+  searchPlaceholder?: string
+  /** Message when no option matches search */
+  emptyMessage?: string
+  /** When set (e.g. 1), limits how many options can be selected; picking another replaces the selection if at max. */
+  maxSelections?: number
 }
 
-export function MultiSelect({ options, selected, onChange, placeholder, className }: MultiSelectProps) {
+export function MultiSelect({
+  options,
+  selected,
+  onChange,
+  placeholder,
+  className,
+  searchPlaceholder = "Search…",
+  emptyMessage = "No results.",
+  maxSelections,
+}: MultiSelectProps) {
   const [open, setOpen] = React.useState(false)
 
   const handleToggle = (value: string) => {
-    const newSelected = selected.includes(value)
-      ? selected.filter(v => v !== value)
-      : [...selected, value]
-    onChange(newSelected)
+    if (selected.includes(value)) {
+      onChange(selected.filter(v => v !== value))
+      return
+    }
+    if (maxSelections === 1) {
+      onChange([value])
+      setOpen(false)
+      return
+    }
+    onChange([...selected, value])
   }
 
   const selectedLabels = options
@@ -52,11 +73,11 @@ export function MultiSelect({ options, selected, onChange, placeholder, classNam
         align="start"
       >
         <Command className="bg-white dark:bg-gray-800">
-          <CommandInput 
-            placeholder="Search positions..." 
+          <CommandInput
+            placeholder={searchPlaceholder}
             className="text-gray-900 dark:text-white border-b border-gray-200 dark:border-gray-700 focus:border-blue-500"
           />
-          <CommandEmpty className="text-gray-500 dark:text-gray-400 py-4 text-sm">No position found.</CommandEmpty>
+          <CommandEmpty className="text-gray-500 dark:text-gray-400 py-4 text-sm">{emptyMessage}</CommandEmpty>
           <CommandGroup className="max-h-64 overflow-auto p-1">
             {options.map((option) => (
               <CommandItem

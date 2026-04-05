@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Head, Link, router } from '@inertiajs/react';
+import React, { useEffect } from 'react';
+import { Head, Link, router, useForm } from '@inertiajs/react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -10,6 +10,11 @@ import AppLayout from '@/layouts/app-layout';
 import type { BreadcrumbItem } from '@/types';
 import { ArrowLeft, Save } from 'lucide-react';
 import { showErrorToast } from '@/lib/toast';
+import {
+    OrganizationPrimaryActionCategoriesField,
+    type PrimaryActionCategoryOption,
+} from '@/components/organization-primary-action-categories-field';
+import { route } from 'ziggy-js';
 
 const breadcrumbs: BreadcrumbItem[] = [
     { title: 'Dashboard', href: '/dashboard' },
@@ -23,6 +28,12 @@ interface Props {
     locationTypeOptions: Record<string, string>;
     statusOptions: Record<string, string>;
     currencyOptions: Record<string, string>;
+    organizationPrimaryActionCategories: PrimaryActionCategoryOption[];
+}
+
+function firstError(err: string | string[] | undefined): string | undefined {
+    if (err == null) return undefined;
+    return typeof err === 'string' ? err : err[0];
 }
 
 export default function Create({
@@ -31,8 +42,9 @@ export default function Create({
     locationTypeOptions,
     statusOptions,
     currencyOptions,
+    organizationPrimaryActionCategories,
 }: Props) {
-    const [formData, setFormData] = useState({
+    const { data, setData, post, processing, errors } = useForm({
         position_id: '',
         title: '',
         description: '',
@@ -48,34 +60,20 @@ export default function Create({
         time_commitment_min_hours: '',
         application_deadline: '',
         status: 'draft',
+        primary_action_category_ids: [] as string[],
     });
 
-    const [errors, setErrors] = useState<Record<string, string>>({});
-    const [isSubmitting, setIsSubmitting] = useState(false);
-
-    // Auto-set points to 100 when type is volunteer
     useEffect(() => {
-        if (formData.type === 'volunteer') {
-            setFormData((prev) => ({ ...prev, points: '100' }));
+        if (data.type === 'volunteer') {
+            setData('points', '100');
         }
-    }, [formData.type]);
+    }, [data.type, setData]);
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        setIsSubmitting(true);
-        setErrors({});
-
-        // Ensure points is 100 for volunteer jobs
-        const submitData = { ...formData };
-        if (submitData.type === 'volunteer') {
-            submitData.points = '100';
-        }
-
-        router.post('/job-posts', submitData, {
-            onError: (errors) => {
-                setErrors(errors);
+        post(route('job-posts.store'), {
+            onError: () => {
                 showErrorToast('Failed to create job post');
-                setIsSubmitting(false);
             },
             onSuccess: () => {
                 router.visit('/job-posts');
@@ -84,10 +82,7 @@ export default function Create({
     };
 
     const handleChange = (field: string, value: string) => {
-        setFormData((prev) => ({ ...prev, [field]: value }));
-        if (errors[field]) {
-            setErrors((prev) => ({ ...prev, [field]: '' }));
-        }
+        setData(field as keyof typeof data, value);
     };
 
     return (
@@ -114,7 +109,7 @@ export default function Create({
                                 <div className="space-y-2">
                                     <Label htmlFor="position_id">Position *</Label>
                                     <Select
-                                        value={formData.position_id}
+                                        value={data.position_id}
                                         onValueChange={(value) => handleChange('position_id', value)}
                                     >
                                         <SelectTrigger>
@@ -137,7 +132,7 @@ export default function Create({
                                     <Label htmlFor="title">Job Title *</Label>
                                     <Input
                                         id="title"
-                                        value={formData.title}
+                                        value={data.title}
                                         onChange={(e) => handleChange('title', e.target.value)}
                                         placeholder="Enter job title"
                                         className={errors.title ? 'border-red-500' : ''}
@@ -147,10 +142,19 @@ export default function Create({
                                     )}
                                 </div>
 
+                                <div className="md:col-span-2">
+                                    <OrganizationPrimaryActionCategoriesField
+                                        categories={organizationPrimaryActionCategories}
+                                        selectedIds={data.primary_action_category_ids}
+                                        onSelectionChange={(ids) => setData('primary_action_category_ids', ids)}
+                                        error={firstError(errors.primary_action_category_ids)}
+                                    />
+                                </div>
+
                                 <div className="space-y-2">
                                     <Label htmlFor="type">Job Type *</Label>
                                     <Select
-                                        value={formData.type}
+                                        value={data.type}
                                         onValueChange={(value) => handleChange('type', value)}
                                     >
                                         <SelectTrigger>
@@ -172,7 +176,7 @@ export default function Create({
                                 <div className="space-y-2">
                                     <Label htmlFor="location_type">Location Type *</Label>
                                     <Select
-                                        value={formData.location_type}
+                                        value={data.location_type}
                                         onValueChange={(value) => handleChange('location_type', value)}
                                     >
                                         <SelectTrigger>
@@ -194,7 +198,7 @@ export default function Create({
                                 <div className="space-y-2">
                                     <Label htmlFor="status">Status *</Label>
                                     <Select
-                                        value={formData.status}
+                                        value={data.status}
                                         onValueChange={(value) => handleChange('status', value)}
                                     >
                                         <SelectTrigger>
@@ -213,14 +217,14 @@ export default function Create({
                                     )}
                                 </div>
 
-                                {formData.type === 'volunteer' ? (
+                                {data.type === 'volunteer' ? (
                                     <div className="space-y-2">
                                         <Label htmlFor="points">Points (Reward Points)</Label>
                                         <Input
                                             id="points"
                                             type="number"
                                             min="0"
-                                            value={formData.points}
+                                            value={data.points}
                                             onChange={(e) => handleChange('points', e.target.value)}
                                             placeholder="100 points (fixed for volunteer jobs)"
                                             disabled={true}
@@ -242,13 +246,13 @@ export default function Create({
                                                 type="number"
                                                 min="0"
                                                 step="0.01"
-                                                value={formData.pay_rate}
+                                                value={data.pay_rate}
                                                 onChange={(e) => handleChange('pay_rate', e.target.value)}
                                                 placeholder="Enter pay rate"
                                                 className={errors.pay_rate ? 'border-red-500' : ''}
                                             />
                                             <Select
-                                                value={formData.currency}
+                                                value={data.currency}
                                                 onValueChange={(value) => handleChange('currency', value)}
                                             >
                                                 <SelectTrigger className="w-[100px]">
@@ -275,7 +279,7 @@ export default function Create({
                                         id="time_commitment_min_hours"
                                         type="number"
                                         min="0"
-                                        value={formData.time_commitment_min_hours}
+                                        value={data.time_commitment_min_hours}
                                         onChange={(e) => handleChange('time_commitment_min_hours', e.target.value)}
                                         placeholder="Enter minimum hours per week"
                                         className={errors.time_commitment_min_hours ? 'border-red-500' : ''}
@@ -290,7 +294,7 @@ export default function Create({
                                     <Input
                                         id="application_deadline"
                                         type="date"
-                                        value={formData.application_deadline}
+                                        value={data.application_deadline}
                                         onChange={(e) => handleChange('application_deadline', e.target.value)}
                                         className={errors.application_deadline ? 'border-red-500' : ''}
                                     />
@@ -303,7 +307,7 @@ export default function Create({
                                     <Label htmlFor="city">City</Label>
                                     <Input
                                         id="city"
-                                        value={formData.city}
+                                        value={data.city}
                                         onChange={(e) => handleChange('city', e.target.value)}
                                         placeholder="Enter city"
                                         className={errors.city ? 'border-red-500' : ''}
@@ -317,7 +321,7 @@ export default function Create({
                                     <Label htmlFor="state">State/Province</Label>
                                     <Input
                                         id="state"
-                                        value={formData.state}
+                                        value={data.state}
                                         onChange={(e) => handleChange('state', e.target.value)}
                                         placeholder="Enter state or province"
                                         className={errors.state ? 'border-red-500' : ''}
@@ -331,7 +335,7 @@ export default function Create({
                                     <Label htmlFor="country">Country</Label>
                                     <Input
                                         id="country"
-                                        value={formData.country}
+                                        value={data.country}
                                         onChange={(e) => handleChange('country', e.target.value)}
                                         placeholder="Enter country"
                                         className={errors.country ? 'border-red-500' : ''}
@@ -346,7 +350,7 @@ export default function Create({
                                 <Label htmlFor="description">Description *</Label>
                                 <TextArea
                                     id="description"
-                                    value={formData.description}
+                                    value={data.description}
                                     onChange={(e) => handleChange('description', e.target.value)}
                                     placeholder="Enter detailed job description"
                                     rows={6}
@@ -361,7 +365,7 @@ export default function Create({
                                 <Label htmlFor="requirements">Requirements</Label>
                                 <TextArea
                                     id="requirements"
-                                    value={formData.requirements}
+                                    value={data.requirements}
                                     onChange={(e) => handleChange('requirements', e.target.value)}
                                     placeholder="Enter job requirements (optional)"
                                     rows={4}
@@ -378,9 +382,9 @@ export default function Create({
                                         Cancel
                                     </Button>
                                 </Link>
-                                <Button type="submit" disabled={isSubmitting}>
+                                <Button type="submit" disabled={processing}>
                                     <Save className="mr-2 h-4 w-4" />
-                                    {isSubmitting ? 'Creating...' : 'Create Job Post'}
+                                    {processing ? 'Creating...' : 'Create Job Post'}
                                 </Button>
                             </div>
                         </form>

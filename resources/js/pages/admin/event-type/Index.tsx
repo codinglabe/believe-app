@@ -54,21 +54,16 @@ interface EventTypesIndexProps {
     filters: {
         search?: string
     }
+    canManageEventTypes?: boolean
 }
 
-const NONPROFIT_DASHBOARD_ROLES = new Set(["organization", "organization_pending", "care_alliance"])
-
 export default function EventTypesIndex() {
-    const { eventTypes, filters } = usePage<EventTypesIndexProps>().props
+    const { eventTypes, filters, canManageEventTypes = false } = usePage<EventTypesIndexProps>().props
     const { auth } = usePage().props as { auth: Auth }
     const permissions = auth?.permissions ?? []
-    const userRole = auth?.user?.role
-    const isNonprofitReadOnly =
-        (userRole != null && NONPROFIT_DASHBOARD_ROLES.has(userRole)) ||
-        (auth?.roles?.some((r) => NONPROFIT_DASHBOARD_ROLES.has(r)) ?? false)
-    const canCreate = !isNonprofitReadOnly && permissions.includes("event_type.create")
-    const canUpdate = !isNonprofitReadOnly && permissions.includes("event_type.update")
-    const canDelete = !isNonprofitReadOnly && permissions.includes("event_type.delete")
+    const canCreate = canManageEventTypes && permissions.includes("event_type.create")
+    const canUpdate = canManageEventTypes && permissions.includes("event_type.update")
+    const canDelete = canManageEventTypes && permissions.includes("event_type.delete")
 
     const [isCreateOpen, setIsCreateOpen] = useState(false)
     const [isEditOpen, setIsEditOpen] = useState(false)

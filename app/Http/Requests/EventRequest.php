@@ -2,10 +2,19 @@
 
 namespace App\Http\Requests;
 
+use App\Models\Organization;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class EventRequest extends FormRequest
 {
+    protected function prepareForValidation(): void
+    {
+        if ($this->has('primary_action_category_id') && $this->input('primary_action_category_id') === '') {
+            $this->merge(['primary_action_category_id' => null]);
+        }
+    }
+
     /**
      * Determine if the user is authorized to make this request.
      */
@@ -21,6 +30,8 @@ class EventRequest extends FormRequest
      */
     public function rules(): array
     {
+        $orgId = Organization::forAuthUser($this->user())?->id;
+
         // dd($this->all());
         $rules = [
             'event_type_id' => 'required|exists:event_types,id',
@@ -40,6 +51,15 @@ class EventRequest extends FormRequest
             'contact_info' => 'nullable|string|max:500',
             'birthday' => 'nullable|date',
             'visibility' => 'required|in:public,private',
+            'primary_action_category_id' => [
+                Rule::requiredIf(fn () => $this->organizationMustPickCause()),
+                'nullable',
+                'integer',
+                Rule::exists('primary_action_categories', 'id')->where('is_active', true),
+                Rule::exists('org_primary_action_category', 'primary_action_category_id')->where(
+                    fn ($q) => $orgId ? $q->where('organization_id', $orgId) : $q->whereRaw('1 = 0')
+                ),
+            ],
         ];
 
         // Add poster image validation only for create/update
@@ -51,13 +71,39 @@ class EventRequest extends FormRequest
     }
 
     /**
+     * Org-side accounts with at least one Category Grid (Primary Action) must pick one cause for the event.
+     */
+    protected function organizationMustPickCause(): bool
+    {
+        $user = $this->user();
+        if ($user === null) {
+            return false;
+        }
+
+        $legacyRole = (string) $user->role;
+        $isOrgSide = in_array($legacyRole, ['organization', 'care_alliance', 'organization_pending'], true)
+            || $user->hasAnyRole(['organization', 'care_alliance', 'organization_pending']);
+
+        if (! $isOrgSide) {
+            return false;
+        }
+
+        $org = Organization::forAuthUser($user);
+        if ($org === null) {
+            return false;
+        }
+
+        return $org->primaryActionCategories()->where('is_active', true)->exists();
+    }
+
+    /**
      * Get custom messages for validator errors.
      */
     public function messages(): array
     {
         return [
-            'event_type_id.required' => 'Event type is required.',
-            'event_type_id.exists' => 'Selected event type is invalid.',
+            'event_type_id.required' => 'Event topic is required.',
+            'event_type_id.exists' => 'Selected event topic is invalid.',
             'name.required' => 'Event name is required.',
             'description.required' => 'Event description is required.',
             'start_date.required' => 'Start date is required.',
@@ -76,6 +122,8 @@ class EventRequest extends FormRequest
             'birthday.date' => 'Birthday must be a valid date.',
             'visibility.required' => 'Event visibility is required.',
             'visibility.in' => 'Visibility must be either public or private.',
+            'primary_action_category_id.required' => 'Please select a cause (primary action category) for this event.',
+            'primary_action_category_id.exists' => 'The selected cause is not valid for your organization.',
         ];
     }
 }

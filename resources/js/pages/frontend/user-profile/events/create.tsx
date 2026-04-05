@@ -95,7 +95,7 @@ export default function CreateEvent() {
         if (!formData.name.trim()) newErrors.name = 'Event name is required'
         if (!formData.description.trim()) newErrors.description = 'Description is required'
         if (!formData.start_date) newErrors.start_date = 'Start date is required'
-        if (!formData.event_type_id) newErrors.event_type_id = 'Event type is required'
+        if (!formData.event_type_id) newErrors.event_type_id = 'Event topic is required'
         break
         
       case 'location':
@@ -316,12 +316,12 @@ export default function CreateEvent() {
                       )}
                     </div>
                     <div className="space-y-3">
-                      <Label htmlFor="event_type_id" className="text-sm font-semibold text-gray-700 dark:text-gray-300">Event Type *</Label>
+                      <Label htmlFor="event_type_id" className="text-sm font-semibold text-gray-700 dark:text-gray-300">Event Topic *</Label>
                       <Select value={formData.event_type_id} onValueChange={(value) => handleInputChange('event_type_id', value)}>
                         <SelectTrigger className={`bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white focus:border-blue-500 focus:ring-blue-500 ${
                           errors.event_type_id ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : ''
                         }`}>
-                          <SelectValue placeholder="Select event type" />
+                          <SelectValue placeholder="Select event topic" />
                         </SelectTrigger>
                         <SelectContent>
                           {Object.entries(groupedEventTypes).map(([category, types]) => (

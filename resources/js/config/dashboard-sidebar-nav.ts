@@ -1,0 +1,1098 @@
+import type { NavItem, NavGroup } from '@/types';
+import { route } from 'ziggy-js';
+import {
+    Download,
+    FileText,
+    ShoppingCart,
+    Shield,
+    Settings,
+    Package,
+    AlignEndHorizontal,
+    Network,
+    HandCoins,
+    GraduationCap,
+    BarChart3,
+    HeartHandshake,
+    Database,
+    Users,
+    Building2,
+    Gift,
+    Tag,
+    Briefcase,
+    BookOpen,
+    MessageSquare,
+    FileCode,
+    Hash,
+    Percent,
+    Building,
+    Calendar,
+    Plus,
+    Mail,
+    CalendarPlus,
+    PlusCircle,
+    Star,
+    Bot,
+    ClipboardList,
+    FileCheck,
+    DollarSign,
+    Coins,
+    PieChart,
+    Clock,
+    UserCheck,
+    Info,
+    Heart,
+    Megaphone,
+    Wallet,
+    Gavel,
+    Handshake,
+    Bell,
+    Send,
+    Store,
+    CreditCard,
+    FolderOpen,
+    ShoppingBag,
+    Search,
+    Youtube,
+    Video,
+    TrendingUp,
+    Cloud,
+    Monitor,
+    LayoutGrid,
+    Layers,
+    ScrollText,
+    Home,
+    Brain,
+    Puzzle,
+    LineChart,
+    Facebook,
+    Link as LinkIcon,
+    Activity,
+    MessageCircle,
+    Sparkles,
+} from 'lucide-react';
+
+/**
+ * BIU production sidebar — section order and labels match client spec.
+ */
+export const dashboardSidebarNavItems: (NavItem | NavGroup)[] = [
+    {
+        title: '🏠 Dashboard',
+        icon: Home,
+        items: [
+            {
+                title: 'Dashboard',
+                href: '/dashboard',
+                icon: BarChart3,
+                permission: 'dashboard.read',
+            },
+            {
+                title: 'Supporter home',
+                href: route('user.profile.index'),
+                icon: BarChart3,
+                role: 'user',
+            },
+        ],
+    },
+
+    {
+        title: '💰 Fundraising',
+        icon: HandCoins,
+        role: 'organization',
+        items: [
+            {
+                title: 'Donations',
+                href: '/donations',
+                icon: HeartHandshake,
+                role: 'organization',
+            },
+            {
+                title: 'Fundraisers',
+                href: '/fundme',
+                icon: HandCoins,
+                role: 'organization',
+            },
+            {
+                title: 'Raffles',
+                href: '/raffles',
+                icon: Gift,
+                permission: 'raffle.read',
+            },
+        ],
+    },
+
+    {
+        title: '📣 Marketing',
+        icon: Megaphone,
+        items: [
+            {
+                title: 'Email',
+                icon: Mail,
+                items: [
+                    {
+                        title: 'Campaigns',
+                        href: '/campaigns',
+                        icon: Calendar,
+                        permission: 'campaign.read',
+                    },
+                    {
+                        title: 'Create campaign',
+                        href: '/campaigns/create',
+                        icon: CalendarPlus,
+                        permission: 'campaign.create',
+                    },
+                    {
+                        title: 'AI campaign generator',
+                        href: '/campaigns/ai/create',
+                        icon: Star,
+                        permission: 'campaign.ai.create',
+                    },
+                    {
+                        title: 'Email invites',
+                        href: '/email-invite',
+                        icon: Mail,
+                        permission: 'email.invite.read',
+                        role: 'organization',
+                    },
+                ],
+            },
+            {
+                title: 'Newsletter',
+                href: '/newsletter',
+                icon: Mail,
+                permission: 'newsletter.read',
+            },
+            {
+                title: 'Social',
+                icon: Facebook,
+                role: 'organization',
+                items: [
+                    {
+                        title: 'Social media',
+                        href: route('social-media.index'),
+                        icon: Facebook,
+                        role: 'organization',
+                    },
+                    {
+                        title: 'Connect pages',
+                        href: '/facebook/connect',
+                        icon: LinkIcon,
+                        role: 'organization',
+                    },
+                    {
+                        title: 'Posts',
+                        href: '/facebook/posts',
+                        icon: FileText,
+                        role: 'organization',
+                    },
+                    {
+                        title: 'Create post',
+                        href: '/facebook/posts/create',
+                        icon: Plus,
+                        role: 'organization',
+                    },
+                ],
+            },
+            {
+                title: 'Communication',
+                icon: MessageSquare,
+                items: [
+                    {
+                        title: 'Announcements',
+                        href: '/chat',
+                        icon: Bell,
+                        permission: 'communication.read',
+                    },
+                    {
+                        title: 'Content',
+                        icon: FileText,
+                        items: [
+                            {
+                                title: 'Content items',
+                                href: '/content',
+                                icon: FileText,
+                                permission: 'content.read',
+                            },
+                            {
+                                title: 'Create content',
+                                href: '/content/create',
+                                icon: PlusCircle,
+                                permission: 'content.create',
+                            },
+                        ],
+                        permission: 'content.read',
+                    },
+                    {
+                        title: 'Group chat',
+                        icon: Send,
+                        items: [
+                            {
+                                title: 'Create',
+                                href: '/chat-group-topics',
+                                icon: MessageSquare,
+                                permission: 'communication.read',
+                            },
+                            {
+                                title: 'Select chat topic',
+                                href: '/group-topics/select',
+                                icon: MessageSquare,
+                                permission: 'communication.read',
+                            },
+                        ],
+                        permission: 'communication.read',
+                    },
+                ],
+                permission: 'communication.read',
+            },
+        ],
+    },
+
+    {
+        title: '🛒 Commerce',
+        icon: Store,
+        items: [
+            {
+                title: 'Marketplace',
+                icon: ShoppingCart,
+                items: [
+                    {
+                        title: 'Products',
+                        href: '/products',
+                        icon: ShoppingCart,
+                        permission: 'product.read',
+                    },
+                    {
+                        title: 'Categories',
+                        href: '/categories',
+                        icon: Tag,
+                        permission: 'category.read',
+                        role: 'admin',
+                    },
+                    {
+                        title: 'Orders',
+                        href: '/orders',
+                        icon: Package,
+                        permission: 'ecommerce.read',
+                    },
+                    {
+                        title: 'Merchant product pool',
+                        href: '/marketplace/product-pool',
+                        icon: Package,
+                        permission: 'product.read',
+                    },
+                ],
+            },
+            {
+                title: 'Merchants',
+                icon: Store,
+                role: 'admin',
+                items: [
+                    {
+                        title: 'Merchants',
+                        href: '/admin/merchant-hub/merchants',
+                        icon: Store,
+                        role: 'admin',
+                    },
+                    {
+                        title: 'Offers',
+                        href: '/admin/merchant-hub/offers',
+                        icon: Gift,
+                        role: 'admin',
+                    },
+                    {
+                        title: 'Redemptions',
+                        href: '/admin/merchant-hub/redemptions',
+                        icon: ShoppingCart,
+                        role: 'admin',
+                    },
+                    {
+                        title: 'Categories',
+                        href: '/admin/merchant-hub-categories',
+                        icon: Tag,
+                        role: 'admin',
+                    },
+                ],
+            },
+            {
+                title: 'Barter',
+                href: '/barter',
+                icon: Handshake,
+                role: 'organization',
+            },
+            {
+                title: 'Gift cards',
+                icon: Gift,
+                role: ['organization', 'admin'],
+                items: [
+                    {
+                        title: 'Purchased cards',
+                        href: route('gift-cards.created'),
+                        icon: Gift,
+                    },
+                ],
+            },
+        ],
+    },
+
+    {
+        title: '🎓 Programs',
+        icon: GraduationCap,
+        items: [
+            {
+                title: 'Courses',
+                icon: GraduationCap,
+                items: [
+                    {
+                        title: 'Courses & events',
+                        href: '/admin/courses-events',
+                        icon: GraduationCap,
+                        permission: 'course.read',
+                    },
+                    {
+                        title: 'Course topics',
+                        href: '/topics',
+                        icon: BookOpen,
+                        // Match event types: show catalog when org dashboard or explicit read (avoids hidden link if Spatie is stale)
+                        permission: ['topic.read', 'dashboard.organization'],
+                    },
+                ],
+                permission: 'course.read',
+            },
+            {
+                title: 'Events',
+                icon: Calendar,
+                items: [
+                    {
+                        title: 'Events',
+                        href: '/events',
+                        icon: Calendar,
+                        permission: 'event.read',
+                    },
+                    {
+                        title: 'Event types',
+                        href: '/event-types',
+                        icon: Layers,
+                        // Organization dashboard: show catalog for read (fallback if event_type.read not in session)
+                        permission: ['event_type.read', 'dashboard.organization'],
+                    },
+                    {
+                        title: 'Create event',
+                        icon: Plus,
+                        items: [
+                            {
+                                title: 'New event',
+                                href: '/events/create',
+                                icon: Plus,
+                                permission: 'event.create',
+                            },
+                        ],
+                    },
+                ],
+                permission: 'event.read',
+            },
+        ],
+    },
+
+    {
+        title: '👥 Community',
+        icon: Users,
+        role: 'organization',
+        items: [
+            {
+                title: 'Followers',
+                href: route('organization.followers.index'),
+                icon: UserCheck,
+                permission: 'organization.followers.read',
+                role: 'organization',
+            },
+            {
+                title: 'Chat',
+                icon: MessageCircle,
+                items: [
+                    {
+                        title: 'Announcements',
+                        href: '/chat',
+                        icon: Bell,
+                        permission: 'communication.read',
+                    },
+                    {
+                        title: 'Create group chat',
+                        href: '/chat-group-topics',
+                        icon: MessageSquare,
+                        permission: 'communication.read',
+                    },
+                    {
+                        title: 'Select chat topic',
+                        href: '/group-topics/select',
+                        icon: MessageSquare,
+                        permission: 'communication.read',
+                    },
+                ],
+                permission: 'communication.read',
+            },
+        ],
+    },
+
+    {
+        title: '🧩 Opportunities',
+        icon: Puzzle,
+        role: 'organization',
+        items: [
+            {
+                title: 'Volunteers',
+                icon: UserCheck,
+                items: [
+                    {
+                        title: 'Volunteers',
+                        href: '/volunteers',
+                        icon: UserCheck,
+                        permission: 'volunteer.read',
+                        role: 'organization',
+                    },
+                    {
+                        title: 'Time sheet',
+                        href: '/volunteers/timesheet',
+                        icon: Clock,
+                        permission: 'volunteer.timesheet.read',
+                        role: 'organization',
+                    },
+                ],
+                role: 'organization',
+            },
+            {
+                title: 'Jobs',
+                icon: Briefcase,
+                items: [
+                    {
+                        title: 'Position categories',
+                        href: '/position-categories',
+                        icon: Building2,
+                        permission: 'job.position.categories.read',
+                    },
+                    {
+                        title: 'Job positions',
+                        href: '/job-positions',
+                        icon: Briefcase,
+                        permission: 'job.positions.read',
+                    },
+                    {
+                        title: 'Job posts',
+                        href: '/job-posts',
+                        icon: FileText,
+                        permission: 'job.posts.read',
+                    },
+                    {
+                        title: 'Applications',
+                        href: '/job-applications',
+                        icon: Users,
+                        permission: 'job.posts.read',
+                    },
+                ],
+            },
+            {
+                title: 'Contractors',
+                href: '/service-hub',
+                icon: Briefcase,
+                role: 'organization',
+            },
+        ],
+    },
+
+    {
+        title: '📊 Insights',
+        icon: LineChart,
+        permission: 'dashboard.read',
+        items: [
+            {
+                title: 'Overview',
+                href: '/supporter-activity',
+                icon: Activity,
+                permission: 'dashboard.read',
+                role: ['organization', 'admin'],
+            },
+            {
+                title: 'Behavior',
+                href: '/supporter-activity?metric=active_supporters',
+                icon: Activity,
+                permission: 'dashboard.read',
+                role: ['organization', 'admin'],
+            },
+            {
+                title: 'Engagement',
+                href: '/supporter-activity?metric=event_participants',
+                icon: Activity,
+                permission: 'dashboard.read',
+                role: ['organization', 'admin'],
+            },
+            {
+                title: 'Transactions (supporters)',
+                href: '/supporter-activity#transaction-ledger',
+                icon: ScrollText,
+                permission: 'dashboard.read',
+                role: 'organization',
+            },
+            {
+                title: 'Transactions (platform)',
+                href: '/admin/transactions/ledger',
+                icon: ScrollText,
+                role: 'admin',
+            },
+            {
+                title: 'Usage',
+                href: '/supporter-activity?metric=course_participants',
+                icon: Activity,
+                permission: 'dashboard.read',
+                role: ['organization', 'admin'],
+            },
+            {
+                title: 'Points 🔥',
+                href: '/supporter-activity?metric=donors',
+                icon: Coins,
+                permission: 'dashboard.read',
+                role: ['organization', 'admin'],
+            },
+        ],
+    },
+
+    {
+        title: '🏢 Organization',
+        icon: Building2,
+        items: [
+            {
+                title: 'Alliance membership',
+                href: '/organization/alliance-membership',
+                icon: Users,
+                role: ['organization', 'organization_pending'],
+                organizationOnlyNav: true,
+            },
+            {
+                title: 'Care Alliance',
+                icon: HeartHandshake,
+                role: 'care_alliance',
+                items: [
+                    {
+                        title: 'Members',
+                        href: '/care-alliance/workspace/members',
+                        icon: Users,
+                        role: 'care_alliance',
+                    },
+                    {
+                        title: 'Campaigns',
+                        href: '/care-alliance/workspace/campaigns',
+                        icon: Megaphone,
+                        role: 'care_alliance',
+                    },
+                ],
+            },
+            {
+                title: 'Project applications',
+                href: '/dashboard/project-applications',
+                icon: FileText,
+                role: ['organization', 'organization_pending', 'admin'],
+            },
+        ],
+    },
+
+    {
+        title: '🏛️ Governance',
+        icon: Gavel,
+        role: 'organization',
+        items: [
+            {
+                title: 'Board',
+                href: '/board-members',
+                icon: Users,
+                role: 'organization',
+            },
+            {
+                title: 'Compliance',
+                href: '/compliance',
+                icon: Shield,
+                role: 'organization',
+            },
+        ],
+    },
+
+    {
+        title: '⚙️ System',
+        icon: Settings,
+        items: [
+            {
+                title: 'Settings',
+                icon: Settings,
+                items: [
+                    {
+                        title: 'Roles & permissions',
+                        href: '/permission-management',
+                        icon: Shield,
+                        permission: 'role.management.read',
+                    },
+                    {
+                        title: 'Organization settings',
+                        href: '/settings/profile',
+                        icon: Settings,
+                        permission: 'profile.read',
+                        excludeCareAllianceHub: true,
+                    },
+                    {
+                        title: 'Alliance settings',
+                        href: '/settings/profile',
+                        icon: Settings,
+                        permission: 'profile.read',
+                        role: 'care_alliance',
+                    },
+                    {
+                        title: 'Profile',
+                        href: route('user.profile.index'),
+                        icon: UserCheck,
+                        role: 'user',
+                    },
+                    {
+                        title: 'SEO settings',
+                        href: '/admin/seo',
+                        icon: Search,
+                        role: 'admin',
+                    },
+                    {
+                        title: 'Stripe processing fees',
+                        href: '/admin/processing-fees',
+                        icon: Percent,
+                        role: 'admin',
+                    },
+                    {
+                        title: 'IRS members',
+                        href: '/admin/irs-members',
+                        icon: FileText,
+                        role: 'admin',
+                    },
+                    {
+                        title: 'Compliance / logs',
+                        icon: ClipboardList,
+                        items: [
+                            {
+                                title: 'Compliance reviews',
+                                href: '/admin/compliance',
+                                icon: ClipboardList,
+                                permission: 'compliance.review',
+                            },
+                            {
+                                title: 'KYB verification',
+                                href: '/admin/kyb-verification',
+                                icon: Shield,
+                                permission: 'kyb.verification.read',
+                            },
+                            {
+                                title: 'KYC verification',
+                                href: '/admin/kyc-verification',
+                                icon: UserCheck,
+                                permission: 'kyc.verification.read',
+                            },
+                            {
+                                title: 'Exemption certificates',
+                                href: '/admin/exemption-certificates',
+                                icon: FileCheck,
+                                role: 'admin',
+                            },
+                        ],
+                        permission: 'compliance.review',
+                    },
+                    {
+                        title: 'Billing / plans',
+                        icon: CreditCard,
+                        items: [
+                            {
+                                title: 'Plans management',
+                                href: '/admin/plans',
+                                icon: Sparkles,
+                                role: 'admin',
+                            },
+                            {
+                                title: 'Wallet plans management',
+                                href: '/admin/wallet-plans',
+                                icon: Wallet,
+                                permission: 'wallet.plan.read',
+                            },
+                            {
+                                title: 'Email packages',
+                                href: '/admin/email-packages',
+                                icon: Mail,
+                                role: 'admin',
+                            },
+                            {
+                                title: 'Reward points',
+                                href: '/admin/reward-points',
+                                icon: Gift,
+                                permission: 'reward.point.manage',
+                            },
+                            {
+                                title: 'Believe Points (admin)',
+                                href: '/admin/believe-points',
+                                icon: Coins,
+                                role: 'admin',
+                            },
+                        ],
+                        permission: 'wallet.plan.read',
+                    },
+                    {
+                        title: 'About page',
+                        href: '/admin/about',
+                        icon: Info,
+                        role: 'admin',
+                    },
+                    {
+                        title: 'Service categories',
+                        href: '/admin/service-categories',
+                        icon: FolderOpen,
+                        role: 'admin',
+                    },
+                    {
+                        title: 'Org primary action categories',
+                        href: '/admin/primary-action-categories',
+                        icon: LayoutGrid,
+                        role: 'admin',
+                    },
+                    {
+                        title: 'Service hub settings',
+                        href: '/settings/service-hub',
+                        icon: ShoppingBag,
+                        role: 'admin',
+                    },
+                    {
+                        title: 'Kiosk management',
+                        icon: Monitor,
+                        role: 'admin',
+                        items: [
+                            {
+                                title: 'Categories',
+                                href: '/admin/kiosk',
+                                icon: LayoutGrid,
+                                role: 'admin',
+                            },
+                            {
+                                title: 'Subcategories',
+                                href: '/admin/kiosk/subcategories',
+                                icon: Layers,
+                                role: 'admin',
+                            },
+                            {
+                                title: 'Kiosk requests',
+                                href: '/admin/kiosk/requests',
+                                icon: ClipboardList,
+                                role: 'admin',
+                            },
+                            {
+                                title: 'Providers',
+                                href: '/admin/kiosk/providers',
+                                icon: Store,
+                                role: 'admin',
+                            },
+                        ],
+                    },
+                    {
+                        title: 'Promotional banners',
+                        href: '/admin/promotional-banners',
+                        icon: Megaphone,
+                        role: 'admin',
+                        permission: 'promotional.banner.read',
+                    },
+                    {
+                        title: 'Contact page',
+                        href: '/admin/contact-page',
+                        icon: MessageCircle,
+                        role: 'admin',
+                    },
+                    {
+                        title: 'Contact submissions',
+                        href: '/admin/contact-submissions',
+                        icon: Mail,
+                        role: 'admin',
+                    },
+                    {
+                        title: 'Fundraise leads',
+                        href: '/admin/fundraise-leads',
+                        icon: TrendingUp,
+                        role: 'admin',
+                    },
+                    {
+                        title: 'Push notifications (FCM)',
+                        href: '/admin/push-notifications',
+                        icon: Bell,
+                        role: 'admin',
+                    },
+                ],
+            },
+            {
+                title: 'Integrations',
+                icon: LinkIcon,
+                items: [
+                    {
+                        title: 'Email invites',
+                        href: '/email-invite',
+                        icon: Mail,
+                        permission: 'email.invite.read',
+                        role: 'organization',
+                    },
+                    {
+                        title: 'Social media',
+                        href: route('social-media.index'),
+                        icon: Facebook,
+                        role: 'organization',
+                    },
+                    {
+                        title: 'YouTube',
+                        href: route('integrations.youtube'),
+                        icon: Youtube,
+                        role: 'organization',
+                    },
+                    {
+                        title: 'Dropbox (recordings)',
+                        href: route('integrations.dropbox'),
+                        icon: Cloud,
+                        role: 'organization',
+                    },
+                    {
+                        title: 'Integrations (profile)',
+                        href: route('user.profile.integrations'),
+                        icon: LinkIcon,
+                        role: 'user',
+                    },
+                ],
+            },
+            {
+                title: 'Wallet',
+                href: '/believe-points',
+                icon: Wallet,
+                role: 'user',
+            },
+        ],
+    },
+
+    {
+        title: '🧠 Tools',
+        icon: Brain,
+        items: [
+            {
+                title: 'AI (ChatGPT assistant)',
+                href: '/ai-chat',
+                icon: Bot,
+                permission: 'ai.chat.use',
+                role: 'organization',
+            },
+            {
+                title: 'Meetings',
+                href: '/livestreams',
+                icon: Video,
+                role: 'organization',
+            },
+            {
+                title: 'My meetings',
+                href: '/livestreams/supporter',
+                icon: Video,
+                role: 'user',
+            },
+        ],
+    },
+
+    {
+        title: 'Platform administration',
+        icon: Shield,
+        role: 'admin',
+        items: [
+            {
+                title: 'Node management',
+                icon: Network,
+                items: [
+                    {
+                        title: 'Node Boss',
+                        href: '/node-boss',
+                        icon: AlignEndHorizontal,
+                        permission: 'node.referral.read',
+                    },
+                    {
+                        title: 'Node referral',
+                        href: '/node-referral',
+                        icon: Network,
+                        permission: 'node.referral.read',
+                    },
+                    {
+                        title: 'Withdrawals',
+                        href: '/withdrawals',
+                        icon: HandCoins,
+                        permission: 'data.management.read',
+                    },
+                ],
+                permission: 'node.referral.read',
+            },
+            {
+                title: 'Code management',
+                icon: FileCode,
+                role: 'admin',
+                items: [
+                    {
+                        title: 'Classification codes',
+                        href: '/classification-codes',
+                        icon: FileCode,
+                        permission: 'classification.code.read',
+                    },
+                    {
+                        title: 'Status codes',
+                        href: '/status-codes',
+                        icon: Hash,
+                        permission: 'status.code.read',
+                    },
+                    {
+                        title: 'Deductibility codes',
+                        href: '/deductibility-codes',
+                        icon: Percent,
+                        permission: 'deductibility.code.read',
+                    },
+                    {
+                        title: 'NTEE codes',
+                        href: '/ntee-codes',
+                        icon: Building,
+                        permission: 'ntee.code.read',
+                    },
+                ],
+                permission: 'classification.code.read',
+            },
+            {
+                title: 'Data management',
+                icon: Database,
+                items: [
+                    {
+                        title: 'Upload data',
+                        href: '/upload',
+                        icon: Download,
+                        permission: 'data.management.read',
+                    },
+                    {
+                        title: 'Manage data',
+                        href: '/manage-data',
+                        icon: Database,
+                        permission: 'data.management.read',
+                    },
+                ],
+                permission: 'data.management.read',
+            },
+            {
+                title: 'Application management',
+                icon: FileCheck,
+                permission: 'form1023.application.read',
+                items: [
+                    {
+                        title: 'Form 1023 applications',
+                        href: '/admin/form1023',
+                        icon: FileCheck,
+                        permission: 'form1023.application.read',
+                    },
+                    {
+                        title: 'Compliance reviews',
+                        href: '/admin/compliance',
+                        icon: ClipboardList,
+                        permission: 'compliance.review',
+                    },
+                    {
+                        title: 'Fees',
+                        href: '/admin/fees',
+                        icon: DollarSign,
+                        permission: 'application.fees.read',
+                    },
+                ],
+            },
+            {
+                title: 'Fractional ownership',
+                icon: Coins,
+                role: 'admin',
+                items: [
+                    {
+                        title: 'Orders & buyers',
+                        href: '/admin/fractional/orders',
+                        icon: ShoppingCart,
+                        role: 'admin',
+                    },
+                    {
+                        title: 'Assets',
+                        href: '/admin/fractional/assets',
+                        icon: Coins,
+                        role: 'admin',
+                    },
+                    {
+                        title: 'Offerings',
+                        href: '/admin/fractional/offerings',
+                        icon: PieChart,
+                        role: 'admin',
+                    },
+                ],
+            },
+            {
+                title: 'Livestock management',
+                icon: Heart,
+                permission: 'admin.livestock.read',
+                items: [
+                    {
+                        title: 'Livestock',
+                        href: '/admin/livestock/listings',
+                        icon: Heart,
+                        permission: 'admin.livestock.read',
+                    },
+                    {
+                        title: 'Sellers',
+                        href: '/admin/livestock/sellers',
+                        icon: Users,
+                        permission: 'admin.livestock.read',
+                    },
+                    {
+                        title: 'Buyers',
+                        href: '/admin/livestock/buyers',
+                        icon: ShoppingCart,
+                        permission: 'admin.livestock.read',
+                    },
+                ],
+            },
+            {
+                title: 'Country management',
+                icon: Building,
+                permission: 'admin.countries.read',
+                items: [
+                    {
+                        title: 'Countries',
+                        href: '/admin/countries',
+                        icon: Building,
+                        permission: 'admin.countries.read',
+                    },
+                ],
+            },
+            {
+                title: 'User management',
+                icon: Users,
+                permission: 'role.management.read',
+                items: [
+                    {
+                        title: 'Users',
+                        href: route('users.list'),
+                        icon: Users,
+                        permission: 'role.management.read',
+                    },
+                ],
+            },
+            {
+                title: 'Service hub management',
+                icon: ShoppingBag,
+                role: 'admin',
+                items: [
+                    {
+                        title: 'Service sellers',
+                        href: '/admin/service-sellers',
+                        icon: Users,
+                        role: 'admin',
+                    },
+                    {
+                        title: 'Service categories',
+                        href: '/admin/service-categories',
+                        icon: FolderOpen,
+                        role: 'admin',
+                    },
+                ],
+            },
+        ],
+    },
+];

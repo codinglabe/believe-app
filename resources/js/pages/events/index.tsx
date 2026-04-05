@@ -194,10 +194,10 @@ export default function EventsIndex({ events, eventTypes, userRole }: Props) {
                             <div className="flex gap-2">
                                 <Select value={eventTypeFilter} onValueChange={setEventTypeFilter}>
                                     <SelectTrigger className="w-48">
-                                        <SelectValue placeholder="All Event Types" />
+                                        <SelectValue placeholder="All Event Topics" />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        <SelectItem value="all">All Event Types</SelectItem>
+                                        <SelectItem value="all">All Event Topics</SelectItem>
                                         {Object.entries(eventTypes.reduce((acc, eventType) => {
                                             const category = eventType.category;
                                             if (!acc[category]) {

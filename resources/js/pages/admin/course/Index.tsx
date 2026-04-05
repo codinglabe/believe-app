@@ -530,7 +530,7 @@ export default function CoursesIndex({ courses, topics, eventTypes, filters, sta
                       <SelectValue placeholder="All" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="all">All Event Types</SelectItem>
+                      <SelectItem value="all">All Event Topics</SelectItem>
                       {Object.entries(groupedEventTypes).map(([category, types]) => (
                         <div key={category}>
                           <div className="px-2 py-1.5 text-sm font-semibold text-gray-500 bg-gray-100 dark:bg-gray-800">
@@ -604,7 +604,7 @@ export default function CoursesIndex({ courses, topics, eventTypes, filters, sta
                   <TableRow>
                     <TableHead className="font-semibold">Course</TableHead>
                     <TableHead className="font-semibold">Type</TableHead>
-                    <TableHead className="font-semibold">Course Topic/Event Type</TableHead>
+                    <TableHead className="font-semibold">Course Topic / Event Topic</TableHead>
                     <TableHead className="font-semibold">Format</TableHead>
                     <TableHead className="font-semibold">Pricing</TableHead>
                     <TableHead className="font-semibold">Enrollment</TableHead>
@@ -647,7 +647,7 @@ export default function CoursesIndex({ courses, topics, eventTypes, filters, sta
                               {course.event_type.name}
                             </Badge>
                           ) : (
-                            <span className="text-gray-400">No {course.type === "course" ? "topic" : "event type"}</span>
+                            <span className="text-gray-400">No {course.type === "course" ? "topic" : "event topic"}</span>
                           )}
                         </TableCell>
 
