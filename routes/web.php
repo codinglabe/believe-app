@@ -843,6 +843,7 @@ Route::prefix('admin/transactions')
     ->name('admin.transactions.')
     ->group(function () {
         Route::get('/ledger', [TransactionLedgerController::class, 'index'])->name('ledger');
+        Route::get('/ledger/export', [TransactionLedgerController::class, 'exportFlatFile'])->name('ledger.export');
         Route::get('/{transaction}', [TransactionLedgerController::class, 'show'])->name('show');
         Route::delete('/{transaction}', [TransactionLedgerController::class, 'destroy'])->name('destroy');
     });

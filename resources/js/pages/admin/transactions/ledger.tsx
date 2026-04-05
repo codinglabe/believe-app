@@ -33,6 +33,8 @@ import {
   Trash2,
   Heart,
   Building2,
+  Download,
+  Loader2,
 } from "lucide-react"
 import type { BreadcrumbItem } from "@/types"
 import { cn } from "@/lib/utils"
@@ -381,6 +383,7 @@ export default function TransactionLedger({
     ref: "",
   })
   const [isDeleting, setIsDeleting] = useState(false)
+  const [isExporting, setIsExporting] = useState(false)
 
   const filterSelectClass =
     "flex h-9 w-full min-w-0 rounded-md border border-border/60 bg-background px-2 py-1.5 text-xs text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 sm:h-10 sm:text-sm"
@@ -401,6 +404,13 @@ export default function TransactionLedger({
     () => ledgerQueryParams(),
     [search, type, status, perPage, organizationId, module, period],
   )
+
+  /** Export URL; `router.visit` sends X-Inertia → server returns 409 + `Inertia::location` → full GET downloads XLSX. */
+  const ledgerExportUrl = useMemo(() => {
+    const qs = new URLSearchParams(ledgerQueryParams()).toString()
+    const base = route("admin.transactions.ledger.export")
+    return qs ? `${base}?${qs}` : base
+  }, [search, type, status, perPage, organizationId, module, period])
 
   useEffect(() => {
     if (skipSearchDebounceOnce.current) {
@@ -518,6 +528,31 @@ export default function TransactionLedger({
               Stripe/Bridge) aligned with the BIU ledger workbook and client exports.
             </p>
           </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="shrink-0 gap-2 self-start sm:self-auto min-w-[9.5rem]"
+            disabled={isExporting}
+            aria-busy={isExporting}
+            onClick={() => {
+              router.visit(ledgerExportUrl, {
+                preserveScroll: true,
+                preserveState: true,
+                onStart: () => setIsExporting(true),
+                onFinish: () => setIsExporting(false),
+                onError: () => setIsExporting(false),
+                onCancel: () => setIsExporting(false),
+              })
+            }}
+          >
+            {isExporting ? (
+              <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden />
+            ) : (
+              <Download className="h-4 w-4 shrink-0" aria-hidden />
+            )}
+            {isExporting ? "Exporting…" : "Export Excel"}
+          </Button>
         </motion.div>
 
         <motion.div
