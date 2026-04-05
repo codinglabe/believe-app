@@ -114,7 +114,6 @@ interface Statistics {
 interface Props {
   auth: Auth
   courses: LaravelPagination<Course>
-  topics: Topic[]
   eventTypes: EventType[]
   filters: {
     courses_search: string
@@ -126,7 +125,7 @@ interface Props {
   statistics: Statistics
 }
 
-export default function CoursesIndex({ courses, topics, eventTypes, filters, statistics }: Props) {
+export default function CoursesIndex({ courses, eventTypes, filters, statistics }: Props) {
   const [isLoading, setIsLoading] = useState(false)
   const [copiedLink, setCopiedLink] = useState<string | null>(null)
 
@@ -519,8 +518,8 @@ export default function CoursesIndex({ courses, topics, eventTypes, filters, sta
                   <option value="course">Course</option>
                   <option value="event">Event</option>
                 </select>
-                {/* Topic/Event Type filter - Dynamic based on Type */}
-                {coursesCourseType === "event" ? (
+                {/* Topic filter — courses and events both use event types */}
+                {coursesCourseType === "event" || coursesCourseType === "course" ? (
                   <Select
                     value={coursesTopic || "all"}
                     onValueChange={(value) => setCoursesTopic(value === "all" ? "" : value)}
@@ -530,7 +529,9 @@ export default function CoursesIndex({ courses, topics, eventTypes, filters, sta
                       <SelectValue placeholder="All" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="all">All Event Topics</SelectItem>
+                      <SelectItem value="all">
+                        {coursesCourseType === "event" ? "All Event Topics" : "All Course Topics"}
+                      </SelectItem>
                       {Object.entries(groupedEventTypes).map(([category, types]) => (
                         <div key={category}>
                           <div className="px-2 py-1.5 text-sm font-semibold text-gray-500 bg-gray-100 dark:bg-gray-800">
@@ -542,24 +543,6 @@ export default function CoursesIndex({ courses, topics, eventTypes, filters, sta
                             </SelectItem>
                           ))}
                         </div>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                ) : coursesCourseType === "course" ? (
-                  <Select
-                    value={coursesTopic || "all"}
-                    onValueChange={(value) => setCoursesTopic(value === "all" ? "" : value)}
-                    disabled={!coursesCourseType}
-                  >
-                    <SelectTrigger className="w-[180px]" disabled={!coursesCourseType}>
-                      <SelectValue placeholder="All" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">All Course Topics</SelectItem>
-                      {topics.map((topic) => (
-                        <SelectItem key={topic.id} value={topic.id.toString()}>
-                          {topic.name}
-                        </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -638,16 +621,16 @@ export default function CoursesIndex({ courses, topics, eventTypes, filters, sta
                         </TableCell>
 
                         <TableCell>
-                          {course.type === "course" && course.topic ? (
-                            <Badge variant="outline" className="max-w-max">
-                              {course.topic.name}
-                            </Badge>
-                          ) : course.type === "event" && course.event_type ? (
+                          {course.event_type ? (
                             <Badge variant="outline" className="max-w-max">
                               {course.event_type.name}
                             </Badge>
+                          ) : course.type === "course" && course.topic ? (
+                            <Badge variant="outline" className="max-w-max">
+                              {course.topic.name}
+                            </Badge>
                           ) : (
-                            <span className="text-gray-400">No {course.type === "course" ? "topic" : "event topic"}</span>
+                            <span className="text-gray-400">No topic</span>
                           )}
                         </TableCell>
 

@@ -175,15 +175,11 @@ class CourseController extends BaseController
             });
         }
 
-        // 🔎 Topic/Event Type filter - depends on course_course_type
+        // 🔎 Topic/Event Type filter - depends on course_course_type (both use event_types)
         if (! empty($filters['courses_topic'])) {
             $courseType = $filters['courses_course_type'] ?? '';
-            if ($courseType === 'event') {
-                // Filter by event_type_id when type is event
+            if ($courseType === 'event' || $courseType === 'course') {
                 $query->where('event_type_id', $filters['courses_topic']);
-            } else {
-                // Filter by topic_id when type is course or not specified
-                $query->where('topic_id', $filters['courses_topic']);
             }
         }
 
@@ -234,7 +230,6 @@ class CourseController extends BaseController
             return $course;
         });
 
-        $topics = Topic::orderBy('name')->get(['id', 'name']);
         $eventTypes = \App\Models\EventType::where('is_active', true)
             ->orderBy('category')
             ->orderBy('name')
@@ -248,7 +243,6 @@ class CourseController extends BaseController
 
         return Inertia::render('admin/course/Index', [
             'courses' => $courses,
-            'topics' => $topics,
             'eventTypes' => $eventTypes,
             'filters' => $filters,
             'statistics' => $statistics,
@@ -289,14 +283,12 @@ class CourseController extends BaseController
     public function create(Request $request)
     {
         $this->authorizePermission($request, 'course.create');
-        $topics = Topic::orderBy('name')->get(['id', 'name']);
         $eventTypes = \App\Models\EventType::where('is_active', true)
             ->orderBy('category')
             ->orderBy('name')
             ->get(['id', 'name', 'category']);
 
         return Inertia::render('admin/course/Create', array_merge([
-            'topics' => $topics,
             'eventTypes' => $eventTypes,
         ], $this->organizationPrimaryActionCategoriesPageProps($request)));
     }
@@ -317,8 +309,13 @@ class CourseController extends BaseController
             'name' => 'required|string|max:255|unique:courses,name',
             'description' => 'required|string',
             'type' => ['required', Rule::in(['course', 'event'])],
-            'topic_id' => ['required_if:type,course', 'nullable', 'exists:topics,id'],
-            'event_type_id' => ['required_if:type,event', 'nullable', 'exists:event_types,id'],
+            'topic_id' => ['nullable', 'exists:topics,id'],
+            'event_type_id' => [
+                'required_if:type,course',
+                'required_if:type,event',
+                'nullable',
+                'exists:event_types,id',
+            ],
             'meeting_link' => 'nullable|url|max:500', // Added meeting_link validation
 
             // Pricing
@@ -364,10 +361,9 @@ class CourseController extends BaseController
             'description.required' => "The {$typeLabelCapital} description is required.",
             'type.required' => 'Please select a type (Course or Event).',
             'type.in' => 'Type must be either Course or Event.',
-            'topic_id.required_if' => 'Please select a course topic.',
             'topic_id.exists' => 'The selected topic is invalid.',
-            'event_type_id.required_if' => 'Please select an event topic.',
-            'event_type_id.exists' => 'The selected event topic is invalid.',
+            'event_type_id.required_if' => 'Please select a topic.',
+            'event_type_id.exists' => 'The selected topic is invalid.',
             'meeting_link.url' => 'The meeting link must be a valid URL.',
             'meeting_link.max' => 'The meeting link may not be greater than 500 characters.',
             'pricing_type.required' => 'Please select a pricing type.',
@@ -446,7 +442,7 @@ class CourseController extends BaseController
 
                 // Form data
                 'type' => $validated['type'],
-                'topic_id' => $validated['topic_id'] ?? null,
+                'topic_id' => null,
                 'event_type_id' => $validated['event_type_id'] ?? null,
                 'name' => $validated['name'],
                 'slug' => $slug,
@@ -733,7 +729,6 @@ class CourseController extends BaseController
             abort(403, 'Unauthorized access to this course.');
         }
 
-        $topics = Topic::orderBy('name')->get(['id', 'name']);
         $eventTypes = \App\Models\EventType::where('is_active', true)
             ->orderBy('category')
             ->orderBy('name')
@@ -761,7 +756,6 @@ class CourseController extends BaseController
 
         return Inertia::render('admin/course/Edit', array_merge([
             'course' => $courseData,
-            'topics' => $topics,
             'eventTypes' => $eventTypes,
         ], $this->organizationPrimaryActionCategoriesPageProps($request)));
     }
@@ -791,8 +785,13 @@ class CourseController extends BaseController
             ],
             'description' => 'required|string',
             'type' => ['required', Rule::in(['course', 'event'])],
-            'topic_id' => ['required_if:type,course', 'nullable', 'exists:topics,id'],
-            'event_type_id' => ['required_if:type,event', 'nullable', 'exists:event_types,id'],
+            'topic_id' => ['nullable', 'exists:topics,id'],
+            'event_type_id' => [
+                'required_if:type,course',
+                'required_if:type,event',
+                'nullable',
+                'exists:event_types,id',
+            ],
             'meeting_link' => 'nullable|url|max:500', // Added meeting_link validation
 
             // Pricing
@@ -838,10 +837,9 @@ class CourseController extends BaseController
             'description.required' => "The {$typeLabelCapital} description is required.",
             'type.required' => 'Please select a type (Course or Event).',
             'type.in' => 'Type must be either Course or Event.',
-            'topic_id.required_if' => 'Please select a course topic.',
             'topic_id.exists' => 'The selected topic is invalid.',
-            'event_type_id.required_if' => 'Please select an event topic.',
-            'event_type_id.exists' => 'The selected event topic is invalid.',
+            'event_type_id.required_if' => 'Please select a topic.',
+            'event_type_id.exists' => 'The selected topic is invalid.',
             'meeting_link.url' => 'The meeting link must be a valid URL.',
             'meeting_link.max' => 'The meeting link may not be greater than 500 characters.',
             'pricing_type.required' => 'Please select a pricing type.',
@@ -921,7 +919,7 @@ class CourseController extends BaseController
 
             $course->update([
                 'type' => $validated['type'],
-                'topic_id' => ! empty($validated['topic_id']) ? $validated['topic_id'] : null,
+                'topic_id' => null,
                 'event_type_id' => ! empty($validated['event_type_id']) ? $validated['event_type_id'] : null,
                 'name' => $validated['name'],
                 'slug' => $slug,

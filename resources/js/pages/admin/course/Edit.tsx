@@ -90,13 +90,12 @@ interface EventType {
 
 interface AdminCoursesEditProps {
   course: Course
-  topics: Topic[]
   eventTypes: EventType[]
   organizationPrimaryActionCategories: PrimaryActionCategoryOption[]
 }
 
 export default function AdminCoursesEdit() {
-  const { course, topics, eventTypes, organizationPrimaryActionCategories } =
+  const { course, eventTypes, organizationPrimaryActionCategories } =
     usePage<AdminCoursesEditProps>().props
   const { auth } = usePage().props as { auth: { user: User } }
 
@@ -120,7 +119,6 @@ export default function AdminCoursesEdit() {
     type: course.type || "course",
     name: course.name,
     description: course.description,
-    topic_id: course.topic_id?.toString() || "",
     event_type_id: course.event_type_id?.toString() || "",
 
     // Pricing (pre-populated)
@@ -166,9 +164,7 @@ export default function AdminCoursesEdit() {
     switch (tab) {
       case "basics":
         const hasType = !!data.type
-        const hasTopicOrEventType = data.type === "course" 
-          ? !!data.topic_id 
-          : !!data.event_type_id
+        const hasTopicOrEventType = !!data.event_type_id
         return !!(data.name && data.description && hasType && hasTopicOrEventType)
       case "schedule":
         return !!(
@@ -199,7 +195,7 @@ export default function AdminCoursesEdit() {
     if (Object.keys(errors).length > 0) {
       const errorFields = Object.keys(errors)
       if (
-        errorFields.some((field) => ["name", "description", "topic_id", "event_type_id", "type", "pricing_type", "course_fee"].includes(field))
+        errorFields.some((field) => ["name", "description", "event_type_id", "type", "pricing_type", "course_fee"].includes(field))
       ) {
         setCurrentTab("basics")
       } else if (
@@ -334,18 +330,6 @@ export default function AdminCoursesEdit() {
                       </label>
                       <Select value={data.type} onValueChange={(value) => {
                         setData("type", value as "course" | "event")
-                        // Reset topic/event type when switching
-                        if (value === "course") {
-                          setData("event_type_id", "")
-                          if (!data.topic_id && topics.length > 0) {
-                            setData("topic_id", topics[0].id.toString())
-                          }
-                        } else {
-                          setData("topic_id", "")
-                          if (!data.event_type_id) {
-                            setData("event_type_id", "")
-                          }
-                        }
                       }}>
                         <SelectTrigger className={errors.type ? "border-destructive" : ""}>
                           <SelectValue placeholder="Select type" />
@@ -372,54 +356,31 @@ export default function AdminCoursesEdit() {
                       {errors.name && <p className="text-sm text-destructive">{errors.name}</p>}
                     </div>
 
-                    {data.type === "course" && (
                     <div className="space-y-2">
-                      <label htmlFor="topic_id" className="text-sm font-medium">
-                        Course Topic *
+                      <label htmlFor="event_type_id" className="text-sm font-medium">
+                        {data.type === "course" ? "Course Topic *" : "Event Topic *"}
                       </label>
-                        <Select value={data.topic_id || ""} onValueChange={(value) => setData("topic_id", value)}>
-                        <SelectTrigger className={errors.topic_id ? "border-destructive" : ""}>
+                      <Select value={data.event_type_id || ""} onValueChange={(value) => setData("event_type_id", value)}>
+                        <SelectTrigger className={errors.event_type_id ? "border-destructive" : ""}>
                           <SelectValue placeholder="Select topic" />
                         </SelectTrigger>
                         <SelectContent>
-                          {topics.map((topic) => (
-                            <SelectItem key={topic.id} value={topic.id.toString()}>
-                              {topic.name}
-                            </SelectItem>
+                          {Object.entries(groupedEventTypes).map(([category, types]) => (
+                            <div key={category}>
+                              <div className="px-2 py-1.5 text-sm font-semibold text-gray-500 bg-gray-100 dark:bg-gray-800">
+                                {category}
+                              </div>
+                              {types.map((type) => (
+                                <SelectItem key={type.id} value={type.id.toString()}>
+                                  {type.name}
+                                </SelectItem>
+                              ))}
+                            </div>
                           ))}
                         </SelectContent>
                       </Select>
-                        {errors.topic_id && <p className="text-sm text-destructive">{errors.topic_id}</p>}
-                      </div>
-                    )}
-
-                    {data.type === "event" && (
-                      <div className="space-y-2">
-                        <label htmlFor="event_type_id" className="text-sm font-medium">
-                          Event Topic *
-                        </label>
-                        <Select value={data.event_type_id || ""} onValueChange={(value) => setData("event_type_id", value)}>
-                          <SelectTrigger className={errors.event_type_id ? "border-destructive" : ""}>
-                            <SelectValue placeholder="Select event topic" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {Object.entries(groupedEventTypes).map(([category, types]) => (
-                              <div key={category}>
-                                <div className="px-2 py-1.5 text-sm font-semibold text-gray-500 bg-gray-100 dark:bg-gray-800">
-                                  {category}
-                                </div>
-                                {types.map((type) => (
-                                  <SelectItem key={type.id} value={type.id.toString()}>
-                                    {type.name}
-                                  </SelectItem>
-                                ))}
-                              </div>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        {errors.event_type_id && <p className="text-sm text-destructive">{errors.event_type_id}</p>}
+                      {errors.event_type_id && <p className="text-sm text-destructive">{errors.event_type_id}</p>}
                     </div>
-                    )}
 
                     <div className="space-y-2">
                       <label htmlFor="target_audience" className="text-sm font-medium">
