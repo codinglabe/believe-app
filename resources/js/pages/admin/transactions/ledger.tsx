@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { Head, Link, router } from "@inertiajs/react"
 import { ConfirmationModal } from "@/components/admin/confirmation-modal"
 import type { UnifiedLedgerRow } from "@/components/admin/unified-ledger-card"
@@ -17,13 +17,17 @@ import {
   ArrowRightLeft,
   Ban,
   AlertCircle,
+  Banknote,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
   Clock,
   Coins,
+  CreditCard,
   Info,
+  Landmark,
   Layers,
+  Minus,
   ScrollText,
   Search,
   TrendingUp,
@@ -35,6 +39,12 @@ import {
   Building2,
   Download,
   Loader2,
+  Link2,
+  IdCard,
+  Split,
+  UserPlus,
+  Cog,
+  Gift,
 } from "lucide-react"
 import type { BreadcrumbItem } from "@/types"
 import { cn } from "@/lib/utils"
@@ -328,8 +338,139 @@ function partiesSummary(u: UnifiedLedgerRow | undefined): string {
   return `${from} → ${to}`
 }
 
-function isBelievePointsRow(u: UnifiedLedgerRow | undefined, paymentMethod: string | null | undefined): boolean {
-  return u?.provider === "points" || paymentMethod === "believe_points"
+function donationPaymentMethodFromMeta(meta: Record<string, unknown> | null | undefined): string {
+  const v = meta?.donation_payment_method
+  return typeof v === "string" ? v.toLowerCase() : ""
+}
+
+/** Points-style ledger row: unified provider, txn payment_method, or donation meta (recipient deposit rows). */
+function isLedgerRowPaidWithBelievePoints(
+  u: UnifiedLedgerRow | undefined,
+  paymentMethod: string | null | undefined,
+  row: Pick<LedgerRow, "meta">,
+): boolean {
+  const pm = (paymentMethod || "").toLowerCase()
+  if (pm === "believe_points" || u?.provider === "points") return true
+  const dpm = donationPaymentMethodFromMeta(row.meta)
+  return dpm === "believe_points" || dpm.includes("believe_point")
+}
+
+/** Donation module / donation badge + paid with Believe Points → show BIU Points in Provider & Payment. */
+function isDonationLedgerPointsRow(
+  u: UnifiedLedgerRow | undefined,
+  row: Pick<LedgerRow, "meta" | "donation_badge">,
+): boolean {
+  const isDonation = u?.module === "donation" || row.donation_badge === true
+  return isDonation && isLedgerRowPaidWithBelievePoints(u, row.payment_method, row)
+}
+
+function ledgerProviderDisplayLabel(u: UnifiedLedgerRow | undefined, row: LedgerRow): string {
+  if (isLedgerRowPaidWithBelievePoints(u, row.payment_method, row)) {
+    return isDonationLedgerPointsRow(u, row) ? "BIU Points" : "Believe Points"
+  }
+  if (u?.provider === "points") return "Believe Points"
+  if (!u) return "—"
+  return u.provider || "—"
+}
+
+/** Payment column badge when row is paid with Believe Points (donations → BIU Points). */
+function ledgerPointsPaymentLabel(u: UnifiedLedgerRow | undefined, row: LedgerRow): string {
+  return isDonationLedgerPointsRow(u, row) ? "BIU Points" : "Believe Points"
+}
+
+function ledgerPaymentMethodIcon(
+  paymentMethodLower: string,
+  provider: string | undefined,
+  pointsPay: boolean,
+): ReactNode {
+  if (pointsPay) {
+    return <Coins className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" aria-hidden />
+  }
+  if (provider === "stripe") {
+    return <CreditCard className="h-4 w-4 shrink-0 text-violet-600 dark:text-violet-400" aria-hidden />
+  }
+  if (provider === "bridge") {
+    return <Landmark className="h-4 w-4 shrink-0 text-sky-600 dark:text-sky-400" aria-hidden />
+  }
+  if (provider === "points") {
+    return <Coins className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" aria-hidden />
+  }
+
+  const pm = paymentMethodLower.trim()
+  const exact: Record<string, ReactNode> = {
+    stripe: <CreditCard className="h-4 w-4 shrink-0 text-violet-600 dark:text-violet-400" aria-hidden />,
+    card: <IdCard className="h-4 w-4 shrink-0 text-violet-500 dark:text-violet-300" aria-hidden />,
+    link: <Link2 className="h-4 w-4 shrink-0 text-indigo-600 dark:text-indigo-400" aria-hidden />,
+    us_bank_account: <Landmark className="h-4 w-4 shrink-0 text-sky-600 dark:text-sky-400" aria-hidden />,
+    ach: <Landmark className="h-4 w-4 shrink-0 text-sky-700 dark:text-sky-300" aria-hidden />,
+    sepa_debit: <Landmark className="h-4 w-4 shrink-0 text-teal-600 dark:text-teal-400" aria-hidden />,
+    donation: <Heart className="h-4 w-4 shrink-0 text-rose-500 dark:text-rose-400" aria-hidden />,
+    care_alliance_split: <Split className="h-4 w-4 shrink-0 text-violet-600 dark:text-violet-400" aria-hidden />,
+    believe_points: <Coins className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" aria-hidden />,
+    points: <Coins className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" aria-hidden />,
+    cash: <Banknote className="h-4 w-4 shrink-0 text-emerald-700 dark:text-emerald-300" aria-hidden />,
+    referral: <UserPlus className="h-4 w-4 shrink-0 text-cyan-600 dark:text-cyan-400" aria-hidden />,
+    free: <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" aria-hidden />,
+    system: <Cog className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />,
+    apple_pay: <Wallet className="h-4 w-4 shrink-0 text-slate-700 dark:text-slate-300" aria-hidden />,
+    google_pay: <Wallet className="h-4 w-4 shrink-0 text-blue-700 dark:text-blue-300" aria-hidden />,
+    paypal: <Wallet className="h-4 w-4 shrink-0 text-blue-600 dark:text-blue-400" aria-hidden />,
+    gift_card: <Gift className="h-4 w-4 shrink-0 text-fuchsia-600 dark:text-fuchsia-400" aria-hidden />,
+  }
+  if (pm && exact[pm]) {
+    return exact[pm]
+  }
+
+  if (paymentMethodLower.includes("stripe")) {
+    return <CreditCard className="h-4 w-4 shrink-0 text-violet-600 dark:text-violet-400" aria-hidden />
+  }
+  if (paymentMethodLower === "link" || paymentMethodLower.endsWith("_link")) {
+    return <Link2 className="h-4 w-4 shrink-0 text-indigo-600 dark:text-indigo-400" aria-hidden />
+  }
+  if (paymentMethodLower.includes("card")) {
+    return <IdCard className="h-4 w-4 shrink-0 text-violet-500 dark:text-violet-300" aria-hidden />
+  }
+  if (
+    paymentMethodLower.includes("bank") ||
+    paymentMethodLower.includes("ach") ||
+    paymentMethodLower.includes("bridge") ||
+    paymentMethodLower.includes("sepa")
+  ) {
+    return <Landmark className="h-4 w-4 shrink-0 text-sky-600 dark:text-sky-400" aria-hidden />
+  }
+  if (paymentMethodLower.includes("paypal")) {
+    return <Wallet className="h-4 w-4 shrink-0 text-blue-600 dark:text-blue-400" aria-hidden />
+  }
+  if (paymentMethodLower.includes("point") || paymentMethodLower.includes("believe_point")) {
+    return <Coins className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" aria-hidden />
+  }
+  if (paymentMethodLower.includes("donat")) {
+    return <Heart className="h-4 w-4 shrink-0 text-rose-500 dark:text-rose-400" aria-hidden />
+  }
+  if (paymentMethodLower.includes("split") || paymentMethodLower.includes("alliance")) {
+    return <Split className="h-4 w-4 shrink-0 text-violet-600 dark:text-violet-400" aria-hidden />
+  }
+  if (paymentMethodLower.includes("subscription") || paymentMethodLower.includes("plan")) {
+    return <Layers className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+  }
+  if (paymentMethodLower.includes("wallet")) {
+    return <Wallet className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+  }
+  if (paymentMethodLower.includes("cash") || paymentMethodLower.includes("money")) {
+    return <Banknote className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+  }
+  if (paymentMethodLower.includes("commission") || paymentMethodLower.includes("payout")) {
+    return <TrendingUp className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+  }
+  if (paymentMethodLower.includes("referral")) {
+    return <UserPlus className="h-4 w-4 shrink-0 text-cyan-600 dark:text-cyan-400" aria-hidden />
+  }
+
+  if (paymentMethodLower === "") {
+    return <Minus className="h-4 w-4 shrink-0 text-muted-foreground/60" aria-hidden />
+  }
+
+  return <Wallet className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
 }
 
 function moduleLabel(key: string): string {
@@ -814,7 +955,7 @@ export default function TransactionLedger({
                           </th>
                           <th className="min-w-[10rem] whitespace-nowrap px-4 py-3.5 text-right">Stripe / Bridge</th>
                           <th className="whitespace-nowrap px-4 py-3.5">Provider</th>
-                          <th className="min-w-[6rem] whitespace-nowrap px-4 py-3.5">Payment</th>
+                          <th className="min-w-[8.5rem] whitespace-nowrap px-4 py-4">Payment</th>
                           <th className="min-w-[8rem] px-4 py-3.5">Related</th>
                           <th className="sticky right-0 z-[1] whitespace-nowrap bg-muted/50 px-4 py-3.5 pr-4 text-right shadow-[-4px_0_12px_-4px_rgba(0,0,0,0.08)] dark:shadow-[-4px_0_12px_-4px_rgba(0,0,0,0.35)]">
                             Actions
@@ -834,7 +975,7 @@ export default function TransactionLedger({
                           const supplierPayout = u != null ? u.supplier_payout_amount : rep?.supplier_payout ?? null
                           const orgPayout = u != null ? u.organization_payout_amount : rep?.organization_payout ?? null
                           const platformPayout = u != null ? u.platform_payout_amount : rep?.platform_payout ?? null
-                          const pointsPay = isBelievePointsRow(u, row.payment_method)
+                          const pointsPay = isLedgerRowPaidWithBelievePoints(u, row.payment_method, row)
 
                           return (
                             <tr
@@ -962,17 +1103,7 @@ export default function TransactionLedger({
                                 )}
                               </td>
                               <td className="whitespace-nowrap px-4 py-3">
-                                {u ? (
-                                  <span
-                                    className={cn(
-                                      "inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium capitalize",
-                                      providerBadgeClassTable(u.provider),
-                                    )}
-                                  >
-                                    {u.provider === "points" && <Coins className="h-4 w-4 shrink-0" aria-hidden />}
-                                    {u.provider === "points" ? "Believe Points" : u.provider}
-                                  </span>
-                                ) : pointsPay ? (
+                                {pointsPay ? (
                                   <span
                                     className={cn(
                                       "inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium",
@@ -980,28 +1111,48 @@ export default function TransactionLedger({
                                     )}
                                   >
                                     <Coins className="h-4 w-4 shrink-0" aria-hidden />
-                                    Believe Points
+                                    {ledgerProviderDisplayLabel(u, row)}
+                                  </span>
+                                ) : u ? (
+                                  <span
+                                    className={cn(
+                                      "inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium",
+                                      providerBadgeClassTable(u.provider),
+                                      u.provider !== "points" && "capitalize",
+                                    )}
+                                  >
+                                    {u.provider === "points" && <Coins className="h-4 w-4 shrink-0" aria-hidden />}
+                                    {ledgerProviderDisplayLabel(u, row)}
                                   </span>
                                 ) : (
                                   <span className="text-sm text-muted-foreground">—</span>
                                 )}
                               </td>
-                              <td className="max-w-[10rem] px-4 py-3">
-                                {row.payment_method === "believe_points" ? (
+                              <td className="whitespace-nowrap px-4 py-4 align-middle">
+                                <span
+                                  className={cn(
+                                    "inline-flex min-h-[1.5rem] items-center gap-2 text-sm leading-normal",
+                                    pointsPay ? "text-foreground" : "text-muted-foreground",
+                                  )}
+                                >
+                                  {ledgerPaymentMethodIcon(
+                                    (row.payment_method || "").toLowerCase(),
+                                    u?.provider,
+                                    pointsPay,
+                                  )}
                                   <span
                                     className={cn(
-                                      "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-xs font-semibold",
-                                      providerBadgeClassTable("points"),
+                                      "whitespace-nowrap",
+                                      !pointsPay && row.payment_method && "capitalize",
                                     )}
                                   >
-                                    <Coins className="h-3.5 w-3.5 shrink-0" aria-hidden />
-                                    Believe Points
+                                    {pointsPay
+                                      ? ledgerPointsPaymentLabel(u, row)
+                                      : row.payment_method
+                                        ? row.payment_method.replace(/_/g, " ")
+                                        : "—"}
                                   </span>
-                                ) : row.payment_method ? (
-                                  <span className="text-sm capitalize text-muted-foreground">{row.payment_method.replace(/_/g, " ")}</span>
-                                ) : (
-                                  <span className="text-sm text-muted-foreground">—</span>
-                                )}
+                                </span>
                               </td>
                               <td className="max-w-[11rem] px-4 py-3">
                                 <div className="flex items-start gap-1.5">

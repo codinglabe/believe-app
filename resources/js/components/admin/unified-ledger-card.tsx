@@ -158,66 +158,75 @@ export function UnifiedLedgerCard({ data, variant = "full", className }: { data:
     return (
       <div
         className={cn(
-          "rounded-lg border border-primary/20 bg-gradient-to-r from-primary/[0.06] to-transparent px-3 py-2 text-xs sm:text-sm",
+          "rounded-lg border border-primary/20 bg-gradient-to-r from-primary/[0.06] to-transparent px-3 py-2.5 text-xs sm:px-4 sm:py-3 sm:text-sm",
           className,
         )}
       >
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-          <Badge variant="outline" className="font-mono text-[10px] uppercase tracking-wide">
-            {moduleLabel(data.module)}
-          </Badge>
-          <span className="text-muted-foreground">·</span>
-          <span className="font-medium text-foreground">{data.transaction_type.replace(/_/g, " ")}</span>
-          {data.module === "believe_points" ? (
-            <>
-              <span className="text-muted-foreground">·</span>
-              <span className="max-w-[220px] truncate text-foreground" title={data.from_name ?? ""}>
-                Purchaser: {data.from_name ?? "—"}
-              </span>
-            </>
-          ) : (
-            <>
-              <span className="text-muted-foreground">·</span>
-              <span className="max-w-[140px] truncate text-foreground" title={data.from_name ?? ""}>
-                {data.from_name ?? data.from_type}
-              </span>
-              <ArrowRight className="h-3 w-3 shrink-0 text-muted-foreground" />
-              <span className="max-w-[160px] truncate font-medium text-foreground" title={data.to_name ?? ""}>
-                {data.to_name ?? data.to_type}
-              </span>
-            </>
-          )}
-          <span className="ml-auto flex flex-wrap items-center justify-end gap-1.5 tabular-nums">
-            <span className="inline-flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-muted-foreground">
-              Gross {ledgerAmountNode(usePoints, data.gross_amount, cur)}
-            </span>
-            <span className="text-muted-foreground">·</span>
-            <span className="inline-flex flex-wrap items-center gap-x-1.5 font-semibold text-foreground">
-              Net {ledgerAmountNode(usePoints, data.net_amount, cur)}
-            </span>
-            {sellingPayoutsVisible(data) && (
+        <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-2 sm:gap-y-1">
+          <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+            <Badge variant="outline" className="shrink-0 font-mono text-[10px] uppercase tracking-wide">
+              {moduleLabel(data.module)}
+            </Badge>
+            <span className="text-muted-foreground max-sm:hidden">·</span>
+            <span className="min-w-0 font-medium text-foreground">{data.transaction_type.replace(/_/g, " ")}</span>
+            {data.module === "believe_points" ? (
               <>
                 <span className="text-muted-foreground">·</span>
-                <span className="max-w-[min(100%,28rem)] text-[11px] leading-tight text-muted-foreground">
-                  Supplier {formatMoney(data.supplier_payout_amount, cur)} · Org {formatMoney(data.organization_payout_amount, cur)} ·
-                  Platform {formatMoney(data.platform_payout_amount, cur)}
+                <span className="min-w-0 max-w-full truncate sm:max-w-[min(100%,220px)]" title={data.from_name ?? ""}>
+                  <span className="text-muted-foreground">Purchaser:</span>{" "}
+                  <span className="text-foreground">{data.from_name ?? "—"}</span>
+                </span>
+              </>
+            ) : (
+              <>
+                <span className="text-muted-foreground max-sm:hidden">·</span>
+                <span className="flex min-w-0 max-w-full flex-wrap items-center gap-x-1 gap-y-0.5 sm:max-w-none">
+                  <span className="truncate sm:max-w-[min(100%,11rem)]" title={data.from_name ?? ""}>
+                    {data.from_name ?? data.from_type}
+                  </span>
+                  <ArrowRight className="h-3 w-3 shrink-0 text-muted-foreground max-sm:rotate-90 sm:rotate-0" aria-hidden />
+                  <span className="truncate font-medium text-foreground sm:max-w-[min(100%,12rem)]" title={data.to_name ?? ""}>
+                    {data.to_name ?? data.to_type}
+                  </span>
                 </span>
               </>
             )}
-            <Badge variant="outline" className={cn("text-[10px] capitalize", providerBadgeClass(data.provider))}>
-              <ProviderRailLabel provider={data.provider} />
-            </Badge>
-            {data.provider !== "points" && (
-              <>
-                <Badge variant="outline" className={cn("text-[10px] font-semibold", providerBadgeClass("stripe"))}>
-                  Stripe {formatMoney(data.stripe_fee_amount, cur)}
-                </Badge>
-                <Badge variant="outline" className={cn("text-[10px] font-semibold", providerBadgeClass("bridge"))}>
-                  Bridge {formatMoney(data.bridge_fee_amount, cur)}
-                </Badge>
-              </>
-            )}
-          </span>
+          </div>
+          <div className="flex min-w-0 w-full flex-col gap-2 border-t border-primary/15 pt-2.5 sm:w-auto sm:flex-1 sm:flex-row sm:flex-wrap sm:items-center sm:justify-end sm:border-t-0 sm:pt-0">
+            <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 tabular-nums">
+              <span className="inline-flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-muted-foreground">
+                Gross {ledgerAmountNode(usePoints, data.gross_amount, cur)}
+              </span>
+              <span className="text-muted-foreground">·</span>
+              <span className="inline-flex flex-wrap items-center gap-x-1.5 font-semibold text-foreground">
+                Net {ledgerAmountNode(usePoints, data.net_amount, cur)}
+              </span>
+              {sellingPayoutsVisible(data) && (
+                <>
+                  <span className="text-muted-foreground max-sm:hidden">·</span>
+                  <span className="w-full text-[11px] leading-snug text-muted-foreground sm:w-auto sm:max-w-[min(100%,28rem)] sm:leading-tight">
+                    Supplier {formatMoney(data.supplier_payout_amount, cur)} · Platform {formatMoney(data.platform_payout_amount, cur)} · Org{" "}
+                    {formatMoney(data.organization_payout_amount, cur)}
+                  </span>
+                </>
+              )}
+            </div>
+            <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+              <Badge variant="outline" className={cn("text-[10px] capitalize", providerBadgeClass(data.provider))}>
+                <ProviderRailLabel provider={data.provider} />
+              </Badge>
+              {data.provider !== "points" && (
+                <>
+                  <Badge variant="outline" className={cn("text-[10px] font-semibold", providerBadgeClass("stripe"))}>
+                    Stripe {formatMoney(data.stripe_fee_amount, cur)}
+                  </Badge>
+                  <Badge variant="outline" className={cn("text-[10px] font-semibold", providerBadgeClass("bridge"))}>
+                    Bridge {formatMoney(data.bridge_fee_amount, cur)}
+                  </Badge>
+                </>
+              )}
+            </div>
+          </div>
         </div>
       </div>
     )
@@ -252,61 +261,61 @@ export function UnifiedLedgerCard({ data, variant = "full", className }: { data:
           </div>
         </div>
       </CardHeader>
-      <CardContent className="grid gap-6 pt-6">
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <div className="space-y-1 rounded-xl border border-border/50 bg-muted/20 p-4">
+      <CardContent className="grid gap-5 pt-4 sm:gap-6 sm:pt-6">
+        <div className="grid min-w-0 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3">
+          <div className="min-w-0 space-y-1 rounded-xl border border-border/50 bg-muted/20 p-3 sm:p-4">
             <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Txn ID</p>
             <p className="font-mono text-xl font-bold text-foreground">{data.txn_id}</p>
             <p className="text-xs text-muted-foreground">{formatDateTime(data.datetime_iso)}</p>
           </div>
-          <div className="space-y-1 rounded-xl border border-border/50 bg-muted/20 p-4">
+          <div className="min-w-0 space-y-1 rounded-xl border border-border/50 bg-muted/20 p-3 sm:p-4">
             <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Module</p>
             <p className="text-lg font-semibold capitalize text-foreground">{moduleLabel(data.module)}</p>
             <p className="font-mono text-sm text-primary">{data.transaction_type}</p>
           </div>
-          <div className="space-y-1 rounded-xl border border-border/50 bg-muted/20 p-4 sm:col-span-2 lg:col-span-1">
+          <div className="min-w-0 space-y-1 rounded-xl border border-border/50 bg-muted/20 p-3 sm:col-span-2 sm:p-4 lg:col-span-1">
             <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Related record</p>
-            <p className="flex items-center gap-2 text-lg font-semibold text-foreground">
-              <Receipt className="h-4 w-4 shrink-0 text-primary/80" />
-              {data.related_record}
+            <p className="flex items-start gap-2 text-base font-semibold text-foreground sm:text-lg">
+              <Receipt className="mt-0.5 h-4 w-4 shrink-0 text-primary/80" aria-hidden />
+              <span className="min-w-0 break-words">{data.related_record}</span>
             </p>
           </div>
         </div>
 
-        <div className={cn("grid gap-4", data.module === "believe_points" ? "" : "lg:grid-cols-2")}>
-          <div className="rounded-xl border border-border/50 bg-background/80 p-4 shadow-sm">
+        <div className={cn("grid min-w-0 gap-3 sm:gap-4", data.module === "believe_points" ? "" : "lg:grid-cols-2")}>
+          <div className="min-w-0 rounded-xl border border-border/50 bg-background/80 p-3 shadow-sm sm:p-4">
             <div className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-              <User className="h-3.5 w-3.5" />
+              <User className="h-3.5 w-3.5 shrink-0" aria-hidden />
               {data.module === "believe_points" ? "Purchaser" : `From (${data.from_type})`}
             </div>
-            <p className="text-base font-semibold text-foreground">{data.from_name ?? "—"}</p>
-            <p className="text-sm text-muted-foreground">{data.from_email ?? "—"}</p>
+            <p className="break-words text-base font-semibold text-foreground">{data.from_name ?? "—"}</p>
+            <p className="break-all text-sm text-muted-foreground">{data.from_email ?? "—"}</p>
             {data.from_id != null && <p className="mt-1 font-mono text-[11px] text-muted-foreground">User ID {data.from_id}</p>}
           </div>
           {data.module !== "believe_points" && (
-            <div className="rounded-xl border border-border/50 bg-background/80 p-4 shadow-sm">
+            <div className="min-w-0 rounded-xl border border-border/50 bg-background/80 p-3 shadow-sm sm:p-4">
               <div className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                <Building2 className="h-3.5 w-3.5" />
+                <Building2 className="h-3.5 w-3.5 shrink-0" aria-hidden />
                 To ({data.to_type})
               </div>
-              <p className="text-base font-semibold text-foreground">{data.to_name ?? "—"}</p>
-              <p className="text-sm text-muted-foreground">{data.to_email ?? "—"}</p>
+              <p className="break-words text-base font-semibold text-foreground">{data.to_name ?? "—"}</p>
+              <p className="break-all text-sm text-muted-foreground">{data.to_email ?? "—"}</p>
               {data.to_id != null && <p className="mt-1 font-mono text-[11px] text-muted-foreground">ID {data.to_id}</p>}
             </div>
           )}
         </div>
 
-        <div className="rounded-xl border border-border/50 bg-muted/15 p-4">
-          <div className="mb-4 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            <Wallet className="h-3.5 w-3.5" />
+        <div className="min-w-0 rounded-xl border border-border/50 bg-muted/15 p-3 sm:p-4">
+          <div className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground sm:mb-4">
+            <Wallet className="h-3.5 w-3.5 shrink-0" aria-hidden />
             Amounts
           </div>
-          <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
+          <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
             <Amount label="Subtotal" value={ledgerAmountNode(usePoints, data.subtotal_amount, cur, true)} />
             <Amount label="Sales tax" value={ledgerAmountNode(usePoints, data.sales_tax_amount, cur, true)} />
             <Amount label="Shipping" value={ledgerAmountNode(usePoints, data.shipping_amount, cur, true)} />
             <Amount label="Gross" value={ledgerAmountNode(usePoints, data.gross_amount, cur, false, true)} emphasis />
-            <div className="space-y-2">
+            <div className="min-w-0 space-y-2 sm:col-span-2 lg:col-span-2">
               <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Proc fee (Stripe + Bridge)</p>
               {data.provider === "points" ? (
                 <>
@@ -333,25 +342,31 @@ export function UnifiedLedgerCard({ data, variant = "full", className }: { data:
             <Amount label="BIU fee" value={ledgerAmountNode(usePoints, data.biu_fee_amount, cur)} />
             <Amount label="Split" value={ledgerAmountNode(usePoints, data.split_amount, cur, true)} />
             <Amount label="Refund" value={ledgerAmountNode(usePoints, data.refund_amount, cur, true)} />
-            <Amount label="Net" value={ledgerAmountNode(usePoints, data.net_amount, cur, false, true)} emphasis className="md:col-span-2 lg:col-span-1" />
+            <Amount
+              label="Net"
+              value={ledgerAmountNode(usePoints, data.net_amount, cur, false, true)}
+              emphasis
+              className="sm:col-span-2 md:col-span-2 lg:col-span-1"
+            />
             {sellingPayoutsVisible(data) ? (
-              <>
+              <div className="col-span-full mt-1 grid min-w-0 grid-cols-1 gap-3 border-t border-border/40 pt-4 sm:grid-cols-2 lg:grid-cols-3">
                 <Amount
                   label="Supplier payout"
                   value={ledgerAmountNode(usePoints, data.supplier_payout_amount, cur, true)}
                   hint="Merchant / cost slice (full split; fees do not reduce this when a nonprofit share exists)"
                 />
                 <Amount
-                  label="Organization payout"
-                  value={ledgerAmountNode(usePoints, data.organization_payout_amount, cur, true)}
-                  hint="Markup net: gross nonprofit split minus Stripe + order platform fee"
-                />
-                <Amount
                   label="Platform payout"
                   value={ledgerAmountNode(usePoints, data.platform_payout_amount, cur, true)}
                   hint="BIU platform fee + split share retained"
                 />
-              </>
+                <Amount
+                  label="Organization payout"
+                  value={ledgerAmountNode(usePoints, data.organization_payout_amount, cur, true)}
+                  hint="Markup net: gross nonprofit split minus Stripe + order platform fee"
+                  className="sm:col-span-2 lg:col-span-1"
+                />
+              </div>
             ) : null}
           </div>
           {data.module === "marketplace" && (
@@ -360,10 +375,10 @@ export function UnifiedLedgerCard({ data, variant = "full", className }: { data:
               <span className="mx-1">·</span>
               <span className="font-medium text-foreground">Split</span> is the nonprofit&apos;s <span className="font-medium">gross</span> markup
               share (before fees). <span className="font-medium text-foreground">Supplier payout</span> matches the merchant/cost slice in full —
-              processing does not reduce it. <span className="font-medium text-foreground">Organization payout</span> is that markup minus Stripe
-              processing and the order platform fee (fees are not added on top for the buyer). <span className="font-medium text-foreground">Net</span>{" "}
-              is supplier + organization payout. <span className="font-medium text-foreground">Platform payout</span> includes order platform fee
-              plus any BIU line split. BIU fee in the grid is BIU split + order platform fee.
+              processing does not reduce it. <span className="font-medium text-foreground">Platform payout</span> includes order platform fee plus
+              any BIU line split. <span className="font-medium text-foreground">Organization payout</span> is that markup minus Stripe processing
+              and the order platform fee (fees are not added on top for the buyer). <span className="font-medium text-foreground">Net</span> is
+              supplier + organization payout. BIU fee in the grid is BIU split + order platform fee.
             </p>
           )}
           {data.module === "servicehub" && sellingPayoutsVisible(data) && (
@@ -376,21 +391,21 @@ export function UnifiedLedgerCard({ data, variant = "full", className }: { data:
           )}
         </div>
 
-        <div className="flex flex-col gap-3 rounded-xl border border-border/50 bg-background/90 p-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-start gap-3">
-            <CreditCard className="mt-0.5 h-5 w-5 text-primary/80" />
-            <div>
+        <div className="flex min-w-0 flex-col gap-3 rounded-xl border border-border/50 bg-background/90 p-3 sm:flex-row sm:items-center sm:justify-between sm:p-4">
+          <div className="flex min-w-0 flex-1 items-start gap-3">
+            <CreditCard className="mt-0.5 h-5 w-5 shrink-0 text-primary/80" aria-hidden />
+            <div className="min-w-0 flex-1">
               <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Reference</p>
               <p className="break-all font-mono text-sm text-foreground">{data.reference}</p>
             </div>
           </div>
-          <div className="flex items-start gap-3 sm:text-right">
+          <div className="flex min-w-0 shrink-0 items-start gap-3 sm:text-right">
             {data.provider === "points" ? (
               <Coins className="mt-0.5 h-5 w-5 text-amber-600 dark:text-amber-400 sm:order-2" aria-hidden />
             ) : (
               <Landmark className="mt-0.5 h-5 w-5 text-primary/80 sm:order-2" />
             )}
-            <div className="sm:order-1">
+            <div className="min-w-0 sm:order-1">
               <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Provider rail</p>
               <p className="text-sm font-medium text-foreground">
                 <ProviderRailLabel provider={data.provider} />
@@ -423,10 +438,12 @@ function Amount({
   className?: string
 }) {
   return (
-    <div className={cn("space-y-0.5", className)}>
+    <div className={cn("min-w-0 space-y-0.5", className)}>
       <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
-      <div className={cn("tabular-nums text-foreground", emphasis ? "text-lg font-bold" : "text-sm font-semibold")}>{value}</div>
-      {hint ? <p className="text-[10px] text-muted-foreground">{hint}</p> : null}
+      <div className={cn("min-w-0 break-words tabular-nums text-foreground", emphasis ? "text-lg font-bold" : "text-sm font-semibold")}>
+        {value}
+      </div>
+      {hint ? <p className="text-pretty text-[10px] leading-snug text-muted-foreground">{hint}</p> : null}
     </div>
   )
 }
