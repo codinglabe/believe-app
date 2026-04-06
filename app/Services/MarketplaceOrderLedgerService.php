@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\MarketplaceProduct;
 use App\Models\Order;
 use App\Models\Organization;
 use App\Models\Transaction;
@@ -35,26 +36,189 @@ final class MarketplaceOrderLedgerService
     }
 
     /**
-     * Amount owed to sellers (merchant + nonprofit) from OrderSplit; if no split row (e.g. Printify-only
-     * storefront lines never wrote splits), fall back to product subtotal minus platform fee.
+     * Workbook / finance sheet model (customer total unchanged; fees come out of seller flow):
+     * - Supplier/merchant: full {@see OrderSplit::$merchant_amount} (cost / fulfillment slice) — no Stripe deduction.
+     * - Organization: nonprofit markup slice minus **card processing** and **order platform fee**
+     *   (same as client workbook: organization_payout = markup_amount − processing_fee − platform_fee).
+     * - When there is no nonprofit slice, merchant absorbs Stripe + platform (Printify-only style).
+     *
+     * @return array{merchant_net: float, organization_net: float}
      */
-    public static function netPayableFromOrder(Order $order): float
+    public static function workbookSellerPayouts(
+        float $merchantGross,
+        float $organizationGross,
+        float $orderPlatformFee,
+        float $stripeFeeUsd,
+    ): array {
+        $stripe = max(0.0, $stripeFeeUsd);
+
+        if ($organizationGross > 0.0) {
+            $organizationNet = max(0.0, round($organizationGross - $stripe - $orderPlatformFee, 2));
+
+            return [
+                'merchant_net' => round($merchantGross, 2),
+                'organization_net' => $organizationNet,
+            ];
+        }
+
+        $merchantNet = max(0.0, round($merchantGross - $stripe - $orderPlatformFee, 2));
+
+        return [
+            'merchant_net' => $merchantNet,
+            'organization_net' => 0.0,
+        ];
+    }
+
+    /**
+     * Recompute merchant / nonprofit / BIU cents from order lines when {@see OrderSplit} is missing
+     * (same rules as {@see \App\Http\Controllers\CheckoutController} checkout).
+     *
+     * @return array{merchant_amount: float, organization_amount: float, biu_amount: float}|null
+     */
+    public static function inferRetailSplitFromOrder(Order $order): ?array
+    {
+        $order->loadMissing(['items.marketplaceProduct', 'items.organizationProduct.marketplaceProduct', 'items.product']);
+
+        $splitMerchantCents = 0;
+        $splitOrgCents = 0;
+        $splitBiuCents = 0;
+
+        foreach ($order->items as $item) {
+            $lineSubtotal = (float) $item->subtotal;
+            if ($lineSubtotal <= 0) {
+                continue;
+            }
+            $lineCents = (int) round($lineSubtotal * 100);
+
+            $mp = $item->marketplaceProduct;
+            if (! $mp && $item->organization_product_id) {
+                $op = $item->organizationProduct;
+                $mp = $op?->marketplaceProduct;
+            }
+            if (! $mp && $item->product_id && $item->product) {
+                $pid = $item->product->marketplace_product_id ?? null;
+                if ($pid) {
+                    $mp = MarketplaceProduct::query()->find((int) $pid);
+                }
+            }
+
+            if (! $mp) {
+                return null;
+            }
+
+            $pctM = (float) ($mp->pct_merchant ?? 0);
+            $pctN = (float) ($mp->pct_nonprofit ?? 0);
+            $useNonprofitSplit = $mp->nonprofit_marketplace_enabled
+                && abs($pctM + $pctN) > 0.01;
+            if ($useNonprofitSplit) {
+                $mCents = (int) round($lineCents * $pctM / 100);
+                $nCents = (int) round($lineCents * $pctN / 100);
+                $bCents = $lineCents - $mCents - $nCents;
+            } else {
+                $mCents = $lineCents;
+                $nCents = 0;
+                $bCents = 0;
+            }
+            $splitMerchantCents += $mCents;
+            $splitOrgCents += $nCents;
+            $splitBiuCents += $bCents;
+        }
+
+        if ($splitMerchantCents + $splitOrgCents + $splitBiuCents <= 0) {
+            return null;
+        }
+
+        return [
+            'merchant_amount' => round($splitMerchantCents / 100, 2),
+            'organization_amount' => round($splitOrgCents / 100, 2),
+            'biu_amount' => round($splitBiuCents / 100, 2),
+        ];
+    }
+
+    /**
+     * Persisted {@see OrderSplit} when present; otherwise the same split logic as checkout (line-level inference).
+     *
+     * @return array{merchant_amount: float, organization_amount: float, biu_amount: float}
+     */
+    public static function resolveOrderSplitAmounts(Order $order): array
     {
         $order->loadMissing('orderSplit');
         $split = $order->orderSplit;
-        $merch = $split ? (float) $split->merchant_amount : 0.0;
-        $orgAmt = $split ? (float) $split->organization_amount : 0.0;
-        $sum = round($merch + $orgAmt, 2);
-        if ($sum > 0) {
-            return $sum;
+        if ($split !== null) {
+            $m = (float) $split->merchant_amount;
+            $o = (float) $split->organization_amount;
+            $b = (float) $split->biu_amount;
+            if (round($m + $o + $b, 2) > 0) {
+                return [
+                    'merchant_amount' => $m,
+                    'organization_amount' => $o,
+                    'biu_amount' => $b,
+                ];
+            }
+        }
+
+        $inferred = self::inferRetailSplitFromOrder($order);
+        if ($inferred !== null) {
+            return $inferred;
+        }
+
+        return [
+            'merchant_amount' => 0.0,
+            'organization_amount' => 0.0,
+            'biu_amount' => 0.0,
+        ];
+    }
+
+    /**
+     * When no merchant/org line split can be resolved but goods subtotal &gt; 0: settlement is subtotal − platform − Stripe
+     * (Printify-only). Allocate to org storefront vs supplier when there is no markup row.
+     *
+     * @return array{merchant_net: float, organization_net: float}
+     */
+    public static function workbookPayoutsWithoutSplit(Order $order, float $platformFee, float $stripeFeeUsd): array
+    {
+        $sub = (float) $order->subtotal;
+        $stripe = max(0.0, $stripeFeeUsd);
+        $payable = round(max(0.0, $sub - $platformFee - $stripe), 2);
+        $orgCtx = self::organizationContextFromOrder($order);
+        if ($orgCtx['organization_id'] !== null && (int) $orgCtx['organization_id'] > 0) {
+            return [
+                'merchant_net' => 0.0,
+                'organization_net' => $payable,
+            ];
+        }
+
+        return [
+            'merchant_net' => $payable,
+            'organization_net' => 0.0,
+        ];
+    }
+
+    /**
+     * Total settlement to merchant + nonprofit (supplier gross + org net after fees).
+     * Without OrderSplit (e.g. Printify-only), uses subtotal − platform fee − Stripe.
+     *
+     * @param  float  $stripeFeeUsd  Actual Stripe processing fee for the charge (from balance transaction).
+     */
+    public static function netPayableFromOrder(Order $order, float $stripeFeeUsd = 0.0): float
+    {
+        $platformFee = (float) ($order->platform_fee ?? 0);
+        $stripe = max(0.0, $stripeFeeUsd);
+        $amounts = self::resolveOrderSplitAmounts($order);
+        $merch = $amounts['merchant_amount'];
+        $orgAmt = $amounts['organization_amount'];
+
+        if (round($merch + $orgAmt, 2) > 0) {
+            $nets = self::workbookSellerPayouts($merch, $orgAmt, $platformFee, $stripe);
+
+            return round($nets['merchant_net'] + $nets['organization_net'], 2);
         }
 
         $sub = (float) $order->subtotal;
-        $pf = (float) ($order->platform_fee ?? 0);
 
-        // Printify / org catalog checkout often never creates OrderSplit (no Merchant Hub line split).
-        if ($split === null && $sub > 0) {
-            return round(max(0, $sub - $pf), 2);
+        // Printify / catalog lines with no inferrable MarketplaceProduct split: single pool after fees.
+        if ($sub > 0) {
+            return round(max(0.0, $sub - $platformFee - $stripe), 2);
         }
 
         return 0.0;
@@ -67,15 +231,26 @@ final class MarketplaceOrderLedgerService
      */
     public static function transactionMeta(Order $order, float $stripeFeeUsd = 0.0): array
     {
-        $order->loadMissing('orderSplit');
-        $split = $order->orderSplit;
-        $merch = $split ? (float) $split->merchant_amount : 0.0;
-        $orgAmt = $split ? (float) $split->organization_amount : 0.0;
-        $biuSplit = $split ? (float) $split->biu_amount : 0.0;
+        $amounts = self::resolveOrderSplitAmounts($order);
+        $merch = $amounts['merchant_amount'];
+        $orgAmt = $amounts['organization_amount'];
+        $biuSplit = $amounts['biu_amount'];
         $platformFee = (float) ($order->platform_fee ?? 0);
         $biuTotal = round($biuSplit + $platformFee, 2);
-        $payable = self::netPayableFromOrder($order);
+        $payable = self::netPayableFromOrder($order, $stripeFeeUsd);
+        $stripe = max(0.0, $stripeFeeUsd);
+        if (round($merch + $orgAmt, 2) > 0) {
+            $nets = self::workbookSellerPayouts($merch, $orgAmt, $platformFee, $stripe);
+        } elseif ((float) $order->subtotal > 0) {
+            $nets = self::workbookPayoutsWithoutSplit($order, $platformFee, $stripe);
+        } else {
+            $nets = self::workbookSellerPayouts(0.0, 0.0, $platformFee, $stripe);
+        }
+        $merchNet = $nets['merchant_net'];
+        $orgNet = $nets['organization_net'];
         $orgCtx = self::organizationContextFromOrder($order);
+
+        $platformPayout = round($platformFee + $biuSplit, 2);
 
         $row = [
             'source' => 'marketplace_order',
@@ -86,8 +261,11 @@ final class MarketplaceOrderLedgerService
             'shipping_amount' => round((float) ($order->shipping_cost ?? 0), 2),
             'platform_fee' => round($platformFee, 2),
             'stripe_fee' => round(max(0, $stripeFeeUsd), 2),
-            'merchant_payout' => round($merch, 2),
-            'organization_payout' => round($orgAmt, 2),
+            'merchant_payout' => round($merchNet, 2),
+            'supplier_payout' => round($merchNet, 2),
+            'organization_gross_share' => round($orgAmt, 2),
+            'organization_payout' => round($orgNet, 2),
+            'platform_payout' => $platformPayout,
             'biu_fee' => $biuTotal,
             'split_deduction' => round($orgAmt, 2),
             'net_to_organization' => $payable,
@@ -110,11 +288,10 @@ final class MarketplaceOrderLedgerService
      */
     public static function mergeLedgerFinancials(Order $order, Transaction $t, array $financials): array
     {
-        $order->loadMissing('orderSplit');
-        $split = $order->orderSplit;
-        $merch = $split ? (float) $split->merchant_amount : 0.0;
-        $orgAmt = $split ? (float) $split->organization_amount : 0.0;
-        $biuSplit = $split ? (float) $split->biu_amount : 0.0;
+        $amounts = self::resolveOrderSplitAmounts($order);
+        $merch = $amounts['merchant_amount'];
+        $orgAmt = $amounts['organization_amount'];
+        $biuSplit = $amounts['biu_amount'];
         $platformFee = (float) ($order->platform_fee ?? 0);
 
         $stripe = max(
@@ -122,14 +299,28 @@ final class MarketplaceOrderLedgerService
             (float) $t->fee
         );
 
+        $platformPayout = round($platformFee + $biuSplit, 2);
+        if (round($merch + $orgAmt, 2) > 0) {
+            $nets = self::workbookSellerPayouts($merch, $orgAmt, $platformFee, $stripe);
+        } elseif ((float) $order->subtotal > 0) {
+            $nets = self::workbookPayoutsWithoutSplit($order, $platformFee, $stripe);
+        } else {
+            $nets = self::workbookSellerPayouts(0.0, 0.0, $platformFee, $stripe);
+        }
+        $merchNet = $nets['merchant_net'];
+        $orgNet = $nets['organization_net'];
+
         $financials['gross_amount'] = round((float) $order->total_amount, 2);
         $financials['stripe_fee'] = round($stripe, 2);
         $financials['biu_fee'] = round($biuSplit + $platformFee, 2);
         $financials['split_deduction'] = round($orgAmt, 2);
-        $financials['net_to_organization'] = self::netPayableFromOrder($order);
+        $financials['net_to_organization'] = self::netPayableFromOrder($order, $stripe);
         $financials['subtotal_amount'] = round((float) $order->subtotal, 2);
         $financials['sales_tax_amount'] = round((float) ($order->tax_amount ?? 0), 2);
         $financials['shipping_amount'] = round((float) ($order->shipping_cost ?? 0), 2);
+        $financials['supplier_payout'] = round($merchNet, 2);
+        $financials['organization_payout'] = round($orgNet, 2);
+        $financials['platform_payout'] = $platformPayout;
 
         return $financials;
     }

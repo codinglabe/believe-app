@@ -109,6 +109,10 @@ interface DonationLedgerInfo {
   donation_date?: string | null
   donor_user_id?: number | null
   recipient_user_id?: number | null
+  /** Stripe checkout: donor paid processing on top vs nonprofit absorbs fee from charge */
+  donor_covers_processing_fees?: boolean
+  checkout_total?: number | null
+  processing_fee_estimate?: number | null
 }
 
 /** Full financial breakdown (same shape as ledger index report payload). */
@@ -126,6 +130,9 @@ interface LedgerReportRow {
   payout_status: string | null
   organization_id: number | null
   organization_name: string | null
+  supplier_payout?: number | null
+  organization_payout?: number | null
+  platform_payout?: number | null
 }
 
 /** Who this row is primarily about: personal user, nonprofit wallet, or Care Alliance. */
@@ -246,6 +253,16 @@ function statusBadgeClass(status: string): string {
   }
 }
 
+/** How gross vs net are interpreted on the unified ledger for Stripe Believe donations. */
+function stripeDonationLedgerExplanation(d: DonationLedgerInfo | null): string | null {
+  if (!d || d.missing || d.kind === "care_alliance_campaign") return null
+  if (d.payment_method !== "stripe") return null
+  if (d.donor_covers_processing_fees) {
+    return "Donor covered processing: Gross is the total amount paid. Net is that payment minus the processing fee (and any other fees listed)—what the nonprofit receives. The fee row is the portion that goes to the processor."
+  }
+  return "Nonprofit absorbs processing: NET is the donation amount minus the processing fee (and any other fees listed). Org payout matches that net settlement."
+}
+
 function ledgerActorContextIcon(kind: LedgerActorContext["kind"]): ComponentType<{ className?: string }> {
   switch (kind) {
     case "organization":
@@ -355,6 +372,7 @@ export default function TransactionShow({ transaction: t }: Props) {
 
   const actorCtx = t.ledger_actor_context
   const ActorHeaderIcon = actorCtx ? ledgerActorContextIcon(actorCtx.kind) : User
+  const donationStripeLedgerHint = stripeDonationLedgerExplanation(t.donation)
 
   const handleDelete = () => {
     setDeleting(true)
@@ -445,8 +463,16 @@ export default function TransactionShow({ transaction: t }: Props) {
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.04, duration: 0.35 }}
+            className="space-y-3"
           >
             <UnifiedLedgerCard data={t.unified_ledger} />
+            {donationStripeLedgerHint && (
+              <Alert className="border-border/60 bg-muted/30">
+                <Info className="h-4 w-4" />
+                <AlertTitle className="text-sm">Stripe donation · Gross and net</AlertTitle>
+                <AlertDescription className="text-sm text-muted-foreground">{donationStripeLedgerHint}</AlertDescription>
+              </Alert>
+            )}
           </motion.div>
         )}
 

@@ -31,6 +31,7 @@ class UnifiedLedgerPresenter
         $transactionType = $this->resolveTransactionType($t, $module, $sourceType, $donationPerspective);
         $parties = $this->resolveParties($t, $donationPayload, $donationPerspective, $ledgerReport, $related, $module);
         $amounts = $this->resolveAmounts($t, $meta, $ledgerReport);
+        $sellingPayouts = $this->resolveSellingPayoutAmounts($ledgerReport);
         $provider = $this->resolveProvider($t, $meta, $ledgerReport, $donationPayload);
         $reference = $this->resolveExternalReference($t, $meta);
         $relatedRecord = $this->resolveRelatedRecordLabel($t, $donationPayload, $related, $sourceType);
@@ -62,12 +63,42 @@ class UnifiedLedgerPresenter
             'split_amount' => $amounts['split'],
             'refund_amount' => $amounts['refund'],
             'net_amount' => $amounts['net'],
+            'supplier_payout_amount' => $sellingPayouts['supplier'],
+            'organization_payout_amount' => $sellingPayouts['organization'],
+            'platform_payout_amount' => $sellingPayouts['platform'],
             'currency' => $t->currency ?? 'USD',
             'status' => $t->status,
             'provider' => $provider,
             'reference' => $reference,
             'organization_id' => $ledgerReport['organization_id'] ?? null,
             'organization_name' => $ledgerReport['organization_name'] ?? null,
+        ];
+    }
+
+    /**
+     * Supplier / nonprofit / platform settlement lines for selling modules (marketplace, Service Hub, etc.).
+     *
+     * @param  array<string, mixed>  $ledgerReport
+     * @return array{supplier: float|null, organization: float|null, platform: float|null}
+     */
+    private function resolveSellingPayoutAmounts(array $ledgerReport): array
+    {
+        $pick = function (string $key) use ($ledgerReport): ?float {
+            if (! array_key_exists($key, $ledgerReport)) {
+                return null;
+            }
+            $v = $ledgerReport[$key];
+            if ($v === null || $v === '') {
+                return null;
+            }
+
+            return round((float) $v, 2);
+        };
+
+        return [
+            'supplier' => $pick('supplier_payout'),
+            'organization' => $pick('organization_payout'),
+            'platform' => $pick('platform_payout'),
         ];
     }
 

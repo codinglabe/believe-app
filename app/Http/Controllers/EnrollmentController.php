@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Course;
 use App\Models\Enrollment;
 use App\Models\Transaction;
+use App\Services\BiuPlatformFeeService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -193,13 +194,13 @@ class EnrollmentController extends Controller
                         'fee' => 0,
                         'currency' => 'USD',
                         'payment_method' => 'believe_points',
-                        'meta' => [
+                        'meta' => array_merge([
                             'course_id' => $course->id,
                             'course_name' => $course->name,
                             'enrollment_id' => $enrollment->enrollment_id,
                             'pricing_type' => 'paid',
                             'believe_points_used' => $pointsRequired,
-                        ],
+                        ], BiuPlatformFeeService::ledgerMetaSlice((float) $course->course_fee)),
                         'processed_at' => now(),
                     ]);
 
@@ -223,12 +224,12 @@ class EnrollmentController extends Controller
                     'fee' => 0,
                     'currency' => 'USD',
                     'payment_method' => 'stripe',
-                    'meta' => [
+                    'meta' => array_merge([
                         'course_id' => $course->id,
                         'course_name' => $course->name,
                         'enrollment_id' => $enrollment->enrollment_id,
-                        'pricing_type' => 'paid'
-                    ],
+                        'pricing_type' => 'paid',
+                    ], BiuPlatformFeeService::ledgerMetaSlice((float) $course->course_fee)),
                     'processed_at' => null,
                 ]);
 
@@ -357,11 +358,15 @@ class EnrollmentController extends Controller
                 if ($transaction) {
                     $transaction->update([
                         'status' => Transaction::STATUS_COMPLETED,
-                        'meta' => array_merge($transaction->meta ?? [], [
-                            'stripe_session_id' => $session->id,
-                            'stripe_payment_intent' => $session->payment_intent,
-                            'payment_status' => $session->payment_status,
-                        ]),
+                        'meta' => array_merge(
+                            $transaction->meta ?? [],
+                            [
+                                'stripe_session_id' => $session->id,
+                                'stripe_payment_intent' => $session->payment_intent,
+                                'payment_status' => $session->payment_status,
+                            ],
+                            BiuPlatformFeeService::ledgerMetaSlice((float) $enrollment->course->course_fee)
+                        ),
                         'processed_at' => now(),
                     ]);
                 }

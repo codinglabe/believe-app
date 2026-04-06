@@ -1,0 +1,42 @@
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    /**
+     * Run the migrations.
+     */
+    public function up(): void
+    {
+        Schema::create('node_bosses', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('user_id')->constrained()->onDelete('cascade');
+            $table->foreignId('organization_id')->nullable()->constrained()->onDelete('set null');
+            $table->string('name');
+            $table->text('description')->nullable();
+            $table->decimal('price', 10, 2);
+            $table->json('suggested_amounts')->nullable();
+            $table->integer('shares_available')->default(0);
+            $table->integer('shares_sold')->default(0);
+            $table->dateTime('start_date')->nullable();
+            $table->dateTime('end_date')->nullable();
+            $table->boolean('is_closed')->default(false);
+            $table->string('image')->nullable();
+            $table->string('slug')->unique();
+            $table->string('status')->default('active');
+            $table->string('created_by')->nullable();
+            $table->timestamps();
+        });
+    }
+
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        Schema::dropIfExists('node_bosses');
+    }
+};

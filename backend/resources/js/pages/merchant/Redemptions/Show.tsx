@@ -1,0 +1,481 @@
+import React, { useState } from 'react'
+import { Head, Link } from '@inertiajs/react'
+import { MerchantCard, MerchantCardContent, MerchantCardHeader, MerchantCardTitle } from '@/components/merchant-ui'
+import { MerchantButton } from '@/components/merchant-ui'
+import { MerchantBadge } from '@/components/merchant-ui'
+import { MerchantDashboardLayout } from '@/components/merchant'
+import { ArrowLeft, CheckCircle2, Clock, XCircle, Calendar, Gift, DollarSign, User, Mail, Hash, Download, Share2, QrCode, Camera, MapPin } from 'lucide-react'
+import { motion } from 'framer-motion'
+import QRCodeScannerSimple from '@/components/merchant/QRCodeScannerSimple'
+
+interface ShippingAddress {
+  name?: string | null
+  line1?: string | null
+  line2?: string | null
+  city?: string | null
+  state?: string | null
+  postalCode?: string | null
+  country?: string | null
+}
+
+interface Redemption {
+  id: string
+  code: string
+  offerTitle: string
+  offerDescription?: string
+  offerImage?: string
+  customerName: string
+  customerEmail: string
+  pointsUsed: number
+  cashPaid?: number
+  status: 'pending' | 'approved' | 'fulfilled' | 'canceled'
+  redeemedAt: string
+  updatedAt?: string
+  usedAt?: string | null
+  qrCodeUrl: string
+  currency?: string
+  pricingBreakdown?: {
+    regularPrice: number
+    discountPercentage: number
+    discountAmount: number
+    discountPrice: number
+    communityCashPrice?: number
+    currency?: string
+  } | null
+  shippingAddress?: ShippingAddress | null
+}
+
+interface Props {
+  redemption: Redemption
+}
+
+export default function RedemptionShow({ redemption }: Props) {
+  const [isScannerOpen, setIsScannerOpen] = useState(false)
+
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case 'approved':
+      case 'fulfilled':
+        return (
+          <MerchantBadge className="bg-green-600/30 text-green-400 border-green-600/50 flex items-center gap-1">
+            <CheckCircle2 className="w-3 h-3" />
+            {status === 'fulfilled' ? 'Fulfilled' : 'Approved'}
+          </MerchantBadge>
+        )
+      case 'pending':
+        return (
+          <MerchantBadge className="bg-yellow-600/30 text-yellow-400 border-yellow-600/50 flex items-center gap-1">
+            <Clock className="w-3 h-3" />
+            Pending
+          </MerchantBadge>
+        )
+      case 'canceled':
+        return (
+          <MerchantBadge className="bg-red-600/30 text-red-400 border-red-600/50 flex items-center gap-1">
+            <XCircle className="w-3 h-3" />
+            Canceled
+          </MerchantBadge>
+        )
+      default:
+        return <MerchantBadge>{status}</MerchantBadge>
+    }
+  }
+
+  const handleDownloadQR = () => {
+    if (redemption.qrCodeUrl) {
+      const link = document.createElement('a')
+      link.href = redemption.qrCodeUrl
+      link.download = `redemption-${redemption.code}.png`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+    }
+  }
+
+  const handleShare = async () => {
+    if (navigator.share && redemption.qrCodeUrl) {
+      try {
+        await navigator.share({
+          title: 'Redemption QR Code',
+          text: `Redemption Code: ${redemption.code}`,
+          url: redemption.qrCodeUrl,
+        })
+      } catch (error) {
+        console.error('Error sharing:', error)
+      }
+    } else {
+      // Fallback: copy to clipboard
+      navigator.clipboard.writeText(redemption.code)
+      alert('Redemption code copied to clipboard!')
+    }
+  }
+
+  return (
+    <>
+      <Head title={`Redemption ${redemption.code} - Merchant Dashboard`} />
+      <MerchantDashboardLayout>
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3 }}
+          className="space-y-4 sm:space-y-6 relative z-10 px-4 sm:px-0"
+        >
+          {/* Header */}
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
+            <Link href="/redemptions">
+              <MerchantButton variant="outline" size="sm">
+                <ArrowLeft className="w-4 h-4 sm:mr-2" />
+                <span className="hidden sm:inline">Back to Redemptions</span>
+                <span className="sm:hidden">Back</span>
+              </MerchantButton>
+            </Link>
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3 w-full sm:w-auto">
+              <MerchantButton
+                onClick={() => setIsScannerOpen(true)}
+                size="sm"
+                className="bg-gradient-to-r from-[#2563EB] to-[#1D4ED8] hover:opacity-95 w-full sm:w-auto"
+              >
+                <Camera className="w-4 h-4 sm:mr-2" />
+                <span className="hidden sm:inline">Scan QR Code</span>
+                <span className="sm:hidden">Scan</span>
+              </MerchantButton>
+              <div className="flex justify-center sm:justify-start">
+                {getStatusBadge(redemption.status)}
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
+            {/* Main Content */}
+            <div className="lg:col-span-2 space-y-6">
+              {/* Redemption Details */}
+              <MerchantCard>
+                <MerchantCardHeader>
+                  <MerchantCardTitle className="text-white">Redemption Details</MerchantCardTitle>
+                </MerchantCardHeader>
+                <MerchantCardContent className="space-y-4 sm:space-y-6">
+                  <div>
+                    <h2 className="text-xl sm:text-2xl font-bold text-white mb-2 break-words">{redemption.offerTitle}</h2>
+                    {redemption.offerDescription && (
+                      <p className="text-sm sm:text-base text-gray-400 mb-2 break-words">{redemption.offerDescription}</p>
+                    )}
+                    <p className="text-xs sm:text-sm text-gray-400 break-all">Redemption ID: {redemption.id}</p>
+                  </div>
+
+                  {redemption.offerImage && (
+                    <div className="w-full h-40 sm:h-48 bg-gray-800 rounded-lg overflow-hidden">
+                      <img
+                        src={redemption.offerImage}
+                        alt={redemption.offerTitle}
+                        className="w-full h-full object-cover"
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).src = '/placeholder.jpg'
+                        }}
+                      />
+                    </div>
+                  )}
+
+                  {/* Both calculations + which way supporter paid */}
+                  {redemption.pricingBreakdown && (
+                    <div className="space-y-4 pt-4 border-t border-[#2563EB]/20">
+                      <p className="text-xs text-gray-400 uppercase tracking-wide">Retail price</p>
+                      <p className="text-lg font-semibold text-gray-300 line-through">
+                        {redemption.pricingBreakdown.currency || redemption.currency || 'USD'} {redemption.pricingBreakdown.regularPrice.toFixed(2)}
+                      </p>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div className="rounded-lg border border-blue-500/30 bg-blue-950/20 p-4 space-y-2">
+                          <p className="text-xs font-medium text-blue-400 uppercase tracking-wide">Use points</p>
+                          <div className="flex justify-between text-sm">
+                            <span className="text-gray-400">Discount ({redemption.pricingBreakdown.discountPercentage}%)</span>
+                            <span className="text-green-400">−{redemption.pricingBreakdown.currency || redemption.currency || 'USD'} {redemption.pricingBreakdown.discountAmount.toFixed(2)}</span>
+                          </div>
+                          <div className="flex justify-between pt-1 border-t border-gray-700">
+                            <span className="text-gray-400">You pay</span>
+                            <span className="font-semibold text-blue-400">{redemption.pricingBreakdown.currency || redemption.currency || 'USD'} {redemption.pricingBreakdown.discountPrice.toFixed(2)}</span>
+                          </div>
+                        </div>
+                        <div className="rounded-lg border border-green-500/30 bg-green-950/20 p-4 space-y-2">
+                          <p className="text-xs font-medium text-green-400 uppercase tracking-wide">Pay with cash</p>
+                          {(() => {
+                            const curr = redemption.pricingBreakdown.currency || redemption.currency || 'USD'
+                            const cashPrice = redemption.pricingBreakdown.communityCashPrice ?? redemption.pricingBreakdown.regularPrice
+                            return (
+                              <div className="flex justify-between text-sm pt-1 border-t border-gray-700">
+                                <span className="text-gray-400">You pay</span>
+                                <span className="font-semibold text-green-400">{curr} {cashPrice.toFixed(2)}</span>
+                              </div>
+                            )
+                          })()}
+                        </div>
+                      </div>
+
+                      <div className="pt-4 border-t border-gray-700 rounded-lg bg-gray-800/50 p-4">
+                        <h4 className="text-sm font-semibold text-white mb-1">How the supporter paid</h4>
+                        <p className="text-xs text-gray-400 mb-3">This customer used the following to redeem this offer:</p>
+                        <div className="flex flex-col sm:flex-row gap-3">
+                          {redemption.pointsUsed > 0 ? (
+                            <div className="flex items-center gap-3 px-4 py-3 bg-[#2563EB]/15 rounded-lg border border-[#2563EB]/40 flex-1">
+                              <div className="w-10 h-10 rounded-full bg-[#2563EB]/30 flex items-center justify-center">
+                                <Gift className="w-5 h-5 text-[#2563EB]" />
+                              </div>
+                              <div>
+                                <p className="text-xs text-gray-400">Paid with points</p>
+                                <p className="text-lg font-bold text-[#2563EB]">{redemption.pointsUsed.toLocaleString()} points</p>
+                              </div>
+                            </div>
+                          ) : null}
+                          {redemption.cashPaid != null && redemption.cashPaid > 0 ? (
+                            <div className="flex items-center gap-3 px-4 py-3 bg-green-500/15 rounded-lg border border-green-500/40 flex-1">
+                              <div className="w-10 h-10 rounded-full bg-green-500/30 flex items-center justify-center">
+                                <DollarSign className="w-5 h-5 text-green-400" />
+                              </div>
+                              <div>
+                                <p className="text-xs text-gray-400">Paid with cash</p>
+                                <p className="text-lg font-bold text-green-400">
+                                  {redemption.currency || redemption.pricingBreakdown?.currency || 'USD'} {redemption.cashPaid.toFixed(2)}
+                                </p>
+                              </div>
+                            </div>
+                          ) : null}
+                          {redemption.pointsUsed === 0 && (redemption.cashPaid == null || redemption.cashPaid === 0) && (
+                            <p className="text-sm text-gray-500 py-2">No payment recorded.</p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {redemption.code && (
+                    <div className="p-3 sm:p-4 bg-black/30 rounded-lg border border-[#2563EB]/20">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Hash className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                        <span className="text-xs sm:text-sm text-gray-400">Redemption Code</span>
+                      </div>
+                      <p className="text-lg sm:text-xl font-mono font-bold text-[#2563EB] break-all">{redemption.code}</p>
+                    </div>
+                  )}
+                </MerchantCardContent>
+              </MerchantCard>
+
+              {/* QR Code */}
+              <MerchantCard>
+                <MerchantCardHeader>
+                  <MerchantCardTitle className="text-white flex items-center gap-2">
+                    <QrCode className="w-5 h-5" />
+                    QR Code
+                  </MerchantCardTitle>
+                </MerchantCardHeader>
+                <MerchantCardContent>
+                  <div className="flex flex-col items-center space-y-3 sm:space-y-4">
+                    <div className="p-2 sm:p-4 bg-white rounded-lg">
+                      {redemption.qrCodeUrl ? (
+                        <img
+                          key={redemption.qrCodeUrl}
+                          src={redemption.qrCodeUrl + '?t=' + Date.now()}
+                          alt="QR Code"
+                          className="w-48 h-48 sm:w-64 sm:h-64 object-contain"
+                          onError={(e) => {
+                            console.error('QR Code failed to load:', redemption.qrCodeUrl)
+                            const img = e.target as HTMLImageElement
+                            // Try to reload with fresh timestamp
+                            if (!img.src.includes('error')) {
+                              img.src = redemption.qrCodeUrl + '?t=' + Date.now() + '&retry=1'
+                            } else {
+                              // Show error message
+                              const parent = img.parentElement
+                              if (parent) {
+                                parent.innerHTML = `
+                                  <div class="w-48 h-48 sm:w-64 sm:h-64 flex flex-col items-center justify-center text-red-500 p-4 border-2 border-red-300 rounded">
+                                    <svg class="w-8 h-8 sm:w-12 sm:h-12 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                                    </svg>
+                                    <p class="text-xs sm:text-sm text-center font-semibold">Failed to load QR code</p>
+                                    <p class="text-xs text-gray-500 mt-2 text-center break-all px-2">Code: ${redemption.code}</p>
+                                    <p class="text-xs text-gray-400 mt-1 text-center">Please refresh the page</p>
+                                  </div>
+                                `
+                              }
+                            }
+                          }}
+                          onLoad={() => {
+                            console.log('QR Code loaded successfully')
+                          }}
+                        />
+                      ) : (
+                        <div className="w-48 h-48 sm:w-64 sm:h-64 flex items-center justify-center text-gray-400 border-2 border-dashed border-gray-300 rounded">
+                          <p className="text-xs sm:text-sm text-center px-2">QR Code not available</p>
+                        </div>
+                      )}
+                    </div>
+                    <p className="text-xs sm:text-sm text-gray-400 text-center px-4">
+                      Scan this QR code to verify the redemption
+                    </p>
+                    {redemption.qrCodeUrl && (
+                      <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 w-full sm:w-auto">
+                        <MerchantButton
+                          variant="outline"
+                          size="sm"
+                          onClick={handleDownloadQR}
+                          className="w-full sm:w-auto"
+                        >
+                          <Download className="w-4 h-4 sm:mr-2" />
+                          <span className="hidden sm:inline">Download</span>
+                          <span className="sm:hidden">Download QR</span>
+                        </MerchantButton>
+                        {/* <MerchantButton
+                          variant="outline"
+                          size="sm"
+                          onClick={handleShare}
+                        >
+                          <Share2 className="w-4 h-4 mr-2" />
+                          Share
+                        </MerchantButton> */}
+                      </div>
+                    )}
+                  </div>
+                </MerchantCardContent>
+              </MerchantCard>
+            </div>
+
+            {/* Sidebar */}
+            <div className="lg:col-span-1 space-y-4 sm:space-y-6">
+              {/* Customer Info */}
+              <MerchantCard>
+                <MerchantCardHeader>
+                  <MerchantCardTitle className="text-white text-base sm:text-lg">Customer Information</MerchantCardTitle>
+                </MerchantCardHeader>
+                <MerchantCardContent className="space-y-3 sm:space-y-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-gradient-to-br from-[#2563EB] to-[#1D4ED8] flex items-center justify-center flex-shrink-0">
+                      <User className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-white font-semibold text-sm sm:text-base break-words">{redemption.customerName}</p>
+                      <p className="text-xs sm:text-sm text-gray-400 flex items-center gap-1 break-all">
+                        <Mail className="w-3 h-3 flex-shrink-0" />
+                        <span className="truncate">{redemption.customerEmail}</span>
+                      </p>
+                    </div>
+                  </div>
+                  {redemption.shippingAddress && (redemption.shippingAddress.line1 || redemption.shippingAddress.city) && (
+                    <div className="pt-4 mt-4 border-t border-[#2563EB]/20">
+                      <div className="flex items-center gap-2 mb-3">
+                        <div className="w-8 h-8 rounded-lg bg-[#2563EB]/20 flex items-center justify-center shrink-0">
+                          <MapPin className="w-4 h-4 text-[#2563EB]" />
+                        </div>
+                        <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Shipping address</span>
+                      </div>
+                      <div className="rounded-xl bg-white/5 border border-white/10 p-4 space-y-3">
+                        {redemption.shippingAddress.name && (
+                          <p className="text-white font-semibold text-sm leading-tight">{redemption.shippingAddress.name}</p>
+                        )}
+                        <div className="space-y-1.5 text-sm text-gray-300 leading-relaxed">
+                          {redemption.shippingAddress.line1 && (
+                            <p className="break-words">{redemption.shippingAddress.line1}</p>
+                          )}
+                          {redemption.shippingAddress.line2 && (
+                            <p className="break-words text-gray-400">{redemption.shippingAddress.line2}</p>
+                          )}
+                          <p className="break-words">
+                            {[redemption.shippingAddress.city, redemption.shippingAddress.state].filter(Boolean).join(', ')}
+                            {redemption.shippingAddress.postalCode && (
+                              <span className="text-gray-400"> {redemption.shippingAddress.postalCode}</span>
+                            )}
+                          </p>
+                          {redemption.shippingAddress.country && (
+                            <span className="inline-block mt-2 px-2.5 py-1 rounded-md bg-[#2563EB]/15 text-[#2563EB] text-xs font-medium uppercase tracking-wide">
+                              {redemption.shippingAddress.country}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </MerchantCardContent>
+              </MerchantCard>
+
+              {/* Timeline */}
+              <MerchantCard>
+                <MerchantCardHeader>
+                  <MerchantCardTitle className="text-white flex items-center gap-2 text-base sm:text-lg">
+                    <Calendar className="w-4 h-4 sm:w-5 sm:h-5" />
+                    Timeline
+                  </MerchantCardTitle>
+                </MerchantCardHeader>
+                <MerchantCardContent className="space-y-3 sm:space-y-4">
+                  <div className="flex items-start gap-3">
+                    <div className="w-2 h-2 rounded-full bg-[#2563EB] mt-2 flex-shrink-0"></div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs sm:text-sm font-semibold text-white">Redeemed</p>
+                      <p className="text-xs text-gray-400 break-words">
+                        {new Date(redemption.redeemedAt).toLocaleString()}
+                      </p>
+                    </div>
+                  </div>
+                  {(redemption.status === 'approved' || redemption.status === 'fulfilled') && (
+                    <div className="flex items-start gap-3">
+                      <div className="w-2 h-2 rounded-full bg-green-500 mt-2 flex-shrink-0"></div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs sm:text-sm font-semibold text-white">
+                          {redemption.status === 'fulfilled' ? 'Fulfilled' : 'Approved'}
+                        </p>
+                        {redemption.updatedAt && (
+                          <p className="text-xs text-gray-400 break-words">
+                            {new Date(redemption.updatedAt).toLocaleString()}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </MerchantCardContent>
+              </MerchantCard>
+
+              {/* Status Info */}
+              <MerchantCard>
+                <MerchantCardHeader>
+                  <MerchantCardTitle className="text-white text-base sm:text-lg">Status Information</MerchantCardTitle>
+                </MerchantCardHeader>
+                <MerchantCardContent className="space-y-3">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                    <span className="text-xs sm:text-sm text-gray-400">Current Status</span>
+                    <div className="flex justify-start sm:justify-end">
+                      {getStatusBadge(redemption.status)}
+                    </div>
+                  </div>
+                  <div className="pt-3 border-t border-[#2563EB]/20">
+                    <p className="text-xs text-gray-400 mb-2">Status Guide</p>
+                    <div className="space-y-2 text-xs">
+                      <div className="flex items-start gap-2">
+                        <div className="w-2 h-2 rounded-full bg-yellow-500 mt-1.5 flex-shrink-0"></div>
+                        <span className="text-gray-300 break-words">Pending - Awaiting approval</span>
+                      </div>
+                      <div className="flex items-start gap-2">
+                        <div className="w-2 h-2 rounded-full bg-green-500 mt-1.5 flex-shrink-0"></div>
+                        <span className="text-gray-300 break-words">Approved - Ready for fulfillment</span>
+                      </div>
+                      <div className="flex items-start gap-2">
+                        <div className="w-2 h-2 rounded-full bg-blue-500 mt-1.5 flex-shrink-0"></div>
+                        <span className="text-gray-300 break-words">Fulfilled - Completed</span>
+                      </div>
+                      <div className="flex items-start gap-2">
+                        <div className="w-2 h-2 rounded-full bg-red-500 mt-1.5 flex-shrink-0"></div>
+                        <span className="text-gray-300 break-words">Canceled - Cancelled redemption</span>
+                      </div>
+                    </div>
+                  </div>
+                </MerchantCardContent>
+              </MerchantCard>
+            </div>
+          </div>
+        </motion.div>
+
+        {/* QR Code Scanner */}
+        <QRCodeScannerSimple
+          isOpen={isScannerOpen}
+          onClose={() => setIsScannerOpen(false)}
+        />
+      </MerchantDashboardLayout>
+    </>
+  )
+}

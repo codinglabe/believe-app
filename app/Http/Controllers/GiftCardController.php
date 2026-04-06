@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\GiftCard;
 use App\Models\Organization;
 use App\Models\Transaction;
+use App\Services\BiuPlatformFeeService;
 use App\Services\GiftCardService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -782,12 +783,12 @@ class GiftCardController extends Controller
                 ]);
 
                 // Create transaction record
-                $transactionMeta = [
+                $transactionMeta = array_merge([
                     'gift_card_id' => $giftCard->id,
                     'believe_points_used' => $pointsRequired,
                     'phaze_order_id' => $phazePurchaseResult['orderId'] ?? null,
                     'brand' => $validated['brand_name'],
-                ];
+                ], BiuPlatformFeeService::ledgerMetaSlice((float) $purchaseAmount));
 
                 if ($phazePurchaseResult) {
                     $transactionMeta['phaze_purchase_id'] = $phazePurchaseResult['id'] ?? null;
@@ -1412,11 +1413,11 @@ class GiftCardController extends Controller
                 // Transaction status will be updated based on Phaze purchase result
                 if ($giftCard->user) {
                     $transactionStatus = $phazePurchaseResult ? 'completed' : 'failed';
-                    $transactionMeta = [
+                    $transactionMeta = array_merge([
                         'gift_card_id' => $giftCard->id,
                         'brand' => $brandName,
                         'phaze_order_id' => $orderId,
-                    ];
+                    ], BiuPlatformFeeService::ledgerMetaSlice((float) $purchaseAmount));
 
                     if ($phazePurchaseResult) {
                         $transactionMeta['phaze_purchase_id'] = $phazePurchaseResult['id'] ?? null;

@@ -7,6 +7,7 @@ use App\Models\Raffle;
 use App\Models\RaffleTicket;
 use App\Models\RaffleWinner;
 use App\Models\Transaction;
+use App\Services\BiuPlatformFeeService;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
@@ -227,11 +228,11 @@ class RaffleController extends BaseController
                 'amount' => $totalAmount,
                 'payment_method' => 'stripe',
                 'status' => 'pending',
-                'meta' => [
+                'meta' => array_merge([
                     'raffle_id' => $raffle->id,
                     'ticket_quantity' => $quantity,
-                    'description' => "Purchased " . $quantity . " ticket(s) for raffle: " . $raffle->title
-                ],
+                    'description' => "Purchased " . $quantity . " ticket(s) for raffle: " . $raffle->title,
+                ], BiuPlatformFeeService::ledgerMetaSlice((float) $totalAmount)),
                 'related_id' => $raffle->id,
                 'related_type' => 'raffle'
             ]);
@@ -448,10 +449,14 @@ class RaffleController extends BaseController
             $transaction->update([
                 'status' => 'completed',
                 'processed_at' => now(),
-                'meta' => array_merge($transaction->meta, [
-                    'stripe_session_id' => $sessionId,
-                    'stripe_payment_intent' => $session->payment_intent,
-                ])
+                'meta' => array_merge(
+                    $transaction->meta ?? [],
+                    [
+                        'stripe_session_id' => $sessionId,
+                        'stripe_payment_intent' => $session->payment_intent,
+                    ],
+                    BiuPlatformFeeService::ledgerMetaSlice((float) $totalAmount)
+                ),
             ]);
 
             // Create tickets
@@ -472,32 +477,27 @@ class RaffleController extends BaseController
             // Update sold tickets count
             $raffle->increment('sold_tickets', $quantity);
             
-            // Calculate fees and amounts
-            // Fee Structure:
-            // - 8% goes to platform as administrative fee
-            // - 92% goes to organization's user balance
-            $administrativeFee = $totalAmount * 0.08; // 8% administrative fee
-            $organizationAmount = $totalAmount * 0.92; // 92% goes to organization
-            
-            // Add administrative fee to platform balance (you can create a platform user or handle this differently)
-            // For now, we'll record it as a transaction but you might want to add it to a platform balance
+            // Platform fee: same BIU % as other sales modules (deducted from org share; buyer already paid ticket total only)
+            $feePct = BiuPlatformFeeService::getSalesPlatformFeePercentage() / 100;
+            $administrativeFee = round($totalAmount * $feePct, 2);
+            $organizationAmount = round($totalAmount - $administrativeFee, 2);
+
             $user->recordTransaction([
                 'type' => 'administrative_fee',
-                'amount' => -$administrativeFee, // Negative because it's a fee taken
+                'amount' => -$administrativeFee,
                 'payment_method' => 'stripe',
                 'status' => 'completed',
                 'meta' => [
                     'raffle_id' => $raffle->id,
                     'ticket_quantity' => $quantity,
-                    'description' => "8% administrative fee for raffle ticket purchase: " . $raffle->title,
+                    'description' => 'BIU platform fee for raffle ticket purchase: '.$raffle->title,
                     'fee_type' => 'administrative',
-                    'fee_percentage' => 8
+                    'fee_percentage' => BiuPlatformFeeService::getSalesPlatformFeePercentage(),
                 ],
                 'related_id' => $raffle->id,
                 'related_type' => 'raffle'
             ]);
-            
-            // Add funds to organization balance (92% of total amount)
+
             if ($raffle->organization && $raffle->organization->organization) {
                 $raffle->organization->organization->addFund(
                     $organizationAmount,
@@ -509,7 +509,7 @@ class RaffleController extends BaseController
                         'total_amount' => $totalAmount,
                         'administrative_fee' => $administrativeFee,
                         'organization_amount' => $organizationAmount,
-                        'description' => "Sale of " . $quantity . " ticket(s) for raffle: " . $raffle->title . " (92% after 8% admin fee)"
+                        'description' => 'Sale of '.$quantity.' ticket(s) for raffle: '.$raffle->title.' (after BIU platform fee)',
                     ]
                 );
             }

@@ -1,7 +1,7 @@
 "use client"
 
 import AppLayout from "@/layouts/app-layout"
-import { Head, router, useForm, usePage } from "@inertiajs/react"
+import { Head, Link, router, useForm, usePage } from "@inertiajs/react"
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -57,8 +57,9 @@ export default function ServiceHubSettings({ settings, states, certificates = []
   const [editingStates, setEditingStates] = useState<Record<number, number>>({})
   const [bulkEditMode, setBulkEditMode] = useState(false)
 
+  const platformPct = settings?.platform_fee_percentage ?? 0
+
   const { data: feeData, setData: setFeeData, post: postFees, processing: processingFees, errors: feeErrors } = useForm({
-    platform_fee_percentage: settings?.platform_fee_percentage || 0,
     stripe_transaction_fee_percentage: settings?.stripe_transaction_fee_percentage || 0,
     believe_points_transaction_fee_percentage: settings?.believe_points_transaction_fee_percentage || 0,
     monthly_advertising_fee: settings?.monthly_advertising_fee || 0,
@@ -174,9 +175,9 @@ export default function ServiceHubSettings({ settings, states, certificates = []
               <CardContent>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                   <div className="p-4 bg-white dark:bg-gray-800 rounded-lg border">
-                    <p className="text-sm text-muted-foreground mb-1">Platform Fee</p>
-                    <p className="text-2xl font-bold">{feeData.platform_fee_percentage}%</p>
-                    <p className="text-xs text-muted-foreground mt-1">Deducted from seller</p>
+                    <p className="text-sm text-muted-foreground mb-1">Platform Fee (BIU)</p>
+                    <p className="text-2xl font-bold">{platformPct}%</p>
+                    <p className="text-xs text-muted-foreground mt-1">Deducted from seller · set in Admin → BIU fee</p>
                   </div>
                   <div className="p-4 bg-white dark:bg-gray-800 rounded-lg border">
                     <p className="text-sm text-muted-foreground mb-1">Stripe Fee</p>
@@ -202,8 +203,8 @@ export default function ServiceHubSettings({ settings, states, certificates = []
                       <span className="font-medium">$100.00</span>
                     </div>
                     <div className="flex justify-between text-red-600 dark:text-red-400">
-                      <span>Platform Fee ({feeData.platform_fee_percentage}%):</span>
-                      <span>-${((100 * feeData.platform_fee_percentage) / 100).toFixed(2)}</span>
+                      <span>Platform Fee ({platformPct}%):</span>
+                      <span>-${((100 * platformPct) / 100).toFixed(2)}</span>
                     </div>
                     <div className="flex justify-between text-red-600 dark:text-red-400">
                       <span>Transaction Fee ({feeData.stripe_transaction_fee_percentage}%):</span>
@@ -212,7 +213,7 @@ export default function ServiceHubSettings({ settings, states, certificates = []
                     <div className="flex justify-between pt-2 border-t font-semibold">
                       <span>Seller Earnings:</span>
                       <span className="text-green-600 dark:text-green-400">
-                        ${(100 - (100 * feeData.platform_fee_percentage) / 100 - (100 * feeData.stripe_transaction_fee_percentage) / 100).toFixed(2)}
+                        ${(100 - (100 * platformPct) / 100 - (100 * feeData.stripe_transaction_fee_percentage) / 100).toFixed(2)}
                       </span>
                     </div>
                   </div>
@@ -227,41 +228,24 @@ export default function ServiceHubSettings({ settings, states, certificates = []
                   Fee Configuration
                 </CardTitle>
                 <CardDescription>
-                  Configure platform fees, transaction fees, and monthly advertising fees. Changes will apply to all new orders.
+                  Platform fee % is shared across all sales modules — edit it under{" "}
+                  <Link href="/admin/biu-fee" className="text-primary font-medium underline-offset-4 hover:underline">
+                    BIU fee (platform)
+                  </Link>
+                  . Here you can adjust Service Hub transaction rates and the monthly ad fee.
                 </CardDescription>
               </CardHeader>
               <CardContent>
                 <form onSubmit={handleFeeSubmit} className="space-y-6">
-                  {/* Platform Fee */}
                   <div className="space-y-2 p-4 border rounded-lg bg-muted/50">
-                    <Label htmlFor="platform_fee_percentage" className="flex items-center gap-2 text-base font-semibold">
+                    <Label className="flex items-center gap-2 text-base font-semibold">
                       <Percent className="h-5 w-5 text-blue-600" />
-                      Platform Fee Percentage
+                      Platform fee (BIU) — read only
                     </Label>
-                    <div className="relative">
-                      <Input
-                        id="platform_fee_percentage"
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        max="100"
-                        value={feeData.platform_fee_percentage}
-                        onChange={(e) => setFeeData("platform_fee_percentage", parseFloat(e.target.value) || 0)}
-                        className="pr-8 text-lg font-semibold"
-                      />
-                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground font-semibold">%</span>
-                    </div>
-                    <div className="space-y-1">
-                      <p className="text-sm text-muted-foreground">
-                        This percentage is deducted from the seller's earnings for each service order. This is the platform's commission.
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        <strong>Example:</strong> If set to 5.5%, and an order is $100, the seller pays $5.50 as platform fee.
-                      </p>
-                    </div>
-                    {feeErrors.platform_fee_percentage && (
-                      <p className="text-sm text-red-500">{feeErrors.platform_fee_percentage}</p>
-                    )}
+                    <p className="text-2xl font-semibold">{platformPct}%</p>
+                    <p className="text-sm text-muted-foreground">
+                      Deducted from seller earnings on service orders (same % as marketplace, courses, raffles, gift cards, merchant hub).
+                    </p>
                   </div>
 
                   {/* Stripe Transaction Fee */}

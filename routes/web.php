@@ -218,6 +218,8 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:admin'])->group(functi
     Route::put('/admin/seo', [AdminSeoController::class, 'update'])->name('admin.seo.update');
     Route::get('/admin/processing-fees', [\App\Http\Controllers\Admin\ProcessingFeeSettingsController::class, 'index'])->name('admin.processing-fees.index');
     Route::put('/admin/processing-fees', [\App\Http\Controllers\Admin\ProcessingFeeSettingsController::class, 'update'])->name('admin.processing-fees.update');
+    Route::get('/admin/biu-fee', [\App\Http\Controllers\Admin\BiuFeeSettingsController::class, 'index'])->name('admin.biu-fee.index');
+    Route::put('/admin/biu-fee', [\App\Http\Controllers\Admin\BiuFeeSettingsController::class, 'update'])->name('admin.biu-fee.update');
     Route::redirect('/admin/donation-fees', '/admin/processing-fees', 301);
     Route::put('/admin/donation-fees', [\App\Http\Controllers\Admin\ProcessingFeeSettingsController::class, 'update'])->name('admin.donation-fees.update');
     Route::get('/admin/kiosk', [App\Http\Controllers\Admin\KioskManagementController::class, 'index'])->name('admin.kiosk.index');

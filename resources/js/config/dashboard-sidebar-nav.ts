@@ -659,6 +659,12 @@ export const dashboardSidebarNavItems: (NavItem | NavGroup)[] = [
                         role: 'admin',
                     },
                     {
+                        title: 'BIU fee (platform)',
+                        href: '/admin/biu-fee',
+                        icon: Coins,
+                        role: 'admin',
+                    },
+                    {
                         title: 'IRS members',
                         href: '/admin/irs-members',
                         icon: FileText,

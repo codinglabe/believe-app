@@ -155,7 +155,12 @@ final class LedgerListFilters
         });
     }
 
-    private static function scopeDonation(Builder $query): void
+    /**
+     * Rows classified as the ledger "donation" module (direct Believe donations; excludes Care Alliance & FundMe).
+     *
+     * @see \App\Services\Admin\UnifiedLedgerPresenter::resolveModule
+     */
+    private static function whereMatchesDonationModule(Builder $query): void
     {
         $query->where(function (Builder $q) {
             $q->where(function (Builder $inner) {
@@ -183,6 +188,11 @@ final class LedgerListFilters
                         ->orWhereNotNull('meta->fundme_campaign_id');
                 });
         });
+    }
+
+    private static function scopeDonation(Builder $query): void
+    {
+        self::whereMatchesDonationModule($query);
     }
 
     private static function scopeServicehub(Builder $query): void
@@ -255,10 +265,16 @@ final class LedgerListFilters
     private static function scopeBelievePoints(Builder $query): void
     {
         $query->where(function (Builder $q) {
-            $q->where('related_type', BelievePointPurchase::class)
-                ->orWhere('related_type', 'like', '%BelievePointPurchase')
-                ->orWhere('meta->source', 'believe_points_purchase')
-                ->orWhere('meta->source', 'believe_points_purchase_refund');
+            $q->where(function (Builder $bp) {
+                $bp->where('related_type', BelievePointPurchase::class)
+                    ->orWhere('related_type', 'like', '%BelievePointPurchase')
+                    ->orWhere('meta->source', 'believe_points_purchase')
+                    ->orWhere('meta->source', 'believe_points_purchase_refund');
+            })
+                ->whereNot(function (Builder $rf) {
+                    $rf->where('type', 'refund')
+                        ->orWhere('status', Transaction::STATUS_REFUND);
+                });
         });
     }
 
@@ -273,6 +289,32 @@ final class LedgerListFilters
                         ->whereNot(function (Builder $bp) {
                             $bp->where('related_type', BelievePointPurchase::class)
                                 ->orWhere('related_type', 'like', '%BelievePointPurchase');
+                        })
+                        ->whereNot(function (Builder $don) {
+                            self::whereMatchesDonationModule($don);
+                        })
+                        ->whereNot(function (Builder $mh) {
+                            $mh->where('related_type', MerchantHubOfferRedemption::class)
+                                ->orWhere('related_type', MerchantHubReferralReward::class);
+                        })
+                        ->whereNot(function (Builder $so) {
+                            $so->where('related_type', ServiceOrder::class)
+                                ->orWhereNotNull('meta->service_order_id');
+                        })
+                        ->whereNot(function (Builder $en) {
+                            $en->where('related_type', Enrollment::class)
+                                ->orWhereNotNull('meta->enrollment_id');
+                        })
+                        ->whereNot(function (Builder $ca) {
+                            $ca->where('related_type', CareAllianceDonation::class)
+                                ->orWhereNotNull('meta->care_alliance_donation_id')
+                                ->orWhere('meta->source', 'care_alliance_split')
+                                ->orWhere('meta->source', 'care_alliance_campaign_split');
+                        })
+                        ->whereNot(function (Builder $fm) {
+                            $fm->where('related_type', FundMeDonation::class)
+                                ->orWhereNotNull('meta->fundme_donation_id')
+                                ->orWhereNotNull('meta->fundme_campaign_id');
                         });
                 })
                 ->orWhere('type', 'transfer_in')
@@ -284,6 +326,25 @@ final class LedgerListFilters
                                     $pm->whereNull('payment_method')
                                         ->orWhere('payment_method', 'not like', '%donat%');
                                 });
+                        })
+                        ->whereNot(function (Builder $so) {
+                            $so->where('related_type', ServiceOrder::class)
+                                ->orWhereNotNull('meta->service_order_id');
+                        })
+                        ->whereNot(function (Builder $en) {
+                            $en->where('related_type', Enrollment::class)
+                                ->orWhereNotNull('meta->enrollment_id');
+                        })
+                        ->whereNot(function (Builder $ca) {
+                            $ca->where('related_type', CareAllianceDonation::class)
+                                ->orWhereNotNull('meta->care_alliance_donation_id')
+                                ->orWhere('meta->source', 'care_alliance_split')
+                                ->orWhere('meta->source', 'care_alliance_campaign_split');
+                        })
+                        ->whereNot(function (Builder $fm) {
+                            $fm->where('related_type', FundMeDonation::class)
+                                ->orWhereNotNull('meta->fundme_donation_id')
+                                ->orWhereNotNull('meta->fundme_campaign_id');
                         });
                 });
         });

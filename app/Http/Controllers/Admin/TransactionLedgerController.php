@@ -23,7 +23,9 @@ use App\Models\User;
 use App\Services\Admin\LedgerListFilters;
 use App\Services\Admin\UnifiedLedgerFlatFileMapper;
 use App\Services\Admin\UnifiedLedgerPresenter;
+use App\Services\DonationProcessingFeeEstimator;
 use App\Services\MarketplaceOrderLedgerService;
+use App\Services\ServiceOrderLedgerService;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
@@ -641,6 +643,7 @@ class TransactionLedgerController extends Controller
 
         return in_array($basename, [
             'Order',
+            'ServiceOrder',
             'Enrollment',
             'GiftCard',
             'Plan',
@@ -849,7 +852,14 @@ class TransactionLedgerController extends Controller
      */
     private function buildLedgerReportRow(Transaction $t, ?array $donationPayload): array
     {
-        $fin = $this->ledgerReportFinancials($t, $donationPayload);
+        // A Stripe PI can match both a selling row and a Donation row; selling-related transactions must use
+        // marketplace / service-order merges, not donation NET rules (merge is skipped when donationPayload is set).
+        $financialDonationPayload = $donationPayload;
+        if ($financialDonationPayload !== null && $this->shouldKeepStrongPolymorphicOnlyForRelated($t)) {
+            $financialDonationPayload = null;
+        }
+
+        $fin = $this->ledgerReportFinancials($t, $financialDonationPayload);
         $org = $this->ledgerReportOrganization($t, $donationPayload);
 
         $date = $t->processed_at ?? $t->created_at;
@@ -871,6 +881,9 @@ class TransactionLedgerController extends Controller
             'subtotal_amount' => $fin['subtotal_amount'] ?? null,
             'sales_tax_amount' => $fin['sales_tax_amount'] ?? null,
             'shipping_amount' => $fin['shipping_amount'] ?? null,
+            'supplier_payout' => $fin['supplier_payout'] ?? null,
+            'organization_payout' => $fin['organization_payout'] ?? null,
+            'platform_payout' => $fin['platform_payout'] ?? null,
         ];
     }
 
@@ -901,6 +914,12 @@ class TransactionLedgerController extends Controller
         }
         if (! empty($meta['fundme_donation_id']) || ! empty($meta['fundme_campaign_id'])) {
             return 'fundme_donation';
+        }
+        if ($rt === MerchantHubOfferRedemption::class || str_ends_with($rt, 'MerchantHubOfferRedemption')) {
+            return 'merchant_hub_redemption';
+        }
+        if ($rt === MerchantHubReferralReward::class || str_ends_with($rt, 'MerchantHubReferralReward')) {
+            return 'merchant_hub_referral';
         }
         if ($rt === ServiceOrder::class || str_ends_with($rt, 'ServiceOrder')) {
             return 'service_order';
@@ -992,6 +1011,19 @@ class TransactionLedgerController extends Controller
     }
 
     /**
+     * Pending donations use payment_method "stripe"; after Stripe Checkout succeeds the column holds PM types (card, us_bank_account, link, …).
+     * Fee coverage / NET must run for all of those, not only the literal string "stripe".
+     */
+    private function donationPaymentUsesStripeFees(string $paymentMethod): bool
+    {
+        if ($paymentMethod === 'believe_points') {
+            return false;
+        }
+
+        return $paymentMethod !== '';
+    }
+
+    /**
      * @param  array<string, mixed>|null  $donationPayload
      * @return array{gross_amount: float, stripe_fee: float, bridge_fee: float, biu_fee: float, split_deduction: float, refund_amount: float, net_to_organization: float|null, payout_status: string|null}
      */
@@ -1038,22 +1070,65 @@ class TransactionLedgerController extends Controller
             $net = (float) $t->amount;
         }
 
-        // Believe donation: fee + charge totals live on donations table — hydrate when row/meta omitted (older rows).
+        // Believe donation: Stripe card/ACH — gross/net depend on whether the donor covered processing fees.
         if ($donationPayload !== null && ($donationPayload['kind'] ?? '') === 'donation') {
             $feeEst = (float) ($donationPayload['processing_fee_estimate'] ?? 0);
+            $giftToOrg = (float) ($donationPayload['amount_raw'] ?? $t->amount);
+            $donorCovers = (bool) ($donationPayload['donor_covers_processing_fees'] ?? false);
+            $pm = (string) ($donationPayload['payment_method'] ?? '');
+            // Org absorbs: if no stored estimate and no fee on the row, derive the same way as checkout (card vs ACH).
+            if ($this->donationPaymentUsesStripeFees($pm) && ! $donorCovers && $feeEst <= 0 && $giftToOrg > 0) {
+                $feeRail = (string) ($meta['fee_rail'] ?? $meta['donation_fee_rail'] ?? '');
+                $useAch = $pm === 'us_bank_account' || $feeRail === 'bank';
+                $feeEst = $useAch
+                    ? DonationProcessingFeeEstimator::estimateAchFeeOnChargeUsd($giftToOrg)
+                    : DonationProcessingFeeEstimator::estimateCardFeeOnChargeUsd($giftToOrg);
+            }
             if ($feeEst > 0 && $stripeFee <= 0) {
                 $stripeFee = $feeEst;
                 $hasFeeBreakdown = $stripeFee > 0 || $bridgeFee > 0 || $biuFee > 0 || $splitDed > 0;
             }
-            $giftToOrg = (float) ($donationPayload['amount_raw'] ?? $t->amount);
             $checkout = $donationPayload['checkout_total'] ?? null;
-            if ($checkout !== null && (float) $checkout > 0) {
-                $gross = round((float) $checkout, 2);
-            } elseif ($feeEst > 0) {
-                $gross = round($giftToOrg + $feeEst, 2);
+            $checkoutF = $checkout !== null ? (float) $checkout : 0.0;
+
+            if ($this->donationPaymentUsesStripeFees($pm)) {
+                if ($donorCovers) {
+                    // Donor pays gift + processing: gross = total charged; net = pay amount minus fees (gift to org).
+                    if ($checkoutF > 0) {
+                        $gross = round($checkoutF, 2);
+                    } elseif ($feeEst > 0) {
+                        $gross = round($giftToOrg + $feeEst, 2);
+                    } else {
+                        $gross = round(max($gross, $giftToOrg), 2);
+                    }
+                    $feeTotal = $stripeFee + $bridgeFee + $biuFee + $splitDed;
+                    if ($feeTotal <= 0 && $gross > $giftToOrg + 0.005) {
+                        $stripeFee = round($gross - $giftToOrg, 2);
+                        $feeTotal = $stripeFee + $bridgeFee + $biuFee + $splitDed;
+                    }
+                    if ($feeTotal > 0) {
+                        $net = round(max(0.0, $gross - $stripeFee - $bridgeFee - $biuFee - $splitDed), 2);
+                    } else {
+                        $net = round($giftToOrg, 2);
+                    }
+                } else {
+                    // Org absorbs processing: donor pays the gift amount; NET = donation amount − processing fee (− other fees if any).
+                    if ($checkoutF > 0) {
+                        $gross = round($checkoutF, 2);
+                    } else {
+                        $gross = round($giftToOrg, 2);
+                    }
+                    $net = round(max(0.0, $giftToOrg - $stripeFee - $bridgeFee - $biuFee - $splitDed), 2);
+                }
+            } else {
+                // Believe Points / other rails: face gift only on the ledger (no Stripe gross-up).
+                if ($checkoutF > 0) {
+                    $gross = round($checkoutF, 2);
+                } elseif ($feeEst > 0) {
+                    $gross = round($giftToOrg + $feeEst, 2);
+                }
+                $net = round($giftToOrg, 2);
             }
-            // Wallet credit on the ledger row is the intended gift amount (not charge − fee).
-            $net = round($giftToOrg, 2);
         }
 
         $payout = null;
@@ -1092,16 +1167,81 @@ class TransactionLedgerController extends Controller
             && (int) $t->related_id > 0
         ) {
             $rt = $t->related_type ? ltrim((string) $t->related_type, '\\') : '';
-            $isOrder = $rt === Order::class;
+            $relatedBasename = $rt !== '' ? class_basename($rt) : '';
+            $isOrder = $rt === Order::class || $relatedBasename === 'Order';
+            $isServiceOrder = $rt === ServiceOrder::class || str_ends_with($rt, 'ServiceOrder');
             if ($isOrder) {
                 $order = Order::query()->with('orderSplit')->find((int) $t->related_id);
+                if ($order) {
+                    $out = MarketplaceOrderLedgerService::mergeLedgerFinancials($order, $t, $out);
+                }
+            } elseif ($isServiceOrder) {
+                $serviceOrder = ServiceOrder::query()->find((int) $t->related_id);
+                if ($serviceOrder) {
+                    $out = ServiceOrderLedgerService::mergeLedgerFinancials($serviceOrder, $t, $out);
+                }
+            }
+        }
+
+        // Marketplace rows sometimes only store order_id in meta (no polymorphic related_type). Still apply workbook merge.
+        if (
+            ($donationPayload === null || ($donationPayload['kind'] ?? '') !== 'donation')
+            && $t->type !== 'refund'
+            && ! array_key_exists('organization_payout', $out)
+            && ! empty($meta['order_id'])
+            && empty($meta['donation_id'])
+        ) {
+            $oid = (int) $meta['order_id'];
+            if ($oid > 0) {
+                $order = Order::query()->with('orderSplit')->find($oid);
                 if ($order) {
                     $out = MarketplaceOrderLedgerService::mergeLedgerFinancials($order, $t, $out);
                 }
             }
         }
 
+        $sourceType = $this->resolveLedgerSourceType($t, $donationPayload);
+        $out = $this->applyLedgerSellingPayoutsFromMeta($t, $sourceType, $out);
+
+        if ($donationPayload !== null && ($donationPayload['kind'] ?? '') === 'donation') {
+            $out['organization_payout'] = $out['net_to_organization'];
+        }
+
         return $out;
+    }
+
+    /**
+     * Fill supplier / org / platform payout from transaction meta when not merged from Order/ServiceOrder (e.g. gift cards, enrollments).
+     *
+     * @param  array<string, mixed>  $fin
+     * @return array<string, mixed>
+     */
+    private function applyLedgerSellingPayoutsFromMeta(Transaction $t, string $sourceType, array $fin): array
+    {
+        $selling = [
+            'order', 'service_order', 'gift_card', 'raffle', 'enrollment',
+            'merchant_hub_redemption', 'merchant_hub_referral',
+        ];
+        if (! in_array($sourceType, $selling, true)) {
+            return $fin;
+        }
+
+        $meta = is_array($t->meta) ? $t->meta : [];
+        $map = [
+            'supplier_payout' => ['supplier_payout', 'merchant_payout'],
+            'organization_payout' => ['organization_payout'],
+            'platform_payout' => ['platform_payout'],
+        ];
+        foreach ($map as $key => $metaKeys) {
+            if (! array_key_exists($key, $fin) || $fin[$key] === null) {
+                $v = $this->ledgerMetaFloat($meta, $metaKeys);
+                if ($v > 0) {
+                    $fin[$key] = round($v, 2);
+                }
+            }
+        }
+
+        return $fin;
     }
 
     /**

@@ -42,6 +42,10 @@ export interface UnifiedLedgerRow {
   split_amount: number
   refund_amount: number
   net_amount: number | null
+  /** Selling flows: supplier/merchant, nonprofit share, platform share (from OrderSplit / Service Hub / meta). */
+  supplier_payout_amount: number | null
+  organization_payout_amount: number | null
+  platform_payout_amount: number | null
   currency: string
   status: string
   provider: string
@@ -91,6 +95,14 @@ function formatDateTime(iso: string) {
   } catch {
     return iso
   }
+}
+
+function sellingPayoutsVisible(data: UnifiedLedgerRow): boolean {
+  return (
+    data.supplier_payout_amount != null ||
+    data.organization_payout_amount != null ||
+    data.platform_payout_amount != null
+  )
 }
 
 function moduleLabel(m: string) {
@@ -183,6 +195,15 @@ export function UnifiedLedgerCard({ data, variant = "full", className }: { data:
             <span className="inline-flex flex-wrap items-center gap-x-1.5 font-semibold text-foreground">
               Net {ledgerAmountNode(usePoints, data.net_amount, cur)}
             </span>
+            {sellingPayoutsVisible(data) && (
+              <>
+                <span className="text-muted-foreground">·</span>
+                <span className="max-w-[min(100%,28rem)] text-[11px] leading-tight text-muted-foreground">
+                  Supplier {formatMoney(data.supplier_payout_amount, cur)} · Org {formatMoney(data.organization_payout_amount, cur)} ·
+                  Platform {formatMoney(data.platform_payout_amount, cur)}
+                </span>
+              </>
+            )}
             <Badge variant="outline" className={cn("text-[10px] capitalize", providerBadgeClass(data.provider))}>
               <ProviderRailLabel provider={data.provider} />
             </Badge>
@@ -313,17 +334,44 @@ export function UnifiedLedgerCard({ data, variant = "full", className }: { data:
             <Amount label="Split" value={ledgerAmountNode(usePoints, data.split_amount, cur, true)} />
             <Amount label="Refund" value={ledgerAmountNode(usePoints, data.refund_amount, cur, true)} />
             <Amount label="Net" value={ledgerAmountNode(usePoints, data.net_amount, cur, false, true)} emphasis className="md:col-span-2 lg:col-span-1" />
+            {sellingPayoutsVisible(data) ? (
+              <>
+                <Amount
+                  label="Supplier payout"
+                  value={ledgerAmountNode(usePoints, data.supplier_payout_amount, cur, true)}
+                  hint="Merchant / cost slice (full split; fees do not reduce this when a nonprofit share exists)"
+                />
+                <Amount
+                  label="Organization payout"
+                  value={ledgerAmountNode(usePoints, data.organization_payout_amount, cur, true)}
+                  hint="Markup net: gross nonprofit split minus Stripe + order platform fee"
+                />
+                <Amount
+                  label="Platform payout"
+                  value={ledgerAmountNode(usePoints, data.platform_payout_amount, cur, true)}
+                  hint="BIU platform fee + split share retained"
+                />
+              </>
+            ) : null}
           </div>
           {data.module === "marketplace" && (
             <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
               <span className="font-medium text-foreground">Gross</span> is the buyer&apos;s checkout total (subtotal + tax + shipping).
               <span className="mx-1">·</span>
-              <span className="font-medium text-foreground">Net</span> is the combined settlement owed to{" "}
-              <span className="font-medium text-foreground">merchant + nonprofit</span> from{" "}
-              <span className="font-medium text-foreground">OrderSplit</span> when present; if no split was stored (common for
-              Printify-only storefront orders), Net uses{" "}
-              <span className="font-medium text-foreground">order subtotal − platform fee</span>. BIU fee includes the platform
-              share on product subtotal plus any order platform fee. Stripe is the card processing fee when paid by card.
+              <span className="font-medium text-foreground">Split</span> is the nonprofit&apos;s <span className="font-medium">gross</span> markup
+              share (before fees). <span className="font-medium text-foreground">Supplier payout</span> matches the merchant/cost slice in full —
+              processing does not reduce it. <span className="font-medium text-foreground">Organization payout</span> is that markup minus Stripe
+              processing and the order platform fee (fees are not added on top for the buyer). <span className="font-medium text-foreground">Net</span>{" "}
+              is supplier + organization payout. <span className="font-medium text-foreground">Platform payout</span> includes order platform fee
+              plus any BIU line split. BIU fee in the grid is BIU split + order platform fee.
+            </p>
+          )}
+          {data.module === "servicehub" && sellingPayoutsVisible(data) && (
+            <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
+              <span className="font-medium text-foreground">Stripe processing</span> is deducted from seller earnings (buyer is not charged extra
+              for it). <span className="font-medium text-foreground">Supplier payout</span> is that net to the seller;{" "}
+              <span className="font-medium text-foreground">platform payout</span> is platform plus transaction fees;{" "}
+              <span className="font-medium text-foreground">Net</span> matches seller settlement for this row.
             </p>
           )}
         </div>

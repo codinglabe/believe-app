@@ -119,6 +119,63 @@ class DonationLedgerSyncService
     }
 
     /**
+     * Financial fields stored on recipient deposit meta — matches {@see TransactionLedgerController::ledgerReportFinancials}
+     * for Stripe: donor covers → NET = intended gift; org absorbs → NET = pay amount minus processing estimate.
+     *
+     * @return array<string, mixed>
+     */
+    public static function organizationDonationFinancialMeta(Donation $donation): array
+    {
+        $amountDollars = (float) $donation->amount;
+        $feeEstimate = $donation->processing_fee_estimate !== null ? (float) $donation->processing_fee_estimate : 0.0;
+        $checkoutTotal = $donation->checkout_total !== null ? (float) $donation->checkout_total : null;
+        $donorCovers = (bool) $donation->donor_covers_processing_fees;
+        $pm = (string) $donation->payment_method;
+        if (self::donationPaymentUsesStripeFees($pm) && ! $donorCovers && $feeEstimate <= 0 && $amountDollars > 0) {
+            $feeEstimate = $pm === 'us_bank_account'
+                ? DonationProcessingFeeEstimator::estimateAchFeeOnChargeUsd($amountDollars)
+                : DonationProcessingFeeEstimator::estimateCardFeeOnChargeUsd($amountDollars);
+        }
+
+        $meta = [
+            'donor_covers_processing_fees' => $donorCovers,
+        ];
+        if ($feeEstimate > 0) {
+            $meta['processing_fee_estimate'] = round($feeEstimate, 2);
+            $meta['stripe_fee'] = round($feeEstimate, 2);
+        }
+        if ($checkoutTotal !== null && $checkoutTotal > 0) {
+            $meta['gross_amount'] = round($checkoutTotal, 2);
+        } elseif ($feeEstimate > 0) {
+            $meta['gross_amount'] = round($amountDollars + $feeEstimate, 2);
+        }
+        if (self::donationPaymentUsesStripeFees($pm)) {
+            if ($donorCovers) {
+                $meta['net_to_organization'] = round($amountDollars, 2);
+            } else {
+                // NET = donation amount − processing fee (same rule as admin ledger).
+                $meta['net_to_organization'] = round(max(0.0, $amountDollars - $feeEstimate), 2);
+            }
+        } else {
+            $meta['net_to_organization'] = round($amountDollars, 2);
+        }
+
+        return $meta;
+    }
+
+    /**
+     * @see \App\Http\Controllers\Admin\TransactionLedgerController::donationPaymentUsesStripeFees
+     */
+    private static function donationPaymentUsesStripeFees(string $paymentMethod): bool
+    {
+        if ($paymentMethod === 'believe_points') {
+            return false;
+        }
+
+        return $paymentMethod !== '';
+    }
+
+    /**
      * Recipient deposit ledger row for direct org credit (non–Care-Alliance split path).
      * When {@see $incrementBalance} is false, only the transaction row is created (backfill when balance was already credited).
      */
@@ -151,23 +208,13 @@ class DonationLedgerSyncService
 
         $amountDollars = (float) $donation->amount;
         $feeEstimate = $donation->processing_fee_estimate !== null ? (float) $donation->processing_fee_estimate : 0.0;
-        $checkoutTotal = $donation->checkout_total !== null ? (float) $donation->checkout_total : null;
 
         $meta = [
             'donation_id' => $donation->id,
             'organization_id' => $donation->organization_id,
             'source' => 'organization_donation',
         ];
-        if ($feeEstimate > 0) {
-            $meta['processing_fee_estimate'] = round($feeEstimate, 2);
-            $meta['stripe_fee'] = round($feeEstimate, 2);
-        }
-        if ($checkoutTotal !== null && $checkoutTotal > 0) {
-            $meta['gross_amount'] = round($checkoutTotal, 2);
-        } elseif ($feeEstimate > 0) {
-            $meta['gross_amount'] = round($amountDollars + $feeEstimate, 2);
-        }
-        $meta['net_to_organization'] = round($amountDollars, 2);
+        $meta = array_merge($meta, self::organizationDonationFinancialMeta($donation));
         $meta['donation_payment_method'] = $donation->payment_method;
         if ($donation->organization->name) {
             $meta['organization_name'] = $donation->organization->name;

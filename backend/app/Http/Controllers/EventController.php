@@ -1,0 +1,706 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Http\Requests\EventRequest;
+use App\Jobs\SendEventNotification;
+use App\Models\Event;
+use App\Models\EventType;
+use App\Models\Organization;
+use App\Services\SeoService;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
+use Inertia\Inertia;
+use Inertia\Response;
+
+class EventController extends BaseController
+{
+    /**
+     * Create flow: permission or nonprofit dashboard Spatie roles (aligned with EnsureCanCreateEvents).
+     */
+    protected function authorizeEventCreate(Request $request): void
+    {
+        $user = $request->user();
+        if ($user === null) {
+            abort(403);
+        }
+        if ($user->hasRole('admin') || $user->can('event.create')) {
+            return;
+        }
+        if ($user->hasAnyRole(['organization', 'care_alliance', 'organization_pending'])) {
+            return;
+        }
+        abort(403, 'You do not have permission to create events.');
+    }
+
+    /**
+     * Event type pickers: nonprofit dashboard accounts see the full catalog (including inactive);
+     * everyone else sees active types only.
+     */
+    protected function eventTypesForEventForms(Request $request): \Illuminate\Support\Collection
+    {
+        $query = EventType::query()->orderBy('category')->orderBy('name');
+        if ($this->isOrganization($request)) {
+            return $query->get();
+        }
+
+        return $query->where('is_active', true)->get();
+    }
+
+    /**
+     * Display a listing of the resource.
+     */
+    public function index(Request $request)
+    {
+        // Check if user has permission to read events
+        $this->authorizePermission($request, 'event.read');
+
+        $user = Auth::user();
+        $events = [];
+        $eventTypes = $this->eventTypesForEventForms($request);
+
+        if ($this->isAdmin($request)) {
+            // Admin can see all events
+            $events = Event::with(['organization', 'user', 'eventType'])->latest()->paginate(12);
+        } elseif ($this->isOrganization($request)) {
+            // Organization can only see their own events
+            $organization = Organization::where('user_id', $user->id)->first();
+            if ($organization) {
+                $events = Event::where('organization_id', $organization->id)->with(['organization', 'user', 'eventType'])->latest()->paginate(12);
+            }
+        } else {
+            // Regular users can see their own events and public events
+            $events = Event::where(function ($query) use ($user) {
+                $query->where('user_id', $user->id)
+                    ->orWhere('visibility', 'public');
+            })->with(['organization', 'user', 'eventType'])->latest()->paginate(12);
+        }
+
+        return Inertia::render('events/index', [
+            'events' => $events,
+            'eventTypes' => $eventTypes,
+            'userRole' => $user->role,
+        ]);
+    }
+
+    /**
+     * Show the form for creating a new resource.
+     */
+    public function create(Request $request)
+    {
+        $this->authorizeEventCreate($request);
+
+        $user = Auth::user();
+        $eventTypes = $this->eventTypesForEventForms($request);
+
+        return Inertia::render('events/create', array_merge([
+            'eventTypes' => $eventTypes,
+            'userRole' => $user->role,
+            'showOrganizationCauses' => Organization::forAuthUser($user) !== null,
+        ], $this->organizationPrimaryActionCategoriesPageProps($request)));
+    }
+
+    /**
+     * Store a newly created resource in storage.
+     */
+    public function store(EventRequest $request)
+    {
+        $this->authorizeEventCreate($request);
+
+        $user = Auth::user();
+
+        $legacyRole = (string) $user->role;
+        $isOrgSide = in_array($legacyRole, ['organization', 'care_alliance', 'organization_pending'], true)
+            || $user->hasAnyRole(['organization', 'care_alliance', 'organization_pending']);
+
+        // Allow org-side accounts and regular users to create events
+        if (! $isOrgSide && ! in_array($legacyRole, ['user'], true) && ! $user->hasRole('user')) {
+            abort(403, 'Only organizations and users can create events.');
+        }
+
+        $data = $request->validated();
+
+        // Handle organization_id and user_id based on user role
+        if ($isOrgSide) {
+            $organization = Organization::forAuthUser($user);
+            if (! $organization) {
+                abort(404, 'Organization not found.');
+            }
+            $data['organization_id'] = $organization->id;
+            $data['user_id'] = null;
+        } else {
+            // For regular users, set user_id and null organization_id
+            $data['organization_id'] = null;
+            $data['user_id'] = $user->id;
+        }
+
+        // Handle poster image upload
+        if ($request->hasFile('poster_image')) {
+            $path = $request->file('poster_image')->store('events/posters', 'public');
+            $data['poster_image'] = $path;
+        }
+
+        $event = Event::create($data);
+
+        if (in_array($request->visibility, ['public', 'private']) && $request->status !== 'cancelled') {
+            SendEventNotification::dispatch($event);
+        }
+
+        return redirect()->route('events.index')->with('success', 'Event created successfully!');
+    }
+
+    /**
+     * Display the specified resource.
+     */
+    public function show(string $id)
+    {
+        $event = Event::with(['organization', 'eventType'])->findOrFail($id);
+
+        return Inertia::render('events/show', [
+            'event' => $event,
+        ]);
+    }
+
+    /**
+     * Show the form for editing the specified resource.
+     */
+    public function edit(Request $request, string $id)
+    {
+        $user = Auth::user();
+        $event = Event::findOrFail($id);
+
+        // Check if user can edit this event
+        if ($user->role === 'organization') {
+            $organization = Organization::where('user_id', $user->id)->first();
+            if (! $organization || $event->organization_id !== $organization->id) {
+                abort(403, 'You can only edit your own events.');
+            }
+        } elseif ($user->role !== 'admin') {
+            abort(403, 'Unauthorized.');
+        }
+
+        $eventTypes = $this->eventTypesForEventForms($request);
+
+        return Inertia::render('events/edit', array_merge([
+            'event' => $event->load('primaryActionCategory:id,name'),
+            'eventTypes' => $eventTypes,
+            'showOrganizationCauses' => Organization::forAuthUser($user) !== null,
+        ], $this->organizationPrimaryActionCategoriesPageProps($request)));
+    }
+
+    /**
+     * Update the specified resource in storage.
+     */
+    public function update(EventRequest $request, string $id)
+    {
+
+        // dd($request->all());
+        $user = Auth::user();
+        $event = Event::findOrFail($id);
+
+        // Check if user can update this event
+        if ($user->role === 'organization') {
+            $organization = Organization::where('user_id', $user->id)->first();
+            if (! $organization || $event->organization_id !== $organization->id) {
+                abort(403, 'You can only update your own events.');
+            }
+        } elseif ($user->role !== 'admin') {
+            abort(403, 'Unauthorized.');
+        }
+
+        $data = $request->validated();
+
+        // Handle poster image upload
+        if ($request->hasFile('poster_image')) {
+            // Delete old image if exists
+            if ($event->poster_image) {
+                Storage::disk('public')->delete($event->poster_image);
+            }
+
+            $path = $request->file('poster_image')->store('events/posters', 'public');
+            $data['poster_image'] = $path;
+        }
+
+        $event->update($data);
+
+        return redirect()->route('events.index')->with('success', 'Event updated successfully!');
+    }
+
+    /**
+     * Remove the specified resource from storage.
+     */
+    public function destroy(string $id)
+    {
+        $user = Auth::user();
+        $event = Event::findOrFail($id);
+
+        // Check if user can delete this event
+        if ($user->role === 'organization') {
+            $organization = Organization::where('user_id', $user->id)->first();
+            if (! $organization || $event->organization_id !== $organization->id) {
+                abort(403, 'You can only delete your own events.');
+            }
+        } elseif ($user->role !== 'admin') {
+            abort(403, 'Unauthorized.');
+        }
+
+        // Delete poster image if exists
+        if ($event->poster_image) {
+            Storage::disk('public')->delete($event->poster_image);
+        }
+
+        $event->delete();
+
+        return redirect()->route('events.index')->with('success', 'Event deleted successfully!');
+    }
+
+    /**
+     * Get events for dashboard
+     */
+    public function dashboard()
+    {
+        $user = Auth::user();
+        $events = [];
+
+        if ($user->role === 'admin') {
+            $events = Event::with('organization')
+                ->where('status', 'upcoming')
+                ->latest()
+                ->take(6)
+                ->get();
+        } else {
+            $organization = Organization::where('user_id', $user->id)->first();
+            if ($organization) {
+                $events = Event::where('organization_id', $organization->id)
+                    ->where('status', 'upcoming')
+                    ->latest()
+                    ->take(6)
+                    ->get();
+            }
+        }
+
+        return response()->json($events);
+    }
+
+    /**
+     * Update event status
+     */
+    public function updateStatus(Request $request, string $id)
+    {
+        $user = Auth::user();
+        $event = Event::findOrFail($id);
+
+        // Check if user can update this event
+        if ($user->role === 'organization') {
+            $organization = Organization::where('user_id', $user->id)->first();
+            if (! $organization || $event->organization_id !== $organization->id) {
+                abort(403, 'You can only update your own events.');
+            }
+        } elseif ($user->role !== 'admin') {
+            abort(403, 'Unauthorized.');
+        }
+
+        $request->validate([
+            'status' => 'required|in:upcoming,ongoing,completed,cancelled',
+        ]);
+
+        $event->update(['status' => $request->status]);
+
+        return response()->json(['message' => 'Event status updated successfully!']);
+    }
+
+    public function alleventsPage(Request $request): Response
+    {
+        $search = $request->input('search');
+        $status = $request->input('status');
+        $eventTypeId = $request->input('event_type_id');
+        $organizationId = $request->input('organization_id');
+        $cityFilter = $request->input('city_filter');
+        $stateFilter = $request->input('state_filter');
+        $zipFilter = $request->input('zip_filter');
+        $monthFilter = $request->input('month_filter');
+        $dayFilter = $request->input('day_filter');
+        $dateFilter = $request->input('date_filter');
+
+        $user = Auth::user();
+        $eventTypes = EventType::where('is_active', true)->orderBy('category')->orderBy('name')->get();
+        $organizations = Organization::orderBy('name')->get();
+
+        // Get unique values for filters
+        $cities = Event::whereNotNull('city')
+            ->where('city', '!=', '')
+            ->distinct()
+            ->orderBy('city')
+            ->pluck('city')
+            ->filter()
+            ->values();
+
+        $states = Event::whereNotNull('state')
+            ->where('state', '!=', '')
+            ->distinct()
+            ->orderBy('state')
+            ->pluck('state')
+            ->filter()
+            ->values();
+
+        $zips = Event::whereNotNull('zip')
+            ->where('zip', '!=', '')
+            ->distinct()
+            ->orderBy('zip')
+            ->pluck('zip')
+            ->filter()
+            ->values();
+
+        $events = Event::query()
+            ->with(['organization', 'eventType', 'user.organization'])
+            ->when($search, function ($query, $search) {
+                $query->where(function ($q) use ($search) {
+                    $q->where('name', 'like', '%'.$search.'%')
+                        ->orWhere('description', 'like', '%'.$search.'%')
+                        ->orWhere('location', 'like', '%'.$search.'%')
+                        ->orWhere('city', 'like', '%'.$search.'%')
+                        ->orWhere('state', 'like', '%'.$search.'%');
+                });
+            })->when($status, function ($query, $status) {
+                $query->where('status', $status);
+            })->when($eventTypeId && $eventTypeId !== 'all', function ($query) use ($eventTypeId) {
+                $query->where('event_type_id', $eventTypeId);
+            })->when($organizationId && $organizationId !== 'all', function ($query) use ($organizationId) {
+                $query->where('organization_id', $organizationId);
+            })->when($cityFilter && $cityFilter !== 'all', function ($query) use ($cityFilter) {
+                $query->where('city', $cityFilter);
+            })->when($stateFilter && $stateFilter !== 'all', function ($query) use ($stateFilter) {
+                $query->where('state', $stateFilter);
+            })->when($zipFilter && $zipFilter !== 'all', function ($query) use ($zipFilter) {
+                $query->where('zip', $zipFilter);
+            })->when($monthFilter && $monthFilter !== 'all', function ($query) use ($monthFilter) {
+                $query->whereMonth('start_date', $monthFilter);
+            })->when($dayFilter && $dayFilter !== 'all', function ($query) use ($dayFilter) {
+                $query->whereDay('start_date', $dayFilter);
+            })->when($dateFilter, function ($query) use ($dateFilter) {
+                $query->whereDate('start_date', $dateFilter);
+            });
+
+        // Only show public events to non-authenticated users or non-admin users
+        if (! $user || $user->role !== 'admin') {
+            $events->where('visibility', 'public');
+        }
+
+        $events = $events->get();
+
+        // Dynamic SEO: base from settings, override title when filters applied
+        $baseSeo = SeoService::forPage('all_events');
+        $seoTitle = $baseSeo['title'];
+        $seoParts = [];
+        if (! empty($search)) {
+            $seoParts[] = '“'.Str::limit($search, 30).'”';
+        }
+        if (! empty($status) && $status !== 'all') {
+            $seoParts[] = ucfirst($status);
+        }
+        if (! empty($eventTypeId) && $eventTypeId !== 'all') {
+            $eventType = $eventTypes->firstWhere('id', (int) $eventTypeId);
+            if ($eventType) {
+                $seoParts[] = $eventType->name;
+            }
+        }
+        if (! empty($cityFilter) && $cityFilter !== 'all') {
+            $seoParts[] = $cityFilter;
+        }
+        if (! empty($stateFilter) && $stateFilter !== 'all') {
+            $seoParts[] = $stateFilter;
+        }
+        if (! empty($seoParts)) {
+            $seoTitle = implode(' ', $seoParts).' - '.$baseSeo['title'];
+        }
+        $seoDescription = $baseSeo['description'];
+        if (! empty($search)) {
+            $seoDescription = 'Find events matching your search. '.$seoDescription;
+        }
+
+        return Inertia::render('frontend/events', [
+            'seo' => [
+                'title' => $seoTitle,
+                'description' => $seoDescription,
+            ],
+            'events' => $events,
+            'eventTypes' => $eventTypes,
+            'organizations' => $organizations,
+            'cities' => $cities,
+            'states' => $states,
+            'zips' => $zips,
+            'search' => $search,
+            'status' => $status,
+            'eventTypeId' => $eventTypeId,
+            'organizationId' => $organizationId,
+            'cityFilter' => $cityFilter,
+            'stateFilter' => $stateFilter,
+            'zipFilter' => $zipFilter,
+            'monthFilter' => $monthFilter,
+            'dayFilter' => $dayFilter,
+            'dateFilter' => $dateFilter,
+        ]);
+    }
+
+    public function viewEvent(string $id): Response
+    {
+        $event = Event::with('organization')->findOrFail($id);
+        $user = Auth::user();
+
+        // Check if user can view this event
+        if ($event->visibility === 'private') {
+            if (! $user) {
+                abort(403, 'This event is private and requires authentication.');
+            }
+
+            if ($user->role === 'organization') {
+                $organization = Organization::where('user_id', $user->id)->first();
+                if (! $organization || $event->organization_id !== $organization->id) {
+                    abort(403, 'You can only view your own private events.');
+                }
+            } elseif ($user->role !== 'admin') {
+                abort(403, 'You do not have permission to view this private event.');
+            }
+        }
+
+        return Inertia::render('frontend/view-event', [
+            'event' => $event,
+        ]);
+    }
+
+    /**
+     * Frontend User Event Methods
+     */
+
+    /**
+     * Display user's events
+     */
+    public function userEvents(Request $request)
+    {
+        $user = Auth::user();
+        $eventTypes = $this->eventTypesForEventForms($request);
+
+        // Get search query and status filter from request
+        $searchQuery = $request->get('search', '');
+        $statusFilter = $request->get('status', 'all');
+
+        // Build the base query
+        $query = Event::with(['organization', 'user', 'eventType'])
+            ->where(function ($query) use ($user) {
+                $query->where('user_id', $user->id);
+
+                // If user is organization, also include organization events
+                if ($user->role === 'organization') {
+                    $organization = Organization::where('user_id', $user->id)->first();
+                    if ($organization) {
+                        $query->orWhere('organization_id', $organization->id);
+                    }
+                }
+            });
+
+        // Apply search filter
+        if ($searchQuery) {
+            $query->where(function ($q) use ($searchQuery) {
+                $q->where('name', 'like', '%'.$searchQuery.'%')
+                    ->orWhere('description', 'like', '%'.$searchQuery.'%')
+                    ->orWhere('location', 'like', '%'.$searchQuery.'%');
+            });
+        }
+
+        // Apply status filter
+        if ($statusFilter && $statusFilter !== 'all') {
+            $query->where('status', $statusFilter);
+        }
+
+        // Get paginated results with 9 events per page
+        $events = $query->latest()->paginate(9);
+
+        // Add search and filter parameters to pagination links
+        $events->appends([
+            'search' => $searchQuery,
+            'status' => $statusFilter,
+        ]);
+
+        return Inertia::render('frontend/user-profile/events/index', [
+            'events' => $events,
+            'eventTypes' => $eventTypes,
+            'filters' => [
+                'search' => $searchQuery,
+                'status' => $statusFilter,
+            ],
+        ]);
+    }
+
+    /**
+     * Show the form for creating a new user event
+     */
+    public function userCreate(Request $request)
+    {
+        $user = Auth::user();
+
+        // Allow both organizations and regular users to create events
+        if (! in_array($user->role, ['organization', 'user'])) {
+            abort(403, 'Only organizations and users can create events.');
+        }
+
+        $eventTypes = $this->eventTypesForEventForms($request);
+
+        return Inertia::render('frontend/user-profile/events/create', [
+            'eventTypes' => $eventTypes,
+        ]);
+    }
+
+    /**
+     * Store a newly created user event
+     */
+    public function userStore(EventRequest $request)
+    {
+        $user = Auth::user();
+
+        // Allow both organizations and regular users to create events
+        if (! in_array($user->role, ['organization', 'user'])) {
+            abort(403, 'Only organizations and users can create events.');
+        }
+
+        $data = $request->validated();
+
+        // Handle organization_id and user_id based on user role
+        if ($user->role === 'organization') {
+            $organization = Organization::where('user_id', $user->id)->first();
+            if (! $organization) {
+                abort(404, 'Organization not found.');
+            }
+            $data['organization_id'] = $organization->id;
+            $data['user_id'] = null;
+        } else {
+            // For regular users, set user_id and null organization_id
+            $data['organization_id'] = null;
+            $data['user_id'] = $user->id;
+        }
+
+        // Handle poster image upload
+        if ($request->hasFile('poster_image')) {
+            $path = $request->file('poster_image')->store('events/posters', 'public');
+            $data['poster_image'] = $path;
+        }
+
+        Event::create($data);
+
+        return redirect()->route('profile.events.index')->with('success', 'Event created successfully!');
+    }
+
+    /**
+     * Display the specified user event
+     */
+    public function userShow(string $id)
+    {
+        $user = Auth::user();
+        $event = Event::with(['organization', 'user', 'eventType'])->findOrFail($id);
+
+        // Check if user can view this event
+        if ($user->role === 'organization') {
+            $organization = Organization::where('user_id', $user->id)->first();
+            if (! $organization || ($event->organization_id !== $organization->id && $event->user_id !== $user->id)) {
+                abort(403, 'You can only view your own events.');
+            }
+        } elseif ($event->user_id !== $user->id) {
+            abort(403, 'You can only view your own events.');
+        }
+
+        return Inertia::render('frontend/user-profile/events/show', [
+            'event' => $event,
+        ]);
+    }
+
+    /**
+     * Show the form for editing the specified user event
+     */
+    public function userEdit(Request $request, string $id)
+    {
+        $user = Auth::user();
+        $event = Event::findOrFail($id);
+
+        // Check if user can edit this event
+        if ($user->role === 'organization') {
+            $organization = Organization::where('user_id', $user->id)->first();
+            if (! $organization || ($event->organization_id !== $organization->id && $event->user_id !== $user->id)) {
+                abort(403, 'You can only edit your own events.');
+            }
+        } elseif ($event->user_id !== $user->id) {
+            abort(403, 'You can only edit your own events.');
+        }
+
+        $eventTypes = $this->eventTypesForEventForms($request);
+
+        return Inertia::render('frontend/user-profile/events/edit', [
+            'event' => $event,
+            'eventTypes' => $eventTypes,
+        ]);
+    }
+
+    /**
+     * Update the specified user event
+     */
+    public function userUpdate(EventRequest $request, string $id)
+    {
+        $user = Auth::user();
+        $event = Event::findOrFail($id);
+
+        // Check if user can update this event
+        if ($user->role === 'organization') {
+            $organization = Organization::where('user_id', $user->id)->first();
+            if (! $organization || ($event->organization_id !== $organization->id && $event->user_id !== $user->id)) {
+                abort(403, 'You can only update your own events.');
+            }
+        } elseif ($event->user_id !== $user->id) {
+            abort(403, 'You can only update your own events.');
+        }
+
+        $data = $request->validated();
+
+        // Handle poster image upload
+        if ($request->hasFile('poster_image')) {
+            // Delete old image if exists
+            if ($event->poster_image) {
+                Storage::disk('public')->delete($event->poster_image);
+            }
+
+            $path = $request->file('poster_image')->store('events/posters', 'public');
+            $data['poster_image'] = $path;
+        }
+
+        $event->update($data);
+
+        return redirect()->route('profile.events.index')->with('success', 'Event updated successfully!');
+    }
+
+    /**
+     * Remove the specified user event
+     */
+    public function userDestroy(string $id)
+    {
+        $user = Auth::user();
+        $event = Event::findOrFail($id);
+
+        // Check if user can delete this event
+        if ($user->role === 'organization') {
+            $organization = Organization::where('user_id', $user->id)->first();
+            if (! $organization || ($event->organization_id !== $organization->id && $event->user_id !== $user->id)) {
+                abort(403, 'You can only delete your own events.');
+            }
+        } elseif ($event->user_id !== $user->id) {
+            abort(403, 'You can only delete your own events.');
+        }
+
+        // Delete poster image if exists
+        if ($event->poster_image) {
+            Storage::disk('public')->delete($event->poster_image);
+        }
+
+        $event->delete();
+
+        return redirect()->route('profile.events.index')->with('success', 'Event deleted successfully!');
+    }
+}

@@ -11,6 +11,7 @@ use App\Models\OrderSplit;
 use App\Models\ShippoShipment;
 use App\Models\TempOrder;
 use App\Models\Transaction;
+use App\Services\BiuPlatformFeeService;
 use App\Services\MarketplaceOrderLedgerService;
 use App\Services\PrintifyService;
 use App\Services\ShippoService;
@@ -56,8 +57,8 @@ class CheckoutController extends Controller
         }
 
         $subtotal = $cart->getTotal();
-        // Platform fee removed from customer payment - only organization pays it
-        // Platform fee will be calculated separately for organization view
+        $platformFeePct = BiuPlatformFeeService::getSalesPlatformFeePercentage();
+        $platformFee = BiuPlatformFeeService::platformFeeFromAmount((float) $subtotal);
 
         return Inertia::render('Checkout/index', [
             'items' => $cart->items->map(function ($item) {
@@ -123,8 +124,8 @@ class CheckoutController extends Controller
                 ];
             }),
             'subtotal' => (float) $subtotal,
-            'platform_fee_percentage' => 0, // Platform fee removed from customer payment
-            'platform_fee' => 0, // Platform fee removed from customer payment
+            'platform_fee_percentage' => $platformFeePct,
+            'platform_fee' => $platformFee,
             // 'donation_percentage' => config('printify.optional_donation_percentage', 10), // Commented out - removed donation for Printify products
             'donation_percentage' => 0, // Set to 0 to disable donation
             // Prefer Stripe publishable key from database (payment_methods), fall back to .env
@@ -167,6 +168,7 @@ class CheckoutController extends Controller
         DB::beginTransaction();
         try {
             $subtotal = $cart->getTotal();
+            $platformFee = BiuPlatformFeeService::platformFeeFromAmount((float) $subtotal);
 
             // Split full name
             $nameParts = explode(' ', $validated['name']);
@@ -174,7 +176,7 @@ class CheckoutController extends Controller
             $lastName = count($nameParts) > 1 ? implode(' ', array_slice($nameParts, 1)) : '';
 
             // Create temp order
-            // Platform fee removed from customer payment - only organization pays it
+            // platform_fee: BIU platform fee on subtotal (admin setting); not added to buyer total_amount below
             $tempOrder = TempOrder::create([
                 'user_id' => $user->id,
                 'cart_id' => $cart->id,
@@ -188,7 +190,7 @@ class CheckoutController extends Controller
                 'zip' => $validated['zip'],
                 'country' => $validated['country'],
                 'subtotal' => $subtotal,
-                'platform_fee' => 0, // Platform fee removed - customers don't pay it
+                'platform_fee' => $platformFee,
                 // 'donation_amount' => $validated['donation_amount'], // Commented out - removed donation for Printify products
                 'donation_amount' => 0, // Set to 0 - donation removed for Printify products
                 'total_amount' => $subtotal, // Platform fee removed from customer total
@@ -1418,9 +1420,8 @@ class CheckoutController extends Controller
             $tempOrder->update([
                 'tax_amount' => $newTaxAmount,
                 'shipping_cost' => $shippingCost,
+                // Buyer total excludes platform_fee (BIU fee is seller-side / ledger; not charged to customer)
                 'total_amount' => $tempOrder->subtotal +
-                    $tempOrder->platform_fee +
-                    // $tempOrder->donation_amount + // Commented out - removed donation for Printify products
                     $shippingCost +
                     $newTaxAmount,
             ]);

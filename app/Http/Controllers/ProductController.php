@@ -18,6 +18,7 @@ use App\Models\User;
 use App\Notifications\BidCancelledNotification;
 use App\Notifications\BidLostNotification;
 use App\Notifications\BidWonNotification;
+use App\Services\BiuPlatformFeeService;
 use App\Services\PrintifyService;
 use App\Services\ShippoService;
 use App\Services\SupporterActivityService;
@@ -2210,7 +2211,7 @@ class ProductController extends BaseController
                 'total_amount' => $totalAmount,
                 'shipping_cost' => $shippingCost,
                 'tax_amount' => $taxAmount,
-                'platform_fee' => 0,
+                'platform_fee' => BiuPlatformFeeService::platformFeeFromAmount($amount),
                 'donation_amount' => 0,
                 'status' => 'processing',
                 'payment_status' => 'paid',

@@ -7,6 +7,7 @@ use App\Models\MerchantHubOfferRedemption;
 use App\Models\MerchantHubReferralReward;
 use App\Models\Order;
 use App\Models\Transaction;
+use App\Services\BiuPlatformFeeService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -586,12 +587,12 @@ class MerchantRedemptionController extends Controller
                     'currency' => $redemption->offer->currency ?? 'USD',
                     'payment_method' => 'stripe',
                     'transaction_id' => $session->payment_intent ?? null,
-                    'meta' => [
+                    'meta' => array_merge([
                         'stripe_session_id' => $sessionId,
                         'points_spent' => 0,
                         'offer_id' => $redemption->offer->id,
                         'receipt_code' => $redemption->receipt_code,
-                    ],
+                    ], BiuPlatformFeeService::ledgerMetaSlice((float) $redemption->cash_spent)),
                     'processed_at' => now(),
                 ]);
             } else {
@@ -625,12 +626,12 @@ class MerchantRedemptionController extends Controller
                     'currency' => strtoupper($offer->currency ?? $currency),
                     'payment_method' => 'stripe',
                     'transaction_id' => $session->payment_intent ?? null,
-                    'meta' => [
+                    'meta' => array_merge([
                         'stripe_session_id' => $sessionId,
                         'points_spent' => 0,
                         'offer_id' => $redemption->offer->id,
                         'receipt_code' => $redemption->receipt_code,
-                    ],
+                    ], BiuPlatformFeeService::ledgerMetaSlice((float) $redemption->cash_spent)),
                     'processed_at' => now(),
                 ]);
             }

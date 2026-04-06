@@ -91,6 +91,10 @@ interface LedgerReport {
   subtotal_amount?: number | null
   sales_tax_amount?: number | null
   shipping_amount?: number | null
+  /** Selling modules: settlement splits (supplier/merchant, nonprofit, platform) */
+  supplier_payout?: number | null
+  organization_payout?: number | null
+  platform_payout?: number | null
 }
 
 interface LaravelPagination<T> {
@@ -783,7 +787,7 @@ export default function TransactionLedger({
               ) : (
                 <div className="overflow-hidden rounded-xl border border-border/60 bg-card shadow-sm ring-1 ring-border/20">
                   <div className="overflow-x-auto">
-                    <table className="w-full min-w-[1320px] border-collapse text-left text-base">
+                    <table className="w-full min-w-[1580px] border-collapse text-left text-base">
                       <thead>
                         <tr className="border-b border-border/60 bg-muted/50 text-xs font-semibold uppercase tracking-wide text-muted-foreground sm:text-sm">
                           <th className="sticky left-0 z-[1] whitespace-nowrap bg-muted/50 px-4 py-3.5 pl-4 shadow-[4px_0_12px_-4px_rgba(0,0,0,0.08)] dark:shadow-[4px_0_12px_-4px_rgba(0,0,0,0.35)]">
@@ -799,6 +803,15 @@ export default function TransactionLedger({
                           <th className="whitespace-nowrap px-4 py-3.5 text-right">Amount</th>
                           <th className="whitespace-nowrap px-4 py-3.5 text-right">Gross</th>
                           <th className="whitespace-nowrap px-4 py-3.5 text-right">Net</th>
+                          <th className="whitespace-nowrap px-4 py-3.5 text-right" title="Merchant / fulfillment">
+                            Supplier
+                          </th>
+                          <th className="whitespace-nowrap px-4 py-3.5 text-right" title="Platform share">
+                            Platform
+                          </th>
+                          <th className="whitespace-nowrap px-4 py-3.5 text-right" title="Nonprofit / org settlement (donations: same as Net when fees absorbed)">
+                            Org payout
+                          </th>
                           <th className="min-w-[10rem] whitespace-nowrap px-4 py-3.5 text-right">Stripe / Bridge</th>
                           <th className="whitespace-nowrap px-4 py-3.5">Provider</th>
                           <th className="min-w-[6rem] whitespace-nowrap px-4 py-3.5">Payment</th>
@@ -818,6 +831,9 @@ export default function TransactionLedger({
                           const netDisplayPlain = u != null ? u.net_amount : rep?.net_to_organization ?? null
                           const stripeFeeAmt = u != null ? u.stripe_fee_amount : rep?.stripe_fee ?? 0
                           const bridgeFeeAmt = u != null ? u.bridge_fee_amount : rep?.bridge_fee ?? 0
+                          const supplierPayout = u != null ? u.supplier_payout_amount : rep?.supplier_payout ?? null
+                          const orgPayout = u != null ? u.organization_payout_amount : rep?.organization_payout ?? null
+                          const platformPayout = u != null ? u.platform_payout_amount : rep?.platform_payout ?? null
                           const pointsPay = isBelievePointsRow(u, row.payment_method)
 
                           return (
@@ -899,6 +915,21 @@ export default function TransactionLedger({
                               <td className="whitespace-nowrap px-4 py-3 text-right text-sm font-semibold tabular-nums text-foreground">
                                 {netDisplayPlain != null && netDisplayPlain !== undefined
                                   ? formatAmountForLedger(pointsPay, Number(netDisplayPlain), cur)
+                                  : "—"}
+                              </td>
+                              <td className="whitespace-nowrap px-4 py-3 text-right text-sm tabular-nums text-muted-foreground">
+                                {supplierPayout != null && supplierPayout !== undefined
+                                  ? formatAmountForLedger(pointsPay, Number(supplierPayout), cur, "text-muted-foreground")
+                                  : "—"}
+                              </td>
+                              <td className="whitespace-nowrap px-4 py-3 text-right text-sm tabular-nums text-muted-foreground">
+                                {platformPayout != null && platformPayout !== undefined
+                                  ? formatAmountForLedger(pointsPay, Number(platformPayout), cur, "text-muted-foreground")
+                                  : "—"}
+                              </td>
+                              <td className="whitespace-nowrap px-4 py-3 text-right text-sm tabular-nums text-muted-foreground">
+                                {orgPayout != null && orgPayout !== undefined
+                                  ? formatAmountForLedger(pointsPay, Number(orgPayout), cur, "text-muted-foreground")
                                   : "—"}
                               </td>
                               <td className="px-4 py-3 text-right align-middle">
