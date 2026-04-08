@@ -3,7 +3,9 @@
 namespace App\Services;
 
 use App\Models\MarketplaceProduct;
+use App\Models\Merchant;
 use App\Models\Order;
+use App\Models\OrderItem;
 use App\Models\Organization;
 use App\Models\Transaction;
 
@@ -322,6 +324,113 @@ final class MarketplaceOrderLedgerService
         $financials['organization_payout'] = round($orgNet, 2);
         $financials['platform_payout'] = $platformPayout;
 
+        $supplier = self::ledgerSupplierFields($order);
+        $financials['supplier_name'] = $supplier['supplier_name'];
+        $financials['supplier_type'] = $supplier['supplier_type'];
+
         return $financials;
+    }
+
+    /**
+     * Workbook-style supplier identity: Printify vs storefront merchant, etc.
+     *
+     * @return array{supplier_name: string|null, supplier_type: string|null}
+     */
+    public static function ledgerSupplierFields(Order $order): array
+    {
+        $order->loadMissing([
+            'items.organizationProduct.organization',
+            'items.organizationProduct.marketplaceProduct.merchant',
+            'items.marketplaceProduct.merchant',
+            'organization',
+        ]);
+
+        if ($order->is_printify_order) {
+            return ['supplier_name' => 'Printify', 'supplier_type' => 'PRINTIFY'];
+        }
+
+        foreach ($order->items as $item) {
+            $hub = self::resolveMerchantHubCatalogSupplier($item);
+            if ($hub !== null) {
+                return $hub;
+            }
+        }
+
+        $org = $order->organization;
+        if ($org !== null && filled($org->name)) {
+            return ['supplier_name' => (string) $org->name, 'supplier_type' => 'ORG_STOREFRONT'];
+        }
+
+        foreach ($order->items as $item) {
+            $op = $item->organizationProduct;
+            if ($op !== null) {
+                $op->loadMissing('organization');
+                if ($op->organization !== null && filled($op->organization->name)) {
+                    return [
+                        'supplier_name' => (string) $op->organization->name,
+                        'supplier_type' => 'ORG_STOREFRONT',
+                    ];
+                }
+            }
+        }
+
+        return ['supplier_name' => null, 'supplier_type' => null];
+    }
+
+    /**
+     * Ledger supplier display name for marketplace catalog lines: real merchant business, not the word "Merchant".
+     */
+    private static function merchantDisplayName(Merchant $merchant): ?string
+    {
+        if (filled($merchant->business_name)) {
+            return (string) $merchant->business_name;
+        }
+        if (filled($merchant->name)) {
+            return (string) $merchant->name;
+        }
+
+        return null;
+    }
+
+    /**
+     * Merchant Hub / catalog SKU: direct MP checkout, nonprofit pool line, or org listing linked to marketplace_products.
+     *
+     * @return array{supplier_name: string, supplier_type: string}|null
+     */
+    private static function resolveMerchantHubCatalogSupplier(OrderItem $item): ?array
+    {
+        $mp = null;
+
+        if (! empty($item->marketplace_product_id)) {
+            $item->loadMissing('marketplaceProduct.merchant');
+            $mp = $item->marketplaceProduct;
+        }
+
+        if ($mp === null && ! empty($item->organization_product_id)) {
+            $item->loadMissing('organizationProduct.marketplaceProduct.merchant');
+            $mp = $item->organizationProduct?->marketplaceProduct;
+        }
+
+        if ($mp === null && ! empty($item->product_id)) {
+            $item->loadMissing('product.sourceMarketplaceProduct.merchant');
+            $mp = $item->product?->sourceMarketplaceProduct;
+        }
+
+        if ($mp === null) {
+            return null;
+        }
+
+        $mp->loadMissing('merchant');
+        if ($mp->merchant === null) {
+            return null;
+        }
+
+        $name = self::merchantDisplayName($mp->merchant);
+
+        if ($name === null || $name === '') {
+            return null;
+        }
+
+        return ['supplier_name' => $name, 'supplier_type' => 'MERCHANT_HUB'];
     }
 }

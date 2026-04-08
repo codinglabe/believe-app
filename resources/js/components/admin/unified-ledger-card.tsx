@@ -7,13 +7,18 @@ import { cn } from "@/lib/utils"
 import {
   ArrowRight,
   Building2,
+  Heart,
   Coins,
   CreditCard,
   Landmark,
+  Package,
   Receipt,
   Sparkles,
+  Store,
   User,
+  UserCircle,
   Wallet,
+  ShoppingBag,
 } from "lucide-react"
 
 export interface UnifiedLedgerRow {
@@ -46,12 +51,17 @@ export interface UnifiedLedgerRow {
   supplier_payout_amount: number | null
   organization_payout_amount: number | null
   platform_payout_amount: number | null
+  /** Instructor / supporter share when present on ledger_report (meta-backed). */
+  supporter_payout_amount?: number | null
   currency: string
   status: string
   provider: string
   reference: string
   organization_id: number | null
   organization_name: string | null
+  /** Marketplace / Service Hub: fulfillment supplier (workbook columns). */
+  supplier_name?: string | null
+  supplier_type?: string | null
 }
 
 /** Believe Points: same numeric amount as points, show coin icon + pts (not USD). */
@@ -101,7 +111,8 @@ function sellingPayoutsVisible(data: UnifiedLedgerRow): boolean {
   return (
     data.supplier_payout_amount != null ||
     data.organization_payout_amount != null ||
-    data.platform_payout_amount != null
+    data.platform_payout_amount != null ||
+    (data.supporter_payout_amount != null && data.supporter_payout_amount !== undefined)
   )
 }
 
@@ -133,6 +144,60 @@ function providerBadgeClass(p: string) {
       return "border-amber-500/40 bg-amber-500/10 text-amber-950 dark:text-amber-100"
     default:
       return "border-border/60 bg-muted/50 text-foreground"
+  }
+}
+
+function supplierTypeDisplayLabel(supplierType: string): string {
+  switch (supplierType.toUpperCase()) {
+    case "PRINTIFY":
+      return "PRINTIFY"
+    case "MERCHANT_HUB":
+      return "MERCHANT HUB"
+    case "ORG_STOREFRONT":
+      return "ORGANIZATION"
+    case "MERCHANT":
+      return "STOREFRONT"
+    case "SUPPORTER":
+    case "SELLER":
+      return "SUPPORTER"
+    default:
+      return supplierType.replace(/_/g, " ").toUpperCase()
+  }
+}
+
+function supplierTypeBadgeClass(supplierType: string) {
+  switch (supplierType.toUpperCase()) {
+    case "PRINTIFY":
+      return "border-orange-500/45 bg-orange-500/10 text-orange-950 dark:text-orange-100"
+    case "MERCHANT_HUB":
+      return "border-amber-500/45 bg-amber-500/10 text-amber-950 dark:text-amber-100"
+    case "ORG_STOREFRONT":
+    case "MERCHANT":
+      return "border-violet-500/45 bg-violet-500/10 text-violet-900 dark:text-violet-100"
+    case "SUPPORTER":
+    case "SELLER":
+      return "border-sky-500/45 bg-sky-500/10 text-sky-900 dark:text-sky-100"
+    default:
+      return "border-border/60 bg-muted/50 text-foreground"
+  }
+}
+
+function supplierTypeIcon(supplierType: string): ReactNode {
+  const cls = "size-3.5 shrink-0 opacity-90"
+  switch (supplierType.toUpperCase()) {
+    case "PRINTIFY":
+      return <Package className={cls} aria-hidden />
+    case "MERCHANT_HUB":
+      return <ShoppingBag className={cls} aria-hidden />
+    case "ORG_STOREFRONT":
+    case "MERCHANT":
+      return <Store className={cls} aria-hidden />
+    case "SUPPORTER":
+      return <Heart className={cls} aria-hidden />
+    case "SELLER":
+      return <UserCircle className={cls} aria-hidden />
+    default:
+      return <Building2 className={cls} aria-hidden />
   }
 }
 
@@ -314,15 +379,47 @@ export function UnifiedLedgerCard({ data, variant = "full", className }: { data:
             <Amount label="Subtotal" value={ledgerAmountNode(usePoints, data.subtotal_amount, cur, true)} />
             <Amount label="Sales tax" value={ledgerAmountNode(usePoints, data.sales_tax_amount, cur, true)} />
             <Amount label="Shipping" value={ledgerAmountNode(usePoints, data.shipping_amount, cur, true)} />
+            {(data.supplier_name != null && data.supplier_name !== "") ||
+            (data.supplier_type != null && data.supplier_type !== "") ? (
+              <>
+                <Amount
+                  label="Supplier name"
+                  value={<span className="text-sm font-semibold text-foreground">{data.supplier_name ?? "—"}</span>}
+                />
+                <Amount
+                  label="Supplier type"
+                  value={
+                    data.supplier_type != null && data.supplier_type !== "" ? (
+                      <Badge
+                        variant="outline"
+                        title={data.supplier_type}
+                        className={cn(
+                          "h-auto w-fit min-w-0 justify-start gap-1.5 px-2 py-1.5 font-mono text-[10px] font-semibold uppercase leading-none tracking-wide",
+                          supplierTypeBadgeClass(data.supplier_type),
+                        )}
+                      >
+                        {supplierTypeIcon(data.supplier_type)}
+                        <span className="min-w-0 truncate">{supplierTypeDisplayLabel(data.supplier_type)}</span>
+                      </Badge>
+                    ) : (
+                      <span className="text-sm text-muted-foreground">—</span>
+                    )
+                  }
+                />
+              </>
+            ) : null}
             <Amount label="Gross" value={ledgerAmountNode(usePoints, data.gross_amount, cur, false, true)} emphasis />
             <div className="min-w-0 space-y-2 sm:col-span-2 lg:col-span-2">
               <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Proc fee (Stripe + Bridge)</p>
               {data.provider === "points" ? (
                 <>
                   <p className="tabular-nums text-sm font-semibold text-muted-foreground">—</p>
-                  <Badge variant="outline" className={cn("gap-1 text-[10px] font-medium leading-tight", providerBadgeClass("points"))}>
+                  <Badge
+                    variant="outline"
+                    className={cn("items-center justify-start gap-1 text-[10px] font-medium leading-none", providerBadgeClass("points"))}
+                  >
                     <Coins className="h-3 w-3 shrink-0" aria-hidden />
-                    No Fee
+                    <span className="leading-none">No Fee</span>
                   </Badge>
                 </>
               ) : (
@@ -349,7 +446,7 @@ export function UnifiedLedgerCard({ data, variant = "full", className }: { data:
               className="sm:col-span-2 md:col-span-2 lg:col-span-1"
             />
             {sellingPayoutsVisible(data) ? (
-              <div className="col-span-full mt-1 grid min-w-0 grid-cols-1 gap-3 border-t border-border/40 pt-4 sm:grid-cols-2 lg:grid-cols-3">
+              <div className="col-span-full mt-1 grid min-w-0 grid-cols-1 gap-3 border-t border-border/40 pt-4 sm:grid-cols-2 lg:grid-cols-4">
                 <Amount
                   label="Supplier payout"
                   value={ledgerAmountNode(usePoints, data.supplier_payout_amount, cur, true)}
@@ -364,7 +461,11 @@ export function UnifiedLedgerCard({ data, variant = "full", className }: { data:
                   label="Organization payout"
                   value={ledgerAmountNode(usePoints, data.organization_payout_amount, cur, true)}
                   hint="Markup net: gross nonprofit split minus Stripe + order platform fee"
-                  className="sm:col-span-2 lg:col-span-1"
+                />
+                <Amount
+                  label="Supporter payout"
+                  value={ledgerAmountNode(usePoints, data.supporter_payout_amount ?? null, cur, true)}
+                  hint="Instructor / supporter share when recorded on the transaction (meta)"
                 />
               </div>
             ) : null}

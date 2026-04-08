@@ -37,6 +37,11 @@ final class ServiceOrderLedgerService
         $financials['sales_tax_amount'] = round((float) $order->sales_tax, 2);
         $financials['shipping_amount'] = $financials['shipping_amount'] ?? null;
 
+        $order->loadMissing('seller');
+        $sellerName = $order->seller?->name;
+        $financials['supplier_name'] = $sellerName !== null && $sellerName !== '' ? (string) $sellerName : null;
+        $financials['supplier_type'] = $financials['supplier_name'] !== null ? 'SUPPORTER' : null;
+
         return $financials;
     }
 }
