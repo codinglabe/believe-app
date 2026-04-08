@@ -157,6 +157,7 @@ class ProductController extends BaseController
                 'description' => $p->description,
                 'short_description' => Str::limit($plain, 200),
                 'base_price' => (string) $p->base_price,
+                'cost' => $p->cost !== null ? (string) $p->cost : null,
                 'suggested_retail_price' => $p->suggested_retail_price !== null ? (string) $p->suggested_retail_price : null,
                 'min_resale_price' => $p->min_resale_price !== null ? (string) $p->min_resale_price : null,
                 'inventory_quantity' => $p->inventory_quantity,
@@ -859,6 +860,7 @@ class ProductController extends BaseController
         if ($isPrintifyProduct) {
             // Printify product validation
             $rules = array_merge($rules, [
+                'profit_margin_percentage' => 'required|numeric|min:0|max:1000',
                 'printify_blueprint_id' => 'required|integer',
                 'printify_provider_id' => 'required|integer',
                 'printify_variants' => 'required|array|min:1',
@@ -893,6 +895,11 @@ class ProductController extends BaseController
                     'winner_payment_window' => 'nullable|in:24h,48h,72h',
                     'offer_to_next_if_unpaid' => 'nullable|boolean',
                 ]);
+            }
+
+            if (in_array($pricingModel, ['fixed', 'offer'], true)) {
+                $rules['source_cost'] = ['nullable', 'numeric', 'min:0'];
+                $rules['profit_margin_percentage'] = ['nullable', 'numeric', 'min:0', 'max:1000'];
             }
 
             if ($productTypeInput === 'physical') {
@@ -952,6 +959,30 @@ class ProductController extends BaseController
         }
 
         $validated = $request->validate($rules, $messages);
+
+        if (! $isPrintifyProduct && in_array($pricingModel, ['fixed', 'offer'], true)) {
+            $marginInput = $request->input('profit_margin_percentage');
+            $hasMargin = $marginInput !== null && $marginInput !== '';
+
+            if ($mp && $hasMargin) {
+                $costBase = (float) ($mp->cost ?? $mp->base_price ?? 0);
+                if ($costBase > 0) {
+                    $computed = round($costBase * (1 + ((float) $marginInput) / 100), 2);
+                    if ($mp->min_resale_price !== null && $computed < (float) $mp->min_resale_price) {
+                        throw ValidationException::withMessages([
+                            'profit_margin_percentage' => 'This markup yields a price below the merchant minimum resale price ($'.number_format((float) $mp->min_resale_price, 2).').',
+                        ]);
+                    }
+                    $validated['unit_price'] = $computed;
+                }
+            } elseif ($request->input('product_source_type') === 'own' && $hasMargin && $request->filled('source_cost')) {
+                $costBase = (float) $request->input('source_cost');
+                if ($costBase >= 0) {
+                    $validated['unit_price'] = round($costBase * (1 + ((float) $marginInput) / 100), 2);
+                }
+            }
+        }
+
         if ($mp) {
             $validated['type'] = $this->productTypeFromMarketplaceProduct($mp);
             if ($validated['type'] === 'physical') {
@@ -1013,9 +1044,8 @@ class ProductController extends BaseController
                     throw new \Exception('Failed to fetch product details');
                 }
 
-                // Step 3: Update with correct pricing for ALL variants
-                // Get profit margin from env (default 25%)
-                $profitMargin = (float) env('PRINTIFY_PROFIT_MARGIN', 25);
+                // Step 3: Update with correct pricing for ALL variants — selling price = cost × (1 + markup%)
+                $profitMargin = (float) ($validated['profit_margin_percentage'] ?? config('app.printify_profit_margin', 25));
 
                 // Build updated variants - update ALL variants in the product
                 $updatedVariants = [];
@@ -1029,8 +1059,8 @@ class ProductController extends BaseController
 
                     $costInCents = $variant['cost'] ?? 0;
 
-                    // Calculate selling price with profit margin: cost + (cost * profitMargin / 100)
-                    $sellingPriceInCents = (int) round($costInCents + ($costInCents * $profitMargin / 100));
+                    // Selling price (cents) = cost × (1 + markup/100)
+                    $sellingPriceInCents = (int) round($costInCents * (1 + $profitMargin / 100));
 
                     $updatedVariants[] = [
                         'id' => $variant['id'],
@@ -1095,14 +1125,22 @@ class ProductController extends BaseController
                 $productData['printify_product_id'] = $printifyProductId;
                 $productData['printify_blueprint_id'] = $request->printify_blueprint_id;
                 $productData['printify_provider_id'] = $request->printify_provider_id;
+                $productData['profit_margin_percentage'] = (float) ($validated['profit_margin_percentage'] ?? config('app.printify_profit_margin', 25));
             } else {
                 // For manual products: unit price only; shipping comes from Shippo when the customer checks out
                 $productData['unit_price'] = $validated['unit_price'] ?? 0;
                 $productData['shipping_charge'] = null;
 
-                // Calculate profit margin for manual products using env PRINTIFY_PROFIT_MARGIN
-                $profitMargin = (float) env('PRINTIFY_PROFIT_MARGIN', 25);
-                $productData['profit_margin_percentage'] = $profitMargin;
+                $manualMargin = $request->input('profit_margin_percentage');
+                $productData['profit_margin_percentage'] = ($manualMargin !== null && $manualMargin !== '')
+                    ? (float) $manualMargin
+                    : (float) config('app.printify_profit_margin', 25);
+
+                if ($request->filled('source_cost')) {
+                    $productData['source_cost'] = (float) $request->input('source_cost');
+                } elseif ($mp !== null && ($mp->cost !== null || $mp->base_price !== null)) {
+                    $productData['source_cost'] = (float) ($mp->cost ?? $mp->base_price);
+                }
             }
 
             // Bidding fields

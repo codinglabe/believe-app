@@ -42,6 +42,8 @@ class Order extends Model
         'total_amount',
         'shipping_cost',
         'tax_amount',
+        'printify_tax_amount',
+        'additional_sales_tax_adjustment',
         'platform_fee',
         'donation_amount',
         'organization_id',

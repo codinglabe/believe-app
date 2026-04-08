@@ -25,6 +25,8 @@ class TempOrder extends Model
         'donation_amount',
         'shipping_cost',
         'tax_amount',
+        'printify_tax_amount',
+        'additional_sales_tax_adjustment',
         'total_amount',
         'shipping_methods',
         'selected_shipping_method',
@@ -42,6 +44,8 @@ class TempOrder extends Model
         'donation_amount' => 'float',
         'shipping_cost' => 'float',
         'tax_amount' => 'float',
+        'printify_tax_amount' => 'float',
+        'additional_sales_tax_adjustment' => 'float',
         'total_amount' => 'float',
         'shippo_rate_amount' => 'float',
     ];

@@ -20,6 +20,8 @@ interface Step1CompleteData {
   shippingMethods: unknown[]
   shippingCost: number
   taxAmount: number
+  printifyTaxAmount: number
+  additionalSalesTaxAdjustment: number
   totalAmount: number
   donationAmount: number
 }
@@ -130,6 +132,12 @@ export default function Step1({
           shippingMethods: response.data.shipping_methods,
           shippingCost: Number.parseFloat(response.data.shipping_cost.toFixed(2)),
           taxAmount: Number.parseFloat(response.data.tax_amount.toFixed(2)),
+          printifyTaxAmount: Number.parseFloat(
+            (response.data.printify_tax_amount ?? 0).toFixed(2)
+          ),
+          additionalSalesTaxAdjustment: Number.parseFloat(
+            (response.data.additional_sales_tax_adjustment ?? 0).toFixed(2)
+          ),
           totalAmount: Number.parseFloat(response.data.total_amount.toFixed(2)),
           donationAmount: 0, // Donation disabled for Printify products
         })

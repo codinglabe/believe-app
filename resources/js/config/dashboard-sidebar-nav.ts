@@ -76,7 +76,7 @@ import {
  */
 export const dashboardSidebarNavItems: (NavItem | NavGroup)[] = [
     {
-        title: '🏠 Dashboard',
+        title: 'Dashboard',
         icon: Home,
         items: [
             {
@@ -95,7 +95,7 @@ export const dashboardSidebarNavItems: (NavItem | NavGroup)[] = [
     },
 
     {
-        title: '💰 Fundraising',
+        title: 'Fundraising',
         icon: HandCoins,
         role: ['organization', 'organization_pending', 'admin'],
         items: [
@@ -127,7 +127,7 @@ export const dashboardSidebarNavItems: (NavItem | NavGroup)[] = [
     },
 
     {
-        title: '📣 Marketing',
+        title: 'Marketing',
         icon: Megaphone,
         items: [
             {
@@ -253,7 +253,7 @@ export const dashboardSidebarNavItems: (NavItem | NavGroup)[] = [
     },
 
     {
-        title: '🛒 Commerce',
+        title: 'Commerce',
         icon: Store,
         items: [
             {
@@ -340,7 +340,7 @@ export const dashboardSidebarNavItems: (NavItem | NavGroup)[] = [
     },
 
     {
-        title: '🎓 Programs',
+        title: 'Programs',
         icon: GraduationCap,
         items: [
             {
@@ -399,7 +399,7 @@ export const dashboardSidebarNavItems: (NavItem | NavGroup)[] = [
     },
 
     {
-        title: '👥 Community',
+        title: 'Community',
         icon: Users,
         role: 'organization',
         items: [
@@ -439,7 +439,7 @@ export const dashboardSidebarNavItems: (NavItem | NavGroup)[] = [
     },
 
     {
-        title: '🧩 Opportunities',
+        title: 'Opportunities',
         icon: Puzzle,
         role: 'organization',
         items: [
@@ -511,7 +511,7 @@ export const dashboardSidebarNavItems: (NavItem | NavGroup)[] = [
     },
 
     {
-        title: '📊 Insights',
+        title: 'Insights',
         icon: LineChart,
         permission: 'dashboard.read',
         items: [
@@ -557,7 +557,7 @@ export const dashboardSidebarNavItems: (NavItem | NavGroup)[] = [
                 role: ['organization', 'admin'],
             },
             {
-                title: 'Points 🔥',
+                title: 'Points',
                 href: '/supporter-activity?metric=donors',
                 icon: Coins,
                 permission: 'dashboard.read',
@@ -567,7 +567,7 @@ export const dashboardSidebarNavItems: (NavItem | NavGroup)[] = [
     },
 
     {
-        title: '🏢 Organization',
+        title: 'Organization',
         icon: Building2,
         items: [
             {
@@ -600,7 +600,7 @@ export const dashboardSidebarNavItems: (NavItem | NavGroup)[] = [
     },
 
     {
-        title: '🏛️ Governance',
+        title: 'Governance',
         icon: Gavel,
         role: 'organization',
         items: [
@@ -620,7 +620,7 @@ export const dashboardSidebarNavItems: (NavItem | NavGroup)[] = [
     },
 
     {
-        title: '⚙️ System',
+        title: 'System',
         icon: Settings,
         items: [
             {
@@ -880,7 +880,7 @@ export const dashboardSidebarNavItems: (NavItem | NavGroup)[] = [
     },
 
     {
-        title: '🧠 Tools',
+        title: 'Tools',
         icon: Brain,
         items: [
             {

@@ -24,6 +24,8 @@ interface Step2Data {
   shippingMethods: any[]
   shippingCost: number
   taxAmount: number
+  printifyTaxAmount: number
+  additionalSalesTaxAdjustment: number
   totalAmount: number
   donationAmount: number
 }
@@ -72,6 +74,8 @@ function Step2Form({ items, subtotal, donation_amount, step2Data, onBack }: Omit
 
   // State for current amounts
   const [currentTaxAmount, setCurrentTaxAmount] = useState(step2Data.taxAmount)
+  const [printifyTaxLine, setPrintifyTaxLine] = useState(step2Data.printifyTaxAmount ?? 0)
+  const [additionalTaxLine, setAdditionalTaxLine] = useState(step2Data.additionalSalesTaxAdjustment ?? 0)
   const [currentShippingCost, setCurrentShippingCost] = useState(step2Data.shippingCost)
   const [currentTotalAmount, setCurrentTotalAmount] = useState(step2Data.totalAmount)
   // Donation removed for Printify products - currentDonationAmount always 0
@@ -110,7 +114,7 @@ function Step2Form({ items, subtotal, donation_amount, step2Data, onBack }: Omit
     const m = step2Data.shippingMethods.find((x: { id?: string | number }) => String(x?.id) === String(methodId))
     if (m && typeof m.cost === "number") {
       setCurrentShippingCost(m.cost)
-      setCurrentTotalAmount(subtotal + m.cost + step2Data.taxAmount)
+      setCurrentTotalAmount(subtotal + m.cost + currentTaxAmount)
     }
     setPaymentStep("initial")
     setPaymentIntentData(null)
@@ -201,6 +205,8 @@ function Step2Form({ items, subtotal, donation_amount, step2Data, onBack }: Omit
 
           // Update state with calculated amounts
           setCurrentTaxAmount(finalTaxAmount)
+          setPrintifyTaxLine(intentResponse.data.printify_tax_amount ?? 0)
+          setAdditionalTaxLine(intentResponse.data.additional_sales_tax_adjustment ?? 0)
           setCurrentShippingCost(finalShippingCost)
           setCurrentTotalAmount(finalAmount)
           setIsTaxCalculated(true)
@@ -303,6 +309,8 @@ function Step2Form({ items, subtotal, donation_amount, step2Data, onBack }: Omit
         if (intentResponse.data.tax_amount !== undefined) {
           const newTaxAmount = intentResponse.data.tax_amount
           setCurrentTaxAmount(newTaxAmount)
+          setPrintifyTaxLine(intentResponse.data.printify_tax_amount ?? 0)
+          setAdditionalTaxLine(intentResponse.data.additional_sales_tax_adjustment ?? 0)
           setIsTaxCalculated(true)
           setTaxCalculationMessage(`Tax calculated: $${newTaxAmount.toFixed(2)}`)
         }
@@ -770,34 +778,53 @@ function Step2Form({ items, subtotal, donation_amount, step2Data, onBack }: Omit
               </span>
             </div>
 
-            {/* Tax Display - Show different states */}
-            <div className="flex justify-between text-sm">
-              <span className="text-gray-600 dark:text-gray-400">Tax</span>
-              <span className={
-                isTaxCalculated
-                  ? "text-gray-600 dark:text-gray-400"
-                  : "text-yellow-600 dark:text-yellow-400 font-semibold"
-              }>
-                {paymentStep === 'calculating' ? (
-                  <span className="inline-flex items-center">
-                    <svg className="animate-spin h-3 w-3 mr-1" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    Calculating...
-                  </span>
-                ) : isTaxCalculated ? (
-                  `$${currentTaxAmount.toFixed(2)}`
-                ) : (
-                  <span className="inline-flex items-center">
-                    <svg className="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-                    </svg>
-                    Not calculated
-                  </span>
+            {/* Tax — Printify: show Printify portion + retail markup adjustment when applicable */}
+            {isTaxCalculated && (printifyTaxLine > 0.001 || additionalTaxLine > 0.001) ? (
+              <>
+                <div className="flex justify-between text-sm text-gray-600 dark:text-gray-400">
+                  <span>Sales tax (Printify)</span>
+                  <span>${printifyTaxLine.toFixed(2)}</span>
+                </div>
+                {additionalTaxLine > 0.001 && (
+                  <div className="flex justify-between text-sm text-gray-600 dark:text-gray-400">
+                    <span>Additional sales tax adjustment</span>
+                    <span>${additionalTaxLine.toFixed(2)}</span>
+                  </div>
                 )}
-              </span>
-            </div>
+                <div className="flex justify-between text-sm font-medium text-gray-700 dark:text-gray-300">
+                  <span>Total tax</span>
+                  <span>${currentTaxAmount.toFixed(2)}</span>
+                </div>
+              </>
+            ) : (
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-600 dark:text-gray-400">Tax</span>
+                <span className={
+                  isTaxCalculated
+                    ? "text-gray-600 dark:text-gray-400"
+                    : "text-yellow-600 dark:text-yellow-400 font-semibold"
+                }>
+                  {paymentStep === 'calculating' ? (
+                    <span className="inline-flex items-center">
+                      <svg className="animate-spin h-3 w-3 mr-1" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      Calculating...
+                    </span>
+                  ) : isTaxCalculated ? (
+                    `$${currentTaxAmount.toFixed(2)}`
+                  ) : (
+                    <span className="inline-flex items-center">
+                      <svg className="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                      </svg>
+                      Not calculated
+                    </span>
+                  )}
+                </span>
+              </div>
+            )}
 
             {/* Total - Also show different states */}
             <div className="border-t border-gray-200 dark:border-gray-700 pt-3 flex justify-between font-bold text-lg">

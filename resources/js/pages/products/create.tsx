@@ -82,6 +82,7 @@ interface HubMarketplaceProductRow {
     description: string | null;
     short_description: string;
     base_price: string;
+    cost: string | null;
     suggested_retail_price: string | null;
     min_resale_price: string | null;
     inventory_quantity: number | null;
@@ -133,6 +134,7 @@ export default function Create({
 
         // Printify fields
         is_printify_product: false, // Default to manual product
+        profit_margin_percentage: '25',
         printify_blueprint_id: '',
         printify_provider_id: '',
         printify_variants: [] as any[],
@@ -174,6 +176,10 @@ export default function Create({
         product_source_type: 'own' as 'own' | 'merchant_hub',
         hub_merchant_id: '' as string | number,
         hub_marketplace_product_id: '' as string | number,
+        /** Own manual: your cost × (1 + markup%) → unit_price */
+        source_cost: '',
+        /** Merchant Hub: merchant cost/base from listing (for markup math) */
+        hub_listing_cost: '',
     });
 
     const selectedMerchantShipFrom = useMemo(() => {
@@ -252,6 +258,44 @@ useEffect(() => {
             cancelled = true;
         };
     }, [data.product_source_type, data.hub_merchant_id]);
+
+    /** Own manual or Merchant Hub: sync unit_price from cost × (1 + markup%). */
+    useEffect(() => {
+        if (data.is_printify_product) return;
+        const pm = data.pricing_model || 'fixed';
+        if (pm !== 'fixed' && pm !== 'offer') return;
+        const margin = parseFloat(String(data.profit_margin_percentage ?? ''));
+        if (!Number.isFinite(margin) || margin < 0) return;
+
+        let costNum: number | null = null;
+        if (data.product_source_type === 'merchant_hub' && data.hub_marketplace_product_id) {
+            const h = String(data.hub_listing_cost ?? '').trim();
+            if (!h) return;
+            costNum = parseFloat(h);
+        } else if (data.product_source_type === 'own') {
+            const s = String(data.source_cost ?? '').trim();
+            if (!s) return;
+            costNum = parseFloat(s);
+        } else {
+            return;
+        }
+        if (!Number.isFinite(costNum) || costNum < 0) return;
+
+        const next = (costNum * (1 + margin / 100)).toFixed(2);
+        const cur = parseFloat(String(data.unit_price ?? ''));
+        const nextF = parseFloat(next);
+        if (Number.isFinite(cur) && Math.abs(cur - nextF) < 0.0001) return;
+
+        setData('unit_price', next);
+    }, [
+        data.is_printify_product,
+        data.pricing_model,
+        data.profit_margin_percentage,
+        data.hub_listing_cost,
+        data.source_cost,
+        data.product_source_type,
+        data.hub_marketplace_product_id,
+    ]);
 
 // Simple handler using local state
 const handleCategoryChange = (categoryId: number) => {
@@ -668,10 +712,18 @@ const handleCategoryChange = (categoryId: number) => {
                 if (data.winner_payment_window) formData.append('winner_payment_window', data.winner_payment_window);
                 formData.append('offer_to_next_if_unpaid', data.offer_to_next_if_unpaid ? '1' : '0');
             }
+            const pmFixed = data.pricing_model || 'fixed';
+            if (pmFixed === 'fixed' || pmFixed === 'offer') {
+                if (data.product_source_type === 'own' && String(data.source_cost ?? '').trim() !== '') {
+                    formData.append('source_cost', String(data.source_cost));
+                }
+                formData.append('profit_margin_percentage', String(data.profit_margin_percentage ?? '25'));
+            }
         }
 
         // Printify-specific fields (only if Printify product)
         if (data.is_printify_product) {
+            formData.append('profit_margin_percentage', String(data.profit_margin_percentage ?? '25'));
             if (data.printify_blueprint_id) formData.append('printify_blueprint_id', data.printify_blueprint_id);
             if (data.printify_provider_id) formData.append('printify_provider_id', data.printify_provider_id);
 
@@ -824,8 +876,18 @@ const handleCategoryChange = (categoryId: number) => {
 
     const applyMerchantHubProduct = (p: HubMarketplaceProductRow) => {
         const rawPrice = p.suggested_retail_price || p.base_price || '0';
-        const price = parseFloat(rawPrice);
-        const safePrice = Number.isFinite(price) ? price.toFixed(2) : '0.00';
+        const fallbackPrice = parseFloat(rawPrice);
+        const safeFallback = Number.isFinite(fallbackPrice) ? fallbackPrice.toFixed(2) : '0.00';
+        const costStr = p.cost != null && String(p.cost).trim() !== '' ? String(p.cost) : String(p.base_price || '');
+        const costNum = parseFloat(costStr);
+        const marginPct = parseFloat(String(data.profit_margin_percentage || '25'));
+        const marginOk = Number.isFinite(marginPct) && marginPct >= 0;
+        let unitPrice = safeFallback;
+        let hubListingCost = '';
+        if (Number.isFinite(costNum) && costNum > 0 && marginOk) {
+            hubListingCost = costNum.toFixed(2);
+            unitPrice = (costNum * (1 + marginPct / 100)).toFixed(2);
+        }
         const plain = stripHtmlForDescription(p.description || '');
         const desc = plain.slice(0, 1000);
         const sku = `MH-${p.id}-${Math.random().toString(36).slice(2, 10)}`.toUpperCase();
@@ -838,9 +900,10 @@ const handleCategoryChange = (categoryId: number) => {
         setData({
             ...data,
             hub_marketplace_product_id: p.id,
+            hub_listing_cost: hubListingCost,
             name: p.name,
             description: desc,
-            unit_price: safePrice,
+            unit_price: unitPrice,
             sku,
             quantity: qty,
             type: nextType,
@@ -1013,6 +1076,8 @@ const handleCategoryChange = (categoryId: number) => {
                                                     product_source_type: v,
                                                     hub_merchant_id: v === 'own' ? '' : data.hub_merchant_id,
                                                     hub_marketplace_product_id: v === 'own' ? '' : data.hub_marketplace_product_id,
+                                                    hub_listing_cost: v === 'own' ? '' : data.hub_listing_cost,
+                                                    source_cost: v === 'merchant_hub' ? '' : data.source_cost,
                                                 });
                                             }}
                                         />
@@ -1632,6 +1697,7 @@ const handleCategoryChange = (categoryId: number) => {
                                                         ...data,
                                                         hub_merchant_id: id,
                                                         hub_marketplace_product_id: '',
+                                                        hub_listing_cost: '',
                                                         ship_from_mode: 'merchant',
                                                         ship_from_merchant_id: id,
                                                     });
@@ -1714,7 +1780,7 @@ const handleCategoryChange = (categoryId: number) => {
                                         </div>
                                         <CardDescription className="text-sm text-gray-600 dark:text-gray-400">
                                             {isMerchantHubFlow
-                                                ? 'Merchant Hub listings use fixed pricing. Adjust unit price in the inventory section.'
+                                                ? 'Merchant Hub uses fixed pricing. Set markup on your listing cost in Pricing & Inventory (or edit unit price directly).'
                                                 : 'Choose how this product is priced'}
                                         </CardDescription>
                                     </CardHeader>
@@ -2270,6 +2336,103 @@ const handleCategoryChange = (categoryId: number) => {
 
                                     {!data.is_printify_product && (data.pricing_model === 'fixed' || data.pricing_model === 'offer' || !data.pricing_model) && (
                                         <>
+                                            {!isMerchantHubFlow && data.product_source_type === 'own' && (
+                                                <div className="space-y-3 sm:col-span-2 rounded-xl border border-emerald-200 bg-emerald-50/40 p-4 dark:border-emerald-900/50 dark:bg-emerald-950/20">
+                                                    <p className="text-sm font-semibold text-emerald-900 dark:text-emerald-200">
+                                                        Own product — price from cost &amp; markup
+                                                    </p>
+                                                    <p className="text-muted-foreground text-xs leading-relaxed">
+                                                        Selling price = your cost × (1 + markup ÷ 100). Fill both to auto-set unit price, or leave cost empty and enter unit price only.
+                                                    </p>
+                                                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                                                        <div className="space-y-2">
+                                                            <Label htmlFor="source_cost">Your cost ($)</Label>
+                                                            <div className="relative">
+                                                                <span className="absolute top-1/2 left-3 -translate-y-1/2 text-gray-500 dark:text-gray-400">
+                                                                    $
+                                                                </span>
+                                                                <Input
+                                                                    id="source_cost"
+                                                                    type="number"
+                                                                    step="0.01"
+                                                                    min="0"
+                                                                    value={data.source_cost}
+                                                                    onChange={(e) => handleChange('source_cost', e.target.value)}
+                                                                    placeholder="0.00"
+                                                                    className="h-11 pl-8 text-base"
+                                                                />
+                                                            </div>
+                                                            {errors.source_cost && (
+                                                                <p className="text-sm text-red-500">{errors.source_cost as string}</p>
+                                                            )}
+                                                        </div>
+                                                        <div className="space-y-2">
+                                                            <Label htmlFor="profit_margin_own">Selling price markup (%)</Label>
+                                                            <Input
+                                                                id="profit_margin_own"
+                                                                type="number"
+                                                                step="0.01"
+                                                                min="0"
+                                                                value={data.profit_margin_percentage}
+                                                                onChange={(e) => handleChange('profit_margin_percentage', e.target.value)}
+                                                                placeholder="e.g., 25"
+                                                                className="h-11 text-base"
+                                                            />
+                                                            {errors.profit_margin_percentage && (
+                                                                <p className="text-sm text-red-500">{errors.profit_margin_percentage}</p>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {isMerchantHubFlow && data.hub_marketplace_product_id && (
+                                                <div className="space-y-3 sm:col-span-2 rounded-xl border border-amber-200 bg-amber-50/40 p-4 dark:border-amber-900/50 dark:bg-amber-950/20">
+                                                    <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">
+                                                        Merchant Hub — price from listing cost &amp; markup
+                                                    </p>
+                                                    <p className="text-muted-foreground text-xs leading-relaxed">
+                                                        Uses the merchant&apos;s cost (or base price) from the listing. Adjust markup to set your resale price; must meet any minimum resale price.
+                                                    </p>
+                                                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                                                        <div className="space-y-2">
+                                                            <Label>Listing cost (merchant)</Label>
+                                                            <div className="relative">
+                                                                <span className="absolute top-1/2 left-3 -translate-y-1/2 text-gray-500 dark:text-gray-400">
+                                                                    $
+                                                                </span>
+                                                                <Input
+                                                                    type="text"
+                                                                    readOnly
+                                                                    value={
+                                                                        String(data.hub_listing_cost ?? '').trim() !== ''
+                                                                            ? data.hub_listing_cost
+                                                                            : '— (set unit price manually)'
+                                                                    }
+                                                                    className="h-11 cursor-not-allowed bg-gray-100 pl-8 dark:bg-gray-800"
+                                                                />
+                                                            </div>
+                                                        </div>
+                                                        <div className="space-y-2">
+                                                            <Label htmlFor="profit_margin_hub">Selling price markup (%)</Label>
+                                                            <Input
+                                                                id="profit_margin_hub"
+                                                                type="number"
+                                                                step="0.01"
+                                                                min="0"
+                                                                value={data.profit_margin_percentage}
+                                                                onChange={(e) => handleChange('profit_margin_percentage', e.target.value)}
+                                                                placeholder="e.g., 25"
+                                                                className="h-11 text-base"
+                                                            />
+                                                            {errors.profit_margin_percentage && (
+                                                                <p className="text-sm text-red-500">{errors.profit_margin_percentage}</p>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            )}
+
                                             <div className="space-y-2">
                                                 <Label htmlFor="unit_price" className="flex items-center gap-2">
                                                     <DollarSign className="h-4 w-4" />
@@ -2307,20 +2470,31 @@ const handleCategoryChange = (categoryId: number) => {
                                         </>
                                     )}
 
-                                    {/* <div className="space-y-2">
-                                        <Label htmlFor="profit_margin_percentage">Profit Margin (%) *</Label>
-                                        <Input
-                                            id="profit_margin_percentage"
-                                            type="number"
-                                            step="0.01"
-                                            min="0"
-                                            value={data.profit_margin_percentage}
-                                            onChange={(e) => handleChange('profit_margin_percentage', e.target.value)}
-                                            placeholder="Enter profit margin"
-                                            className={errors.profit_margin_percentage ? 'border-red-500' : ''}
-                                        />
-                                        {errors.profit_margin_percentage && <p className="text-sm text-red-500">{errors.profit_margin_percentage}</p>}
-                                    </div> */}
+                                    {data.is_printify_product && (
+                                        <div className="space-y-2">
+                                            <Label htmlFor="profit_margin_percentage" className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                                                Selling price markup (%) *
+                                            </Label>
+                                            <p className="text-muted-foreground text-xs leading-relaxed">
+                                                Retail per variant = Printify production cost × (1 + markup ÷ 100). Set your organization&apos;s margin here.
+                                            </p>
+                                            <Input
+                                                id="profit_margin_percentage"
+                                                type="number"
+                                                step="0.01"
+                                                min="0"
+                                                value={data.profit_margin_percentage}
+                                                onChange={(e) => handleChange('profit_margin_percentage', e.target.value)}
+                                                placeholder="e.g., 25"
+                                                className={`h-11 text-base ${errors.profit_margin_percentage ? 'border-red-500 focus-visible:ring-red-500 dark:border-red-500' : 'border-gray-300 focus-visible:ring-green-500 dark:border-gray-600'} bg-white text-gray-900 placeholder:text-gray-400 dark:bg-gray-800 dark:text-gray-100 dark:placeholder:text-gray-500`}
+                                            />
+                                            {errors.profit_margin_percentage && (
+                                                <p className="flex items-center gap-1 text-sm text-red-500 dark:text-red-400">
+                                                    <span>⚠</span> {errors.profit_margin_percentage}
+                                                </p>
+                                            )}
+                                        </div>
+                                    )}
 
                                     <div className="space-y-2">
                                         <Label htmlFor="sku" className="text-sm font-semibold text-gray-900 dark:text-gray-100">

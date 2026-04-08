@@ -207,6 +207,8 @@ class CheckoutController extends Controller
             $printifyOrderId = null;
             $shippingData = [];
             $taxAmount = 0;
+            $printifyTaxPortion = 0.0;
+            $additionalSalesTaxAdjustment = 0.0;
             $shippoRateObjectId = null;
             $shippoCarrier = null;
             $shippoRateAmount = null;
@@ -238,9 +240,14 @@ class CheckoutController extends Controller
                         $validated['zip']
                     );
 
-                    // Extract tax from Printify order if available
+                    // Tax from Printify (typically on production cost); align to full retail + markup
                     if (isset($shippingData['total_tax'])) {
-                        $taxAmount = ($shippingData['total_tax'] ?? 0) / 100;
+                        $rawPrintifyTax = ($shippingData['total_tax'] ?? 0) / 100;
+                        $split = $this->sumPrintifyRetailAndProductionCost($cart);
+                        $adj = $this->adjustPrintifySalesTaxForMarkup($rawPrintifyTax, $split['retail'], $split['cost']);
+                        $printifyTaxPortion = $adj['printify_tax'];
+                        $additionalSalesTaxAdjustment = $adj['additional_sales_tax_adjustment'];
+                        $taxAmount = $adj['total_tax'];
                     }
                 } else {
                     // Cart has Printify products but no valid line items (fallback to manual shipping)
@@ -419,6 +426,8 @@ class CheckoutController extends Controller
                         $taxAmount = ($subtotal * $taxRate) / 100;
                     }
                 }
+                $printifyTaxPortion = 0.0;
+                $additionalSalesTaxAdjustment = 0.0;
             }
 
             // Update temp order with shipping and tax
@@ -427,6 +436,8 @@ class CheckoutController extends Controller
                 'shipping_methods' => $shippingData['methods'] ?? [],
                 'shipping_cost' => $shippingData['cost'] ?? 0,
                 'tax_amount' => $taxAmount,
+                'printify_tax_amount' => $printifyTaxPortion,
+                'additional_sales_tax_adjustment' => $additionalSalesTaxAdjustment,
                 'total_amount' => $subtotal + ($shippingData['cost'] ?? 0) + $taxAmount, // Platform fee removed from customer total
                 'shippo_rate_object_id' => $shippoRateObjectId,
                 'shippo_carrier' => $shippoCarrier,
@@ -443,6 +454,8 @@ class CheckoutController extends Controller
                 'shipping_methods' => $shippingData['methods'] ?? [],
                 'shipping_cost' => (float) ($shippingData['cost'] ?? 0),
                 'tax_amount' => (float) $taxAmount,
+                'printify_tax_amount' => (float) $printifyTaxPortion,
+                'additional_sales_tax_adjustment' => (float) $additionalSalesTaxAdjustment,
                 'total_amount' => (float) $tempOrder->total_amount,
             ]);
         } catch (\Exception $e) {
@@ -605,6 +618,8 @@ class CheckoutController extends Controller
         $retryDelay = 2.5; // seconds
         $newTaxAmount = 0;
         $newShippingCost = 0;
+        $printifyTaxPortion = 0.0;
+        $additionalSalesTaxAdjustment = 0.0;
         $printifyStatus = null;
         $shippoPatch = [];
 
@@ -624,8 +639,14 @@ class CheckoutController extends Controller
                         'total_shipping' => $printifyOrder['total_shipping'] ?? 0,
                     ]);
 
-                    // Convert cents to dollars
-                    $newTaxAmount = (float) (($printifyOrder['total_tax'] ?? 0) / 100);
+                    // Convert cents to dollars; align tax to retail (markup) vs Printify cost basis
+                    $rawPrintifyTax = (float) (($printifyOrder['total_tax'] ?? 0) / 100);
+                    $tempOrder->load(['cart.items.product']);
+                    $split = $this->sumPrintifyRetailAndProductionCost($tempOrder->cart);
+                    $adj = $this->adjustPrintifySalesTaxForMarkup($rawPrintifyTax, $split['retail'], $split['cost']);
+                    $newTaxAmount = $adj['total_tax'];
+                    $printifyTaxPortion = $adj['printify_tax'];
+                    $additionalSalesTaxAdjustment = $adj['additional_sales_tax_adjustment'];
                     $newShippingCost = (float) (($printifyOrder['total_shipping'] ?? 0) / 100);
 
                     // Check if tax is calculated (non-zero) or if status is ready
@@ -651,6 +672,8 @@ class CheckoutController extends Controller
                     if ($attempt === $maxRetries) {
                         $newTaxAmount = $this->estimateTaxFallback($tempOrder);
                         $newShippingCost = $tempOrder->shipping_cost;
+                        $printifyTaxPortion = $newTaxAmount;
+                        $additionalSalesTaxAdjustment = 0.0;
                         \Log::warning('Using estimated tax after all retries failed');
                     }
                 }
@@ -658,6 +681,8 @@ class CheckoutController extends Controller
         } else {
             // Manual products: tax from step 1; shipping from the method the buyer selected (Shippo rate id or flat "standard")
             $newTaxAmount = (float) ($tempOrder->tax_amount ?? 0);
+            $printifyTaxPortion = (float) ($tempOrder->printify_tax_amount ?? 0);
+            $additionalSalesTaxAdjustment = (float) ($tempOrder->additional_sales_tax_adjustment ?? 0);
             $methods = $tempOrder->shipping_methods ?? [];
             $selectedId = (string) $validated['shipping_method'];
 
@@ -719,6 +744,8 @@ class CheckoutController extends Controller
         // Update temp order with latest values (manual: merge Shippo rate id for label purchase)
         $tempOrder->update(array_merge([
             'tax_amount' => $newTaxAmount,
+            'printify_tax_amount' => $printifyTaxPortion,
+            'additional_sales_tax_adjustment' => $additionalSalesTaxAdjustment,
             'shipping_cost' => $newShippingCost,
             'total_amount' => $newTotalAmount,
             'selected_shipping_method' => $validated['shipping_method'],
@@ -752,6 +779,8 @@ class CheckoutController extends Controller
                 'temp_order_id' => $tempOrder->id,
                 'amount' => (float) $tempOrder->total_amount,
                 'tax_amount' => (float) $tempOrder->tax_amount,
+                'printify_tax_amount' => (float) $tempOrder->printify_tax_amount,
+                'additional_sales_tax_adjustment' => (float) $tempOrder->additional_sales_tax_adjustment,
                 'shipping_cost' => (float) $tempOrder->shipping_cost,
                 'donation_amount' => (float) $tempOrder->donation_amount,
                 'printify_status' => $printifyStatus,
@@ -899,6 +928,8 @@ class CheckoutController extends Controller
                 // 'donation_amount' => $tempOrder->donation_amount, // Commented out - removed donation for Printify products
                 'donation_amount' => 0, // Set to 0 - donation removed for Printify products
                 'tax_amount' => $tempOrder->tax_amount,
+                'printify_tax_amount' => $tempOrder->printify_tax_amount ?? 0,
+                'additional_sales_tax_adjustment' => $tempOrder->additional_sales_tax_adjustment ?? 0,
                 'shipping_cost' => $tempOrder->shipping_cost,
                 'total_amount' => $tempOrder->total_amount,
                 'status' => 'processing',
@@ -1389,9 +1420,14 @@ class CheckoutController extends Controller
                 // Get updated Printify order details
                 $printifyOrder = $this->printifyService->getOrder($tempOrder->printify_order_id);
 
-                // Calculate new tax amount
-                $newTaxAmount = (float) (($printifyOrder['total_tax'] ?? 0) / 100);
+                $rawPrintifyTax = (float) (($printifyOrder['total_tax'] ?? 0) / 100);
                 $shippingCost = (float) (($printifyOrder['total_shipping'] ?? 0) / 100);
+                $tempOrder->load(['cart.items.product']);
+                $split = $this->sumPrintifyRetailAndProductionCost($tempOrder->cart);
+                $adj = $this->adjustPrintifySalesTaxForMarkup($rawPrintifyTax, $split['retail'], $split['cost']);
+                $newTaxAmount = $adj['total_tax'];
+                $printifyTaxPortion = $adj['printify_tax'];
+                $additionalSalesTaxAdjustment = $adj['additional_sales_tax_adjustment'];
 
                 // Log the tax update
                 \Log::info('Tax amount updated on Step2 load', [
@@ -1405,6 +1441,8 @@ class CheckoutController extends Controller
             } else {
                 // For manual products, use existing tax and shipping (already calculated in step 1)
                 $newTaxAmount = $tempOrder->tax_amount ?? 0;
+                $printifyTaxPortion = (float) ($tempOrder->printify_tax_amount ?? 0);
+                $additionalSalesTaxAdjustment = (float) ($tempOrder->additional_sales_tax_adjustment ?? 0);
                 $shippingCost = $tempOrder->shipping_cost ?? 0;
 
                 \Log::info('Tax amount for manual product (no update needed)', [
@@ -1419,6 +1457,8 @@ class CheckoutController extends Controller
 
             $tempOrder->update([
                 'tax_amount' => $newTaxAmount,
+                'printify_tax_amount' => $printifyTaxPortion,
+                'additional_sales_tax_adjustment' => $additionalSalesTaxAdjustment,
                 'shipping_cost' => $shippingCost,
                 // Buyer total excludes platform_fee (BIU fee is seller-side / ledger; not charged to customer)
                 'total_amount' => $tempOrder->subtotal +
@@ -1432,6 +1472,8 @@ class CheckoutController extends Controller
             return response()->json([
                 'success' => true,
                 'tax_amount' => (float) $newTaxAmount,
+                'printify_tax_amount' => (float) $printifyTaxPortion,
+                'additional_sales_tax_adjustment' => (float) $additionalSalesTaxAdjustment,
                 'shipping_cost' => (float) $shippingCost,
                 'total_amount' => (float) $tempOrder->total_amount,
                 'amount_changed' => $amountChanged,
@@ -1448,5 +1490,110 @@ class CheckoutController extends Controller
                 'error' => 'Failed to update tax amount',
             ], 500);
         }
+    }
+
+    /**
+     * Sum retail (cart) and Printify production cost for catalog Printify line items only.
+     *
+     * @return array{retail: float, cost: float}
+     */
+    private function sumPrintifyRetailAndProductionCost(?Cart $cart): array
+    {
+        $retail = 0.0;
+        $cost = 0.0;
+
+        if (! $cart || $cart->items->isEmpty()) {
+            return ['retail' => 0.0, 'cost' => 0.0];
+        }
+
+        $productCache = [];
+
+        foreach ($cart->items as $item) {
+            if (
+                ! $item->product_id
+                || ! $item->product
+                || empty($item->product->printify_product_id)
+                || empty($item->printify_variant_id)
+            ) {
+                continue;
+            }
+
+            $pid = (string) $item->product->printify_product_id;
+            if (! isset($productCache[$pid])) {
+                try {
+                    $productCache[$pid] = $this->printifyService->getProduct($pid);
+                } catch (\Exception $e) {
+                    \Log::warning('sumPrintifyRetailAndProductionCost: getProduct failed', [
+                        'printify_product_id' => $pid,
+                        'error' => $e->getMessage(),
+                    ]);
+                    $productCache[$pid] = [];
+                }
+            }
+
+            $details = $productCache[$pid];
+            $variantId = (int) $item->printify_variant_id;
+            $costCents = 0;
+            foreach ($details['variants'] ?? [] as $v) {
+                if ((int) ($v['id'] ?? 0) === $variantId) {
+                    $costCents = (int) ($v['cost'] ?? 0);
+                    break;
+                }
+            }
+
+            $qty = (int) $item->quantity;
+            $retail += (float) $item->unit_price * $qty;
+            $cost += ($costCents / 100) * $qty;
+        }
+
+        return [
+            'retail' => round($retail, 2),
+            'cost' => round($cost, 2),
+        ];
+    }
+
+    /**
+     * Printify remits tax on production; retail includes org markup. Scale total tax so the effective
+     * rate applies to full retail: T_retail ≈ T_printify × (R / C).
+     */
+    private function adjustPrintifySalesTaxForMarkup(float $printifyTaxDollars, float $retailSubtotal, float $productionCostSubtotal): array
+    {
+        $printifyTaxDollars = round($printifyTaxDollars, 2);
+
+        if ($productionCostSubtotal <= 0 || $printifyTaxDollars <= 0 || $retailSubtotal <= $productionCostSubtotal) {
+            return [
+                'printify_tax' => $printifyTaxDollars,
+                'additional_sales_tax_adjustment' => 0.0,
+                'total_tax' => $printifyTaxDollars,
+            ];
+        }
+
+        $ratio = $retailSubtotal / $productionCostSubtotal;
+        $totalRetailAligned = round($printifyTaxDollars * $ratio, 2);
+        $additional = max(0.0, round($totalRetailAligned - $printifyTaxDollars, 2));
+
+        return [
+            'printify_tax' => $printifyTaxDollars,
+            'additional_sales_tax_adjustment' => $additional,
+            'total_tax' => round($printifyTaxDollars + $additional, 2),
+        ];
+    }
+
+    private function estimateTaxFallback(TempOrder $tempOrder): float
+    {
+        $state = strtoupper((string) ($tempOrder->state ?? ''));
+        if ($state === '') {
+            return 0.0;
+        }
+
+        $stateTax = \App\Models\StateSalesTax::where('state_code', $state)->first();
+        if (! $stateTax) {
+            return 0.0;
+        }
+
+        $rate = (float) $stateTax->base_sales_tax_rate;
+        $subtotal = (float) $tempOrder->subtotal;
+
+        return round(($subtotal * $rate) / 100, 2);
     }
 }

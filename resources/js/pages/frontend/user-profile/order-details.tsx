@@ -69,6 +69,8 @@ interface Order {
   subtotal: number
   shipping_cost: number
   tax_amount: number
+  printify_tax_amount?: number
+  additional_sales_tax_adjustment?: number
   platform_fee: number
   donation_amount: number
   total_amount: number
@@ -479,12 +481,37 @@ export default function OrderDetails() {
                                           ${(Number(order?.shipping_cost) || 0).toFixed(2)}
                     </span>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-600 dark:text-gray-400">Tax</span>
-                    <span className="font-medium text-gray-900 dark:text-white">
-                      ${order?.tax_amount|| 0}
-                    </span>
-                  </div>
+                  {(Number(order?.printify_tax_amount) > 0 || Number(order?.additional_sales_tax_adjustment) > 0) ? (
+                    <>
+                      <div className="flex justify-between">
+                        <span className="text-gray-600 dark:text-gray-400">Sales tax (Printify)</span>
+                        <span className="font-medium text-gray-900 dark:text-white">
+                          ${(Number(order?.printify_tax_amount) || 0).toFixed(2)}
+                        </span>
+                      </div>
+                      {(Number(order?.additional_sales_tax_adjustment) || 0) > 0 && (
+                        <div className="flex justify-between">
+                          <span className="text-gray-600 dark:text-gray-400">Additional sales tax adjustment</span>
+                          <span className="font-medium text-gray-900 dark:text-white">
+                            ${(Number(order?.additional_sales_tax_adjustment) || 0).toFixed(2)}
+                          </span>
+                        </div>
+                      )}
+                      <div className="flex justify-between">
+                        <span className="text-gray-600 dark:text-gray-400">Total tax</span>
+                        <span className="font-medium text-gray-900 dark:text-white">
+                          ${(Number(order?.tax_amount) || 0).toFixed(2)}
+                        </span>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="flex justify-between">
+                      <span className="text-gray-600 dark:text-gray-400">Tax</span>
+                      <span className="font-medium text-gray-900 dark:text-white">
+                        ${(Number(order?.tax_amount) || 0).toFixed(2)}
+                      </span>
+                    </div>
+                  )}
                   <div className="border-t border-gray-200 dark:border-gray-600 pt-3">
                     <div className="flex justify-between">
                       <span className="font-semibold text-gray-900 dark:text-white">Total</span>

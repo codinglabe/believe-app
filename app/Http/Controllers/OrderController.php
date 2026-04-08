@@ -200,8 +200,14 @@ class OrderController extends Controller
             return $item->unit_price * $item->quantity;
         });
 
-        // Get profit margin from env (default 25%)
+        // Profit margin: first catalog product line with stored markup (Printify), else default
         $profitMarginRate = (float) config('app.printify_profit_margin', 25);
+        foreach ($order->items as $item) {
+            if ($item->product && $item->product->profit_margin_percentage !== null) {
+                $profitMarginRate = (float) $item->product->profit_margin_percentage;
+                break;
+            }
+        }
 
         // Get Printify order details if available for calculations
         $printifyProductCost = 0;
@@ -276,6 +282,8 @@ class OrderController extends Controller
                 'platform_payment_fee' => $platformPaymentFee,
                 'printify_shipping' => $printifyShipping,
                 'printify_tax' => $printifyTax,
+                'printify_tax_amount' => (float) ($order->printify_tax_amount ?? 0),
+                'additional_sales_tax_adjustment' => (float) ($order->additional_sales_tax_adjustment ?? 0),
             ],
             'user' => [
                 'id' => $order->user->id,
