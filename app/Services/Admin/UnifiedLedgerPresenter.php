@@ -66,12 +66,19 @@ class UnifiedLedgerPresenter
             'supplier_payout_amount' => $sellingPayouts['supplier'],
             'organization_payout_amount' => $sellingPayouts['organization'],
             'platform_payout_amount' => $sellingPayouts['platform'],
+            'supporter_payout_amount' => $sellingPayouts['supporter'],
             'currency' => $t->currency ?? 'USD',
             'status' => $t->status,
             'provider' => $provider,
             'reference' => $reference,
             'organization_id' => $ledgerReport['organization_id'] ?? null,
             'organization_name' => $ledgerReport['organization_name'] ?? null,
+            'supplier_name' => isset($ledgerReport['supplier_name']) && $ledgerReport['supplier_name'] !== ''
+                ? (string) $ledgerReport['supplier_name']
+                : null,
+            'supplier_type' => isset($ledgerReport['supplier_type']) && $ledgerReport['supplier_type'] !== ''
+                ? (string) $ledgerReport['supplier_type']
+                : null,
         ];
     }
 
@@ -79,7 +86,7 @@ class UnifiedLedgerPresenter
      * Supplier / nonprofit / platform settlement lines for selling modules (marketplace, Service Hub, etc.).
      *
      * @param  array<string, mixed>  $ledgerReport
-     * @return array{supplier: float|null, organization: float|null, platform: float|null}
+     * @return array{supplier: float|null, organization: float|null, platform: float|null, supporter: float|null}
      */
     private function resolveSellingPayoutAmounts(array $ledgerReport): array
     {
@@ -99,6 +106,7 @@ class UnifiedLedgerPresenter
             'supplier' => $pick('supplier_payout'),
             'organization' => $pick('organization_payout'),
             'platform' => $pick('platform_payout'),
+            'supporter' => $pick('supporter_payout'),
         ];
     }
 

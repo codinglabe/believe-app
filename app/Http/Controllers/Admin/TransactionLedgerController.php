@@ -440,6 +440,7 @@ class TransactionLedgerController extends Controller
             'meta' => $t->meta,
             'stripe' => $this->buildStripePresentation($t),
             'donation' => $donationLedger,
+            'donation_badge' => $donationLedger !== null,
             'donation_badge_label' => $this->resolveDonationBadgeLabel($t, $donationLedger),
             'donation_ledger_perspective' => $donationPerspective,
             'ledger_actor_context' => $this->resolveLedgerActorContext($t, $donationLedger),
@@ -884,6 +885,9 @@ class TransactionLedgerController extends Controller
             'supplier_payout' => $fin['supplier_payout'] ?? null,
             'organization_payout' => $fin['organization_payout'] ?? null,
             'platform_payout' => $fin['platform_payout'] ?? null,
+            'supporter_payout' => $fin['supporter_payout'] ?? null,
+            'supplier_name' => $fin['supplier_name'] ?? null,
+            'supplier_type' => $fin['supplier_type'] ?? null,
         ];
     }
 
@@ -1170,6 +1174,7 @@ class TransactionLedgerController extends Controller
             $relatedBasename = $rt !== '' ? class_basename($rt) : '';
             $isOrder = $rt === Order::class || $relatedBasename === 'Order';
             $isServiceOrder = $rt === ServiceOrder::class || str_ends_with($rt, 'ServiceOrder');
+            $isEnrollment = $rt === Enrollment::class || str_ends_with($rt, 'Enrollment');
             if ($isOrder) {
                 $order = Order::query()->with('orderSplit')->find((int) $t->related_id);
                 if ($order) {
@@ -1179,6 +1184,16 @@ class TransactionLedgerController extends Controller
                 $serviceOrder = ServiceOrder::query()->find((int) $t->related_id);
                 if ($serviceOrder) {
                     $out = ServiceOrderLedgerService::mergeLedgerFinancials($serviceOrder, $t, $out);
+                }
+            } elseif ($isEnrollment) {
+                $enrollment = Enrollment::query()->with('course.creator')->find((int) $t->related_id);
+                if ($enrollment?->course) {
+                    $creator = $enrollment->course->creator;
+                    $instructorName = $creator !== null && filled($creator->name) ? (string) $creator->name : null;
+                    if ($instructorName !== null) {
+                        $out['supplier_name'] = $instructorName;
+                        $out['supplier_type'] = 'SUPPORTER';
+                    }
                 }
             }
         }
@@ -1231,6 +1246,7 @@ class TransactionLedgerController extends Controller
             'supplier_payout' => ['supplier_payout', 'merchant_payout'],
             'organization_payout' => ['organization_payout'],
             'platform_payout' => ['platform_payout'],
+            'supporter_payout' => ['supporter_payout', 'instructor_payout', 'instructor_settlement', 'creator_payout'],
         ];
         foreach ($map as $key => $metaKeys) {
             if (! array_key_exists($key, $fin) || $fin[$key] === null) {
