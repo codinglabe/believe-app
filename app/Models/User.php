@@ -94,6 +94,7 @@ class User extends Authenticatable implements MustVerifyEmail
         'city',
         'state',
         'zipcode',
+        'volunteer_interest_statement',
         'youtube_channel_url',
         'youtube_access_token',
         'youtube_refresh_token',
@@ -529,6 +530,23 @@ class User extends Authenticatable implements MustVerifyEmail
         }
 
         return in_array((string) $this->role, ['organization', 'organization_pending', 'care_alliance'], true);
+    }
+
+    /**
+     * Whether this account may follow nonprofits (Explore by Cause, favorites, etc.).
+     * Organization / Care Alliance / admin accounts cannot follow other organizations.
+     */
+    public function canFollowOrganizations(): bool
+    {
+        if ($this->hasRole('admin') || (string) $this->role === 'admin') {
+            return false;
+        }
+
+        if ($this->hasNonprofitDashboardRole()) {
+            return false;
+        }
+
+        return $this->hasRole('user') || (string) $this->role === 'user';
     }
 
     public function sendJobs()

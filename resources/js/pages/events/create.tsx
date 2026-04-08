@@ -67,7 +67,6 @@ export default function CreateEvent({
         requirements: '',
         contact_info: '',
         poster_image: null as File | null,
-        birthday: '',
         visibility: 'public',
     });
 
@@ -327,43 +326,29 @@ export default function CreateEvent({
                                         </div>
                                     </div>
 
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                        <div>
-                                            <Label htmlFor="birthday">Birthdate</Label>
-                                            <Input
-                                                id="birthdate"
-                                                type="date"
-                                                value={data.birthday}
-                                                onChange={(e) => setData('birthday', e.target.value)}
-                                                className={errors.birthday ? 'border-red-500' : ''}
-                                            />
-                                            {errors.birthday && <p className="text-red-500 text-sm mt-1">{errors.birthday}</p>}
-                                        </div>
+                                    <div>
+                                        <Label htmlFor="visibility">Visibility</Label>
+                                        <Select value={data.visibility} onValueChange={(value) => setData('visibility', value)}>
+                                            <SelectTrigger className={errors.visibility ? 'border-red-500' : ''}>
+                                                <SelectValue />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="public">
+                                                    <div className="flex items-center">
+                                                        <Eye className="h-4 w-4 mr-2" />
+                                                        Public
+                                                    </div>
+                                                </SelectItem>
+                                                <SelectItem value="private">
+                                                    <div className="flex items-center">
+                                                        <EyeOff className="h-4 w-4 mr-2" />
+                                                        Private
+                                                    </div>
+                                                </SelectItem>
 
-                                        <div>
-                                            <Label htmlFor="visibility">Visibility</Label>
-                                            <Select value={data.visibility} onValueChange={(value) => setData('visibility', value)}>
-                                                <SelectTrigger className={errors.visibility ? 'border-red-500' : ''}>
-                                                    <SelectValue />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    <SelectItem value="public">
-                                                        <div className="flex items-center">
-                                                            <Eye className="h-4 w-4 mr-2" />
-                                                            Public
-                                                        </div>
-                                                    </SelectItem>
-                                                    <SelectItem value="private">
-                                                        <div className="flex items-center">
-                                                            <EyeOff className="h-4 w-4 mr-2" />
-                                                            Private
-                                                        </div>
-                                                    </SelectItem>
-
-                                                </SelectContent>
-                                            </Select>
-                                            {errors.visibility && <p className="text-red-500 text-sm mt-1">{errors.visibility}</p>}
-                                        </div>
+                                            </SelectContent>
+                                        </Select>
+                                        {errors.visibility && <p className="text-red-500 text-sm mt-1">{errors.visibility}</p>}
                                     </div>
 
                                     <div>

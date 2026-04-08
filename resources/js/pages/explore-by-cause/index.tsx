@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Head, router, Link } from '@inertiajs/react';
+import { Head, router, Link, usePage } from '@inertiajs/react';
+import toast from 'react-hot-toast';
 import FrontendLayout from '@/layouts/frontend/frontend-layout';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -27,6 +28,7 @@ interface OrgItem {
     city: string | null;
     state: string | null;
     website: string | null;
+    is_following: boolean;
 }
 
 interface EventItem {
@@ -74,19 +76,80 @@ interface Props {
     volunteers: VolunteerItem[];
     impactCounts: ImpactCounts;
     myCauses: InterestCategory[];
+    canFollowOrganizations: boolean;
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
-function OrganizationCard({ org }: { org: OrgItem }) {
-    const [followed, setFollowed] = useState(false);
+function OrganizationCard({ org, canFollowOrganizations }: { org: OrgItem; canFollowOrganizations: boolean }) {
+    const { auth } = usePage<{ auth?: { user?: { id?: number } } }>().props;
+    const [followed, setFollowed] = useState(org.is_following);
+
+    useEffect(() => {
+        setFollowed(org.is_following);
+    }, [org.is_following]);
 
     const handleFollow = () => {
-        router.post(`/organizations/${org.id}/toggle-favorite`, {}, {
+        router.post(`/organizations/${org.id}/toggle-favorite`, { toggle_favorite_context: 'organization' }, {
             preserveScroll: true,
-            onSuccess: () => setFollowed(f => !f),
+            // Inertia v2 defaults POST to preserveState: true, which can keep stale org rows / follow UI after redirect
+            preserveState: false,
+            onSuccess: page => {
+                const props = page.props as {
+                    organizations?: OrgItem[];
+                    flash?: { error?: string };
+                    error?: string;
+                };
+                const flashErr = props.flash?.error;
+                const err = (typeof flashErr === 'string' && flashErr) || (typeof props.error === 'string' && props.error);
+                if (err) {
+                    toast.error(err);
+                    return;
+                }
+                const row = props.organizations?.find(o => o.id === org.id);
+                if (row) {
+                    setFollowed(row.is_following);
+                } else {
+                    setFollowed(f => !f);
+                }
+            },
+            onError: () => {
+                toast.error('Could not update follow. Please try again.');
+            },
         });
     };
+
+    const followControl = !auth?.user ? (
+        <Link href="/login" className="flex-1">
+            <Button variant="outline" size="sm" className="w-full text-xs">
+                <Users className="w-3 h-3 mr-1" />
+                Sign in to follow
+            </Button>
+        </Link>
+    ) : !canFollowOrganizations ? (
+        <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="flex-1 text-xs opacity-60 cursor-not-allowed"
+            disabled
+            title="Only supporter accounts can follow organizations"
+        >
+            <Users className="w-3 h-3 mr-1" />
+            Follow
+        </Button>
+    ) : (
+        <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className={`flex-1 text-xs transition-colors ${followed ? 'bg-blue-50 text-blue-700 border-blue-300 dark:bg-blue-950/40 dark:text-blue-200' : ''}`}
+            onClick={handleFollow}
+        >
+            <Users className="w-3 h-3 mr-1" />
+            {followed ? 'Unfollow' : 'Follow'}
+        </Button>
+    );
 
     return (
         <Card className="hover:shadow-md transition-shadow">
@@ -113,15 +176,7 @@ function OrganizationCard({ org }: { org: OrgItem }) {
                     </div>
                 </div>
                 <div className="flex gap-2 mt-3">
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        className={`flex-1 text-xs transition-colors ${followed ? 'bg-blue-50 text-blue-700 border-blue-300' : ''}`}
-                        onClick={handleFollow}
-                    >
-                        <Users className="w-3 h-3 mr-1" />
-                        {followed ? 'Following' : 'Follow'}
-                    </Button>
+                    {followControl}
                     <Link href="/donate" className="flex-1">
                         <Button size="sm" className="w-full text-xs bg-orange-500 hover:bg-orange-600 text-white border-0">
                             <Heart className="w-3 h-3 mr-1" /> Donate
@@ -244,21 +299,22 @@ export default function ExploreByCause({
     volunteers,
     impactCounts,
     myCauses,
+    canFollowOrganizations,
 }: Props) {
+    const { auth } = usePage<{ auth?: { user?: { id?: number } } }>().props;
+
     const validTabs: TabType[] = ['all', 'organizations', 'events', 'courses', 'volunteers'];
 
-    // Read tab from URL on first load so it survives cause changes
     const getTabFromUrl = (): TabType => {
         const params = new URLSearchParams(window.location.search);
         const t = params.get('tab') as TabType;
         return validTabs.includes(t) ? t : 'all';
     };
 
-    const [activeTab, setActiveTab] = useState<TabType>('all');
-
-    useEffect(() => {
-        setActiveTab(getTabFromUrl());
-    }, []);
+    // Sync with ?tab= on first paint so follow/unfollow (preserveState: false) does not jump back to "All"
+    const [activeTab, setActiveTab] = useState<TabType>(() =>
+        typeof window !== 'undefined' ? getTabFromUrl() : 'all'
+    );
 
     // When user changes tab, update URL query param (no page reload)
     const handleTabChange = (tab: TabType) => {
@@ -283,7 +339,15 @@ export default function ExploreByCause({
     const handleToggleInterest = (categoryId: number) => {
         router.post(`/explore-by-cause/toggle-interest/${categoryId}`, {}, {
             preserveScroll: true,
-            onSuccess: () => router.reload({ only: ['myCauses'] }),
+            onSuccess: page => {
+                const flash = (page.props as { flash?: { error?: string } }).flash;
+                if (flash?.error) {
+                    toast.error(flash.error);
+                    return;
+                }
+                router.reload({ only: ['myCauses'] });
+            },
+            onError: () => toast.error('Could not update your causes.'),
         });
     };
 
@@ -338,15 +402,40 @@ export default function ExploreByCause({
 
                             {/* Action Buttons */}
                             <div className="flex flex-wrap gap-2">
-                                <Button
-                                    variant="outline"
-                                    size="sm"
-                                    className="text-blue-600 border-blue-300 hover:bg-blue-50"
-                                    onClick={() => selectedCategory && handleToggleInterest(selectedCategory.id)}
-                                >
-                                    <Users className="w-3.5 h-3.5 mr-1" />
-                                    Follow
-                                </Button>
+                                {!auth?.user ? (
+                                    <Link href="/login">
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            className="text-blue-600 border-blue-300 hover:bg-blue-50"
+                                        >
+                                            <Users className="w-3.5 h-3.5 mr-1" />
+                                            Sign in to follow cause
+                                        </Button>
+                                    </Link>
+                                ) : !canFollowOrganizations ? (
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        className="text-blue-600 border-blue-300 opacity-60 cursor-not-allowed"
+                                        disabled
+                                        title="Only supporter accounts can follow causes"
+                                    >
+                                        <Users className="w-3.5 h-3.5 mr-1" />
+                                        Follow cause
+                                    </Button>
+                                ) : (
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        className="text-blue-600 border-blue-300 hover:bg-blue-50"
+                                        onClick={() => selectedCategory && handleToggleInterest(selectedCategory.id)}
+                                    >
+                                        <Users className="w-3.5 h-3.5 mr-1" />
+                                        Follow cause
+                                    </Button>
+                                )}
                                 <Link href="/donate">
                                     <Button size="sm" className="bg-orange-500 hover:bg-orange-600 text-white border-0">
                                         <Heart className="w-3.5 h-3.5 mr-1" />
@@ -448,7 +537,7 @@ export default function ExploreByCause({
                                     )}
                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                         {(activeTab === 'all' ? organizations.slice(0, 4) : organizations).map(org => (
-                                            <OrganizationCard key={org.id} org={org} />
+                                            <OrganizationCard key={org.id} org={org} canFollowOrganizations={canFollowOrganizations} />
                                         ))}
                                     </div>
                                 </section>
@@ -602,7 +691,7 @@ export default function ExploreByCause({
                                                 <CheckCircle2 className="w-4 h-4 text-green-500 shrink-0" />
                                                 <span>
                                                     <strong className="text-gray-900 dark:text-white">{impactCounts.events}</strong>
-                                                    <span className="text-gray-500 dark:text-gray-400"> Events this week</span>
+                                                    <span className="text-gray-500 dark:text-gray-400"> Upcoming events</span>
                                                 </span>
                                             </div>
                                             <div className="flex items-center gap-2 text-sm mb-2">

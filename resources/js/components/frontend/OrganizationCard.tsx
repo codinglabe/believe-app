@@ -91,10 +91,20 @@ export default function OrganizationCard({
     setIsFavorited(newFavoriteState)
 
     try {
-      router.post(route("organizations.toggle-favorite", organization.id),{},
+      router.post(
+        route("organizations.toggle-favorite", organization.id),
+        { toggle_favorite_context: 'organization' },
         {
           preserveScroll: true,
-          onSuccess: () => {
+          preserveState: false,
+          onSuccess: page => {
+            const flash = (page.props as { flash?: { error?: string } }).flash
+            const err = flash?.error ?? (page.props as { error?: string }).error
+            if (err) {
+              toast.error(err)
+              setIsFavorited(!newFavoriteState)
+              return
+            }
             setIsFavorited(newFavoriteState)
           },
           onError: () => {

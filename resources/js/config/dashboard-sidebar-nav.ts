@@ -97,7 +97,7 @@ export const dashboardSidebarNavItems: (NavItem | NavGroup)[] = [
     {
         title: '💰 Fundraising',
         icon: HandCoins,
-        role: 'organization',
+        role: ['organization', 'organization_pending', 'admin'],
         items: [
             {
                 title: 'Donations',
@@ -116,6 +116,12 @@ export const dashboardSidebarNavItems: (NavItem | NavGroup)[] = [
                 href: '/raffles',
                 icon: Gift,
                 permission: 'raffle.read',
+            },
+            {
+                title: 'Project applications',
+                href: '/dashboard/project-applications',
+                icon: FileText,
+                role: ['organization', 'organization_pending', 'admin'],
             },
         ],
     },
@@ -449,6 +455,13 @@ export const dashboardSidebarNavItems: (NavItem | NavGroup)[] = [
                         role: 'organization',
                     },
                     {
+                        title: 'Supporter volunteer interests',
+                        href: '/volunteers/supporter-interests',
+                        icon: HeartHandshake,
+                        permission: 'volunteer.read',
+                        role: 'organization',
+                    },
+                    {
                         title: 'Time sheet',
                         href: '/volunteers/timesheet',
                         icon: Clock,
@@ -582,12 +595,6 @@ export const dashboardSidebarNavItems: (NavItem | NavGroup)[] = [
                         role: 'care_alliance',
                     },
                 ],
-            },
-            {
-                title: 'Project applications',
-                href: '/dashboard/project-applications',
-                icon: FileText,
-                role: ['organization', 'organization_pending', 'admin'],
             },
         ],
     },

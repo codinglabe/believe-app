@@ -98,6 +98,7 @@ use App\Http\Controllers\UnityLiveController;
 use App\Http\Controllers\UserProfileController;
 use App\Http\Controllers\UsersInterestedTopicsController;
 use App\Http\Controllers\VolunteerController;
+use App\Http\Controllers\VolunteerSupporterInterestsController;
 use App\Http\Controllers\VolunteerTimesheetController;
 use App\Http\Controllers\WalletController;
 use App\Http\Controllers\WebhookManagementController;
@@ -158,7 +159,7 @@ Route::middleware(['auth', 'EnsureEmailIsVerified'])->group(function () {
     Route::get('/find-supporters', [\App\Http\Controllers\FindSupportersController::class, 'index'])->name('find-supporters.index');
     Route::get('/search', [\App\Http\Controllers\PostController::class, 'searchPage'])->name('search.index');
     Route::get('/social-feed/search', [\App\Http\Controllers\PostController::class, 'search'])->name('social-feed.search');
-    // Toggle favorite organization — authenticated supporters and organization/care_alliance users (same UserFavoriteOrganization flow)
+    // Toggle favorite organization — supporter accounts only (see User::canFollowOrganizations)
     Route::post('/organizations/{id}/toggle-favorite', [\App\Http\Controllers\OrganizationController::class, 'toggleFavorite'])->name('organizations.toggle-favorite-search');
     Route::post('/organizations/{id}/toggle-favorite', [\App\Http\Controllers\OrganizationController::class, 'toggleFavorite'])->name('user.organizations.toggle-favorite');
     Route::post('/organizations/{id}/toggle-favorite', [\App\Http\Controllers\OrganizationController::class, 'toggleFavorite'])->name('organizations.toggle-favorite');
@@ -308,6 +309,9 @@ Route::get('/live/{slug}', [LiveViewController::class, 'show'])->name('live.show
 
 Route::get('/jobs', [JobsController::class, 'index'])->name('jobs.index');
 Route::get('/volunteer-opportunities', [JobsController::class, 'volunteerOpportunities'])->name('volunteer-opportunities.index');
+Route::post('/volunteer-opportunities/volunteer-interests', [JobsController::class, 'saveVolunteerInterestStatement'])
+    ->name('volunteer-opportunities.save-interests')
+    ->middleware(['auth', 'EnsureEmailIsVerified', 'role:user']);
 Route::get('/jobs/{id}', [JobsController::class, 'show'])->name('jobs.show');
 Route::get('/get-job-positions', [JobsController::class, 'getJobPositions'])->name('jobs.positions.by-category');
 
@@ -1313,6 +1317,9 @@ Route::get('supporter-activity/supporters/{supporter}', [SupporterActivityContro
 
 Route::get('volunteers', [VolunteerController::class, 'index'])
     ->name('volunteers.index')
+    ->middleware(['role:organization|care_alliance', 'permission:volunteer.read']);
+Route::get('volunteers/supporter-interests', [VolunteerSupporterInterestsController::class, 'index'])
+    ->name('volunteers.supporter-interests.index')
     ->middleware(['role:organization|care_alliance', 'permission:volunteer.read']);
 
 // Volunteer Time Sheet Routes (must come before volunteers/{volunteer} to avoid route conflicts)

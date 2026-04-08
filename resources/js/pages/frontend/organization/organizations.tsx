@@ -148,9 +148,16 @@ export default function OrganizationsPage() {
     }
     setFavoritingId(org.id)
     const newState = !org.is_favorited
-    router.post(route("organizations.toggle-favorite", org.id), {}, {
+    router.post(route("organizations.toggle-favorite", org.id), { toggle_favorite_context: 'organization' }, {
       preserveScroll: true,
-      onSuccess: () => setFavoritingId(null),
+      preserveState: false,
+      onSuccess: page => {
+        const flash = (page.props as { flash?: { error?: string } }).flash
+        if (flash?.error) {
+          toast.error(flash.error)
+        }
+        setFavoritingId(null)
+      },
       onError: () => {
         toast.error("Following is for supporter accounts only.")
         setFavoritingId(null)

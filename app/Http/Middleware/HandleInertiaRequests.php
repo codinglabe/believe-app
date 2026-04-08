@@ -207,6 +207,7 @@ class HandleInertiaRequests extends Middleware
                         'email' => $user->email,
                         'phone' => $user->contact_number,
                         'role' => $user->role,
+                        'can_follow_organizations' => $user->canFollowOrganizations(),
                         'organization_role' => $user->organization_role ?? null,
                         'balance' => $user->balance,
                         'reward_points' => $user->reward_points ?? 0,
