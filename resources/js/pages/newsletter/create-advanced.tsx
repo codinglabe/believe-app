@@ -70,6 +70,7 @@ export default function CreateAdvancedNewsletter({
         subject: '',
         content: '',
         html_content: '',
+        send_via: 'email' as 'email' | 'sms' | 'both',
         schedule_type: 'immediate' as 'immediate' | 'scheduled' | 'recurring',
         send_date: '',
         recurring_settings: {},
@@ -272,6 +273,32 @@ export default function CreateAdvancedNewsletter({
                                         {errors.newsletter_template_id}
                                     </p>
                                 )}
+
+                                <div className="space-y-2">
+                                    <Label>Send via</Label>
+                                    <Select
+                                        value={data.send_via}
+                                        onValueChange={(v) => {
+                                            const next = v as "email" | "sms" | "both"
+                                            setData("send_via", next)
+                                            if (next === "sms") {
+                                                setData("html_content", "")
+                                            }
+                                        }}
+                                    >
+                                        <SelectTrigger>
+                                            <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="email">Email</SelectItem>
+                                            <SelectItem value="sms">SMS (plain text)</SelectItem>
+                                            <SelectItem value="both">Both (SMS + email HTML)</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                    {errors.send_via && (
+                                        <p className="text-sm text-red-600 dark:text-red-400">{errors.send_via}</p>
+                                    )}
+                                </div>
 
                                 {errors.send_date && (
                                     <p className="text-sm text-red-600 dark:text-red-400">

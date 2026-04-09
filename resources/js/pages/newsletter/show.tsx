@@ -31,11 +31,24 @@ import {
     Pause
 } from "lucide-react"
 
+function sendViaLabel(sendVia?: string): string {
+    switch (sendVia) {
+        case 'sms':
+            return 'SMS'
+        case 'both':
+            return 'Email & SMS'
+        case 'email':
+        default:
+            return 'Email'
+    }
+}
+
 interface Newsletter {
     id: number
     subject: string
     content: string
     html_content: string
+    send_via?: 'email' | 'sms' | 'both'
     status: 'draft' | 'paused' | 'scheduled' | 'sending' | 'sent' | 'failed'
     scheduled_at?: string
     scheduled_at_formatted?: string
@@ -202,10 +215,13 @@ export default function NewsletterShow({ newsletter, previewData }: NewsletterSh
                                 {newsletter.subject}
                             </h1>
                         </div>
-                        <div className="flex items-center gap-3">
+                        <div className="flex flex-wrap items-center gap-3">
                             <Badge className={getStatusColor(newsletter.status)}>
                                 {getStatusIcon(newsletter.status)}
                                 <span className="ml-1 capitalize">{newsletter.status}</span>
+                            </Badge>
+                            <Badge variant="outline" className="border-violet-300 text-violet-800 dark:border-violet-700 dark:text-violet-200 font-normal">
+                                Send via: {sendViaLabel(newsletter.send_via)}
                             </Badge>
                             {newsletter.sent_at_formatted && (
                                 <span className="text-sm text-gray-600 dark:text-gray-400">

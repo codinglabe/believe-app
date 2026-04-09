@@ -1,6 +1,6 @@
 "use client"
 
-import { Head, router } from "@inertiajs/react"
+import { Head, router, useForm } from "@inertiajs/react"
 import { motion } from "framer-motion"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -8,9 +8,21 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { TextArea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { useForm } from "@inertiajs/react"
 import { useState } from "react"
-import { ArrowLeft, Save, Send, Calendar, Clock, Eye, AlertCircle, Code, Copy, Check } from "lucide-react"
+import {
+    ArrowLeft,
+    Save,
+    Send,
+    Calendar,
+    Eye,
+    AlertCircle,
+    Code,
+    Copy,
+    Check,
+    MessageSquare,
+    Mail,
+    CheckCircle2,
+} from "lucide-react"
 import AppSidebarLayout from "@/layouts/app/app-sidebar-layout"
 import { getBrowserTimezone, convertUserTimezoneToUTC } from "@/lib/timezone-detection"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
@@ -41,6 +53,14 @@ interface NewsletterCreateProps {
     templates: Template[]
     previewData?: PreviewData
 }
+
+/** Segmented control track (add flex or grid on the element) + tab states — violet → fuchsia brand gradient. */
+const gradientTabTrack =
+    "rounded-lg border border-violet-200/80 bg-gradient-to-r from-violet-100/50 via-fuchsia-100/40 to-indigo-100/45 p-1 shadow-sm dark:border-violet-800/55 dark:from-violet-950/55 dark:via-fuchsia-950/45 dark:to-indigo-950/45"
+const gradientTabActive =
+    "bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white shadow-md dark:from-violet-500 dark:to-fuchsia-600"
+const gradientTabInactive =
+    "text-violet-900/75 hover:bg-white/80 dark:text-violet-100/75 dark:hover:bg-violet-950/70"
 
 // Variable Item Component
 function VariableItem({ variable, description, sampleValue, onCopy }: {
@@ -107,6 +127,7 @@ export default function NewsletterCreate({ templates, previewData }: NewsletterC
         subject: '',
         content: '',
         html_content: '',
+        send_via: 'email' as 'email' | 'sms' | 'both',
         schedule_type: 'immediate' as 'immediate' | 'scheduled',
         send_date: '',
         target_type: 'all' as 'all',
@@ -196,6 +217,13 @@ export default function NewsletterCreate({ templates, previewData }: NewsletterC
         })
     }
 
+    const hasBody =
+        data.send_via === "sms"
+            ? Boolean(data.content?.trim())
+            : data.send_via === "both"
+              ? Boolean(data.content?.trim() && data.html_content?.trim())
+              : Boolean(data.content?.trim() || data.html_content?.trim())
+
     return (
         <AppSidebarLayout>
             <Head title="Create Newsletter" />
@@ -273,7 +301,10 @@ export default function NewsletterCreate({ templates, previewData }: NewsletterC
                                         <CardHeader>
                                             <CardTitle>Newsletter Content</CardTitle>
                                             <CardDescription>
-                                                Customize your newsletter content
+                                                {data.send_via === "sms" && "Plain text for SMS — no HTML."}
+                                                {data.send_via === "email" && "Plain text and/or HTML for email."}
+                                                {data.send_via === "both" &&
+                                                    "Plain text for SMS (required) and HTML for email (required)."}
                                             </CardDescription>
                                         </CardHeader>
                                         <CardContent className="space-y-4">
@@ -292,13 +323,23 @@ export default function NewsletterCreate({ templates, previewData }: NewsletterC
                                             </div>
 
                                             <div>
-                                                <Label htmlFor="content">Content</Label>
+                                                <Label htmlFor="content">
+                                                    {data.send_via === "sms"
+                                                        ? "SMS message (plain text)"
+                                                        : data.send_via === "both"
+                                                          ? "SMS message (plain text, required)"
+                                                          : "Plain text content"}
+                                                </Label>
                                                 <TextArea
                                                     id="content"
                                                     value={data.content}
                                                     onChange={(e) => setData('content', e.target.value)}
-                                                    placeholder="Enter newsletter content"
-                                                    rows={10}
+                                                    placeholder={
+                                                        data.send_via === "sms"
+                                                            ? "Short plain text for SMS — no HTML"
+                                                            : "Plain text body (required for SMS leg when using Both)"
+                                                    }
+                                                    rows={data.send_via === "sms" ? 8 : 10}
                                                     className="mt-1"
                                                 />
                                                 {errors.content && (
@@ -306,20 +347,30 @@ export default function NewsletterCreate({ templates, previewData }: NewsletterC
                                                 )}
                                             </div>
 
-                                            <div>
-                                                <Label htmlFor="html_content">HTML Content (Optional)</Label>
-                                                <TextArea
-                                                    id="html_content"
-                                                    value={data.html_content}
-                                                    onChange={(e) => setData('html_content', e.target.value)}
-                                                    placeholder="Enter HTML content for rich formatting"
-                                                    rows={10}
-                                                    className="mt-1 font-mono text-sm"
-                                                />
-                                                {errors.html_content && (
-                                                    <p className="text-sm text-red-600 mt-1">{errors.html_content}</p>
-                                                )}
-                                            </div>
+                                            {data.send_via !== "sms" && (
+                                                <div>
+                                                    <Label htmlFor="html_content">
+                                                        {data.send_via === "both"
+                                                            ? "HTML content for email (required)"
+                                                            : "HTML content (optional)"}
+                                                    </Label>
+                                                    <TextArea
+                                                        id="html_content"
+                                                        value={data.html_content}
+                                                        onChange={(e) => setData('html_content', e.target.value)}
+                                                        placeholder={
+                                                            data.send_via === "both"
+                                                                ? "HTML version for the email channel"
+                                                                : "HTML for rich email clients; plain text above is still used for multipart email"
+                                                        }
+                                                        rows={10}
+                                                        className="mt-1 font-mono text-sm"
+                                                    />
+                                                    {errors.html_content && (
+                                                        <p className="text-sm text-red-600 mt-1">{errors.html_content}</p>
+                                                    )}
+                                                </div>
+                                            )}
                                         </CardContent>
                                     </Card>
                                 </motion.div>
@@ -339,37 +390,79 @@ export default function NewsletterCreate({ templates, previewData }: NewsletterC
                                                 <Calendar className="h-5 w-5" />
                                                 Scheduling
                                             </CardTitle>
+                                            <CardDescription>
+                                                When to send, and how recipients receive it (SMS plain text, email, or both).
+                                            </CardDescription>
                                         </CardHeader>
                                         <CardContent className="space-y-4">
                                             <div className="space-y-3">
-                                                <Label>Send Schedule</Label>
-                                                <div className="grid grid-cols-2 gap-3">
-                                                    <Button
+                                                <Label>Send schedule</Label>
+                                                <div className={`grid grid-cols-2 gap-1 ${gradientTabTrack}`}>
+                                                    <button
                                                         type="button"
-                                                        variant={scheduleType === 'immediate' ? 'default' : 'outline'}
                                                         onClick={() => {
                                                             setScheduleType('immediate')
                                                             setData('schedule_type', 'immediate')
                                                             setData('send_date', '')
                                                         }}
-                                                        className="flex items-center gap-2"
+                                                        className={`flex items-center justify-center gap-2 rounded-md px-3 py-2.5 text-sm font-medium transition-all ${
+                                                            scheduleType === 'immediate'
+                                                                ? gradientTabActive
+                                                                : gradientTabInactive
+                                                        }`}
                                                     >
-                                                        <Send className="h-4 w-4" />
+                                                        <Send className="h-4 w-4 shrink-0" />
                                                         Immediate
-                                                    </Button>
-                                                    <Button
+                                                    </button>
+                                                    <button
                                                         type="button"
-                                                        variant={scheduleType === 'scheduled' ? 'default' : 'outline'}
                                                         onClick={() => {
                                                             setScheduleType('scheduled')
                                                             setData('schedule_type', 'scheduled')
                                                         }}
-                                                        className="flex items-center gap-2"
+                                                        className={`flex items-center justify-center gap-2 rounded-md px-3 py-2.5 text-sm font-medium transition-all ${
+                                                            scheduleType === 'scheduled'
+                                                                ? gradientTabActive
+                                                                : gradientTabInactive
+                                                        }`}
                                                     >
-                                                        <Calendar className="h-4 w-4" />
+                                                        <Calendar className="h-4 w-4 shrink-0" />
                                                         Scheduled
-                                                    </Button>
+                                                    </button>
                                                 </div>
+                                            </div>
+
+                                            <div className="space-y-3">
+                                                <Label>Send via</Label>
+                                                <div className={`flex gap-1 ${gradientTabTrack}`}>
+                                                    {(
+                                                        [
+                                                            { id: "sms" as const, label: "SMS", icon: MessageSquare },
+                                                            { id: "email" as const, label: "Email", icon: Mail },
+                                                            { id: "both" as const, label: "Both", icon: CheckCircle2 },
+                                                        ] as const
+                                                    ).map(({ id, label, icon: Icon }) => (
+                                                        <button
+                                                            key={id}
+                                                            type="button"
+                                                            onClick={() => {
+                                                                setData("send_via", id)
+                                                                if (id === "sms") {
+                                                                    setData("html_content", "")
+                                                                }
+                                                            }}
+                                                            className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-2.5 text-xs font-medium transition-all sm:text-sm ${
+                                                                data.send_via === id ? gradientTabActive : gradientTabInactive
+                                                            }`}
+                                                        >
+                                                            <Icon className="h-3.5 w-3.5 shrink-0 sm:h-4 sm:w-4" />
+                                                            {label}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                                {errors.send_via && (
+                                                    <p className="text-sm text-red-600 dark:text-red-400">{errors.send_via}</p>
+                                                )}
                                             </div>
 
                                             {scheduleType === 'scheduled' && (
@@ -415,7 +508,12 @@ export default function NewsletterCreate({ templates, previewData }: NewsletterC
                                             <Button
                                                 type="submit"
                                                 className="w-full"
-                                                disabled={processing || !data.newsletter_template_id || !data.subject || !data.content}
+                                                disabled={
+                                                    processing ||
+                                                    !data.newsletter_template_id ||
+                                                    !data.subject ||
+                                                    !hasBody
+                                                }
                                             >
                                                 <Save className="h-4 w-4 mr-2" />
                                                 {processing ? 'Creating...' : scheduleType === 'scheduled' ? 'Schedule Newsletter' : 'Save as Draft'}
@@ -426,7 +524,7 @@ export default function NewsletterCreate({ templates, previewData }: NewsletterC
                                                     variant="outline"
                                                     className="w-full"
                                                 onClick={() => setShowPreview(true)}
-                                                disabled={!data.subject && !data.content}
+                                                disabled={!data.subject && !hasBody}
                                             >
                                                 <Eye className="h-4 w-4 mr-2" />
                                                 Preview
@@ -560,6 +658,16 @@ export default function NewsletterCreate({ templates, previewData }: NewsletterC
                                                 <div>
                                                     <Label className="text-xs text-gray-500">Schedule</Label>
                                                     <p className="text-sm font-medium capitalize">{scheduleType}</p>
+                                                </div>
+                                                <div>
+                                                    <Label className="text-xs text-gray-500">Send via</Label>
+                                                    <p className="text-sm font-medium">
+                                                        {data.send_via === "sms"
+                                                            ? "SMS"
+                                                            : data.send_via === "both"
+                                                              ? "SMS & email"
+                                                              : "Email"}
+                                                    </p>
                                                 </div>
                                                 {scheduleType === 'scheduled' && data.send_date && (
                                                     <div>

@@ -14,6 +14,7 @@ class Newsletter extends Model
         'subject',
         'content',
         'html_content',
+        'send_via',
         'status',
         'scheduled_at',
         'sent_at',
@@ -35,7 +36,7 @@ class Newsletter extends Model
         'target_organizations',
         'target_roles',
         'target_criteria',
-        'is_public'
+        'is_public',
     ];
 
     protected $casts = [
@@ -48,7 +49,7 @@ class Newsletter extends Model
         'target_organizations' => 'array',
         'target_roles' => 'array',
         'target_criteria' => 'array',
-        'is_public' => 'boolean'
+        'is_public' => 'boolean',
     ];
 
     public function organization(): BelongsTo
@@ -72,39 +73,39 @@ class Newsletter extends Model
         switch ($this->target_type) {
             case 'all':
                 return User::where('email_verified_at', '!=', null)->get();
-            
+
             case 'users':
                 return User::whereIn('id', $this->target_users ?? [])->get();
-            
+
             case 'organizations':
-                return User::whereHas('organizations', function($query) {
+                return User::whereHas('organizations', function ($query) {
                     $query->whereIn('organizations.id', $this->target_organizations ?? []);
                 })->get();
-            
+
             case 'specific':
                 $users = collect();
-                
+
                 // Add specific users
-                if (!empty($this->target_users)) {
+                if (! empty($this->target_users)) {
                     $users = $users->merge(User::whereIn('id', $this->target_users)->get());
                 }
-                
+
                 // Add users from organizations
-                if (!empty($this->target_organizations)) {
-                    $orgUsers = User::whereHas('organizations', function($query) {
+                if (! empty($this->target_organizations)) {
+                    $orgUsers = User::whereHas('organizations', function ($query) {
                         $query->whereIn('organizations.id', $this->target_organizations);
                     })->get();
                     $users = $users->merge($orgUsers);
                 }
-                
+
                 // Add users by roles
-                if (!empty($this->target_roles)) {
+                if (! empty($this->target_roles)) {
                     $roleUsers = User::role($this->target_roles)->get();
                     $users = $users->merge($roleUsers);
                 }
-                
+
                 return $users->unique('id');
-            
+
             default:
                 return collect();
         }
@@ -115,16 +116,17 @@ class Newsletter extends Model
         switch ($this->target_type) {
             case 'all':
                 return Organization::where('status', 'active')->get();
-            
+
             case 'organizations':
                 return Organization::whereIn('id', $this->target_organizations ?? [])->get();
-            
+
             case 'specific':
-                if (!empty($this->target_organizations)) {
+                if (! empty($this->target_organizations)) {
                     return Organization::whereIn('id', $this->target_organizations)->get();
                 }
+
                 return collect();
-            
+
             default:
                 return collect();
         }
@@ -133,19 +135,28 @@ class Newsletter extends Model
     // Helper methods
     public function getOpenRateAttribute(): float
     {
-        if ($this->delivered_count == 0) return 0;
+        if ($this->delivered_count == 0) {
+            return 0;
+        }
+
         return round(($this->opened_count / $this->delivered_count) * 100, 2);
     }
 
     public function getClickRateAttribute(): float
     {
-        if ($this->delivered_count == 0) return 0;
+        if ($this->delivered_count == 0) {
+            return 0;
+        }
+
         return round(($this->clicked_count / $this->delivered_count) * 100, 2);
     }
 
     public function getBounceRateAttribute(): float
     {
-        if ($this->sent_count == 0) return 0;
+        if ($this->sent_count == 0) {
+            return 0;
+        }
+
         return round(($this->bounced_count / $this->sent_count) * 100, 2);
     }
 }
