@@ -5,6 +5,7 @@ namespace Database\Seeders;
 use App\Models\ChatRoom;
 use App\Models\ChatTopic;
 use App\Models\ChatRoomTopic;
+use App\Models\User;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Carbon;
 
@@ -13,7 +14,17 @@ class ChatRoomsSeeder extends Seeder
     public function run()
     {
         $now = Carbon::now();
-        $userId = 9; // Assuming user with ID 9 is the admin/creator
+
+        $creator = User::query()->where('email', 'organization@501c3ers.com')->first()
+            ?? User::query()->orderBy('id')->first();
+
+        if ($creator === null) {
+            throw new \RuntimeException(
+                'ChatRoomsSeeder requires at least one user. Ensure user seeders run before this seeder.'
+            );
+        }
+
+        $userId = $creator->id;
 
         // Define all topics with their descriptions
         $topics = [

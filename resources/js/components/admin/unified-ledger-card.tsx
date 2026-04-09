@@ -62,6 +62,10 @@ export interface UnifiedLedgerRow {
   /** Marketplace / Service Hub: fulfillment supplier (workbook columns). */
   supplier_name?: string | null
   supplier_type?: string | null
+  /** First order line with a catalog product: `profit_margin_percentage` (selling price vs cost). */
+  selling_price_markup_percent?: number | null
+  /** Sum of line markups (retail − cost or implied from %); omit for Points-only display. */
+  selling_price_markup_amount?: number | null
 }
 
 /** Believe Points: same numeric amount as points, show coin icon + pts (not USD). */
@@ -83,6 +87,26 @@ function ledgerAmountNode(
     )
   }
   return formatMoney(n, currency, zeroAsDash)
+}
+
+function formatMarkupPercent(n: number): string {
+  const x = Number(n)
+  if (!Number.isFinite(x)) return "—"
+  if (Number.isInteger(x)) return `${x}%`
+  return `${x.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}%`
+}
+
+function markupCompactLabel(
+  percent: number,
+  amount: number | null | undefined,
+  currency: string,
+  showAmount: boolean,
+): string {
+  const p = formatMarkupPercent(percent)
+  if (!showAmount || amount === null || amount === undefined || !Number.isFinite(Number(amount))) {
+    return p
+  }
+  return `${p} (${formatMoney(Number(amount), currency)})`
 }
 
 function formatMoney(n: number | null | undefined, currency: string, zeroAsDash = false): string {
@@ -218,6 +242,7 @@ type Variant = "full" | "compact"
 export function UnifiedLedgerCard({ data, variant = "full", className }: { data: UnifiedLedgerRow; variant?: Variant; className?: string }) {
   const cur = data.currency || "USD"
   const usePoints = data.provider === "points"
+  const showMarkupDollars = !usePoints
 
   if (variant === "compact") {
     return (
@@ -266,6 +291,17 @@ export function UnifiedLedgerCard({ data, variant = "full", className }: { data:
               <span className="inline-flex flex-wrap items-center gap-x-1.5 font-semibold text-foreground">
                 Net {ledgerAmountNode(usePoints, data.net_amount, cur)}
               </span>
+              {data.selling_price_markup_percent != null && data.selling_price_markup_percent !== undefined && (
+                <>
+                  <span className="text-muted-foreground max-sm:hidden">·</span>
+                  <span className="text-[11px] text-muted-foreground">
+                    Markup{" "}
+                    <span className="font-semibold tabular-nums text-foreground">
+                      {markupCompactLabel(data.selling_price_markup_percent, data.selling_price_markup_amount, cur, showMarkupDollars)}
+                    </span>
+                  </span>
+                </>
+              )}
               {sellingPayoutsVisible(data) && (
                 <>
                   <span className="text-muted-foreground max-sm:hidden">·</span>
@@ -379,6 +415,27 @@ export function UnifiedLedgerCard({ data, variant = "full", className }: { data:
             <Amount label="Subtotal" value={ledgerAmountNode(usePoints, data.subtotal_amount, cur, true)} />
             <Amount label="Sales tax" value={ledgerAmountNode(usePoints, data.sales_tax_amount, cur, true)} />
             <Amount label="Shipping" value={ledgerAmountNode(usePoints, data.shipping_amount, cur, true)} />
+            {data.selling_price_markup_percent != null && data.selling_price_markup_percent !== undefined ? (
+              <Amount
+                label="Selling price markup"
+                value={
+                  <span className="text-sm font-semibold tabular-nums text-foreground">
+                    {formatMarkupPercent(data.selling_price_markup_percent)}
+                    {showMarkupDollars &&
+                    data.selling_price_markup_amount != null &&
+                    data.selling_price_markup_amount !== undefined &&
+                    Number.isFinite(Number(data.selling_price_markup_amount)) ? (
+                      <>
+                        {" "}
+                        <span className="font-normal text-muted-foreground">·</span>{" "}
+                        {formatMoney(Number(data.selling_price_markup_amount), cur)}
+                      </>
+                    ) : null}
+                  </span>
+                }
+                hint="Catalog lines: margin % on first product row; dollar total = Σ (line retail − cost), or retail×m÷(100+m) when cost omitted."
+              />
+            ) : null}
             {(data.supplier_name != null && data.supplier_name !== "") ||
             (data.supplier_type != null && data.supplier_type !== "") ? (
               <>

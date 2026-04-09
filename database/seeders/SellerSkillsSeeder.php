@@ -2,7 +2,7 @@
 
 namespace Database\Seeders;
 
-use Illuminate\Database\Console\Seeds\WithoutModelEvents;
+use App\Models\SellerSkill;
 use Illuminate\Database\Seeder;
 
 class SellerSkillsSeeder extends Seeder
@@ -91,7 +91,7 @@ class SellerSkillsSeeder extends Seeder
         ];
 
         foreach ($skills as $skill) {
-            \App\Models\SellerSkill::create(['name' => $skill]);
+            SellerSkill::firstOrCreate(['name' => $skill]);
         }
     }
 }

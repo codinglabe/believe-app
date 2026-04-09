@@ -2,6 +2,7 @@
 
 namespace App\Services\Admin;
 
+use App\Models\Order;
 use App\Models\Organization;
 use App\Models\Transaction;
 use App\Models\User;
@@ -36,6 +37,13 @@ class UnifiedLedgerPresenter
         $reference = $this->resolveExternalReference($t, $meta);
         $relatedRecord = $this->resolveRelatedRecordLabel($t, $donationPayload, $related, $sourceType);
         $when = $t->processed_at ?? $t->created_at;
+        $orderForMarkup = $this->resolveOrderForSellingPriceMarkup($t);
+        $sellingPriceMarkupPercent = $orderForMarkup !== null
+            ? $this->resolveSellingPriceMarkupPercentFromOrder($orderForMarkup)
+            : null;
+        $sellingPriceMarkupAmount = $orderForMarkup !== null
+            ? $this->resolveSellingPriceMarkupAmountFromOrder($orderForMarkup)
+            : null;
 
         return [
             'txn_id' => $t->id,
@@ -79,7 +87,80 @@ class UnifiedLedgerPresenter
             'supplier_type' => isset($ledgerReport['supplier_type']) && $ledgerReport['supplier_type'] !== ''
                 ? (string) $ledgerReport['supplier_type']
                 : null,
+            /** First marketplace line with a catalog Product: `products.profit_margin_percentage` (Printify / manual / hub resale). */
+            'selling_price_markup_percent' => $sellingPriceMarkupPercent,
+            /** Sum of (line retail − line cost) for lines with a Product + margin; cost from `source_cost`×qty or implied from % (retail×m/(100+m)). */
+            'selling_price_markup_amount' => $sellingPriceMarkupAmount,
         ];
+    }
+
+    /**
+     * First line with a linked Product that has profit_margin_percentage.
+     */
+    private function resolveSellingPriceMarkupPercentFromOrder(Order $order): ?float
+    {
+        $order->loadMissing(['items.product']);
+        foreach ($order->items as $item) {
+            $product = $item->product;
+            if ($product !== null && $product->profit_margin_percentage !== null) {
+                return round((float) $product->profit_margin_percentage, 2);
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Total catalog markup dollars on the order: per line, if Product has profit_margin_percentage,
+     * use source_cost × qty vs line subtotal when source_cost is set; else retail × m/(100+m) when m > 0.
+     */
+    private function resolveSellingPriceMarkupAmountFromOrder(Order $order): ?float
+    {
+        $order->loadMissing(['items.product']);
+        $sum = 0.0;
+        $found = false;
+        foreach ($order->items as $item) {
+            $product = $item->product;
+            if ($product === null || $product->profit_margin_percentage === null) {
+                continue;
+            }
+            $m = (float) $product->profit_margin_percentage;
+            if ($m < 0) {
+                continue;
+            }
+            $lineSubtotal = (float) $item->subtotal;
+            $qty = max(1, (int) $item->quantity);
+            if ($lineSubtotal <= 0) {
+                continue;
+            }
+            $found = true;
+            $sourceCost = $product->source_cost;
+            if ($sourceCost !== null && (float) $sourceCost >= 0) {
+                $totalCost = (float) $sourceCost * $qty;
+                $sum += max(0.0, round($lineSubtotal - $totalCost, 2));
+            } elseif ($m > 0) {
+                $sum += round($lineSubtotal * ($m / (100.0 + $m)), 2);
+            }
+        }
+
+        return $found ? round($sum, 2) : null;
+    }
+
+    private function resolveOrderForSellingPriceMarkup(Transaction $t): ?Order
+    {
+        $meta = is_array($t->meta) ? $t->meta : [];
+        $rt = $t->related_type ? ltrim((string) $t->related_type, '\\') : '';
+        if (($rt === Order::class || str_ends_with($rt, 'Order')) && $t->related_id !== null && (int) $t->related_id > 0) {
+            return Order::query()->find((int) $t->related_id);
+        }
+        if (! empty($meta['order_id'])) {
+            $oid = (int) $meta['order_id'];
+            if ($oid > 0) {
+                return Order::query()->find($oid);
+            }
+        }
+
+        return null;
     }
 
     /**
