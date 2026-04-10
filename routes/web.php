@@ -1499,6 +1499,7 @@ Route::prefix('newsletter')->name('newsletter.')->group(function () {
     Route::get('/templates', [NewsletterController::class, 'templates'])->name('templates');
     Route::get('/templates/create', [NewsletterController::class, 'createTemplate'])->name('templates.create');
     Route::post('/templates', [NewsletterController::class, 'storeTemplate'])->name('templates.store');
+    Route::post('/templates/ai-generate', [NewsletterController::class, 'generateTemplateWithAi'])->name('templates.ai-generate');
     Route::get('/templates/{id}', [NewsletterController::class, 'showTemplate'])->name('templates.show');
     Route::get('/templates/{id}/edit', [NewsletterController::class, 'editTemplate'])->name('templates.edit');
     Route::put('/templates/{id}', [NewsletterController::class, 'updateTemplate'])->name('templates.update');
@@ -1514,6 +1515,7 @@ Route::prefix('newsletter')->name('newsletter.')->group(function () {
     Route::post('/recipients/manual/{recipientId}/unsubscribe', [NewsletterController::class, 'unsubscribeManualRecipient'])->name('recipients.manual.unsubscribe');
     Route::get('/export', [NewsletterController::class, 'export'])->name('export');
     Route::get('/create', [NewsletterController::class, 'create'])->name('create');
+    Route::post('/create/ai-generate', [NewsletterController::class, 'generateNewsletterCreateWithAi'])->name('create.ai-generate');
     Route::get('/create-advanced', [NewsletterController::class, 'createAdvanced'])->name('create-advanced');
     Route::post('/', [NewsletterController::class, 'store'])->name('store');
     Route::get('/{id}', [NewsletterController::class, 'show'])->name('show');

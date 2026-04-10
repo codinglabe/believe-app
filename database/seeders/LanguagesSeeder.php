@@ -2,7 +2,7 @@
 
 namespace Database\Seeders;
 
-use Illuminate\Database\Console\Seeds\WithoutModelEvents;
+use App\Models\Language;
 use Illuminate\Database\Seeder;
 
 class LanguagesSeeder extends Seeder
@@ -91,7 +91,7 @@ class LanguagesSeeder extends Seeder
         ];
 
         foreach ($languages as $lang) {
-            \App\Models\Language::create(['name' => $lang]);
+            Language::firstOrCreate(['name' => $lang]);
         }
     }
 }

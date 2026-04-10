@@ -1,6 +1,6 @@
 "use client"
 
-import { Head } from "@inertiajs/react"
+import { Head, router, useForm, usePage } from "@inertiajs/react"
 import { motion } from "framer-motion"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -8,8 +8,17 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { TextArea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { useForm } from "@inertiajs/react"
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from "@/components/ui/dialog"
+import { Switch } from "@/components/frontend/ui/switch"
 import { useState } from "react"
+import type { SharedData } from "@/types"
 
 // Variable Item Component
 function VariableItem({ variable, description, sampleValue, onCopy }: {
@@ -63,8 +72,25 @@ function VariableItem({ variable, description, sampleValue, onCopy }: {
         </div>
     )
 }
-import { ArrowLeft, Save, Eye, Code, Copy, Check } from "lucide-react"
+import {
+    ArrowLeft,
+    Save,
+    Eye,
+    Code,
+    Copy,
+    Check,
+    Sparkles,
+    Loader2,
+    Send,
+    Coins,
+    AlertCircle,
+    IndentIncrease,
+    MessageSquare,
+    Mail,
+    CheckCircle2,
+} from "lucide-react"
 import AppSidebarLayout from "@/layouts/app/app-sidebar-layout"
+import { formatHtmlPretty } from "@/lib/format-html"
 
 interface Template {
     id: number
@@ -92,16 +118,123 @@ interface PreviewData {
     current_date: string
     current_year: string
     unsubscribe_link: string
+    public_view_link: string
 }
+
+type TemplateAiResult =
+    | {
+          ok: true
+          output_mode: "plain" | "html" | "both"
+          subject: string
+          content: string
+          html_content: string
+          suggested_name: string
+          tokens_used: number
+          ai_tokens_used: number
+          ai_tokens_included: number
+      }
+    | {
+          ok: false
+          message: string
+          code?: string
+      }
 
 interface NewsletterTemplateFormProps {
     template?: Template
     previewData?: PreviewData
+    openAiConfigured?: boolean
+    templateAiResult?: TemplateAiResult | null
 }
 
-export default function NewsletterTemplateForm({ template, previewData }: NewsletterTemplateFormProps) {
+function firstFieldError(err: unknown): string | undefined {
+    if (typeof err === "string") return err
+    if (Array.isArray(err) && err.length > 0) return String(err[0])
+    return undefined
+}
+
+/** Sample briefs for AI Generate — click to fill the message box. */
+const AI_BRIEF_EXAMPLES: { label: string; text: string; tone?: "professional" | "warm" | "urgent" | "celebratory" }[] = [
+    {
+        label: "Weekly donor update",
+        tone: "warm",
+        text: "Weekly email to donors: thank them for ongoing support, share one short impact story (kids fed / families helped), include a stat if it fits, invite them to follow us on social, and a soft ask to consider a recurring gift. Keep it hopeful and personal.",
+    },
+    {
+        label: "Event invitation",
+        tone: "professional",
+        text: "Invite supporters to our annual community breakfast on a Saturday morning. Mention keynote speaker, free registration, parking, and RSVP link placeholder. Friendly but clear on date, time, and location merge fields we can fill later.",
+    },
+    {
+        label: "Program launch",
+        tone: "celebratory",
+        text: "Announce our new after-school tutoring program for middle schoolers. Explain who it serves, how to enroll or volunteer, and link to learn more. Celebratory tone — we have been working toward this for a year.",
+    },
+    {
+        label: "Year-end appeal",
+        tone: "urgent",
+        text: "Year-end fundraising email: remind readers their gift is tax-deductible before December 31, share urgency matching gift deadline, one paragraph on mission, clear donate call-to-action. Respectful, not pushy.",
+    },
+    {
+        label: "Volunteer recruitment",
+        tone: "warm",
+        text: "Recruit volunteers for weekend park cleanups next month. Need 20 spots, no experience required, snacks provided, sign up via our form. Warm and community-focused.",
+    },
+]
+
+/** Segmented control track + tab states (violet → fuchsia), aligned with newsletter create page. */
+const gradientTabTrack =
+    "rounded-lg border border-violet-200/80 bg-gradient-to-r from-violet-100/50 via-fuchsia-100/40 to-indigo-100/45 p-1 shadow-sm dark:border-violet-800/55 dark:from-violet-950/55 dark:via-fuchsia-950/45 dark:to-indigo-950/45"
+const gradientTabActive =
+    "bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white shadow-md dark:from-violet-500 dark:to-fuchsia-600"
+const gradientTabInactive =
+    "text-violet-900/75 hover:bg-white/80 dark:text-violet-100/75 dark:hover:bg-violet-950/70"
+
+export default function NewsletterTemplateForm({
+    template,
+    previewData,
+    openAiConfigured = false,
+    templateAiResult: templateAiResultProp = null,
+}: NewsletterTemplateFormProps) {
     const [viewMode, setViewMode] = useState<'edit' | 'preview'>('edit')
     const isEditing = !!template
+
+    const page = usePage<
+        SharedData & {
+            templateAiResult?: TemplateAiResult | null
+            errors?: Record<string, string | string[]>
+        }
+    >()
+    const templateAiResult = page.props.templateAiResult ?? templateAiResultProp
+    const pageErrors = page.props.errors
+    const authUser = page.props.auth.user
+    const credits = Number(authUser.credits ?? 0)
+    const aiTokensUsedAuth = Number(authUser.ai_tokens_used ?? 0)
+    const aiTokensIncludedAuth = Number(authUser.ai_tokens_included ?? 0)
+    const hasAiTokensLeft = aiTokensIncludedAuth === 0 || aiTokensUsedAuth < aiTokensIncludedAuth
+
+    const displayTokensUsed =
+        templateAiResult && templateAiResult.ok ? templateAiResult.ai_tokens_used : aiTokensUsedAuth
+    const displayTokensIncluded =
+        templateAiResult && templateAiResult.ok ? templateAiResult.ai_tokens_included : aiTokensIncludedAuth
+
+    const [aiModalOpen, setAiModalOpen] = useState(false)
+    const [sendVia, setSendVia] = useState<"email" | "sms" | "both">("email")
+    const [aiOutputMode, setAiOutputMode] = useState<"plain" | "html">("plain")
+    const [aiBrief, setAiBrief] = useState('')
+    const [aiTone, setAiTone] = useState('professional')
+    const [aiLoading, setAiLoading] = useState(false)
+    const [formattingHtml, setFormattingHtml] = useState(false)
+    const [prettifyError, setPrettifyError] = useState<string | null>(null)
+
+    const inferInitialBodyPreviewMode = (): "plain" | "html" => {
+        const plain = (template?.content ?? "").trim()
+        const html = (template?.html_content ?? "").trim()
+        if (html && !plain) return "html"
+        return "plain"
+    }
+
+    /** Which body to show in Preview (Edit still shows both fields). */
+    const [bodyPreviewMode, setBodyPreviewMode] = useState<"plain" | "html">(inferInitialBodyPreviewMode)
 
     const { data, setData, post, put, processing, errors } = useForm({
         name: template?.name || '',
@@ -126,6 +259,7 @@ export default function NewsletterTemplateForm({ template, previewData }: Newsle
         current_date: new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
         current_year: new Date().getFullYear().toString(),
         unsubscribe_link: 'https://example.com/unsubscribe?token=preview_token',
+        public_view_link: 'https://example.com/newsletter/public/preview',
     }
 
     // Function to replace variables with sample data
@@ -154,6 +288,74 @@ export default function NewsletterTemplateForm({ template, previewData }: Newsle
             post(route('newsletter.templates.store'))
         }
     }
+
+    const submitAiBrief = () => {
+        if (!aiBrief.trim() || aiLoading || !openAiConfigured || !hasAiTokensLeft) return
+        setAiLoading(true)
+        router.post(
+            route("newsletter.templates.ai-generate"),
+            {
+                brief: aiBrief.trim(),
+                template_type: data.template_type,
+                tone: aiTone,
+                output_mode: aiOutputMode,
+                send_via: sendVia,
+                ...(isEditing && template ? { template_id: template.id } : {}),
+            },
+            {
+                preserveState: true,
+                preserveScroll: true,
+                onFinish: () => setAiLoading(false),
+            },
+        )
+    }
+
+    const handleAiKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+        if (e.key === "Enter" && !e.shiftKey) {
+            e.preventDefault()
+            submitAiBrief()
+        }
+    }
+
+    const applyAiDraft = async () => {
+        if (!templateAiResult || !templateAiResult.ok) return
+        setData("subject", templateAiResult.subject)
+        if (templateAiResult.suggested_name) {
+            setData("name", templateAiResult.suggested_name)
+        }
+        if (templateAiResult.output_mode === "plain") {
+            setData("content", templateAiResult.content)
+            setData("html_content", "")
+            setBodyPreviewMode("plain")
+        } else {
+            setFormattingHtml(true)
+            setPrettifyError(null)
+            const { formatted, error } = await formatHtmlPretty(templateAiResult.html_content)
+            setFormattingHtml(false)
+            setData("html_content", formatted)
+            if (error) {
+                setPrettifyError(error)
+            }
+            setData("content", templateAiResult.content)
+            setBodyPreviewMode("html")
+        }
+        setViewMode("edit")
+        setAiModalOpen(false)
+    }
+
+    const handlePrettifyHtml = async () => {
+        if (!data.html_content.trim() || formattingHtml) return
+        setFormattingHtml(true)
+        setPrettifyError(null)
+        const { formatted, error } = await formatHtmlPretty(data.html_content)
+        setFormattingHtml(false)
+        setData("html_content", formatted)
+        if (error) {
+            setPrettifyError(error)
+        }
+    }
+
+    const briefValidationMessage = firstFieldError(pageErrors?.brief)
 
     const templateTypes = [
         { value: 'newsletter', label: 'Newsletter' },
@@ -264,32 +466,55 @@ export default function NewsletterTemplateForm({ template, previewData }: Newsle
                                 >
                                     <Card className="shadow-lg">
                                         <CardHeader>
-                                            <div className="flex items-center justify-between">
+                                            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                                                 <div>
                                                     <CardTitle>Content</CardTitle>
                                                     <CardDescription>
                                                         Create your email content
                                                     </CardDescription>
                                                 </div>
-                                                <div className="flex items-center gap-2">
-                                                    <Button
-                                                        type="button"
-                                                        variant={viewMode === 'edit' ? 'default' : 'outline'}
-                                                        size="sm"
-                                                        onClick={() => setViewMode('edit')}
-                                                    >
-                                                        <Code className="h-4 w-4 mr-2" />
-                                                        Edit
-                                                    </Button>
-                                                    <Button
-                                                        type="button"
-                                                        variant={viewMode === 'preview' ? 'default' : 'outline'}
-                                                        size="sm"
-                                                        onClick={() => setViewMode('preview')}
-                                                    >
-                                                        <Eye className="h-4 w-4 mr-2" />
-                                                        Preview
-                                                    </Button>
+                                                <div className="flex flex-col items-stretch gap-3 sm:items-end">
+                                                    <div className="flex flex-wrap items-center gap-2">
+                                                        <Button
+                                                            type="button"
+                                                            variant={viewMode === 'edit' ? 'default' : 'outline'}
+                                                            size="sm"
+                                                            onClick={() => setViewMode('edit')}
+                                                        >
+                                                            <Code className="h-4 w-4 mr-2" />
+                                                            Edit
+                                                        </Button>
+                                                        <Button
+                                                            type="button"
+                                                            variant={viewMode === 'preview' ? 'default' : 'outline'}
+                                                            size="sm"
+                                                            onClick={() => setViewMode('preview')}
+                                                        >
+                                                            <Eye className="h-4 w-4 mr-2" />
+                                                            Preview
+                                                        </Button>
+                                                    </div>
+                                                    {viewMode === "preview" && (
+                                                        <div className="flex flex-wrap items-center gap-3 rounded-lg border border-border/80 bg-muted/40 px-3 py-2">
+                                                            <span
+                                                                className={`text-xs font-medium sm:text-sm ${bodyPreviewMode === "plain" ? "text-foreground" : "text-muted-foreground"}`}
+                                                            >
+                                                                Plain text
+                                                            </span>
+                                                            <Switch
+                                                                checked={bodyPreviewMode === "html"}
+                                                                onCheckedChange={(checked) =>
+                                                                    setBodyPreviewMode(checked ? "html" : "plain")
+                                                                }
+                                                                aria-label="Preview plain text or HTML body"
+                                                            />
+                                                            <span
+                                                                className={`text-xs font-medium sm:text-sm ${bodyPreviewMode === "html" ? "text-foreground" : "text-muted-foreground"}`}
+                                                            >
+                                                                HTML
+                                                            </span>
+                                                        </div>
+                                                    )}
                                                 </div>
                                             </div>
                                         </CardHeader>
@@ -312,14 +537,45 @@ export default function NewsletterTemplateForm({ template, previewData }: Newsle
                                                     </div>
 
                                                     <div>
-                                                        <Label htmlFor="html_content">HTML Content (Optional)</Label>
+                                                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                                                            <div>
+                                                                <Label htmlFor="html_content">HTML source (optional)</Label>
+                                                                <p className="mt-0.5 text-xs text-muted-foreground">
+                                                                    Full HTML markup for this template. Scroll vertically and horizontally to see everything; nothing is hidden.
+                                                                </p>
+                                                            </div>
+                                                            <Button
+                                                                type="button"
+                                                                variant="outline"
+                                                                size="sm"
+                                                                className="shrink-0 gap-1.5"
+                                                                disabled={!data.html_content.trim() || formattingHtml}
+                                                                onClick={handlePrettifyHtml}
+                                                            >
+                                                                {formattingHtml ? (
+                                                                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                                                ) : (
+                                                                    <IndentIncrease className="h-3.5 w-3.5" />
+                                                                )}
+                                                                Prettify HTML
+                                                            </Button>
+                                                        </div>
+                                                        {prettifyError ? (
+                                                            <p className="mt-2 text-xs text-red-600 dark:text-red-400" role="alert">
+                                                                Could not prettify: {prettifyError}
+                                                            </p>
+                                                        ) : null}
                                                         <TextArea
                                                             id="html_content"
                                                             value={data.html_content}
-                                                            onChange={(e) => setData('html_content', e.target.value)}
-                                                            placeholder="Enter HTML content for rich formatting..."
-                                                            rows={10}
-                                                            className="mt-1 font-mono text-sm"
+                                                            onChange={(e) => {
+                                                                setPrettifyError(null)
+                                                                setData("html_content", e.target.value)
+                                                            }}
+                                                            placeholder="<!DOCTYPE html> … or a fragment: &lt;table&gt;…"
+                                                            rows={18}
+                                                            spellCheck={false}
+                                                            className="mt-2 box-border min-h-[360px] max-h-[min(70vh,640px)] w-full resize-y overflow-auto whitespace-pre font-mono text-sm leading-normal [tab-size:2] rounded-md border bg-muted/30 dark:bg-muted/20"
                                                         />
                                                         {errors.html_content && (
                                                             <p className="text-sm text-red-600 mt-1">{errors.html_content}</p>
@@ -335,17 +591,43 @@ export default function NewsletterTemplateForm({ template, previewData }: Newsle
                                                                 {previewSubject || 'Template Preview'}
                                                             </h3>
                                                         </div>
-                                                        <div className="text-sm text-gray-600 dark:text-gray-400 whitespace-pre-wrap">
-                                                            {previewContent || 'No content yet...'}
-                                                        </div>
-                                                        {previewHtmlContent && (
-                                                            <div className="mt-4 p-4 bg-gray-50 dark:bg-gray-700 rounded">
-                                                                <h4 className="font-medium mb-2">HTML Preview:</h4>
-                                                                <div
-                                                                    className="text-sm prose prose-sm max-w-none dark:prose-invert"
-                                                                    dangerouslySetInnerHTML={{ __html: previewHtmlContent }}
-                                                                />
-                                                            </div>
+                                                        {bodyPreviewMode === "plain" ? (
+                                                            <>
+                                                                <p className="mb-2 text-xs font-medium text-gray-500 dark:text-gray-400">
+                                                                    Plain text body
+                                                                </p>
+                                                                <div className="text-sm text-gray-600 dark:text-gray-400 whitespace-pre-wrap">
+                                                                    {previewContent || 'No plain text content yet — add some in Edit, or switch to HTML.'}
+                                                                </div>
+                                                                {previewHtmlContent ? (
+                                                                    <p className="mt-3 text-xs text-muted-foreground">
+                                                                        You also have HTML content. Toggle <strong>HTML</strong> above to preview it.
+                                                                    </p>
+                                                                ) : null}
+                                                            </>
+                                                        ) : (
+                                                            <>
+                                                                <p className="mb-2 text-xs font-medium text-gray-500 dark:text-gray-400">
+                                                                    HTML body
+                                                                </p>
+                                                                {previewHtmlContent ? (
+                                                                    <div className="rounded-md border border-gray-200 bg-gray-50 p-4 dark:border-gray-600 dark:bg-gray-700/80">
+                                                                        <div
+                                                                            className="text-sm prose prose-sm max-w-none dark:prose-invert"
+                                                                            dangerouslySetInnerHTML={{ __html: previewHtmlContent }}
+                                                                        />
+                                                                    </div>
+                                                                ) : (
+                                                                    <p className="text-sm text-gray-600 dark:text-gray-400">
+                                                                        No HTML content yet — add HTML in Edit, or switch to Plain text.
+                                                                    </p>
+                                                                )}
+                                                                {previewContent.trim() ? (
+                                                                    <p className="mt-3 text-xs text-muted-foreground">
+                                                                        You also have plain text. Toggle <strong>Plain text</strong> above to preview it.
+                                                                    </p>
+                                                                ) : null}
+                                                            </>
                                                         )}
                                                     </div>
 
@@ -376,8 +658,41 @@ export default function NewsletterTemplateForm({ template, previewData }: Newsle
                                     <Card className="shadow-lg">
                                         <CardHeader>
                                             <CardTitle>Template Settings</CardTitle>
+                                            <CardDescription>
+                                                Default frequency and how this template is intended to be sent (used for AI generation).
+                                            </CardDescription>
                                         </CardHeader>
                                         <CardContent className="space-y-4">
+                                            <div className="space-y-2">
+                                                <Label>Send via</Label>
+                                                <div className={`flex gap-1 ${gradientTabTrack}`}>
+                                                    {(
+                                                        [
+                                                            { id: "sms" as const, label: "SMS", icon: MessageSquare },
+                                                            { id: "email" as const, label: "Email", icon: Mail },
+                                                            { id: "both" as const, label: "Both", icon: CheckCircle2 },
+                                                        ] as const
+                                                    ).map(({ id, label, icon: Icon }) => (
+                                                        <button
+                                                            key={id}
+                                                            type="button"
+                                                            onClick={() => {
+                                                                setSendVia(id)
+                                                                if (id === "sms") {
+                                                                    setData("html_content", "")
+                                                                }
+                                                            }}
+                                                            className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-2.5 text-xs font-medium transition-all sm:text-sm ${
+                                                                sendVia === id ? gradientTabActive : gradientTabInactive
+                                                            }`}
+                                                        >
+                                                            <Icon className="h-3.5 w-3.5 shrink-0 sm:h-4 sm:w-4" />
+                                                            {label}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+
                                             <div>
                                                 <Label htmlFor="frequency">Default Frequency</Label>
                                                 <Select
@@ -426,7 +741,16 @@ export default function NewsletterTemplateForm({ template, previewData }: Newsle
                                         <CardHeader>
                                             <CardTitle>Actions</CardTitle>
                                         </CardHeader>
-                                        <CardContent>
+                                        <CardContent className="space-y-3">
+                                            <Button
+                                                type="button"
+                                                variant="outline"
+                                                className="w-full border-violet-300/80 bg-gradient-to-r from-violet-50/90 to-fuchsia-50/50 text-violet-900 shadow-sm hover:from-violet-100/90 hover:to-fuchsia-100/50 dark:border-violet-800 dark:from-violet-950/50 dark:to-fuchsia-950/30 dark:text-violet-100 dark:hover:from-violet-900/60"
+                                                onClick={() => setAiModalOpen(true)}
+                                            >
+                                                <Sparkles className="h-4 w-4 mr-2 text-violet-600 dark:text-violet-400" />
+                                                AI Generate
+                                            </Button>
                                             <Button
                                                 type="submit"
                                                 className="w-full"
@@ -529,6 +853,12 @@ export default function NewsletterTemplateForm({ template, previewData }: Newsle
                                                             sampleValue={sampleData.unsubscribe_link}
                                                             onCopy={() => navigator.clipboard.writeText('{unsubscribe_link}')}
                                                         />
+                                                        <VariableItem
+                                                            variable="{public_view_link}"
+                                                            description="Public view link"
+                                                            sampleValue={sampleData.public_view_link}
+                                                            onCopy={() => navigator.clipboard.writeText('{public_view_link}')}
+                                                        />
                                                     </div>
                                                 </div>
 
@@ -544,6 +874,277 @@ export default function NewsletterTemplateForm({ template, previewData }: Newsle
                             </div>
                         </div>
                     </form>
+
+                    <Dialog open={aiModalOpen} onOpenChange={setAiModalOpen}>
+                            <DialogContent className="max-h-[min(90vh,720px)] gap-0 overflow-y-auto overflow-x-hidden border-violet-200/70 p-0 shadow-2xl shadow-violet-500/15 sm:max-w-xl dark:border-violet-900/50">
+                                <div className="pointer-events-none absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r from-violet-500 via-fuchsia-500 to-indigo-500" />
+                                <motion.div
+                                    key={aiModalOpen ? "open" : "closed"}
+                                    initial={{ opacity: 0, y: 18, scale: 0.97 }}
+                                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                                    transition={{ type: "spring", damping: 26, stiffness: 320, mass: 0.7 }}
+                                    className="px-6 pb-6 pt-8"
+                                >
+                                    <DialogHeader className="space-y-2 text-left">
+                                        <DialogTitle className="flex items-center gap-2 text-xl font-semibold tracking-tight">
+                                            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-violet-100 dark:bg-violet-950/80">
+                                                <Sparkles className="h-5 w-5 text-violet-600 dark:text-violet-400" />
+                                            </span>
+                                            Generate with AI
+                                        </DialogTitle>
+                                        <DialogDescription className="text-left text-sm leading-relaxed">
+                                            Uses your <strong>Send via</strong> choice from the sidebar: SMS = plain text only; Email = plain
+                                            or HTML (HTML drafts always include a matching plain-text body); Both = concise SMS copy plus
+                                            full HTML. Merge variables must match <strong>Available Variables</strong>. Usage counts toward
+                                            AI tokens.
+                                        </DialogDescription>
+                                    </DialogHeader>
+
+                                    <motion.div
+                                        initial={{ opacity: 0 }}
+                                        animate={{ opacity: 1 }}
+                                        transition={{ delay: 0.08, duration: 0.25 }}
+                                        className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border border-border/80 bg-muted/40 px-3 py-2.5 text-xs"
+                                    >
+                                        <span className="inline-flex items-center gap-1.5 font-medium text-foreground">
+                                            <Coins className="h-3.5 w-3.5 shrink-0 text-amber-600 dark:text-amber-400" />
+                                            Credits: {credits.toLocaleString()}
+                                        </span>
+                                        <span className="inline-flex items-center gap-1.5 text-muted-foreground">
+                                            <Sparkles className="h-3.5 w-3.5 shrink-0 text-violet-600 dark:text-violet-400" />
+                                            {displayTokensIncluded === 0 ? (
+                                                <>
+                                                    Tokens used: {displayTokensUsed.toLocaleString()}
+                                                    <span className="text-muted-foreground/80"> (no cap)</span>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    AI tokens: {displayTokensUsed.toLocaleString()} /{" "}
+                                                    {displayTokensIncluded.toLocaleString()}
+                                                </>
+                                            )}
+                                        </span>
+                                    </motion.div>
+
+                                    <div className="mt-5 space-y-4">
+                                        {!openAiConfigured && (
+                                            <p className="rounded-lg border border-dashed border-muted-foreground/30 bg-muted/30 px-3 py-3 text-sm text-muted-foreground">
+                                                AI is disabled until{" "}
+                                                <code className="rounded bg-background px-1.5 py-0.5 text-xs">OPENAI_API_KEY</code> is set
+                                                on the server.
+                                            </p>
+                                        )}
+                                        {openAiConfigured && !hasAiTokensLeft && (
+                                            <div className="flex items-start gap-2 rounded-lg border border-destructive/35 bg-destructive/5 p-3 text-sm text-destructive">
+                                                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                                                <span>
+                                                    AI token limit reached for this period (same as AI Chat). Upgrade or wait for renewal.
+                                                </span>
+                                            </div>
+                                        )}
+                                        {openAiConfigured && hasAiTokensLeft && (
+                                            <>
+                                                {sendVia === "email" ? (
+                                                    <div className="flex flex-col gap-3 rounded-lg border border-border/80 bg-background/80 px-3 py-3 sm:flex-row sm:items-center sm:justify-between">
+                                                        <div className="space-y-1">
+                                                            <Label className="text-sm font-medium">Output format</Label>
+                                                            <p className="text-xs text-muted-foreground">
+                                                                {aiOutputMode === "plain"
+                                                                    ? "Plain text only — HTML body will stay empty."
+                                                                    : "HTML email plus a plain-text version (both stored)."}
+                                                            </p>
+                                                        </div>
+                                                        <div className="flex items-center gap-3">
+                                                            <span
+                                                                className={`text-sm font-medium transition-colors ${aiOutputMode === "plain" ? "text-violet-700 dark:text-violet-300" : "text-muted-foreground"}`}
+                                                            >
+                                                                Plain text
+                                                            </span>
+                                                            <Switch
+                                                                checked={aiOutputMode === "html"}
+                                                                onCheckedChange={(checked) =>
+                                                                    setAiOutputMode(checked ? "html" : "plain")
+                                                                }
+                                                                disabled={aiLoading}
+                                                                aria-label="Toggle HTML output"
+                                                            />
+                                                            <span
+                                                                className={`text-sm font-medium transition-colors ${aiOutputMode === "html" ? "text-violet-700 dark:text-violet-300" : "text-muted-foreground"}`}
+                                                            >
+                                                                HTML
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                ) : (
+                                                    <p className="rounded-lg border border-border/80 bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+                                                        {sendVia === "sms"
+                                                            ? "Generating plain text only (SMS)."
+                                                            : "Generating SMS-friendly plain text and full HTML for email."}
+                                                    </p>
+                                                )}
+                                                <div className="space-y-2">
+                                                    <Label htmlFor="ai_brief_modal" className="text-sm font-medium">
+                                                        What should this email say?
+                                                    </Label>
+                                                    <TextArea
+                                                        id="ai_brief_modal"
+                                                        value={aiBrief}
+                                                        onChange={(e) => setAiBrief(e.target.value)}
+                                                        onKeyDown={handleAiKeyDown}
+                                                        placeholder="Audience, goals, key points, tone, call to action…"
+                                                        rows={4}
+                                                        disabled={aiLoading}
+                                                        className="min-h-[100px] resize-y text-sm"
+                                                    />
+                                                    <p className="text-xs text-muted-foreground">
+                                                        Enter to generate · Shift+Enter for a new line
+                                                    </p>
+                                                    <div className="space-y-1.5">
+                                                        <p className="text-xs font-medium text-muted-foreground">Try an example</p>
+                                                        <div className="flex flex-wrap gap-1.5">
+                                                            {AI_BRIEF_EXAMPLES.map((ex) => (
+                                                                <Button
+                                                                    key={ex.label}
+                                                                    type="button"
+                                                                    variant="secondary"
+                                                                    size="sm"
+                                                                    className="h-7 rounded-full px-2.5 text-[11px] font-normal"
+                                                                    disabled={aiLoading}
+                                                                    onClick={() => {
+                                                                        setAiBrief(ex.text)
+                                                                        if (ex.tone) setAiTone(ex.tone)
+                                                                    }}
+                                                                >
+                                                                    {ex.label}
+                                                                </Button>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div className="space-y-2">
+                                                    <Label className="text-sm font-medium">Tone</Label>
+                                                    <Select value={aiTone} onValueChange={setAiTone} disabled={aiLoading}>
+                                                        <SelectTrigger className="w-full sm:max-w-xs">
+                                                            <SelectValue />
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                            <SelectItem value="professional">Professional</SelectItem>
+                                                            <SelectItem value="warm">Warm</SelectItem>
+                                                            <SelectItem value="urgent">Urgent</SelectItem>
+                                                            <SelectItem value="celebratory">Celebratory</SelectItem>
+                                                        </SelectContent>
+                                                    </Select>
+                                                </div>
+                                                {briefValidationMessage && (
+                                                    <p className="text-sm text-red-600 dark:text-red-400" role="alert">
+                                                        {briefValidationMessage}
+                                                    </p>
+                                                )}
+                                                {templateAiResult && !templateAiResult.ok && (
+                                                    <motion.p
+                                                        initial={{ opacity: 0, x: -6 }}
+                                                        animate={{ opacity: 1, x: 0 }}
+                                                        className="text-sm text-red-600 dark:text-red-400"
+                                                        role="alert"
+                                                    >
+                                                        {templateAiResult.message}
+                                                    </motion.p>
+                                                )}
+                                                {templateAiResult?.ok && (
+                                                    <motion.div
+                                                        initial={{ opacity: 0, y: 10 }}
+                                                        animate={{ opacity: 1, y: 0 }}
+                                                        transition={{ type: "spring", damping: 22, stiffness: 300 }}
+                                                        className="space-y-3 rounded-xl border border-violet-200/90 bg-gradient-to-br from-violet-50/90 to-fuchsia-50/40 p-4 dark:border-violet-900/60 dark:from-violet-950/40 dark:to-fuchsia-950/20"
+                                                    >
+                                                        <div className="flex flex-wrap items-center gap-2">
+                                                            <p className="text-sm font-medium text-foreground">Draft ready</p>
+                                                            <span className="rounded-full bg-violet-600/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-violet-800 dark:text-violet-200">
+                                                                {templateAiResult.output_mode === "plain"
+                                                                    ? "Plain text only"
+                                                                    : templateAiResult.output_mode === "both"
+                                                                      ? "SMS + HTML"
+                                                                      : "HTML + plain"}
+                                                            </span>
+                                                        </div>
+                                                        <p className="text-xs text-muted-foreground">
+                                                            Template name:{" "}
+                                                            <span className="font-medium text-foreground">
+                                                                {templateAiResult.suggested_name}
+                                                            </span>
+                                                        </p>
+                                                        <p className="text-xs text-muted-foreground">
+                                                            Subject:{" "}
+                                                            <span className="font-medium text-violet-800 dark:text-violet-200">
+                                                                {templateAiResult.subject}
+                                                            </span>
+                                                        </p>
+                                                        <p className="text-xs text-muted-foreground">
+                                                            This run used{" "}
+                                                            <strong className="text-foreground">
+                                                                {templateAiResult.tokens_used.toLocaleString()}
+                                                            </strong>{" "}
+                                                            tokens · Total {displayTokensUsed.toLocaleString()}
+                                                            {displayTokensIncluded > 0
+                                                                ? ` / ${displayTokensIncluded.toLocaleString()}`
+                                                                : ""}
+                                                        </p>
+                                                        <Button
+                                                            type="button"
+                                                            size="sm"
+                                                            className="w-full sm:w-auto bg-violet-600 hover:bg-violet-700"
+                                                            disabled={formattingHtml}
+                                                            onClick={() => void applyAiDraft()}
+                                                        >
+                                                            {formattingHtml ? (
+                                                                <>
+                                                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                                                    Formatting HTML…
+                                                                </>
+                                                            ) : (
+                                                                "Apply to template fields"
+                                                            )}
+                                                        </Button>
+                                                    </motion.div>
+                                                )}
+                                            </>
+                                        )}
+                                    </div>
+
+                                    <DialogFooter className="mt-6 flex-col gap-2 sm:flex-row sm:justify-end">
+                                        <Button type="button" variant="outline" onClick={() => setAiModalOpen(false)}>
+                                            Close
+                                        </Button>
+                                        {openAiConfigured && hasAiTokensLeft && (
+                                            <Button
+                                                type="button"
+                                                className="bg-violet-600 hover:bg-violet-700 dark:bg-violet-600 dark:hover:bg-violet-500"
+                                                disabled={aiLoading || !aiBrief.trim()}
+                                                onClick={submitAiBrief}
+                                            >
+                                                {aiLoading ? (
+                                                    <>
+                                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                                        Generating…
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <Send className="mr-2 h-4 w-4" />
+                                                        {sendVia === "sms"
+                                                            ? "Generate SMS plain draft"
+                                                            : sendVia === "both"
+                                                              ? "Generate SMS + HTML"
+                                                              : aiOutputMode === "html"
+                                                                ? "Generate HTML + plain draft"
+                                                                : "Generate plain text draft"}
+                                                    </>
+                                                )}
+                                            </Button>
+                                        )}
+                                    </DialogFooter>
+                                </motion.div>
+                            </DialogContent>
+                        </Dialog>
             </div>
         </AppSidebarLayout>
     )

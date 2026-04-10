@@ -2,25 +2,292 @@
 
 namespace App\Http\Controllers;
 
+use App\Jobs\SendNewsletterJob;
 use App\Models\Newsletter;
-use App\Models\NewsletterTemplate;
-use App\Models\NewsletterRecipient;
 use App\Models\NewsletterEmail;
+use App\Models\NewsletterRecipient;
+use App\Models\NewsletterTemplate;
 use App\Models\Organization;
 use App\Models\User;
-use App\Jobs\SendNewsletterJob;
+use App\Services\OpenAiService;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Mail;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Validator;
-use Carbon\Carbon;
+use Illuminate\Support\Facades\Mail;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 
 class NewsletterController extends BaseController
 {
+    /**
+     * Merge variables allowed in AI-generated templates (must match the template editor / preview).
+     *
+     * @var list<string>
+     */
+    private const NEWSLETTER_TEMPLATE_MERGE_KEYS = [
+        'organization_name',
+        'organization_email',
+        'organization_phone',
+        'organization_address',
+        'recipient_name',
+        'recipient_email',
+        'current_date',
+        'current_year',
+        'unsubscribe_link',
+        'public_view_link',
+    ];
+
+    /**
+     * @return list<string>
+     */
+    private function newsletterTemplateMergeKeys(): array
+    {
+        return self::NEWSLETTER_TEMPLATE_MERGE_KEYS;
+    }
+
+    private function newsletterTemplateMergeVarsPromptLine(): string
+    {
+        return implode(', ', array_map(fn (string $k) => '{'.$k.'}', self::NEWSLETTER_TEMPLATE_MERGE_KEYS));
+    }
+
+    /**
+     * Rules for AI-generated plain text: professional tone, structure, length — not cramped “SMS-only” microcopy.
+     */
+    private function newsletterAiPlainCopyQualityRules(): string
+    {
+        return <<<'RULES'
+PROFESSIONAL PLAIN-TEXT COPY (not tiny, not shallow):
+- Write like a senior nonprofit communications lead: warm, confident, clear, donor-appropriate. No filler, no robotic stock phrases.
+- Structure: optional short kicker line; a strong headline line; 3–7 paragraphs separated by double \n; optional short bullet lines using "• " or "- "; a clear call-to-action; closing line; footer with Unsubscribe using exactly {unsubscribe_link} (and {public_view_link} only where a browser link makes sense).
+- Length: unless the user brief is intentionally very short, aim for roughly 180–500 words for newsletters and substantive announcements—never a single cramped paragraph or a list of tiny one-line fragments only.
+- Spacing: use double line breaks between sections so the text breathes; avoid walls of dense micro-sentences.
+- Voice: varied sentence length; concrete details from the brief; professional vocabulary without being stiff.
+RULES;
+    }
+
+    /**
+     * Shared HTML email design instructions for AI (inline CSS, dark + light, varied palettes — not flat all-white).
+     */
+    private function newsletterAiHtmlDesignInstructions(string $tone): string
+    {
+        return <<<AIHTML
+EMAIL HTML DESIGN — premium, highly stylized, email-client safe:
+Goal: every email must look like a designed product from a top nonprofit or brand—bold color harmony, clear hierarchy, deliberate UI. Forbidden: a flat “black text on plain white only” layout with no colored structure. Forbidden: washed-out gray-only design with no strong accent.
+
+DARK / LIGHT & PALETTE VARIETY (mandatory):
+- Include at least ONE prominent dark or rich band: e.g. header strip, hero block, mid-body feature strip, or footer with background #0f172a, #18181b, #1e1b4b, #14532d, #7f1d1d, #4c1d95, or similar deep tone, with light text (#f8fafc–#ffffff) OR high-contrast inverse. Light content areas are fine, but the design must not be “all light / all white canvas only.”
+- Pick ONE cohesive palette per email with 4–6 intentional colors: deep neutral + surface + saturated accent + muted secondary text + hairline borders. Rotate feel by tone: e.g. midnight + electric blue + cloud white; forest + antique gold + ivory; wine + blush + charcoal; slate + emerald CTA + cream panel—not the same blue-on-white every time.
+- Ensure WCAG-ish contrast: body text on backgrounds must stay readable (no light gray #cbd5e1 on white for main copy).
+
+Technical rules (must follow):
+- Use ONLY inline CSS (style attributes on elements). No <style> blocks, no external stylesheets, no @import, no <script>, no web fonts from URLs.
+- Quoting: use double quotes for style= attributes whenever the CSS value contains single-quoted font names, e.g. style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; ..." — never break HTML with mismatched quotes.
+- Layout: outer wrapper table role="presentation" width="100%"; inner main column max-width 600px centered. Use nested tables for rows/sections where helpful (email-safe).
+
+Reference palettes (adapt—do not copy blindly every time; vary with the brief and tone "{$tone}"):
+  • Professional / trust: charcoal #0f172a, body #334155, accent #2563eb or #0369a1, soft panels #f1f5f9 / #eff6ff, white cards #ffffff, optional dark footer band #0f172a.
+  • Warm / community: espresso #422006, body #78350f, accent #c2410c or #b45309, cream #fffbeb, peach tint #fff7ed.
+  • Urgent / timely: near-black #171717, body #404040, accent #dc2626 or #ea580c, pale alert #fef2f2.
+  • Celebratory: plum #5b21b6, accent #c026d3 or #db2777, gold #ca8a04, lilac panel #faf5ff.
+
+Visual styling (apply several—not minimal):
+- Thin colored top accent bar (4–6px) full width in primary accent.
+- Eyebrow / kicker: small uppercase, letter-spaced, accent color (e.g. font-size:11px; letter-spacing:0.12em; font-weight:600).
+- Main headline: 22–28px, extra-bold, strong contrast against its background.
+- Alternate section backgrounds: white vs subtle tinted rows (#f8fafc, #f1f5f9, or 4–8% accent tint).
+- Pull quote or highlight: left border 4px solid accent; tinted background; padding 16–20px.
+- Primary CTA: inline-block; padding:14px 32px; strong accent background; color:#ffffff; border-radius:8px; font-weight:700; optional box-shadow:0 4px 14px rgba(0,0,0,0.12). href="#" or allowed merge tokens only.
+- Dividers: 1px solid muted (#e2e8f0 or from palette).
+- Footer: distinct band—often dark (#0f172a / #18181b) with muted text #94a3b8, {organization_name}, <a href="{unsubscribe_link}" style="color:#cbd5e1;">Unsubscribe</a>; optional <a href="{public_view_link}">View in browser</a>.
+
+Typography (inline): font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; body 15–17px, line-height 1.65–1.7; headings clearly larger and colored—not browser defaults.
+
+Images: omit <img> unless the brief asks; never broken URLs.
+
+Tone: {$tone}, trustworthy—but visually striking and brand-quality, not generic.
+AIHTML;
+    }
+
+    /**
+     * Ensure AI output uses only whitelisted {name} placeholders (no Handlebars, no invented keys).
+     */
+    private function validateTemplateAiMergeVariablesOnly(string $subject, string $content, string $htmlContent, string $suggestedName = ''): ?string
+    {
+        $allowed = $this->newsletterTemplateMergeKeys();
+        $blob = $subject."\n".$content."\n".$htmlContent."\n".$suggestedName;
+
+        if (str_contains($blob, '{{') || str_contains($blob, '}}')) {
+            return 'The draft used unsupported placeholder syntax (double braces). Only these merge variables are allowed: '.$this->newsletterTemplateMergeVarsPromptLine();
+        }
+
+        if (preg_match_all('/\{([^{}]*)\}/', $blob, $matches)) {
+            foreach ($matches[1] as $inner) {
+                $key = trim((string) $inner);
+                if ($key === '') {
+                    return 'The draft contained empty {} placeholders. Use only: '.$this->newsletterTemplateMergeVarsPromptLine();
+                }
+                if (! in_array($key, $allowed, true)) {
+                    return 'The draft used a merge variable that is not supported: {'.$key.'}. Allowed variables only: '.$this->newsletterTemplateMergeVarsPromptLine();
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $decoded
+     * @return array{0: string, 1: string, 2: string, 3: string} subject, content, htmlContent, suggestedName
+     */
+    private function normalizeTemplateAiDecodedPayload(array $decoded, string $outputMode): array
+    {
+        $subject = trim((string) ($decoded['subject'] ?? ''));
+        $content = trim((string) ($decoded['content'] ?? ''));
+        $htmlContent = trim((string) ($decoded['html_content'] ?? ''));
+        $suggestedName = trim((string) ($decoded['suggested_name'] ?? ''));
+        if ($outputMode === 'plain') {
+            $htmlContent = '';
+        }
+
+        return [$subject, $content, $htmlContent, $suggestedName];
+    }
+
+    /**
+     * @return array{ok: false, message: string, code: string}|null
+     */
+    private function templateAiPayloadIsIncomplete(
+        string $subject,
+        string $content,
+        string $htmlContent,
+        string $suggestedName,
+        string $outputMode
+    ): ?array {
+        if ($outputMode === 'plain') {
+            if ($subject === '' || $content === '' || $suggestedName === '') {
+                return [
+                    'ok' => false,
+                    'message' => 'AI did not return a complete plain-text template (need template name, subject, and body). Try again.',
+                    'code' => 'incomplete',
+                ];
+            }
+        } elseif ($outputMode === 'both') {
+            if ($subject === '' || $content === '' || $htmlContent === '' || $suggestedName === '') {
+                return [
+                    'ok' => false,
+                    'message' => 'AI did not return a complete template (need template name, subject, SMS plain body, and HTML body). Try again.',
+                    'code' => 'incomplete',
+                ];
+            }
+        } elseif ($subject === '' || $htmlContent === '' || $suggestedName === '' || $content === '') {
+            return [
+                'ok' => false,
+                'message' => 'AI did not return a complete HTML template (need template name, subject, plain-text body, and HTML body). Try again.',
+                'code' => 'incomplete',
+            ];
+        }
+
+        return null;
+    }
+
+    /**
+     * @return array{0: string, 1: string, 2: string} subject, content, htmlContent
+     */
+    private function normalizeNewsletterCreateAiDecodedPayload(array $decoded, string $outputMode): array
+    {
+        $subject = trim((string) ($decoded['subject'] ?? ''));
+        $content = trim((string) ($decoded['content'] ?? ''));
+        $htmlContent = trim((string) ($decoded['html_content'] ?? ''));
+        if ($outputMode === 'plain') {
+            $htmlContent = '';
+        }
+
+        return [$subject, $content, $htmlContent];
+    }
+
+    /**
+     * @return array{ok: false, message: string, code: string}|null
+     */
+    private function newsletterCreateAiPayloadIsIncomplete(
+        string $subject,
+        string $content,
+        string $htmlContent,
+        string $outputMode
+    ): ?array {
+        if ($outputMode === 'plain') {
+            if ($subject === '' || $content === '') {
+                return [
+                    'ok' => false,
+                    'message' => 'AI did not return a complete plain-text draft (need subject and body). Try again.',
+                    'code' => 'incomplete',
+                ];
+            }
+        } elseif ($outputMode === 'both') {
+            if ($subject === '' || $content === '' || $htmlContent === '') {
+                return [
+                    'ok' => false,
+                    'message' => 'AI did not return a complete draft (need subject, SMS plain body, and HTML body). Try again.',
+                    'code' => 'incomplete',
+                ];
+            }
+        } elseif ($subject === '' || $htmlContent === '' || $content === '') {
+            return [
+                'ok' => false,
+                'message' => 'AI did not return a complete HTML draft (need subject, plain-text body, and HTML body). Try again.',
+                'code' => 'incomplete',
+            ];
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  array<string, mixed>|null  $newsletterCreateAiResult
+     * @return array<string, mixed>
+     */
+    protected function newsletterCreatePageData(?array $newsletterCreateAiResult = null): array
+    {
+        $templates = NewsletterTemplate::where('is_active', true)
+            ->select(['id', 'name', 'subject', 'content', 'template_type', 'html_content'])
+            ->get();
+
+        $user = Auth::user();
+
+        $orgAddress = '';
+        if ($user->organization) {
+            $addressParts = array_filter([
+                $user->organization->street,
+                $user->organization->city,
+                $user->organization->state,
+                $user->organization->zip,
+            ]);
+            $orgAddress = ! empty($addressParts) ? implode(', ', $addressParts) : 'Your Organization Address';
+        }
+
+        $publicViewLink = url('/newsletter/public/preview');
+
+        $previewData = [
+            'organization_name' => $user->organization->name ?? ($user->name ?? 'Your Organization'),
+            'organization_email' => $user->organization->email ?? ($user->email ?? 'wendhi@stuttiegroup.com'),
+            'organization_phone' => $user->organization->phone ?? ($user->contact_number ?? '+1 (555) 000-0000'),
+            'organization_address' => $orgAddress ?: 'Your Organization Address',
+            'recipient_name' => $user->name ?? 'Recipient Name',
+            'recipient_email' => $user->email ?? 'recipient@example.com',
+            'current_date' => Carbon::now()->format('F j, Y'),
+            'current_year' => (string) Carbon::now()->year,
+            'unsubscribe_link' => url('/newsletter/unsubscribe?token=preview_token'),
+            'public_view_link' => $publicViewLink,
+        ];
+
+        return [
+            'templates' => $templates,
+            'previewData' => $previewData,
+            'openAiConfigured' => $this->openAiApiKeyIsConfigured(),
+            'newsletterCreateAiResult' => $newsletterCreateAiResult,
+        ];
+    }
+
     /**
      * Display newsletter dashboard
      */
@@ -33,20 +300,20 @@ class NewsletterController extends BaseController
                 'id', 'subject', 'status', 'scheduled_at', 'send_date',
                 'sent_at', 'schedule_type', 'total_recipients', 'sent_count',
                 'delivered_count', 'opened_count', 'clicked_count',
-                'newsletter_template_id', 'organization_id'
+                'newsletter_template_id', 'organization_id',
             ]);
 
         // Apply search filter
-        if ($request->has('search') && !empty($request->search)) {
+        if ($request->has('search') && ! empty($request->search)) {
             $search = $request->search;
             $query->where(function ($q) use ($search) {
                 $q->where('subject', 'LIKE', "%{$search}%")
-                  ->orWhereHas('template', function ($templateQuery) use ($search) {
-                      $templateQuery->where('name', 'LIKE', "%{$search}%");
-                  })
-                  ->orWhereHas('organization', function ($orgQuery) use ($search) {
-                      $orgQuery->where('name', 'LIKE', "%{$search}%");
-                  });
+                    ->orWhereHas('template', function ($templateQuery) use ($search) {
+                        $templateQuery->where('name', 'LIKE', "%{$search}%");
+                    })
+                    ->orWhereHas('organization', function ($orgQuery) use ($search) {
+                        $orgQuery->where('name', 'LIKE', "%{$search}%");
+                    });
             });
         }
 
@@ -79,6 +346,7 @@ class NewsletterController extends BaseController
                 $date = Carbon::parse($rawValue, 'UTC')->setTimezone($userTimezone);
                 $newsletter->sent_at_formatted = $date->format('M d, Y h:i A');
             }
+
             return $newsletter;
         });
 
@@ -116,20 +384,20 @@ class NewsletterController extends BaseController
                 'sent_at', 'schedule_type', 'total_recipients', 'sent_count',
                 'delivered_count', 'opened_count', 'clicked_count',
                 'bounced_count', 'unsubscribed_count',
-                'newsletter_template_id', 'organization_id', 'created_at'
+                'newsletter_template_id', 'organization_id', 'created_at',
             ]);
 
         // Apply search filter
-        if ($request->has('search') && !empty($request->search)) {
+        if ($request->has('search') && ! empty($request->search)) {
             $search = $request->search;
             $query->where(function ($q) use ($search) {
                 $q->where('subject', 'LIKE', "%{$search}%")
-                  ->orWhereHas('template', function ($templateQuery) use ($search) {
-                      $templateQuery->where('name', 'LIKE', "%{$search}%");
-                  })
-                  ->orWhereHas('organization', function ($orgQuery) use ($search) {
-                      $orgQuery->where('name', 'LIKE', "%{$search}%");
-                  });
+                    ->orWhereHas('template', function ($templateQuery) use ($search) {
+                        $templateQuery->where('name', 'LIKE', "%{$search}%");
+                    })
+                    ->orWhereHas('organization', function ($orgQuery) use ($search) {
+                        $orgQuery->where('name', 'LIKE', "%{$search}%");
+                    });
             });
         }
 
@@ -140,14 +408,14 @@ class NewsletterController extends BaseController
 
         $newsletters = $query->latest()->get();
 
-        $filename = 'newsletters_export_' . date('Y-m-d_H-i-s') . '.csv';
+        $filename = 'newsletters_export_'.date('Y-m-d_H-i-s').'.csv';
 
         $headers = [
             'Content-Type' => 'text/csv',
-            'Content-Disposition' => 'attachment; filename="' . $filename . '"',
+            'Content-Disposition' => 'attachment; filename="'.$filename.'"',
         ];
 
-        $callback = function() use ($newsletters) {
+        $callback = function () use ($newsletters) {
             $file = fopen('php://output', 'w');
 
             // CSV headers
@@ -168,7 +436,7 @@ class NewsletterController extends BaseController
                 'Click Rate (%)',
                 'Scheduled At',
                 'Sent At',
-                'Created At'
+                'Created At',
             ]);
 
             foreach ($newsletters as $newsletter) {
@@ -196,7 +464,7 @@ class NewsletterController extends BaseController
                     $clickRate,
                     $newsletter->scheduled_at ? $newsletter->scheduled_at->format('Y-m-d H:i:s') : 'N/A',
                     $newsletter->sent_at ? $newsletter->sent_at->format('Y-m-d H:i:s') : 'N/A',
-                    $newsletter->created_at->format('Y-m-d H:i:s')
+                    $newsletter->created_at->format('Y-m-d H:i:s'),
                 ]);
             }
 
@@ -217,7 +485,7 @@ class NewsletterController extends BaseController
             ->select([
                 'id', 'name', 'subject', 'template_type', 'is_active',
                 'created_at', 'html_content', 'organization_id',
-                'frequency_limit', 'custom_frequency_days', 'frequency_notes'
+                'frequency_limit', 'custom_frequency_days', 'frequency_notes',
             ])
             ->latest()
             ->paginate(10);
@@ -236,8 +504,8 @@ class NewsletterController extends BaseController
 
         $templates = NewsletterTemplate::where('is_active', true)
             ->select([
-                'id', 'name', 'subject', 'content' , 'template_type', 'html_content',
-                'frequency_limit', 'custom_frequency_days', 'frequency_notes'
+                'id', 'name', 'subject', 'content', 'template_type', 'html_content',
+                'frequency_limit', 'custom_frequency_days', 'frequency_notes',
             ])
             ->get();
         $users = User::with('roles')->where('email_verified_at', '!=', null)->get();
@@ -259,22 +527,37 @@ class NewsletterController extends BaseController
     {
         $this->authorizePermission($request, 'newsletter.create');
 
-        $user = Auth::user();
+        return $this->renderNewsletterTemplateForm(null, null);
+    }
 
-        // Build organization address from available fields
+    /**
+     * Whether OPENAI_API_KEY is set (for UI: show AI assistant when true).
+     */
+    protected function openAiApiKeyIsConfigured(): bool
+    {
+        $key = config('services.openai.api_key');
+
+        return is_string($key) && trim($key) !== '';
+    }
+
+    /**
+     * Sample merge-tag preview data for template create/edit pages.
+     */
+    protected function newsletterTemplatePreviewData(): array
+    {
+        $user = Auth::user();
         $orgAddress = '';
         if ($user->organization) {
             $addressParts = array_filter([
                 $user->organization->street,
                 $user->organization->city,
                 $user->organization->state,
-                $user->organization->zip
+                $user->organization->zip,
             ]);
-            $orgAddress = !empty($addressParts) ? implode(', ', $addressParts) : 'Your Organization Address';
+            $orgAddress = ! empty($addressParts) ? implode(', ', $addressParts) : 'Your Organization Address';
         }
 
-        // Get real data for variable preview
-        $previewData = [
+        return [
             'organization_name' => $user->organization->name ?? ($user->name ?? 'Your Organization'),
             'organization_email' => $user->organization->email ?? ($user->email ?? 'wendhi@stuttiegroup.com'),
             'organization_phone' => $user->organization->phone ?? ($user->contact_number ?? '+1 (555) 000-0000'),
@@ -284,11 +567,507 @@ class NewsletterController extends BaseController
             'current_date' => Carbon::now()->format('F j, Y'),
             'current_year' => (string) Carbon::now()->year,
             'unsubscribe_link' => url('/newsletter/unsubscribe?token=preview_token'),
+            'public_view_link' => url('/newsletter/public/preview'),
         ];
+    }
 
-        return Inertia::render('newsletter/template-form', [
-            'previewData' => $previewData,
+    /**
+     * @param  array<string, mixed>|null  $templateAiResult
+     */
+    protected function renderNewsletterTemplateForm(?NewsletterTemplate $template, ?array $templateAiResult): Response
+    {
+        $props = [
+            'previewData' => $this->newsletterTemplatePreviewData(),
+            'openAiConfigured' => $this->openAiApiKeyIsConfigured(),
+            'templateAiResult' => $templateAiResult,
+        ];
+        if ($template !== null) {
+            $props['template'] = $template;
+        }
+
+        return Inertia::render('newsletter/template-form', $props);
+    }
+
+    /**
+     * Generate newsletter template draft (subject, plain text, HTML) from a short brief via OpenAI.
+     * Returns Inertia (same page) so the client can use router.post without fetch/axios.
+     */
+    public function generateTemplateWithAi(Request $request, OpenAiService $openAiService): Response
+    {
+        $validated = $request->validate([
+            'brief' => 'required|string|max:3000',
+            'template_type' => 'nullable|in:newsletter,announcement,event',
+            'tone' => 'nullable|in:professional,warm,urgent,celebratory',
+            'output_mode' => 'required|in:plain,html',
+            'send_via' => 'nullable|in:email,sms,both',
+            'template_id' => 'nullable|integer|exists:newsletter_templates,id',
         ]);
+
+        $formTemplate = null;
+        if (! empty($validated['template_id'])) {
+            $this->authorizePermission($request, 'newsletter.edit');
+            $formTemplate = NewsletterTemplate::findOrFail((int) $validated['template_id']);
+        } else {
+            $this->authorizePermission($request, 'newsletter.create');
+        }
+
+        if (! $this->openAiApiKeyIsConfigured()) {
+            return $this->renderNewsletterTemplateForm($formTemplate, [
+                'ok' => false,
+                'message' => 'AI is not configured. Set OPENAI_API_KEY on the server.',
+                'code' => 'not_configured',
+            ]);
+        }
+
+        $user = Auth::user();
+        $tokensIncluded = (int) ($user->ai_tokens_included ?? 0);
+        $tokensUsed = (int) ($user->ai_tokens_used ?? 0);
+        if ($tokensIncluded > 0 && $tokensUsed >= $tokensIncluded) {
+            return $this->renderNewsletterTemplateForm($formTemplate, [
+                'ok' => false,
+                'message' => 'You have used all your AI tokens for this period. Upgrade your plan or wait for your next allocation.',
+                'code' => 'insufficient_tokens',
+            ]);
+        }
+
+        $templateType = $validated['template_type'] ?? 'newsletter';
+        $tone = $validated['tone'] ?? 'professional';
+        $outputMode = $validated['output_mode'];
+        $sendVia = $validated['send_via'] ?? 'email';
+        if ($sendVia === 'sms') {
+            $outputMode = 'plain';
+        } elseif ($sendVia === 'both') {
+            $outputMode = 'both';
+        }
+
+        $typeLabels = [
+            'newsletter' => 'a recurring nonprofit / community newsletter',
+            'announcement' => 'an important one-off announcement email',
+            'event' => 'an event invitation or reminder email',
+        ];
+        $typeLabel = $typeLabels[$templateType] ?? $typeLabels['newsletter'];
+
+        $mergeVars = $this->newsletterTemplateMergeVarsPromptLine();
+
+        $plainQuality = $this->newsletterAiPlainCopyQualityRules();
+        $htmlDesign = $this->newsletterAiHtmlDesignInstructions($tone);
+
+        if ($outputMode === 'plain') {
+            $systemPrompt = <<<PROMPT
+You help nonprofits write email templates. Respond with ONLY a single JSON object (no markdown fences).
+Required keys: "subject" (string), "content" (string), "suggested_name" (string, 2-6 words, title case — this is the internal template name).
+
+PLAIN TEXT OUTPUT ONLY for this request:
+- Generate suggested_name, subject, and the full email body as plain text only in "content".
+- Do NOT use HTML tags anywhere. Set "html_content" to exactly "" (empty string).
+
+{$plainQuality}
+
+MERGE VARIABLES — STRICT (non-negotiable):
+- The ONLY strings that may appear inside single curly braces {…} anywhere in subject or body are exactly: {$mergeVars}
+- There are NO other merge fields. Do NOT invent placeholders for stories, blurbs, CTAs, URLs, or “sections”. Forbidden examples (never output these): {impact_story}, {story}, {body}, {main_content}, {cta_link}, {donate_link}, {event_info}, {donor_name}, {first_name}, {date}, or any {word} except those listed above.
+- If the brief asks for an impact story, example copy, or event details: write that text in full as normal sentences—no curly braces around it.
+- Do NOT use {{name}}, %email%, [FIRST_NAME], or double curly braces. No spaces inside braces (use {organization_name} not { organization_name }).
+
+Subject: compelling, under 200 characters; you may include {organization_name} where it fits.
+content: must include the real unsubscribe merge token, e.g. a line "Unsubscribe: {unsubscribe_link}" using exactly {unsubscribe_link}.
+Tone: {$tone}, trustworthy for donors and community members.
+PROMPT;
+        } elseif ($outputMode === 'both') {
+            $systemPrompt = <<<PROMPT
+You help nonprofits write email templates. Respond with ONLY a single JSON object (no markdown fences).
+Required keys: "subject" (string), "content" (string), "html_content" (string), "suggested_name" (string, 2-6 words, title case — this is the internal template name).
+
+DUAL OUTPUT — full professional plain text + HTML email (same campaign):
+
+{$plainQuality}
+
+- "content": Full text/plain MIME body: multi-paragraph, \\n\\n between sections, same narrative as the HTML—not a short SMS-only stub. Typical length when the brief allows: ~150–500+ words for newsletters. No HTML tags. Merge variables only: {$mergeVars}. Include {unsubscribe_link} (and {public_view_link} where appropriate).
+- "html_content": Implement the full HTML body following the design specification below (same story and merge-variable rules).
+
+MERGE VARIABLES — STRICT (non-negotiable) in subject, content, and html_content:
+- The ONLY strings that may appear inside single curly braces {…} are exactly: {$mergeVars}
+- Do NOT use {{name}}, %email%, [NAME], or double curly braces. No spaces inside braces.
+
+{$htmlDesign}
+PROMPT;
+        } else {
+            $systemPrompt = <<<PROMPT
+You help nonprofits write email templates. Respond with ONLY a single JSON object (no markdown fences).
+Required keys: "subject" (string), "html_content" (string), "content" (string), "suggested_name" (string, 2-6 words, title case — this is the internal template name).
+
+HTML plus plain text (always include both):
+
+{$plainQuality}
+
+- "html_content": full email-safe HTML body implementing the design specification below.
+- "content": REQUIRED full plain-text twin for email text/plain part. No HTML tags; line breaks as \\n; merge variables only: {$mergeVars}. Faithfully match the HTML (headlines, sections, CTA, footer). Include {unsubscribe_link}.
+
+MERGE VARIABLES — STRICT (non-negotiable):
+- The ONLY strings that may appear inside single curly braces {…} anywhere in subject, html_content, or content are exactly: {$mergeVars}
+- There are NO other merge fields. Do NOT invent placeholders for stories, blurbs, CTAs, or URLs. Forbidden examples (never output these): {impact_story}, {story}, {body}, {main_content}, {cta_link}, {donate_link}, {event_info}, {donor_name}, {first_name}, or any {word} except those listed above.
+- If the brief asks for an impact story, example copy, or event details: write that as real HTML text (paragraphs, lists)—never as a {placeholder}.
+- Do NOT use {{name}}, %email%, [NAME], or double curly braces. No spaces inside braces.
+
+Subject: compelling, under 200 characters; you may include {organization_name} where it fits.
+
+{$htmlDesign}
+PROMPT;
+        }
+
+        $modeLine = match ($outputMode) {
+            'plain' => 'PLAIN TEXT ONLY (no HTML).',
+            'both' => 'Full professional plain text in "content" PLUS full HTML in "html_content" (both required).',
+            default => 'HTML in "html_content" AND a full plain-text twin in "content" (both required).',
+        };
+        $userPrompt = "Template purpose: {$typeLabel}.\nOutput mode: {$modeLine}\nDesired tone: {$tone}.\n\nBrief from the user:\n".$validated['brief'];
+        if ($outputMode === 'html' || $outputMode === 'both') {
+            $userPrompt .= "\n\nMandatory visual requirement: use a distinctive, professional palette with at least one dark or richly colored header, footer, or feature band—not an all-white-only layout. Strong accent, kicker, CTA, section structure.";
+        }
+
+        try {
+            $messages = [
+                ['role' => 'system', 'content' => $systemPrompt],
+                ['role' => 'user', 'content' => $userPrompt],
+            ];
+
+            $result = $openAiService->chatCompletionJson($messages);
+            $totalTokens = (int) ($result['total_tokens'] ?? 0);
+
+            $decoded = json_decode($result['content'], true);
+            if (! is_array($decoded)) {
+                return $this->renderNewsletterTemplateForm($formTemplate, [
+                    'ok' => false,
+                    'message' => 'AI returned an invalid response. Please try again.',
+                    'code' => 'invalid_response',
+                ]);
+            }
+
+            [$subject, $content, $htmlContent, $suggestedName] = $this->normalizeTemplateAiDecodedPayload($decoded, $outputMode);
+
+            $incomplete = $this->templateAiPayloadIsIncomplete($subject, $content, $htmlContent, $suggestedName, $outputMode);
+            if ($incomplete !== null) {
+                return $this->renderNewsletterTemplateForm($formTemplate, $incomplete);
+            }
+
+            $placeholderError = $this->validateTemplateAiMergeVariablesOnly($subject, $content, $htmlContent, $suggestedName);
+
+            if ($placeholderError !== null) {
+                $fixPrompt = <<<TXT
+Your previous JSON used merge variables that this app does not support. Problem: {$placeholderError}
+
+Return ONE new JSON object with the same keys and the same meaning (same email, same tone), but:
+- ONLY these placeholders may appear inside single braces anywhere: {$mergeVars}
+- Replace every other {word} with normal written text (full sentences or HTML text). For example use a short example story in plain words instead of {impact_story}; use href="#" and visible button text instead of {cta_link}.
+- Keep suggested_name, subject, content, and html_content complete (all keys the same as before). No markdown fences.
+TXT;
+
+                $messages[] = ['role' => 'assistant', 'content' => $result['content']];
+                $messages[] = ['role' => 'user', 'content' => $fixPrompt];
+
+                $result = $openAiService->chatCompletionJson($messages);
+                $totalTokens += (int) ($result['total_tokens'] ?? 0);
+
+                $decoded = json_decode($result['content'], true);
+                if (! is_array($decoded)) {
+                    return $this->renderNewsletterTemplateForm($formTemplate, [
+                        'ok' => false,
+                        'message' => 'AI could not fix merge variables. Please try generating again.',
+                        'code' => 'invalid_response',
+                    ]);
+                }
+
+                [$subject, $content, $htmlContent, $suggestedName] = $this->normalizeTemplateAiDecodedPayload($decoded, $outputMode);
+
+                $incomplete = $this->templateAiPayloadIsIncomplete($subject, $content, $htmlContent, $suggestedName, $outputMode);
+                if ($incomplete !== null) {
+                    return $this->renderNewsletterTemplateForm($formTemplate, $incomplete);
+                }
+
+                $placeholderError = $this->validateTemplateAiMergeVariablesOnly($subject, $content, $htmlContent, $suggestedName);
+                if ($placeholderError !== null) {
+                    return $this->renderNewsletterTemplateForm($formTemplate, [
+                        'ok' => false,
+                        'message' => $placeholderError.' Please try generating again.',
+                        'code' => 'invalid_placeholders',
+                    ]);
+                }
+            }
+            if ($totalTokens > 0) {
+                $user->increment('ai_tokens_used', $totalTokens);
+            }
+            $user->refresh();
+
+            Log::info('Newsletter template AI generated', [
+                'user_id' => $user->id,
+                'tokens_used' => $totalTokens,
+                'ai_tokens_used' => $user->ai_tokens_used,
+            ]);
+
+            return $this->renderNewsletterTemplateForm($formTemplate, [
+                'ok' => true,
+                'output_mode' => $outputMode,
+                'subject' => $subject,
+                'content' => $content,
+                'html_content' => $htmlContent,
+                'suggested_name' => $suggestedName,
+                'tokens_used' => $totalTokens,
+                'ai_tokens_used' => (int) $user->ai_tokens_used,
+                'ai_tokens_included' => (int) ($user->ai_tokens_included ?? 0),
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Newsletter template AI generation failed', [
+                'message' => $e->getMessage(),
+            ]);
+
+            $message = (str_contains($e->getMessage(), 'OpenAI') || str_contains($e->getMessage(), 'API'))
+                ? 'AI service error. Check OPENAI_API_KEY and try again.'
+                : 'Could not generate template. Please try again.';
+
+            return $this->renderNewsletterTemplateForm($formTemplate, [
+                'ok' => false,
+                'message' => $message,
+                'code' => 'api_error',
+            ]);
+        }
+    }
+
+    /**
+     * Generate draft subject + body for the newsletter create page (one send, not a saved template).
+     */
+    public function generateNewsletterCreateWithAi(Request $request, OpenAiService $openAiService): Response
+    {
+        $validated = $request->validate([
+            'brief' => 'required|string|max:3000',
+            'template_type' => 'nullable|in:newsletter,announcement,event',
+            'tone' => 'nullable|in:professional,warm,urgent,celebratory',
+            'output_mode' => 'required|in:plain,html',
+            'send_via' => 'nullable|in:email,sms,both',
+        ]);
+
+        $this->authorizePermission($request, 'newsletter.create');
+
+        if (! $this->openAiApiKeyIsConfigured()) {
+            return Inertia::render('newsletter/create', $this->newsletterCreatePageData([
+                'ok' => false,
+                'message' => 'AI is not configured. Set OPENAI_API_KEY on the server.',
+                'code' => 'not_configured',
+            ]));
+        }
+
+        $user = Auth::user();
+        $tokensIncluded = (int) ($user->ai_tokens_included ?? 0);
+        $tokensUsed = (int) ($user->ai_tokens_used ?? 0);
+        if ($tokensIncluded > 0 && $tokensUsed >= $tokensIncluded) {
+            return Inertia::render('newsletter/create', $this->newsletterCreatePageData([
+                'ok' => false,
+                'message' => 'You have used all your AI tokens for this period. Upgrade your plan or wait for your next allocation.',
+                'code' => 'insufficient_tokens',
+            ]));
+        }
+
+        $templateType = $validated['template_type'] ?? 'newsletter';
+        $tone = $validated['tone'] ?? 'professional';
+        $outputMode = $validated['output_mode'];
+        $sendVia = $validated['send_via'] ?? 'email';
+        if ($sendVia === 'sms') {
+            $outputMode = 'plain';
+        } elseif ($sendVia === 'both') {
+            $outputMode = 'both';
+        }
+
+        $typeLabels = [
+            'newsletter' => 'a recurring nonprofit / community newsletter send',
+            'announcement' => 'an important one-off announcement email send',
+            'event' => 'an event invitation or reminder email send',
+        ];
+        $typeLabel = $typeLabels[$templateType] ?? $typeLabels['newsletter'];
+
+        $mergeVars = $this->newsletterTemplateMergeVarsPromptLine();
+        $plainQuality = $this->newsletterAiPlainCopyQualityRules();
+        $htmlDesign = $this->newsletterAiHtmlDesignInstructions($tone);
+
+        if ($outputMode === 'plain') {
+            $systemPrompt = <<<PROMPT
+You help nonprofits write email campaigns. Respond with ONLY a single JSON object (no markdown fences).
+Required keys: "subject" (string), "content" (string).
+
+PLAIN TEXT OUTPUT ONLY for this request:
+- Generate subject and the full email body as plain text only in "content".
+- Do NOT use HTML tags anywhere. Set "html_content" to exactly "" (empty string).
+
+This is for a single newsletter send (not a reusable template). Do not include a template name field.
+
+{$plainQuality}
+
+MERGE VARIABLES — STRICT (non-negotiable):
+- The ONLY strings that may appear inside single curly braces {…} anywhere in subject or body are exactly: {$mergeVars}
+- There are NO other merge fields. Do NOT invent placeholders for stories, blurbs, CTAs, URLs, or “sections”. Forbidden examples (never output these): {impact_story}, {story}, {body}, {main_content}, {cta_link}, {donate_link}, {event_info}, {donor_name}, {first_name}, {date}, or any {word} except those listed above.
+- If the brief asks for an impact story, example copy, or event details: write that text in full as normal sentences—no curly braces around it.
+- Do NOT use {{name}}, %email%, [FIRST_NAME], or double curly braces. No spaces inside braces (use {organization_name} not { organization_name }).
+
+Subject: compelling, under 200 characters; you may include {organization_name} where it fits.
+content: must include {unsubscribe_link}; you may include {public_view_link} where a browser view link is appropriate.
+Tone: {$tone}, trustworthy for donors and community members.
+PROMPT;
+        } elseif ($outputMode === 'both') {
+            $systemPrompt = <<<PROMPT
+You help nonprofits write email campaigns. Respond with ONLY a single JSON object (no markdown fences).
+Required keys: "subject" (string), "content" (string), "html_content" (string).
+
+DUAL OUTPUT — full professional plain text + HTML for one send:
+
+{$plainQuality}
+
+- "content": Full text/plain body: multi-paragraph, \\n\\n between sections, same narrative as the HTML—not a short SMS-only blurb. Typical length when the brief allows: ~150–500+ words. No HTML tags. Merge variables only: {$mergeVars}. Include {unsubscribe_link} and {public_view_link} where appropriate.
+- "html_content": Full email-safe HTML implementing the design specification below.
+
+MERGE VARIABLES — STRICT in subject, content, and html_content:
+- The ONLY strings inside single curly braces {…} are exactly: {$mergeVars}
+- Do NOT use {{name}}, %email%, [NAME], or double curly braces.
+
+{$htmlDesign}
+PROMPT;
+        } else {
+            $systemPrompt = <<<PROMPT
+You help nonprofits write email campaigns. Respond with ONLY a single JSON object (no markdown fences).
+Required keys: "subject" (string), "html_content" (string), "content" (string).
+
+HTML plus plain text (always include both):
+
+{$plainQuality}
+
+- "html_content": full email-safe HTML body implementing the design specification below.
+- "content": REQUIRED full plain-text twin (no HTML tags, \\n line breaks). Merge variables only: {$mergeVars}. Include {unsubscribe_link} and optionally {public_view_link}. Faithfully match the HTML.
+
+This is for a single newsletter send (not a reusable template). Do not include a template name field.
+
+MERGE VARIABLES — STRICT (non-negotiable):
+- The ONLY strings that may appear inside single curly braces {…} anywhere in subject, html_content, or content are exactly: {$mergeVars}
+- There are NO other merge fields. Do NOT invent placeholders for stories, blurbs, CTAs, or URLs. Forbidden examples (never output these): {impact_story}, {story}, {body}, {main_content}, {cta_link}, {donate_link}, {event_info}, {donor_name}, {first_name}, or any {word} except those listed above.
+- If the brief asks for an impact story, example copy, or event details: write that as real HTML text (paragraphs, lists)—never as a {placeholder}.
+- Do NOT use {{name}}, %email%, [NAME], or double curly braces. No spaces inside braces.
+
+Subject: compelling, under 200 characters; you may include {organization_name} where it fits.
+
+{$htmlDesign}
+PROMPT;
+        }
+
+        $modeLine = match ($outputMode) {
+            'plain' => 'PLAIN TEXT ONLY (no HTML).',
+            'both' => 'Full professional plain text in "content" PLUS full HTML in "html_content" (both required).',
+            default => 'HTML in "html_content" AND a full plain-text twin in "content" (both required).',
+        };
+        $userPrompt = "Campaign purpose: {$typeLabel}.\nOutput mode: {$modeLine}\nDesired tone: {$tone}.\n\nBrief from the user:\n".$validated['brief'];
+        if ($outputMode === 'html' || $outputMode === 'both') {
+            $userPrompt .= "\n\nMandatory: HTML must use a distinctive palette with at least one dark or richly colored header, footer, or feature band—not an all-white-only layout.";
+        }
+
+        try {
+            $messages = [
+                ['role' => 'system', 'content' => $systemPrompt],
+                ['role' => 'user', 'content' => $userPrompt],
+            ];
+
+            $result = $openAiService->chatCompletionJson($messages);
+            $totalTokens = (int) ($result['total_tokens'] ?? 0);
+
+            $decoded = json_decode($result['content'], true);
+            if (! is_array($decoded)) {
+                return Inertia::render('newsletter/create', $this->newsletterCreatePageData([
+                    'ok' => false,
+                    'message' => 'AI returned an invalid response. Please try again.',
+                    'code' => 'invalid_response',
+                ]));
+            }
+
+            [$subject, $content, $htmlContent] = $this->normalizeNewsletterCreateAiDecodedPayload($decoded, $outputMode);
+
+            $incomplete = $this->newsletterCreateAiPayloadIsIncomplete($subject, $content, $htmlContent, $outputMode);
+            if ($incomplete !== null) {
+                return Inertia::render('newsletter/create', $this->newsletterCreatePageData($incomplete));
+            }
+
+            $placeholderError = $this->validateTemplateAiMergeVariablesOnly($subject, $content, $htmlContent, '');
+
+            if ($placeholderError !== null) {
+                $fixPrompt = <<<TXT
+Your previous JSON used merge variables that this app does not support. Problem: {$placeholderError}
+
+Return ONE new JSON object with the same keys and the same meaning (same email, same tone), but:
+- ONLY these placeholders may appear inside single braces anywhere: {$mergeVars}
+- Replace every other {word} with normal written text (full sentences or HTML text). For example use a short example story in plain words instead of {impact_story}; use href="#" and visible button text instead of {cta_link}.
+- Keep subject, content, and html_content complete (same keys as before). No markdown fences.
+TXT;
+
+                $messages[] = ['role' => 'assistant', 'content' => $result['content']];
+                $messages[] = ['role' => 'user', 'content' => $fixPrompt];
+
+                $result = $openAiService->chatCompletionJson($messages);
+                $totalTokens += (int) ($result['total_tokens'] ?? 0);
+
+                $decoded = json_decode($result['content'], true);
+                if (! is_array($decoded)) {
+                    return Inertia::render('newsletter/create', $this->newsletterCreatePageData([
+                        'ok' => false,
+                        'message' => 'AI could not fix merge variables. Please try generating again.',
+                        'code' => 'invalid_response',
+                    ]));
+                }
+
+                [$subject, $content, $htmlContent] = $this->normalizeNewsletterCreateAiDecodedPayload($decoded, $outputMode);
+
+                $incomplete = $this->newsletterCreateAiPayloadIsIncomplete($subject, $content, $htmlContent, $outputMode);
+                if ($incomplete !== null) {
+                    return Inertia::render('newsletter/create', $this->newsletterCreatePageData($incomplete));
+                }
+
+                $placeholderError = $this->validateTemplateAiMergeVariablesOnly($subject, $content, $htmlContent, '');
+                if ($placeholderError !== null) {
+                    return Inertia::render('newsletter/create', $this->newsletterCreatePageData([
+                        'ok' => false,
+                        'message' => $placeholderError.' Please try generating again.',
+                        'code' => 'invalid_placeholders',
+                    ]));
+                }
+            }
+            if ($totalTokens > 0) {
+                $user->increment('ai_tokens_used', $totalTokens);
+            }
+            $user->refresh();
+
+            Log::info('Newsletter create AI generated', [
+                'user_id' => $user->id,
+                'tokens_used' => $totalTokens,
+                'ai_tokens_used' => $user->ai_tokens_used,
+            ]);
+
+            return Inertia::render('newsletter/create', $this->newsletterCreatePageData([
+                'ok' => true,
+                'output_mode' => $outputMode,
+                'subject' => $subject,
+                'content' => $content,
+                'html_content' => $htmlContent,
+                'tokens_used' => $totalTokens,
+                'ai_tokens_used' => (int) $user->ai_tokens_used,
+                'ai_tokens_included' => (int) ($user->ai_tokens_included ?? 0),
+            ]));
+        } catch (\Exception $e) {
+            Log::error('Newsletter create AI generation failed', [
+                'message' => $e->getMessage(),
+            ]);
+
+            $message = (str_contains($e->getMessage(), 'OpenAI') || str_contains($e->getMessage(), 'API'))
+                ? 'AI service error. Check OPENAI_API_KEY and try again.'
+                : 'Could not generate draft. Please try again.';
+
+            return Inertia::render('newsletter/create', $this->newsletterCreatePageData([
+                'ok' => false,
+                'message' => $message,
+                'code' => 'api_error',
+            ]));
+        }
     }
 
     /**
@@ -301,18 +1080,27 @@ class NewsletterController extends BaseController
         $request->validate([
             'name' => 'required|string|max:255',
             'subject' => 'required|string|max:255',
-            'content' => 'required|string',
+            'content' => 'nullable|string',
             'html_content' => 'nullable|string',
             'template_type' => 'required|in:newsletter,announcement,event',
             'settings' => 'nullable|array',
         ]);
 
+        $contentTrim = trim((string) $request->content);
+        $htmlTrim = trim((string) $request->html_content);
+        if ($contentTrim === '' && $htmlTrim === '') {
+            throw ValidationException::withMessages([
+                'content' => 'Provide plain text content and/or HTML content.',
+                'html_content' => 'Provide plain text content and/or HTML content.',
+            ]);
+        }
+
         $template = NewsletterTemplate::create([
             'organization_id' => null,
             'name' => $request->name,
             'subject' => $request->subject,
-            'content' => $request->content,
-            'html_content' => $request->html_content,
+            'content' => $contentTrim === '' ? '' : $request->content,
+            'html_content' => $htmlTrim === '' ? null : $request->html_content,
             'template_type' => $request->template_type,
             'settings' => $request->settings ?? [],
             'is_active' => true,
@@ -344,37 +1132,8 @@ class NewsletterController extends BaseController
         $this->authorizePermission($request, 'newsletter.edit');
 
         $template = NewsletterTemplate::findOrFail($id);
-        $user = Auth::user();
 
-        // Build organization address from available fields
-        $orgAddress = '';
-        if ($user->organization) {
-            $addressParts = array_filter([
-                $user->organization->street,
-                $user->organization->city,
-                $user->organization->state,
-                $user->organization->zip
-            ]);
-            $orgAddress = !empty($addressParts) ? implode(', ', $addressParts) : 'Your Organization Address';
-        }
-
-        // Get real data for variable preview
-        $previewData = [
-            'organization_name' => $user->organization->name ?? ($user->name ?? 'Your Organization'),
-            'organization_email' => $user->organization->email ?? ($user->email ?? 'wendhi@stuttiegroup.com'),
-            'organization_phone' => $user->organization->phone ?? ($user->contact_number ?? '+1 (555) 000-0000'),
-            'organization_address' => $orgAddress ?: 'Your Organization Address',
-            'recipient_name' => $user->name ?? 'Recipient Name',
-            'recipient_email' => $user->email ?? 'recipient@example.com',
-            'current_date' => Carbon::now()->format('F j, Y'),
-            'current_year' => (string) Carbon::now()->year,
-            'unsubscribe_link' => url('/newsletter/unsubscribe?token=preview_token'),
-        ];
-
-        return Inertia::render('newsletter/template-form', [
-            'template' => $template,
-            'previewData' => $previewData,
-        ]);
+        return $this->renderNewsletterTemplateForm($template, null);
     }
 
     /**
@@ -387,19 +1146,28 @@ class NewsletterController extends BaseController
         $request->validate([
             'name' => 'required|string|max:255',
             'subject' => 'required|string|max:255',
-            'content' => 'required|string',
+            'content' => 'nullable|string',
             'html_content' => 'nullable|string',
             'template_type' => 'required|in:newsletter,announcement,event',
             'settings' => 'nullable|array',
         ]);
+
+        $contentTrim = trim((string) $request->content);
+        $htmlTrim = trim((string) $request->html_content);
+        if ($contentTrim === '' && $htmlTrim === '') {
+            throw ValidationException::withMessages([
+                'content' => 'Provide plain text content and/or HTML content.',
+                'html_content' => 'Provide plain text content and/or HTML content.',
+            ]);
+        }
 
         $template = NewsletterTemplate::findOrFail($id);
 
         $template->update([
             'name' => $request->name,
             'subject' => $request->subject,
-            'content' => $request->content,
-            'html_content' => $request->html_content,
+            'content' => $contentTrim === '' ? '' : $request->content,
+            'html_content' => $htmlTrim === '' ? null : $request->html_content,
             'template_type' => $request->template_type,
             'settings' => $request->settings ?? $template->settings,
         ]);
@@ -443,7 +1211,7 @@ class NewsletterController extends BaseController
         $organizationsQuery = Organization::with(['user', 'newsletterRecipients']);
 
         // Apply search filter
-        if (!empty($search) && trim($search) !== '') {
+        if (! empty($search) && trim($search) !== '') {
             $organizationsQuery->where(function ($query) use ($search) {
                 $query->where('name', 'LIKE', "%{$search}%")
                     ->orWhere('email', 'LIKE', "%{$search}%")
@@ -497,7 +1265,7 @@ class NewsletterController extends BaseController
 
         // Apply search filter for manual recipients
         $manualSearch = $request->input('manual_search', '');
-        if (!empty($manualSearch) && trim($manualSearch) !== '') {
+        if (! empty($manualSearch) && trim($manualSearch) !== '') {
             $manualRecipientsQuery->where(function ($query) use ($manualSearch) {
                 $query->where('email', 'LIKE', "%{$manualSearch}%")
                     ->orWhere('name', 'LIKE', "%{$manualSearch}%");
@@ -602,6 +1370,7 @@ class NewsletterController extends BaseController
                 'status' => 'unsubscribed',
                 'unsubscribed_at' => now(),
             ]);
+
             return back()->with('success', 'Organization unsubscribed successfully!');
         }
 
@@ -625,8 +1394,8 @@ class NewsletterController extends BaseController
             // Send test email
             Mail::raw($request->content, function ($message) use ($request) {
                 $message->to($request->email)
-                        ->subject('[TEST] ' . $request->subject)
-                        ->from(config('mail.from.address'), config('mail.from.name'));
+                    ->subject('[TEST] '.$request->subject)
+                    ->from(config('mail.from.address'), config('mail.from.name'));
             });
 
             Log::info('Test email sent', [
@@ -635,14 +1404,14 @@ class NewsletterController extends BaseController
                 'sent_by' => Auth::id(),
             ]);
 
-            return back()->with('success', 'Test email sent successfully to ' . $request->email . '!');
+            return back()->with('success', 'Test email sent successfully to '.$request->email.'!');
         } catch (\Exception $e) {
             Log::error('Test email failed', [
                 'to' => $request->email,
                 'error' => $e->getMessage(),
             ]);
 
-            return back()->with('error', 'Failed to send test email: ' . $e->getMessage());
+            return back()->with('error', 'Failed to send test email: '.$e->getMessage());
         }
     }
 
@@ -660,7 +1429,7 @@ class NewsletterController extends BaseController
         $organizationsQuery = Organization::with(['user', 'newsletterRecipients']);
 
         // Apply search filter
-        if (!empty($search) && trim($search) !== '') {
+        if (! empty($search) && trim($search) !== '') {
             $organizationsQuery->where(function ($query) use ($search) {
                 $query->where('name', 'LIKE', "%{$search}%")
                     ->orWhere('email', 'LIKE', "%{$search}%")
@@ -692,14 +1461,14 @@ class NewsletterController extends BaseController
 
         $organizations = $organizationsQuery->get();
 
-        $filename = 'newsletter_recipients_' . date('Y-m-d_H-i-s') . '.csv';
+        $filename = 'newsletter_recipients_'.date('Y-m-d_H-i-s').'.csv';
 
         $headers = [
             'Content-Type' => 'text/csv',
-            'Content-Disposition' => 'attachment; filename="' . $filename . '"',
+            'Content-Disposition' => 'attachment; filename="'.$filename.'"',
         ];
 
-        $callback = function() use ($organizations) {
+        $callback = function () use ($organizations) {
             $file = fopen('php://output', 'w');
 
             // CSV headers
@@ -711,7 +1480,7 @@ class NewsletterController extends BaseController
                 'Registration Status',
                 'Newsletter Status',
                 'Subscribed Date',
-                'Created Date'
+                'Created Date',
             ]);
 
             foreach ($organizations as $org) {
@@ -726,7 +1495,7 @@ class NewsletterController extends BaseController
                     $org->registration_status,
                     $subscriptionStatus,
                     $subscription?->subscribed_at ? date('Y-m-d H:i:s', strtotime($subscription->subscribed_at)) : 'N/A',
-                    date('Y-m-d H:i:s', strtotime($org->created_at))
+                    date('Y-m-d H:i:s', strtotime($org->created_at)),
                 ]);
             }
 
@@ -744,7 +1513,7 @@ class NewsletterController extends BaseController
         $this->authorizePermission($request, 'newsletter.create');
 
         $request->validate([
-            'file' => 'required|file|mimes:csv,txt|max:2048'
+            'file' => 'required|file|mimes:csv,txt|max:2048',
         ]);
 
         $file = $request->file('file');
@@ -753,11 +1522,11 @@ class NewsletterController extends BaseController
         $imported = 0;
         $errors = [];
 
-        if (($handle = fopen($path, 'r')) !== FALSE) {
+        if (($handle = fopen($path, 'r')) !== false) {
             // Skip header row
             fgetcsv($handle);
 
-            while (($data = fgetcsv($handle, 1000, ',')) !== FALSE) {
+            while (($data = fgetcsv($handle, 1000, ',')) !== false) {
                 if (count($data) >= 2) {
                     $email = trim($data[0]);
                     $name = isset($data[1]) ? trim($data[1]) : null;
@@ -766,7 +1535,7 @@ class NewsletterController extends BaseController
                         // Check if recipient already exists
                         $existing = NewsletterRecipient::where('email', $email)->first();
 
-                        if (!$existing) {
+                        if (! $existing) {
                             NewsletterRecipient::create([
                                 'organization_id' => null,
                                 'email' => $email,
@@ -787,10 +1556,10 @@ class NewsletterController extends BaseController
         }
 
         $message = "Successfully imported {$imported} recipients.";
-        if (!empty($errors)) {
-            $message .= " Errors: " . implode(', ', array_slice($errors, 0, 5));
+        if (! empty($errors)) {
+            $message .= ' Errors: '.implode(', ', array_slice($errors, 0, 5));
             if (count($errors) > 5) {
-                $message .= " and " . (count($errors) - 5) . " more errors.";
+                $message .= ' and '.(count($errors) - 5).' more errors.';
             }
         }
 
@@ -847,46 +1616,7 @@ class NewsletterController extends BaseController
     {
         $this->authorizePermission($request, 'newsletter.create');
 
-        $templates = NewsletterTemplate::where('is_active', true)
-            ->select(['id', 'name', 'subject', 'content', 'template_type', 'html_content'])
-            ->get();
-
-        $user = Auth::user();
-
-        // Build organization address from available fields
-        $orgAddress = '';
-        if ($user->organization) {
-            $addressParts = array_filter([
-                $user->organization->street,
-                $user->organization->city,
-                $user->organization->state,
-                $user->organization->zip
-            ]);
-            $orgAddress = !empty($addressParts) ? implode(', ', $addressParts) : 'Your Organization Address';
-        }
-
-        // Get real data for variable preview
-        // For public view link, we'll use a placeholder since newsletter doesn't exist yet
-        // When newsletter is created, this will be replaced with actual newsletter public URL
-        $publicViewLink = url('/newsletter/public/preview');
-
-        $previewData = [
-            'organization_name' => $user->organization->name ?? ($user->name ?? 'Your Organization'),
-            'organization_email' => $user->organization->email ?? ($user->email ?? 'wendhi@stuttiegroup.com'),
-            'organization_phone' => $user->organization->phone ?? ($user->contact_number ?? '+1 (555) 000-0000'),
-            'organization_address' => $orgAddress ?: 'Your Organization Address',
-            'recipient_name' => $user->name ?? 'Recipient Name',
-            'recipient_email' => $user->email ?? 'recipient@example.com',
-            'current_date' => Carbon::now()->format('F j, Y'),
-            'current_year' => (string) Carbon::now()->year,
-            'unsubscribe_link' => url('/newsletter/unsubscribe?token=preview_token'),
-            'public_view_link' => $publicViewLink,
-        ];
-
-        return Inertia::render('newsletter/create', [
-            'templates' => $templates,
-            'previewData' => $previewData,
-        ]);
+        return Inertia::render('newsletter/create', $this->newsletterCreatePageData(null));
     }
 
     /**
@@ -902,15 +1632,16 @@ class NewsletterController extends BaseController
             'schedule_type' => $request->schedule_type,
             'user_timezone' => config('app.timezone'),
             'browser_timezone' => $request->header('X-Timezone'),
-            'all_data' => $request->all()
+            'all_data' => $request->all(),
         ]);
 
         // Custom validation for send_date based on schedule_type
         $rules = [
             'newsletter_template_id' => 'required|exists:newsletter_templates,id',
             'subject' => 'required|string|max:255',
-            'content' => 'required|string',
+            'content' => 'nullable|string',
             'html_content' => 'nullable|string',
+            'send_via' => 'required|in:email,sms,both',
             'scheduled_at' => 'nullable|date|after:now',
             'schedule_type' => 'required|in:immediate,scheduled,recurring',
             'recurring_settings' => 'nullable|array',
@@ -962,6 +1693,35 @@ class NewsletterController extends BaseController
             return back()->withErrors($validator)->withInput();
         }
 
+        $sendVia = $request->input('send_via', 'email');
+        $contentTrim = trim((string) $request->content);
+        $htmlTrim = trim((string) $request->html_content);
+
+        if ($sendVia === 'sms') {
+            if ($contentTrim === '') {
+                throw ValidationException::withMessages([
+                    'content' => 'Plain text content is required for SMS.',
+                ]);
+            }
+            $htmlTrim = '';
+        } elseif ($sendVia === 'both') {
+            if ($contentTrim === '') {
+                throw ValidationException::withMessages([
+                    'content' => 'Plain text content is required for the SMS leg of this send.',
+                ]);
+            }
+            if ($htmlTrim === '') {
+                throw ValidationException::withMessages([
+                    'html_content' => 'HTML content is required when sending both SMS and email (email uses the HTML version).',
+                ]);
+            }
+        } elseif ($contentTrim === '' && $htmlTrim === '') {
+            throw ValidationException::withMessages([
+                'content' => 'Provide plain text content and/or HTML content.',
+                'html_content' => 'Provide plain text content and/or HTML content.',
+            ]);
+        }
+
         $template = NewsletterTemplate::findOrFail($request->newsletter_template_id);
 
         // Calculate send date based on schedule type
@@ -1006,8 +1766,9 @@ class NewsletterController extends BaseController
             'organization_id' => $userOrganization->id ?? null,
             'newsletter_template_id' => $request->newsletter_template_id,
             'subject' => $request->subject,
-            'content' => $request->content,
-            'html_content' => $request->html_content,
+            'content' => $contentTrim === '' ? '' : $request->content,
+            'html_content' => $htmlTrim === '' ? null : $request->html_content,
+            'send_via' => $sendVia,
             'status' => $status,
             'scheduled_at' => $sendDate, // Use send_date for scheduled_at as well for compatibility
             'send_date' => $sendDate,
@@ -1039,12 +1800,12 @@ class NewsletterController extends BaseController
 
         $newsletter = Newsletter::with(['template', 'organization', 'emails.recipient'])
             ->select([
-                'id', 'subject', 'content', 'html_content', 'status',
+                'id', 'subject', 'content', 'html_content', 'send_via', 'status',
                 'scheduled_at', 'send_date', 'sent_at', 'schedule_type',
                 'total_recipients', 'sent_count', 'delivered_count',
                 'opened_count', 'clicked_count', 'bounced_count',
                 'unsubscribed_count', 'newsletter_template_id', 'organization_id',
-                'created_at', 'updated_at'
+                'created_at', 'updated_at',
             ])
             ->findOrFail($id);
 
@@ -1098,12 +1859,13 @@ class NewsletterController extends BaseController
                 $date = Carbon::parse($rawValue, 'UTC')->setTimezone($userTimezone);
                 $email->clicked_at_formatted = $date->format('M d, Y h:i A');
             }
+
             return $email;
         });
 
         // Ensure emails have proper structure even if recipient is deleted
         $newsletter->emails->each(function ($email) {
-            if (!$email->recipient) {
+            if (! $email->recipient) {
                 // If recipient is deleted, we still have the email address
                 $email->recipient = null;
             }
@@ -1118,9 +1880,9 @@ class NewsletterController extends BaseController
                 $user->organization->street,
                 $user->organization->city,
                 $user->organization->state,
-                $user->organization->zip
+                $user->organization->zip,
             ]);
-            $orgAddress = !empty($addressParts) ? implode(', ', $addressParts) : 'Your Organization Address';
+            $orgAddress = ! empty($addressParts) ? implode(', ', $addressParts) : 'Your Organization Address';
         }
 
         // Carbon automatically uses config('app.timezone') set by middleware
@@ -1159,7 +1921,7 @@ class NewsletterController extends BaseController
 
         $newsletter = Newsletter::findOrFail($id);
 
-        if (!in_array($newsletter->status, ['draft', 'paused'])) {
+        if (! in_array($newsletter->status, ['draft', 'paused'])) {
             return back()->with('error', 'Newsletter can only be sent from draft or paused status.');
         }
 
@@ -1172,20 +1934,22 @@ class NewsletterController extends BaseController
 
             if ($targetedUsers->isEmpty()) {
                 $newsletter->update(['status' => 'failed']);
+
                 return back()->with('error', 'No recipients found to send the newsletter to. Please check your targeting settings.');
             }
 
             // Dispatch job to send emails (job will create email records)
             dispatch(new SendNewsletterJob($newsletter));
 
-            return back()->with('success', 'Newsletter is being sent to ' . $targetedUsers->count() . ' recipients.');
+            return back()->with('success', 'Newsletter is being sent to '.$targetedUsers->count().' recipients.');
         } catch (\Exception $e) {
             Log::error('Error in send method', [
                 'newsletter_id' => $newsletter->id,
                 'error' => $e->getMessage(),
             ]);
             $newsletter->update(['status' => 'failed']);
-            return back()->with('error', 'Failed to send newsletter: ' . $e->getMessage());
+
+            return back()->with('error', 'Failed to send newsletter: '.$e->getMessage());
         }
     }
 
@@ -1234,9 +1998,9 @@ class NewsletterController extends BaseController
                 $user->organization->street,
                 $user->organization->city,
                 $user->organization->state,
-                $user->organization->zip
+                $user->organization->zip,
             ]);
-            $orgAddress = !empty($addressParts) ? implode(', ', $addressParts) : 'Your Organization Address';
+            $orgAddress = ! empty($addressParts) ? implode(', ', $addressParts) : 'Your Organization Address';
         }
 
         // Get real data for variable preview
@@ -1274,16 +2038,47 @@ class NewsletterController extends BaseController
 
         $request->validate([
             'subject' => 'required|string|max:255',
-            'content' => 'required|string',
+            'content' => 'nullable|string',
             'html_content' => 'nullable|string',
             'newsletter_template_id' => 'required|exists:newsletter_templates,id',
+            'send_via' => 'required|in:email,sms,both',
         ]);
+
+        $sendVia = $request->input('send_via', 'email');
+        $contentTrim = trim((string) $request->content);
+        $htmlTrim = trim((string) $request->html_content);
+
+        if ($sendVia === 'sms') {
+            if ($contentTrim === '') {
+                throw ValidationException::withMessages([
+                    'content' => 'Plain text content is required for SMS.',
+                ]);
+            }
+            $htmlTrim = '';
+        } elseif ($sendVia === 'both') {
+            if ($contentTrim === '') {
+                throw ValidationException::withMessages([
+                    'content' => 'Plain text content is required for the SMS leg of this send.',
+                ]);
+            }
+            if ($htmlTrim === '') {
+                throw ValidationException::withMessages([
+                    'html_content' => 'HTML content is required when sending both SMS and email.',
+                ]);
+            }
+        } elseif ($contentTrim === '' && $htmlTrim === '') {
+            throw ValidationException::withMessages([
+                'content' => 'Provide plain text content and/or HTML content.',
+                'html_content' => 'Provide plain text content and/or HTML content.',
+            ]);
+        }
 
         $newsletter->update([
             'subject' => $request->subject,
-            'content' => $request->content,
-            'html_content' => $request->html_content,
+            'content' => $contentTrim === '' ? '' : $request->content,
+            'html_content' => $htmlTrim === '' ? null : $request->html_content,
             'newsletter_template_id' => $request->newsletter_template_id,
+            'send_via' => $sendVia,
             'status' => 'draft', // Reset to draft when editing
         ]);
 
@@ -1301,7 +2096,7 @@ class NewsletterController extends BaseController
         $newsletter = Newsletter::findOrFail($id);
 
         // Only allow schedule update for scheduled newsletters (not sent, failed, or sending)
-        if (!in_array($newsletter->status, ['scheduled', 'draft'])) {
+        if (! in_array($newsletter->status, ['scheduled', 'draft'])) {
             return back()->with('error', 'Only scheduled or draft newsletters can have their schedule updated.');
         }
 
@@ -1329,13 +2124,13 @@ class NewsletterController extends BaseController
             'converted_utc' => $scheduledAt->toISOString(),
             'converted_local' => $localTime->toDateTimeString(),
             'converted_local_iso' => $localTime->toISOString(),
-            'verification' => "User entered {$request->scheduled_at} in " . config('app.timezone') . ", stored as {$scheduledAt->toDateTimeString()} UTC, which is {$localTime->toDateTimeString()} in " . config('app.timezone'),
+            'verification' => "User entered {$request->scheduled_at} in ".config('app.timezone').", stored as {$scheduledAt->toDateTimeString()} UTC, which is {$localTime->toDateTimeString()} in ".config('app.timezone'),
         ]);
 
         // Check if updating to a past date (late newsletter)
         $isLate = $scheduledAt->lt(now());
         if ($isLate) {
-            Log::warning("Updating newsletter schedule to past date - will be sent immediately", [
+            Log::warning('Updating newsletter schedule to past date - will be sent immediately', [
                 'newsletter_id' => $newsletter->id,
                 'scheduled_at' => $scheduledAt->toISOString(),
                 'current_time' => now()->toISOString(),
@@ -1380,7 +2175,7 @@ class NewsletterController extends BaseController
         $newsletter = Newsletter::findOrFail($id);
 
         // Allow pausing for scheduled and sending newsletters
-        if (!in_array($newsletter->status, ['scheduled', 'sending'])) {
+        if (! in_array($newsletter->status, ['scheduled', 'sending'])) {
             return back()->with('error', 'Only scheduled or sending newsletters can be paused.');
         }
 
@@ -1432,7 +2227,7 @@ class NewsletterController extends BaseController
         Log::info('Manual send request received', [
             'newsletter_id' => $id,
             'user_id' => Auth::id(),
-            'request_data' => $request->all()
+            'request_data' => $request->all(),
         ]);
 
         $this->authorizePermission($request, 'newsletter.send');
@@ -1496,6 +2291,7 @@ class NewsletterController extends BaseController
                         'newsletter_id' => $newsletter->id,
                         'target_type' => $newsletter->target_type,
                     ]);
+
                     return back()->with('error', 'No recipients found to send the newsletter to. Please check your targeting settings or add recipients.');
                 }
 
@@ -1512,7 +2308,8 @@ class NewsletterController extends BaseController
                     'trace' => $e->getTraceAsString(),
                 ]);
                 $newsletter->update(['status' => 'failed']);
-                return back()->with('error', 'Error determining recipients: ' . $e->getMessage());
+
+                return back()->with('error', 'Error determining recipients: '.$e->getMessage());
             }
 
             // Dispatch job to send emails
@@ -1538,14 +2335,14 @@ class NewsletterController extends BaseController
             }
 
             $message = $wasSent ?
-                'Newsletter is being sent again to ' . $recipientCount . ' recipients.' :
-                'Newsletter is being sent to ' . $recipientCount . ' recipients.';
+                'Newsletter is being sent again to '.$recipientCount.' recipients.' :
+                'Newsletter is being sent to '.$recipientCount.' recipients.';
 
             Log::info('Newsletter manual send completed', [
                 'newsletter_id' => $newsletter->id,
                 'recipients_count' => $recipientCount,
                 'was_sent' => $wasSent,
-                'message' => $message
+                'message' => $message,
             ]);
 
             return redirect()->route('newsletter.index')
@@ -1560,7 +2357,7 @@ class NewsletterController extends BaseController
 
             $newsletter->update(['status' => 'failed']);
 
-            return back()->with('error', 'Failed to send newsletter: ' . $e->getMessage());
+            return back()->with('error', 'Failed to send newsletter: '.$e->getMessage());
         }
     }
 
@@ -1604,7 +2401,7 @@ class NewsletterController extends BaseController
                 'trace' => $e->getTraceAsString(),
             ]);
 
-            return back()->with('error', 'Failed to delete newsletter: ' . $e->getMessage());
+            return back()->with('error', 'Failed to delete newsletter: '.$e->getMessage());
         }
     }
 
@@ -1615,29 +2412,29 @@ class NewsletterController extends BaseController
     {
         $recipient = NewsletterRecipient::where('unsubscribe_token', $token)->first();
 
-        if (!$recipient) {
+        if (! $recipient) {
             return view('newsletter.unsubscribe', [
                 'success' => false,
-                'message' => 'Invalid unsubscribe link.'
+                'message' => 'Invalid unsubscribe link.',
             ]);
         }
 
         if ($recipient->status === 'unsubscribed') {
             return view('newsletter.unsubscribe', [
                 'success' => true,
-                'message' => 'You have already unsubscribed from this newsletter.'
+                'message' => 'You have already unsubscribed from this newsletter.',
             ]);
         }
 
         $recipient->update([
             'status' => 'unsubscribed',
-            'unsubscribed_at' => now()
+            'unsubscribed_at' => now(),
         ]);
 
         return view('newsletter.unsubscribe', [
             'success' => true,
             'message' => 'You have been successfully unsubscribed from the newsletter.',
-            'recipient' => $recipient
+            'recipient' => $recipient,
         ]);
     }
 }
