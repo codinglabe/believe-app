@@ -463,12 +463,17 @@ export default function OrderDetails() {
                       ${(Number(order?.subtotal) || 0).toFixed(2)}
                     </span>
                                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-gray-600 dark:text-gray-400">Platform Fee</span>
-                    <span className="font-medium text-gray-900 dark:text-white">
-                                          ${(Number(order?.platform_fee) || 0).toFixed(2)}
+                  <div className="flex justify-between items-baseline gap-2">
+                    <div>
+                      <span className="text-gray-600 dark:text-gray-400">Platform Fee</span>
+                      <p className="text-xs text-gray-500 dark:text-gray-500 mt-0.5 max-w-[14rem]">
+                        Deducted from the organization&apos;s selling margin (not added to what you paid).
+                      </p>
+                    </div>
+                    <span className="font-medium text-gray-900 dark:text-white tabular-nums shrink-0">
+                      ${(Number(order?.platform_fee) || 0).toFixed(2)}
                     </span>
-                                  </div>
+                  </div>
                                   <div className="flex justify-between">
                     <span className="text-gray-600 dark:text-gray-400">Donation Amount</span>
                     <span className="font-medium text-gray-900 dark:text-white">

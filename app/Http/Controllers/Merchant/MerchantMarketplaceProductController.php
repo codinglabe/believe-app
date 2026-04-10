@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Merchant;
 use App\Http\Controllers\Controller;
 use App\Models\Category;
 use App\Models\MarketplaceProduct;
+use App\Services\MerchantMarketplacePoolListingService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\Rule;
@@ -105,6 +106,8 @@ class MerchantMarketplaceProductController extends Controller
         $validated['images'] = $existing ?: null;
 
         $marketplace_product->update($validated);
+        $marketplace_product->refresh();
+        app(MerchantMarketplacePoolListingService::class)->sync($marketplace_product);
 
         return redirect()->route('marketplace-products.index')
             ->with('success', 'Product updated.');

@@ -40,10 +40,12 @@ final class MarketplaceOrderLedgerService
     /**
      * Workbook / finance sheet model (customer total unchanged; fees come out of seller flow):
      * - Supplier/merchant: full {@see OrderSplit::$merchant_amount} (cost / fulfillment slice) — no Stripe deduction.
-     * - Organization: nonprofit markup slice minus **card processing** and **order platform fee**
-     *   (same as client workbook: organization_payout = markup_amount − processing_fee − platform_fee).
+     * - Organization: nonprofit markup slice minus **card processing** (split vs merchant when both have a
+     *   split and {@see Order::$organization_markup_basis} is set) and **order platform fee** (BIU % on org markup
+     *   when markup basis &gt; 0, else on subtotal).
      * - When there is no nonprofit slice, merchant absorbs Stripe + platform (Printify-only style).
      *
+     * @param  float|null  $organizationMarkupBasis  Stored on {@see Order}; null = pre-migration behavior (full Stripe attributed to org slice).
      * @return array{merchant_net: float, organization_net: float}
      */
     public static function workbookSellerPayouts(
@@ -51,14 +53,25 @@ final class MarketplaceOrderLedgerService
         float $organizationGross,
         float $orderPlatformFee,
         float $stripeFeeUsd,
+        ?float $organizationMarkupBasis,
+        float $orderSubtotal,
     ): array {
         $stripe = max(0.0, $stripeFeeUsd);
 
+        $stripeToOrg = $stripe;
+        $stripeToMerchant = 0.0;
+        if ($organizationGross > 0.01 && $merchantGross > 0.01 && $orderSubtotal > 0.01
+            && $organizationMarkupBasis !== null && $organizationMarkupBasis > 0.0001) {
+            $stripeToOrg = round($stripe * min(1.0, $organizationMarkupBasis / $orderSubtotal), 2);
+            $stripeToMerchant = round(max(0.0, $stripe - $stripeToOrg), 2);
+        }
+
         if ($organizationGross > 0.0) {
-            $organizationNet = max(0.0, round($organizationGross - $stripe - $orderPlatformFee, 2));
+            $organizationNet = max(0.0, round($organizationGross - $orderPlatformFee - $stripeToOrg, 2));
+            $merchantNet = max(0.0, round($merchantGross - $stripeToMerchant, 2));
 
             return [
-                'merchant_net' => round($merchantGross, 2),
+                'merchant_net' => $merchantNet,
                 'organization_net' => $organizationNet,
             ];
         }
@@ -211,7 +224,15 @@ final class MarketplaceOrderLedgerService
         $orgAmt = $amounts['organization_amount'];
 
         if (round($merch + $orgAmt, 2) > 0) {
-            $nets = self::workbookSellerPayouts($merch, $orgAmt, $platformFee, $stripe);
+            $markupBasis = $order->organization_markup_basis !== null ? (float) $order->organization_markup_basis : null;
+            $nets = self::workbookSellerPayouts(
+                $merch,
+                $orgAmt,
+                $platformFee,
+                $stripe,
+                $markupBasis,
+                (float) $order->subtotal
+            );
 
             return round($nets['merchant_net'] + $nets['organization_net'], 2);
         }
@@ -241,12 +262,15 @@ final class MarketplaceOrderLedgerService
         $biuTotal = round($biuSplit + $platformFee, 2);
         $payable = self::netPayableFromOrder($order, $stripeFeeUsd);
         $stripe = max(0.0, $stripeFeeUsd);
+        $markupBasis = $order->organization_markup_basis !== null ? (float) $order->organization_markup_basis : null;
+        $sub = (float) $order->subtotal;
+
         if (round($merch + $orgAmt, 2) > 0) {
-            $nets = self::workbookSellerPayouts($merch, $orgAmt, $platformFee, $stripe);
+            $nets = self::workbookSellerPayouts($merch, $orgAmt, $platformFee, $stripe, $markupBasis, $sub);
         } elseif ((float) $order->subtotal > 0) {
             $nets = self::workbookPayoutsWithoutSplit($order, $platformFee, $stripe);
         } else {
-            $nets = self::workbookSellerPayouts(0.0, 0.0, $platformFee, $stripe);
+            $nets = self::workbookSellerPayouts(0.0, 0.0, $platformFee, $stripe, $markupBasis, $sub);
         }
         $merchNet = $nets['merchant_net'];
         $orgNet = $nets['organization_net'];
@@ -278,6 +302,9 @@ final class MarketplaceOrderLedgerService
         if ($orgCtx['organization_name'] !== null) {
             $row['organization_name'] = $orgCtx['organization_name'];
         }
+        if ($order->organization_markup_basis !== null) {
+            $row['organization_markup_basis'] = round((float) $order->organization_markup_basis, 2);
+        }
 
         return $row;
     }
@@ -302,12 +329,15 @@ final class MarketplaceOrderLedgerService
         );
 
         $platformPayout = round($platformFee + $biuSplit, 2);
+        $markupBasis = $order->organization_markup_basis !== null ? (float) $order->organization_markup_basis : null;
+        $sub = (float) $order->subtotal;
+
         if (round($merch + $orgAmt, 2) > 0) {
-            $nets = self::workbookSellerPayouts($merch, $orgAmt, $platformFee, $stripe);
+            $nets = self::workbookSellerPayouts($merch, $orgAmt, $platformFee, $stripe, $markupBasis, $sub);
         } elseif ((float) $order->subtotal > 0) {
             $nets = self::workbookPayoutsWithoutSplit($order, $platformFee, $stripe);
         } else {
-            $nets = self::workbookSellerPayouts(0.0, 0.0, $platformFee, $stripe);
+            $nets = self::workbookSellerPayouts(0.0, 0.0, $platformFee, $stripe, $markupBasis, $sub);
         }
         $merchNet = $nets['merchant_net'];
         $orgNet = $nets['organization_net'];

@@ -8,6 +8,7 @@ use App\Models\AdminSetting;
  * BIU platform fee % for all sales modules (marketplace, service hub, courses, raffles, gift cards, merchant hub).
  *
  * Applied to the sale base amount (product subtotal, ticket total, course fee, gift card face paid, merchant cash spent — not tax/shipping).
+ * Marketplace: when {@see MarketplaceOrganizationMarkupService} yields organization markup &gt; 0, pass that as the base so the fee is taken from org profit/margin, not from supplier portions.
  * Not added to what the buyer pays; recorded for splits and the transaction ledger (client workbook: platform_fee deducted from margin).
  */
 final class BiuPlatformFeeService

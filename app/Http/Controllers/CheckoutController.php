@@ -13,6 +13,7 @@ use App\Models\TempOrder;
 use App\Models\Transaction;
 use App\Services\BiuPlatformFeeService;
 use App\Services\MarketplaceOrderLedgerService;
+use App\Services\MarketplaceOrganizationMarkupService;
 use App\Services\PrintifyService;
 use App\Services\ShippoService;
 use App\Services\StripeConfigService;
@@ -47,8 +48,8 @@ class CheckoutController extends Controller
         $cart = $user->cart()->with([
             'items.product',
             'items.variant',
-            'items.marketplaceProduct.merchant',
-            'items.organizationProduct.marketplaceProduct',
+            'items.marketplaceProduct.merchant.shippingAddresses',
+            'items.organizationProduct.marketplaceProduct.merchant.shippingAddresses',
             'items.organizationProduct.organization',
         ])->first();
 
@@ -58,7 +59,9 @@ class CheckoutController extends Controller
 
         $subtotal = $cart->getTotal();
         $platformFeePct = BiuPlatformFeeService::getSalesPlatformFeePercentage();
-        $platformFee = BiuPlatformFeeService::platformFeeFromAmount((float) $subtotal);
+        $markupBasis = MarketplaceOrganizationMarkupService::basisFromCart($cart, $this->printifyService);
+        $feeBase = MarketplaceOrganizationMarkupService::platformFeeBaseUsd((float) $subtotal, $markupBasis);
+        $platformFee = BiuPlatformFeeService::platformFeeFromAmount($feeBase);
 
         return Inertia::render('Checkout/index', [
             'items' => $cart->items->map(function ($item) {
@@ -156,8 +159,8 @@ class CheckoutController extends Controller
         $cart = $user->cart()->with([
             'items.product',
             'items.variant',
-            'items.marketplaceProduct.merchant',
-            'items.organizationProduct.marketplaceProduct',
+            'items.marketplaceProduct.merchant.shippingAddresses',
+            'items.organizationProduct.marketplaceProduct.merchant.shippingAddresses',
             'items.organizationProduct.organization',
         ])->first();
 
@@ -168,7 +171,9 @@ class CheckoutController extends Controller
         DB::beginTransaction();
         try {
             $subtotal = $cart->getTotal();
-            $platformFee = BiuPlatformFeeService::platformFeeFromAmount((float) $subtotal);
+            $markupBasis = MarketplaceOrganizationMarkupService::basisFromCart($cart, $this->printifyService);
+            $feeBase = MarketplaceOrganizationMarkupService::platformFeeBaseUsd((float) $subtotal, $markupBasis);
+            $platformFee = BiuPlatformFeeService::platformFeeFromAmount($feeBase);
 
             // Split full name
             $nameParts = explode(' ', $validated['name']);
@@ -176,7 +181,7 @@ class CheckoutController extends Controller
             $lastName = count($nameParts) > 1 ? implode(' ', array_slice($nameParts, 1)) : '';
 
             // Create temp order
-            // platform_fee: BIU platform fee on subtotal (admin setting); not added to buyer total_amount below
+            // platform_fee: BIU % on organization markup when present, else on full subtotal; not added to buyer total_amount
             $tempOrder = TempOrder::create([
                 'user_id' => $user->id,
                 'cart_id' => $cart->id,
@@ -191,6 +196,7 @@ class CheckoutController extends Controller
                 'country' => $validated['country'],
                 'subtotal' => $subtotal,
                 'platform_fee' => $platformFee,
+                'organization_markup_basis' => $markupBasis,
                 // 'donation_amount' => $validated['donation_amount'], // Commented out - removed donation for Printify products
                 'donation_amount' => 0, // Set to 0 - donation removed for Printify products
                 'total_amount' => $subtotal, // Platform fee removed from customer total
@@ -310,7 +316,7 @@ class CheckoutController extends Controller
                     'mass_unit' => 'oz',
                 ];
 
-                if ($mp && $merchant && $mp->product_type === 'physical' && $canQuoteShippo) {
+                if ($mp && $merchant && $this->marketplaceProductNeedsShippoRates($mp) && $canQuoteShippo) {
                     $shipFrom = $this->shippoService->shipFromPayloadForMerchant($merchant);
                     try {
                         $ratesResult = $this->shippoService->getRatesForAddresses($shipFrom, $shipTo, $defaultParcel);
@@ -389,12 +395,12 @@ class CheckoutController extends Controller
                             'error' => $e->getMessage(),
                         ]);
                     }
-                } elseif ($mp && $mp->product_type !== 'physical') {
+                } elseif ($mp && $this->marketplaceProductIsDigitalDeliveryOnly($mp)) {
                     $shippingCost = 0;
                     $shippingMethods = [
                         [
                             'id' => 'digital',
-                            'name' => 'Digital / service delivery',
+                            'name' => 'Digital delivery',
                             'cost' => 0,
                             'estimated_days' => '—',
                         ],
@@ -907,6 +913,14 @@ class CheckoutController extends Controller
                 'cart.items.organizationProduct.organization',
             ]);
 
+            $markupBasis = MarketplaceOrganizationMarkupService::basisFromCart($tempOrder->cart, $this->printifyService);
+            $feeBase = MarketplaceOrganizationMarkupService::platformFeeBaseUsd((float) $tempOrder->subtotal, $markupBasis);
+            $platformFee = BiuPlatformFeeService::platformFeeFromAmount($feeBase);
+            $tempOrder->update([
+                'platform_fee' => $platformFee,
+                'organization_markup_basis' => $markupBasis,
+            ]);
+
             $firstItem = $tempOrder->cart->items->first();
             $orderOrganizationId = null;
             if ($firstItem) {
@@ -924,7 +938,8 @@ class CheckoutController extends Controller
                 'user_id' => $user->id,
                 'organization_id' => $orderOrganizationId,
                 'subtotal' => $tempOrder->subtotal,
-                'platform_fee' => $tempOrder->platform_fee,
+                'platform_fee' => $platformFee,
+                'organization_markup_basis' => $markupBasis,
                 // 'donation_amount' => $tempOrder->donation_amount, // Commented out - removed donation for Printify products
                 'donation_amount' => 0, // Set to 0 - donation removed for Printify products
                 'tax_amount' => $tempOrder->tax_amount,
@@ -1490,6 +1505,26 @@ class CheckoutController extends Controller
                 'error' => 'Failed to update tax amount',
             ], 500);
         }
+    }
+
+    /**
+     * Merchant Hub / pool marketplace rows: types that ship from the merchant (matches org create flow: physical + service).
+     */
+    private function marketplaceProductNeedsShippoRates(?MarketplaceProduct $mp): bool
+    {
+        if (! $mp) {
+            return false;
+        }
+
+        return in_array((string) $mp->product_type, ['physical', 'service', 'media'], true);
+    }
+
+    /**
+     * Only true digital goods skip Shippo; service/media are still merchant-fulfilled physical-style shipments.
+     */
+    private function marketplaceProductIsDigitalDeliveryOnly(?MarketplaceProduct $mp): bool
+    {
+        return $mp && (string) $mp->product_type === 'digital';
     }
 
     /**

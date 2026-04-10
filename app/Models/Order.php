@@ -45,6 +45,7 @@ class Order extends Model
         'printify_tax_amount',
         'additional_sales_tax_adjustment',
         'platform_fee',
+        'organization_markup_basis',
         'donation_amount',
         'organization_id',
         'status',

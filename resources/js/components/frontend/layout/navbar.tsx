@@ -126,6 +126,7 @@ export default function Navbar() {
   const coreNavItems = [
     { name: "Home", href: "/" },
     { name: "About", href: "/about" },
+    { name: "Pricing", href: route("pricing") },
     { name: "Donate", href: "/donate" },
   ]
 

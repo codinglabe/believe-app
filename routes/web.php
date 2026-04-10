@@ -492,6 +492,7 @@ Route::prefix('merchant-hub')->name('merchant-hub.')->group(function () {
     // SEO-friendly referral: /merchant-hub/offers/8/ref/ABC123 — stores ref in session, redirects to offer
     Route::get('/offers/{id}/ref/{refCode}', [App\Http\Controllers\MerchantRedemptionController::class, 'offerRefRedirect'])->name('offer.show.ref');
     Route::get('/offers/{id}', [App\Http\Controllers\MerchantHubOfferController::class, 'show'])->name('offer.show');
+    Route::get('/products/{marketplace_product}', [App\Http\Controllers\MerchantHubMarketplaceProductController::class, 'show'])->name('product.show');
 });
 
 // Merchant Hub Redemption Routes (Requires auth)
