@@ -7,6 +7,13 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Link } from "@inertiajs/react"
 import AppSidebarLayout from "@/layouts/app/app-sidebar-layout"
+import {
+    NewsletterSmsWalletCard,
+    type EmailUsagePackage,
+    type EmailUsageStats,
+    type SmsPackage,
+    type SmsStats,
+} from "@/components/newsletter/sms-wallet-card"
 import { ConfirmationModal } from "@/components/confirmation-modal"
 import { useEffect, useState } from "react"
 import { Input } from "@/components/ui/input"
@@ -83,9 +90,23 @@ interface NewsletterIndexProps {
     }
     templates: Template[]
     stats: Stats
+    emailStats?: EmailUsageStats
+    emailPackages?: EmailUsagePackage[]
+    smsStats?: SmsStats
+    smsPackages?: SmsPackage[]
+    smsAutoRechargeEnabled?: boolean
 }
 
-export default function NewsletterIndex({ newsletters, templates, stats }: NewsletterIndexProps) {
+export default function NewsletterIndex({
+    newsletters,
+    templates,
+    stats,
+    emailStats,
+    emailPackages,
+    smsStats,
+    smsPackages,
+    smsAutoRechargeEnabled,
+}: NewsletterIndexProps) {
     const [showSuccessMessage, setShowSuccessMessage] = useState(false)
     const [successMessage, setSuccessMessage] = useState('')
     const [isSendModalOpen, setIsSendModalOpen] = useState(false)
@@ -233,6 +254,14 @@ export default function NewsletterIndex({ newsletters, templates, stats }: Newsl
                         </Link>
                     </div>
                 </div>
+
+                <NewsletterSmsWalletCard
+                    emailStats={emailStats}
+                    emailPackages={emailPackages}
+                    smsStats={smsStats}
+                    smsPackages={smsPackages}
+                    smsAutoRechargeEnabled={smsAutoRechargeEnabled}
+                />
 
                 {/* Statistics Cards */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">

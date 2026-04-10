@@ -1,18 +1,25 @@
 "use client"
 
-import React from 'react'
-import { X, CreditCard, ShoppingCart, Gift, DollarSign, Sparkles, ArrowRight, CheckCircle2, AlertCircle } from 'lucide-react'
+import React, { useEffect, useState } from 'react'
+import { X, CreditCard, ShoppingCart, Gift, DollarSign, Sparkles, ArrowRight, CheckCircle2, AlertCircle, Mail, Shield, Building2, Layers } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Button } from '@/components/ui/button'
 import { router } from '@inertiajs/react'
+import { cn } from '@/lib/utils'
 
 interface SubscriptionRequiredModalProps {
     isOpen: boolean
     onClose: () => void
-    feature?: 'wallet' | 'products' | 'donations' | 'commissions' | 'general'
+    feature?: 'wallet' | 'products' | 'donations' | 'commissions' | 'newsletter_targeting' | 'general'
     isSupporterView?: boolean // When true, shows message for supporters (organization needs subscription)
     /** For donation supporter view: distinguishes Care Alliance (hub nonprofit must be subscribed). */
     donationRecipientKind?: 'organization' | 'care_alliance'
+    /** One-time USD price for newsletter Pro targeting (lifetime). */
+    newsletterPayOnceUsd?: number
+    /** When false, hide the pay-once button (e.g. admin disabled checkout). */
+    newsletterPayOnceEnabled?: boolean
+    /** Override checkout (e.g. tests). Default: POST `newsletter.purchase-pro-targeting` with loading state. */
+    onNewsletterPayOnce?: () => void
 }
 
 export function SubscriptionRequiredModal({
@@ -21,13 +28,44 @@ export function SubscriptionRequiredModal({
     feature = 'general',
     isSupporterView = false,
     donationRecipientKind = 'organization',
+    newsletterPayOnceUsd = 0,
+    newsletterPayOnceEnabled = true,
+    onNewsletterPayOnce,
 }: SubscriptionRequiredModalProps) {
+    const [newsletterCheckoutPending, setNewsletterCheckoutPending] = useState(false)
+
+    useEffect(() => {
+        if (!isOpen) {
+            setNewsletterCheckoutPending(false)
+        }
+    }, [isOpen])
+
     const handleSubscribe = () => {
         router.visit('/plans', {
             onSuccess: () => {
                 onClose()
             }
         })
+    }
+
+    const startNewsletterProCheckout = () => {
+        if (newsletterCheckoutPending) {
+            return
+        }
+        if (onNewsletterPayOnce) {
+            onNewsletterPayOnce()
+            return
+        }
+        setNewsletterCheckoutPending(true)
+        router.post(
+            route('newsletter.purchase-pro-targeting'),
+            {},
+            {
+                preserveScroll: true,
+                onFinish: () => setNewsletterCheckoutPending(false),
+                onError: () => setNewsletterCheckoutPending(false),
+            }
+        )
     }
 
     const getFeatureInfo = () => {
@@ -81,6 +119,15 @@ export function SubscriptionRequiredModal({
                     description: 'To receive commissions and manage earnings, you need an active subscription.',
                     icon: <DollarSign className="h-12 w-12" />,
                 }
+            case 'newsletter_targeting':
+                return {
+                    title: 'Pro newsletter targeting',
+                    description:
+                        newsletterPayOnceEnabled && newsletterPayOnceUsd > 0
+                            ? 'Unlock advanced audience selection for this account. Separate from your platform subscription — pay once, use forever.'
+                            : 'By role, Organizations, and Custom targeting require a one-time unlock when your administrator enables checkout.',
+                    icon: <Mail className="h-12 w-12" />,
+                }
             default:
                 return {
                     title: 'Subscription Required',
@@ -105,7 +152,7 @@ export function SubscriptionRequiredModal({
     return (
         <AnimatePresence>
             {isOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
                     {/* Backdrop */}
                     <motion.div
                         initial={{ opacity: 0 }}
@@ -126,7 +173,7 @@ export function SubscriptionRequiredModal({
                             stiffness: 300, 
                             damping: 30 
                         }}
-                        className="relative z-10 w-full max-w-lg bg-background rounded-2xl shadow-2xl border border-border overflow-hidden"
+                        className="relative z-10 flex max-h-[min(90dvh,720px)] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-border bg-background shadow-2xl"
                     >
                         {/* Close Button */}
                         <button
@@ -138,7 +185,7 @@ export function SubscriptionRequiredModal({
                         </button>
 
                         {/* Content */}
-                        <div className="p-8">
+                        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-6 sm:p-8">
                             {/* Icon with Animation */}
                             <motion.div
                                 initial={{ scale: 0 }}
@@ -182,20 +229,58 @@ export function SubscriptionRequiredModal({
                                 initial={{ opacity: 0, y: 10 }}
                                 animate={{ opacity: 1, y: 0 }}
                                 transition={{ delay: 0.3 }}
-                                className="text-center text-muted-foreground mb-6"
+                                className="mb-6 text-center text-sm text-muted-foreground sm:text-base"
                             >
                                 {featureInfo.description}
                             </motion.p>
 
+                            {feature === 'newsletter_targeting' &&
+                                newsletterPayOnceEnabled &&
+                                newsletterPayOnceUsd > 0 && (
+                                <motion.div
+                                    initial={{ opacity: 0, y: 10 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    transition={{ delay: 0.35 }}
+                                    className="mb-6 rounded-2xl border border-amber-500/30 bg-gradient-to-br from-amber-500/10 via-background to-orange-500/5 p-5 shadow-inner"
+                                >
+                                    <div className="flex flex-col items-center gap-1 border-b border-border/60 pb-4 text-center">
+                                        <span className="text-xs font-semibold uppercase tracking-wider text-amber-700 dark:text-amber-400">
+                                            Lifetime unlock
+                                        </span>
+                                        <div className="flex items-baseline justify-center gap-1">
+                                            <span className="text-4xl font-bold tabular-nums text-foreground sm:text-5xl">
+                                                ${newsletterPayOnceUsd.toFixed(2)}
+                                            </span>
+                                            <span className="text-sm font-medium text-muted-foreground">USD</span>
+                                        </div>
+                                        <p className="text-xs text-muted-foreground">One payment · this account · no subscription product required</p>
+                                    </div>
+                                    <ul className="mt-4 space-y-3">
+                                        {[
+                                            { icon: Shield, text: 'By role — segment by supporter roles' },
+                                            { icon: Building2, text: 'Organizations — full nonprofit directory' },
+                                            { icon: Layers, text: 'Custom — mix users, orgs, and roles' },
+                                        ].map(({ icon: Icon, text }) => (
+                                            <li key={text} className="flex gap-3 text-sm">
+                                                <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-amber-500/15 text-amber-800 dark:text-amber-200">
+                                                    <Icon className="h-4 w-4" aria-hidden />
+                                                </span>
+                                                <span className="min-w-0 pt-1 leading-snug text-foreground">{text}</span>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </motion.div>
+                            )}
+
                             {/* Features List - Only show for organization users, not supporters */}
-                            {!isSupporterView && (
+                            {!isSupporterView && feature !== 'newsletter_targeting' && (
                                 <motion.div
                                     initial={{ opacity: 0, y: 10 }}
                                     animate={{ opacity: 1, y: 0 }}
                                     transition={{ delay: 0.4 }}
                                     className="space-y-3 mb-8"
                                 >
-                                    {features.map((feature, index) => (
+                                    {features.map((line, index) => (
                                         <motion.div
                                             key={index}
                                             initial={{ opacity: 0, x: -20 }}
@@ -214,7 +299,7 @@ export function SubscriptionRequiredModal({
                                             >
                                                 <CheckCircle2 className="h-5 w-5 text-green-500 flex-shrink-0" />
                                             </motion.div>
-                                            <span className="text-sm font-medium">{feature}</span>
+                                            <span className="text-sm font-medium">{line}</span>
                                         </motion.div>
                                     ))}
                                 </motion.div>
@@ -225,28 +310,68 @@ export function SubscriptionRequiredModal({
                                 initial={{ opacity: 0, y: 10 }}
                                 animate={{ opacity: 1, y: 0 }}
                                 transition={{ delay: 0.8 }}
-                                className="flex flex-col sm:flex-row gap-3"
+                                className={cn(
+                                    'flex w-full min-w-0 flex-col gap-3',
+                                    feature === 'newsletter_targeting' && 'sm:max-w-none'
+                                )}
                             >
                                 {!isSupporterView ? (
-                                    <>
-                                        <Button
-                                            onClick={handleSubscribe}
-                                            className="flex-1 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white"
-                                            size="lg"
-                                        >
-                                            <CreditCard className="h-4 w-4 mr-2" />
-                                            View Plans & Subscribe
-                                            <ArrowRight className="h-4 w-4 ml-2" />
-                                        </Button>
-                                        <Button
-                                            onClick={onClose}
-                                            variant="outline"
-                                            size="lg"
-                                            className="flex-1"
-                                        >
-                                            Maybe Later
-                                        </Button>
-                                    </>
+                                    feature === 'newsletter_targeting' ? (
+                                        <div className="flex w-full min-w-0 flex-row gap-3">
+                                            {newsletterPayOnceEnabled && newsletterPayOnceUsd > 0 ? (
+                                                <>
+                                                    <Button
+                                                        type="button"
+                                                        variant="outline"
+                                                        size="lg"
+                                                        onClick={onClose}
+                                                        className="min-h-11 flex-1 touch-manipulation text-base font-semibold"
+                                                    >
+                                                        Not now
+                                                    </Button>
+                                                    <Button
+                                                        type="button"
+                                                        disabled={newsletterCheckoutPending}
+                                                        onClick={startNewsletterProCheckout}
+                                                        className="min-h-11 flex-1 touch-manipulation bg-gradient-to-r from-amber-600 to-orange-600 text-base font-semibold text-white hover:from-amber-700 hover:to-orange-700"
+                                                        size="lg"
+                                                    >
+                                                        {newsletterCheckoutPending ? 'Opening…' : 'Pay'}
+                                                    </Button>
+                                                </>
+                                            ) : (
+                                                <Button
+                                                    type="button"
+                                                    variant="outline"
+                                                    size="lg"
+                                                    onClick={onClose}
+                                                    className="min-h-11 w-full touch-manipulation text-base font-semibold"
+                                                >
+                                                    Not now
+                                                </Button>
+                                            )}
+                                        </div>
+                                    ) : (
+                                        <>
+                                            <Button
+                                                onClick={handleSubscribe}
+                                                className="flex-1 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white"
+                                                size="lg"
+                                            >
+                                                <CreditCard className="h-4 w-4 mr-2" />
+                                                View Plans & Subscribe
+                                                <ArrowRight className="h-4 w-4 ml-2" />
+                                            </Button>
+                                            <Button
+                                                onClick={onClose}
+                                                variant="outline"
+                                                size="lg"
+                                                className="flex-1"
+                                            >
+                                                Maybe Later
+                                            </Button>
+                                        </>
+                                    )
                                 ) : (
                                     <Button
                                         onClick={onClose}

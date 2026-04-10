@@ -26,6 +26,16 @@ import {
 import AppSidebarLayout from "@/layouts/app/app-sidebar-layout"
 import { getBrowserTimezone, convertUserTimezoneToUTC } from "@/lib/timezone-detection"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import {
+    NewsletterSmsWalletCard,
+    type EmailUsagePackage,
+    type EmailUsageStats,
+    type SmsPackage,
+    type SmsStats,
+} from "@/components/newsletter/sms-wallet-card"
+
+/** Matches backend NewsletterController::NEWSLETTER_SMS_PLAIN_MAX_CHARS */
+const SMS_PLAIN_MAX_CHARS = 160
 
 interface Template {
     id: number
@@ -52,6 +62,11 @@ interface PreviewData {
 interface NewsletterCreateProps {
     templates: Template[]
     previewData?: PreviewData
+    emailStats?: EmailUsageStats
+    emailPackages?: EmailUsagePackage[]
+    smsStats?: SmsStats
+    smsPackages?: SmsPackage[]
+    smsAutoRechargeEnabled?: boolean
 }
 
 /** Segmented control track (add flex or grid on the element) + tab states — violet → fuchsia brand gradient. */
@@ -117,7 +132,15 @@ function VariableItem({ variable, description, sampleValue, onCopy }: {
     )
 }
 
-export default function NewsletterCreate({ templates, previewData }: NewsletterCreateProps) {
+export default function NewsletterCreate({
+    templates,
+    previewData,
+    emailStats,
+    emailPackages,
+    smsStats,
+    smsPackages,
+    smsAutoRechargeEnabled,
+}: NewsletterCreateProps) {
     const [selectedTemplate, setSelectedTemplate] = useState<Template | null>(null)
     const [scheduleType, setScheduleType] = useState<'immediate' | 'scheduled'>('immediate')
     const [showPreview, setShowPreview] = useState(false)
@@ -249,6 +272,14 @@ export default function NewsletterCreate({ templates, previewData }: NewsletterC
                     </div>
                 </div>
 
+                <NewsletterSmsWalletCard
+                    emailStats={emailStats}
+                    emailPackages={emailPackages}
+                    smsStats={smsStats}
+                    smsPackages={smsPackages}
+                    smsAutoRechargeEnabled={smsAutoRechargeEnabled}
+                />
+
                 <form onSubmit={handleSubmit}>
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                         {/* Main Content */}
@@ -301,7 +332,8 @@ export default function NewsletterCreate({ templates, previewData }: NewsletterC
                                         <CardHeader>
                                             <CardTitle>Newsletter Content</CardTitle>
                                             <CardDescription>
-                                                {data.send_via === "sms" && "Plain text for SMS — no HTML."}
+                                                {data.send_via === "sms" &&
+                                                    `Plain text for SMS — no HTML. Body is limited to ${SMS_PLAIN_MAX_CHARS} characters (one standard segment).`}
                                                 {data.send_via === "email" && "Plain text and/or HTML for email."}
                                                 {data.send_via === "both" &&
                                                     "Plain text for SMS (required) and HTML for email (required)."}
@@ -340,8 +372,16 @@ export default function NewsletterCreate({ templates, previewData }: NewsletterC
                                                             : "Plain text body (required for SMS leg when using Both)"
                                                     }
                                                     rows={data.send_via === "sms" ? 8 : 10}
+                                                    maxLength={
+                                                        data.send_via === "sms" ? SMS_PLAIN_MAX_CHARS : undefined
+                                                    }
                                                     className="mt-1"
                                                 />
+                                                {data.send_via === "sms" && (
+                                                    <p className="mt-1 text-xs text-muted-foreground">
+                                                        {(data.content?.length ?? 0)} / {SMS_PLAIN_MAX_CHARS} characters
+                                                    </p>
+                                                )}
                                                 {errors.content && (
                                                     <p className="text-sm text-red-600 mt-1">{errors.content}</p>
                                                 )}

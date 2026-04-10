@@ -12,6 +12,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { ConfirmationModal } from "@/components/admin/confirmation-modal"
 import { UnifiedLedgerCard, type UnifiedLedgerRow } from "@/components/admin/unified-ledger-card"
+import { transactionTypeBadgeClass, transactionTypeDisplayLabel } from "@/lib/transaction-type-labels"
 import {
   ArrowLeft,
   ArrowRightLeft,
@@ -202,15 +203,6 @@ function formatMoney(n: number, currency: string) {
   }
 }
 
-function typeClass(type: string) {
-  if (type === "refund") return "border-sky-500/40 bg-sky-500/[0.12] text-sky-900 dark:text-sky-100"
-  if (type === "withdrawal" || type === "transfer_out")
-    return "border-orange-500/40 bg-orange-500/[0.12] text-orange-900 dark:text-orange-100"
-  if (type === "deposit" || type === "transfer_in")
-    return "border-teal-500/40 bg-teal-500/[0.12] text-teal-900 dark:text-teal-100"
-  return "border-primary/35 bg-primary/12 text-primary"
-}
-
 /** Same rules as the ledger table “Transaction” column (icon + label). */
 function transactionShowLedgerTypeDisplay(t: TransactionDetail): { label: string; className: string; icon: "arrows" | "heart" } {
   const meta = t.meta && typeof t.meta === "object" ? (t.meta as Record<string, unknown>) : {}
@@ -261,8 +253,8 @@ function transactionShowLedgerTypeDisplay(t: TransactionDetail): { label: string
   }
 
   return {
-    label: t.type.replace(/_/g, " "),
-    className: typeClass(t.type),
+    label: transactionTypeDisplayLabel(t.type),
+    className: transactionTypeBadgeClass(t.type),
     icon: "arrows",
   }
 }

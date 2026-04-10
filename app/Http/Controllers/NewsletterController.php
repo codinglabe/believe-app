@@ -3,21 +3,27 @@
 namespace App\Http\Controllers;
 
 use App\Jobs\SendNewsletterJob;
+use App\Models\EmailPackage;
 use App\Models\Newsletter;
 use App\Models\NewsletterEmail;
 use App\Models\NewsletterRecipient;
 use App\Models\NewsletterTemplate;
 use App\Models\Organization;
+use App\Models\SmsPackage;
 use App\Models\User;
 use App\Services\OpenAiService;
 use Carbon\Carbon;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
+use Laravel\Cashier\Cashier;
 
 class NewsletterController extends BaseController
 {
@@ -26,6 +32,12 @@ class NewsletterController extends BaseController
      *
      * @var list<string>
      */
+    /** GSM single-segment style limit for SMS plain body (user-facing + AI). */
+    private const NEWSLETTER_SMS_PLAIN_MAX_CHARS = 160;
+
+    /** Verified users per scroll “page” on advanced newsletter targeting pickers. */
+    private const NEWSLETTER_ADVANCED_USERS_PER_PAGE = 40;
+
     private const NEWSLETTER_TEMPLATE_MERGE_KEYS = [
         'organization_name',
         'organization_email',
@@ -55,6 +67,22 @@ class NewsletterController extends BaseController
     /**
      * Rules for AI-generated plain text: professional tone, structure, length — not cramped “SMS-only” microcopy.
      */
+    /**
+     * AI rules when the campaign is SMS-only: one short GSM-style segment for "content".
+     */
+    private function newsletterAiSmsPlainCopyQualityRules(): string
+    {
+        $n = self::NEWSLETTER_SMS_PLAIN_MAX_CHARS;
+
+        return <<<RULES
+SMS PLAIN TEXT (strict length):
+- The "content" field MUST be at most {$n} characters total (count spaces and line breaks; use mb-safe length mentally). This is the entire SMS body subscribers see (aside from the subject line sent above it in the app).
+- Write one tight message: usually one or two short sentences, or one sentence plus a line with {unsubscribe_link} if it still fits within {$n} characters. No long newsletters.
+- Put the key idea in the first sentence. Merge tokens like {unsubscribe_link} count toward the limit in the final editor—keep the draft short enough that expanded URLs still work for your use case.
+- Subject: keep it short and punchy (aim under 72 characters); it appears above the body in the SMS preview.
+RULES;
+    }
+
     private function newsletterAiPlainCopyQualityRules(): string
     {
         return <<<'RULES'
@@ -65,6 +93,26 @@ PROFESSIONAL PLAIN-TEXT COPY (not tiny, not shallow):
 - Spacing: use double line breaks between sections so the text breathes; avoid walls of dense micro-sentences.
 - Voice: varied sentence length; concrete details from the brief; professional vocabulary without being stiff.
 RULES;
+    }
+
+    /**
+     * Hard clamp for SMS plain body (AI output or pasted text).
+     */
+    private function clampNewsletterSmsPlainBody(string $content): string
+    {
+        $max = self::NEWSLETTER_SMS_PLAIN_MAX_CHARS;
+        $content = trim($content);
+        if ($content === '' || mb_strlen($content) <= $max) {
+            return $content;
+        }
+
+        $trunc = mb_substr($content, 0, $max);
+        $lastSpace = mb_strrpos($trunc, ' ');
+        if ($lastSpace !== false && $lastSpace > (int) ($max * 0.5)) {
+            $trunc = mb_substr($trunc, 0, $lastSpace);
+        }
+
+        return rtrim($trunc, " \t.,;:").'…';
     }
 
     /**
@@ -280,12 +328,77 @@ AIHTML;
             'public_view_link' => $publicViewLink,
         ];
 
-        return [
+        return array_merge([
             'templates' => $templates,
             'previewData' => $previewData,
             'openAiConfigured' => $this->openAiApiKeyIsConfigured(),
             'newsletterCreateAiResult' => $newsletterCreateAiResult,
+        ], $this->newsletterSmsWalletProps());
+    }
+
+    /**
+     * Email invite quota + prepaid SMS wallet (same model as /email-invite: included − used = remaining).
+     *
+     * @return array{emailStats: array{emails_included: int, emails_used: int, emails_left: int}, emailPackages: array<int, array<string, mixed>>, smsStats: array{sms_included: int, sms_used: int, sms_left: int}, smsPackages: array<int, array<string, mixed>>, smsAutoRechargeEnabled: bool}
+     */
+    protected function newsletterSmsWalletProps(): array
+    {
+        $user = Auth::user();
+        $emailsIncluded = (int) ($user->emails_included ?? 0);
+        $emailsUsed = (int) ($user->emails_used ?? 0);
+        $emailsLeft = max(0, $emailsIncluded - $emailsUsed);
+
+        $emailPackages = EmailPackage::active()->ordered()->get()->map(function ($p) {
+            return [
+                'id' => $p->id,
+                'name' => $p->name,
+                'description' => $p->description,
+                'emails_count' => $p->emails_count,
+                'price' => (float) $p->price,
+            ];
+        });
+
+        $included = (int) ($user->sms_included ?? 0);
+        $used = (int) ($user->sms_used ?? 0);
+        $left = max(0, $included - $used);
+
+        $packages = SmsPackage::active()->ordered()->get()->map(function ($p) {
+            return [
+                'id' => $p->id,
+                'name' => $p->name,
+                'description' => $p->description,
+                'sms_count' => $p->sms_count,
+                'price' => (float) $p->price,
+            ];
+        });
+
+        return [
+            'emailStats' => [
+                'emails_included' => $emailsIncluded,
+                'emails_used' => $emailsUsed,
+                'emails_left' => $emailsLeft,
+            ],
+            'emailPackages' => $emailPackages,
+            'smsStats' => [
+                'sms_included' => $included,
+                'sms_used' => $used,
+                'sms_left' => $left,
+            ],
+            'smsPackages' => $packages,
+            'smsAutoRechargeEnabled' => (bool) ($user->sms_auto_recharge_enabled ?? false),
         ];
+    }
+
+    /**
+     * Organizations shown on the newsletter recipients list: approved registration only,
+     * excluding internal Care Alliance hub rows (same notion of "real" orgs as elsewhere in the app).
+     */
+    protected function newsletterRecipientsOrganizationsQuery(): Builder
+    {
+        return Organization::query()
+            ->active()
+            ->excludingCareAllianceHubs()
+            ->with(['user', 'newsletterRecipients']);
     }
 
     /**
@@ -362,13 +475,13 @@ AIHTML;
             'avg_click_rate' => $this->getAverageClickRate(),
         ];
 
-        return Inertia::render('newsletter/index', [
+        return Inertia::render('newsletter/index', array_merge([
             'newsletters' => $newsletters,
             'templates' => $templates,
             'stats' => $stats,
             'search' => $request->input('search', ''),
             'statusFilter' => $request->input('status', 'all'),
-        ]);
+        ], $this->newsletterSmsWalletProps()));
     }
 
     /**
@@ -508,15 +621,143 @@ AIHTML;
                 'frequency_limit', 'custom_frequency_days', 'frequency_notes',
             ])
             ->get();
-        $users = User::with('roles')->where('email_verified_at', '!=', null)->get();
-        $organizations = Organization::where('status', 'active')->get();
-        $roles = \Spatie\Permission\Models\Role::pluck('name')->toArray();
+
+        $authOrg = Organization::forAuthUser($request->user());
+
+        // All approved active nonprofits (includes Care Alliance hubs — “Organizations” means the full directory).
+        $careAllianceHubOrgIds = [];
+        if (Schema::hasTable('care_alliances') && Schema::hasColumn('care_alliances', 'hub_organization_id')) {
+            $careAllianceHubOrgIds = DB::table('care_alliances')
+                ->whereNotNull('hub_organization_id')
+                ->pluck('hub_organization_id')
+                ->map(static fn ($id) => (int) $id)
+                ->unique()
+                ->values()
+                ->all();
+        }
+        $careAllianceHubOrgIdFlip = array_flip($careAllianceHubOrgIds);
+
+        $organizations = Organization::query()
+            ->active()
+            ->orderBy('name')
+            ->get(['id', 'name', 'email', 'status', 'registration_status'])
+            ->map(static function (Organization $o) use ($careAllianceHubOrgIdFlip): array {
+                return [
+                    'id' => $o->id,
+                    'name' => $o->name,
+                    'email' => $o->email,
+                    'status' => $o->status,
+                    'registration_status' => $o->registration_status,
+                    'is_care_alliance_hub' => isset($careAllianceHubOrgIdFlip[(int) $o->id]),
+                ];
+            })
+            ->values()
+            ->all();
+
+        $mapUserForAdvanced = static function (User $u): array {
+            return [
+                'id' => $u->id,
+                'name' => $u->name,
+                'email' => $u->email,
+                'roles' => $u->roles->pluck('name')->values()->all(),
+                'email_verified_at' => $u->email_verified_at?->toIso8601String(),
+            ];
+        };
+
+        $roles = \Spatie\Permission\Models\Role::query()
+            ->orderBy('name')
+            ->pluck('name')
+            ->reject(fn (string $name) => in_array($name, ['organization_pending', 'admin'], true))
+            ->values()
+            ->all();
+
+        $usersPage = max(1, (int) $request->input('users_page', 1));
+        $usersPaginator = User::query()
+            ->with('roles')
+            ->whereNotNull('email_verified_at')
+            ->orderBy('name')
+            ->paginate(self::NEWSLETTER_ADVANCED_USERS_PER_PAGE, ['*'], 'users_page', $usersPage);
+
+        $usersChunk = $usersPaginator->getCollection()->map($mapUserForAdvanced)->values()->all();
+
+        $usersMeta = [
+            'current_page' => $usersPaginator->currentPage(),
+            'last_page' => $usersPaginator->lastPage(),
+            'per_page' => $usersPaginator->perPage(),
+            'total' => $usersPaginator->total(),
+        ];
+
+        if ($authOrg) {
+            $audienceScope = 'organization';
+            $supportersPage = max(1, (int) $request->input('supporters_page', 1));
+            $supporterPaginator = User::query()
+                ->role('user')
+                ->with('roles')
+                ->whereNotNull('email_verified_at')
+                ->orderBy('name')
+                ->paginate(self::NEWSLETTER_ADVANCED_USERS_PER_PAGE, ['*'], 'supporters_page', $supportersPage);
+            $supporterUsers = $supporterPaginator->getCollection()->map($mapUserForAdvanced)->values()->all();
+            $supporterUsersMeta = [
+                'current_page' => $supporterPaginator->currentPage(),
+                'last_page' => $supporterPaginator->lastPage(),
+                'per_page' => $supporterPaginator->perPage(),
+                'total' => $supporterPaginator->total(),
+            ];
+        } else {
+            $audienceScope = 'platform';
+            $supporterUsers = null;
+            $supporterUsersMeta = null;
+        }
+
+        $previewRolesInput = $request->input('preview_roles', []);
+        if (! is_array($previewRolesInput)) {
+            $previewRolesInput = [];
+        }
+        $previewRolesInput = array_values(array_unique(array_filter(
+            $previewRolesInput,
+            fn ($r) => is_string($r) && $r !== ''
+        )));
+        $allowedRoleFlip = array_flip($roles);
+        $previewRoles = array_values(array_filter(
+            $previewRolesInput,
+            fn (string $name) => isset($allowedRoleFlip[$name])
+        ));
+
+        $roleMatchTotal = null;
+        if ($previewRoles !== []) {
+            $roleMatchTotal = User::query()
+                ->whereNotNull('email_verified_at')
+                ->whereHas('roles', function ($q) use ($previewRoles): void {
+                    $q->whereIn('name', $previewRoles);
+                })
+                ->count();
+        }
+
+        $stats = [
+            'verified_users' => User::query()->whereNotNull('email_verified_at')->count(),
+            'supporters' => User::query()->role('user')->whereNotNull('email_verified_at')->count(),
+            'role_match_total' => $roleMatchTotal,
+        ];
+
+        $user = $request->user();
+
+        $priceUsd = (float) config('newsletter.pro_targeting_lifetime_price_usd', 49);
+        $purchaseEnabled = (bool) config('newsletter.pro_targeting_purchase_enabled', true);
 
         return Inertia::render('newsletter/create-advanced', [
             'templates' => $templates,
-            'users' => $users,
+            'users' => $usersChunk,
+            'users_meta' => $usersMeta,
+            'supporter_users' => $supporterUsers,
+            'supporter_users_meta' => $supporterUsersMeta,
             'organizations' => $organizations,
             'roles' => $roles,
+            'audience_scope' => $audienceScope,
+            'related_supporter_count' => $authOrg ? User::query()->role('user')->whereNotNull('email_verified_at')->count() : null,
+            'stats' => $stats,
+            'has_newsletter_pro_targeting' => $user instanceof User && $this->userCanUseNewsletterProTargeting($user),
+            'newsletter_pro_targeting_lifetime_price_usd' => round($priceUsd, 2),
+            'newsletter_pro_targeting_purchase_enabled' => $purchaseEnabled && $priceUsd > 0,
         ]);
     }
 
@@ -576,11 +817,11 @@ AIHTML;
      */
     protected function renderNewsletterTemplateForm(?NewsletterTemplate $template, ?array $templateAiResult): Response
     {
-        $props = [
+        $props = array_merge([
             'previewData' => $this->newsletterTemplatePreviewData(),
             'openAiConfigured' => $this->openAiApiKeyIsConfigured(),
             'templateAiResult' => $templateAiResult,
-        ];
+        ], $this->newsletterSmsWalletProps());
         if ($template !== null) {
             $props['template'] = $template;
         }
@@ -649,7 +890,9 @@ AIHTML;
 
         $mergeVars = $this->newsletterTemplateMergeVarsPromptLine();
 
-        $plainQuality = $this->newsletterAiPlainCopyQualityRules();
+        $plainQuality = $sendVia === 'sms'
+            ? $this->newsletterAiSmsPlainCopyQualityRules()
+            : $this->newsletterAiPlainCopyQualityRules();
         $htmlDesign = $this->newsletterAiHtmlDesignInstructions($tone);
 
         if ($outputMode === 'plain') {
@@ -724,6 +967,9 @@ PROMPT;
         if ($outputMode === 'html' || $outputMode === 'both') {
             $userPrompt .= "\n\nMandatory visual requirement: use a distinctive, professional palette with at least one dark or richly colored header, footer, or feature band—not an all-white-only layout. Strong accent, kicker, CTA, section structure.";
         }
+        if ($sendVia === 'sms') {
+            $userPrompt .= "\n\nHard limit: \"content\" must be at most ".self::NEWSLETTER_SMS_PLAIN_MAX_CHARS.' characters (SMS segment).';
+        }
 
         try {
             $messages = [
@@ -744,6 +990,9 @@ PROMPT;
             }
 
             [$subject, $content, $htmlContent, $suggestedName] = $this->normalizeTemplateAiDecodedPayload($decoded, $outputMode);
+            if ($sendVia === 'sms') {
+                $content = $this->clampNewsletterSmsPlainBody($content);
+            }
 
             $incomplete = $this->templateAiPayloadIsIncomplete($subject, $content, $htmlContent, $suggestedName, $outputMode);
             if ($incomplete !== null) {
@@ -778,6 +1027,9 @@ TXT;
                 }
 
                 [$subject, $content, $htmlContent, $suggestedName] = $this->normalizeTemplateAiDecodedPayload($decoded, $outputMode);
+                if ($sendVia === 'sms') {
+                    $content = $this->clampNewsletterSmsPlainBody($content);
+                }
 
                 $incomplete = $this->templateAiPayloadIsIncomplete($subject, $content, $htmlContent, $suggestedName, $outputMode);
                 if ($incomplete !== null) {
@@ -884,7 +1136,9 @@ TXT;
         $typeLabel = $typeLabels[$templateType] ?? $typeLabels['newsletter'];
 
         $mergeVars = $this->newsletterTemplateMergeVarsPromptLine();
-        $plainQuality = $this->newsletterAiPlainCopyQualityRules();
+        $plainQuality = $sendVia === 'sms'
+            ? $this->newsletterAiSmsPlainCopyQualityRules()
+            : $this->newsletterAiPlainCopyQualityRules();
         $htmlDesign = $this->newsletterAiHtmlDesignInstructions($tone);
 
         if ($outputMode === 'plain') {
@@ -963,6 +1217,9 @@ PROMPT;
         if ($outputMode === 'html' || $outputMode === 'both') {
             $userPrompt .= "\n\nMandatory: HTML must use a distinctive palette with at least one dark or richly colored header, footer, or feature band—not an all-white-only layout.";
         }
+        if ($sendVia === 'sms') {
+            $userPrompt .= "\n\nHard limit: \"content\" must be at most ".self::NEWSLETTER_SMS_PLAIN_MAX_CHARS.' characters (SMS segment).';
+        }
 
         try {
             $messages = [
@@ -983,6 +1240,9 @@ PROMPT;
             }
 
             [$subject, $content, $htmlContent] = $this->normalizeNewsletterCreateAiDecodedPayload($decoded, $outputMode);
+            if ($sendVia === 'sms') {
+                $content = $this->clampNewsletterSmsPlainBody($content);
+            }
 
             $incomplete = $this->newsletterCreateAiPayloadIsIncomplete($subject, $content, $htmlContent, $outputMode);
             if ($incomplete !== null) {
@@ -1017,6 +1277,9 @@ TXT;
                 }
 
                 [$subject, $content, $htmlContent] = $this->normalizeNewsletterCreateAiDecodedPayload($decoded, $outputMode);
+                if ($sendVia === 'sms') {
+                    $content = $this->clampNewsletterSmsPlainBody($content);
+                }
 
                 $incomplete = $this->newsletterCreateAiPayloadIsIncomplete($subject, $content, $htmlContent, $outputMode);
                 if ($incomplete !== null) {
@@ -1207,8 +1470,7 @@ TXT;
         $search = $request->input('search', '');
         $statusFilter = $request->input('status_filter', 'all');
 
-        // Build query for organizations with search
-        $organizationsQuery = Organization::with(['user', 'newsletterRecipients']);
+        $organizationsQuery = $this->newsletterRecipientsOrganizationsQuery();
 
         // Apply search filter
         if (! empty($search) && trim($search) !== '') {
@@ -1243,14 +1505,18 @@ TXT;
 
         $organizations = $organizationsQuery->latest()->paginate(20);
 
-        // Get newsletter subscription stats
-        $totalOrganizations = Organization::count();
-        $activeSubscriptions = NewsletterRecipient::active()->count();
-        $unsubscribed = NewsletterRecipient::unsubscribed()->count();
-        $bounced = NewsletterRecipient::bounced()->count();
+        $approvedOrgIds = Organization::query()->active()->excludingCareAllianceHubs()->pluck('id');
 
-        // Calculate not subscribed organizations (organizations without any newsletter subscription)
-        $notSubscribed = Organization::whereDoesntHave('newsletterRecipients')->count();
+        $totalOrganizations = $approvedOrgIds->count();
+        $activeSubscriptions = NewsletterRecipient::active()->whereIn('organization_id', $approvedOrgIds)->count();
+        $unsubscribed = NewsletterRecipient::unsubscribed()->whereIn('organization_id', $approvedOrgIds)->count();
+        $bounced = NewsletterRecipient::bounced()->whereIn('organization_id', $approvedOrgIds)->count();
+
+        $notSubscribed = Organization::query()
+            ->active()
+            ->excludingCareAllianceHubs()
+            ->whereDoesntHave('newsletterRecipients')
+            ->count();
 
         $stats = [
             'total_organizations' => $totalOrganizations,
@@ -1425,8 +1691,7 @@ TXT;
         $search = $request->input('search', '');
         $statusFilter = $request->input('status_filter', 'all');
 
-        // Build query for organizations with search
-        $organizationsQuery = Organization::with(['user', 'newsletterRecipients']);
+        $organizationsQuery = $this->newsletterRecipientsOrganizationsQuery();
 
         // Apply search filter
         if (! empty($search) && trim($search) !== '') {
@@ -1639,13 +1904,15 @@ TXT;
         $rules = [
             'newsletter_template_id' => 'required|exists:newsletter_templates,id',
             'subject' => 'required|string|max:255',
-            'content' => 'nullable|string',
+            'content' => $request->input('send_via') === 'sms'
+                ? 'required|string|max:'.self::NEWSLETTER_SMS_PLAIN_MAX_CHARS
+                : 'nullable|string',
             'html_content' => 'nullable|string',
             'send_via' => 'required|in:email,sms,both',
             'scheduled_at' => 'nullable|date|after:now',
             'schedule_type' => 'required|in:immediate,scheduled,recurring',
             'recurring_settings' => 'nullable|array',
-            'target_type' => 'required|in:all,users,organizations,specific',
+            'target_type' => 'required|in:all,users,organizations,specific,roles',
             'target_users' => 'nullable|array',
             'target_organizations' => 'nullable|array',
             'target_roles' => 'nullable|array',
@@ -1667,6 +1934,24 @@ TXT;
 
         // Add custom validation for send_date - Carbon automatically uses config('app.timezone')
         $validator->after(function ($validator) use ($request) {
+            if ($request->input('target_type') === 'roles') {
+                $roles = $request->input('target_roles', []);
+                if (! is_array($roles) || $roles === [] || ! collect($roles)->filter(fn ($r) => is_string($r) && $r !== '')->isNotEmpty()) {
+                    $validator->errors()->add('target_roles', 'Select at least one role to send to those users.');
+                }
+            }
+
+            $targetType = $request->input('target_type');
+            if (in_array($targetType, ['organizations', 'specific', 'roles'], true)) {
+                $u = $request->user();
+                if ($u instanceof User && ! $this->userCanUseNewsletterProTargeting($u)) {
+                    $validator->errors()->add(
+                        'target_type',
+                        'By role, Organizations, and Custom targeting require the Pro newsletter targeting purchase (or admin access).'
+                    );
+                }
+            }
+
             if (($request->schedule_type === 'scheduled' || $request->schedule_type === 'recurring') && $request->send_date) {
                 try {
                     // Carbon automatically uses config('app.timezone') set by middleware
@@ -1759,7 +2044,7 @@ TXT;
 
         // Get authenticated user and their organization
         $user = Auth::user();
-        $userOrganization = $user->organization;
+        $userOrganization = Organization::forAuthUser($user);
 
         // Get target recipients count
         $newsletter = new Newsletter([
@@ -1772,7 +2057,6 @@ TXT;
             'status' => $status,
             'scheduled_at' => $sendDate, // Use send_date for scheduled_at as well for compatibility
             'send_date' => $sendDate,
-            'schedule_type' => $request->schedule_type,
             'schedule_type' => $request->schedule_type,
             'recurring_settings' => $request->recurring_settings,
             'target_type' => $request->target_type,
@@ -1919,14 +2203,38 @@ TXT;
     {
         $this->authorizePermission($request, 'newsletter.send');
 
-        $newsletter = Newsletter::findOrFail($id);
+        $newsletter = Newsletter::with('organization.user')->findOrFail($id);
 
         if (! in_array($newsletter->status, ['draft', 'paused'])) {
             return back()->with('error', 'Newsletter can only be sent from draft or paused status.');
         }
 
-        // Update status to sending
-        $newsletter->update(['status' => 'sending']);
+        $sendVia = $newsletter->send_via ?? 'email';
+        $walletUser = Auth::user();
+        if (! $walletUser) {
+            return back()->with('error', 'You must be signed in to send.');
+        }
+        $smsLeft = max(0, (int) ($walletUser->sms_included ?? 0) - (int) ($walletUser->sms_used ?? 0));
+        $emailsLeft = max(0, (int) ($walletUser->emails_included ?? 0) - (int) ($walletUser->emails_used ?? 0));
+        if ($sendVia === 'sms' && $smsLeft < 1) {
+            return back()->with('error', 'No SMS credits remaining. Open Create Newsletter or Templates and purchase an SMS pack ($25 = 1,200 SMS) before sending SMS.');
+        }
+        if ($sendVia === 'email' && $emailsLeft < 1) {
+            return back()->with('error', 'No email credits remaining. Purchase an email pack from the Newsletter or Templates page before sending.');
+        }
+        if ($sendVia === 'both' && $smsLeft < 1 && $emailsLeft < 1) {
+            return back()->with('error', 'No email or SMS credits remaining. Purchase packs from the Newsletter or Templates page before sending.');
+        }
+
+        $meta = $newsletter->metadata ?? [];
+        $meta = is_array($meta) ? $meta : [];
+        $meta['billing_user_id'] = (int) $walletUser->id;
+
+        // Update status to sending (billing_user_id must match Auth user so wallet UI matches SendNewsletterJob deductions)
+        $newsletter->update([
+            'status' => 'sending',
+            'metadata' => $meta,
+        ]);
 
         // Use new targeting system to get recipients
         try {
@@ -2038,7 +2346,9 @@ TXT;
 
         $request->validate([
             'subject' => 'required|string|max:255',
-            'content' => 'nullable|string',
+            'content' => $request->input('send_via') === 'sms'
+                ? 'required|string|max:'.self::NEWSLETTER_SMS_PLAIN_MAX_CHARS
+                : 'nullable|string',
             'html_content' => 'nullable|string',
             'newsletter_template_id' => 'required|exists:newsletter_templates,id',
             'send_via' => 'required|in:email,sms,both',
@@ -2232,7 +2542,7 @@ TXT;
 
         $this->authorizePermission($request, 'newsletter.send');
 
-        $newsletter = Newsletter::findOrFail($id);
+        $newsletter = Newsletter::with('organization.user')->findOrFail($id);
 
         Log::info('Newsletter found for manual send', [
             'newsletter_id' => $newsletter->id,
@@ -2250,13 +2560,35 @@ TXT;
                 return back()->with('error', 'Newsletter is currently being sent. Please wait for it to complete.');
             }
 
+            $sendVia = $newsletter->send_via ?? 'email';
+            $walletUser = Auth::user();
+            if (! $walletUser) {
+                return back()->with('error', 'You must be signed in to send.');
+            }
+            $smsLeft = max(0, (int) ($walletUser->sms_included ?? 0) - (int) ($walletUser->sms_used ?? 0));
+            $emailsLeft = max(0, (int) ($walletUser->emails_included ?? 0) - (int) ($walletUser->emails_used ?? 0));
+            if ($sendVia === 'sms' && $smsLeft < 1) {
+                return back()->with('error', 'No SMS credits remaining. Purchase an SMS pack from the Newsletter create or template page before sending SMS.');
+            }
+            if ($sendVia === 'email' && $emailsLeft < 1) {
+                return back()->with('error', 'No email credits remaining. Purchase an email pack from the Newsletter or Templates page before sending.');
+            }
+            if ($sendVia === 'both' && $smsLeft < 1 && $emailsLeft < 1) {
+                return back()->with('error', 'No email or SMS credits remaining. Purchase packs from the Newsletter or Templates page before sending.');
+            }
+
             // Store original status for "Send Again" logic
             $wasSent = $newsletter->status === 'sent';
+
+            $meta = $newsletter->metadata ?? [];
+            $meta = is_array($meta) ? $meta : [];
+            $meta['billing_user_id'] = (int) $walletUser->id;
 
             // Update status to sending
             $newsletter->update([
                 'status' => 'sending',
                 'scheduled_at' => now(),
+                'metadata' => $meta,
             ]);
 
             Log::info('Newsletter status updated to sending', [
@@ -2406,6 +2738,144 @@ TXT;
     }
 
     /**
+     * Stripe checkout to add prepaid SMS credits (same flow as email-invite purchase).
+     */
+    public function purchaseSms(Request $request)
+    {
+        $this->authorizePermission($request, 'newsletter.create');
+
+        $request->validate([
+            'package_id' => 'required|exists:sms_packages,id',
+        ]);
+
+        $user = $request->user();
+        $package = SmsPackage::active()->findOrFail((int) $request->input('package_id'));
+
+        try {
+            $transaction = $user->recordTransaction([
+                'type' => 'sms_purchase',
+                'amount' => $package->price,
+                'payment_method' => 'stripe',
+                'status' => 'pending',
+                'meta' => [
+                    'type' => 'sms_purchase',
+                    'sms_to_add' => $package->sms_count,
+                    'package_id' => $package->id,
+                    'package_name' => $package->name,
+                    'description' => 'Purchase '.$package->name,
+                ],
+            ]);
+
+            $amountInCents = (int) ($package->price * 100);
+
+            $checkout = $user->checkoutCharge(
+                $amountInCents,
+                $package->name,
+                1,
+                [
+                    'success_url' => route('newsletter.purchase-sms.success').'?session_id={CHECKOUT_SESSION_ID}',
+                    'cancel_url' => route('newsletter.create').'?canceled=1',
+                    'metadata' => [
+                        'user_id' => (string) $user->id,
+                        'transaction_id' => (string) $transaction->id,
+                        'type' => 'sms_purchase',
+                        'sms_to_add' => (string) $package->sms_count,
+                        'package_id' => (string) $package->id,
+                        'amount' => (string) $package->price,
+                    ],
+                    'payment_method_types' => ['card'],
+                ]
+            );
+
+            return Inertia::location($checkout->url);
+        } catch (\Exception $e) {
+            Log::error('SMS pack checkout error', [
+                'error' => $e->getMessage(),
+                'user_id' => $user->id,
+            ]);
+
+            return back()->withErrors([
+                'message' => 'Failed to create checkout session. Please try again.',
+            ]);
+        }
+    }
+
+    /**
+     * Stripe return URL after successful SMS pack payment.
+     */
+    public function purchaseSmsSuccess(Request $request)
+    {
+        $this->authorizePermission($request, 'newsletter.create');
+
+        try {
+            $sessionId = $request->query('session_id');
+            if (! $sessionId) {
+                return redirect()->route('newsletter.create')->with('error', 'Invalid session.');
+            }
+
+            $user = $request->user();
+            $session = Cashier::stripe()->checkout->sessions->retrieve($sessionId);
+
+            if ($session->payment_status !== 'paid') {
+                return redirect()->route('newsletter.create')->with('error', 'Payment was not completed.');
+            }
+
+            $metadata = $session->metadata ?? [];
+            $smsToAdd = (int) ($metadata['sms_to_add'] ?? 0);
+            $transactionId = $metadata['transaction_id'] ?? null;
+
+            if ($smsToAdd > 0) {
+                $user->increment('sms_included', $smsToAdd);
+            }
+
+            if ($transactionId) {
+                $transaction = \App\Models\Transaction::find($transactionId);
+                if ($transaction) {
+                    $transaction->update([
+                        'status' => 'completed',
+                        'meta' => array_merge($transaction->meta ?? [], [
+                            'type' => 'sms_purchase',
+                            'stripe_session_id' => $sessionId,
+                            'stripe_payment_intent' => $session->payment_intent,
+                            'sms_added' => $smsToAdd,
+                        ]),
+                    ]);
+                }
+            }
+
+            return redirect()->route('newsletter.create')->with(
+                'success',
+                "Successfully added {$smsToAdd} SMS credits to your wallet!"
+            );
+        } catch (\Exception $e) {
+            Log::error('SMS purchase success handler error', [
+                'error' => $e->getMessage(),
+                'session_id' => $request->query('session_id'),
+            ]);
+
+            return redirect()->route('newsletter.create')->with('error', 'Error confirming payment. Please contact support.');
+        }
+    }
+
+    /**
+     * Toggle SMS auto-recharge preference (billing automation can be wired later).
+     */
+    public function updateSmsWalletPreferences(Request $request)
+    {
+        $this->authorizePermission($request, 'newsletter.create');
+
+        $validated = $request->validate([
+            'sms_auto_recharge_enabled' => 'required|boolean',
+        ]);
+
+        $request->user()->update([
+            'sms_auto_recharge_enabled' => $validated['sms_auto_recharge_enabled'],
+        ]);
+
+        return back()->with('success', 'SMS wallet preferences updated.');
+    }
+
+    /**
      * Unsubscribe from newsletter
      */
     public function unsubscribe(Request $request, $token)
@@ -2436,5 +2906,148 @@ TXT;
             'message' => 'You have been successfully unsubscribed from the newsletter.',
             'recipient' => $recipient,
         ]);
+    }
+
+    /**
+     * By role, Organizations, and Custom newsletter targeting (Pro): not tied to generic subscription/plan —
+     * only explicit one-time purchase (newsletter_pro_targeting_purchased_at) or platform admin.
+     */
+    private function userCanUseNewsletterProTargeting(User $user): bool
+    {
+        if (($user->role ?? '') === 'admin') {
+            return true;
+        }
+        if (method_exists($user, 'hasRole') && $user->hasRole('admin')) {
+            return true;
+        }
+        if ($user->newsletter_pro_targeting_purchased_at !== null) {
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * One-time Stripe checkout — lifetime access to Organizations + Custom targeting (no subscription plan row).
+     */
+    public function purchaseProTargeting(Request $request)
+    {
+        $this->authorizePermission($request, 'newsletter.create');
+
+        if (! config('newsletter.pro_targeting_purchase_enabled', true)) {
+            return back()->with('error', 'Pro targeting purchase is not available right now.');
+        }
+
+        $priceUsd = (float) config('newsletter.pro_targeting_lifetime_price_usd', 0);
+        if ($priceUsd <= 0) {
+            return back()->with('error', 'Pro targeting price is not configured.');
+        }
+
+        $user = $request->user();
+        if ($user instanceof User && $this->userCanUseNewsletterProTargeting($user)) {
+            return redirect()->route('newsletter.create-advanced')->with('success', 'You already have access to Pro newsletter targeting.');
+        }
+
+        try {
+            $transaction = $user->recordTransaction([
+                'type' => 'newsletter_pro_targeting_lifetime',
+                'amount' => $priceUsd,
+                'payment_method' => 'stripe',
+                'status' => 'pending',
+                'meta' => [
+                    'type' => 'newsletter_pro_targeting_lifetime',
+                    'description' => 'Newsletter Pro targeting (Organizations + Custom) — lifetime',
+                    'price_usd' => $priceUsd,
+                ],
+            ]);
+
+            $amountInCents = (int) round($priceUsd * 100);
+
+            $checkout = $user->checkoutCharge(
+                $amountInCents,
+                'Newsletter Pro targeting (lifetime)',
+                1,
+                [
+                    'success_url' => route('newsletter.purchase-pro-targeting.success').'?session_id={CHECKOUT_SESSION_ID}',
+                    'cancel_url' => route('newsletter.create-advanced').'?canceled=1',
+                    'metadata' => [
+                        'user_id' => (string) $user->id,
+                        'transaction_id' => (string) $transaction->id,
+                        'type' => 'newsletter_pro_targeting_lifetime',
+                        'amount' => (string) $priceUsd,
+                    ],
+                    'payment_method_types' => ['card'],
+                ]
+            );
+
+            return Inertia::location($checkout->url);
+        } catch (\Exception $e) {
+            Log::error('Newsletter Pro targeting checkout error', [
+                'error' => $e->getMessage(),
+                'user_id' => $user->id,
+            ]);
+
+            return back()->withErrors([
+                'message' => 'Failed to start checkout. Please try again.',
+            ]);
+        }
+    }
+
+    /**
+     * Stripe return after successful Pro targeting one-time payment.
+     */
+    public function purchaseProTargetingSuccess(Request $request)
+    {
+        $this->authorizePermission($request, 'newsletter.create');
+
+        try {
+            $sessionId = $request->query('session_id');
+            if (! $sessionId) {
+                return redirect()->route('newsletter.create-advanced')->with('error', 'Invalid session.');
+            }
+
+            $user = $request->user();
+            $session = Cashier::stripe()->checkout->sessions->retrieve($sessionId);
+
+            if ($session->payment_status !== 'paid') {
+                return redirect()->route('newsletter.create-advanced')->with('error', 'Payment was not completed.');
+            }
+
+            $metadata = $session->metadata ?? [];
+            if (($metadata['type'] ?? '') !== 'newsletter_pro_targeting_lifetime') {
+                return redirect()->route('newsletter.create-advanced')->with('error', 'Invalid payment type.');
+            }
+
+            $user->forceFill([
+                'newsletter_pro_targeting_purchased_at' => now(),
+            ])->save();
+
+            $transactionId = $metadata['transaction_id'] ?? null;
+            if ($transactionId) {
+                $transaction = \App\Models\Transaction::find($transactionId);
+                if ($transaction) {
+                    $transaction->update([
+                        'status' => 'completed',
+                        'meta' => array_merge($transaction->meta ?? [], [
+                            'type' => 'newsletter_pro_targeting_lifetime',
+                            'stripe_session_id' => $sessionId,
+                            'stripe_payment_intent' => $session->payment_intent,
+                        ]),
+                    ]);
+                }
+            }
+
+            return redirect()->route('newsletter.create-advanced')->with(
+                'success',
+                'Pro newsletter targeting is unlocked for your account — lifetime access to By role, Organizations, and Custom.'
+            );
+        } catch (\Exception $e) {
+            Log::error('Newsletter Pro targeting success handler error', [
+                'error' => $e->getMessage(),
+                'session_id' => $request->query('session_id'),
+            ]);
+
+            return redirect()->route('newsletter.create-advanced')->with('error', 'Could not confirm payment. Contact support if you were charged.');
+        }
     }
 }

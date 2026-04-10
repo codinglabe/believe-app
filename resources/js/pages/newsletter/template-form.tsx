@@ -91,6 +91,16 @@ import {
 } from "lucide-react"
 import AppSidebarLayout from "@/layouts/app/app-sidebar-layout"
 import { formatHtmlPretty } from "@/lib/format-html"
+import {
+    NewsletterSmsWalletCard,
+    type EmailUsagePackage,
+    type EmailUsageStats,
+    type SmsPackage,
+    type SmsStats,
+} from "@/components/newsletter/sms-wallet-card"
+
+/** Matches backend NewsletterController::NEWSLETTER_SMS_PLAIN_MAX_CHARS */
+const SMS_PLAIN_MAX_CHARS = 160
 
 interface Template {
     id: number
@@ -144,6 +154,11 @@ interface NewsletterTemplateFormProps {
     previewData?: PreviewData
     openAiConfigured?: boolean
     templateAiResult?: TemplateAiResult | null
+    emailStats?: EmailUsageStats
+    emailPackages?: EmailUsagePackage[]
+    smsStats?: SmsStats
+    smsPackages?: SmsPackage[]
+    smsAutoRechargeEnabled?: boolean
 }
 
 function firstFieldError(err: unknown): string | undefined {
@@ -194,6 +209,11 @@ export default function NewsletterTemplateForm({
     previewData,
     openAiConfigured = false,
     templateAiResult: templateAiResultProp = null,
+    emailStats,
+    emailPackages,
+    smsStats,
+    smsPackages,
+    smsAutoRechargeEnabled,
 }: NewsletterTemplateFormProps) {
     const [viewMode, setViewMode] = useState<'edit' | 'preview'>('edit')
     const isEditing = !!template
@@ -388,6 +408,14 @@ export default function NewsletterTemplateForm({
                     </div>
                 </div>
 
+                <NewsletterSmsWalletCard
+                    emailStats={emailStats}
+                    emailPackages={emailPackages}
+                    smsStats={smsStats}
+                    smsPackages={smsPackages}
+                    smsAutoRechargeEnabled={smsAutoRechargeEnabled}
+                />
+
                     <form onSubmit={handleSubmit}>
                         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
                             {/* Main Content */}
@@ -470,7 +498,9 @@ export default function NewsletterTemplateForm({
                                                 <div>
                                                     <CardTitle>Content</CardTitle>
                                                     <CardDescription>
-                                                        Create your email content
+                                                        {sendVia === "sms"
+                                                            ? `SMS plain text only — max ${SMS_PLAIN_MAX_CHARS} characters (one standard segment).`
+                                                            : "Create your email content"}
                                                     </CardDescription>
                                                 </div>
                                                 <div className="flex flex-col items-stretch gap-3 sm:items-end">
@@ -529,8 +559,17 @@ export default function NewsletterTemplateForm({
                                                             onChange={(e) => setData('content', e.target.value)}
                                                             placeholder="Enter your email content in plain text..."
                                                             rows={10}
+                                                            maxLength={
+                                                                sendVia === "sms" ? SMS_PLAIN_MAX_CHARS : undefined
+                                                            }
                                                             className="mt-1"
                                                         />
+                                                        {sendVia === "sms" && (
+                                                            <p className="mt-1 text-xs text-muted-foreground">
+                                                                {(data.content?.length ?? 0)} / {SMS_PLAIN_MAX_CHARS}{" "}
+                                                                characters
+                                                            </p>
+                                                        )}
                                                         {errors.content && (
                                                             <p className="text-sm text-red-600 mt-1">{errors.content}</p>
                                                         )}

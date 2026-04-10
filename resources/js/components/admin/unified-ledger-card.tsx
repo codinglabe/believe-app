@@ -66,6 +66,8 @@ export interface UnifiedLedgerRow {
   selling_price_markup_percent?: number | null
   /** Sum of line markups (retail − cost or implied from %); omit for Points-only display. */
   selling_price_markup_amount?: number | null
+  /** Sum of catalog supplier base costs (source cost or subtotal ÷ (1 + markup%)); pairs with markup on the same lines. */
+  supplier_cost_amount?: number | null
 }
 
 /** Believe Points: same numeric amount as points, show coin icon + pts (not USD). */
@@ -145,6 +147,8 @@ function moduleLabel(m: string) {
     donation: "Donation",
     fundme: "FundMe",
     campaign: "Campaign",
+    believe_points: "Believe Points",
+    wallet: "Wallet",
     marketplace: "Marketplace",
     servicehub: "Service Hub",
     course: "Course",
@@ -239,6 +243,73 @@ function ProviderRailLabel({ provider }: { provider: string }) {
 
 type Variant = "full" | "compact"
 
+/** Client workbook vocabulary + formulas; amounts in the grid above use live ledger values (Stripe, BIU), not illustrative %. */
+function WorkbookFormulasReference() {
+  return (
+    <details className="group mt-4 rounded-lg border border-border/50 bg-muted/25 p-3 sm:p-4">
+      <summary className="cursor-pointer list-none text-sm font-semibold text-foreground marker:content-none [&::-webkit-details-marker]:hidden">
+        <span className="underline decoration-dotted underline-offset-4 group-open:no-underline">Workbook formulas (client spec)</span>
+      </summary>
+      <div className="mt-3 space-y-3 text-xs leading-relaxed text-muted-foreground">
+        <div>
+          <p className="font-medium text-foreground">Identifiers</p>
+          <ul className="mt-1 list-inside list-disc space-y-0.5">
+            <li>
+              <span className="text-foreground">Transaction</span> — type of activity (purchase, donation, etc.)
+            </li>
+            <li>
+              <span className="text-foreground">Txn</span> — unique internal ID
+            </li>
+            <li>
+              <span className="text-foreground">Module</span> — where it happened (Marketplace, Donation, etc.)
+            </li>
+            <li>
+              <span className="text-foreground">From → To</span> — payer → recipient
+            </li>
+          </ul>
+        </div>
+        <div>
+          <p className="font-medium text-foreground">Buyer totals</p>
+          <ul className="mt-1 space-y-1 font-mono text-[11px] text-foreground/90">
+            <li>Gross = Subtotal + Shipping + Tax</li>
+            <li>Subtotal = Supplier cost + Markup (on catalog lines)</li>
+          </ul>
+          <p className="mt-1.5">Shipping — delivery charge. Tax — sales tax (not revenue).</p>
+        </div>
+        <div>
+          <p className="font-medium text-foreground">Supplier (fulfillment)</p>
+          <ul className="mt-1 list-inside list-disc space-y-0.5">
+            <li>Supplier name — who fulfills the order</li>
+            <li>Supplier type — PRINTIFY, ORGANIZATION, MERCHANT, SUPPORTER (internal types are mapped in the badge)</li>
+          </ul>
+          <ul className="mt-2 space-y-1 font-mono text-[11px] text-foreground/90">
+            <li>Supplier cost = Subtotal ÷ (1 + markup% ÷ 100)</li>
+            <li>Markup = Subtotal − Supplier cost</li>
+          </ul>
+        </div>
+        <div>
+          <p className="font-medium text-foreground">Fees (illustrative vs this screen)</p>
+          <ul className="mt-1 space-y-1 font-mono text-[11px] text-foreground/90">
+            <li>Processing fee ≈ Subtotal × processor% (e.g. 3%)</li>
+            <li>Platform fee ≈ Subtotal × platform% (e.g. 1.5%)</li>
+          </ul>
+          <p className="mt-1.5">
+            This card shows <span className="text-foreground">actual</span> Stripe + Bridge and recorded BIU / platform fees — not the example percentages.
+          </p>
+        </div>
+        <div>
+          <p className="font-medium text-foreground">Settlement</p>
+          <ul className="mt-1 space-y-1 font-mono text-[11px] text-foreground/90">
+            <li>Org payout ≈ Subtotal − Processing fee − Platform fee</li>
+            <li>Net — final settled amount on this row (may include supplier + org depending on flow)</li>
+          </ul>
+          <p className="mt-1.5">Fees are taken from payout, not added on top for the buyer — see module notes below where applicable.</p>
+        </div>
+      </div>
+    </details>
+  )
+}
+
 export function UnifiedLedgerCard({ data, variant = "full", className }: { data: UnifiedLedgerRow; variant?: Variant; className?: string }) {
   const cur = data.currency || "USD"
   const usePoints = data.provider === "points"
@@ -291,6 +362,18 @@ export function UnifiedLedgerCard({ data, variant = "full", className }: { data:
               <span className="inline-flex flex-wrap items-center gap-x-1.5 font-semibold text-foreground">
                 Net {ledgerAmountNode(usePoints, data.net_amount, cur)}
               </span>
+              {showMarkupDollars &&
+                data.supplier_cost_amount != null &&
+                data.supplier_cost_amount !== undefined &&
+                Number.isFinite(Number(data.supplier_cost_amount)) && (
+                  <>
+                    <span className="text-muted-foreground max-sm:hidden">·</span>
+                    <span className="text-[11px] text-muted-foreground">
+                      Cost{" "}
+                      <span className="font-semibold tabular-nums text-foreground">{formatMoney(Number(data.supplier_cost_amount), cur)}</span>
+                    </span>
+                  </>
+                )}
               {data.selling_price_markup_percent != null && data.selling_price_markup_percent !== undefined && (
                 <>
                   <span className="text-muted-foreground max-sm:hidden">·</span>
@@ -346,7 +429,7 @@ export function UnifiedLedgerCard({ data, variant = "full", className }: { data:
               </Badge>
             </div>
             <CardDescription className="text-sm">
-              One-line view for finance: module, parties, fees, and settlement — aligned with your workbook and client export.
+              Module, transaction type, parties, amounts, fees, and settlement — aligned with the client workbook (see formulas below).
             </CardDescription>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -365,14 +448,17 @@ export function UnifiedLedgerCard({ data, variant = "full", className }: { data:
       <CardContent className="grid gap-5 pt-4 sm:gap-6 sm:pt-6">
         <div className="grid min-w-0 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3">
           <div className="min-w-0 space-y-1 rounded-xl border border-border/50 bg-muted/20 p-3 sm:p-4">
-            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Txn ID</p>
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Txn</p>
             <p className="font-mono text-xl font-bold text-foreground">{data.txn_id}</p>
+            <p className="text-xs text-muted-foreground">Unique internal ID</p>
             <p className="text-xs text-muted-foreground">{formatDateTime(data.datetime_iso)}</p>
           </div>
           <div className="min-w-0 space-y-1 rounded-xl border border-border/50 bg-muted/20 p-3 sm:p-4">
             <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Module</p>
             <p className="text-lg font-semibold capitalize text-foreground">{moduleLabel(data.module)}</p>
+            <p className="mt-2 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Transaction</p>
             <p className="font-mono text-sm text-primary">{data.transaction_type}</p>
+            <p className="text-xs text-muted-foreground">Type of activity (purchase, donation, etc.)</p>
           </div>
           <div className="min-w-0 space-y-1 rounded-xl border border-border/50 bg-muted/20 p-3 sm:col-span-2 sm:p-4 lg:col-span-1">
             <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Related record</p>
@@ -389,6 +475,7 @@ export function UnifiedLedgerCard({ data, variant = "full", className }: { data:
               <User className="h-3.5 w-3.5 shrink-0" aria-hidden />
               {data.module === "believe_points" ? "Purchaser" : `From (${data.from_type})`}
             </div>
+            {data.module !== "believe_points" && <p className="mb-2 text-[10px] text-muted-foreground">Payer</p>}
             <p className="break-words text-base font-semibold text-foreground">{data.from_name ?? "—"}</p>
             <p className="break-all text-sm text-muted-foreground">{data.from_email ?? "—"}</p>
             {data.from_id != null && <p className="mt-1 font-mono text-[11px] text-muted-foreground">User ID {data.from_id}</p>}
@@ -399,6 +486,7 @@ export function UnifiedLedgerCard({ data, variant = "full", className }: { data:
                 <Building2 className="h-3.5 w-3.5 shrink-0" aria-hidden />
                 To ({data.to_type})
               </div>
+              <p className="mb-2 text-[10px] text-muted-foreground">Recipient</p>
               <p className="break-words text-base font-semibold text-foreground">{data.to_name ?? "—"}</p>
               <p className="break-all text-sm text-muted-foreground">{data.to_email ?? "—"}</p>
               {data.to_id != null && <p className="mt-1 font-mono text-[11px] text-muted-foreground">ID {data.to_id}</p>}
@@ -412,12 +500,34 @@ export function UnifiedLedgerCard({ data, variant = "full", className }: { data:
             Amounts
           </div>
           <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
-            <Amount label="Subtotal" value={ledgerAmountNode(usePoints, data.subtotal_amount, cur, true)} />
-            <Amount label="Sales tax" value={ledgerAmountNode(usePoints, data.sales_tax_amount, cur, true)} />
-            <Amount label="Shipping" value={ledgerAmountNode(usePoints, data.shipping_amount, cur, true)} />
+            <Amount
+              label="Subtotal"
+              value={ledgerAmountNode(usePoints, data.subtotal_amount, cur, true)}
+              hint="Product/service price. On catalog lines: Subtotal ≈ Supplier cost + Markup."
+            />
+            <Amount
+              label="Sales tax"
+              value={ledgerAmountNode(usePoints, data.sales_tax_amount, cur, true)}
+              hint="Sales tax (pass-through; not platform revenue)."
+            />
+            <Amount
+              label="Shipping"
+              value={ledgerAmountNode(usePoints, data.shipping_amount, cur, true)}
+              hint="Delivery charge (pass-through or margin, depending on setup)."
+            />
+            {showMarkupDollars &&
+            data.supplier_cost_amount != null &&
+            data.supplier_cost_amount !== undefined &&
+            Number.isFinite(Number(data.supplier_cost_amount)) ? (
+              <Amount
+                label="Supplier cost"
+                value={<span className="text-sm font-semibold tabular-nums text-foreground">{formatMoney(Number(data.supplier_cost_amount), cur)}</span>}
+                hint="Base cost on catalog lines: stored source cost, or line ÷ (1 + markup%÷100). Workbook: Supplier cost = Subtotal ÷ (1 + markup%) on a uniform line."
+              />
+            ) : null}
             {data.selling_price_markup_percent != null && data.selling_price_markup_percent !== undefined ? (
               <Amount
-                label="Selling price markup"
+                label="Markup"
                 value={
                   <span className="text-sm font-semibold tabular-nums text-foreground">
                     {formatMarkupPercent(data.selling_price_markup_percent)}
@@ -433,7 +543,7 @@ export function UnifiedLedgerCard({ data, variant = "full", className }: { data:
                     ) : null}
                   </span>
                 }
-                hint="Catalog lines: margin % on first product row; dollar total = Σ (line retail − cost), or retail×m÷(100+m) when cost omitted."
+                hint="Profit on catalog lines (margin % from first product row; dollars = Σ line retail − cost). Workbook: Markup = Subtotal − Supplier cost."
               />
             ) : null}
             {(data.supplier_name != null && data.supplier_name !== "") ||
@@ -465,9 +575,14 @@ export function UnifiedLedgerCard({ data, variant = "full", className }: { data:
                 />
               </>
             ) : null}
-            <Amount label="Gross" value={ledgerAmountNode(usePoints, data.gross_amount, cur, false, true)} emphasis />
+            <Amount
+              label="Gross"
+              value={ledgerAmountNode(usePoints, data.gross_amount, cur, false, true)}
+              emphasis
+              hint="Total paid. Gross = Subtotal + Shipping + Tax."
+            />
             <div className="min-w-0 space-y-2 sm:col-span-2 lg:col-span-2">
-              <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Proc fee (Stripe + Bridge)</p>
+              <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Processing fee (Stripe + Bridge)</p>
               {data.provider === "points" ? (
                 <>
                   <p className="tabular-nums text-sm font-semibold text-muted-foreground">—</p>
@@ -482,6 +597,9 @@ export function UnifiedLedgerCard({ data, variant = "full", className }: { data:
               ) : (
                 <>
                   <p className="tabular-nums text-sm font-semibold text-foreground">{formatMoney(data.processor_fee_amount, cur)}</p>
+                  <p className="text-pretty text-[10px] leading-snug text-muted-foreground">
+                    Workbook example: Processing fee = Subtotal × processor % — here you see actual Stripe + Bridge from the transaction.
+                  </p>
                   <div className="flex flex-wrap gap-2">
                     <Badge variant="outline" className={cn("tabular-nums text-xs font-semibold", providerBadgeClass("stripe"))}>
                       Stripe {formatMoney(data.stripe_fee_amount, cur)}
@@ -493,7 +611,11 @@ export function UnifiedLedgerCard({ data, variant = "full", className }: { data:
                 </>
               )}
             </div>
-            <Amount label="BIU fee" value={ledgerAmountNode(usePoints, data.biu_fee_amount, cur)} />
+            <Amount
+              label="Platform fee (BIU)"
+              value={ledgerAmountNode(usePoints, data.biu_fee_amount, cur)}
+              hint="Workbook example: Platform fee = Subtotal × platform % — this row shows recorded BIU / platform fee from the ledger."
+            />
             <Amount label="Split" value={ledgerAmountNode(usePoints, data.split_amount, cur, true)} />
             <Amount label="Refund" value={ledgerAmountNode(usePoints, data.refund_amount, cur, true)} />
             <Amount
@@ -501,6 +623,7 @@ export function UnifiedLedgerCard({ data, variant = "full", className }: { data:
               value={ledgerAmountNode(usePoints, data.net_amount, cur, false, true)}
               emphasis
               className="sm:col-span-2 md:col-span-2 lg:col-span-1"
+              hint="Settled total for this row (flow-specific; not always equal to Org payout alone — see settlement rows below)."
             />
             {sellingPayoutsVisible(data) ? (
               <div className="col-span-full mt-1 grid min-w-0 grid-cols-1 gap-3 border-t border-border/40 pt-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -517,7 +640,7 @@ export function UnifiedLedgerCard({ data, variant = "full", className }: { data:
                 <Amount
                   label="Organization payout"
                   value={ledgerAmountNode(usePoints, data.organization_payout_amount, cur, true)}
-                  hint="Markup net: gross nonprofit split minus Stripe + order platform fee"
+                  hint="What the org receives after fees in this split. Workbook shorthand: Org payout ≈ Subtotal − processing − platform fee (fees come from payout, not charged again to the buyer)."
                 />
                 <Amount
                   label="Supporter payout"
@@ -527,6 +650,7 @@ export function UnifiedLedgerCard({ data, variant = "full", className }: { data:
               </div>
             ) : null}
           </div>
+          <WorkbookFormulasReference />
           {data.module === "marketplace" && (
             <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
               <span className="font-medium text-foreground">Gross</span> is the buyer&apos;s checkout total (subtotal + tax + shipping).
@@ -569,7 +693,7 @@ export function UnifiedLedgerCard({ data, variant = "full", className }: { data:
                 <ProviderRailLabel provider={data.provider} />
               </p>
               {(data.bridge_fee_amount > 0 || data.provider === "bridge") && data.provider !== "points" && (
-                <p className="mt-1 text-xs text-muted-foreground">Bridge fees or virtual-account flows appear in Proc fee / provider.</p>
+                <p className="mt-1 text-xs text-muted-foreground">Bridge fees or virtual-account flows appear in Processing fee / provider.</p>
               )}
               {data.provider === "points" && (
                 <p className="mt-1 text-xs text-muted-foreground">Paid from the donor&apos;s Believe Points balance (not card or bank).</p>

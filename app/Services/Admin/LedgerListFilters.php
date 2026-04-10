@@ -44,6 +44,7 @@ final class LedgerListFilters
             'refund',
             'adjustment',
             'believe_points',
+            'wallet',
         ];
     }
 
@@ -109,8 +110,23 @@ final class LedgerListFilters
             'adjustment' => self::scopeAdjustment(self::withRefundPayoutExclusion($query)),
             'marketplace' => self::scopeMarketplace(self::withRefundPayoutExclusion($query)),
             'believe_points' => self::scopeBelievePoints($query),
+            'wallet' => self::scopeWallet($query),
             default => null,
         };
+    }
+
+    private static function scopeWallet(Builder $query): void
+    {
+        $query->where(function (Builder $q) {
+            $q->where(function (Builder $d) {
+                $d->where('type', 'deposit')
+                    ->whereNotNull('meta->deposited_by');
+            })->orWhere(function (Builder $w) {
+                $w->where('type', 'deposit')
+                    ->where('payment_method', 'wallet')
+                    ->whereNotNull('meta->organization_id');
+            });
+        });
     }
 
     private static function withRefundPayoutExclusion(Builder $query): Builder

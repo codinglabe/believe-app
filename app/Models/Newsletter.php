@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Collection;
 
 class Newsletter extends Model
 {
@@ -67,52 +68,92 @@ class Newsletter extends Model
         return $this->hasMany(NewsletterEmail::class);
     }
 
-    // Targeting methods
-    public function getTargetedUsers()
+    /**
+     * Resolve user recipients. Not limited to donation/follow lists — uses roles, selections, and org links only.
+     */
+    public function getTargetedUsers(): Collection
     {
         switch ($this->target_type) {
             case 'all':
-                return User::where('email_verified_at', '!=', null)->get();
+                return User::query()->whereNotNull('email_verified_at')->get();
+
+            case 'roles':
+                if (empty($this->target_roles)) {
+                    return collect();
+                }
+
+                return User::query()
+                    ->role($this->target_roles)
+                    ->whereNotNull('email_verified_at')
+                    ->get();
 
             case 'users':
-                return User::whereIn('id', $this->target_users ?? [])->get();
+                $ids = $this->target_users ?? [];
+
+                return User::query()
+                    ->whereIn('id', $ids)
+                    ->whereNotNull('email_verified_at')
+                    ->get();
 
             case 'organizations':
-                return User::whereHas('organizations', function ($query) {
-                    $query->whereIn('organizations.id', $this->target_organizations ?? []);
-                })->get();
+                return User::query()
+                    ->whereHas('organizations', function ($query) {
+                        $query->whereIn('organizations.id', $this->target_organizations ?? []);
+                    })
+                    ->whereNotNull('email_verified_at')
+                    ->get();
 
             case 'specific':
                 $users = collect();
 
-                // Add specific users
                 if (! empty($this->target_users)) {
-                    $users = $users->merge(User::whereIn('id', $this->target_users)->get());
+                    $users = $users->merge(
+                        User::query()
+                            ->whereIn('id', $this->target_users)
+                            ->whereNotNull('email_verified_at')
+                            ->get()
+                    );
                 }
 
-                // Add users from organizations
                 if (! empty($this->target_organizations)) {
-                    $orgUsers = User::whereHas('organizations', function ($query) {
-                        $query->whereIn('organizations.id', $this->target_organizations);
-                    })->get();
+                    $orgUsers = User::query()
+                        ->whereHas('organizations', function ($query) {
+                            $query->whereIn('organizations.id', $this->target_organizations);
+                        })
+                        ->whereNotNull('email_verified_at')
+                        ->get();
                     $users = $users->merge($orgUsers);
                 }
 
-                // Add users by roles
                 if (! empty($this->target_roles)) {
-                    $roleUsers = User::role($this->target_roles)->get();
+                    $roleUsers = User::query()
+                        ->role($this->target_roles)
+                        ->whereNotNull('email_verified_at')
+                        ->get();
                     $users = $users->merge($roleUsers);
                 }
 
-                return $users->unique('id');
+                return $users->unique('id')->values();
 
             default:
                 return collect();
         }
     }
 
-    public function getTargetedOrganizations()
+    public function getTargetedOrganizations(): Collection
     {
+        if ($this->organization_id) {
+            // Org-owned sends: do not fan out to every nonprofit on the platform unless explicitly selected.
+            switch ($this->target_type) {
+                case 'organizations':
+                case 'specific':
+                    return Organization::whereIn('id', $this->target_organizations ?? [])->get();
+
+                default:
+                    return collect();
+            }
+        }
+
         switch ($this->target_type) {
             case 'all':
                 return Organization::where('status', 'active')->get();
@@ -135,7 +176,7 @@ class Newsletter extends Model
     // Helper methods
     public function getOpenRateAttribute(): float
     {
-        if ($this->delivered_count == 0) {
+        if ($this->delivered_count === 0) {
             return 0;
         }
 
@@ -144,7 +185,7 @@ class Newsletter extends Model
 
     public function getClickRateAttribute(): float
     {
-        if ($this->delivered_count == 0) {
+        if ($this->delivered_count === 0) {
             return 0;
         }
 
@@ -153,10 +194,10 @@ class Newsletter extends Model
 
     public function getBounceRateAttribute(): float
     {
-        if ($this->sent_count == 0) {
+        if ($this->delivered_count === 0) {
             return 0;
         }
 
-        return round(($this->bounced_count / $this->sent_count) * 100, 2);
+        return round(($this->bounced_count / $this->delivered_count) * 100, 2);
     }
 }
