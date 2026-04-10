@@ -24,7 +24,6 @@ use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 use Laravel\Cashier\Cashier;
-use Stripe\PaymentIntent;
 
 class NewsletterController extends BaseController
 {
@@ -3031,17 +3030,13 @@ TXT;
                     $paymentIntentId = is_string($paymentIntentRef)
                         ? $paymentIntentRef
                         : (is_object($paymentIntentRef) ? ($paymentIntentRef->id ?? null) : null);
-                    $stripeFeeUsd = $this->stripeProcessingFeeUsdFromPaymentIntentId($paymentIntentId);
 
                     $transaction->update([
                         'status' => 'completed',
-                        'fee' => $stripeFeeUsd,
                         'meta' => array_merge($transaction->meta ?? [], [
                             'type' => 'newsletter_pro_targeting_lifetime',
                             'stripe_session_id' => $sessionId,
                             'stripe_payment_intent' => $paymentIntentId ?? $session->payment_intent,
-                            'stripe_fee' => $stripeFeeUsd,
-                            'stripe_processing_fee' => $stripeFeeUsd,
                         ]),
                     ]);
                 }
@@ -3059,33 +3054,5 @@ TXT;
 
             return redirect()->route('newsletter.create-advanced')->with('error', 'Could not confirm payment. Contact support if you were charged.');
         }
-    }
-
-    /**
-     * Actual Stripe processing fee (USD) from the charge balance transaction (not an estimate).
-     */
-    private function stripeProcessingFeeUsdFromPaymentIntentId(?string $paymentIntentId): float
-    {
-        if ($paymentIntentId === null || $paymentIntentId === '') {
-            return 0.0;
-        }
-
-        try {
-            $pi = PaymentIntent::retrieve($paymentIntentId, [
-                'expand' => ['latest_charge.balance_transaction'],
-            ]);
-            $charge = $pi->latest_charge ?? null;
-            $bt = is_object($charge) ? ($charge->balance_transaction ?? null) : null;
-            if (is_object($bt) && isset($bt->fee)) {
-                return round((float) $bt->fee / 100, 2);
-            }
-        } catch (\Throwable $e) {
-            Log::debug('Newsletter Pro targeting: could not read Stripe processing fee', [
-                'payment_intent_id' => $paymentIntentId,
-                'error' => $e->getMessage(),
-            ]);
-        }
-
-        return 0.0;
     }
 }
