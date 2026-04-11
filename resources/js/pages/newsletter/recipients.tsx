@@ -597,7 +597,7 @@ export default function NewsletterRecipients({ organizations, manualRecipients, 
                                 <CardHeader>
                                     <CardTitle>Organizations ({organizations.data.length})</CardTitle>
                                     <CardDescription>
-                                        View all organizations and their newsletter subscription status
+                                        Approved nonprofits on the platform (pending or rejected registrations are hidden). Newsletter subscription status per organization.
                                     </CardDescription>
                                 </CardHeader>
                         <CardContent>

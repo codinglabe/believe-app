@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Models\Newsletter;
 use App\Models\NewsletterEmail;
+use App\Models\User;
 use App\Services\NewsletterTwilioSmsService;
 use Carbon\Carbon;
 use Illuminate\Bus\Queueable;
@@ -91,8 +92,8 @@ class SendNewsletterJob implements ShouldQueue
                     ->count();
 
                 if ($processedEmails >= $totalEmails) {
-                    // All emails processed, update newsletter status to sent
-                    // Use UTC for database storage
+                    // All emails processed (e.g. last batch already ran); sync counts then close out
+                    $this->updateNewsletterStats();
                     $this->newsletter->update([
                         'status' => 'sent',
                         'sent_at' => Carbon::now('UTC'),
@@ -426,6 +427,8 @@ class SendNewsletterJob implements ShouldQueue
             $sendEmail = in_array($sendVia, ['email', 'both'], true);
             $sendSms = in_array($sendVia, ['sms', 'both'], true);
 
+            $metadata = $emailRecord->metadata ?? [];
+
             $smsTo = $sendSms
                 ? $this->resolveNewsletterSmsTo($emailRecord, $userId, $organizationId, $organization)
                 : null;
@@ -440,46 +443,78 @@ class SendNewsletterJob implements ShouldQueue
             }
 
             if ($sendEmail) {
-                Mail::send([], [], function ($message) use ($emailData, $processedSubject, $processedContent, $processedHtmlContent) {
-                    $message->to($emailData['recipient_email'], $emailData['recipient_name'])
-                        ->subject($processedSubject)
-                        ->html($processedHtmlContent)
-                        ->text($processedContent);
-                });
-            }
+                $biller = $this->resolveBillingUser();
+                $emailsLeft = $biller
+                    ? max(0, (int) ($biller->emails_included ?? 0) - (int) ($biller->emails_used ?? 0))
+                    : 0;
 
-            $metadata = $emailRecord->metadata ?? [];
+                if ($emailsLeft < 1) {
+                    if ($sendVia === 'email') {
+                        $emailRecord->update([
+                            'status' => 'failed',
+                            'error_message' => 'No email credits remaining.',
+                        ]);
+
+                        return;
+                    }
+                    $metadata['email_status'] = 'skipped';
+                    $metadata['email_skip_reason'] = 'no_credits';
+                } else {
+                    Mail::send([], [], function ($message) use ($emailData, $processedSubject, $processedContent, $processedHtmlContent) {
+                        $message->to($emailData['recipient_email'], $emailData['recipient_name'])
+                            ->subject($processedSubject)
+                            ->html($processedHtmlContent)
+                            ->text($processedContent);
+                    });
+                    $this->incrementEmailCreditsUsedForOwner();
+                }
+            }
 
             if ($sendSms) {
                 if (! $smsTo) {
                     $metadata['sms_status'] = 'skipped';
                     $metadata['sms_skip_reason'] = 'no_phone';
                 } else {
-                    $plainForSms = trim(preg_replace('/\s+/', ' ', strip_tags($processedContent)));
-                    if ($sendVia === 'both') {
-                        $plainForSms = $this->excerptPlainTextForSms($plainForSms);
-                    }
-                    $smsBody = trim($processedSubject);
-                    if ($plainForSms !== '') {
-                        $smsBody .= "\n\n".$plainForSms;
-                    }
+                    $biller = $this->resolveBillingUser();
+                    $smsLeft = $biller ? max(0, (int) ($biller->sms_included ?? 0) - (int) ($biller->sms_used ?? 0)) : 0;
 
-                    try {
-                        $twilioSid = app(NewsletterTwilioSmsService::class)->send($smsTo, $smsBody);
-                        $metadata['sms_status'] = 'sent';
-                        $metadata['twilio_message_sid'] = $twilioSid;
-                        $metadata['sms_to'] = $smsTo;
-                    } catch (\Throwable $e) {
+                    if ($smsLeft < 1) {
                         if ($sendVia === 'sms') {
-                            throw $e;
+                            $emailRecord->update([
+                                'status' => 'failed',
+                                'error_message' => 'No SMS credits remaining.',
+                            ]);
+
+                            return;
                         }
-                        $metadata['sms_status'] = 'failed';
-                        $metadata['sms_error'] = $e->getMessage();
-                        Log::warning('Newsletter SMS failed after email was sent', [
-                            'newsletter_id' => $this->newsletter->id,
-                            'email_record_id' => $emailRecord->id,
-                            'error' => $e->getMessage(),
-                        ]);
+                        $metadata['sms_status'] = 'skipped';
+                        $metadata['sms_skip_reason'] = 'no_credits';
+                    } else {
+                        $plainForSms = trim(preg_replace('/\s+/', ' ', strip_tags($processedContent)));
+                        $plainForSms = $this->excerptPlainTextForSms($plainForSms);
+                        $smsBody = trim($processedSubject);
+                        if ($plainForSms !== '') {
+                            $smsBody .= "\n\n".$plainForSms;
+                        }
+
+                        try {
+                            $twilioSid = app(NewsletterTwilioSmsService::class)->send($smsTo, $smsBody);
+                            $metadata['sms_status'] = 'sent';
+                            $metadata['twilio_message_sid'] = $twilioSid;
+                            $metadata['sms_to'] = $smsTo;
+                            $this->incrementSmsCreditsUsedForOwner();
+                        } catch (\Throwable $e) {
+                            if ($sendVia === 'sms') {
+                                throw $e;
+                            }
+                            $metadata['sms_status'] = 'failed';
+                            $metadata['sms_error'] = $e->getMessage();
+                            Log::warning('Newsletter SMS failed after email was sent', [
+                                'newsletter_id' => $this->newsletter->id,
+                                'email_record_id' => $emailRecord->id,
+                                'error' => $e->getMessage(),
+                            ]);
+                        }
                     }
                 }
             }
@@ -517,9 +552,57 @@ class SendNewsletterJob implements ShouldQueue
     }
 
     /**
-     * When send_via is "both", the MIME plain part can be long; SMS uses a tight professional excerpt.
+     * Wallet that pays for email/SMS must match the UI (Auth user). Stored on send as metadata.billing_user_id; fallback: org owner.
      */
-    protected function excerptPlainTextForSms(string $collapsedPlain, int $maxChars = 780): string
+    protected function resolveBillingUser(): ?User
+    {
+        $meta = $this->newsletter->metadata ?? [];
+        if (is_array($meta) && ! empty($meta['billing_user_id'])) {
+            $u = User::query()->find((int) $meta['billing_user_id']);
+            if ($u) {
+                return $u;
+            }
+        }
+
+        $this->newsletter->loadMissing('organization.user');
+
+        return $this->newsletter->organization?->user;
+    }
+
+    /**
+     * One prepaid SMS credit per successfully delivered Twilio message (billing user's wallet).
+     */
+    protected function incrementSmsCreditsUsedForOwner(): void
+    {
+        $user = $this->resolveBillingUser();
+        if ($user) {
+            $user->increment('sms_used');
+        } else {
+            Log::warning('Newsletter SMS sent but no billing user to increment sms_used', [
+                'newsletter_id' => $this->newsletter->id,
+            ]);
+        }
+    }
+
+    /**
+     * One prepaid email credit per successfully sent Laravel mail (billing user's wallet).
+     */
+    protected function incrementEmailCreditsUsedForOwner(): void
+    {
+        $user = $this->resolveBillingUser();
+        if ($user) {
+            $user->increment('emails_used');
+        } else {
+            Log::warning('Newsletter email sent but no billing user to increment emails_used', [
+                'newsletter_id' => $this->newsletter->id,
+            ]);
+        }
+    }
+
+    /**
+     * SMS body excerpt: one standard GSM segment (160 chars) after subject line.
+     */
+    protected function excerptPlainTextForSms(string $collapsedPlain, int $maxChars = 160): string
     {
         $t = trim($collapsedPlain);
         if ($t === '') {
@@ -611,23 +694,25 @@ class SendNewsletterJob implements ShouldQueue
      */
     protected function updateNewsletterStats(): void
     {
-        $stats = NewsletterEmail::where('newsletter_id', $this->newsletter->id)
-            ->selectRaw('
+        // Use single-quoted status literals — double quotes break MySQL as identifier quotes.
+        $stats = NewsletterEmail::query()
+            ->where('newsletter_id', $this->newsletter->id)
+            ->selectRaw("
                 COUNT(*) as total,
-                SUM(CASE WHEN status = "sent" THEN 1 ELSE 0 END) as sent,
-                SUM(CASE WHEN status = "delivered" THEN 1 ELSE 0 END) as delivered,
-                SUM(CASE WHEN status = "opened" THEN 1 ELSE 0 END) as opened,
-                SUM(CASE WHEN status = "clicked" THEN 1 ELSE 0 END) as clicked,
-                SUM(CASE WHEN status = "bounced" THEN 1 ELSE 0 END) as bounced
-            ')
+                COALESCE(SUM(CASE WHEN status = 'sent' THEN 1 ELSE 0 END), 0) as sent,
+                COALESCE(SUM(CASE WHEN status = 'delivered' THEN 1 ELSE 0 END), 0) as delivered,
+                COALESCE(SUM(CASE WHEN status = 'opened' THEN 1 ELSE 0 END), 0) as opened,
+                COALESCE(SUM(CASE WHEN status = 'clicked' THEN 1 ELSE 0 END), 0) as clicked,
+                COALESCE(SUM(CASE WHEN status = 'bounced' THEN 1 ELSE 0 END), 0) as bounced
+            ")
             ->first();
 
         $this->newsletter->update([
-            'sent_count' => $stats->sent,
-            'delivered_count' => $stats->delivered,
-            'opened_count' => $stats->opened,
-            'clicked_count' => $stats->clicked,
-            'bounced_count' => $stats->bounced,
+            'sent_count' => (int) ($stats->sent ?? 0),
+            'delivered_count' => (int) ($stats->delivered ?? 0),
+            'opened_count' => (int) ($stats->opened ?? 0),
+            'clicked_count' => (int) ($stats->clicked ?? 0),
+            'bounced_count' => (int) ($stats->bounced ?? 0),
         ]);
     }
 }

@@ -87,6 +87,10 @@ class User extends Authenticatable implements MustVerifyEmail
         'wallet_connected_at',
         'emails_included',
         'emails_used',
+        'sms_included',
+        'sms_used',
+        'sms_auto_recharge_enabled',
+        'newsletter_pro_targeting_purchased_at',
         'ai_tokens_included',
         'ai_tokens_used',
         'current_plan_details',
@@ -134,6 +138,10 @@ class User extends Authenticatable implements MustVerifyEmail
             'current_plan_details' => 'array',
             'emails_included' => 'integer',
             'emails_used' => 'integer',
+            'sms_included' => 'integer',
+            'sms_used' => 'integer',
+            'sms_auto_recharge_enabled' => 'boolean',
+            'newsletter_pro_targeting_purchased_at' => 'datetime',
             'ai_tokens_included' => 'integer',
             'ai_tokens_used' => 'integer',
             'believe_points' => 'decimal:2',
@@ -448,6 +456,15 @@ class User extends Authenticatable implements MustVerifyEmail
     public function boardMemberships()
     {
         return $this->hasMany(BoardMember::class);
+    }
+
+    /**
+     * Organizations this user is associated with via board membership (newsletter targeting: "users in orgs").
+     */
+    public function organizations(): BelongsToMany
+    {
+        return $this->belongsToMany(Organization::class, 'board_members', 'user_id', 'organization_id')
+            ->withTimestamps();
     }
 
     public function canManageContent()

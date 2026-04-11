@@ -56,6 +56,7 @@ class DatabaseSeeder extends Seeder
         $this->callUnlessSeeded(ChatRoomsSeeder::class);
         $this->callUnlessSeeded(PlanSeeder::class);
         $this->callUnlessSeeded(WalletPlanSeeder::class);
+        $this->callUnlessSeeded(SmsPackageSeeder::class);
         $this->callUnlessSeeded(ContactPageContentSeeder::class);
         $this->callUnlessSeeded(PromotionalBannerSeeder::class);
         $this->callUnlessSeeded(FundMeCategorySeeder::class);

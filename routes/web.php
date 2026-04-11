@@ -1515,6 +1515,11 @@ Route::prefix('newsletter')->name('newsletter.')->group(function () {
     Route::post('/recipients/manual/{recipientId}/unsubscribe', [NewsletterController::class, 'unsubscribeManualRecipient'])->name('recipients.manual.unsubscribe');
     Route::get('/export', [NewsletterController::class, 'export'])->name('export');
     Route::get('/create', [NewsletterController::class, 'create'])->name('create');
+    Route::post('/purchase-sms', [NewsletterController::class, 'purchaseSms'])->name('purchase-sms');
+    Route::get('/purchase-sms/success', [NewsletterController::class, 'purchaseSmsSuccess'])->name('purchase-sms.success');
+    Route::post('/purchase-pro-targeting', [NewsletterController::class, 'purchaseProTargeting'])->name('purchase-pro-targeting');
+    Route::get('/purchase-pro-targeting/success', [NewsletterController::class, 'purchaseProTargetingSuccess'])->name('purchase-pro-targeting.success');
+    Route::post('/sms-wallet-preferences', [NewsletterController::class, 'updateSmsWalletPreferences'])->name('sms-wallet-preferences');
     Route::post('/create/ai-generate', [NewsletterController::class, 'generateNewsletterCreateWithAi'])->name('create.ai-generate');
     Route::get('/create-advanced', [NewsletterController::class, 'createAdvanced'])->name('create-advanced');
     Route::post('/', [NewsletterController::class, 'store'])->name('store');

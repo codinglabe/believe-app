@@ -29,6 +29,9 @@ import {
     CheckCircle2,
 } from "lucide-react"
 
+/** Matches backend NewsletterController::NEWSLETTER_SMS_PLAIN_MAX_CHARS */
+const SMS_PLAIN_MAX_CHARS = 160
+
 interface Newsletter {
     id: number
     subject: string
@@ -317,7 +320,8 @@ export default function NewsletterEdit({ newsletter, templates, previewData }: N
                                         Newsletter Content
                                     </CardTitle>
                                     <CardDescription>
-                                        {data.send_via === "sms" && "Plain text only for SMS."}
+                                        {data.send_via === "sms" &&
+                                            `Plain text only for SMS — max ${SMS_PLAIN_MAX_CHARS} characters.`}
                                         {data.send_via === "email" && "Plain and/or HTML for email."}
                                         {data.send_via === "both" && "Plain text for SMS and HTML for email (both required)."}
                                     </CardDescription>
@@ -354,8 +358,16 @@ export default function NewsletterEdit({ newsletter, templates, previewData }: N
                                             value={data.content}
                                             onChange={(e) => setData('content', e.target.value)}
                                             placeholder="Plain text body..."
+                                            maxLength={
+                                                data.send_via === "sms" ? SMS_PLAIN_MAX_CHARS : undefined
+                                            }
                                             className="mt-1 min-h-[200px]"
                                         />
+                                        {data.send_via === "sms" && (
+                                            <p className="mt-1 text-xs text-muted-foreground">
+                                                {(data.content?.length ?? 0)} / {SMS_PLAIN_MAX_CHARS} characters
+                                            </p>
+                                        )}
                                         {errors.content && (
                                             <p className="text-red-600 dark:text-red-400 text-sm mt-1 flex items-center gap-1">
                                                 <AlertCircle className="h-3 w-3" />

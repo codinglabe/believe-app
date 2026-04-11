@@ -3,6 +3,8 @@
 namespace App\Providers;
 
 use App\Listeners\AwardInviteRewardPoints;
+use App\Listeners\CompleteBelievePointPurchaseFromStripeWebhook;
+use App\Listeners\SyncLedgerTransactionStripeFees;
 use App\Models\BelievePointPurchase;
 use App\Models\Donation;
 use App\Models\Enrollment;
@@ -24,6 +26,7 @@ use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
 use Inertia\Inertia;
 use Laravel\Cashier\Cashier;
+use Laravel\Cashier\Events\WebhookReceived;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -51,6 +54,10 @@ class AppServiceProvider extends ServiceProvider
 
         // Register event listener for email verification
         Event::listen(Verified::class, AwardInviteRewardPoints::class);
+
+        // Cashier Stripe webhooks: sync ledger fees from PaymentIntent metadata; Believe Points settlement
+        Event::listen(WebhookReceived::class, SyncLedgerTransactionStripeFees::class);
+        Event::listen(WebhookReceived::class, CompleteBelievePointPurchaseFromStripeWebhook::class);
 
         Inertia::share([
             'auth' => function () {

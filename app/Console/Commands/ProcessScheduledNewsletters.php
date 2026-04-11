@@ -95,8 +95,19 @@ class ProcessScheduledNewsletters extends Command
         try {
             $this->info("Processing newsletter: {$newsletter->subject} (ID: {$newsletter->id})");
 
-            // Update status to sending
-            $newsletter->update(['status' => 'sending']);
+            $newsletter->loadMissing('organization');
+            $meta = $newsletter->metadata ?? [];
+            $meta = is_array($meta) ? $meta : [];
+            $ownerId = $newsletter->organization?->user_id;
+            if ($ownerId) {
+                $meta['billing_user_id'] = (int) $ownerId;
+            }
+
+            // Update status to sending (charge org owner's wallet for cron sends)
+            $newsletter->update([
+                'status' => 'sending',
+                'metadata' => $meta,
+            ]);
 
             // Always let the job handle recipient creation - it's more flexible
             // The job will check if email records exist and create them if needed

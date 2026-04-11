@@ -465,6 +465,35 @@ class Organization extends Model
             ->withTimestamps();
     }
 
+    /**
+     * Verified users with the Supporters role ({@see User} `user` role) — newsletter “supporters” audience (not donation/follow-based).
+     *
+     * @return list<int>
+     */
+    public function newsletterRelatedAudienceUserIds(): array
+    {
+        return User::query()
+            ->role('user')
+            ->whereNotNull('email_verified_at')
+            ->pluck('id')
+            ->unique()
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Verified supporters for picker UIs (e.g. advanced newsletter create).
+     */
+    public function newsletterRelatedAudienceUsers(): Collection
+    {
+        return User::query()
+            ->role('user')
+            ->whereNotNull('email_verified_at')
+            ->with(['roles'])
+            ->orderBy('name')
+            ->get();
+    }
+
     public function emailConnections()
     {
         return $this->hasMany(EmailConnection::class);

@@ -123,14 +123,48 @@ class TransactionLedgerController extends Controller
                     ],
                 ]
                 : [],
+            /** @see resources/js/lib/transaction-type-labels.ts TRANSACTION_TYPE_FILTER_ORDER (keep in sync) */
             'typeOptions' => [
-                'deposit',
-                'withdrawal',
-                'purchase',
-                'refund',
+                'adjustment',
+                'administrative_fee',
+                'animal_purchase',
+                'believe_points_auto_replenish',
+                'believe_points_auto_replenish_setup',
+                'believe_points_purchase',
+                'big_boss_override',
+                'cancellation',
                 'commission',
-                'transfer_out',
+                'compliance_application',
+                'credit_purchase',
+                'deposit',
+                'direct_referral',
+                'donation',
+                'email_purchase',
+                'enrollment',
+                'form_1023_application',
+                'fractional_ownership',
+                'free',
+                'fundme_donation',
+                'gift_card_purchase',
+                'kyc_fee',
+                'merchant_hub_redemption',
+                'merchant_subscription',
+                'newsletter_pro_targeting_lifetime',
+                'paid',
+                'plan_subscription',
+                'purchase',
+                'raffle_sale',
+                'raffle_tickets',
+                'referral_reward',
+                'refund',
+                'service_order',
+                'sms_purchase',
+                'transfer',
                 'transfer_in',
+                'transfer_out',
+                'wallet_subscription',
+                'winning_bid',
+                'withdrawal',
             ],
             'statusOptions' => [
                 'pending',
@@ -925,6 +959,9 @@ class TransactionLedgerController extends Controller
         if ($rt === MerchantHubReferralReward::class || str_ends_with($rt, 'MerchantHubReferralReward')) {
             return 'merchant_hub_referral';
         }
+        if ($this->ledgerSourceIsOrgMarketingComms($t)) {
+            return 'ledger_unclassified';
+        }
         if ($rt === ServiceOrder::class || str_ends_with($rt, 'ServiceOrder')) {
             return 'service_order';
         }
@@ -989,11 +1026,37 @@ class TransactionLedgerController extends Controller
             return 'service_order';
         }
 
+        if ($this->ledgerSourceIsOrgMarketingComms($t)) {
+            return 'ledger_unclassified';
+        }
+
         if (! empty($meta['order_id']) && empty($meta['donation_id']) && empty($meta['care_alliance_donation_id'])) {
             return 'order';
         }
 
         return 'ledger_unclassified';
+    }
+
+    /**
+     * Stripe / legacy rows may store org newsletter & credit packs as `purchase` with product kind in meta only.
+     */
+    private function ledgerSourceIsOrgMarketingComms(Transaction $t): bool
+    {
+        $meta = is_array($t->meta) ? $t->meta : [];
+        $fromMeta = strtolower(trim((string) ($meta['type'] ?? '')));
+        if (in_array($fromMeta, ['newsletter_pro_targeting_lifetime', 'sms_purchase', 'email_purchase'], true)) {
+            return true;
+        }
+        $ty = strtolower(trim((string) ($t->type ?? '')));
+        if (in_array($ty, ['newsletter_pro_targeting_lifetime', 'sms_purchase', 'email_purchase'], true)) {
+            return true;
+        }
+        $desc = (string) ($meta['description'] ?? '');
+        if ($desc !== '' && str_contains($desc, 'Newsletter Pro targeting') && str_contains($desc, 'lifetime')) {
+            return true;
+        }
+
+        return false;
     }
 
     /**

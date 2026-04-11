@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { Head, Link, router } from "@inertiajs/react"
 import { ConfirmationModal } from "@/components/admin/confirmation-modal"
 import type { UnifiedLedgerRow } from "@/components/admin/unified-ledger-card"
+import { transactionTypeBadgeClass, transactionTypeDisplayLabel } from "@/lib/transaction-type-labels"
 import { motion } from "framer-motion"
 import AppLayout from "@/layouts/app-layout"
 import { Badge } from "@/components/ui/badge"
@@ -221,6 +222,52 @@ function ledgerSupplierType(u: UnifiedLedgerRow | undefined, rep: LedgerReport |
   return v != null && String(v).trim() !== "" ? String(v) : "—"
 }
 
+/** Catalog base cost (unified_ledger); hidden for Points rows (same as detail card). */
+function ledgerSupplierCostCell(pointsPay: boolean, u: UnifiedLedgerRow | undefined, cur: string): ReactNode {
+  if (pointsPay || !u) return "—"
+  const n = u.supplier_cost_amount
+  if (n === null || n === undefined || !Number.isFinite(Number(n))) return "—"
+  return formatAmountForLedger(false, Number(n), cur, "text-muted-foreground")
+}
+
+/** Margin % + dollar markup when present (unified_ledger). */
+function ledgerMarkupCell(pointsPay: boolean, u: UnifiedLedgerRow | undefined, cur: string): ReactNode {
+  if (!u) return "—"
+  const p = u.selling_price_markup_percent
+  const a = u.selling_price_markup_amount
+  if (p == null && (a === null || a === undefined)) return "—"
+  const pctStr =
+    p != null
+      ? Number.isInteger(Number(p))
+        ? `${Number(p)}%`
+        : `${Number(p).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}%`
+      : ""
+  if (pointsPay) {
+    return pctStr || "—"
+  }
+  if (a != null && a !== undefined && Number.isFinite(Number(a))) {
+    return (
+      <span className="text-muted-foreground">
+        {pctStr ? (
+          <>
+            {pctStr}
+            <span className="mx-0.5 text-border">·</span>
+          </>
+        ) : null}
+        <span className="tabular-nums text-foreground">{formatMoney(Number(a), cur)}</span>
+      </span>
+    )
+  }
+  return pctStr || "—"
+}
+
+function ledgerPlatformFeeCell(pointsPay: boolean, u: UnifiedLedgerRow | undefined, rep: LedgerReport | undefined, cur: string): ReactNode {
+  if (pointsPay) return "—"
+  const raw = u != null ? u.biu_fee_amount : rep?.biu_fee
+  if (raw === undefined || raw === null) return "—"
+  return formatAmountForLedger(false, Number(raw), cur, "text-muted-foreground")
+}
+
 /** Workbook-style labels (all caps in UI). */
 function ledgerSupplierTypeDisplayLabel(supplierType: string): string {
   switch (supplierType.toUpperCase()) {
@@ -282,19 +329,29 @@ function statusClass(status: string) {
   }
 }
 
-function typeClass(type: string) {
-  if (type === "refund") return "border-sky-500/40 bg-sky-500/[0.12] text-sky-900 dark:text-sky-100"
-  if (type === "withdrawal" || type === "transfer_out")
-    return "border-orange-500/40 bg-orange-500/[0.12] text-orange-900 dark:text-orange-100"
-  if (type === "deposit" || type === "transfer_in")
-    return "border-teal-500/40 bg-teal-500/[0.12] text-teal-900 dark:text-teal-100"
-  return "border-primary/35 bg-primary/12 text-primary"
+/** Normalize wallet `type` — some rows may have empty/null type in DB or legacy payloads. */
+function ledgerRowWalletType(row: LedgerRow): string {
+  const raw = row.type
+  const s = raw == null ? "" : String(raw).trim()
+  if (s !== "") {
+    return s
+  }
+  const fromUnified = row.unified_ledger?.transaction_type
+  const u = fromUnified == null ? "" : String(fromUnified).trim()
+  if (u !== "") {
+    return u
+  }
+  const meta = row.meta && typeof row.meta === "object" ? (row.meta as Record<string, unknown>) : {}
+  const metaType = meta.type
+  const m = metaType == null ? "" : String(metaType).trim()
+  return m
 }
 
 /** Wallet row type for the table: one pill only — icon + label (no stacked donation badge). */
 function ledgerRowTypeDisplay(row: LedgerRow): { label: string; className: string; icon: "arrows" | "heart" } {
   const meta = row.meta && typeof row.meta === "object" ? (row.meta as Record<string, unknown>) : {}
   const perspective = row.donation_ledger_perspective
+  const walletType = ledgerRowWalletType(row)
 
   if (meta.ledger_role === "donor_payment" || perspective === "donor") {
     return {
@@ -303,7 +360,7 @@ function ledgerRowTypeDisplay(row: LedgerRow): { label: string; className: strin
       icon: "heart",
     }
   }
-  if (perspective === "campaign" && row.type === "purchase") {
+  if (perspective === "campaign" && walletType === "purchase") {
     return {
       label: "Campaign gift",
       className: "border-amber-500/40 bg-amber-500/[0.12] text-amber-950 shadow-sm shadow-amber-500/10 dark:text-amber-100",
@@ -312,7 +369,7 @@ function ledgerRowTypeDisplay(row: LedgerRow): { label: string; className: strin
   }
 
   // Deposit / wallet credit from a donation: show a clear label — not a bare "Deposit" + mystery heart.
-  if (row.donation_badge && row.type === "deposit") {
+  if (row.donation_badge && walletType === "deposit") {
     if (perspective === "recipient_direct") {
       return {
         label: "Donation received",
@@ -337,8 +394,8 @@ function ledgerRowTypeDisplay(row: LedgerRow): { label: string; className: strin
   }
 
   return {
-    label: row.type.replace(/_/g, " "),
-    className: typeClass(row.type),
+    label: transactionTypeDisplayLabel(walletType),
+    className: transactionTypeBadgeClass(walletType === "" ? "purchase" : walletType),
     icon: "arrows",
   }
 }
@@ -349,6 +406,7 @@ function moduleTableLabel(m: string) {
     fundme: "FundMe",
     campaign: "Campaign",
     believe_points: "Believe Points",
+    wallet: "Wallet",
     marketplace: "Marketplace",
     servicehub: "Service Hub",
     course: "Course",
@@ -567,6 +625,7 @@ function moduleLabel(key: string): string {
     fundme: "FundMe",
     campaign: "Campaign",
     believe_points: "Believe Points",
+    wallet: "Wallet",
     marketplace: "Marketplace",
     servicehub: "Service hub",
     course: "Course",
@@ -757,9 +816,14 @@ export default function TransactionLedger({
             <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">Transaction ledger</h1>
             <p className="max-w-2xl text-sm text-muted-foreground sm:text-base">
               Every wallet transaction in one place — columns follow the{" "}
-              <span className="font-medium text-foreground">final unified ledger (all modules)</span> flow: identity, order
-              lines (subtotal, shipping, tax), supplier cost, processing &amp; platform fees, org / supporter payouts, then net
-              — plus provider, payment, and related for ops.
+              <span className="font-medium text-foreground">unified ledger (all modules)</span> flow: identity, order lines
+              (subtotal, shipping, tax), supplier name/type,{" "}
+              <span className="font-medium text-foreground">catalog supplier cost</span> and{" "}
+              <span className="font-medium text-foreground">markup</span>, settlement (
+              <span className="font-medium text-foreground">supplier payout</span>, processing,{" "}
+              <span className="font-medium text-foreground">BIU platform fee</span>,{" "}
+              <span className="font-medium text-foreground">platform payout</span>), org / supporter payouts, net — plus provider,
+              payment, and related for ops.
             </p>
           </div>
           <Button
@@ -853,8 +917,8 @@ export default function TransactionLedger({
               <span className="font-normal text-muted-foreground">· {transactions.total} entries</span>
             </h2>
             <p className="max-w-2xl text-sm text-muted-foreground">
-              Scroll horizontally on smaller screens. The money columns match the BIU workbook order (gross → lines → fees →
-              payouts → net). Use <span className="font-medium text-foreground">View</span> for detail and Stripe breakdown.
+              Scroll horizontally on smaller screens. Amounts use the unified row when present (same as the transaction detail
+              card). Use <span className="font-medium text-foreground">View</span> for full formulas and Stripe breakdown.
             </p>
           </div>
 
@@ -1017,17 +1081,17 @@ export default function TransactionLedger({
               ) : (
                 <div className="overflow-hidden rounded-xl border border-border/60 bg-card shadow-sm ring-1 ring-border/20">
                   <div className="overflow-x-auto">
-                    <table className="w-full min-w-[2260px] border-collapse text-left text-base">
+                    <table className="w-full min-w-[2620px] border-collapse text-left text-base">
                       <thead>
                         <tr className="border-b border-border/60 bg-muted text-xs font-semibold uppercase tracking-wide text-muted-foreground sm:text-sm">
                           <th
-                            className="sticky left-0 z-[2] w-56 min-w-[12rem] max-w-[15rem] bg-muted px-3 py-3.5 pl-3 text-left shadow-[4px_0_12px_-4px_rgba(0,0,0,0.08)] dark:shadow-[4px_0_12px_-4px_rgba(0,0,0,0.35)] sm:px-4 sm:pl-4"
+                            className="sticky left-0 z-[2] w-64 min-w-[16rem] max-w-[20rem] bg-muted px-3 py-3.5 pl-3 text-left align-top shadow-[4px_0_12px_-4px_rgba(0,0,0,0.08)] dark:shadow-[4px_0_12px_-4px_rgba(0,0,0,0.35)] sm:px-4 sm:pl-4"
                             title="Transaction type (deposit, purchase, donation, …)"
                           >
                             Transaction
                           </th>
                           <th
-                            className="sticky left-56 z-[2] w-[4.75rem] min-w-[4.25rem] bg-muted py-3.5 pl-2 pr-1 text-left font-mono normal-case shadow-[4px_0_12px_-4px_rgba(0,0,0,0.06)] dark:shadow-[4px_0_12px_-4px_rgba(0,0,0,0.3)]"
+                            className="sticky left-64 z-[2] w-[4.75rem] min-w-[4.25rem] bg-muted py-3.5 pl-2 pr-1 text-left font-mono normal-case shadow-[4px_0_12px_-4px_rgba(0,0,0,0.06)] dark:shadow-[4px_0_12px_-4px_rgba(0,0,0,0.3)]"
                             title="Internal transaction id"
                           >
                             Txn
@@ -1056,14 +1120,26 @@ export default function TransactionLedger({
                           >
                             Supplier type
                           </th>
-                          <th className="whitespace-nowrap px-4 py-3.5 text-right" title="Settlement to supplier / merchant">
+                          <th
+                            className="whitespace-nowrap px-4 py-3.5 text-right"
+                            title="Catalog base cost (Subtotal ÷ (1 + markup%) on lines; or stored source cost)"
+                          >
                             Supplier cost
+                          </th>
+                          <th className="min-w-[6.5rem] whitespace-nowrap px-4 py-3.5 text-right" title="Margin % and dollar markup on catalog lines">
+                            Markup
+                          </th>
+                          <th className="whitespace-nowrap px-4 py-3.5 text-right" title="Settlement paid to supplier / merchant">
+                            Supplier payout
                           </th>
                           <th className="whitespace-nowrap px-4 py-3.5 text-right" title="Stripe + Bridge processing (detail on hover)">
                             Processing
                           </th>
-                          <th className="whitespace-nowrap px-4 py-3.5 text-right" title="Platform fee / share">
+                          <th className="whitespace-nowrap px-4 py-3.5 text-right" title="BIU / platform fee on the order (not platform share)">
                             Platform fee
+                          </th>
+                          <th className="whitespace-nowrap px-4 py-3.5 text-right" title="Platform share / payout retained">
+                            Platform payout
                           </th>
                           <th className="whitespace-nowrap px-4 py-3.5 text-right" title="Organization / nonprofit payout">
                             Org payout
@@ -1116,13 +1192,13 @@ export default function TransactionLedger({
                             >
                               <td
                                 className={cn(
-                                  "sticky left-0 z-[2] w-56 min-w-[12rem] max-w-[15rem] border-r border-border/30 px-3 py-3 pl-3 shadow-[4px_0_12px_-4px_rgba(0,0,0,0.06)] dark:shadow-[4px_0_12px_-4px_rgba(0,0,0,0.3)] sm:px-4 sm:pl-4",
+                                  "sticky left-0 z-[2] w-64 min-w-[16rem] max-w-[20rem] border-r border-border/30 px-3 py-3 pl-3 align-top shadow-[4px_0_12px_-4px_rgba(0,0,0,0.06)] dark:shadow-[4px_0_12px_-4px_rgba(0,0,0,0.3)] sm:px-4 sm:pl-4",
                                   idx % 2 === 1 ? "bg-muted" : "bg-card",
                                 )}
                               >
                                 <span
                                   className={cn(
-                                    "flex w-full min-w-0 max-w-full items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold uppercase leading-none tracking-wide sm:px-3 sm:text-sm",
+                                    "inline-flex w-fit max-w-full items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-left text-xs font-semibold uppercase leading-tight tracking-wide sm:px-3 sm:text-sm",
                                     typeDisplay.className,
                                   )}
                                   title={
@@ -1136,12 +1212,14 @@ export default function TransactionLedger({
                                   ) : (
                                     <ArrowRightLeft className="h-3.5 w-3.5 shrink-0 opacity-80 sm:h-4 sm:w-4" aria-hidden />
                                   )}
-                                  <span className="min-w-0 flex-1 truncate">{typeDisplay.label}</span>
+                                  <span className="min-w-0 [overflow-wrap:anywhere] whitespace-normal">
+                                    {typeDisplay.label}
+                                  </span>
                                 </span>
                               </td>
                               <td
                                 className={cn(
-                                  "sticky left-56 z-[2] w-[4.75rem] min-w-[4.25rem] border-r border-border/30 py-3 pl-2 pr-1 text-left font-mono text-sm font-semibold tabular-nums text-foreground shadow-[4px_0_12px_-4px_rgba(0,0,0,0.05)] dark:shadow-[4px_0_12px_-4px_rgba(0,0,0,0.28)]",
+                                  "sticky left-64 z-[2] w-[4.75rem] min-w-[4.25rem] border-r border-border/30 py-3 pl-2 pr-1 text-left font-mono text-sm font-semibold tabular-nums text-foreground shadow-[4px_0_12px_-4px_rgba(0,0,0,0.05)] dark:shadow-[4px_0_12px_-4px_rgba(0,0,0,0.28)]",
                                   idx % 2 === 1 ? "bg-muted" : "bg-card",
                                 )}
                                 title={`Transaction id ${row.id}`}
@@ -1219,6 +1297,12 @@ export default function TransactionLedger({
                                 )}
                               </td>
                               <td className="whitespace-nowrap px-4 py-3 text-right text-sm tabular-nums text-muted-foreground">
+                                {ledgerSupplierCostCell(pointsPay, u, cur)}
+                              </td>
+                              <td className="whitespace-nowrap px-4 py-3 text-right text-sm tabular-nums text-muted-foreground">
+                                {ledgerMarkupCell(pointsPay, u, cur)}
+                              </td>
+                              <td className="whitespace-nowrap px-4 py-3 text-right text-sm tabular-nums text-muted-foreground">
                                 {supplierPayout != null && supplierPayout !== undefined
                                   ? formatAmountForLedger(pointsPay, Number(supplierPayout), cur, "text-muted-foreground")
                                   : "—"}
@@ -1241,6 +1325,9 @@ export default function TransactionLedger({
                                 ) : (
                                   <span className="text-muted-foreground">{formatMoney(processorTotal, cur)}</span>
                                 )}
+                              </td>
+                              <td className="whitespace-nowrap px-4 py-3 text-right text-sm tabular-nums text-muted-foreground">
+                                {ledgerPlatformFeeCell(pointsPay, u, rep, cur)}
                               </td>
                               <td className="whitespace-nowrap px-4 py-3 text-right text-sm tabular-nums text-muted-foreground">
                                 {platformPayout != null && platformPayout !== undefined
