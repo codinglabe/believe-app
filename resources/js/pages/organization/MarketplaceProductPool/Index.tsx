@@ -14,7 +14,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { Package, Search } from "lucide-react"
+import { Info, Package, Search } from "lucide-react"
 import { toast } from "sonner"
 
 const breadcrumbs: BreadcrumbItem[] = [
@@ -40,6 +40,8 @@ interface PoolRow {
   images?: string[] | null
   nonprofit_approval_type: string
   already_adopted: boolean
+  /** When already_adopted: active = live on marketplace; pending_merchant_approval = not public yet */
+  adoption_status?: string | null
   merchant?: MerchantMini | null
 }
 
@@ -73,11 +75,17 @@ export default function MarketplaceProductPoolIndex({ products, categories, filt
   const [featured, setFeatured] = useState(false)
   const [submitting, setSubmitting] = useState(false)
 
-  const { success, flash, errors } = usePage().props as {
+  const { success, flash, errors, merchantDomain } = usePage().props as {
     success?: string
     flash?: { success?: string }
     errors?: Record<string, string>
+    merchantDomain?: string | null
   }
+
+  const merchantPoolApprovalsUrl =
+    merchantDomain && String(merchantDomain).trim() !== ""
+      ? `https://${String(merchantDomain).replace(/^https?:\/\//, "")}/marketplace-pool-approvals`
+      : null
 
   useEffect(() => {
     const msg = success || flash?.success
@@ -134,10 +142,42 @@ export default function MarketplaceProductPoolIndex({ products, categories, filt
               Add products from the merchant pool
             </h1>
             <p className="text-muted-foreground text-sm mt-1">
-              Browse items merchants have listed for nonprofits. When you sell one, your listing uses your price and message.
+              Browse items merchants have listed for nonprofits. When you sell one, it appears as your organization&apos;s listing with your price and message.
+              Physical shipments use Shippo at checkout with the <span className="font-medium text-foreground">merchant&apos;s</span> address as the ship-from location.
             </p>
           </div>
         </div>
+
+        <Card className="border-blue-200/80 bg-blue-50/50 dark:border-blue-900/50 dark:bg-blue-950/20">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Info className="h-4 w-4 shrink-0" />
+              When a listing says &quot;Pending merchant approval&quot;
+            </CardTitle>
+            <CardDescription className="text-sm leading-relaxed">
+              The merchant chose manual approval for that product. They must approve your listing in their{" "}
+              <span className="font-medium text-foreground">merchant dashboard</span> under{" "}
+              <span className="font-medium text-foreground">Pool listing approvals</span>
+              {merchantPoolApprovalsUrl ? (
+                <>
+                  :{" "}
+                  <a
+                    href={merchantPoolApprovalsUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="font-medium text-primary underline underline-offset-2"
+                  >
+                    open approvals (merchant portal)
+                  </a>
+                </>
+              ) : (
+                <>
+                  . On the merchant site, open <code className="rounded bg-muted px-1 py-0.5 text-xs">/marketplace-pool-approvals</code> after signing in.
+                </>
+              )}
+            </CardDescription>
+          </CardHeader>
+        </Card>
 
         <Card>
           <CardHeader className="pb-3">
@@ -197,7 +237,9 @@ export default function MarketplaceProductPoolIndex({ products, categories, filt
                 <p className="text-sm font-medium">Base ${Number(p.base_price).toFixed(2)}</p>
                 {p.already_adopted ? (
                   <Button variant="outline" size="sm" disabled className="w-full">
-                    Already selling
+                    {p.adoption_status === "pending_merchant_approval"
+                      ? "Pending merchant approval"
+                      : "Already selling"}
                   </Button>
                 ) : (
                   <Button size="sm" className="w-full" onClick={() => openSell(p)}>

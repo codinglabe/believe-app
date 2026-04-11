@@ -50,6 +50,10 @@ interface Product {
         id: number;
         name: string;
     };
+    /** Catalog vs merchant-pool listing (organization_products) */
+    listing_kind?: "catalog" | "pool";
+    is_merchant_pool_listing?: boolean;
+    organization_product_id?: number | null;
 }
 
 interface CartItem {
@@ -184,6 +188,11 @@ export default function Marketplace({
         filters.categories.length +
         filters.organizations.length +
         (filters.search ? 1 : 0)
+
+    const productDetailHref = (product: Product) =>
+        product.is_merchant_pool_listing && product.organization_product_id
+            ? `/marketplace/pool/${product.organization_product_id}`
+            : `/products/${product.id}`
 
     return (
         <FrontendLayout>
@@ -407,9 +416,11 @@ export default function Marketplace({
                                     <>
                                         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6">
                                             {currentProducts.map((product: Product) => (
-                                                <Link href={`/products/${product.id}`} key={product.id}>
+                                                <Link
+                                                    href={productDetailHref(product)}
+                                                    key={`${product.listing_kind ?? "catalog"}-${product.id}`}
+                                                >
                                                 <Card
-                                                    key={product.id}
                                                     className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 hover:shadow-xl transition-all duration-300 group hover:border-purple-300 dark:hover:border-purple-600 overflow-hidden"
                                                 >
                                                     <div className="relative overflow-hidden">
@@ -428,7 +439,7 @@ export default function Marketplace({
                                                                 variant="secondary"
                                                                 className="bg-slate-700/90 text-white text-xs font-medium border-0 shadow-md"
                                                             >
-                                                                Organization
+                                                                {product.is_merchant_pool_listing ? "Merchant pool" : "Organization"}
                                                             </Badge>
                                                             <Badge
                                                                 variant="secondary"
@@ -483,7 +494,7 @@ export default function Marketplace({
 
                                                         <div className="flex gap-2">
                                                             <Link
-                                                                href={`/products/${product.id}`}
+                                                                href={productDetailHref(product)}
                                                                 className="flex-1"
                                                                 onClick={(e) => {
                                                                     // Prevent navigation if out of stock

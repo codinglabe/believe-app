@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Merchant\Auth\MerchantAuthController;
+use App\Http\Controllers\Merchant\MerchantMarketplacePoolApprovalController;
 use App\Http\Controllers\Merchant\MerchantMarketplaceProductController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -95,6 +96,13 @@ Route::middleware(['auth:merchant'])->group(function () {
             Route::get('/{marketplace_product}/edit', [MerchantMarketplaceProductController::class, 'edit'])->name('edit');
             Route::put('/{marketplace_product}', [MerchantMarketplaceProductController::class, 'update'])->name('update');
             Route::delete('/{marketplace_product}', [MerchantMarketplaceProductController::class, 'destroy'])->name('destroy');
+        });
+
+        /** Nonprofit pool listing requests (manual approval on marketplace products) */
+        Route::prefix('marketplace-pool-approvals')->name('marketplace-pool-approvals.')->group(function () {
+            Route::get('/', [MerchantMarketplacePoolApprovalController::class, 'index'])->name('index');
+            Route::post('/{organization_product}/approve', [MerchantMarketplacePoolApprovalController::class, 'approve'])->name('approve');
+            Route::post('/{organization_product}/decline', [MerchantMarketplacePoolApprovalController::class, 'decline'])->name('decline');
         });
 
         Route::get('/marketplace-orders', [App\Http\Controllers\Merchant\MerchantMarketplaceOrderController::class, 'index'])->name('merchant.marketplace-orders.index');

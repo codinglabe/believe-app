@@ -19,10 +19,10 @@ class MarketplaceProductPoolController extends Controller
             abort(403, 'You do not have an organization');
         }
 
-        $adoptedIds = OrganizationProduct::query()
+        $adoptionsByMarketplaceProductId = OrganizationProduct::query()
             ->where('organization_id', $organization->id)
-            ->pluck('marketplace_product_id')
-            ->all();
+            ->get(['marketplace_product_id', 'status'])
+            ->keyBy('marketplace_product_id');
 
         $query = MarketplaceProduct::query()
             ->with(['merchant:id,business_name,name', 'productCategory:id,name'])
@@ -60,11 +60,13 @@ class MarketplaceProductPoolController extends Controller
             ->orderBy('name')
             ->get(['id', 'name']);
 
-        $products->getCollection()->transform(function (MarketplaceProduct $p) use ($adoptedIds) {
+        $products->getCollection()->transform(function (MarketplaceProduct $p) use ($adoptionsByMarketplaceProductId) {
             $row = $p->toArray();
             $row['category'] = $p->productCategory?->name
                 ?? (isset($row['category']) && is_string($row['category']) ? $row['category'] : null);
-            $row['already_adopted'] = in_array($p->id, $adoptedIds, true);
+            $adopt = $adoptionsByMarketplaceProductId->get($p->id);
+            $row['already_adopted'] = $adopt !== null;
+            $row['adoption_status'] = $adopt?->status;
             if (! empty($row['images']) && is_array($row['images'])) {
                 $row['images'] = array_map(
                     fn ($path) => filter_var($path, FILTER_VALIDATE_URL) ? $path : asset('storage/'.ltrim($path, '/')),

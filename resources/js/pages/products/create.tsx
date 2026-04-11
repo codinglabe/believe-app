@@ -9,12 +9,12 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { TextArea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Save, Plus, Minus, Loader2, Upload, Package, DollarSign, ImageIcon, Tag, Settings2, Info, ExternalLink, ShoppingBag, Check, Gavel, TrendingUp, Clock, MapPin, Store } from 'lucide-react';
+import { Save, Plus, Minus, Loader2, Upload, Package, DollarSign, ImageIcon, Tag, Settings2, Info, ExternalLink, ShoppingBag, Check, Gavel, TrendingUp, MapPin } from 'lucide-react';
 import { showErrorToast, showSuccessToast } from '@/lib/toast';
 import AppLayout from "@/layouts/app-layout"
 import type { BreadcrumbItem } from "@/types"
 import axios from 'axios';
-import { ManualProductSourceTypeRow, ProductSourceSelector } from '@/components/product-source-selector';
+import { ProductSourceSelector } from '@/components/product-source-selector';
 
 const breadcrumbs: BreadcrumbItem[] = [
     {
@@ -74,29 +74,6 @@ interface MerchantShipFromOption {
         zip: string;
         country: string;
     };
-}
-
-interface HubMarketplaceProductRow {
-    id: number;
-    name: string;
-    description: string | null;
-    short_description: string;
-    base_price: string;
-    cost: string | null;
-    suggested_retail_price: string | null;
-    min_resale_price: string | null;
-    inventory_quantity: number | null;
-    product_type: string;
-    category_id: number | null;
-    images: string[];
-    category_name: string | null;
-}
-
-function stripHtmlForDescription(input: string): string {
-    if (!input) {
-        return '';
-    }
-    return input.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
 interface Props {
@@ -172,14 +149,8 @@ export default function Create({
         parcel_height_in: '',
         parcel_weight_oz: '',
 
-        /** Organization: own vs merchant hub (manual products only) */
-        product_source_type: 'own' as 'own' | 'merchant_hub',
-        hub_merchant_id: '' as string | number,
-        hub_marketplace_product_id: '' as string | number,
         /** Own manual: your cost × (1 + markup%) → unit_price */
         source_cost: '',
-        /** Merchant Hub: merchant cost/base from listing (for markup math) */
-        hub_listing_cost: '',
     });
 
     const selectedMerchantShipFrom = useMemo(() => {
@@ -195,14 +166,6 @@ export default function Create({
         const role = Array.isArray(r) ? r[0] : r;
         return role === 'organization' || role === 'organization_pending';
     }, [auth?.user?.role]);
-
-    const isMerchantHubFlow = useMemo(
-        () => !data.is_printify_product && data.product_source_type === 'merchant_hub' && isOrgUser,
-        [data.is_printify_product, data.product_source_type, isOrgUser]
-    );
-
-    const [hubProducts, setHubProducts] = useState<HubMarketplaceProductRow[]>([]);
-    const [loadingHubProducts, setLoadingHubProducts] = useState(false);
 
      const [processing, setProcessing] = useState(false);
     const [errors, setErrors] = useState<any>({});
@@ -229,37 +192,7 @@ useEffect(() => {
         }
     }, [merchants_for_ship_from.length, data.ship_from_mode, setData]);
 
-    useEffect(() => {
-        if (data.product_source_type !== 'merchant_hub' || !data.hub_merchant_id) {
-            setHubProducts([]);
-            return;
-        }
-        let cancelled = false;
-        setLoadingHubProducts(true);
-        axios
-            .get(route('products.merchant-hub.marketplace-products', { merchant: data.hub_merchant_id }))
-            .then((res) => {
-                if (!cancelled) {
-                    setHubProducts(res.data as HubMarketplaceProductRow[]);
-                }
-            })
-            .catch(() => {
-                if (!cancelled) {
-                    setHubProducts([]);
-                    showErrorToast('Could not load merchant products.');
-                }
-            })
-            .finally(() => {
-                if (!cancelled) {
-                    setLoadingHubProducts(false);
-                }
-            });
-        return () => {
-            cancelled = true;
-        };
-    }, [data.product_source_type, data.hub_merchant_id]);
-
-    /** Own manual or Merchant Hub: sync unit_price from cost × (1 + markup%). */
+    /** Own manual: sync unit_price from cost × (1 + markup%). */
     useEffect(() => {
         if (data.is_printify_product) return;
         const pm = data.pricing_model || 'fixed';
@@ -267,18 +200,9 @@ useEffect(() => {
         const margin = parseFloat(String(data.profit_margin_percentage ?? ''));
         if (!Number.isFinite(margin) || margin < 0) return;
 
-        let costNum: number | null = null;
-        if (data.product_source_type === 'merchant_hub' && data.hub_marketplace_product_id) {
-            const h = String(data.hub_listing_cost ?? '').trim();
-            if (!h) return;
-            costNum = parseFloat(h);
-        } else if (data.product_source_type === 'own') {
-            const s = String(data.source_cost ?? '').trim();
-            if (!s) return;
-            costNum = parseFloat(s);
-        } else {
-            return;
-        }
+        const s = String(data.source_cost ?? '').trim();
+        if (!s) return;
+        const costNum = parseFloat(s);
         if (!Number.isFinite(costNum) || costNum < 0) return;
 
         const next = (costNum * (1 + margin / 100)).toFixed(2);
@@ -287,15 +211,7 @@ useEffect(() => {
         if (Number.isFinite(cur) && Math.abs(cur - nextF) < 0.0001) return;
 
         setData('unit_price', next);
-    }, [
-        data.is_printify_product,
-        data.pricing_model,
-        data.profit_margin_percentage,
-        data.hub_listing_cost,
-        data.source_cost,
-        data.product_source_type,
-        data.hub_marketplace_product_id,
-    ]);
+    }, [data.is_printify_product, data.pricing_model, data.profit_margin_percentage, data.source_cost]);
 
 // Simple handler using local state
 const handleCategoryChange = (categoryId: number) => {
@@ -567,20 +483,7 @@ const handleCategoryChange = (categoryId: number) => {
                     return;
                 }
             }
-            if (isMerchantHubFlow) {
-                if (!data.hub_merchant_id || !data.hub_marketplace_product_id) {
-                    setErrors({
-                        hub_marketplace_product_id: 'Select a merchant and a Merchant Hub product to continue.',
-                    });
-                    setProcessing(false);
-                    showErrorToast('Select a merchant and a Merchant Hub product.');
-                    return;
-                }
-            }
-
-            const needsManualImage =
-                !(data.product_source_type === 'merchant_hub' && isOrgUser && data.hub_marketplace_product_id);
-            if (needsManualImage && !data.image) {
+            if (!data.image) {
                 setErrors({ image: 'Please upload a product image.' });
                 setProcessing(false);
                 showErrorToast('Please upload a product image.');
@@ -671,13 +574,6 @@ const handleCategoryChange = (categoryId: number) => {
         if (data.tags) formData.append('tags', data.tags);
         if (data.organization_id) formData.append('organization_id', data.organization_id);
         formData.append('is_printify_product', data.is_printify_product ? '1' : '0');
-        if (!data.is_printify_product && isOrgUser) {
-            formData.append('product_source_type', data.product_source_type);
-            if (data.product_source_type === 'merchant_hub' && data.hub_marketplace_product_id) {
-                formData.append('marketplace_product_id', String(data.hub_marketplace_product_id));
-            }
-        }
-
         // Categories
         data.categories.forEach(id => formData.append('categories[]', id.toString()));
 
@@ -714,7 +610,7 @@ const handleCategoryChange = (categoryId: number) => {
             }
             const pmFixed = data.pricing_model || 'fixed';
             if (pmFixed === 'fixed' || pmFixed === 'offer') {
-                if (data.product_source_type === 'own' && String(data.source_cost ?? '').trim() !== '') {
+                if (String(data.source_cost ?? '').trim() !== '') {
                     formData.append('source_cost', String(data.source_cost));
                 }
                 formData.append('profit_margin_percentage', String(data.profit_margin_percentage ?? '25'));
@@ -874,48 +770,6 @@ const handleCategoryChange = (categoryId: number) => {
         setData(field as any, value);
     };
 
-    const applyMerchantHubProduct = (p: HubMarketplaceProductRow) => {
-        const rawPrice = p.suggested_retail_price || p.base_price || '0';
-        const fallbackPrice = parseFloat(rawPrice);
-        const safeFallback = Number.isFinite(fallbackPrice) ? fallbackPrice.toFixed(2) : '0.00';
-        const costStr = p.cost != null && String(p.cost).trim() !== '' ? String(p.cost) : String(p.base_price || '');
-        const costNum = parseFloat(costStr);
-        const marginPct = parseFloat(String(data.profit_margin_percentage || '25'));
-        const marginOk = Number.isFinite(marginPct) && marginPct >= 0;
-        let unitPrice = safeFallback;
-        let hubListingCost = '';
-        if (Number.isFinite(costNum) && costNum > 0 && marginOk) {
-            hubListingCost = costNum.toFixed(2);
-            unitPrice = (costNum * (1 + marginPct / 100)).toFixed(2);
-        }
-        const plain = stripHtmlForDescription(p.description || '');
-        const desc = plain.slice(0, 1000);
-        const sku = `MH-${p.id}-${Math.random().toString(36).slice(2, 10)}`.toUpperCase();
-        const isPhysical = p.product_type === 'physical' || p.product_type === 'service';
-        const nextType: 'physical' | 'digital' = isPhysical ? 'physical' : 'digital';
-        let qty = '100';
-        if (p.inventory_quantity !== null && p.inventory_quantity !== undefined) {
-            qty = String(Math.max(0, p.inventory_quantity));
-        }
-        setData({
-            ...data,
-            hub_marketplace_product_id: p.id,
-            hub_listing_cost: hubListingCost,
-            name: p.name,
-            description: desc,
-            unit_price: unitPrice,
-            sku,
-            quantity: qty,
-            type: nextType,
-            pricing_model: 'fixed',
-            ship_from_mode: nextType === 'physical' ? 'merchant' : 'custom',
-            ship_from_merchant_id: nextType === 'physical' ? data.hub_merchant_id : '',
-        });
-        if (p.category_id) {
-            setSelectedCategories([p.category_id]);
-        }
-    };
-
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0] || null;
         setData('image', file);
@@ -1009,24 +863,10 @@ const handleCategoryChange = (categoryId: number) => {
                                     <CardContent className="pt-0">
                                         <ProductSourceSelector
                                             selected={data.is_printify_product ? 'printify' : 'manual'}
-                                            showManualSubSource={isOrgUser}
-                                            manualSubSource={data.product_source_type === 'merchant_hub' ? 'merchant_hub' : 'own'}
-                                            onManualSubSourceChange={(v) => {
-                                                setData({
-                                                    ...data,
-                                                    product_source_type: v,
-                                                    hub_merchant_id: v === 'own' ? '' : data.hub_merchant_id,
-                                                    hub_marketplace_product_id: v === 'own' ? '' : data.hub_marketplace_product_id,
-                                                });
-                                            }}
+                                            showOrganizationPoolHint={isOrgUser}
                                             onSelect={(source: 'printify' | 'manual') => {
                                                 const isTrue = source === 'printify';
                                                 setData('is_printify_product', isTrue);
-                                                if (isTrue) {
-                                                    setData('product_source_type', 'own');
-                                                    setData('hub_merchant_id', '');
-                                                    setData('hub_marketplace_product_id', '');
-                                                }
                                                 if (!isTrue) {
                                                     // Reset Printify fields when disabled
                                                     setData('printify_blueprint_id', '');
@@ -1060,28 +900,20 @@ const handleCategoryChange = (categoryId: number) => {
                                                 <ShoppingBag className="text-primary h-5 w-5 sm:h-6 sm:w-6" />
                                             </div>
                                             <div>
-                                                <CardTitle className="text-lg font-bold sm:text-xl">Product source</CardTitle>
+                                                <CardTitle className="text-lg font-bold sm:text-xl">Merchant pool products</CardTitle>
                                                 <CardDescription className="mt-1 text-sm sm:text-base">
-                                                    Manual listing: your own catalog or a Merchant Hub product
+                                                    To sell items from the merchant pool, add them from{' '}
+                                                    <Link
+                                                        href="/marketplace/product-pool"
+                                                        className="font-medium text-primary underline underline-offset-2"
+                                                    >
+                                                        Commerce → Merchant product pool
+                                                    </Link>
+                                                    . They list under your organization; Shippo uses the merchant&apos;s ship-from address at checkout.
                                                 </CardDescription>
                                             </div>
                                         </div>
                                     </CardHeader>
-                                    <CardContent className="pt-0">
-                                        <ManualProductSourceTypeRow
-                                            value={data.product_source_type === 'merchant_hub' ? 'merchant_hub' : 'own'}
-                                            onChange={(v) => {
-                                                setData({
-                                                    ...data,
-                                                    product_source_type: v,
-                                                    hub_merchant_id: v === 'own' ? '' : data.hub_merchant_id,
-                                                    hub_marketplace_product_id: v === 'own' ? '' : data.hub_marketplace_product_id,
-                                                    hub_listing_cost: v === 'own' ? '' : data.hub_listing_cost,
-                                                    source_cost: v === 'merchant_hub' ? '' : data.source_cost,
-                                                });
-                                            }}
-                                        />
-                                    </CardContent>
                                 </Card>
                             )}
 
@@ -1628,13 +1460,8 @@ const handleCategoryChange = (categoryId: number) => {
                                         <div className="space-y-2">
                                             <Label htmlFor="image" className="flex items-center gap-2">
                                                 <ImageIcon className="h-4 w-4" />
-                                                Product Image {isMerchantHubFlow ? '(optional)' : '*'}
+                                                Product Image *
                                             </Label>
-                                            {isMerchantHubFlow && (
-                                                <p className="text-muted-foreground text-xs">
-                                                    If you skip upload, the first image from the merchant listing is copied automatically.
-                                                </p>
-                                            )}
                                             <div className="relative">
                                                 <Input
                                                     id="image"
@@ -1671,103 +1498,6 @@ const handleCategoryChange = (categoryId: number) => {
                                 </CardContent>
                             </Card>
 
-                            {isMerchantHubFlow && (
-                                <Card className="border-2 border-amber-200 bg-white shadow-lg dark:border-amber-900/50 dark:bg-gray-900">
-                                    <CardHeader className="border-b border-amber-200 py-3 dark:border-amber-900/40">
-                                        <div className="flex items-center gap-2">
-                                            <Store className="h-5 w-5 text-amber-600 dark:text-amber-400" />
-                                            <div>
-                                                <CardTitle className="text-lg font-bold text-gray-900 dark:text-gray-100">
-                                                    Merchant Hub product
-                                                </CardTitle>
-                                                <CardDescription className="text-sm text-gray-600 dark:text-gray-400">
-                                                    Select a merchant, then choose a product to import details into this listing.
-                                                </CardDescription>
-                                            </div>
-                                        </div>
-                                    </CardHeader>
-                                    <CardContent className="space-y-6 pt-6">
-                                        <div className="space-y-2">
-                                            <Label>Merchant *</Label>
-                                            <Select
-                                                value={data.hub_merchant_id ? String(data.hub_merchant_id) : ''}
-                                                onValueChange={(v) => {
-                                                    const id = v ? Number(v) : '';
-                                                    setData({
-                                                        ...data,
-                                                        hub_merchant_id: id,
-                                                        hub_marketplace_product_id: '',
-                                                        hub_listing_cost: '',
-                                                        ship_from_mode: 'merchant',
-                                                        ship_from_merchant_id: id,
-                                                    });
-                                                }}
-                                                disabled={merchants_for_ship_from.length === 0}
-                                            >
-                                                <SelectTrigger>
-                                                    <SelectValue placeholder={merchants_for_ship_from.length ? 'Select merchant' : 'No merchants available'} />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    {merchants_for_ship_from.map((m) => (
-                                                        <SelectItem key={m.id} value={String(m.id)}>
-                                                            {m.label}
-                                                        </SelectItem>
-                                                    ))}
-                                                </SelectContent>
-                                            </Select>
-                                        </div>
-
-                                        {data.hub_merchant_id ? (
-                                            loadingHubProducts ? (
-                                                <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
-                                                    <Loader2 className="h-4 w-4 animate-spin" />
-                                                    Loading products…
-                                                </div>
-                                            ) : hubProducts.length === 0 ? (
-                                                <p className="text-sm text-gray-600 dark:text-gray-400">
-                                                    No nonprofit-eligible products for this merchant. The merchant must enable &quot;Allow nonprofits to sell&quot; on a product before it appears here.
-                                                </p>
-                                            ) : (
-                                                <div className="space-y-3">
-                                                    <Label>Merchant products *</Label>
-                                                    <div className="grid max-h-96 grid-cols-1 gap-3 overflow-y-auto sm:grid-cols-2">
-                                                        {hubProducts.map((p) => (
-                                                            <button
-                                                                key={p.id}
-                                                                type="button"
-                                                                onClick={() => applyMerchantHubProduct(p)}
-                                                                className={`flex gap-3 rounded-xl border-2 p-3 text-left transition-all ${
-                                                                    Number(data.hub_marketplace_product_id) === p.id
-                                                                        ? 'border-amber-500 bg-amber-50 dark:border-amber-400 dark:bg-amber-950/40'
-                                                                        : 'border-gray-200 hover:border-amber-300 dark:border-gray-700 dark:hover:border-amber-700'
-                                                                }`}
-                                                            >
-                                                                <div className="h-16 w-16 shrink-0 overflow-hidden rounded-lg bg-gray-100 dark:bg-gray-800">
-                                                                    {p.images[0] ? (
-                                                                        <img src={p.images[0]} alt="" className="h-full w-full object-cover" />
-                                                                    ) : (
-                                                                        <div className="flex h-full w-full items-center justify-center text-xs text-gray-400">
-                                                                            No img
-                                                                        </div>
-                                                                    )}
-                                                                </div>
-                                                                <div className="min-w-0 flex-1">
-                                                                    <p className="font-semibold text-gray-900 dark:text-gray-100">{p.name}</p>
-                                                                    <p className="line-clamp-2 text-xs text-gray-600 dark:text-gray-400">{p.short_description}</p>
-                                                                </div>
-                                                            </button>
-                                                        ))}
-                                                    </div>
-                                                </div>
-                                            )
-                                        ) : null}
-                                        {errors.hub_marketplace_product_id && (
-                                            <p className="text-sm text-red-500">{errors.hub_marketplace_product_id}</p>
-                                        )}
-                                    </CardContent>
-                                </Card>
-                            )}
-
                             {/* Pricing Model - only for manual products */}
                             {!data.is_printify_product && (
                                 <Card className="border-2 border-gray-200 bg-white shadow-lg dark:border-gray-700 dark:bg-gray-900">
@@ -1779,17 +1509,10 @@ const handleCategoryChange = (categoryId: number) => {
                                             </CardTitle>
                                         </div>
                                         <CardDescription className="text-sm text-gray-600 dark:text-gray-400">
-                                            {isMerchantHubFlow
-                                                ? 'Merchant Hub uses fixed pricing. Set markup on your listing cost in Pricing & Inventory (or edit unit price directly).'
-                                                : 'Choose how this product is priced'}
+                                            Choose how this product is priced
                                         </CardDescription>
                                     </CardHeader>
                                     <CardContent className="space-y-4 pt-4">
-                                        {isMerchantHubFlow ? (
-                                            <div className="rounded-lg border border-purple-200 bg-purple-50/50 p-4 text-sm text-purple-900 dark:border-purple-800 dark:bg-purple-950/30 dark:text-purple-200">
-                                                Fixed price only — required for Merchant Hub sourced products.
-                                            </div>
-                                        ) : (
                                         <>
                                         <div className="flex flex-wrap gap-3">
                                             {[
@@ -2010,7 +1733,6 @@ const handleCategoryChange = (categoryId: number) => {
                                             </div>
                                         )}
                                         </>
-                                        )}
                                     </CardContent>
                                 </Card>
                             )}
@@ -2027,47 +1749,13 @@ const handleCategoryChange = (categoryId: number) => {
                                                     Ship from (vendor) — Shippo
                                                 </CardTitle>
                                                 <CardDescription className="text-sm text-gray-600 dark:text-gray-400">
-                                                    {isMerchantHubFlow ? (
-                                                        <>
-                                                            Merchant Hub listings ship from the merchant&apos;s address (read-only). This is the Shippo{' '}
-                                                            <strong>from</strong> location.
-                                                        </>
-                                                    ) : (
-                                                        <>
-                                                            This address is the Shippo <strong>from</strong> location. The buyer&apos;s address at checkout is the{' '}
-                                                            <strong>to</strong> address for rates and labels.
-                                                        </>
-                                                    )}
+                                                    This address is the Shippo <strong>from</strong> location. The buyer&apos;s address at checkout is the{' '}
+                                                    <strong>to</strong> address for rates and labels.
                                                 </CardDescription>
                                             </div>
                                         </div>
                                     </CardHeader>
                                     <CardContent className="space-y-6 pt-6">
-                                        {isMerchantHubFlow && data.hub_merchant_id ? (
-                                            <div className="rounded-lg border border-sky-200 bg-sky-50/80 p-4 text-sm dark:border-sky-800 dark:bg-sky-950/30">
-                                                <p className="mb-2 font-semibold text-sky-900 dark:text-sky-100">Shipping from (merchant address)</p>
-                                                {selectedMerchantShipFrom ? (
-                                                    <>
-                                                        <p className="text-gray-800 dark:text-gray-200">{selectedMerchantShipFrom.address_preview.name}</p>
-                                                        <p className="text-gray-700 dark:text-gray-300">
-                                                            {selectedMerchantShipFrom.address_preview.street1}
-                                                            {selectedMerchantShipFrom.address_preview.street2
-                                                                ? `, ${selectedMerchantShipFrom.address_preview.street2}`
-                                                                : ''}
-                                                        </p>
-                                                        <p className="text-gray-700 dark:text-gray-300">
-                                                            {selectedMerchantShipFrom.address_preview.city},{' '}
-                                                            {selectedMerchantShipFrom.address_preview.state}{' '}
-                                                            {selectedMerchantShipFrom.address_preview.zip}
-                                                        </p>
-                                                        <p className="text-gray-700 dark:text-gray-300">{selectedMerchantShipFrom.address_preview.country}</p>
-                                                    </>
-                                                ) : (
-                                                    <p className="text-amber-700 dark:text-amber-300">Select a merchant in the Merchant Hub section above.</p>
-                                                )}
-                                            </div>
-                                        ) : (
-                                            <>
                                         <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
                                             {merchants_for_ship_from.length > 0 && (
                                                 <label
@@ -2238,8 +1926,6 @@ const handleCategoryChange = (categoryId: number) => {
                                                 </div>
                                             </div>
                                         )}
-                                        </>
-                                        )}
 
                                         <div className="rounded-lg border border-dashed border-gray-300 p-4 dark:border-gray-600">
                                             <p className="mb-3 text-sm font-semibold text-gray-800 dark:text-gray-200">
@@ -2336,8 +2022,7 @@ const handleCategoryChange = (categoryId: number) => {
 
                                     {!data.is_printify_product && (data.pricing_model === 'fixed' || data.pricing_model === 'offer' || !data.pricing_model) && (
                                         <>
-                                            {!isMerchantHubFlow && data.product_source_type === 'own' && (
-                                                <div className="space-y-3 sm:col-span-2 rounded-xl border border-emerald-200 bg-emerald-50/40 p-4 dark:border-emerald-900/50 dark:bg-emerald-950/20">
+                                            <div className="space-y-3 sm:col-span-2 rounded-xl border border-emerald-200 bg-emerald-50/40 p-4 dark:border-emerald-900/50 dark:bg-emerald-950/20">
                                                     <p className="text-sm font-semibold text-emerald-900 dark:text-emerald-200">
                                                         Own product — price from cost &amp; markup
                                                     </p>
@@ -2384,54 +2069,6 @@ const handleCategoryChange = (categoryId: number) => {
                                                         </div>
                                                     </div>
                                                 </div>
-                                            )}
-
-                                            {isMerchantHubFlow && data.hub_marketplace_product_id && (
-                                                <div className="space-y-3 sm:col-span-2 rounded-xl border border-amber-200 bg-amber-50/40 p-4 dark:border-amber-900/50 dark:bg-amber-950/20">
-                                                    <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">
-                                                        Merchant Hub — price from listing cost &amp; markup
-                                                    </p>
-                                                    <p className="text-muted-foreground text-xs leading-relaxed">
-                                                        Uses the merchant&apos;s cost (or base price) from the listing. Adjust markup to set your resale price; must meet any minimum resale price.
-                                                    </p>
-                                                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                                                        <div className="space-y-2">
-                                                            <Label>Listing cost (merchant)</Label>
-                                                            <div className="relative">
-                                                                <span className="absolute top-1/2 left-3 -translate-y-1/2 text-gray-500 dark:text-gray-400">
-                                                                    $
-                                                                </span>
-                                                                <Input
-                                                                    type="text"
-                                                                    readOnly
-                                                                    value={
-                                                                        String(data.hub_listing_cost ?? '').trim() !== ''
-                                                                            ? data.hub_listing_cost
-                                                                            : '— (set unit price manually)'
-                                                                    }
-                                                                    className="h-11 cursor-not-allowed bg-gray-100 pl-8 dark:bg-gray-800"
-                                                                />
-                                                            </div>
-                                                        </div>
-                                                        <div className="space-y-2">
-                                                            <Label htmlFor="profit_margin_hub">Selling price markup (%)</Label>
-                                                            <Input
-                                                                id="profit_margin_hub"
-                                                                type="number"
-                                                                step="0.01"
-                                                                min="0"
-                                                                value={data.profit_margin_percentage}
-                                                                onChange={(e) => handleChange('profit_margin_percentage', e.target.value)}
-                                                                placeholder="e.g., 25"
-                                                                className="h-11 text-base"
-                                                            />
-                                                            {errors.profit_margin_percentage && (
-                                                                <p className="text-sm text-red-500">{errors.profit_margin_percentage}</p>
-                                                            )}
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            )}
 
                                             <div className="space-y-2">
                                                 <Label htmlFor="unit_price" className="flex items-center gap-2">
@@ -2519,13 +2156,9 @@ const handleCategoryChange = (categoryId: number) => {
                                         <Label htmlFor="type" className="text-sm font-semibold text-gray-900 dark:text-gray-100">
                                             Type *
                                         </Label>
-                                        {isMerchantHubFlow && (
-                                            <p className="text-muted-foreground mb-1 text-xs">Set from the merchant listing when you use Merchant Hub.</p>
-                                        )}
                                         <Select
                                             value={data.type}
                                             onValueChange={(value) => handleChange('type', value)}
-                                            disabled={isMerchantHubFlow}
                                         >
                                             <SelectTrigger
                                                 className={`h-11 text-base ${errors.type ? 'border-red-500 dark:border-red-500' : 'border-gray-300 dark:border-gray-600'} bg-white text-gray-900 dark:bg-gray-800 dark:text-gray-100`}

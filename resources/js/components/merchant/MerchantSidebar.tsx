@@ -12,6 +12,7 @@ import {
   TrendingUp,
   Package,
   Receipt,
+  ClipboardCheck,
 } from 'lucide-react'
 import { MerchantButton } from '@/components/merchant-ui'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -25,12 +26,20 @@ interface NavItem {
   href: string
   icon: React.ElementType
   badge?: number
+  /** Read from auth.user (merchant) when set, e.g. pending_pool_approval_count */
+  badgeFromAuth?: string
 }
 
 const navigation: NavItem[] = [
   { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
   { name: 'Offers', href: '/offers', icon: Gift },
   { name: 'Marketplace products', href: '/marketplace-products', icon: Package },
+  {
+    name: 'Pool listing approvals',
+    href: '/marketplace-pool-approvals',
+    icon: ClipboardCheck,
+    badgeFromAuth: 'pending_pool_approval_count',
+  },
   { name: 'Marketplace orders', href: '/marketplace-orders', icon: Receipt },
   { name: 'Create Offer', href: '/offers/create', icon: Plus },
   { name: 'Redemptions', href: '/redemptions', icon: ShoppingBag },
@@ -96,8 +105,8 @@ function SidebarContent({
   currentPath: string
   onNavigate?: () => void
 }) {
-  const { auth } = usePage().props as any
-  const hasActiveSubscription = auth?.user?.has_active_subscription ?? false
+  const { auth } = usePage().props as { auth?: { user?: Record<string, unknown> } }
+  const hasActiveSubscription = (auth?.user?.has_active_subscription as boolean | undefined) ?? false
 
   const isActive = (href: string) => {
     if (currentPath === href) {
@@ -131,6 +140,11 @@ function SidebarContent({
       <nav className="flex-1 px-4 py-6 space-y-2 overflow-y-auto">
         {navigation.map((item) => {
           const active = isActive(item.href)
+          const authBadge =
+            item.badgeFromAuth && auth?.user
+              ? Number((auth.user as Record<string, unknown>)[item.badgeFromAuth] ?? 0)
+              : 0
+          const showBadge = item.badge != null ? item.badge : item.badgeFromAuth ? authBadge : null
           return (
             <Link
               key={item.name}
@@ -147,9 +161,9 @@ function SidebarContent({
             >
               <item.icon className={`w-5 h-5 ${active ? 'text-[#2563EB]' : ''}`} />
               <span className="font-medium">{item.name}</span>
-              {item.badge && (
-                <span className="ml-auto px-2 py-0.5 text-xs font-semibold bg-[#2563EB] text-white rounded-full">
-                  {item.badge}
+              {showBadge != null && showBadge > 0 && (
+                <span className="ml-auto px-2 py-0.5 text-xs font-semibold bg-amber-500 text-white rounded-full min-w-[1.25rem] text-center">
+                  {showBadge > 99 ? '99+' : showBadge}
                 </span>
               )}
             </Link>

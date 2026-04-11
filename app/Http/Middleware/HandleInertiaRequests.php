@@ -167,6 +167,10 @@ class HandleInertiaRequests extends Middleware
                     'email_verified_at' => $user->email_verified_at,
                     'joined' => $user->created_at->format('F Y'),
                     'has_active_subscription' => $hasActiveSubscription,
+                    'pending_pool_approval_count' => \App\Models\OrganizationProduct::query()
+                        ->where('status', 'pending_merchant_approval')
+                        ->whereHas('marketplaceProduct', fn ($q) => $q->where('merchant_id', $user->id))
+                        ->count(),
                 ];
             } elseif ($isLivestockDomain || ($user instanceof \App\Models\LivestockUser)) {
                 // Livestock user data

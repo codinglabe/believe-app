@@ -542,11 +542,19 @@ function Step2Form({ items, subtotal, donation_amount, step2Data, onBack }: Omit
                       <div className="font-medium text-gray-900 dark:text-white">{m.name || "Shipping"}</div>
                       {m.estimated_days != null && m.estimated_days !== "—" && (
                         <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                          Est. {m.estimated_days} business days
+                          Est.{" "}
+                          {String(m.estimated_days).toLowerCase().includes("business day")
+                            ? m.estimated_days
+                            : `${m.estimated_days} business days`}
                         </div>
                       )}
                     </div>
-                    <div className="font-semibold text-gray-900 dark:text-white shrink-0">${Number(m.cost).toFixed(2)}</div>
+                    <div className="font-semibold text-gray-900 dark:text-white shrink-0">
+                      $
+                      {Number(
+                        String(selectedShippingMethod) === String(m.id) ? currentShippingCost : m.cost,
+                      ).toFixed(2)}
+                    </div>
                   </label>
                 ))}
               </div>

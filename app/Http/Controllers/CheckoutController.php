@@ -1374,28 +1374,43 @@ class CheckoutController extends Controller
             // Get Printify order details
             $printifyOrder = $this->printifyService->getOrder($printifyOrderId);
 
-            $methods = [];
-            $defaultCost = 0;
+            // Printify bills shipping on the order as total_shipping (cents). shipping_method.cost is often 0
+            // until finalized — always align UI + temp_order with total_shipping so checkout matches the summary.
+            $defaultCost = round((float) (($printifyOrder['total_shipping'] ?? 0) / 100), 2);
 
-            if (isset($printifyOrder['shipping_method'])) {
-                $methods[] = [
-                    'id' => 'standard',
-                    'name' => 'Standard Shipping',
-                    'cost' => (float) (($printifyOrder['shipping_method']['cost'] ?? 0) / 100),
-                    'estimated_days' => '10-30 business days',
-                ];
+            $methodName = 'Standard Shipping';
+            if (isset($printifyOrder['shipping_method']) && is_array($printifyOrder['shipping_method'])) {
+                $sm = $printifyOrder['shipping_method'];
+                if (! empty($sm['title'])) {
+                    $methodName = (string) $sm['title'];
+                } elseif (! empty($sm['name'])) {
+                    $methodName = (string) $sm['name'];
+                }
+                $lineCost = round((float) (($sm['cost'] ?? 0) / 100), 2);
+                if ($defaultCost <= 0 && $lineCost > 0) {
+                    $defaultCost = $lineCost;
+                }
             }
 
-            $defaultCost = (float) (($printifyOrder['total_shipping'] ?? 0) / 100);
+            $methods = [
+                [
+                    'id' => 'standard',
+                    'name' => $methodName,
+                    'cost' => $defaultCost,
+                    // UI appends "business days"; keep range only here
+                    'estimated_days' => '10-30',
+                ],
+            ];
 
-            // Log donation distribution for debugging
             \Log::info('Printify order in checkout step1 submit', [
-                'printifyOrder' => $printifyOrder,
+                'printify_order_id' => $printifyOrderId,
+                'total_shipping_cents' => $printifyOrder['total_shipping'] ?? null,
+                'shipping_usd' => $defaultCost,
             ]);
 
             return [
                 'cost' => $defaultCost,
-                'total_tax' => $printifyOrder['total_tax'],
+                'total_tax' => $printifyOrder['total_tax'] ?? null,
                 'methods' => $methods,
             ];
 
@@ -1409,7 +1424,7 @@ class CheckoutController extends Controller
                         'id' => 'standard',
                         'name' => 'Standard Shipping',
                         'cost' => 9.99,
-                        'estimated_days' => '10-30 business days',
+                        'estimated_days' => '5-10',
                     ],
                 ],
             ];
