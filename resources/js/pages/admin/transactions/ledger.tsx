@@ -1200,26 +1200,39 @@ export default function TransactionLedger({
                                   idx % 2 === 1 ? "bg-muted" : "bg-card",
                                 )}
                               >
-                                <span
-                                  className={cn(
-                                    "inline-flex w-fit max-w-full items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-left text-xs font-semibold uppercase leading-tight tracking-wide sm:px-3 sm:text-sm",
-                                    typeDisplay.className,
-                                  )}
-                                  title={
-                                    row.donation_badge && row.donation_badge_label
-                                      ? `${typeDisplay.label} — ${row.donation_badge_label}`
-                                      : typeDisplay.label
-                                  }
-                                >
-                                  {typeDisplay.icon === "heart" ? (
-                                    <Heart className="h-3.5 w-3.5 shrink-0 opacity-90 sm:h-4 sm:w-4" aria-hidden />
-                                  ) : (
-                                    <ArrowRightLeft className="h-3.5 w-3.5 shrink-0 opacity-80 sm:h-4 sm:w-4" aria-hidden />
-                                  )}
-                                  <span className="min-w-0 [overflow-wrap:anywhere] whitespace-normal">
-                                    {typeDisplay.label}
-                                  </span>
-                                </span>
+                                <Tooltip delayDuration={350}>
+                                  <TooltipTrigger asChild>
+                                    <span
+                                      className={cn(
+                                        "inline-flex w-fit max-w-full min-w-0 cursor-pointer items-center gap-1.5 rounded-full border px-2 py-1.5 text-left text-xs font-semibold uppercase leading-tight tracking-wide sm:px-2.5 sm:text-sm",
+                                        typeDisplay.className,
+                                      )}
+                                    >
+                                      {typeDisplay.icon === "heart" ? (
+                                        <Heart className="h-3.5 w-3.5 shrink-0 opacity-90 sm:h-4 sm:w-4" aria-hidden />
+                                      ) : (
+                                        <ArrowRightLeft className="h-3.5 w-3.5 shrink-0 opacity-80 sm:h-4 sm:w-4" aria-hidden />
+                                      )}
+                                      <span className="min-w-0 max-w-[11rem] truncate sm:max-w-[14rem]">{typeDisplay.label}</span>
+                                    </span>
+                                  </TooltipTrigger>
+                                  <TooltipContent
+                                    side="top"
+                                    sideOffset={8}
+                                    className="max-w-xs px-3 py-2 text-left text-xs font-medium normal-case leading-snug tracking-normal text-popover-foreground"
+                                  >
+                                    {row.donation_badge && row.donation_badge_label ? (
+                                      <>
+                                        <span className="font-semibold uppercase tracking-wide">{typeDisplay.label}</span>
+                                        <span className="mt-1 block text-[11px] font-normal text-muted-foreground">
+                                          {row.donation_badge_label}
+                                        </span>
+                                      </>
+                                    ) : (
+                                      typeDisplay.label
+                                    )}
+                                  </TooltipContent>
+                                </Tooltip>
                               </td>
                               <td
                                 className={cn(

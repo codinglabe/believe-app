@@ -245,73 +245,6 @@ function ProviderRailLabel({ provider }: { provider: string }) {
 
 type Variant = "full" | "compact"
 
-/** Client workbook vocabulary + formulas; amounts in the grid above use live ledger values (Stripe, BIU), not illustrative %. */
-function WorkbookFormulasReference() {
-  return (
-    <details className="group mt-4 rounded-lg border border-border/50 bg-muted/25 p-3 sm:p-4">
-      <summary className="cursor-pointer list-none text-sm font-semibold text-foreground marker:content-none [&::-webkit-details-marker]:hidden">
-        <span className="underline decoration-dotted underline-offset-4 group-open:no-underline">Workbook formulas (client spec)</span>
-      </summary>
-      <div className="mt-3 space-y-3 text-xs leading-relaxed text-muted-foreground">
-        <div>
-          <p className="font-medium text-foreground">Identifiers</p>
-          <ul className="mt-1 list-inside list-disc space-y-0.5">
-            <li>
-              <span className="text-foreground">Transaction</span> — type of activity (purchase, donation, etc.)
-            </li>
-            <li>
-              <span className="text-foreground">Txn</span> — unique internal ID
-            </li>
-            <li>
-              <span className="text-foreground">Module</span> — where it happened (Marketplace, Donation, etc.)
-            </li>
-            <li>
-              <span className="text-foreground">From → To</span> — payer → recipient
-            </li>
-          </ul>
-        </div>
-        <div>
-          <p className="font-medium text-foreground">Buyer totals</p>
-          <ul className="mt-1 space-y-1 font-mono text-[11px] text-foreground/90">
-            <li>Gross = Subtotal + Shipping + Tax</li>
-            <li>Subtotal = Supplier cost + Markup (on catalog lines)</li>
-          </ul>
-          <p className="mt-1.5">Shipping — delivery charge. Tax — sales tax (not revenue).</p>
-        </div>
-        <div>
-          <p className="font-medium text-foreground">Supplier (fulfillment)</p>
-          <ul className="mt-1 list-inside list-disc space-y-0.5">
-            <li>Supplier name — who fulfills the order</li>
-            <li>Supplier type — PRINTIFY, ORGANIZATION, MERCHANT, SUPPORTER (internal types are mapped in the badge)</li>
-          </ul>
-          <ul className="mt-2 space-y-1 font-mono text-[11px] text-foreground/90">
-            <li>Supplier cost = Subtotal ÷ (1 + markup% ÷ 100)</li>
-            <li>Markup = Subtotal − Supplier cost</li>
-          </ul>
-        </div>
-        <div>
-          <p className="font-medium text-foreground">Fees (illustrative vs this screen)</p>
-          <ul className="mt-1 space-y-1 font-mono text-[11px] text-foreground/90">
-            <li>Processing fee ≈ Subtotal × processor% (e.g. 3%)</li>
-            <li>Platform fee ≈ Subtotal × platform% (e.g. 1.5%)</li>
-          </ul>
-          <p className="mt-1.5">
-            This card shows <span className="text-foreground">actual</span> Stripe + Bridge and recorded BIU / platform fees — not the example percentages.
-          </p>
-        </div>
-        <div>
-          <p className="font-medium text-foreground">Settlement</p>
-          <ul className="mt-1 space-y-1 font-mono text-[11px] text-foreground/90">
-            <li>Org payout ≈ Subtotal − Processing fee − Platform fee</li>
-            <li>Net — final settled amount on this row (may include supplier + org depending on flow)</li>
-          </ul>
-          <p className="mt-1.5">Fees are taken from payout, not added on top for the buyer — see module notes below where applicable.</p>
-        </div>
-      </div>
-    </details>
-  )
-}
-
 export function UnifiedLedgerCard({ data, variant = "full", className }: { data: UnifiedLedgerRow; variant?: Variant; className?: string }) {
   const cur = data.currency || "USD"
   const usePoints = data.provider === "points"
@@ -431,7 +364,7 @@ export function UnifiedLedgerCard({ data, variant = "full", className }: { data:
               </Badge>
             </div>
             <CardDescription className="text-sm">
-              Module, transaction type, parties, amounts, fees, and settlement — aligned with the client workbook (see formulas below).
+              Module, transaction type, parties, amounts, fees, and settlement.
             </CardDescription>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -652,7 +585,6 @@ export function UnifiedLedgerCard({ data, variant = "full", className }: { data:
               </div>
             ) : null}
           </div>
-          <WorkbookFormulasReference />
           {data.module === "marketplace" && (
             <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
               <span className="font-medium text-foreground">Gross</span> is the buyer&apos;s checkout total (subtotal + tax + shipping).
