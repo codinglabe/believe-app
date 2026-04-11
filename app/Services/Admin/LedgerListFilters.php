@@ -34,6 +34,7 @@ final class LedgerListFilters
             'donation',
             'fundme',
             'campaign',
+            'gift_card',
             'marketplace',
             'servicehub',
             'course',
@@ -108,6 +109,7 @@ final class LedgerListFilters
             'organization_subscription' => self::scopeOrganizationSubscription(self::withRefundPayoutExclusion($query)),
             'merchant_subscription' => self::scopeMerchantSubscription(self::withRefundPayoutExclusion($query)),
             'adjustment' => self::scopeAdjustment(self::withRefundPayoutExclusion($query)),
+            'gift_card' => self::scopeGiftCard(self::withRefundPayoutExclusion($query)),
             'marketplace' => self::scopeMarketplace(self::withRefundPayoutExclusion($query)),
             'believe_points' => self::scopeBelievePoints($query),
             'wallet' => self::scopeWallet($query),
@@ -294,11 +296,21 @@ final class LedgerListFilters
         });
     }
 
+    private static function scopeGiftCard(Builder $query): void
+    {
+        $query->where(function (Builder $q) {
+            $q->where('related_type', GiftCard::class)
+                ->orWhere('related_type', 'like', '%GiftCard')
+                ->orWhere('type', 'gift_card_purchase')
+                ->orWhere('meta->type', 'gift_card_purchase')
+                ->orWhereNotNull('meta->gift_card_id');
+        });
+    }
+
     private static function scopeMarketplace(Builder $query): void
     {
         $query->where(function (Builder $q) {
             $q->where('related_type', Order::class)
-                ->orWhere('related_type', GiftCard::class)
                 ->orWhere('related_type', Raffle::class)
                 ->orWhere(function (Builder $p) {
                     $p->where('type', 'purchase')
@@ -363,6 +375,14 @@ final class LedgerListFilters
                                 ->orWhereNotNull('meta->fundme_campaign_id');
                         });
                 });
+        });
+
+        $query->whereNot(function (Builder $gc) {
+            $gc->where('related_type', GiftCard::class)
+                ->orWhere('related_type', 'like', '%GiftCard')
+                ->orWhere('type', 'gift_card_purchase')
+                ->orWhere('meta->type', 'gift_card_purchase')
+                ->orWhereNotNull('meta->gift_card_id');
         });
     }
 

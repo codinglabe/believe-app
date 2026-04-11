@@ -150,6 +150,7 @@ function moduleLabel(m: string) {
     believe_points: "Believe Points",
     wallet: "Wallet",
     marketplace: "Marketplace",
+    gift_card: "Gift card",
     servicehub: "Service Hub",
     course: "Course",
     merchant_hub: "Merchant Hub",

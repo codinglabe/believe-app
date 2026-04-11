@@ -1357,6 +1357,30 @@ class TransactionLedgerController extends Controller
                     }
                 }
             }
+            if ($rt === GiftCard::class || str_ends_with($rt, 'GiftCard')) {
+                $gc = GiftCard::query()->with('organization:id,name')->find((int) $t->related_id);
+                if ($gc !== null) {
+                    if ($oid < 1 && ! empty($gc->organization_id)) {
+                        $oid = (int) $gc->organization_id;
+                    }
+                    if ($oname === null && $gc->relationLoaded('organization') && $gc->organization !== null) {
+                        $oname = (string) $gc->organization->name;
+                    }
+                }
+            }
+        }
+
+        // Polymorphic link may be missing but meta still references the card (some webhooks / legacy rows).
+        if (($oid < 1 || $oname === null) && ! empty($meta['gift_card_id']) && is_numeric($meta['gift_card_id'])) {
+            $gc = GiftCard::query()->with('organization:id,name')->find((int) $meta['gift_card_id']);
+            if ($gc !== null) {
+                if ($oid < 1 && ! empty($gc->organization_id)) {
+                    $oid = (int) $gc->organization_id;
+                }
+                if ($oname === null && $gc->organization) {
+                    $oname = (string) $gc->organization->name;
+                }
+            }
         }
 
         if ($oid > 0 && $oname === null) {
