@@ -11,6 +11,7 @@ use App\Models\Enrollment;
 use App\Models\FundMeDonation;
 use App\Models\JobApplication;
 use App\Models\NodeSell;
+use App\Models\Subscription as AppSubscription;
 use App\Models\User;
 use App\Notifications\Channels\FirebaseChannel;
 use App\Observers\BelievePointPurchaseObserver;
@@ -50,6 +51,7 @@ class AppServiceProvider extends ServiceProvider
         Enrollment::observe(EnrollmentObserver::class);
         JobApplication::observe(JobApplicationObserver::class);
         Cashier::useCustomerModel(User::class);
+        Cashier::useSubscriptionModel(AppSubscription::class);
         Cashier::calculateTaxes();
 
         // Register event listener for email verification
