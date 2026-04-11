@@ -37,8 +37,9 @@ export const TRANSACTION_TYPE_LABELS: Record<string, string> = {
   believe_points_purchase: "Believe Points purchase",
   believe_points_auto_replenish: "Believe Points auto-replenish",
   believe_points_auto_replenish_setup: "Believe Points auto-replenish setup",
-  // Campaigns & fundraising
+  // Campaigns & fundraising (Support a project → Give / FundMe)
   fundme_donation: "FundMe donation",
+  fundme_contribution: "Support a project contribution",
   // Newsletter / credits / email
   sms_purchase: "SMS purchase",
   newsletter_pro_targeting_lifetime: "Newsletter Pro targeting (lifetime)",
@@ -47,6 +48,7 @@ export const TRANSACTION_TYPE_LABELS: Record<string, string> = {
   sms_credit_purchase: "SMS credit purchase",
   email_credit_purchase: "Email credit purchase",
   organization_subscription_paid: "Organization subscription",
+  supporter_subscription_paid: "Supporter subscription",
   email_purchase: "Email purchase",
   credit_purchase: "Credit purchase",
   // Service Hub
@@ -83,6 +85,7 @@ export const TRANSACTION_TYPE_FILTER_ORDER: string[] = [
   "form_1023_application",
   "fractional_ownership",
   "free",
+  "fundme_contribution",
   "fundme_donation",
   "gift_card_purchase",
   "kyc_fee",
@@ -97,6 +100,7 @@ export const TRANSACTION_TYPE_FILTER_ORDER: string[] = [
   "referral_reward",
   "refund",
   "service_order",
+  "supporter_subscription_paid",
   "sms_purchase",
   "transfer",
   "transfer_in",
@@ -136,7 +140,7 @@ export function transactionTypeBadgeClass(type: string): string {
   if (t === "deposit" || t === "transfer_in" || t === "transfer") {
     return "border-teal-500/40 bg-teal-500/[0.12] text-teal-900 dark:text-teal-100"
   }
-  if (t === "donation" || t === "fundme_donation" || t.endsWith("_donation")) {
+  if (t === "donation" || t === "fundme_donation" || t === "fundme_contribution" || t.endsWith("_donation")) {
     return "border-rose-500/40 bg-rose-500/[0.12] text-rose-900 dark:text-rose-100"
   }
   if (
@@ -146,7 +150,8 @@ export function transactionTypeBadgeClass(type: string): string {
     t === "kyc_fee" ||
     t === "newsletter_pro_targeting_lifetime" ||
     t === "newsletter_pro_targeting_purchase" ||
-    t === "organization_subscription_paid"
+    t === "organization_subscription_paid" ||
+    t === "supporter_subscription_paid"
   ) {
     return "border-indigo-500/40 bg-indigo-500/[0.12] text-indigo-950 dark:text-indigo-100"
   }

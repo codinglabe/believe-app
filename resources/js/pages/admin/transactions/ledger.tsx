@@ -403,7 +403,7 @@ function ledgerRowTypeDisplay(row: LedgerRow): { label: string; className: strin
 function moduleTableLabel(m: string) {
   const map: Record<string, string> = {
     donation: "Donation",
-    fundme: "FundMe",
+    fundme: "Support a project",
     campaign: "Campaign",
     believe_points: "Believe Points",
     wallet: "Wallet",
@@ -413,6 +413,7 @@ function moduleTableLabel(m: string) {
     course: "Course",
     merchant_hub: "Merchant Hub",
     organization_subscription: "Org sub",
+    supporter_subscription: "Supporter sub",
     merchant_subscription: "Merchant sub",
     payout: "Payout",
     refund: "Refund",
@@ -623,7 +624,7 @@ function ledgerPaymentMethodIcon(
 function moduleLabel(key: string): string {
   const map: Record<string, string> = {
     donation: "Donation",
-    fundme: "FundMe",
+    fundme: "Support a project",
     campaign: "Campaign",
     believe_points: "Believe Points",
     wallet: "Wallet",
@@ -633,6 +634,7 @@ function moduleLabel(key: string): string {
     course: "Course",
     merchant_hub: "Merchant hub",
     organization_subscription: "Organization subscription",
+    supporter_subscription: "Supporter subscription",
     merchant_subscription: "Merchant subscription",
     payout: "Payout",
     refund: "Refund",

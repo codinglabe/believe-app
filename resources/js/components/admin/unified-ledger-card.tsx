@@ -145,7 +145,7 @@ function sellingPayoutsVisible(data: UnifiedLedgerRow): boolean {
 function moduleLabel(m: string) {
   const map: Record<string, string> = {
     donation: "Donation",
-    fundme: "FundMe",
+    fundme: "Support a project",
     campaign: "Campaign",
     believe_points: "Believe Points",
     wallet: "Wallet",
@@ -155,6 +155,7 @@ function moduleLabel(m: string) {
     course: "Course",
     merchant_hub: "Merchant Hub",
     organization_subscription: "Org subscription",
+    supporter_subscription: "Supporter subscription",
     merchant_subscription: "Merchant subscription",
     payout: "Payout",
     refund: "Refund",

@@ -262,14 +262,14 @@ class UnifiedLedgerPresenter
                         : 'marketplace')),
             'service_order' => 'servicehub',
             'enrollment' => 'course',
-            'plan_subscription', 'wallet_plan_subscription' => 'organization_subscription',
+            'plan_subscription', 'wallet_plan_subscription' => 'supporter_subscription',
             'gift_card' => 'gift_card',
             'raffle' => 'marketplace',
             'merchant_hub_redemption', 'merchant_hub_referral' => 'merchant_hub',
             'commission' => $this->moduleForCommission($t),
             'ledger_unclassified' => match ($base) {
                 'Enrollment' => 'course',
-                'Plan' => 'organization_subscription',
+                'Plan' => 'supporter_subscription',
                 'GiftCard' => 'gift_card',
                 'Raffle' => 'marketplace',
                 'MerchantHubOfferRedemption' => 'merchant_hub',
@@ -278,7 +278,7 @@ class UnifiedLedgerPresenter
             },
             default => match ($base) {
                 'Enrollment' => 'course',
-                'Plan' => 'organization_subscription',
+                'Plan' => 'supporter_subscription',
                 'GiftCard' => 'gift_card',
                 'Raffle' => 'marketplace',
                 'MerchantHubOfferRedemption' => 'merchant_hub',
@@ -310,7 +310,7 @@ class UnifiedLedgerPresenter
         $direct = strtolower(trim((string) ($t->type ?? '')));
         $fromMeta = strtolower(trim((string) ($meta['type'] ?? '')));
 
-        $canonical = ['newsletter_pro_targeting_lifetime', 'sms_purchase', 'email_purchase', 'gift_card_purchase'];
+        $canonical = ['newsletter_pro_targeting_lifetime', 'sms_purchase', 'email_purchase', 'gift_card_purchase', 'fundme_donation'];
         if (in_array($fromMeta, $canonical, true)) {
             return $fromMeta;
         }
@@ -395,7 +395,7 @@ class UnifiedLedgerPresenter
             'donation' => 'donation',
             'plan_subscription',
             'wallet_subscription',
-            'kyc_fee',
+            'kyc_fee' => 'supporter_subscription',
             'merchant_subscription' => 'organization_subscription',
             'believe_points_purchase',
             'believe_points_auto_replenish',
@@ -487,7 +487,7 @@ class UnifiedLedgerPresenter
                 return 'course';
             }
             if ($base === 'Plan') {
-                return 'organization_subscription';
+                return 'supporter_subscription';
             }
             if (str_ends_with($rt, 'GiftCard')) {
                 return 'gift_card';
@@ -504,11 +504,27 @@ class UnifiedLedgerPresenter
         }
 
         if (! empty($meta['subscription_id']) || str_contains(strtolower((string) ($meta['plan_name'] ?? '')), 'subscription')) {
-            return ! empty($meta['merchant_id']) ? 'merchant_subscription' : 'organization_subscription';
+            if (! empty($meta['merchant_id'])) {
+                return 'merchant_subscription';
+            }
+            if (! empty($meta['wallet_plan_id']) || ! empty($meta['plan_id'])) {
+                return 'supporter_subscription';
+            }
+
+            return 'organization_subscription';
+        }
+
+        if (! empty($meta['wallet_plan_id'])) {
+            return 'supporter_subscription';
+        }
+
+        // Platform plan checkout (PlansController success): type may be `purchase` with plan_id + plan_name.
+        if ($type === 'purchase' && ! empty($meta['plan_id']) && ! empty($meta['plan_name']) && empty($meta['order_id'])) {
+            return 'supporter_subscription';
         }
 
         if (in_array($type, ['plan_subscription', 'wallet_subscription', 'kyc_fee'], true)) {
-            return 'organization_subscription';
+            return 'supporter_subscription';
         }
 
         if ($type === 'adjustment' || ($meta['adjustment_reason'] ?? null)) {
@@ -623,6 +639,7 @@ class UnifiedLedgerPresenter
             'servicehub' => 'service_payment',
             'course' => 'course_enrollment',
             'merchant_hub' => 'merchant_hub_sale',
+            'supporter_subscription' => 'supporter_subscription_paid',
             'organization_subscription' => 'organization_subscription_paid',
             'merchant_subscription' => 'merchant_subscription_paid',
             'wallet' => 'wallet_deposit',
@@ -706,6 +723,23 @@ class UnifiedLedgerPresenter
 
         if ($module === 'merchant_hub' || ($module === 'marketplace' && str_contains(strtolower($related['related_kind'] ?? ''), 'merchant'))) {
             $defaultTo['to_type'] = 'merchant';
+        }
+
+        // Platform / wallet plans purchased by a supporter (not nonprofit org subscription billing).
+        if ($module === 'supporter_subscription') {
+            $payer = $walletUser;
+            $defaultFrom = [
+                'from_type' => 'supporter',
+                'from_name' => $payer?->name,
+                'from_email' => $payer?->email,
+                'from_id' => $payer?->id,
+            ];
+            $defaultTo = [
+                'to_type' => 'platform',
+                'to_name' => 'BIU Platform',
+                'to_email' => null,
+                'to_id' => null,
+            ];
         }
 
         if ($module === 'organization_subscription' || $module === 'merchant_subscription') {
