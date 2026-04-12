@@ -120,20 +120,31 @@ class CreditPurchaseController extends Controller
             $transactionId = $metadata['transaction_id'] ?? null;
             $returnRouteFromMetadata = $metadata['return_route'] ?? $returnRoute;
 
-            // Add credits to user
+            // Add wallet credits
             $user->increment('credits', $creditsToAdd);
+
+            // Same top-up extends plan AI token allowance (used vs included), matching user expectation for
+            // "Top up" in AI Chat / newsletter. Skip when ai_tokens_included is 0 (treated as unlimited cap).
+            $aiTokensIncludedAdded = 0;
+            $includedBefore = (int) ($user->fresh()->ai_tokens_included ?? 0);
+            if ($includedBefore > 0) {
+                $user->increment('ai_tokens_included', $creditsToAdd);
+                $aiTokensIncludedAdded = $creditsToAdd;
+            }
 
             // Update transaction status
             if ($transactionId) {
+                $tx = Transaction::find($transactionId);
                 Transaction::where('id', $transactionId)->update([
                     'status' => 'completed',
                     'meta' => array_merge(
-                        Transaction::find($transactionId)->meta ?? [],
+                        $tx?->meta ?? [],
                         [
                             'stripe_session_id' => $sessionId,
                             'stripe_payment_intent' => $session->payment_intent,
                             'payment_status' => $session->payment_status,
                             'credits_added' => $creditsToAdd,
+                            'ai_tokens_included_added' => $aiTokensIncludedAdded,
                         ]
                     ),
                 ]);
@@ -142,12 +153,17 @@ class CreditPurchaseController extends Controller
             Log::info('Credits purchased successfully', [
                 'user_id' => $user->id,
                 'credits_added' => $creditsToAdd,
+                'ai_tokens_included_added' => $aiTokensIncludedAdded,
                 'session_id' => $sessionId,
                 'return_route' => $returnRouteFromMetadata,
             ]);
 
-            return redirect()->route($returnRouteFromMetadata)->with('success', "Successfully purchased {$creditsToAdd} credits!");
+            $successMsg = "Successfully purchased {$creditsToAdd} wallet credits.";
+            if ($aiTokensIncludedAdded > 0) {
+                $successMsg .= " Your plan AI token allowance increased by {$aiTokensIncludedAdded} (same pool as AI Chat).";
+            }
 
+            return redirect()->route($returnRouteFromMetadata)->with('success', $successMsg);
         } catch (\Exception $e) {
             Log::error('Credit purchase success handler error', [
                 'error' => $e->getMessage(),

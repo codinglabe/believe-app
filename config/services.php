@@ -97,6 +97,17 @@ return [
     ],
 
     /*
+    | Newsletter / template AI HTML generation (OpenAI JSON mode).
+    | Higher temperature = bolder layouts; set NEWSLETTER_AI_MODEL=gpt-4o-mini for best results if budget allows.
+    | Keep max_output_tokens <= 4096 unless your model supports higher (otherwise OpenAI returns HTTP 400).
+    */
+    'newsletter_ai' => [
+        'model' => env('NEWSLETTER_AI_MODEL'),
+        'temperature' => (float) env('NEWSLETTER_AI_TEMPERATURE', 0.74),
+        'max_output_tokens' => (int) env('NEWSLETTER_AI_MAX_TOKENS', 4096),
+    ],
+
+    /*
     | AI ingest of local kiosk providers when supporters save city/state on profile.
     */
     'kiosk_provider_ingest' => [

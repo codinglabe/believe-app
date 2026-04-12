@@ -39,12 +39,12 @@ interface Newsletter {
     html_content: string
     send_via?: string
     status: string
-    newsletter_template_id: number
-    template: {
+    newsletter_template_id: number | null
+    template?: {
         id: number
         name: string
         template_type: string
-    }
+    } | null
 }
 
 interface Template {
@@ -149,7 +149,7 @@ export default function NewsletterEdit({ newsletter, templates, previewData }: N
         subject: newsletter.subject,
         content: newsletter.content,
         html_content: newsletter.html_content || '',
-        newsletter_template_id: newsletter.newsletter_template_id,
+        newsletter_template_id: newsletter.newsletter_template_id ?? '',
         send_via: initialSendVia,
     })
 
@@ -223,42 +223,44 @@ export default function NewsletterEdit({ newsletter, templates, previewData }: N
         <AppSidebarLayout>
             <Head title={`Edit Newsletter: ${newsletter.subject}`} />
 
-            <div className="space-y-6 sm:space-y-8 animate-in fade-in duration-500 m-10">
+            <div className="w-full min-w-0 max-w-full space-y-6 px-4 py-6 sm:space-y-8 sm:px-6 lg:px-8 animate-in fade-in duration-500">
                 {/* Header */}
-                <div className="flex flex-col space-y-4 sm:space-y-0 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="space-y-2 animate-in slide-in-from-left duration-700">
-                        <div className="flex items-center gap-3">
+                <div className="flex min-w-0 flex-col gap-4 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
+                    <div className="min-w-0 flex-1 space-y-2 animate-in slide-in-from-left duration-700">
+                        <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:gap-3">
                             <Button
                                 variant="outline"
                                 size="sm"
+                                className="w-fit shrink-0"
                                 onClick={() => router.get(route('newsletter.show', newsletter.id))}
                             >
                                 <ArrowLeft className="h-4 w-4 mr-2" />
                                 Back
                             </Button>
-                            <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-gray-900 dark:text-white">
+                            <h1 className="min-w-0 break-words text-2xl font-bold text-gray-900 sm:text-3xl lg:text-4xl dark:text-white">
                                 Edit Newsletter
                             </h1>
                         </div>
-                        <p className="text-sm sm:text-base lg:text-lg text-gray-600 dark:text-gray-400">
+                        <p className="text-sm text-gray-600 sm:text-base lg:text-lg dark:text-gray-400">
                             Update your email campaign content and settings
                         </p>
                     </div>
                     <div className="animate-in slide-in-from-right duration-700">
-                        <div className="flex flex-col sm:flex-row gap-2">
+                        <div className="flex min-w-0 w-full flex-wrap gap-2 sm:w-auto sm:max-w-md sm:justify-end lg:max-w-none">
                             <Button
                                 variant="outline"
                                 onClick={handleDelete}
-                                className="text-red-600 hover:text-red-700 hover:border-red-300"
+                                className="min-w-0 shrink-0 whitespace-nowrap text-red-600 hover:text-red-700 hover:border-red-300"
                             >
-                                <Trash2 className="h-4 w-4 mr-2" />
+                                <Trash2 className="h-4 w-4 mr-2 shrink-0" />
                                 <span className="hidden sm:inline">Delete</span>
+                                <span className="sm:hidden">Del</span>
                             </Button>
                             <Button
                                 onClick={handleSend}
-                                className="bg-green-600 hover:bg-green-700"
+                                className="min-w-0 shrink-0 whitespace-nowrap bg-green-600 hover:bg-green-700"
                             >
-                                <Send className="h-4 w-4 mr-2" />
+                                <Send className="h-4 w-4 mr-2 shrink-0" />
                                 <span className="hidden sm:inline">Send Now</span>
                                 <span className="sm:hidden">Send</span>
                             </Button>
@@ -267,10 +269,10 @@ export default function NewsletterEdit({ newsletter, templates, previewData }: N
                 </div>
 
                 {/* Edit Form */}
-                <form onSubmit={handleSubmit} className="space-y-6">
-                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <form onSubmit={handleSubmit} className="min-w-0 space-y-6">
+                    <div className="grid min-w-0 grid-cols-1 gap-6 lg:grid-cols-3">
                         {/* Main Content */}
-                        <div className="lg:col-span-2 space-y-6">
+                        <div className="min-w-0 space-y-6 lg:col-span-2">
                             <Card className="shadow-lg">
                                 <CardHeader>
                                     <CardTitle>Send via</CardTitle>
@@ -403,7 +405,7 @@ export default function NewsletterEdit({ newsletter, templates, previewData }: N
                         </div>
 
                         {/* Sidebar */}
-                        <div className="space-y-6">
+                        <div className="min-w-0 space-y-6">
                             {/* Template Selection */}
                             <Card className="shadow-lg">
                                 <CardHeader>
@@ -419,13 +421,23 @@ export default function NewsletterEdit({ newsletter, templates, previewData }: N
                                     <div>
                                         <Label htmlFor="template">Newsletter Template</Label>
                                         <Select
-                                            value={data.newsletter_template_id.toString()}
-                                            onValueChange={(value) => setData('newsletter_template_id', parseInt(value))}
+                                            value={
+                                                data.newsletter_template_id === '' || data.newsletter_template_id === null
+                                                    ? '__none__'
+                                                    : String(data.newsletter_template_id)
+                                            }
+                                            onValueChange={(value) =>
+                                                setData(
+                                                    'newsletter_template_id',
+                                                    value === '__none__' ? '' : parseInt(value, 10)
+                                                )
+                                            }
                                         >
                                             <SelectTrigger className="mt-1">
-                                                <SelectValue placeholder="Select a template" />
+                                                <SelectValue placeholder="No template (optional)" />
                                             </SelectTrigger>
                                             <SelectContent>
+                                                <SelectItem value="__none__">No template</SelectItem>
                                                 {templates.map((template) => (
                                                     <SelectItem key={template.id} value={template.id.toString()}>
                                                         {template.name}
@@ -589,7 +601,9 @@ export default function NewsletterEdit({ newsletter, templates, previewData }: N
                                     </div>
                                     <div className="flex justify-between">
                                         <span className="text-sm text-gray-600 dark:text-gray-400">Template:</span>
-                                        <span className="text-sm font-medium">{newsletter.template.name}</span>
+                                        <span className="text-sm font-medium">
+                                            {newsletter.template?.name ?? 'None'}
+                                        </span>
                                     </div>
                                     <div className="flex justify-between">
                                         <span className="text-sm text-gray-600 dark:text-gray-400">Created:</span>
@@ -617,7 +631,7 @@ export default function NewsletterEdit({ newsletter, templates, previewData }: N
 
                 {/* Preview Modal */}
                 <Dialog open={showPreview} onOpenChange={setShowPreview}>
-                    <DialogContent className="!max-w-[95vw] !w-[95vw] sm:!max-w-[90vw] sm:!w-[90vw] lg:!max-w-[85vw] lg:!w-[85vw] xl:!max-w-[80vw] xl:!w-[80vw] max-h-[90vh] overflow-y-auto">
+                    <DialogContent className="w-[calc(100vw-2rem)] max-w-xl max-h-[min(85vh,720px)] overflow-y-auto sm:max-w-2xl">
                         <DialogHeader>
                             <DialogTitle>Newsletter Preview</DialogTitle>
                             <DialogDescription>
