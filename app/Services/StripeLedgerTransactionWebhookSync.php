@@ -2,6 +2,8 @@
 
 namespace App\Services;
 
+use App\Models\Order;
+use App\Models\ServiceOrder;
 use App\Models\Transaction;
 use Illuminate\Support\Facades\Log;
 use Stripe\PaymentIntent;
@@ -35,36 +37,134 @@ final class StripeLedgerTransactionWebhookSync
             return;
         }
         $meta = self::normalizeMetadata($session['metadata'] ?? []);
-        $tx = self::resolveTransactionFromMetadata($meta);
-        if (! $tx) {
-            return;
-        }
         $piRef = $session['payment_intent'] ?? null;
         $piId = is_string($piRef) ? $piRef : (is_array($piRef) ? ($piRef['id'] ?? null) : null);
         if (! is_string($piId) || $piId === '') {
             return;
         }
-        self::applyStripeFinancials(
-            $tx,
-            $piId,
-            [
-                'stripe_checkout_session_id' => $session['id'] ?? null,
-            ]
-        );
+
+        $taxUsd = self::checkoutSessionTaxUsd($session);
+        $tx = self::resolveTransactionFromMetadata($meta);
+        if ($tx) {
+            self::applyStripeFinancials(
+                $tx,
+                $piId,
+                self::filteredMergeMeta([
+                    'stripe_checkout_session_id' => $session['id'] ?? null,
+                    'stripe_tax_amount' => $taxUsd,
+                ])
+            );
+        }
+
+        self::syncOrderStripeFeeFromPaymentIntent($piId);
+
+        if ($taxUsd !== null) {
+            Order::query()->where('stripe_payment_intent_id', $piId)->update([
+                'stripe_tax_amount' => $taxUsd,
+            ]);
+        }
+
+        self::syncServiceOrderFromCheckoutSession($meta, $piId, $taxUsd);
+    }
+
+    /**
+     * @param  array<string, string>  $meta
+     */
+    private static function syncServiceOrderFromCheckoutSession(array $meta, string $paymentIntentId, ?float $taxUsd): void
+    {
+        if (($meta['type'] ?? '') !== 'service_order') {
+            return;
+        }
+        $rawId = $meta['order_id'] ?? '';
+        if ($rawId === '' || ! ctype_digit((string) $rawId)) {
+            return;
+        }
+
+        $data = self::retrievePaymentIntentFinancials($paymentIntentId);
+        $feeUsd = $data['stripe_fee_usd'] ?? 0.0;
+
+        $patch = [
+            'stripe_payment_intent_id' => $paymentIntentId,
+            'transaction_fee' => round((float) $feeUsd, 2),
+        ];
+        if ($taxUsd !== null) {
+            $patch['sales_tax'] = $taxUsd;
+        }
+
+        ServiceOrder::query()->whereKey((int) $rawId)->update($patch);
     }
 
     private static function syncFromPaymentIntentObject(array $pi): void
     {
+        $piId = $pi['id'] ?? null;
+        if (! is_string($piId) || $piId === '') {
+            return;
+        }
+
+        self::syncOrderStripeFeeFromPaymentIntent($piId);
+
         $meta = self::normalizeMetadata($pi['metadata'] ?? []);
         $tx = self::resolveTransactionFromMetadata($meta);
         if (! $tx) {
             return;
         }
-        $piId = $pi['id'] ?? null;
-        if (! is_string($piId) || $piId === '') {
+
+        self::applyStripeFinancials($tx, $piId, []);
+    }
+
+    private static function syncOrderStripeFeeFromPaymentIntent(string $paymentIntentId): void
+    {
+        $orders = Order::query()
+            ->where('stripe_payment_intent_id', $paymentIntentId)
+            ->get();
+        if ($orders->isEmpty()) {
             return;
         }
-        self::applyStripeFinancials($tx, $piId, []);
+
+        $feeUsd = 0.0;
+        try {
+            $data = self::retrievePaymentIntentFinancials($paymentIntentId);
+            if ($data !== null) {
+                $feeUsd = $data['stripe_fee_usd'];
+            }
+        } catch (\Throwable) {
+            return;
+        }
+
+        foreach ($orders as $order) {
+            $order->update([
+                'stripe_fee_amount' => round($feeUsd, 2),
+            ]);
+        }
+    }
+
+    /**
+     * @param  array<string, mixed|null>  $meta
+     * @return array<string, mixed>
+     */
+    private static function filteredMergeMeta(array $meta): array
+    {
+        return array_filter(
+            $meta,
+            static fn ($v) => $v !== null && $v !== ''
+        );
+    }
+
+    /**
+     * @param  array<string, mixed>  $session
+     */
+    private static function checkoutSessionTaxUsd(array $session): ?float
+    {
+        $td = $session['total_details'] ?? null;
+        if (! is_array($td)) {
+            return null;
+        }
+        $cents = (int) ($td['amount_tax'] ?? 0);
+        if ($cents <= 0) {
+            return null;
+        }
+
+        return round($cents / 100, 2);
     }
 
     /**
@@ -119,9 +219,10 @@ final class StripeLedgerTransactionWebhookSync
 
         $transaction->update([
             'fee' => $data['stripe_fee_usd'],
-            'meta' => array_merge($existingMeta, array_filter($mergeMeta, fn ($v) => $v !== null && $v !== ''), [
+            'meta' => array_merge($existingMeta, $mergeMeta, [
                 'stripe_fee' => $data['stripe_fee_usd'],
                 'stripe_processing_fee' => $data['stripe_fee_usd'],
+                'stripe_fee_amount' => $data['stripe_fee_usd'],
                 'stripe_payment_intent' => $paymentIntentId,
                 'stripe_amount_received_usd' => $data['amount_received_usd'],
                 'stripe_net_usd' => $data['net_usd'],

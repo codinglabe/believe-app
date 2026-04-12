@@ -4,10 +4,11 @@ namespace App\Http\Controllers;
 
 use App\Models\AdminSetting;
 use App\Models\Form1023Application;
+use App\Support\StripeAutomaticTax;
+use App\Support\StripeCustomerChargeAmount;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
 use Laravel\Cashier\Cashier;
 use Spatie\Permission\Models\Role;
@@ -17,20 +18,20 @@ class Form1023ApplicationController extends Controller
     public function show(Request $request)
     {
         $user = $request->user();
-        
+
         // Only allow organization users, not admins
         if ($user->role === 'admin') {
             abort(403, 'Form 1023 is only available for organization users.');
         }
-        
+
         $organization = $user->organization;
 
-        if (!$organization) {
+        if (! $organization) {
             abort(404, 'Organization not found.');
         }
 
         // Only allow if organization doesn't have EIN in database (has_edited_irs_data = true means EIN was not found)
-        if (!$organization->has_edited_irs_data && $organization->registration_status === 'approved') {
+        if (! $organization->has_edited_irs_data && $organization->registration_status === 'approved') {
             return redirect()->route('dashboard')->with('error', 'Form 1023 is only available for organizations not found in the IRS database.');
         }
 
@@ -46,7 +47,7 @@ class Form1023ApplicationController extends Controller
             ->first();
 
         // If there's an active application (not draft or needs_more_info), redirect to view page
-        if ($activeApplication && !in_array($activeApplication->status, ['draft', 'needs_more_info'])) {
+        if ($activeApplication && ! in_array($activeApplication->status, ['draft', 'needs_more_info'])) {
             return redirect()->route('form1023.apply.view', $activeApplication);
         }
 
@@ -131,25 +132,25 @@ class Form1023ApplicationController extends Controller
     public function store(Request $request)
     {
         $user = $request->user();
-        
+
         // Only allow organization users, not admins
         if ($user->role === 'admin') {
             abort(403, 'Form 1023 is only available for organization users.');
         }
-        
+
         $organization = $user->organization;
 
-        if (!$organization) {
+        if (! $organization) {
             return redirect()->route('dashboard')->with('error', 'You are not eligible to submit a Form 1023 application.');
         }
 
         // Only allow if organization doesn't have EIN in database (has_edited_irs_data = true means EIN was not found)
-        if (!$organization->has_edited_irs_data && $organization->registration_status === 'approved') {
+        if (! $organization->has_edited_irs_data && $organization->registration_status === 'approved') {
             return redirect()->route('dashboard')->with('error', 'Form 1023 is only available for organizations not found in the IRS database.');
         }
 
         $applicationFee = (float) AdminSetting::get('form_1023_application_fee', 600.00);
-        $amountInCents = (int) round($applicationFee * 100);
+        $amountInCents = StripeCustomerChargeAmount::chargeCentsFromNetUsd((float) $applicationFee, 'card');
 
         // Check for existing draft or needs_more_info application to update
         // Also check by application ID if provided in request
@@ -161,9 +162,9 @@ class Form1023ApplicationController extends Controller
                 ->whereIn('status', ['draft', 'needs_more_info'])
                 ->first();
         }
-        
+
         // If not found by ID, get the latest draft/needs_more_info
-        if (!$existingApplication) {
+        if (! $existingApplication) {
             $existingApplication = $organization->form1023Applications()
                 ->whereIn('status', ['draft', 'needs_more_info'])
                 ->latest()
@@ -175,7 +176,7 @@ class Form1023ApplicationController extends Controller
             ->latest()
             ->first();
 
-        if ($activeApplication && !$existingApplication) {
+        if ($activeApplication && ! $existingApplication) {
             return back()->withErrors([
                 'message' => 'A Form 1023 application is already in progress. Please wait for review before submitting another.',
             ]);
@@ -193,25 +194,25 @@ class Form1023ApplicationController extends Controller
         if ($existingApplication) {
             // Refresh to ensure we have latest data
             $existingApplication->refresh();
-            
-            $hasOrganizingDocs = !empty($existingApplication->organizing_documents) && 
-                is_array($existingApplication->organizing_documents) && 
+
+            $hasOrganizingDocs = ! empty($existingApplication->organizing_documents) &&
+                is_array($existingApplication->organizing_documents) &&
                 count(array_filter($existingApplication->organizing_documents)) > 0;
-            
-            $hasBylaws = !empty($existingApplication->bylaws_document) && 
-                is_array($existingApplication->bylaws_document) && 
+
+            $hasBylaws = ! empty($existingApplication->bylaws_document) &&
+                is_array($existingApplication->bylaws_document) &&
                 count(array_filter($existingApplication->bylaws_document)) > 0;
-            
-            $hasConflictPolicy = !empty($existingApplication->conflict_of_interest_policy_document) && 
-                is_array($existingApplication->conflict_of_interest_policy_document) && 
+
+            $hasConflictPolicy = ! empty($existingApplication->conflict_of_interest_policy_document) &&
+                is_array($existingApplication->conflict_of_interest_policy_document) &&
                 count(array_filter($existingApplication->conflict_of_interest_policy_document)) > 0;
-            
-            $hasFinancialStatements = !empty($existingApplication->financial_statements) && 
-                is_array($existingApplication->financial_statements) && 
+
+            $hasFinancialStatements = ! empty($existingApplication->financial_statements) &&
+                is_array($existingApplication->financial_statements) &&
                 count(array_filter($existingApplication->financial_statements)) > 0;
-            
-            $hasSs4 = !empty($existingApplication->form_ss4_confirmation) && 
-                is_array($existingApplication->form_ss4_confirmation) && 
+
+            $hasSs4 = ! empty($existingApplication->form_ss4_confirmation) &&
+                is_array($existingApplication->form_ss4_confirmation) &&
                 count(array_filter($existingApplication->form_ss4_confirmation)) > 0;
         }
 
@@ -338,13 +339,13 @@ class Form1023ApplicationController extends Controller
         try {
             $application = null;
 
-            DB::transaction(function () use ($request, $organization, $applicationFee, $existingApplication, $user, &$application) {
+            DB::transaction(function () use ($request, $organization, $applicationFee, $existingApplication, &$application) {
                 // Helper function to handle multiple file uploads
                 $handleFileUploads = function ($files, $directory, $existingFiles = null, $fieldName = null, &$meta = null) {
                     $uploaded = [];
                     if ($files) {
                         $fileArray = is_array($files) ? $files : [$files];
-                        
+
                         // Clear rejection status for this field if new files are uploaded
                         if ($fieldName && $meta) {
                             $rejectedDocs = $meta['rejected_documents'] ?? [];
@@ -354,7 +355,7 @@ class Form1023ApplicationController extends Controller
                             }
                             // Remove rejections for indexed files
                             foreach ($rejectedDocs as $key => $value) {
-                                if (strpos($key, $fieldName . '[') === 0) {
+                                if (strpos($key, $fieldName.'[') === 0) {
                                     unset($rejectedDocs[$key]);
                                 }
                             }
@@ -376,6 +377,7 @@ class Form1023ApplicationController extends Controller
                     if (empty($uploaded) && $existingFiles) {
                         return $existingFiles;
                     }
+
                     return $uploaded;
                 };
 
@@ -383,6 +385,7 @@ class Form1023ApplicationController extends Controller
                 $handleSingleFileUpload = function ($file, $directory, $existingFile = null) {
                     if ($file && $file instanceof \Illuminate\Http\UploadedFile) {
                         $path = $file->store($directory, 'public');
+
                         return [
                             'path' => $path,
                             'name' => $file->getClientOriginalName(),
@@ -390,6 +393,7 @@ class Form1023ApplicationController extends Controller
                             'size' => $file->getSize(),
                         ];
                     }
+
                     // Return existing file if no new file uploaded
                     return $existingFile;
                 };
@@ -420,7 +424,7 @@ class Form1023ApplicationController extends Controller
                     'form1023/prior-year-tax',
                     $existingApplication?->prior_year_tax_filings
                 );
-                
+
                 // Handle single file uploads (keep existing if no new file)
                 $conflictPolicyDocument = $handleSingleFileUpload(
                     $request->file('conflict_of_interest_policy_document'),
@@ -575,8 +579,8 @@ class Form1023ApplicationController extends Controller
                 $amountInCents,
                 'Form 1023 - Application for Recognition of Exemption',
                 1,
-                [
-                    'success_url' => route('form1023.apply.success', $application) . '?session_id={CHECKOUT_SESSION_ID}',
+                StripeAutomaticTax::mergeCheckoutOptions([
+                    'success_url' => route('form1023.apply.success', $application).'?session_id={CHECKOUT_SESSION_ID}',
                     'cancel_url' => route('form1023.apply.cancel', $application),
                     'metadata' => [
                         'type' => 'form_1023_application',
@@ -586,7 +590,7 @@ class Form1023ApplicationController extends Controller
                         'user_id' => $user->id,
                     ],
                     'payment_method_types' => ['card', 'afterpay_clearpay', 'affirm'],
-                ]
+                ])
             );
 
             $application->update([
@@ -599,7 +603,7 @@ class Form1023ApplicationController extends Controller
             // Set organization status to inactive
             $organization->status = 'Inactive';
             $organization->save();
-            
+
             // Assign organization role and remove organization_pending role
             // This will also set registration_status to 'approved'
             $this->assignOrganizationRole($user);
@@ -620,12 +624,12 @@ class Form1023ApplicationController extends Controller
     public function success(Request $request, Form1023Application $application)
     {
         $user = $request->user();
-        
+
         // Only allow organization users, not admins
         if ($user->role === 'admin') {
             abort(403, 'Form 1023 is only available for organization users.');
         }
-        
+
         $organization = $user->organization;
 
         if ($application->organization_id !== optional($organization)->id) {
@@ -634,7 +638,7 @@ class Form1023ApplicationController extends Controller
 
         $sessionId = $request->query('session_id');
 
-        if (!$sessionId) {
+        if (! $sessionId) {
             return redirect()->route('form1023.apply.show')->with('error', 'Missing checkout session identifier.');
         }
 
@@ -677,12 +681,12 @@ class Form1023ApplicationController extends Controller
     public function view(Request $request, Form1023Application $application)
     {
         $user = $request->user();
-        
+
         // Only allow organization users, not admins
         if ($user->role === 'admin') {
             abort(403, 'Form 1023 is only available for organization users.');
         }
-        
+
         $organization = $user->organization;
 
         if ($application->organization_id !== optional($organization)->id) {
@@ -733,12 +737,12 @@ class Form1023ApplicationController extends Controller
     public function initiatePayment(Request $request, Form1023Application $application)
     {
         $user = $request->user();
-        
+
         // Only allow organization users, not admins
         if ($user->role === 'admin') {
             abort(403, 'Form 1023 is only available for organization users.');
         }
-        
+
         $organization = $user->organization;
 
         if ($application->organization_id !== optional($organization)->id) {
@@ -751,20 +755,20 @@ class Form1023ApplicationController extends Controller
         }
 
         // Check if application is in a state that allows payment
-        if (!in_array($application->status, ['pending_payment', 'draft'])) {
+        if (! in_array($application->status, ['pending_payment', 'draft'])) {
             return redirect()->route('form1023.apply.view', $application)->with('error', 'Payment cannot be initiated for this application status.');
         }
 
         $applicationFee = (float) AdminSetting::get('form_1023_application_fee', 600.00);
-        $amountInCents = (int) round($applicationFee * 100);
+        $amountInCents = StripeCustomerChargeAmount::chargeCentsFromNetUsd((float) $applicationFee, 'card');
 
         try {
             $checkout = $user->checkoutCharge(
                 $amountInCents,
                 'Form 1023 - Application for Recognition of Exemption',
                 1,
-                [
-                    'success_url' => route('form1023.apply.success', $application) . '?session_id={CHECKOUT_SESSION_ID}',
+                StripeAutomaticTax::mergeCheckoutOptions([
+                    'success_url' => route('form1023.apply.success', $application).'?session_id={CHECKOUT_SESSION_ID}',
                     'cancel_url' => route('form1023.apply.cancel', $application),
                     'metadata' => [
                         'type' => 'form_1023_application',
@@ -774,7 +778,7 @@ class Form1023ApplicationController extends Controller
                         'user_id' => $user->id,
                     ],
                     'payment_method_types' => ['card', 'afterpay_clearpay', 'affirm'],
-                ]
+                ])
             );
 
             $application->update([
@@ -803,12 +807,12 @@ class Form1023ApplicationController extends Controller
     public function cancel(Request $request, Form1023Application $application)
     {
         $user = $request->user();
-        
+
         // Only allow organization users, not admins
         if ($user->role === 'admin') {
             abort(403, 'Form 1023 is only available for organization users.');
         }
-        
+
         $organization = $user->organization;
 
         if ($application->organization_id !== optional($organization)->id) {
@@ -830,20 +834,20 @@ class Form1023ApplicationController extends Controller
     public function update(Request $request, Form1023Application $application)
     {
         $user = $request->user();
-        
+
         // Only allow organization users, not admins
         if ($user->role === 'admin') {
             abort(403, 'Form 1023 is only available for organization users.');
         }
-        
+
         $organization = $user->organization;
 
-        if (!$organization || $application->organization_id !== $organization->id) {
+        if (! $organization || $application->organization_id !== $organization->id) {
             abort(403);
         }
 
         // Only allow updating draft or needs_more_info applications
-        if (!in_array($application->status, ['draft', 'needs_more_info'])) {
+        if (! in_array($application->status, ['draft', 'needs_more_info'])) {
             return redirect()->route('form1023.apply.view', $application)
                 ->with('error', 'This application cannot be edited.');
         }
@@ -915,10 +919,10 @@ class Form1023ApplicationController extends Controller
         ]);
 
         $applicationFee = (float) AdminSetting::get('form_1023_application_fee', 600.00);
-        $amountInCents = (int) round($applicationFee * 100);
+        $amountInCents = StripeCustomerChargeAmount::chargeCentsFromNetUsd((float) $applicationFee, 'card');
 
         try {
-            DB::transaction(function () use ($request, $organization, $applicationFee, $application, $user) {
+            DB::transaction(function () use ($request, $applicationFee, $application) {
                 // Helper functions (same as store method)
                 $handleFileUploads = function ($files, $directory, $existingFiles = null) {
                     $uploaded = [];
@@ -939,12 +943,14 @@ class Form1023ApplicationController extends Controller
                     if (empty($uploaded) && $existingFiles) {
                         return $existingFiles;
                     }
+
                     return $uploaded;
                 };
 
                 $handleSingleFileUpload = function ($file, $directory, $existingFile = null) {
                     if ($file && $file instanceof \Illuminate\Http\UploadedFile) {
                         $path = $file->store($directory, 'public');
+
                         return [
                             'path' => $path,
                             'name' => $file->getClientOriginalName(),
@@ -952,6 +958,7 @@ class Form1023ApplicationController extends Controller
                             'size' => $file->getSize(),
                         ];
                     }
+
                     return $existingFile;
                 };
 
@@ -981,40 +988,40 @@ class Form1023ApplicationController extends Controller
                     'form1023/prior-year-tax',
                     $application->prior_year_tax_filings
                 );
-                
+
                 $conflictPolicyDocument = $handleSingleFileUpload(
                     $request->file('conflict_of_interest_policy_document'),
                     'form1023/conflict-policy',
-                    is_array($application->conflict_of_interest_policy_document) && count($application->conflict_of_interest_policy_document) > 0 
-                        ? $application->conflict_of_interest_policy_document[0] 
+                    is_array($application->conflict_of_interest_policy_document) && count($application->conflict_of_interest_policy_document) > 0
+                        ? $application->conflict_of_interest_policy_document[0]
                         : null
                 );
                 $orgChartDocument = $handleSingleFileUpload(
                     $request->file('organizational_chart_document'),
                     'form1023/organizational-chart',
-                    is_array($application->organizational_chart_document) && count($application->organizational_chart_document) > 0 
-                        ? $application->organizational_chart_document[0] 
+                    is_array($application->organizational_chart_document) && count($application->organizational_chart_document) > 0
+                        ? $application->organizational_chart_document[0]
                         : null
                 );
                 $ss4Confirmation = $handleSingleFileUpload(
                     $request->file('form_ss4_confirmation'),
                     'form1023/ss4-confirmation',
-                    is_array($application->form_ss4_confirmation) && count($application->form_ss4_confirmation) > 0 
-                        ? $application->form_ss4_confirmation[0] 
+                    is_array($application->form_ss4_confirmation) && count($application->form_ss4_confirmation) > 0
+                        ? $application->form_ss4_confirmation[0]
                         : null
                 );
                 $boardMinutes = $handleSingleFileUpload(
                     $request->file('board_meeting_minutes'),
                     'form1023/board-minutes',
-                    is_array($application->board_meeting_minutes) && count($application->board_meeting_minutes) > 0 
-                        ? $application->board_meeting_minutes[0] 
+                    is_array($application->board_meeting_minutes) && count($application->board_meeting_minutes) > 0
+                        ? $application->board_meeting_minutes[0]
                         : null
                 );
                 $whistleblowerPolicy = $handleSingleFileUpload(
                     $request->file('whistleblower_policy_document'),
                     'form1023/whistleblower-policy',
-                    is_array($application->whistleblower_policy_document) && count($application->whistleblower_policy_document) > 0 
-                        ? $application->whistleblower_policy_document[0] 
+                    is_array($application->whistleblower_policy_document) && count($application->whistleblower_policy_document) > 0
+                        ? $application->whistleblower_policy_document[0]
                         : null
                 );
 
@@ -1041,7 +1048,7 @@ class Form1023ApplicationController extends Controller
 
                 // Check if this is a draft save
                 $isDraftSave = $request->has('save_as_draft') && $request->input('save_as_draft') == '1';
-                
+
                 // Update the application
                 $application->update([
                     'status' => $isDraftSave ? 'draft' : 'pending_payment',
@@ -1087,7 +1094,7 @@ class Form1023ApplicationController extends Controller
 
             // Check if this is a draft save
             $isDraftSave = $request->has('save_as_draft') && $request->input('save_as_draft') == '1';
-            
+
             // If saving as draft, set organization status and redirect
             if ($isDraftSave) {
                 // Set organization status to inactive
@@ -1105,8 +1112,8 @@ class Form1023ApplicationController extends Controller
                 $amountInCents,
                 'Form 1023 - Application for Recognition of Exemption',
                 1,
-                [
-                    'success_url' => route('form1023.apply.success', $application) . '?session_id={CHECKOUT_SESSION_ID}',
+                StripeAutomaticTax::mergeCheckoutOptions([
+                    'success_url' => route('form1023.apply.success', $application).'?session_id={CHECKOUT_SESSION_ID}',
                     'cancel_url' => route('form1023.apply.cancel', $application),
                     'metadata' => [
                         'type' => 'form_1023_application',
@@ -1116,7 +1123,7 @@ class Form1023ApplicationController extends Controller
                         'user_id' => $user->id,
                     ],
                     'payment_method_types' => ['card', 'afterpay_clearpay', 'affirm'],
-                ]
+                ])
             );
 
             $application->update([
@@ -1128,7 +1135,7 @@ class Form1023ApplicationController extends Controller
 
             $organization->status = 'Inactive';
             $organization->save();
-            
+
             // This will also set registration_status to 'approved'
             $this->assignOrganizationRole($user);
 
@@ -1149,20 +1156,20 @@ class Form1023ApplicationController extends Controller
     public function saveAsDraft(Request $request)
     {
         $user = $request->user();
-        
+
         // Only allow organization users, not admins
         if ($user->role === 'admin') {
             abort(403, 'Form 1023 is only available for organization users.');
         }
-        
+
         $organization = $user->organization;
 
-        if (!$organization) {
+        if (! $organization) {
             return redirect()->route('dashboard')->with('error', 'You are not eligible to submit a Form 1023 application.');
         }
 
         // Only allow if organization doesn't have EIN in database (has_edited_irs_data = true means EIN was not found)
-        if (!$organization->has_edited_irs_data && $organization->registration_status === 'approved') {
+        if (! $organization->has_edited_irs_data && $organization->registration_status === 'approved') {
             return redirect()->route('dashboard')->with('error', 'Form 1023 is only available for organizations not found in the IRS database.');
         }
 
@@ -1175,8 +1182,8 @@ class Form1023ApplicationController extends Controller
                 ->whereIn('status', ['draft', 'needs_more_info'])
                 ->first();
         }
-        
-        if (!$existingApplication) {
+
+        if (! $existingApplication) {
             $existingApplication = $organization->form1023Applications()
                 ->whereIn('status', ['draft', 'needs_more_info'])
                 ->latest()
@@ -1262,7 +1269,7 @@ class Form1023ApplicationController extends Controller
             ->latest()
             ->first();
 
-        if ($activeApplication && !$existingApplication) {
+        if ($activeApplication && ! $existingApplication) {
             return back()->withErrors([
                 'message' => 'A Form 1023 application is already in progress. Please wait for review before submitting another.',
             ]);
@@ -1287,12 +1294,14 @@ class Form1023ApplicationController extends Controller
                             ];
                         }
                     }
+
                     return $uploaded;
                 };
 
                 $handleSingleFileUpload = function ($file, $directory) {
                     if ($file) {
                         $path = $file->store($directory, 'public');
+
                         return [
                             'path' => $path,
                             'name' => $file->getClientOriginalName(),
@@ -1300,6 +1309,7 @@ class Form1023ApplicationController extends Controller
                             'size' => $file->getSize(),
                         ];
                     }
+
                     return null;
                 };
 
@@ -1308,65 +1318,65 @@ class Form1023ApplicationController extends Controller
                 if (empty($organizingDocuments) && $existingApplication && $existingApplication->organizing_documents) {
                     $organizingDocuments = $existingApplication->organizing_documents;
                 }
-                
+
                 $bylawsDocuments = $handleFileUploads($request->file('bylaws_document'), 'form1023/bylaws');
                 if (empty($bylawsDocuments) && $existingApplication && $existingApplication->bylaws_document) {
                     $bylawsDocuments = $existingApplication->bylaws_document;
                 }
-                
+
                 $fundraisingMaterials = $handleFileUploads($request->file('fundraising_materials'), 'form1023/fundraising-materials');
                 if (empty($fundraisingMaterials) && $existingApplication && $existingApplication->fundraising_materials) {
                     $fundraisingMaterials = $existingApplication->fundraising_materials;
                 }
-                
+
                 $financialStatements = $handleFileUploads($request->file('financial_statements'), 'form1023/financial-statements');
                 if (empty($financialStatements) && $existingApplication && $existingApplication->financial_statements) {
                     $financialStatements = $existingApplication->financial_statements;
                 }
-                
+
                 $priorYearTaxFilings = $handleFileUploads($request->file('prior_year_tax_filings'), 'form1023/prior-year-tax');
                 if (empty($priorYearTaxFilings) && $existingApplication && $existingApplication->prior_year_tax_filings) {
                     $priorYearTaxFilings = $existingApplication->prior_year_tax_filings;
                 }
-                
+
                 $conflictPolicyDocument = $handleSingleFileUpload($request->file('conflict_of_interest_policy_document'), 'form1023/conflict-policy');
-                if (!$conflictPolicyDocument && $existingApplication && $existingApplication->conflict_of_interest_policy_document) {
-                    $conflictPolicyDocArray = is_array($existingApplication->conflict_of_interest_policy_document) 
-                        ? $existingApplication->conflict_of_interest_policy_document 
+                if (! $conflictPolicyDocument && $existingApplication && $existingApplication->conflict_of_interest_policy_document) {
+                    $conflictPolicyDocArray = is_array($existingApplication->conflict_of_interest_policy_document)
+                        ? $existingApplication->conflict_of_interest_policy_document
                         : [$existingApplication->conflict_of_interest_policy_document];
-                    $conflictPolicyDocument = !empty($conflictPolicyDocArray) ? $conflictPolicyDocArray[0] : null;
+                    $conflictPolicyDocument = ! empty($conflictPolicyDocArray) ? $conflictPolicyDocArray[0] : null;
                 }
-                
+
                 $orgChartDocument = $handleSingleFileUpload($request->file('organizational_chart_document'), 'form1023/organizational-chart');
-                if (!$orgChartDocument && $existingApplication && $existingApplication->organizational_chart_document) {
-                    $orgChartDocArray = is_array($existingApplication->organizational_chart_document) 
-                        ? $existingApplication->organizational_chart_document 
+                if (! $orgChartDocument && $existingApplication && $existingApplication->organizational_chart_document) {
+                    $orgChartDocArray = is_array($existingApplication->organizational_chart_document)
+                        ? $existingApplication->organizational_chart_document
                         : [$existingApplication->organizational_chart_document];
-                    $orgChartDocument = !empty($orgChartDocArray) ? $orgChartDocArray[0] : null;
+                    $orgChartDocument = ! empty($orgChartDocArray) ? $orgChartDocArray[0] : null;
                 }
-                
+
                 $ss4Confirmation = $handleSingleFileUpload($request->file('form_ss4_confirmation'), 'form1023/ss4-confirmation');
-                if (!$ss4Confirmation && $existingApplication && $existingApplication->form_ss4_confirmation) {
-                    $ss4ConfArray = is_array($existingApplication->form_ss4_confirmation) 
-                        ? $existingApplication->form_ss4_confirmation 
+                if (! $ss4Confirmation && $existingApplication && $existingApplication->form_ss4_confirmation) {
+                    $ss4ConfArray = is_array($existingApplication->form_ss4_confirmation)
+                        ? $existingApplication->form_ss4_confirmation
                         : [$existingApplication->form_ss4_confirmation];
-                    $ss4Confirmation = !empty($ss4ConfArray) ? $ss4ConfArray[0] : null;
+                    $ss4Confirmation = ! empty($ss4ConfArray) ? $ss4ConfArray[0] : null;
                 }
-                
+
                 $boardMinutes = $handleSingleFileUpload($request->file('board_meeting_minutes'), 'form1023/board-minutes');
-                if (!$boardMinutes && $existingApplication && $existingApplication->board_meeting_minutes) {
-                    $boardMinutesArray = is_array($existingApplication->board_meeting_minutes) 
-                        ? $existingApplication->board_meeting_minutes 
+                if (! $boardMinutes && $existingApplication && $existingApplication->board_meeting_minutes) {
+                    $boardMinutesArray = is_array($existingApplication->board_meeting_minutes)
+                        ? $existingApplication->board_meeting_minutes
                         : [$existingApplication->board_meeting_minutes];
-                    $boardMinutes = !empty($boardMinutesArray) ? $boardMinutesArray[0] : null;
+                    $boardMinutes = ! empty($boardMinutesArray) ? $boardMinutesArray[0] : null;
                 }
-                
+
                 $whistleblowerPolicy = $handleSingleFileUpload($request->file('whistleblower_policy_document'), 'form1023/whistleblower-policy');
-                if (!$whistleblowerPolicy && $existingApplication && $existingApplication->whistleblower_policy_document) {
-                    $whistleblowerArray = is_array($existingApplication->whistleblower_policy_document) 
-                        ? $existingApplication->whistleblower_policy_document 
+                if (! $whistleblowerPolicy && $existingApplication && $existingApplication->whistleblower_policy_document) {
+                    $whistleblowerArray = is_array($existingApplication->whistleblower_policy_document)
+                        ? $existingApplication->whistleblower_policy_document
                         : [$existingApplication->whistleblower_policy_document];
-                    $whistleblowerPolicy = !empty($whistleblowerArray) ? $whistleblowerArray[0] : null;
+                    $whistleblowerPolicy = ! empty($whistleblowerArray) ? $whistleblowerArray[0] : null;
                 }
 
                 // Handle file uploads in repeater fields
@@ -1438,7 +1448,7 @@ class Form1023ApplicationController extends Controller
                     'board_meeting_minutes' => $boardMinutes ? [$boardMinutes] : ($existingApplication ? $existingApplication->board_meeting_minutes : null),
                     'whistleblower_policy_document' => $whistleblowerPolicy ? [$whistleblowerPolicy] : ($existingApplication ? $existingApplication->whistleblower_policy_document : null),
                 ];
-                
+
                 if ($existingApplication) {
                     $application = $existingApplication;
                     $application->update($applicationData);
@@ -1475,7 +1485,7 @@ class Form1023ApplicationController extends Controller
      */
     private function assignOrganizationRole($user): void
     {
-        if (!$user) {
+        if (! $user) {
             return;
         }
 
@@ -1485,11 +1495,12 @@ class Form1023ApplicationController extends Controller
         }
 
         $organization = $user->organization;
-        if (!$organization) {
+        if (! $organization) {
             Log::warning('Cannot assign organization role: user has no organization', [
                 'user_id' => $user->id,
                 'user_role' => $user->role,
             ]);
+
             return;
         }
 

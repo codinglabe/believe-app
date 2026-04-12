@@ -8,6 +8,7 @@ use App\Models\MerchantHubReferralReward;
 use App\Models\Order;
 use App\Models\Transaction;
 use App\Services\BiuPlatformFeeService;
+use App\Support\StripeCustomerChargeAmount;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -337,7 +338,7 @@ class MerchantRedemptionController extends Controller
                 'shipping_postal_code' => $request->shipping_postal_code,
                 'shipping_country' => strtoupper($request->shipping_country),
             ]);
-            $amountCents = (int) round($cashAmount * 100);
+            $amountCents = StripeCustomerChargeAmount::chargeCentsFromNetUsd($cashAmount, 'card');
             if ($amountCents < 50) {
                 return back()->withErrors(['error' => 'Minimum charge amount is 0.50. This offer cannot be purchased with cash.']);
             }
@@ -430,7 +431,7 @@ class MerchantRedemptionController extends Controller
 
                 $receiptCode = 'RED-'.strtoupper(Str::random(8));
 
-                $amountCents = (int) round($cashAmount * 100);
+                $amountCents = StripeCustomerChargeAmount::chargeCentsFromNetUsd($cashAmount, 'card');
                 $currency = strtolower($offer->currency ?? 'usd');
                 $checkout = $user->checkout([
                     [

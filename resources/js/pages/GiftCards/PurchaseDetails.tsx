@@ -134,8 +134,10 @@ export default function PurchaseDetailsPage({ brand, country, user, followingOrg
         setData('organization_id', parseInt(orgId))
     }
 
-    // Get selected organization details
-    const selectedOrganization = followingOrganizations.find(org => org.id.toString() === selectedOrganizationId)
+    // Get selected organization details (guard null id from bad API data)
+    const selectedOrganization = followingOrganizations.find(
+        (org) => org.id != null && String(org.id) === selectedOrganizationId
+    )
     const isOrganizationApproved = selectedOrganization?.gift_card_terms_approved ?? false
 
     const handlePurchase = (e: React.FormEvent) => {
@@ -338,10 +340,12 @@ export default function PurchaseDetailsPage({ brand, country, user, followingOrg
                                                         <SelectValue placeholder="Choose an organization" />
                                                     </SelectTrigger>
                                                     <SelectContent className="dark:bg-gray-800">
-                                                        {followingOrganizations.map((org) => (
+                                                        {followingOrganizations
+                                                            .filter((org) => org.id != null)
+                                                            .map((org) => (
                                                             <SelectItem
                                                                 key={org.id}
-                                                                value={org.id.toString()}
+                                                                value={String(org.id)}
                                                                 className="dark:hover:bg-gray-700"
                                                             >
                                                                 {org.name}
@@ -615,7 +619,9 @@ export default function PurchaseDetailsPage({ brand, country, user, followingOrg
                                                     Organization:
                                                 </span>
                                                 <span className="font-medium text-right max-w-[150px] truncate dark:text-white">
-                                                    {followingOrganizations.find(org => org.id.toString() === selectedOrganizationId)?.name || ''}
+                                                    {followingOrganizations.find(
+                                                    (org) => org.id != null && String(org.id) === selectedOrganizationId
+                                                )?.name || ''}
                                                 </span>
                                             </div>
                                         )}

@@ -3,10 +3,12 @@
 namespace App\Http\Controllers;
 
 use App\Models\Transaction;
+use App\Support\StripeAutomaticTax;
+use App\Support\StripeCustomerChargeAmount;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
-use Laravel\Cashier\Cashier;
 use Inertia\Inertia;
+use Laravel\Cashier\Cashier;
 
 class CreditPurchaseController extends Controller
 {
@@ -16,7 +18,7 @@ class CreditPurchaseController extends Controller
     public function index()
     {
         $user = auth()->user();
-        
+
         return Inertia::render('Credits/Purchase', [
             'currentCredits' => $user->credits ?? 0,
             'price' => 1.00, // $1
@@ -39,10 +41,9 @@ class CreditPurchaseController extends Controller
             $amount = $request->amount; // $1
             $creditsToAdd = 50000; // 50000 credits per $1
             $returnRoute = $request->input('return_route', 'ai-chat.index'); // Default to AI chat
-            
-            // Calculate total amount in cents
-            $amountInCents = (int) ($amount * 100);
-            
+
+            $amountInCents = StripeCustomerChargeAmount::chargeCentsFromNetUsd((float) $amount, 'card');
+
             // Record pending transaction
             $transaction = $user->recordTransaction([
                 'type' => 'credit_purchase',
@@ -51,7 +52,7 @@ class CreditPurchaseController extends Controller
                 'status' => 'pending',
                 'meta' => [
                     'credits_to_add' => $creditsToAdd,
-                    'description' => "Purchase {$creditsToAdd} credits"
+                    'description' => "Purchase {$creditsToAdd} credits",
                 ],
             ]);
 
@@ -60,9 +61,9 @@ class CreditPurchaseController extends Controller
                 $amountInCents,
                 "Purchase {$creditsToAdd} Credits",
                 1,
-                [
-                    'success_url' => route('credits.success') . '?session_id={CHECKOUT_SESSION_ID}&return_route=' . urlencode($returnRoute),
-                    'cancel_url' => route('credits.cancel') . '?return_route=' . urlencode($returnRoute),
+                StripeAutomaticTax::mergeCheckoutOptions([
+                    'success_url' => route('credits.success').'?session_id={CHECKOUT_SESSION_ID}&return_route='.urlencode($returnRoute),
+                    'cancel_url' => route('credits.cancel').'?return_route='.urlencode($returnRoute),
                     'metadata' => [
                         'user_id' => $user->id,
                         'transaction_id' => $transaction->id,
@@ -72,18 +73,18 @@ class CreditPurchaseController extends Controller
                         'return_route' => $returnRoute,
                     ],
                     'payment_method_types' => ['card'],
-                ]
+                ])
             );
-            
+
             // Return Inertia redirect to Stripe checkout
             return Inertia::location($checkout->url);
-            
+
         } catch (\Exception $e) {
             Log::error('Credit purchase checkout error', [
                 'error' => $e->getMessage(),
                 'user_id' => $request->user()->id,
             ]);
-            
+
             return back()->withErrors([
                 'message' => 'Failed to create checkout session. Please try again.',
                 'error' => $e->getMessage(),
@@ -99,16 +100,16 @@ class CreditPurchaseController extends Controller
         try {
             $sessionId = $request->query('session_id');
             $returnRoute = $request->query('return_route', 'ai-chat.index');
-            
-            if (!$sessionId) {
+
+            if (! $sessionId) {
                 return redirect()->route($returnRoute)->with('error', 'Invalid session ID.');
             }
 
             $user = $request->user();
-            
+
             // Retrieve the checkout session from Stripe
             $session = Cashier::stripe()->checkout->sessions->retrieve($sessionId);
-            
+
             if ($session->payment_status !== 'paid') {
                 return redirect()->route($returnRoute)->with('error', 'Payment was not completed.');
             }
@@ -146,13 +147,13 @@ class CreditPurchaseController extends Controller
             ]);
 
             return redirect()->route($returnRouteFromMetadata)->with('success', "Successfully purchased {$creditsToAdd} credits!");
-            
+
         } catch (\Exception $e) {
             Log::error('Credit purchase success handler error', [
                 'error' => $e->getMessage(),
                 'session_id' => $request->query('session_id'),
             ]);
-            
+
             return redirect()->route('ai-chat.index')->with('error', 'Error processing payment. Please contact support.');
         }
     }
@@ -163,6 +164,7 @@ class CreditPurchaseController extends Controller
     public function cancel(Request $request)
     {
         $returnRoute = $request->query('return_route', 'ai-chat.index');
+
         return redirect()->route($returnRoute)->with('info', 'Payment was cancelled.');
     }
 
@@ -177,8 +179,7 @@ class CreditPurchaseController extends Controller
         // This method can be used for additional credit processing if needed
         // The actual webhook should be configured in Stripe dashboard to point to:
         // /stripe/webhook (Cashier's default webhook endpoint)
-        
+
         return response()->json(['status' => 'success']);
     }
 }
-

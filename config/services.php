@@ -39,6 +39,21 @@ return [
         'secret' => env('STRIPE_SECRET'),
         'live_key' => env('STRIPE_LIVE_KEY'),
         'live_secret' => env('STRIPE_LIVE_SECRET'),
+        /**
+         * Stripe Tax: marketplace uses the Tax Calculation API; Checkout Sessions (donations, courses, etc.)
+         * use automatic_tax when this is true. Enable Stripe Tax in the Stripe Dashboard for your account.
+         */
+        'automatic_tax' => filter_var(env('STRIPE_AUTOMATIC_TAX', false), FILTER_VALIDATE_BOOLEAN),
+        /** Default Stripe product tax codes (see Stripe Tax settings). */
+        'tax_code_physical' => env('STRIPE_TAX_CODE_PHYSICAL', 'txcd_99999999'),
+        'tax_code_digital' => env('STRIPE_TAX_CODE_DIGITAL', 'txcd_10000000'),
+        'tax_code_shipping' => env('STRIPE_TAX_CODE_SHIPPING', 'txcd_92010001'),
+        /**
+         * When true, card/ACH checkout amounts are grossed up so estimated net after Stripe
+         * processing fees matches the product/service total (customer pays the fee).
+         * Donations keep their own "donor covers fees" toggle; Believe Points checkout already grosses up.
+         */
+        'customer_pays_processing_fee' => filter_var(env('STRIPE_CUSTOMER_PAYS_PROCESSING_FEE', false), FILTER_VALIDATE_BOOLEAN),
     ],
 
     'plaid' => [

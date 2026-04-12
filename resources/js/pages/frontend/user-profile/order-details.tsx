@@ -69,6 +69,9 @@ interface Order {
   subtotal: number
   shipping_cost: number
   tax_amount: number
+  stripe_tax_amount?: number | null
+  stripe_fee_amount?: number | null
+  stripe_processing_fee_addon?: number | null
   printify_tax_amount?: number
   additional_sales_tax_adjustment?: number
   platform_fee: number
@@ -486,42 +489,84 @@ export default function OrderDetails() {
                                           ${(Number(order?.shipping_cost) || 0).toFixed(2)}
                     </span>
                   </div>
-                  {(Number(order?.printify_tax_amount) > 0 || Number(order?.additional_sales_tax_adjustment) > 0) ? (
-                    <>
-                      <div className="flex justify-between">
-                        <span className="text-gray-600 dark:text-gray-400">Sales tax (Printify)</span>
-                        <span className="font-medium text-gray-900 dark:text-white">
-                          ${(Number(order?.printify_tax_amount) || 0).toFixed(2)}
-                        </span>
-                      </div>
-                      {(Number(order?.additional_sales_tax_adjustment) || 0) > 0 && (
+                  {(() => {
+                    const stripeTax = Number(order?.stripe_tax_amount) || 0
+                    const hasStripeTax = stripeTax > 0
+                    const showPrintifyBreakdown =
+                      (Number(order?.printify_tax_amount) > 0 ||
+                        Number(order?.additional_sales_tax_adjustment) > 0) &&
+                      !hasStripeTax
+                    if (hasStripeTax) {
+                      return (
                         <div className="flex justify-between">
-                          <span className="text-gray-600 dark:text-gray-400">Additional sales tax adjustment</span>
+                          <span className="text-gray-600 dark:text-gray-400">Sales tax (Stripe)</span>
                           <span className="font-medium text-gray-900 dark:text-white">
-                            ${(Number(order?.additional_sales_tax_adjustment) || 0).toFixed(2)}
+                            ${stripeTax.toFixed(2)}
                           </span>
                         </div>
-                      )}
+                      )
+                    }
+                    if (showPrintifyBreakdown) {
+                      return (
+                        <>
+                          <div className="flex justify-between">
+                            <span className="text-gray-600 dark:text-gray-400">Sales tax (Printify)</span>
+                            <span className="font-medium text-gray-900 dark:text-white">
+                              ${(Number(order?.printify_tax_amount) || 0).toFixed(2)}
+                            </span>
+                          </div>
+                          {(Number(order?.additional_sales_tax_adjustment) || 0) > 0 && (
+                            <div className="flex justify-between">
+                              <span className="text-gray-600 dark:text-gray-400">Additional sales tax adjustment</span>
+                              <span className="font-medium text-gray-900 dark:text-white">
+                                ${(Number(order?.additional_sales_tax_adjustment) || 0).toFixed(2)}
+                              </span>
+                            </div>
+                          )}
+                          <div className="flex justify-between">
+                            <span className="text-gray-600 dark:text-gray-400">Total tax</span>
+                            <span className="font-medium text-gray-900 dark:text-white">
+                              ${(Number(order?.tax_amount) || 0).toFixed(2)}
+                            </span>
+                          </div>
+                        </>
+                      )
+                    }
+                    return (
                       <div className="flex justify-between">
-                        <span className="text-gray-600 dark:text-gray-400">Total tax</span>
+                        <span className="text-gray-600 dark:text-gray-400">Tax</span>
                         <span className="font-medium text-gray-900 dark:text-white">
                           ${(Number(order?.tax_amount) || 0).toFixed(2)}
                         </span>
                       </div>
-                    </>
-                  ) : (
+                    )
+                  })()}
+                  {Number(order?.stripe_processing_fee_addon) > 0 && (
+                    <div className="flex justify-between items-baseline gap-2">
+                      <div>
+                        <span className="text-gray-600 dark:text-gray-400">Card processing fee (pass-through)</span>
+                        <p className="text-xs text-gray-500 dark:text-gray-500 mt-0.5 max-w-[14rem]">
+                          Estimated Stripe fee included in your charge so the order subtotal, shipping, and tax match what sellers receive.
+                        </p>
+                      </div>
+                      <span className="font-medium text-gray-900 dark:text-white tabular-nums shrink-0">
+                        ${(Number(order?.stripe_processing_fee_addon) || 0).toFixed(2)}
+                      </span>
+                    </div>
+                  )}
+                  {Number(order?.stripe_fee_amount) > 0 && (
                     <div className="flex justify-between">
-                      <span className="text-gray-600 dark:text-gray-400">Tax</span>
+                      <span className="text-gray-600 dark:text-gray-400">Stripe processing fee (actual)</span>
                       <span className="font-medium text-gray-900 dark:text-white">
-                        ${(Number(order?.tax_amount) || 0).toFixed(2)}
+                        ${(Number(order?.stripe_fee_amount) || 0).toFixed(2)}
                       </span>
                     </div>
                   )}
                   <div className="border-t border-gray-200 dark:border-gray-600 pt-3">
                     <div className="flex justify-between">
-                      <span className="font-semibold text-gray-900 dark:text-white">Total</span>
+                      <span className="font-semibold text-gray-900 dark:text-white">Total charged</span>
                       <span className="font-bold text-lg text-blue-600 dark:text-blue-400">
-                        ${order?.total_amount}
+                        ${(Number(order?.total_amount) || 0).toFixed(2)}
                       </span>
                     </div>
                   </div>

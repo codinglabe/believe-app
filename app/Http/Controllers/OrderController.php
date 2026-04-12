@@ -6,6 +6,7 @@ use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\ShippoShipment;
 use App\Models\User;
+use App\Services\MarketplacePoolRevenueSplit;
 use App\Services\PrintifyService;
 use App\Services\ShippoService;
 use Illuminate\Http\JsonResponse;
@@ -258,6 +259,9 @@ class OrderController extends Controller
             'subtotal_amount' => $orderSubtotal, // Add subtotal
             'shipping_cost' => $order->shipping_cost,
             'tax_amount' => $order->tax_amount,
+            'stripe_tax_amount' => $order->stripe_tax_amount,
+            'stripe_fee_amount' => $order->stripe_fee_amount,
+            'stripe_tax_calculation_id' => $order->stripe_tax_calculation_id,
             'platform_fee' => $order->platform_fee,
             'subtotal' => $order->subtotal,
             'donation_amount' => $order->donation_amount,
@@ -984,24 +988,28 @@ class OrderController extends Controller
         $useNonprofitSplit = $mp->nonprofit_marketplace_enabled
             && abs($pctMRaw + $pctNRaw) > 0.01;
         if ($useNonprofitSplit) {
-            $mCents = (int) round($lineCents * $pctMRaw / 100);
-            $nCents = (int) round($lineCents * $pctNRaw / 100);
-            $bCents = $lineCents - $mCents - $nCents;
-            $displayPctBiu = $lineCents > 0 ? round(($bCents / $lineCents) * 100, 2) : 0.0;
+            $eff = MarketplacePoolRevenueSplit::effectivePercentages($pctMRaw, $pctNRaw);
+            $allocated = MarketplacePoolRevenueSplit::allocateLineCents($lineCents, $pctMRaw, $pctNRaw);
+            $mCents = $allocated['merchant_cents'];
+            $nCents = $allocated['nonprofit_cents'];
+            $bCents = 0;
+            $pctMDisplay = $eff['pct_merchant'];
+            $pctNDisplay = $eff['pct_nonprofit'];
         } else {
             $mCents = $lineCents;
             $nCents = 0;
             $bCents = 0;
-            $displayPctBiu = 0.0;
+            $pctMDisplay = 100.0;
+            $pctNDisplay = 0.0;
         }
 
         $m = $mp->merchant;
 
         return [
             'line_subtotal' => round($lineSubtotal, 2),
-            'pct_merchant' => round($useNonprofitSplit ? $pctMRaw : 100.0, 2),
-            'pct_organization' => round($useNonprofitSplit ? $pctNRaw : 0.0, 2),
-            'pct_biu' => round($useNonprofitSplit ? $displayPctBiu : 0.0, 2),
+            'pct_merchant' => round($useNonprofitSplit ? $pctMDisplay : 100.0, 2),
+            'pct_organization' => round($useNonprofitSplit ? $pctNDisplay : 0.0, 2),
+            'pct_biu' => 0.0,
             'amount_merchant' => round($mCents / 100, 2),
             'amount_organization' => round($nCents / 100, 2),
             'amount_biu' => round($bCents / 100, 2),

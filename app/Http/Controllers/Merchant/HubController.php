@@ -3,21 +3,20 @@
 namespace App\Http\Controllers\Merchant;
 
 use App\Http\Controllers\Controller;
-use App\Models\MerchantHubOffer;
 use App\Models\MerchantHubCategory;
+use App\Models\MerchantHubOffer;
 use App\Models\MerchantHubOfferRedemption;
 use App\Models\Transaction;
 use App\Services\BiuPlatformFeeService;
+use App\Support\StripeCustomerChargeAmount;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Inertia\Inertia;
 use Inertia\Response;
 use Laravel\Cashier\Cashier;
-use SimpleSoftwareIO\QrCode\Facades\QrCode;
 
 class HubController extends Controller
 {
@@ -105,8 +104,8 @@ class HubController extends Controller
         // Transform offers for frontend
         $transformedOffers = $offers->through(function ($offer) {
             $imageUrl = $offer->image_url;
-            if ($imageUrl && !filter_var($imageUrl, FILTER_VALIDATE_URL)) {
-                $imageUrl = asset('storage/' . ltrim($imageUrl, '/'));
+            if ($imageUrl && ! filter_var($imageUrl, FILTER_VALIDATE_URL)) {
+                $imageUrl = asset('storage/'.ltrim($imageUrl, '/'));
             }
 
             return [
@@ -191,7 +190,7 @@ class HubController extends Controller
             $isMerchant = true;
             $linkedUser = \App\Models\User::where('email', $merchant->email)->first();
 
-            if (!$linkedUser) {
+            if (! $linkedUser) {
                 // Automatically create a User account for the merchant
                 $linkedUser = \App\Models\User::create([
                     'name' => $merchant->name,
@@ -206,10 +205,10 @@ class HubController extends Controller
             $userModel = $linkedUser;
         }
 
-        if (!$userModel) {
+        if (! $userModel) {
             return response()->json([
                 'success' => false,
-                'error' => 'You must be logged in to redeem offers.'
+                'error' => 'You must be logged in to redeem offers.',
             ], 401);
         }
 
@@ -222,15 +221,15 @@ class HubController extends Controller
             $offer = MerchantHubOffer::with(['merchant', 'category'])->findOrFail($request->offer_id);
 
             // Validate offer is available
-            if (!$offer->isAvailable()) {
+            if (! $offer->isAvailable()) {
                 return response()->json([
                     'success' => false,
-                    'error' => 'This offer is no longer available.'
+                    'error' => 'This offer is no longer available.',
                 ], 400);
             }
 
             $userPoints = $user->currentBelievePoints();
-            $receiptCode = 'RED-' . strtoupper(Str::random(8));
+            $receiptCode = 'RED-'.strtoupper(Str::random(8));
 
             // BIU: Pay with Cash (full amount) — Stripe
             if ($paymentMethod === 'cash') {
@@ -241,7 +240,7 @@ class HubController extends Controller
                 if ($referencePrice <= 0) {
                     return response()->json([
                         'success' => false,
-                        'error' => 'This offer does not support cash purchase.'
+                        'error' => 'This offer does not support cash purchase.',
                     ], 400);
                 }
                 $cashAmount = round($referencePrice, 2); // Full amount when paying with cash (no points)
@@ -254,7 +253,7 @@ class HubController extends Controller
                             'currency' => $currency,
                             'product_data' => [
                                 'name' => $offer->title,
-                                'description' => 'Pay with cash (full amount) - ' . $offer->merchant->name,
+                                'description' => 'Pay with cash (full amount) - '.$offer->merchant->name,
                             ],
                             'unit_amount' => $amountCents,
                         ],
@@ -262,7 +261,7 @@ class HubController extends Controller
                     ],
                 ], [
                     'payment_method_types' => ['card'],
-                    'success_url' => route('hub.offer.success') . '?session_id={CHECKOUT_SESSION_ID}',
+                    'success_url' => route('hub.offer.success').'?session_id={CHECKOUT_SESSION_ID}',
                     'cancel_url' => route('hub.offer.show', $offer->slug),
                     'metadata' => [
                         'user_id' => (string) $user->id,
@@ -286,12 +285,12 @@ class HubController extends Controller
 
             // BIU: Pay with Unity Points — deduct points, no Stripe
             $pointsToDeduct = 0;
-            if ($userPoints >= $offer->points_required && !$isMerchant) {
+            if ($userPoints >= $offer->points_required && ! $isMerchant) {
                 $pointsToDeduct = $offer->points_required;
-            } elseif (!$isMerchant && $userPoints < $offer->points_required) {
+            } elseif (! $isMerchant && $userPoints < $offer->points_required) {
                 return response()->json([
                     'success' => false,
-                    'error' => 'You need ' . number_format($offer->points_required) . ' points but you have ' . number_format($userPoints) . '.',
+                    'error' => 'You need '.number_format($offer->points_required).' points but you have '.number_format($userPoints).'.',
                 ], 400);
             }
 
@@ -307,8 +306,9 @@ class HubController extends Controller
             ]);
 
             if ($pointsToDeduct > 0) {
-                if (!$user->deductBelievePoints($pointsToDeduct)) {
+                if (! $user->deductBelievePoints($pointsToDeduct)) {
                     DB::rollBack();
+
                     return response()->json([
                         'success' => false,
                         'error' => 'Failed to deduct points. Please try again.',
@@ -318,7 +318,7 @@ class HubController extends Controller
 
             // If offer also has cash_required, create Stripe checkout via Cashier; otherwise approve
             if ($cashRequired > 0) {
-                $amountCents = (int) round($cashRequired * 100);
+                $amountCents = StripeCustomerChargeAmount::chargeCentsFromNetUsd((float) $cashRequired, 'card');
                 $currency = strtolower($offer->currency ?? 'usd');
                 $checkout = $user->checkout([
                     [
@@ -326,7 +326,7 @@ class HubController extends Controller
                             'currency' => $currency,
                             'product_data' => [
                                 'name' => $offer->title,
-                                'description' => 'Merchant Hub Offer - ' . $offer->merchant->name,
+                                'description' => 'Merchant Hub Offer - '.$offer->merchant->name,
                             ],
                             'unit_amount' => $amountCents,
                         ],
@@ -334,7 +334,7 @@ class HubController extends Controller
                     ],
                 ], [
                     'payment_method_types' => ['card'],
-                    'success_url' => route('hub.offer.success') . '?session_id={CHECKOUT_SESSION_ID}',
+                    'success_url' => route('hub.offer.success').'?session_id={CHECKOUT_SESSION_ID}',
                     'cancel_url' => route('hub.offer.show', $offer->slug),
                     'metadata' => [
                         'redemption_id' => (string) $redemption->id,
@@ -383,10 +383,11 @@ class HubController extends Controller
 
         } catch (\Exception $e) {
             DB::rollBack();
-            Log::error('Offer redemption checkout error: ' . $e->getMessage());
+            Log::error('Offer redemption checkout error: '.$e->getMessage());
+
             return response()->json([
                 'success' => false,
-                'error' => 'An error occurred during checkout. Please try again.'
+                'error' => 'An error occurred during checkout. Please try again.',
             ], 500);
         }
     }
@@ -399,7 +400,7 @@ class HubController extends Controller
         $sessionId = $request->get('session_id');
         $code = $request->get('code');
 
-        if (!$sessionId && !$code) {
+        if (! $sessionId && ! $code) {
             return redirect()->route('hub.index')
                 ->with('error', 'Invalid session.');
         }
@@ -447,9 +448,9 @@ class HubController extends Controller
                     $offerId = $metadata->offer_id ?? null;
                     $userId = $metadata->user_id ?? null;
                     $cashAmount = isset($metadata->cash_amount) ? (float) $metadata->cash_amount : 0;
-                    $receiptCode = $metadata->receipt_code ?? 'RED-' . strtoupper(Str::random(8));
+                    $receiptCode = $metadata->receipt_code ?? 'RED-'.strtoupper(Str::random(8));
                     $currency = $metadata->currency ?? 'usd';
-                    if (!$offerId || !$userId || $cashAmount <= 0) {
+                    if (! $offerId || ! $userId || $cashAmount <= 0) {
                         return redirect()->route('hub.index')->with('error', 'Invalid payment session.');
                     }
                     $offer = MerchantHubOffer::with('merchant')->findOrFail($offerId);
@@ -496,7 +497,7 @@ class HubController extends Controller
                         'image' => $redemption->offer->image_url
                             ? (filter_var($redemption->offer->image_url, FILTER_VALIDATE_URL)
                                 ? $redemption->offer->image_url
-                                : asset('storage/' . ltrim($redemption->offer->image_url, '/')))
+                                : asset('storage/'.ltrim($redemption->offer->image_url, '/')))
                             : '/placeholder.jpg',
                     ],
                     'status' => $redemption->status,
@@ -521,7 +522,7 @@ class HubController extends Controller
                 $offerImage = $redemption->offer->image_url
                     ? (filter_var($redemption->offer->image_url, FILTER_VALIDATE_URL)
                         ? $redemption->offer->image_url
-                        : asset('storage/' . ltrim($redemption->offer->image_url, '/')))
+                        : asset('storage/'.ltrim($redemption->offer->image_url, '/')))
                     : '/placeholder.jpg';
 
                 // Render success page instead of redirecting
@@ -546,10 +547,10 @@ class HubController extends Controller
             }
         } catch (\Exception $e) {
             DB::rollBack();
-            Log::error('Offer redemption success handler error: ' . $e->getMessage());
+            Log::error('Offer redemption success handler error: '.$e->getMessage());
+
             return redirect()->route('hub.index')
                 ->with('error', 'An error occurred while processing your redemption. Please contact support.');
         }
     }
 }
-

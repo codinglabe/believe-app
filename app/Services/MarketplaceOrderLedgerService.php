@@ -85,8 +85,8 @@ final class MarketplaceOrderLedgerService
     }
 
     /**
-     * Recompute merchant / nonprofit / BIU cents from order lines when {@see OrderSplit} is missing
-     * (same rules as {@see \App\Http\Controllers\CheckoutController} checkout).
+     * Recompute merchant / nonprofit cents from order lines when {@see OrderSplit} is missing
+     * (same rules as {@see \App\Http\Controllers\CheckoutController} checkout). Inferred biu_amount is always 0.
      *
      * @return array{merchant_amount: float, organization_amount: float, biu_amount: float}|null
      */
@@ -126,9 +126,10 @@ final class MarketplaceOrderLedgerService
             $useNonprofitSplit = $mp->nonprofit_marketplace_enabled
                 && abs($pctM + $pctN) > 0.01;
             if ($useNonprofitSplit) {
-                $mCents = (int) round($lineCents * $pctM / 100);
-                $nCents = (int) round($lineCents * $pctN / 100);
-                $bCents = $lineCents - $mCents - $nCents;
+                $allocated = MarketplacePoolRevenueSplit::allocateLineCents($lineCents, $pctM, $pctN);
+                $mCents = $allocated['merchant_cents'];
+                $nCents = $allocated['nonprofit_cents'];
+                $bCents = 0;
             } else {
                 $mCents = $lineCents;
                 $nCents = 0;
@@ -284,9 +285,11 @@ final class MarketplaceOrderLedgerService
             'gross_amount' => round((float) $order->total_amount, 2),
             'subtotal' => round((float) $order->subtotal, 2),
             'sales_tax' => round((float) ($order->tax_amount ?? 0), 2),
+            'stripe_tax_amount' => round((float) ($order->stripe_tax_amount ?? $order->tax_amount ?? 0), 2),
             'shipping_amount' => round((float) ($order->shipping_cost ?? 0), 2),
             'platform_fee' => round($platformFee, 2),
             'stripe_fee' => round(max(0, $stripeFeeUsd), 2),
+            'stripe_fee_amount' => round(max(0, $stripeFeeUsd), 2),
             'merchant_payout' => round($merchNet, 2),
             'supplier_payout' => round($merchNet, 2),
             'organization_gross_share' => round($orgAmt, 2),
@@ -349,6 +352,8 @@ final class MarketplaceOrderLedgerService
         $financials['net_to_organization'] = self::netPayableFromOrder($order, $stripe);
         $financials['subtotal_amount'] = round((float) $order->subtotal, 2);
         $financials['sales_tax_amount'] = round((float) ($order->tax_amount ?? 0), 2);
+        $financials['stripe_tax_amount'] = round((float) ($order->stripe_tax_amount ?? $order->tax_amount ?? 0), 2);
+        $financials['stripe_fee_amount'] = round((float) ($order->stripe_fee_amount ?? $financials['stripe_fee'] ?? 0), 2);
         $financials['shipping_amount'] = round((float) ($order->shipping_cost ?? 0), 2);
         $financials['supplier_payout'] = round($merchNet, 2);
         $financials['organization_payout'] = round($orgNet, 2);

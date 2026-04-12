@@ -21,6 +21,8 @@ use App\Services\BiuPlatformFeeService;
 use App\Services\PrintifyService;
 use App\Services\ShippoService;
 use App\Services\SupporterActivityService;
+use App\Support\StripeAutomaticTax;
+use App\Support\StripeCustomerChargeAmount;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -2030,12 +2032,16 @@ class ProductController extends BaseController
         $bidAmount = (float) $winningBid->bid_amount;
         $shippingCost = (float) $picked['cost'];
 
-        $stateCode = strtoupper(trim((string) ($winningBid->state ?? '')));
-        $taxRow = StateSalesTax::where('state_code', $stateCode)->first();
-        $taxAmount = $taxRow ? round(($bidAmount * (float) $taxRow->base_sales_tax_rate) / 100, 2) : 0.0;
+        // LEGACY: StateSalesTax table — skipped when Stripe Checkout automatic tax is enabled.
+        $taxAmount = 0.0;
+        if (! StripeAutomaticTax::enabled()) {
+            $stateCode = strtoupper(trim((string) ($winningBid->state ?? '')));
+            $taxRow = StateSalesTax::where('state_code', $stateCode)->first();
+            $taxAmount = $taxRow ? round(($bidAmount * (float) $taxRow->base_sales_tax_rate) / 100, 2) : 0.0;
+        }
 
         $totalAmount = $bidAmount + $shippingCost + $taxAmount;
-        $amountCents = (int) round($totalAmount * 100);
+        $amountCents = StripeCustomerChargeAmount::chargeCentsFromNetUsd($totalAmount, 'card');
         if ($amountCents < 50) {
             $amountCents = 50;
         }
@@ -2048,7 +2054,7 @@ class ProductController extends BaseController
             'shippo_currency' => $picked['currency'] ?? 'USD',
         ]);
 
-        $checkoutOptions = [
+        $checkoutOptions = StripeAutomaticTax::mergeCheckoutOptions([
             'success_url' => route('products.winning-bid.success', ['product' => $product->id]).'?session_id={CHECKOUT_SESSION_ID}',
             'cancel_url' => route('user.profile.bid-wins'),
             'metadata' => [
@@ -2061,7 +2067,7 @@ class ProductController extends BaseController
                 'tax_amount' => (string) $taxAmount,
             ],
             'payment_method_types' => ['card'],
-        ];
+        ]);
         $checkout = $user->checkoutCharge(
             $amountCents,
             'Winning bid: '.$product->name,
@@ -2101,7 +2107,10 @@ class ProductController extends BaseController
         try {
             $amount = (float) $winningBid->bid_amount;
             $shippingCost = (float) ($winningBid->shippo_shipping_cost ?? 0);
-            $taxAmount = (float) ($winningBid->shippo_tax_amount ?? 0);
+            $stripeTaxCents = (int) ($session->total_details->amount_tax ?? 0);
+            $taxAmount = $stripeTaxCents > 0
+                ? round($stripeTaxCents / 100, 2)
+                : (float) ($winningBid->shippo_tax_amount ?? 0);
             $totalAmount = $amount + $shippingCost + $taxAmount;
 
             if (empty($winningBid->address_line1) || empty($winningBid->zip) || empty($winningBid->country)) {
@@ -2117,12 +2126,15 @@ class ProductController extends BaseController
                 'total_amount' => $totalAmount,
                 'shipping_cost' => $shippingCost,
                 'tax_amount' => $taxAmount,
+                'stripe_tax_amount' => $stripeTaxCents > 0 ? round($stripeTaxCents / 100, 2) : null,
                 'platform_fee' => BiuPlatformFeeService::platformFeeFromAmount($amount),
                 'donation_amount' => 0,
                 'status' => 'processing',
                 'payment_status' => 'paid',
                 'payment_method' => 'stripe',
-                'stripe_payment_intent_id' => $session->payment_intent ?? null,
+                'stripe_payment_intent_id' => is_string($session->payment_intent ?? null)
+                    ? $session->payment_intent
+                    : (is_object($session->payment_intent ?? null) ? ($session->payment_intent->id ?? null) : null),
             ]);
 
             // Create shipping info for Shippo label generation

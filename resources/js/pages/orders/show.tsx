@@ -138,6 +138,9 @@ interface Order {
     donation_amount: number;
     shipping_cost: number;
     tax_amount: number;
+    stripe_tax_amount?: number | null;
+    stripe_fee_amount?: number | null;
+    stripe_tax_calculation_id?: string | null;
     total_amount: number;
     status: string;
     payment_status: string;
@@ -722,6 +725,47 @@ export default function Show({ order, userRole }: Props) {
                             )}
                         </div>
 
+                        <div className="border-t pt-4">
+                            <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                                <CreditCard className="w-4 h-4" />
+                                Buyer payment breakdown
+                            </h3>
+                            <div className="grid gap-2 text-sm sm:grid-cols-2">
+                                <div className="flex justify-between gap-4">
+                                    <span className="text-muted-foreground">Subtotal</span>
+                                    <span className="font-medium">{formatCurrency(order.subtotal || 0)}</span>
+                                </div>
+                                <div className="flex justify-between gap-4">
+                                    <span className="text-muted-foreground">Shipping</span>
+                                    <span className="font-medium">{formatCurrency(order.shipping_cost || 0)}</span>
+                                </div>
+                                <div className="flex justify-between gap-4">
+                                    <span className="text-muted-foreground">
+                                        {(order.stripe_tax_amount != null && Number(order.stripe_tax_amount) > 0)
+                                            ? 'Sales tax (Stripe)'
+                                            : 'Tax'}
+                                    </span>
+                                    <span className="font-medium">
+                                        {formatCurrency(
+                                            (order.stripe_tax_amount != null && Number(order.stripe_tax_amount) > 0
+                                                ? Number(order.stripe_tax_amount)
+                                                : order.tax_amount) || 0
+                                        )}
+                                    </span>
+                                </div>
+                                {Number(order.stripe_fee_amount) > 0 && (
+                                    <div className="flex justify-between gap-4">
+                                        <span className="text-muted-foreground">Stripe processing fee</span>
+                                        <span className="font-medium">{formatCurrency(Number(order.stripe_fee_amount))}</span>
+                                    </div>
+                                )}
+                                <div className="flex justify-between gap-4 sm:col-span-2 border-t pt-2 mt-1">
+                                    <span className="font-semibold">Total charged</span>
+                                    <span className="font-bold text-blue-600">{formatCurrency(order.total_amount || 0)}</span>
+                                </div>
+                            </div>
+                        </div>
+
                         {/* Printify Status */}
                         {order.printify_order_id && (
                             <div className="border-t pt-4">
@@ -750,12 +794,13 @@ export default function Show({ order, userRole }: Props) {
                                 Merchant product revenue split
                             </CardTitle>
                             <CardDescription>
-                                Line totals for items sourced from Merchant Hub listings. Amounts use the percentages the merchant set on the product
-                                (nonprofit / merchant / BIU). Shipping and tax are not included here.
+                                Line totals for items sourced from Merchant Hub listings. Amounts use the nonprofit and merchant percentages the merchant
+                                set on the product (they must total 100%). Shipping and tax are not included here. The separate order platform fee is not
+                                part of this split.
                             </CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
-                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
                                 <div className="rounded-lg border bg-white p-4 dark:border-gray-700 dark:bg-gray-900">
                                     <p className="text-muted-foreground text-xs font-medium">Line subtotal (products)</p>
                                     <p className="text-xl font-bold">{formatCurrency(order.merchant_hub_order_summary.line_subtotal)}</p>
@@ -773,17 +818,15 @@ export default function Show({ order, userRole }: Props) {
                                         {formatCurrency(order.merchant_hub_order_summary.merchant)}
                                     </p>
                                 </div>
-                                <div className="rounded-lg border border-violet-200 bg-violet-50/80 p-4 dark:border-violet-900 dark:bg-violet-950/30">
-                                    <p className="text-xs font-medium text-violet-800 dark:text-violet-200">Platform (BIU)</p>
-                                    <p className="text-xl font-bold text-violet-900 dark:text-violet-100">
-                                        {formatCurrency(order.merchant_hub_order_summary.biu)}
-                                    </p>
-                                </div>
                             </div>
                             {order.order_split && (
                                 <p className="text-muted-foreground text-xs">
                                     Recorded payout split for this order: merchant {formatCurrency(order.order_split.merchant_amount)}, organization{' '}
-                                    {formatCurrency(order.order_split.organization_amount)}, BIU {formatCurrency(order.order_split.biu_amount)}.
+                                    {formatCurrency(order.order_split.organization_amount)}
+                                    {order.order_split.biu_amount > 0.005
+                                        ? `, legacy platform share ${formatCurrency(order.order_split.biu_amount)}`
+                                        : ''}
+                                    .
                                 </p>
                             )}
                         </CardContent>
@@ -834,10 +877,10 @@ export default function Show({ order, userRole }: Props) {
                                                 </p>
                                                 <p className="text-muted-foreground mb-2 text-xs">
                                                     {item.merchant_hub_revenue.nonprofit_split_enabled
-                                                        ? `Split: ${item.merchant_hub_revenue.pct_merchant}% merchant · ${item.merchant_hub_revenue.pct_organization}% organization · ${item.merchant_hub_revenue.pct_biu}% BIU (remainder)`
+                                                        ? `Split: ${item.merchant_hub_revenue.pct_merchant}% merchant · ${item.merchant_hub_revenue.pct_organization}% organization`
                                                         : 'No nonprofit pool split on this listing — merchant share is 100% of this line.'}
                                                 </p>
-                                                <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                                                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                                                     <div>
                                                         <span className="text-xs text-gray-600 dark:text-gray-400">Organization</span>
                                                         <p className="font-semibold text-emerald-700 dark:text-emerald-300">
@@ -848,12 +891,6 @@ export default function Show({ order, userRole }: Props) {
                                                         <span className="text-xs text-gray-600 dark:text-gray-400">Merchant</span>
                                                         <p className="font-semibold text-sky-700 dark:text-sky-300">
                                                             {formatCurrency(item.merchant_hub_revenue.amount_merchant)}
-                                                        </p>
-                                                    </div>
-                                                    <div>
-                                                        <span className="text-xs text-gray-600 dark:text-gray-400">BIU / platform</span>
-                                                        <p className="font-semibold text-violet-700 dark:text-violet-300">
-                                                            {formatCurrency(item.merchant_hub_revenue.amount_biu)}
                                                         </p>
                                                     </div>
                                                 </div>

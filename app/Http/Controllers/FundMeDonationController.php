@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\FundMeCampaign;
 use App\Models\FundMeDonation;
 use App\Services\StripeConfigService;
+use App\Support\StripeCustomerChargeAmount;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
@@ -28,10 +29,11 @@ class FundMeDonationController extends Controller
         ]);
 
         $campaign = FundMeCampaign::live()->find($request->input('fundme_campaign_id'));
-        if (!$campaign) {
+        if (! $campaign) {
             if ($request->expectsJson()) {
                 return response()->json(['success' => false, 'error' => 'Campaign not found or not accepting donations.'], 422);
             }
+
             return back()->withErrors(['campaign' => 'Campaign not found or not accepting donations.']);
         }
 
@@ -40,6 +42,7 @@ class FundMeDonationController extends Controller
             if ($request->expectsJson()) {
                 return response()->json(['success' => false, 'error' => 'Minimum donation is $1.00.'], 422);
             }
+
             return back()->withErrors(['amount' => 'Minimum donation is $1.00.']);
         }
 
@@ -48,6 +51,7 @@ class FundMeDonationController extends Controller
             if ($request->expectsJson()) {
                 return response()->json(['success' => false, 'error' => 'This campaign has already reached its goal.'], 422);
             }
+
             return back()->withErrors(['amount' => 'This campaign has already reached its goal.']);
         }
         if ($amountCents > $remainingCents) {
@@ -55,6 +59,7 @@ class FundMeDonationController extends Controller
             if ($request->expectsJson()) {
                 return response()->json(['success' => false, 'error' => "Maximum donation for this campaign is \${$maxDollars} (goal remaining)."], 422);
             }
+
             return back()->withErrors(['amount' => "Maximum donation for this campaign is \${$maxDollars}."]);
         }
 
@@ -77,6 +82,8 @@ class FundMeDonationController extends Controller
         try {
             $this->setStripeKey();
 
+            $chargeCents = StripeCustomerChargeAmount::chargeCentsFromNetUsd($amountCents / 100, 'card');
+
             $session = StripeCheckoutSession::create([
                 'payment_method_types' => ['card'],
                 'line_items' => [
@@ -84,18 +91,18 @@ class FundMeDonationController extends Controller
                         'price_data' => [
                             'currency' => 'usd',
                             'product_data' => [
-                                'name' => 'Donation: ' . $campaign->title,
+                                'name' => 'Donation: '.$campaign->title,
                                 'description' => $campaign->organization?->name ?? 'Believe FundMe',
-                                'images' => $campaign->cover_image ? [asset('storage/' . $campaign->cover_image)] : [],
+                                'images' => $campaign->cover_image ? [asset('storage/'.$campaign->cover_image)] : [],
                             ],
-                            'unit_amount' => $amountCents,
+                            'unit_amount' => $chargeCents,
                         ],
                         'quantity' => 1,
                     ],
                 ],
                 'mode' => 'payment',
                 'customer_email' => $donorEmail,
-                'success_url' => route('fundme.thank-you') . '?session_id={CHECKOUT_SESSION_ID}',
+                'success_url' => route('fundme.thank-you').'?session_id={CHECKOUT_SESSION_ID}',
                 'cancel_url' => route('fundme.show', ['slug' => $campaign->slug]),
                 'metadata' => [
                     'donation_id' => (string) $donation->id,
@@ -113,12 +120,14 @@ class FundMeDonationController extends Controller
             if ($request->expectsJson()) {
                 return response()->json(['success' => false, 'error' => 'Payment could not be started. Please try again.'], 500);
             }
+
             return back()->withErrors(['amount' => 'Payment could not be started. Please try again.']);
         }
 
         if ($request->expectsJson()) {
             return response()->json(['success' => true, 'url' => $session->url]);
         }
+
         return redirect()->away($session->url);
     }
 
@@ -135,8 +144,9 @@ class FundMeDonationController extends Controller
         ]);
 
         $sessionId = $request->query('session_id');
-        if (!$sessionId) {
+        if (! $sessionId) {
             Log::warning('FundMe thank-you: no session_id provided');
+
             return redirect()->route('fundme.index')->with('error', 'Invalid thank-you link.');
         }
 
@@ -153,24 +163,27 @@ class FundMeDonationController extends Controller
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
             ]);
+
             return redirect()->route('fundme.index')->with('error', 'Could not verify payment. Please contact support with your receipt number.');
         }
 
         // Access Stripe metadata - it's a StripeObject, access as properties (like DonationController does)
-        if (!isset($session->metadata->donation_id) || !isset($session->metadata->type) || $session->metadata->type !== 'fundme_donation') {
+        if (! isset($session->metadata->donation_id) || ! isset($session->metadata->type) || $session->metadata->type !== 'fundme_donation') {
             Log::warning('FundMe thank-you: invalid session metadata', [
                 'session_id' => $sessionId,
                 'has_metadata' => isset($session->metadata),
                 'metadata' => isset($session->metadata) ? (array) $session->metadata : null,
             ]);
+
             return redirect()->route('fundme.index')->with('error', 'Invalid session. Please contact support if this persists.');
         }
 
         $donationId = (int) $session->metadata->donation_id;
 
         $donation = FundMeDonation::find($donationId);
-        if (!$donation) {
+        if (! $donation) {
             Log::error('FundMe thank-you: donation not found', ['donation_id' => $donationId]);
+
             return redirect()->route('fundme.index')->with('error', 'Donation not found.');
         }
 
@@ -193,8 +206,9 @@ class FundMeDonationController extends Controller
         $donation->load(['campaign:id,title,slug', 'campaign.organization:id,name']);
         $campaign = $donation->campaign;
 
-        if (!$campaign) {
+        if (! $campaign) {
             Log::error('FundMe thank-you: campaign not found for donation', ['donation_id' => $donation->id]);
+
             return redirect()->route('fundme.index')->with('error', 'Campaign not found.');
         }
 
@@ -218,16 +232,16 @@ class FundMeDonationController extends Controller
                     'organization_name' => $campaign->organization?->name ?? 'Nonprofit',
                 ],
             ];
-            
+
             Log::info('FundMe thank-you: calling Inertia::render', [
                 'component' => 'frontend/fundme/ThankYou',
                 'props_keys' => array_keys($props),
             ]);
-            
+
             $response = Inertia::render('frontend/fundme/ThankYou', $props);
-            
+
             Log::info('FundMe thank-you: Inertia::render succeeded');
-            
+
             return $response;
         } catch (\Exception $e) {
             Log::error('FundMe thank-you: Inertia render failed', [
@@ -237,7 +251,8 @@ class FundMeDonationController extends Controller
                 'file' => $e->getFile(),
                 'line' => $e->getLine(),
             ]);
-            return redirect()->route('fundme.index')->with('error', 'Error loading thank-you page. Your donation was successful. Receipt #' . $donation->receipt_number);
+
+            return redirect()->route('fundme.index')->with('error', 'Error loading thank-you page. Your donation was successful. Receipt #'.$donation->receipt_number);
         } catch (\Throwable $e) {
             Log::error('FundMe thank-you: Inertia render failed (Throwable)', [
                 'error' => $e->getMessage(),
@@ -246,7 +261,8 @@ class FundMeDonationController extends Controller
                 'file' => $e->getFile(),
                 'line' => $e->getLine(),
             ]);
-            return redirect()->route('fundme.index')->with('error', 'Error loading thank-you page. Your donation was successful. Receipt #' . $donation->receipt_number);
+
+            return redirect()->route('fundme.index')->with('error', 'Error loading thank-you page. Your donation was successful. Receipt #'.$donation->receipt_number);
         }
     }
 
@@ -254,7 +270,7 @@ class FundMeDonationController extends Controller
     {
         $env = StripeConfigService::getEnvironment();
         $credentials = StripeConfigService::getCredentials($env);
-        if ($credentials && !empty($credentials['secret_key'])) {
+        if ($credentials && ! empty($credentials['secret_key'])) {
             Stripe::setApiKey($credentials['secret_key']);
         } else {
             Stripe::setApiKey(config('services.stripe.secret'));

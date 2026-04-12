@@ -9,6 +9,8 @@ use App\Models\EmailPackage;
 use App\Models\Organization;
 use App\Services\GmailService;
 use App\Services\OutlookService;
+use App\Support\StripeAutomaticTax;
+use App\Support\StripeCustomerChargeAmount;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
@@ -523,14 +525,14 @@ class EmailInviteController extends BaseController
             ]);
 
             // Calculate total amount in cents
-            $amountInCents = (int) ($package->price * 100);
+            $amountInCents = StripeCustomerChargeAmount::chargeCentsFromNetUsd((float) $package->price, 'card');
 
             // Create checkout session
             $checkout = $user->checkoutCharge(
                 $amountInCents,
                 $package->name,
                 1,
-                [
+                StripeAutomaticTax::mergeCheckoutOptions([
                     'success_url' => route('email-invite.purchase.success').'?session_id={CHECKOUT_SESSION_ID}',
                     'cancel_url' => route('email-invite.index').'?canceled=1',
                     'metadata' => [
@@ -542,7 +544,7 @@ class EmailInviteController extends BaseController
                         'amount' => $package->price,
                     ],
                     'payment_method_types' => ['card'],
-                ]
+                ])
             );
 
             // Return Inertia redirect to Stripe checkout

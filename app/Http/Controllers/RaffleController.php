@@ -2,20 +2,20 @@
 
 namespace App\Http\Controllers;
 
-use App\Services\StripeProcessingFeeEstimator;
 use App\Models\Raffle;
 use App\Models\RaffleTicket;
 use App\Models\RaffleWinner;
 use App\Models\Transaction;
-use App\Services\BiuPlatformFeeService;
 use App\Models\User;
-use Illuminate\Http\Request;
-use Illuminate\Http\Response;
+use App\Services\BiuPlatformFeeService;
+use App\Support\StripeAutomaticTax;
+use App\Support\StripeCustomerChargeAmount;
 use Illuminate\Http\RedirectResponse;
-use Inertia\Inertia;
-use Inertia\Response as InertiaResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Inertia\Inertia;
+use Inertia\Response as InertiaResponse;
 use SimpleSoftwareIO\QrCode\Facades\QrCode;
 
 class RaffleController extends BaseController
@@ -29,8 +29,8 @@ class RaffleController extends BaseController
 
         $query = Raffle::with(['organization', 'tickets', 'winners'])
             ->when($request->search, function ($query, $search) {
-                $query->where('title', 'like', "%" . $search . "%")
-                      ->orWhere('description', 'like', "%" . $search . "%");
+                $query->where('title', 'like', '%'.$search.'%')
+                    ->orWhere('description', 'like', '%'.$search.'%');
             })
             ->when($request->status, function ($query, $status) {
                 $query->where('status', $status);
@@ -99,7 +99,7 @@ class RaffleController extends BaseController
 
         $raffle->load(['organization', 'tickets.user', 'winners.user', 'winners.ticket']);
 
-        $userTickets = $request->user() 
+        $userTickets = $request->user()
             ? $raffle->tickets()->where('user_id', $request->user()->id)->get()
             : collect();
 
@@ -117,7 +117,7 @@ class RaffleController extends BaseController
         $this->authorizePermission($request, 'raffle.edit');
 
         // Only allow editing if raffle is not completed and user owns it
-        if ($raffle->status === 'completed' || 
+        if ($raffle->status === 'completed' ||
             ($request->user()->role === 'organization' && $raffle->organization_id !== $request->user()->id)) {
             abort(403, 'You cannot edit this raffle.');
         }
@@ -135,7 +135,7 @@ class RaffleController extends BaseController
         $this->authorizePermission($request, 'raffle.edit');
 
         // Only allow updating if raffle is not completed and user owns it
-        if ($raffle->status === 'completed' || 
+        if ($raffle->status === 'completed' ||
             ($request->user()->role === 'organization' && $raffle->organization_id !== $request->user()->id)) {
             abort(403, 'You cannot update this raffle.');
         }
@@ -144,7 +144,7 @@ class RaffleController extends BaseController
             'title' => 'required|string|max:255',
             'description' => 'required|string',
             'ticket_price' => 'required|numeric|min:0.01',
-            'total_tickets' => 'required|integer|min:' . $raffle->sold_tickets . '|max:10000',
+            'total_tickets' => 'required|integer|min:'.$raffle->sold_tickets.'|max:10000',
             'draw_date' => 'required|date|after:now',
             'image' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048',
             'prizes' => 'required|array|min:1',
@@ -206,7 +206,7 @@ class RaffleController extends BaseController
         $totalAmount = $raffle->ticket_price * $quantity;
 
         // Check if raffle is active and has available tickets
-        if (!$raffle->is_active) {
+        if (! $raffle->is_active) {
             return back()->withErrors(['error' => 'This raffle is not active.']);
         }
 
@@ -216,12 +216,10 @@ class RaffleController extends BaseController
 
         try {
             $user = $request->user();
-            
-            // Stripe payment - create checkout session
-            $processingFee = StripeProcessingFeeEstimator::estimateCardFeeOnChargeUsd((float) $totalAmount);
-            $totalWithFee = $totalAmount + $processingFee;
-            $totalInCents = (int) ($totalWithFee * 100);
-            
+
+            // Stripe payment - create checkout session (optional gross-up so net after Stripe fees ≈ ticket subtotal)
+            $totalInCents = StripeCustomerChargeAmount::chargeCentsFromNetUsd((float) $totalAmount, 'card');
+
             // Record pending transaction
             $transaction = $user->recordTransaction([
                 'type' => 'purchase',
@@ -231,32 +229,32 @@ class RaffleController extends BaseController
                 'meta' => array_merge([
                     'raffle_id' => $raffle->id,
                     'ticket_quantity' => $quantity,
-                    'description' => "Purchased " . $quantity . " ticket(s) for raffle: " . $raffle->title,
+                    'description' => 'Purchased '.$quantity.' ticket(s) for raffle: '.$raffle->title,
                 ], BiuPlatformFeeService::ledgerMetaSlice((float) $totalAmount)),
                 'related_id' => $raffle->id,
-                'related_type' => 'raffle'
+                'related_type' => 'raffle',
             ]);
             // Create checkout session
             $checkout = $user->checkoutCharge(
                 $totalInCents,
                 "Raffle tickets for {$raffle->title}",
                 1,
-                [
-                    'success_url' => route('raffles.success') . '?session_id={CHECKOUT_SESSION_ID}',
+                StripeAutomaticTax::mergeCheckoutOptions([
+                    'success_url' => route('raffles.success').'?session_id={CHECKOUT_SESSION_ID}',
                     'cancel_url' => route('raffles.cancel'),
                     'metadata' => [
                         'raffle_id' => $raffle->id,
                         'quantity' => $quantity,
                         'user_id' => $user->id,
                         'transaction_id' => $transaction->id,
-                        'type' => 'raffle_tickets'
+                        'type' => 'raffle_tickets',
                     ],
                     'payment_method_types' => ['card', 'afterpay_clearpay', 'affirm'],
-                ]
+                ])
             );
-            
+
             return Inertia::location($checkout->url);
-            
+
         } catch (\Exception $e) {
             return back()->withErrors(['error' => $e->getMessage()]);
         }
@@ -268,9 +266,9 @@ class RaffleController extends BaseController
     private function generateTicketNumber(): string
     {
         do {
-            $ticketNumber = 'T' . str_pad(rand(1, 999999), 6, '0', STR_PAD_LEFT);
+            $ticketNumber = 'T'.str_pad(rand(1, 999999), 6, '0', STR_PAD_LEFT);
         } while (RaffleTicket::where('ticket_number', $ticketNumber)->exists());
-        
+
         return $ticketNumber;
     }
 
@@ -280,7 +278,7 @@ class RaffleController extends BaseController
     private function calculatePrizeAmounts(float $totalPrizePool, int $winnersCount): array
     {
         $amounts = [];
-        
+
         if ($winnersCount === 1) {
             $amounts[0] = $totalPrizePool;
         } elseif ($winnersCount === 2) {
@@ -297,7 +295,7 @@ class RaffleController extends BaseController
                 $amounts[$i] = $amountPerWinner;
             }
         }
-        
+
         return $amounts;
     }
 
@@ -309,7 +307,7 @@ class RaffleController extends BaseController
         $this->authorizePermission($request, 'raffle.draw');
 
         // Only allow drawing if it's draw time and raffle is active
-        if (!$raffle->is_draw_time) {
+        if (! $raffle->is_draw_time) {
             return back()->withErrors(['error' => 'Draw time has not arrived yet.']);
         }
 
@@ -341,13 +339,13 @@ class RaffleController extends BaseController
             // Create winner records and add prize money to balances
             foreach ($winners as $index => $ticket) {
                 $prizeAmount = $prizeAmounts[$index] ?? 0;
-                
+
                 RaffleWinner::create([
                     'raffle_id' => $raffle->id,
                     'raffle_ticket_id' => $ticket->id,
                     'user_id' => $ticket->user_id,
                     'position' => $index + 1,
-                    'prize_name' => $raffle->prizes[$index]['name'] ?? "Prize " . ($index + 1),
+                    'prize_name' => $raffle->prizes[$index]['name'] ?? 'Prize '.($index + 1),
                     'prize_description' => $raffle->prizes[$index]['description'] ?? null,
                     'prize_amount' => $prizeAmount,
                     'announced_at' => now(),
@@ -361,8 +359,8 @@ class RaffleController extends BaseController
                         [
                             'raffle_id' => $raffle->id,
                             'position' => $index + 1,
-                            'prize_name' => $raffle->prizes[$index]['name'] ?? "Prize " . ($index + 1),
-                            'description' => "Won " . ($index + 1) . " place in raffle: " . $raffle->title
+                            'prize_name' => $raffle->prizes[$index]['name'] ?? 'Prize '.($index + 1),
+                            'description' => 'Won '.($index + 1).' place in raffle: '.$raffle->title,
                         ]
                     );
                 }
@@ -386,8 +384,8 @@ class RaffleController extends BaseController
         $query = Raffle::with(['organization', 'tickets', 'winners'])
             ->where('status', 'active') // Only show active raffles to frontend users
             ->when($request->search, function ($query, $search) {
-                $query->where('title', 'like', "%" . $search . "%")
-                      ->orWhere('description', 'like', "%" . $search . "%");
+                $query->where('title', 'like', '%'.$search.'%')
+                    ->orWhere('description', 'like', '%'.$search.'%');
             })
             ->when($request->status, function ($query, $status) {
                 $query->where('status', $status);
@@ -427,9 +425,9 @@ class RaffleController extends BaseController
     public function success(Request $request): InertiaResponse
     {
         $sessionId = $request->get('session_id');
-        if (!$sessionId) {
+        if (! $sessionId) {
             return Inertia::render('raffles/cancel', [
-                'auth' => ['user' => $request->user()]
+                'auth' => ['user' => $request->user()],
             ]);
         }
 
@@ -438,7 +436,7 @@ class RaffleController extends BaseController
 
             $session = \Laravel\Cashier\Cashier::stripe()->checkout->sessions->retrieve($sessionId);
             $metadata = $session->metadata;
-            
+
             $raffle = Raffle::with('organization.organization')->findOrFail($metadata->raffle_id);
             $user = User::findOrFail($metadata->user_id);
             $quantity = $metadata->quantity;
@@ -476,7 +474,7 @@ class RaffleController extends BaseController
 
             // Update sold tickets count
             $raffle->increment('sold_tickets', $quantity);
-            
+
             // Platform fee: same BIU % as other sales modules (deducted from org share; buyer already paid ticket total only)
             $feePct = BiuPlatformFeeService::getSalesPlatformFeePercentage() / 100;
             $administrativeFee = round($totalAmount * $feePct, 2);
@@ -495,7 +493,7 @@ class RaffleController extends BaseController
                     'fee_percentage' => BiuPlatformFeeService::getSalesPlatformFeePercentage(),
                 ],
                 'related_id' => $raffle->id,
-                'related_type' => 'raffle'
+                'related_type' => 'raffle',
             ]);
 
             if ($raffle->organization && $raffle->organization->organization) {
@@ -520,13 +518,14 @@ class RaffleController extends BaseController
                 'raffle' => $raffle,
                 'tickets' => $tickets,
                 'auth' => [
-                    'user' => $user
-                ]
+                    'user' => $user,
+                ],
             ]);
         } catch (\Exception $e) {
             DB::rollBack();
+
             return Inertia::render('raffles/cancel', [
-                'auth' => ['user' => $request->user()]
+                'auth' => ['user' => $request->user()],
             ]);
         }
     }
@@ -537,7 +536,7 @@ class RaffleController extends BaseController
     public function cancel(Request $request): InertiaResponse
     {
         return Inertia::render('raffles/cancel', [
-            'auth' => ['user' => $request->user()]
+            'auth' => ['user' => $request->user()],
         ]);
     }
 
@@ -563,12 +562,12 @@ class RaffleController extends BaseController
                 'Content-Type' => 'image/png',
                 'Cache-Control' => 'no-cache, no-store, must-revalidate',
                 'Pragma' => 'no-cache',
-                'Expires' => '0'
+                'Expires' => '0',
             ]);
         } catch (\Exception $e) {
             // Log the error for debugging
-            \Illuminate\Support\Facades\Log::error('QR Code generation failed: ' . $e->getMessage());
-            
+            \Illuminate\Support\Facades\Log::error('QR Code generation failed: '.$e->getMessage());
+
             // Return a simple test QR code
             $testQr = QrCode::format('png')
                 ->size(200)
@@ -581,7 +580,7 @@ class RaffleController extends BaseController
                 'Content-Type' => 'image/png',
                 'Cache-Control' => 'no-cache, no-store, must-revalidate',
                 'Pragma' => 'no-cache',
-                'Expires' => '0'
+                'Expires' => '0',
             ]);
         }
     }
@@ -606,8 +605,8 @@ class RaffleController extends BaseController
                 'purchased_at' => $ticket->purchased_at,
                 'is_winner' => $isWinner,
                 'user_name' => $ticket->user->name,
-                'user_email' => $ticket->user->email
-            ]
+                'user_email' => $ticket->user->email,
+            ],
         ]);
     }
 }

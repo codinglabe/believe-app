@@ -3,9 +3,11 @@
 namespace App\Http\Controllers;
 
 use App\Models\Plan;
-use App\Models\WalletPlan;
-use App\Models\User;
 use App\Models\Transaction;
+use App\Models\User;
+use App\Models\WalletPlan;
+use App\Support\StripeAutomaticTax;
+use App\Support\StripeCustomerChargeAmount;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
@@ -33,7 +35,7 @@ class PlansController extends Controller
         $plans = Plan::with('features')
             ->active()
             ->ordered()
-            ->when(!empty($walletPlanPriceIds), function ($query) use ($walletPlanPriceIds) {
+            ->when(! empty($walletPlanPriceIds), function ($query) use ($walletPlanPriceIds) {
                 // Exclude plans that have a matching stripe_price_id in wallet_plans table
                 $query->whereNotIn('stripe_price_id', $walletPlanPriceIds);
             })
@@ -63,7 +65,7 @@ class PlansController extends Controller
         // If API request (but NOT Inertia request), return JSON
         // Inertia requests also send X-Requested-With header, so we need to check for X-Inertia header
         $isInertiaRequest = $request->header('X-Inertia') !== null;
-        if (!$isInertiaRequest && ($request->wantsJson() || $request->expectsJson())) {
+        if (! $isInertiaRequest && ($request->wantsJson() || $request->expectsJson())) {
             return response()->json([
                 'success' => true,
                 'plans' => $plans,
@@ -155,7 +157,7 @@ class PlansController extends Controller
         $plans = Plan::with('features')
             ->active()
             ->ordered()
-            ->when(!empty($walletPlanPriceIds), function ($query) use ($walletPlanPriceIds) {
+            ->when(! empty($walletPlanPriceIds), function ($query) use ($walletPlanPriceIds) {
                 $query->whereNotIn('stripe_price_id', $walletPlanPriceIds);
             })
             ->get()
@@ -214,7 +216,7 @@ class PlansController extends Controller
     {
         $user = $request->user();
 
-        if (!$user) {
+        if (! $user) {
             return redirect()->route('login');
         }
 
@@ -242,7 +244,7 @@ class PlansController extends Controller
                                 'product_data' => [
                                     'name' => $field['label'],
                                 ],
-                                'unit_amount' => (int) ($currencyAmount * 100),
+                                'unit_amount' => StripeCustomerChargeAmount::chargeCentsFromNetUsd($currencyAmount, 'card'),
                             ],
                             'quantity' => 1,
                         ];
@@ -252,7 +254,7 @@ class PlansController extends Controller
 
             // Create Stripe checkout session
             $checkoutOptions = [
-                'success_url' => route('plans.success') . '?session_id={CHECKOUT_SESSION_ID}&plan_id=' . $plan->id,
+                'success_url' => route('plans.success').'?session_id={CHECKOUT_SESSION_ID}&plan_id='.$plan->id,
                 'cancel_url' => route('plans.index'),
                 'metadata' => [
                     'user_id' => $user->id,
@@ -271,7 +273,7 @@ class PlansController extends Controller
                     [
                         'price' => $plan->stripe_price_id,
                         'quantity' => 1,
-                    ]
+                    ],
                 ];
 
                 // Add one-time currency fields as line items
@@ -307,19 +309,21 @@ class PlansController extends Controller
                     $checkoutSessionData['customer_email'] = $user->email;
                 }
 
-                $checkoutSession = $stripe->checkout->sessions->create($checkoutSessionData);
+                $checkoutSession = $stripe->checkout->sessions->create(
+                    StripeAutomaticTax::mergeCheckoutSessionParams($checkoutSessionData)
+                );
 
                 return Inertia::location($checkoutSession->url);
             } else {
                 // One-time payment
-                $amountInCents = (int) ($totalAmount * 100);
+                $amountInCents = StripeCustomerChargeAmount::chargeCentsFromNetUsd((float) $totalAmount, 'card');
                 $checkout = $user->checkoutCharge(
                     $amountInCents,
-                    "Purchase {$plan->name} Plan" . (!empty($currencyFields) ? ' + Add-ons' : ''),
+                    "Purchase {$plan->name} Plan".(! empty($currencyFields) ? ' + Add-ons' : ''),
                     1,
-                    array_merge($checkoutOptions, [
+                    StripeAutomaticTax::mergeCheckoutOptions(array_merge($checkoutOptions, [
                         'line_items' => $oneTimeItems,
-                    ])
+                    ]))
                 );
 
                 return Inertia::location($checkout->url);
@@ -409,7 +413,7 @@ class PlansController extends Controller
     {
         $user = $request->user();
 
-        if (!$user) {
+        if (! $user) {
             return response()->json([
                 'success' => false,
                 'message' => 'Unauthorized. Please login first.',
@@ -428,14 +432,14 @@ class PlansController extends Controller
             }
 
             // Create Stripe product and price if they don't exist
-            if (!$walletPlan->stripe_price_id) {
+            if (! $walletPlan->stripe_price_id) {
                 try {
                     $stripe = Cashier::stripe();
 
                     // Create product if not exists
-                    if (!$walletPlan->stripe_product_id) {
+                    if (! $walletPlan->stripe_product_id) {
                         $product = $stripe->products->create([
-                            'name' => $walletPlan->name . ' Wallet Plan',
+                            'name' => $walletPlan->name.' Wallet Plan',
                             'description' => $walletPlan->description ?? 'Wallet Subscription Plan',
                         ]);
                         $walletPlan->stripe_product_id = $product->id;
@@ -488,11 +492,11 @@ class PlansController extends Controller
             $stripe = Cashier::stripe();
 
             $lineItems = [
-                ['price' => $walletPlan->stripe_price_id, 'quantity' => 1]
+                ['price' => $walletPlan->stripe_price_id, 'quantity' => 1],
             ];
 
             // Add one-time KYC verification fee if it exists and user hasn't paid it yet
-            if ($kycFeeAmount > 0 && !$hasPaidKycFee) {
+            if ($kycFeeAmount > 0 && ! $hasPaidKycFee) {
                 $lineItems[] = [
                     'price_data' => [
                         'currency' => 'usd',
@@ -500,7 +504,7 @@ class PlansController extends Controller
                             'name' => 'KYC Verification Fee',
                             'description' => 'One-time KYC verification fee for wallet access',
                         ],
-                        'unit_amount' => (int) ($kycFeeAmount * 100), // Convert to cents
+                        'unit_amount' => StripeCustomerChargeAmount::chargeCentsFromNetUsd($kycFeeAmount, 'card'),
                     ],
                     'quantity' => 1,
                 ];
@@ -518,15 +522,15 @@ class PlansController extends Controller
                         'subscription_type' => 'wallet_access',
                     ],
                 ],
-                'success_url' => route('wallet.subscription.success') . '?session_id={CHECKOUT_SESSION_ID}&wallet_plan_id=' . $walletPlan->id,
+                'success_url' => route('wallet.subscription.success').'?session_id={CHECKOUT_SESSION_ID}&wallet_plan_id='.$walletPlan->id,
                 'cancel_url' => route('wallet.subscription.cancel'),
                 'metadata' => [
                     'user_id' => $user->id,
                     'wallet_plan_id' => $walletPlan->id,
                     'type' => 'wallet_subscription',
                     'subscription_type' => 'wallet_access',
-                    'kyc_fee_included' => ($kycFeeAmount > 0 && !$hasPaidKycFee) ? 'true' : 'false',
-                    'kyc_fee_amount' => ($kycFeeAmount > 0 && !$hasPaidKycFee) ? (string) $kycFeeAmount : '0',
+                    'kyc_fee_included' => ($kycFeeAmount > 0 && ! $hasPaidKycFee) ? 'true' : 'false',
+                    'kyc_fee_amount' => ($kycFeeAmount > 0 && ! $hasPaidKycFee) ? (string) $kycFeeAmount : '0',
                 ],
                 'allow_promotion_codes' => true,
             ];
@@ -606,7 +610,7 @@ class PlansController extends Controller
             $walletPlanId = $request->query('wallet_plan_id');
             $user = $request->user();
 
-            if (!$sessionId || !$walletPlanId || !$user) {
+            if (! $sessionId || ! $walletPlanId || ! $user) {
                 return redirect()->route('plans.index')->withErrors([
                     'message' => 'Invalid session. Please try subscribing again.',
                 ]);
@@ -631,7 +635,7 @@ class PlansController extends Controller
                     ->where('status', 'completed')
                     ->exists();
 
-                if ($kycFeeAmount > 0 && $kycFeeIncluded === 'true' && $kycFeeAmountFromSession > 0 && !$hasPaidKycFee) {
+                if ($kycFeeAmount > 0 && $kycFeeIncluded === 'true' && $kycFeeAmountFromSession > 0 && ! $hasPaidKycFee) {
                     // Record KYC fee transaction
                     Transaction::create([
                         'user_id' => $user->id,
@@ -656,7 +660,7 @@ class PlansController extends Controller
                 if ($session->subscription) {
                     try {
                         // Ensure user has stripe_id (required for Cashier)
-                        if (!$user->stripe_id && $session->customer) {
+                        if (! $user->stripe_id && $session->customer) {
                             $user->stripe_id = $session->customer;
                             $user->save();
                         }
@@ -667,7 +671,7 @@ class PlansController extends Controller
                         ]);
 
                         // If subscription doesn't exist, retrieve from Stripe and sync using Cashier
-                        if (!$subscription->exists) {
+                        if (! $subscription->exists) {
                             $stripeSubscription = Cashier::stripe()->subscriptions->retrieve($session->subscription);
 
                             // Use Cashier's subscription model properties
@@ -715,7 +719,7 @@ class PlansController extends Controller
                 // This maintains compatibility with existing plan system
                 $plan = Plan::where('stripe_price_id', $walletPlan->stripe_price_id)->first();
 
-                if (!$plan) {
+                if (! $plan) {
                     // Create a temporary plan record for compatibility
                     $plan = Plan::create([
                         'name' => $walletPlan->name,
@@ -745,6 +749,7 @@ class PlansController extends Controller
 
                 // Render success page instead of redirecting
                 $successMessage = 'Wallet subscription activated successfully! You can now access your digital wallet.';
+
                 return Inertia::render('Plans/Success', [
                     'successMessage' => $successMessage,
                     'isWalletSubscription' => true,
@@ -784,7 +789,7 @@ class PlansController extends Controller
             $sessionId = $request->query('session_id');
             $planId = $request->query('plan_id');
 
-            if (!$sessionId || !$planId) {
+            if (! $sessionId || ! $planId) {
                 return redirect()->route('plans.index')->with('error', 'Invalid session.');
             }
 
@@ -806,7 +811,7 @@ class PlansController extends Controller
                     $stripe = Cashier::stripe();
 
                     // Ensure user has stripe_id (required for Cashier)
-                    if (!$user->stripe_id && $session->customer) {
+                    if (! $user->stripe_id && $session->customer) {
                         $user->stripe_id = $session->customer;
                         $user->save();
                     }
@@ -817,7 +822,7 @@ class PlansController extends Controller
                     ]);
 
                     // If subscription doesn't exist, retrieve from Stripe and sync using Cashier
-                    if (!$subscription->exists) {
+                    if (! $subscription->exists) {
                         $stripeSubscription = Cashier::stripe()->subscriptions->retrieve($session->subscription);
 
                         // Use Cashier's subscription model properties
@@ -907,8 +912,8 @@ class PlansController extends Controller
                     elseif (
                         ($fieldKey === 'credits' || str_contains($fieldLabel, 'credit')) &&
                         $fieldType === 'number' &&
-                        !str_contains($fieldKey, 'token') &&
-                        !str_contains($fieldLabel, 'token')
+                        ! str_contains($fieldKey, 'token') &&
+                        ! str_contains($fieldLabel, 'token')
                     ) {
                         $creditsToAdd += (int) str_replace(',', '', $fieldValue);
                     }
@@ -956,7 +961,7 @@ class PlansController extends Controller
                     'emails_included' => $emailsIncluded,
                     'ai_tokens_included' => $aiTokensIncluded,
                     'credits_added' => $totalCreditsToAdd,
-                    'description' => "Plan Subscription: {$plan->name}" . (!empty($currencyFields) ? ' + Add-ons' : ''),
+                    'description' => "Plan Subscription: {$plan->name}".(! empty($currencyFields) ? ' + Add-ons' : ''),
                     'stripe_session_id' => $sessionId,
                     'stripe_payment_intent' => $session->payment_intent ?? null,
                 ],
@@ -1003,11 +1008,11 @@ class PlansController extends Controller
     {
         $user = $request->user();
 
-        if (!$user) {
+        if (! $user) {
             return redirect()->route('login');
         }
 
-        if (!$user->current_plan_id) {
+        if (! $user->current_plan_id) {
             return redirect()->route('plans.index')->with('error', 'You do not have an active subscription.');
         }
 
@@ -1057,12 +1062,12 @@ class PlansController extends Controller
             }
 
             // If no subscription found in database, try to get it from Stripe using Cashier
-            if (!$subscriptionCancelled) {
+            if (! $subscriptionCancelled) {
                 try {
                     $stripeCustomerId = $user->stripe_id;
 
                     // If user doesn't have stripe_id, try to find customer by email using Cashier
-                    if (!$stripeCustomerId) {
+                    if (! $stripeCustomerId) {
                         $customers = Cashier::stripe()->customers->all([
                             'email' => $user->email,
                             'limit' => 1,

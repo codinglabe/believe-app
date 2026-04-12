@@ -12,6 +12,8 @@ use App\Models\Organization;
 use App\Models\SmsPackage;
 use App\Models\User;
 use App\Services\OpenAiService;
+use App\Support\StripeAutomaticTax;
+use App\Support\StripeCustomerChargeAmount;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
@@ -2766,13 +2768,13 @@ TXT;
                 ],
             ]);
 
-            $amountInCents = (int) ($package->price * 100);
+            $amountInCents = StripeCustomerChargeAmount::chargeCentsFromNetUsd((float) $package->price, 'card');
 
             $checkout = $user->checkoutCharge(
                 $amountInCents,
                 $package->name,
                 1,
-                [
+                StripeAutomaticTax::mergeCheckoutOptions([
                     'success_url' => route('newsletter.purchase-sms.success').'?session_id={CHECKOUT_SESSION_ID}',
                     'cancel_url' => route('newsletter.create').'?canceled=1',
                     'metadata' => [
@@ -2784,7 +2786,7 @@ TXT;
                         'amount' => (string) $package->price,
                     ],
                     'payment_method_types' => ['card'],
-                ]
+                ])
             );
 
             return Inertia::location($checkout->url);
@@ -2961,13 +2963,13 @@ TXT;
                 ],
             ]);
 
-            $amountInCents = (int) round($priceUsd * 100);
+            $amountInCents = StripeCustomerChargeAmount::chargeCentsFromNetUsd((float) $priceUsd, 'card');
 
             $checkout = $user->checkoutCharge(
                 $amountInCents,
                 'Newsletter Pro targeting (lifetime)',
                 1,
-                [
+                StripeAutomaticTax::mergeCheckoutOptions([
                     'success_url' => route('newsletter.purchase-pro-targeting.success').'?session_id={CHECKOUT_SESSION_ID}',
                     'cancel_url' => route('newsletter.create-advanced').'?canceled=1',
                     'metadata' => [
@@ -2977,7 +2979,7 @@ TXT;
                         'amount' => (string) $priceUsd,
                     ],
                     'payment_method_types' => ['card'],
-                ]
+                ])
             );
 
             return Inertia::location($checkout->url);
