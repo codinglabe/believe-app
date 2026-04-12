@@ -4,8 +4,10 @@ namespace App\Services;
 
 use App\Models\PushNotificationLog;
 use App\Models\UserPushToken;
-use Google\Auth\ServiceAccountCredentials;
+use Google\Auth\HttpHandler\HttpHandlerFactory;
 use Google\Auth\Credentials\ServiceAccountCredentials as GoogleServiceAccountCredentials;
+use GuzzleHttp\Client;
+use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -19,6 +21,54 @@ class FirebaseService
     {
         $this->projectId = config('services.firebase.project_id');
         $this->credentialsPath = storage_path(config('services.firebase.credentials'));
+    }
+
+    /**
+     * Guzzle TLS options for Google OAuth + FCM (fixes Windows cURL error 60 when CA bundle is missing).
+     *
+     * @return array<string, mixed>
+     */
+    private function firebaseTlsRequestOptions(): array
+    {
+        $verifySsl = filter_var(config('services.firebase.verify_ssl', true), FILTER_VALIDATE_BOOL);
+        $cafile = config('services.firebase.cafile');
+
+        if (! $verifySsl) {
+            return ['verify' => false];
+        }
+
+        if (is_string($cafile) && $cafile !== '' && is_file($cafile)) {
+            return ['verify' => $cafile];
+        }
+
+        return [];
+    }
+
+    /**
+     * Optional HTTP handler so ServiceAccountCredentials::fetchAuthToken uses the same TLS settings as FCM requests.
+     */
+    private function googleAuthHttpHandler(): ?callable
+    {
+        $opts = $this->firebaseTlsRequestOptions();
+        if ($opts === []) {
+            return null;
+        }
+
+        return HttpHandlerFactory::build(new Client($opts));
+    }
+
+    /**
+     * Laravel HTTP client for FCM / IID with matching TLS settings.
+     */
+    private function httpForFirebase(): PendingRequest
+    {
+        $req = Http::timeout(30);
+        $opts = $this->firebaseTlsRequestOptions();
+        if ($opts !== []) {
+            $req = $req->withOptions($opts);
+        }
+
+        return $req;
     }
 
     /**
@@ -36,7 +86,10 @@ class FirebaseService
                 json_decode(file_get_contents($this->credentialsPath), true)
             );
 
-            $this->accessToken = $credentials->fetchAuthToken()['access_token'];
+            $handler = $this->googleAuthHttpHandler();
+            $tokenData = $credentials->fetchAuthToken($handler);
+            $this->accessToken = $tokenData['access_token'] ?? null;
+
             return $this->accessToken;
         } catch (\Exception $e) {
             Log::error('Firebase token error: ' . $e->getMessage());
@@ -51,9 +104,9 @@ class FirebaseService
     {
         $accessToken = $this->getAccessToken();
 
-        if (!$accessToken) {
+        if (! $accessToken) {
             Log::error('Failed to get Firebase access token');
-            return false;
+            return ['success' => false, 'error_code' => 'NO_ACCESS_TOKEN', 'response' => null];
         }
 
         // Extract content_item_id from data or use default
@@ -114,8 +167,8 @@ class FirebaseService
         ];
 
         try {
-            $response = Http::withToken($accessToken)
-                ->timeout(30)
+            $response = $this->httpForFirebase()
+                ->withToken($accessToken)
                 ->post(
                     "https://fcm.googleapis.com/v1/projects/{$this->projectId}/messages:send",
                     $message
@@ -281,8 +334,8 @@ class FirebaseService
         ];
 
         try {
-            $response = Http::withToken($accessToken)
-                ->timeout(30)
+            $response = $this->httpForFirebase()
+                ->withToken($accessToken)
                 ->post(
                     "https://fcm.googleapis.com/v1/projects/{$this->projectId}/messages:send",
                     $message
@@ -334,7 +387,8 @@ class FirebaseService
         ];
 
         try {
-            $response = Http::withToken($accessToken)
+            $response = $this->httpForFirebase()
+                ->withToken($accessToken)
                 ->post('https://iid.googleapis.com/iid/v1:batchAdd', $data);
 
             return $response->successful();

@@ -23,6 +23,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -172,8 +173,10 @@ THtml,
             'warm' => <<<'THtml'
 HTML visual personality (warm):
 - Aim for "community coffee chat": cream or soft peach tints, rounded corners on cards (border-radius 8–12px), terracotta or amber accent, soft borders (#e7e5e4 / warm gray).
+- NEVER output only white + terracotta button + terracotta footer: add a dark espresso/navy/chocolate TOP band (full width) for org line or issue kicker, then the cream article card — otherwise it looks like a draft.
 - On cream/peach panels, body text MUST be dark espresso or brown (#422006, #78350f, #1c1917) — never white or cream-colored text on cream backgrounds.
 - Use a friendly subhead in a tinted callout box; CTA can be warm orange or deep amber (still WCAG contrast). Avoid cold blues as the only accent.
+- First line of the message body in the card should be a clear headline (<h1> or styled title), not the same font/size as body paragraphs.
 - Imagery: omit or use neutral decorative bands only—no broken img URLs.
 THtml,
             'urgent' => <<<'THtml'
@@ -286,6 +289,11 @@ Visual styling (apply several—not minimal):
 
 Typography (inline): font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; body 15–17px, line-height 1.65–1.7; headings clearly larger and colored—not browser defaults.
 
+UNACCEPTABLE “DRAFT” LOOK (this exact failure pattern is FORBIDDEN):
+- A gray outer area + one plain white content column + long body as a stack of same-weight <p> paragraphs + ONE centered accent button + matching accent footer — with NO dark/navy header band, NO real headline hierarchy, NO card shadow, NO eyebrow/kicker, NO mid-body divider or highlight strip. That reads as unfinished and is NOT professional enough for this product.
+- If you use a warm terracotta/coral/orange accent for CTA + footer, you MUST still add: (1) a distinct dark or deep-colored TOP header row (org name / issue line) OR a saturated hero band above the article; (2) an <h1> or visually dominant title inside the article card (font-size 24–28px; font-weight:700; margin 0 0 12px 0) — the first line of the story must NOT be a plain <p> that looks identical to the rest; (3) at least one structural separator: horizontal rule row, “Impact at a glance” tinted strip, or left-border quote box between sections.
+- The primary CTA button must sit in its own <tr><td> with padding-bottom AT LEAST 24px BEFORE the next paragraph (“Warm regards…” / closing). Never let the closing paragraphs butt against the button — that causes overlap/tight layout in clients.
+
 MINIMAL / “3 ROW” LAYOUT IS FORBIDDEN — premium marketing email required:
 - The output must NOT look like only: (1) thin header bar (2) one big plain text block (3) footer. That is unacceptable for this product.
 - You MUST ship a polished layout comparable to top Mailchimp / nonprofit campaign templates: layered sections, clear hierarchy, obvious CTA, and visual “chrome” (borders, rounded panels, spacing).
@@ -348,13 +356,13 @@ AIHTML;
                     return 'The AI request was rejected: output token limit may be too high for this model. Set NEWSLETTER_AI_MAX_TOKENS=4096 (or lower) in .env. Details were logged.';
                 }
                 if (str_contains($lower, 'model') && (str_contains($lower, 'not found') || str_contains($lower, 'does not exist') || str_contains($lower, 'invalid'))) {
-                    return 'The configured AI model name is not valid. Unset NEWSLETTER_AI_MODEL to use the default, or set a valid model id. Details were logged.';
+                    return 'The configured AI model name is not valid. Unset NEWSLETTER_AI_MODEL to use the default (gpt-4o-mini), or set a valid model id. Details were logged.';
                 }
 
                 return 'The AI service rejected the request (HTTP 400). This is often a bad model name or parameters — not necessarily your API key. Check server logs for the exact OpenAI message.';
             }
             if ($status === 404) {
-                return 'The AI model was not found (HTTP 404). Check NEWSLETTER_AI_MODEL or remove it to use the default.';
+                return 'The AI model was not found (HTTP 404). Check NEWSLETTER_AI_MODEL or remove it to use the default (gpt-4o-mini).';
             }
             if ($status >= 500) {
                 return 'OpenAI had a temporary error. Try again in a moment.';
@@ -518,21 +526,23 @@ AIHTML;
      * @param  array<string, mixed>|null  $newsletterCreateAiResult
      * @return array<string, mixed>
      */
-    protected function newsletterCreatePageData(?array $newsletterCreateAiResult = null): array
+    protected function newsletterCreatePageData(?array $newsletterCreateAiResult = null, ?Request $request = null): array
     {
         $templates = NewsletterTemplate::where('is_active', true)
             ->select(['id', 'name', 'subject', 'content', 'template_type', 'html_content'])
             ->get();
 
         $user = Auth::user();
+        /** @var User $user */
+        $org = $user instanceof User ? Organization::forAuthUser($user) : null;
 
         $orgAddress = '';
-        if ($user->organization) {
+        if ($org) {
             $addressParts = array_filter([
-                $user->organization->street,
-                $user->organization->city,
-                $user->organization->state,
-                $user->organization->zip,
+                $org->street,
+                $org->city,
+                $org->state,
+                $org->zip,
             ]);
             $orgAddress = ! empty($addressParts) ? implode(', ', $addressParts) : 'Your Organization Address';
         }
@@ -540,9 +550,9 @@ AIHTML;
         $publicViewLink = url('/newsletter/public/preview');
 
         $previewData = [
-            'organization_name' => $user->organization->name ?? ($user->name ?? 'Your Organization'),
-            'organization_email' => $user->organization->email ?? ($user->email ?? 'wendhi@stuttiegroup.com'),
-            'organization_phone' => $user->organization->phone ?? ($user->contact_number ?? '+1 (555) 000-0000'),
+            'organization_name' => $org?->name ?? ($user->name ?? 'Your Organization'),
+            'organization_email' => $org?->email ?? ($user->email ?? 'wendhi@stuttiegroup.com'),
+            'organization_phone' => $org?->phone ?? ($user->contact_number ?? '+1 (555) 000-0000'),
             'organization_address' => $orgAddress ?: 'Your Organization Address',
             'recipient_name' => $user->name ?? 'Recipient Name',
             'recipient_email' => $user->email ?? 'recipient@example.com',
@@ -552,12 +562,82 @@ AIHTML;
             'public_view_link' => $publicViewLink,
         ];
 
+        $allowedAudienceSegments = ['followers', 'donors', 'volunteers', 'newsletter_contacts'];
+        $qSegment = $request?->query('audience_segment');
+        $loadSegment = is_string($qSegment) && in_array($qSegment, $allowedAudienceSegments, true) ? $qSegment : null;
+
+        $newsletterAudienceCounts = $org
+            ? $org->newsletterAudienceCounts()
+            : [
+                'followers' => 0,
+                'donors' => 0,
+                'volunteers' => 0,
+                'newsletter_contacts' => 0,
+            ];
+
+        $newsletterAudiencePreview = [];
+        $newsletterAudienceLoadedSegment = null;
+        if ($org && $loadSegment) {
+            $newsletterAudiencePreview = $org->newsletterAudienceDetailForSegment($loadSegment, 500);
+            $newsletterAudienceLoadedSegment = $loadSegment;
+        }
+
+        $newsletterRecipientCount = (int) ($newsletterAudienceCounts['newsletter_contacts'] ?? 0);
+        $newsletterRecipientPreview = [];
+        if ($loadSegment === 'newsletter_contacts' && $newsletterAudiencePreview !== []) {
+            foreach ($newsletterAudiencePreview as $row) {
+                if (($row['kind'] ?? '') === 'contact') {
+                    $newsletterRecipientPreview[] = [
+                        'id' => (int) ($row['id'] ?? 0),
+                        'name' => (string) ($row['name'] ?? ''),
+                        'email' => (string) ($row['email'] ?? ''),
+                    ];
+                }
+            }
+        }
+
         return [
             'templates' => $templates,
             'previewData' => $previewData,
             'openAiConfigured' => $this->openAiApiKeyIsConfigured(),
             'newsletterCreateAiResult' => $newsletterCreateAiResult,
+            'newsletterAudienceCounts' => $newsletterAudienceCounts,
+            'newsletterAudiencePreview' => $newsletterAudiencePreview,
+            'newsletterAudienceLoadedSegment' => $newsletterAudienceLoadedSegment,
+            'newsletterRecipientCount' => $newsletterRecipientCount,
+            'newsletterRecipientPreview' => $newsletterRecipientPreview,
+            'canUseNewsletterProTargeting' => $user instanceof User && $this->userCanUseNewsletterProTargeting($user),
+            'newsletterRecipientInlineNotice' => null,
         ];
+    }
+
+    /**
+     * Inertia 200 response for newsletter create after inline recipient actions — no redirect, correct page URL.
+     *
+     * @param  array<string, mixed>  $extraPageProps
+     */
+    protected function inertiaNewsletterCreateAudience(Request $request, array $extraPageProps = []): Response
+    {
+        $createPath = route('newsletter.create', ['audience_segment' => 'newsletter_contacts'], false);
+        $getRequest = Request::create($createPath, 'GET');
+
+        /** @var \Inertia\ResponseFactory $factory */
+        $factory = app(\Inertia\ResponseFactory::class);
+
+        $props = array_merge(
+            $factory->getShared(),
+            $this->newsletterCreatePageData(null, $getRequest),
+            $extraPageProps
+        );
+
+        return new Response(
+            'newsletter/create',
+            $props,
+            config('inertia.root_view', 'app'),
+            $factory->getVersion(),
+            (bool) config('inertia.history.encrypt', false),
+            fn (): string => $createPath
+        );
     }
 
     /**
@@ -1064,7 +1144,7 @@ AIHTML;
             'template_type' => 'nullable|in:newsletter,announcement,event',
             'tone' => 'nullable|in:professional,warm,urgent,celebratory',
             'output_mode' => 'required|in:plain,html',
-            'send_via' => 'nullable|in:email,sms,both',
+            'send_via' => 'nullable|in:email,sms,both,push',
             'template_id' => 'nullable|integer|exists:newsletter_templates,id',
         ]);
 
@@ -1194,7 +1274,7 @@ PROMPT;
             $userPrompt .= "\n\nMandatory visual requirement: use a distinctive palette with at least one dark or richly colored header, footer, or feature band—not an all-white-only layout. Include strong accent, kicker line, primary CTA, and clear sections. Follow the HTML VISUAL PERSONALITY block for tone \"{$tone}\" exactly (layout motifs, palette feel).";
             $userPrompt .= "\n\nCRITICAL readability: (1) Light panels = dark text only. (2) Dark purple/navy/header areas = light text only—never #334155 or similar dark gray on dark backgrounds. (3) Put the main invitation/body paragraphs in a white or off-white content row below the hero strip, with padding—do not leave long dark-gray paragraphs on the same dark bg as the banner.";
             $userPrompt .= "\n\nLayout: main story must be ONE readable column (full width inside 600px)—never CSS multi-column, never many side-by-side table cells for the same letter body.";
-            $userPrompt .= "\n\nDesign bar: output must look like a finished premium email — generous padding on every section, at least one clearly rounded main content card (border-radius + optional soft shadow), hero + structured event/details if relevant + pill/rounded CTA + rich footer. Never return a bare header strip + cramped flat paragraph wall + thin footer.";
+            $userPrompt .= "\n\nDesign bar: finished premium nonprofit email — dark or deep header/hero band above the story, real <h1>-level title in the article card, eyebrow optional, rounded white/light card with shadow, generous padding, pill CTA in its own row with 24px+ space before closing/sign-off paragraphs, rich footer. FORBIDDEN: gray page + plain white text column + undifferentiated <p> wall + one orange button + matching footer with no hierarchy (draft look).";
         }
         if ($sendVia === 'sms') {
             $userPrompt .= "\n\nHard limit: \"content\" must be at most ".self::NEWSLETTER_SMS_PLAIN_MAX_CHARS.' characters (SMS segment).';
@@ -1320,7 +1400,7 @@ TXT;
             'template_type' => 'nullable|in:newsletter,announcement,event',
             'tone' => 'nullable|in:professional,warm,urgent,celebratory',
             'output_mode' => 'required|in:plain,html',
-            'send_via' => 'nullable|in:email,sms,both',
+            'send_via' => 'nullable|in:email,sms,both,push',
         ]);
 
         $this->authorizePermission($request, 'newsletter.create');
@@ -1330,7 +1410,7 @@ TXT;
                 'ok' => false,
                 'message' => 'AI is not configured. Set OPENAI_API_KEY on the server.',
                 'code' => 'not_configured',
-            ]));
+            ], $request));
         }
 
         $user = Auth::user();
@@ -1341,14 +1421,14 @@ TXT;
                 'ok' => false,
                 'message' => 'You have used all your AI tokens for this period. Upgrade your plan or wait for your next allocation.',
                 'code' => 'insufficient_tokens',
-            ]));
+            ], $request));
         }
 
         $templateType = $validated['template_type'] ?? 'newsletter';
         $tone = $validated['tone'] ?? 'professional';
         $outputMode = $validated['output_mode'];
         $sendVia = $validated['send_via'] ?? 'email';
-        if ($sendVia === 'sms') {
+        if ($sendVia === 'sms' || $sendVia === 'push') {
             $outputMode = 'plain';
         } elseif ($sendVia === 'both') {
             $outputMode = 'both';
@@ -1446,7 +1526,7 @@ PROMPT;
             $userPrompt .= "\n\nMandatory: HTML must use a distinctive palette with at least one dark or richly colored header, footer, or feature band—not an all-white-only layout. Follow the HTML VISUAL PERSONALITY for tone \"{$tone}\" (celebratory vs professional vs warm vs urgent should look obviously different).";
             $userPrompt .= "\n\nCRITICAL readability: light panels need dark text; dark header/hero bands need light text. Never dark slate body copy (#334155) on dark purple/navy backgrounds. Use a separate light-colored content block for the main story when the outer frame is dark.";
             $userPrompt .= "\n\nLayout: main story must be ONE readable column (full width inside 600px)—never CSS multi-column, never many side-by-side cells for the same article.";
-            $userPrompt .= "\n\nDesign bar: same as template mode — premium multi-section HTML with padded rounded cards, CTA button, structured details, not a minimal skeleton.";
+            $userPrompt .= "\n\nDesign bar: same as template mode — dark header or hero strip, prominent headline, padded rounded cards, pill CTA with space before sign-off, no plain paragraph-wall + single accent button + accent-only footer without structure.";
         }
         if ($sendVia === 'sms') {
             $userPrompt .= "\n\nHard limit: \"content\" must be at most ".self::NEWSLETTER_SMS_PLAIN_MAX_CHARS.' characters (SMS segment).';
@@ -1467,7 +1547,7 @@ PROMPT;
                     'ok' => false,
                     'message' => 'AI returned an invalid response. Please try again.',
                     'code' => 'invalid_response',
-                ]));
+                ], $request));
             }
 
             [$subject, $content, $htmlContent] = $this->normalizeNewsletterCreateAiDecodedPayload($decoded, $outputMode);
@@ -1477,7 +1557,7 @@ PROMPT;
 
             $incomplete = $this->newsletterCreateAiPayloadIsIncomplete($subject, $content, $htmlContent, $outputMode);
             if ($incomplete !== null) {
-                return Inertia::render('newsletter/create', $this->newsletterCreatePageData($incomplete));
+                return Inertia::render('newsletter/create', $this->newsletterCreatePageData($incomplete, $request));
             }
 
             $placeholderError = $this->validateTemplateAiMergeVariablesOnly($subject, $content, $htmlContent, '');
@@ -1504,7 +1584,7 @@ TXT;
                         'ok' => false,
                         'message' => 'AI could not fix merge variables. Please try generating again.',
                         'code' => 'invalid_response',
-                    ]));
+                    ], $request));
                 }
 
                 [$subject, $content, $htmlContent] = $this->normalizeNewsletterCreateAiDecodedPayload($decoded, $outputMode);
@@ -1514,7 +1594,7 @@ TXT;
 
                 $incomplete = $this->newsletterCreateAiPayloadIsIncomplete($subject, $content, $htmlContent, $outputMode);
                 if ($incomplete !== null) {
-                    return Inertia::render('newsletter/create', $this->newsletterCreatePageData($incomplete));
+                    return Inertia::render('newsletter/create', $this->newsletterCreatePageData($incomplete, $request));
                 }
 
                 $placeholderError = $this->validateTemplateAiMergeVariablesOnly($subject, $content, $htmlContent, '');
@@ -1523,7 +1603,7 @@ TXT;
                         'ok' => false,
                         'message' => $placeholderError.' Please try generating again.',
                         'code' => 'invalid_placeholders',
-                    ]));
+                    ], $request));
                 }
             }
             if ($totalTokens > 0) {
@@ -1546,7 +1626,7 @@ TXT;
                 'tokens_used' => $totalTokens,
                 'ai_tokens_used' => (int) $user->ai_tokens_used,
                 'ai_tokens_included' => (int) ($user->ai_tokens_included ?? 0),
-            ]));
+            ], $request));
         } catch (\Exception $e) {
             Log::error('Newsletter create AI generation failed', [
                 'message' => $e->getMessage(),
@@ -1557,7 +1637,7 @@ TXT;
                 'ok' => false,
                 'message' => $this->newsletterAiUserFacingMessage($e),
                 'code' => 'api_error',
-            ]));
+            ], $request));
         }
     }
 
@@ -1779,33 +1859,184 @@ TXT;
     }
 
     /**
-     * Store new recipient
+     * Store new recipient (Recipients page or newsletter create inline form).
+     * When {@code return_to=newsletter.create}, redirect back to create with {@code audience_segment=newsletter_contacts}.
      */
     public function storeRecipient(Request $request)
     {
         $this->authorizePermission($request, 'newsletter.create');
 
-        $request->validate([
+        $backToCreate = $request->input('return_to') === 'newsletter.create';
+        $inertiaSilentCreate = $backToCreate && $request->inertia();
+
+        $redirectAfter = function () use ($backToCreate) {
+            if ($backToCreate) {
+                return redirect()->route('newsletter.create', ['audience_segment' => 'newsletter_contacts']);
+            }
+
+            return back();
+        };
+
+        $validator = Validator::make($request->all(), [
             'email' => 'required|email|max:255',
             'name' => 'nullable|string|max:255',
+            'return_to' => 'nullable|in:newsletter.create',
         ]);
 
-        // Check if recipient already exists
-        $existingRecipient = NewsletterRecipient::where('email', $request->email)->first();
+        if ($validator->fails()) {
+            if ($inertiaSilentCreate) {
+                return $this->inertiaNewsletterCreateAudience($request, [
+                    'errors' => $validator->errors(),
+                ]);
+            }
 
-        if ($existingRecipient) {
-            return back()->with('error', 'This email is already subscribed to the newsletter.');
+            return $redirectAfter()
+                ->withErrors($validator)
+                ->withInput();
         }
 
+        $email = (string) $request->input('email');
+
+        $existingRecipient = NewsletterRecipient::where('email', $email)->first();
+
+        if ($existingRecipient) {
+            if ($inertiaSilentCreate) {
+                return $this->inertiaNewsletterCreateAudience($request, [
+                    'newsletterRecipientInlineNotice' => [
+                        'type' => 'error',
+                        'message' => 'This email is already subscribed to the newsletter.',
+                    ],
+                ]);
+            }
+
+            return $redirectAfter()
+                ->with('error', 'This email is already subscribed to the newsletter.')
+                ->withInput();
+        }
+
+        $recipientOrg = $request->user() instanceof User ? Organization::forAuthUser($request->user()) : null;
+
         NewsletterRecipient::create([
-            'organization_id' => null,
-            'email' => $request->email,
-            'name' => $request->name,
+            'organization_id' => $recipientOrg?->id,
+            'email' => $email,
+            'name' => $request->input('name'),
             'status' => 'active',
             'subscribed_at' => now(),
         ]);
 
-        return back()->with('success', 'Recipient added successfully!');
+        if ($inertiaSilentCreate) {
+            return $this->inertiaNewsletterCreateAudience($request, [
+                'newsletterRecipientInlineNotice' => [
+                    'type' => 'success',
+                    'message' => 'Recipient added successfully!',
+                ],
+            ]);
+        }
+
+        return $redirectAfter()->with('success', 'Recipient added successfully!');
+    }
+
+    /**
+     * Manual recipient belongs to this org, or is a shared (null org) row visible in this org's audience.
+     */
+    protected function assertCanManageManualRecipient(Request $request, NewsletterRecipient $recipient): void
+    {
+        $user = $request->user();
+        if (! $user instanceof User) {
+            abort(403);
+        }
+        $org = Organization::forAuthUser($user);
+        if (! $org) {
+            abort(403);
+        }
+        if ($recipient->organization_id !== null && (int) $recipient->organization_id !== (int) $org->id) {
+            abort(403);
+        }
+    }
+
+    /**
+     * Update a manual recipient (email / name). Supports silent Inertia return to newsletter create.
+     */
+    public function updateManualRecipient(Request $request, NewsletterRecipient $recipient)
+    {
+        $this->authorizePermission($request, 'newsletter.create');
+        $this->assertCanManageManualRecipient($request, $recipient);
+
+        $backToCreate = $request->input('return_to') === 'newsletter.create';
+        $inertiaSilentCreate = $backToCreate && $request->inertia();
+
+        $validator = Validator::make($request->all(), [
+            'email' => 'required|email|max:255',
+            'name' => 'nullable|string|max:255',
+            'return_to' => 'nullable|in:newsletter.create',
+        ]);
+
+        if ($validator->fails()) {
+            if ($inertiaSilentCreate) {
+                return $this->inertiaNewsletterCreateAudience($request, [
+                    'errors' => $validator->errors(),
+                ]);
+            }
+
+            return back()->withErrors($validator)->withInput();
+        }
+
+        $email = (string) $request->input('email');
+
+        $duplicate = NewsletterRecipient::where('email', $email)->where('id', '!=', $recipient->id)->first();
+        if ($duplicate) {
+            if ($inertiaSilentCreate) {
+                return $this->inertiaNewsletterCreateAudience($request, [
+                    'newsletterRecipientInlineNotice' => [
+                        'type' => 'error',
+                        'message' => 'Another recipient already uses this email.',
+                    ],
+                ]);
+            }
+
+            return back()->with('error', 'Another recipient already uses this email.')->withInput();
+        }
+
+        $recipient->update([
+            'email' => $email,
+            'name' => $request->input('name'),
+        ]);
+
+        if ($inertiaSilentCreate) {
+            return $this->inertiaNewsletterCreateAudience($request, [
+                'newsletterRecipientInlineNotice' => [
+                    'type' => 'success',
+                    'message' => 'Recipient updated.',
+                ],
+            ]);
+        }
+
+        return back()->with('success', 'Recipient updated successfully!');
+    }
+
+    /**
+     * Delete a manual recipient. Supports silent Inertia return to newsletter create.
+     */
+    public function destroyManualRecipient(Request $request, NewsletterRecipient $recipient)
+    {
+        $this->authorizePermission($request, 'newsletter.edit');
+        $this->assertCanManageManualRecipient($request, $recipient);
+
+        $backToCreate = $request->input('return_to') === 'newsletter.create';
+        $inertiaSilentCreate = $backToCreate && $request->inertia();
+
+        $recipient->delete();
+
+        if ($inertiaSilentCreate) {
+            return $this->inertiaNewsletterCreateAudience($request, [
+                'newsletterRecipientInlineNotice' => [
+                    'type' => 'success',
+                    'message' => 'Recipient removed.',
+                ],
+            ]);
+        }
+
+        return back()->with('success', 'Recipient deleted successfully!');
     }
 
     /**
@@ -2015,6 +2246,9 @@ TXT;
         $imported = 0;
         $errors = [];
 
+        $importOrg = Auth::user() instanceof User ? Organization::forAuthUser(Auth::user()) : null;
+        $importOrgId = $importOrg?->id;
+
         if (($handle = fopen($path, 'r')) !== false) {
             // Skip header row
             fgetcsv($handle);
@@ -2030,7 +2264,7 @@ TXT;
 
                         if (! $existing) {
                             NewsletterRecipient::create([
-                                'organization_id' => null,
+                                'organization_id' => $importOrgId,
                                 'email' => $email,
                                 'name' => $name,
                                 'status' => 'active',
@@ -2067,8 +2301,21 @@ TXT;
         $this->authorizePermission($request, 'newsletter.create');
 
         $recipient = NewsletterRecipient::findOrFail($recipientId);
+        $this->assertCanManageManualRecipient($request, $recipient);
+
+        $backToCreate = $request->input('return_to') === 'newsletter.create';
+        $inertiaSilent = $backToCreate && $request->inertia();
 
         if ($recipient->status === 'active') {
+            if ($inertiaSilent) {
+                return $this->inertiaNewsletterCreateAudience($request, [
+                    'newsletterRecipientInlineNotice' => [
+                        'type' => 'error',
+                        'message' => 'This recipient is already subscribed.',
+                    ],
+                ]);
+            }
+
             return back()->with('error', 'This recipient is already subscribed.');
         }
 
@@ -2077,6 +2324,15 @@ TXT;
             'subscribed_at' => now(),
             'unsubscribed_at' => null,
         ]);
+
+        if ($inertiaSilent) {
+            return $this->inertiaNewsletterCreateAudience($request, [
+                'newsletterRecipientInlineNotice' => [
+                    'type' => 'success',
+                    'message' => 'Recipient subscribed successfully!',
+                ],
+            ]);
+        }
 
         return back()->with('success', 'Recipient subscribed successfully!');
     }
@@ -2089,8 +2345,21 @@ TXT;
         $this->authorizePermission($request, 'newsletter.edit');
 
         $recipient = NewsletterRecipient::findOrFail($recipientId);
+        $this->assertCanManageManualRecipient($request, $recipient);
+
+        $backToCreate = $request->input('return_to') === 'newsletter.create';
+        $inertiaSilent = $backToCreate && $request->inertia();
 
         if ($recipient->status !== 'active') {
+            if ($inertiaSilent) {
+                return $this->inertiaNewsletterCreateAudience($request, [
+                    'newsletterRecipientInlineNotice' => [
+                        'type' => 'error',
+                        'message' => 'This recipient is not currently subscribed.',
+                    ],
+                ]);
+            }
+
             return back()->with('error', 'This recipient is not currently subscribed.');
         }
 
@@ -2098,6 +2367,15 @@ TXT;
             'status' => 'unsubscribed',
             'unsubscribed_at' => now(),
         ]);
+
+        if ($inertiaSilent) {
+            return $this->inertiaNewsletterCreateAudience($request, [
+                'newsletterRecipientInlineNotice' => [
+                    'type' => 'success',
+                    'message' => 'Recipient unsubscribed successfully!',
+                ],
+            ]);
+        }
 
         return back()->with('success', 'Recipient unsubscribed successfully!');
     }
@@ -2109,7 +2387,7 @@ TXT;
     {
         $this->authorizePermission($request, 'newsletter.create');
 
-        return Inertia::render('newsletter/create', $this->newsletterCreatePageData(null));
+        return Inertia::render('newsletter/create', $this->newsletterCreatePageData(null, $request));
     }
 
     /**
@@ -2140,9 +2418,11 @@ TXT;
             'subject' => 'required|string|max:255',
             'content' => $request->input('send_via') === 'sms'
                 ? 'required|string|max:'.self::NEWSLETTER_SMS_PLAIN_MAX_CHARS
-                : 'nullable|string',
+                : ($request->input('send_via') === 'push'
+                    ? 'required|string|max:20000'
+                    : 'nullable|string'),
             'html_content' => 'nullable|string',
-            'send_via' => 'required|in:email,sms,both',
+            'send_via' => 'required|in:email,sms,both,push',
             'scheduled_at' => 'nullable|date|after:now',
             'schedule_type' => 'required|in:immediate,scheduled,recurring',
             'recurring_settings' => 'nullable|array',
@@ -2151,6 +2431,7 @@ TXT;
             'target_organizations' => 'nullable|array',
             'target_roles' => 'nullable|array',
             'target_criteria' => 'nullable|array',
+            'target_criteria.organization_segment' => 'nullable|in:followers,donors,volunteers,newsletter_contacts',
             'is_public' => 'boolean',
         ];
 
@@ -2234,6 +2515,17 @@ TXT;
                     'html_content' => 'HTML content is required when sending both SMS and email (email uses the HTML version).',
                 ]);
             }
+        } elseif ($sendVia === 'push') {
+            if (trim((string) $request->subject) === '') {
+                throw ValidationException::withMessages([
+                    'subject' => 'A subject is required for push (used as the notification title).',
+                ]);
+            }
+            if ($contentTrim === '') {
+                throw ValidationException::withMessages([
+                    'content' => 'Plain text body is required for push notifications.',
+                ]);
+            }
         } elseif ($contentTrim === '' && $htmlTrim === '') {
             throw ValidationException::withMessages([
                 'content' => 'Provide plain text content and/or HTML content.',
@@ -2299,8 +2591,8 @@ TXT;
             'is_public' => $request->is_public ?? false,
         ]);
 
-        // Calculate total recipients
-        $newsletter->total_recipients = $newsletter->getTargetedUsers()->count();
+        // Calculate total recipients (org segment: followers/donors/volunteers/users, or imported contacts count)
+        $newsletter->total_recipients = $newsletter->resolvedTotalRecipientsCount();
         $newsletter->save();
 
         return redirect()->route('newsletter.show', $newsletter->id)
@@ -2586,10 +2878,12 @@ TXT;
             'subject' => 'required|string|max:255',
             'content' => $request->input('send_via') === 'sms'
                 ? 'required|string|max:'.self::NEWSLETTER_SMS_PLAIN_MAX_CHARS
-                : 'nullable|string',
+                : ($request->input('send_via') === 'push'
+                    ? 'required|string|max:20000'
+                    : 'nullable|string'),
             'html_content' => 'nullable|string',
             'newsletter_template_id' => 'nullable|exists:newsletter_templates,id',
-            'send_via' => 'required|in:email,sms,both',
+            'send_via' => 'required|in:email,sms,both,push',
         ]);
 
         $sendVia = $request->input('send_via', 'email');
@@ -2612,6 +2906,17 @@ TXT;
             if ($htmlTrim === '') {
                 throw ValidationException::withMessages([
                     'html_content' => 'HTML content is required when sending both SMS and email.',
+                ]);
+            }
+        } elseif ($sendVia === 'push') {
+            if (trim((string) $request->subject) === '') {
+                throw ValidationException::withMessages([
+                    'subject' => 'A subject is required for push (used as the notification title).',
+                ]);
+            }
+            if ($contentTrim === '') {
+                throw ValidationException::withMessages([
+                    'content' => 'Plain text body is required for push notifications.',
                 ]);
             }
         } elseif ($contentTrim === '' && $htmlTrim === '') {

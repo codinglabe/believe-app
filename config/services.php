@@ -88,6 +88,13 @@ return [
         'project_id' => env('FIREBASE_PROJECT_ID'),
         'credentials' => env('FIREBASE_CREDENTIALS', 'app/firebase/firebase-credentials.json'),
         'vapid_key' => env('FIREBASE_VAPID_KEY'),
+        /**
+         * OAuth + FCM use Guzzle/cURL. On Windows, "SSL certificate problem: unable to get local issuer certificate"
+         * is common until php.ini curl.cainfo is set — or set FIREBASE_CAFILE to https://curl.se/ca/cacert.pem path.
+         * For local dev only you may set FIREBASE_VERIFY_SSL=false (never in production).
+         */
+        'verify_ssl' => filter_var(env('FIREBASE_VERIFY_SSL', true), FILTER_VALIDATE_BOOL),
+        'cafile' => env('FIREBASE_CAFILE'),
     ],
 
     'openai' => [
@@ -98,11 +105,11 @@ return [
 
     /*
     | Newsletter / template AI HTML generation (OpenAI JSON mode).
-    | Higher temperature = bolder layouts; set NEWSLETTER_AI_MODEL=gpt-4o-mini for best results if budget allows.
+    | Default model is gpt-4o-mini (good layout quality vs cost). Override with NEWSLETTER_AI_MODEL in .env.
     | Keep max_output_tokens <= 4096 unless your model supports higher (otherwise OpenAI returns HTTP 400).
     */
     'newsletter_ai' => [
-        'model' => env('NEWSLETTER_AI_MODEL'),
+        'model' => env('NEWSLETTER_AI_MODEL', 'gpt-4o-mini'),
         'temperature' => (float) env('NEWSLETTER_AI_TEMPERATURE', 0.74),
         'max_output_tokens' => (int) env('NEWSLETTER_AI_MAX_TOKENS', 4096),
     ],

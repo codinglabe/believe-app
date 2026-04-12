@@ -37,6 +37,8 @@ function sendViaLabel(sendVia?: string): string {
             return 'SMS'
         case 'both':
             return 'Email & SMS'
+        case 'push':
+            return 'Push'
         case 'email':
         default:
             return 'Email'
@@ -48,7 +50,7 @@ interface Newsletter {
     subject: string
     content: string
     html_content: string
-    send_via?: 'email' | 'sms' | 'both'
+    send_via?: 'email' | 'sms' | 'both' | 'push'
     status: 'draft' | 'paused' | 'scheduled' | 'sending' | 'sent' | 'failed'
     scheduled_at?: string
     scheduled_at_formatted?: string

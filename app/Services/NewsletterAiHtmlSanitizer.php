@@ -59,6 +59,13 @@ final class NewsletterAiHtmlSanitizer
             }
         }
 
+        // Primary CTA rows: margin on the button + space before the next paragraph; padding on parent cells.
+        foreach ($xpath->query('//a') as $n) {
+            if ($n instanceof \DOMElement) {
+                $this->ensureCtaAnchorAndFollowingSpacing($n);
+            }
+        }
+
         $root = $doc->getElementById('ai-h-root');
         if (! $root) {
             return $this->regexFallbackLightText($html);
@@ -180,6 +187,108 @@ final class NewsletterAiHtmlSanitizer
         }
 
         $td->setAttribute('style', $this->serializeInlineStyle($props));
+    }
+
+    /**
+     * Button-style CTAs: add margin under the link and margin above the next paragraph so copy never overlaps the button
+     * (common when AI puts the closing “Warm regards” <p> immediately after a centered CTA with no gap).
+     */
+    private function ensureCtaAnchorAndFollowingSpacing(\DOMElement $a): void
+    {
+        $st = $a->getAttribute('style');
+        if ($st === '') {
+            return;
+        }
+        $lower = strtolower($st);
+
+        $looksLikePrimaryCta = (str_contains($lower, 'inline-block') || preg_match('/font-weight:\s*(700|800|900|bold)/', $lower))
+            && (str_contains($lower, 'border-radius') || preg_match('/background(?:-color)?\s*:\s*[^;]*#/', $lower) || preg_match('/background(?:-color)?\s*:\s*(?:rgb|hsl)\(/', $lower))
+            && (preg_match('/padding\s*:\s*\d/', $lower) || str_contains($lower, 'padding:'));
+
+        if (! $looksLikePrimaryCta) {
+            return;
+        }
+
+        $aProps = $this->parseInlineStyle($st);
+        $mb = null;
+        if (isset($aProps['margin-bottom'])) {
+            $mb = $this->minPxFromCssLength((string) $aProps['margin-bottom']);
+        }
+        if ($mb === null || $mb < 24.0) {
+            $aProps['margin-bottom'] = '32px';
+            $a->setAttribute('style', $this->serializeInlineStyle($aProps));
+        }
+
+        $this->ensureMarginBeforeNextBlockAfterCta($a);
+
+        $el = $a->parentNode;
+        $td = null;
+        for ($i = 0; $el && $i < 14; $i++) {
+            if ($el instanceof \DOMElement && strtolower($el->tagName) === 'td') {
+                $td = $el;
+
+                break;
+            }
+            $el = $el->parentNode;
+        }
+
+        if ($td !== null) {
+            $props = $this->parseInlineStyle($td->getAttribute('style'));
+            $bottomPx = null;
+            if (isset($props['padding-bottom'])) {
+                $bottomPx = $this->minPxFromCssLength((string) $props['padding-bottom']);
+            } elseif (isset($props['padding'])) {
+                $bottomPx = $this->minPxFromPaddingShorthand((string) $props['padding']);
+            }
+
+            if ($bottomPx === null || $bottomPx < 24.0) {
+                $props['padding-bottom'] = '32px';
+                $td->setAttribute('style', $this->serializeInlineStyle($props));
+            }
+        }
+    }
+
+    /**
+     * Add margin-top on the paragraph/block that follows the CTA (sibling of the link, or sibling of the wrapper p/div).
+     */
+    private function ensureMarginBeforeNextBlockAfterCta(\DOMElement $a): void
+    {
+        $candidates = [];
+
+        $next = $a->nextSibling;
+        while ($next && $next->nodeType === XML_TEXT_NODE && trim($next->textContent) === '') {
+            $next = $next->nextSibling;
+        }
+        if ($next instanceof \DOMElement) {
+            $candidates[] = $next;
+        }
+
+        $parent = $a->parentNode;
+        if ($parent instanceof \DOMElement) {
+            $pt = strtolower($parent->tagName);
+            if (in_array($pt, ['p', 'div', 'center', 'td'], true)) {
+                $ps = $parent->nextSibling;
+                while ($ps && $ps->nodeType === XML_TEXT_NODE && trim($ps->textContent) === '') {
+                    $ps = $ps->nextSibling;
+                }
+                if ($ps instanceof \DOMElement) {
+                    $candidates[] = $ps;
+                }
+            }
+        }
+
+        foreach ($candidates as $el) {
+            $tag = strtolower($el->tagName);
+            if (! in_array($tag, ['p', 'div'], true)) {
+                continue;
+            }
+            $pProps = $this->parseInlineStyle($el->getAttribute('style'));
+            $mt = isset($pProps['margin-top']) ? $this->minPxFromCssLength((string) $pProps['margin-top']) : null;
+            if ($mt === null || $mt < 16.0) {
+                $pProps['margin-top'] = '20px';
+                $el->setAttribute('style', $this->serializeInlineStyle($pProps));
+            }
+        }
     }
 
     /**

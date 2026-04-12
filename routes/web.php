@@ -1513,6 +1513,8 @@ Route::prefix('newsletter')->name('newsletter.')->group(function () {
     Route::post('/recipients/import', [NewsletterController::class, 'importRecipients'])->name('recipients.import');
     Route::post('/recipients/manual/{recipientId}/subscribe', [NewsletterController::class, 'subscribeManualRecipient'])->name('recipients.manual.subscribe');
     Route::post('/recipients/manual/{recipientId}/unsubscribe', [NewsletterController::class, 'unsubscribeManualRecipient'])->name('recipients.manual.unsubscribe');
+    Route::patch('/recipients/manual/{recipient}', [NewsletterController::class, 'updateManualRecipient'])->name('recipients.manual.update');
+    Route::delete('/recipients/manual/{recipient}', [NewsletterController::class, 'destroyManualRecipient'])->name('recipients.manual.destroy');
     Route::get('/export', [NewsletterController::class, 'export'])->name('export');
     Route::get('/create', [NewsletterController::class, 'create'])->name('create');
     Route::post('/purchase-sms', [NewsletterController::class, 'purchaseSms'])->name('purchase-sms');
