@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { ConfirmationModal } from "@/components/admin/confirmation-modal"
 import { UnifiedLedgerCard, type UnifiedLedgerRow } from "@/components/admin/unified-ledger-card"
 import { transactionTypeBadgeClass, transactionTypeDisplayLabel } from "@/lib/transaction-type-labels"
@@ -433,24 +434,37 @@ export default function TransactionShow({ transaction: t }: Props) {
             </Link>
             <h1 className="font-mono text-2xl font-bold tracking-tight text-foreground sm:text-3xl">{t.transaction_id}</h1>
             <div className="flex flex-wrap items-center gap-2">
-              <span
-                className={cn(
-                  "inline-flex max-w-full min-w-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold uppercase leading-none tracking-wide sm:px-3 sm:text-sm",
-                  txTypeDisplay.className,
-                )}
-                title={
-                  t.donation_badge_label
-                    ? `${txTypeDisplay.label} — ${t.donation_badge_label}`
-                    : txTypeDisplay.label
-                }
-              >
-                {txTypeDisplay.icon === "heart" ? (
-                  <Heart className="h-3.5 w-3.5 shrink-0 opacity-90 sm:h-4 sm:w-4" aria-hidden />
-                ) : (
-                  <ArrowRightLeft className="h-3.5 w-3.5 shrink-0 opacity-80 sm:h-4 sm:w-4" aria-hidden />
-                )}
-                <span className="min-w-0 truncate">{txTypeDisplay.label}</span>
-              </span>
+              <Tooltip delayDuration={350}>
+                <TooltipTrigger asChild>
+                  <span
+                    className={cn(
+                      "inline-flex max-w-full min-w-0 cursor-pointer items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-xs font-semibold uppercase leading-none tracking-wide sm:text-sm",
+                      txTypeDisplay.className,
+                    )}
+                  >
+                    {txTypeDisplay.icon === "heart" ? (
+                      <Heart className="h-3.5 w-3.5 shrink-0 opacity-90 sm:h-4 sm:w-4" aria-hidden />
+                    ) : (
+                      <ArrowRightLeft className="h-3.5 w-3.5 shrink-0 opacity-80 sm:h-4 sm:w-4" aria-hidden />
+                    )}
+                    <span className="min-w-0 max-w-[min(100%,14rem)] truncate sm:max-w-[18rem]">{txTypeDisplay.label}</span>
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent
+                  side="top"
+                  sideOffset={8}
+                  className="max-w-xs px-3 py-2 text-left text-xs font-medium normal-case leading-snug tracking-normal text-popover-foreground"
+                >
+                  {t.donation_badge_label ? (
+                    <>
+                      <span className="font-semibold uppercase tracking-wide">{txTypeDisplay.label}</span>
+                      <span className="mt-1 block text-[11px] font-normal text-muted-foreground">{t.donation_badge_label}</span>
+                    </>
+                  ) : (
+                    txTypeDisplay.label
+                  )}
+                </TooltipContent>
+              </Tooltip>
               <span
                 className="inline-flex items-center rounded-md border border-border/50 bg-muted/30 px-2 py-1 font-mono text-sm font-semibold tabular-nums text-foreground"
                 title={`Transaction id ${t.id}`}
@@ -539,19 +553,37 @@ export default function TransactionShow({ transaction: t }: Props) {
               <div className="space-y-2">
                 <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Type &amp; status</p>
                 <div className="flex flex-wrap items-center gap-2">
-                  <span
-                    className={cn(
-                      "inline-flex max-w-full min-w-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold uppercase leading-none tracking-wide",
-                      txTypeDisplay.className,
-                    )}
-                  >
-                    {txTypeDisplay.icon === "heart" ? (
-                      <Heart className="h-3.5 w-3.5 shrink-0 opacity-90" aria-hidden />
-                    ) : (
-                      <ArrowRightLeft className="h-3.5 w-3.5 shrink-0 opacity-80" aria-hidden />
-                    )}
-                    <span className="min-w-0 truncate">{txTypeDisplay.label}</span>
-                  </span>
+                  <Tooltip delayDuration={350}>
+                    <TooltipTrigger asChild>
+                      <span
+                        className={cn(
+                          "inline-flex max-w-full min-w-0 cursor-pointer items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-xs font-semibold uppercase leading-none tracking-wide sm:text-sm",
+                          txTypeDisplay.className,
+                        )}
+                      >
+                        {txTypeDisplay.icon === "heart" ? (
+                          <Heart className="h-3.5 w-3.5 shrink-0 opacity-90 sm:h-4 sm:w-4" aria-hidden />
+                        ) : (
+                          <ArrowRightLeft className="h-3.5 w-3.5 shrink-0 opacity-80 sm:h-4 sm:w-4" aria-hidden />
+                        )}
+                        <span className="min-w-0 max-w-[min(100%,14rem)] truncate sm:max-w-[18rem]">{txTypeDisplay.label}</span>
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent
+                      side="top"
+                      sideOffset={8}
+                      className="max-w-xs px-3 py-2 text-left text-xs font-medium normal-case leading-snug tracking-normal text-popover-foreground"
+                    >
+                      {t.donation_badge_label ? (
+                        <>
+                          <span className="font-semibold uppercase tracking-wide">{txTypeDisplay.label}</span>
+                          <span className="mt-1 block text-[11px] font-normal text-muted-foreground">{t.donation_badge_label}</span>
+                        </>
+                      ) : (
+                        txTypeDisplay.label
+                      )}
+                    </TooltipContent>
+                  </Tooltip>
                   <span className="rounded-md border border-border/50 bg-muted/25 px-2 py-0.5 font-mono text-xs font-semibold tabular-nums text-foreground">
                     #{t.id}
                   </span>

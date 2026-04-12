@@ -34,10 +34,12 @@ final class LedgerListFilters
             'donation',
             'fundme',
             'campaign',
+            'gift_card',
             'marketplace',
             'servicehub',
             'course',
             'merchant_hub',
+            'supporter_subscription',
             'organization_subscription',
             'merchant_subscription',
             'payout',
@@ -105,9 +107,11 @@ final class LedgerListFilters
             'servicehub' => self::scopeServicehub(self::withRefundPayoutExclusion($query)),
             'course' => self::scopeCourse(self::withRefundPayoutExclusion($query)),
             'merchant_hub' => self::scopeMerchantHub(self::withRefundPayoutExclusion($query)),
+            'supporter_subscription' => self::scopeSupporterSubscription(self::withRefundPayoutExclusion($query)),
             'organization_subscription' => self::scopeOrganizationSubscription(self::withRefundPayoutExclusion($query)),
             'merchant_subscription' => self::scopeMerchantSubscription(self::withRefundPayoutExclusion($query)),
             'adjustment' => self::scopeAdjustment(self::withRefundPayoutExclusion($query)),
+            'gift_card' => self::scopeGiftCard(self::withRefundPayoutExclusion($query)),
             'marketplace' => self::scopeMarketplace(self::withRefundPayoutExclusion($query)),
             'believe_points' => self::scopeBelievePoints($query),
             'wallet' => self::scopeWallet($query),
@@ -235,20 +239,40 @@ final class LedgerListFilters
         });
     }
 
-    private static function scopeOrganizationSubscription(Builder $query): void
+    /**
+     * Platform plans & wallet plans (supporter paying BIU), including KYC fee and plan checkout stored as purchase + meta.
+     */
+    private static function scopeSupporterSubscription(Builder $query): void
     {
         $query->where(function (Builder $q) {
             $q->where('related_type', Plan::class)
+                ->orWhere('related_type', 'like', '%Plan')
                 ->orWhereIn('type', ['plan_subscription', 'kyc_fee', 'wallet_subscription'])
                 ->orWhereNotNull('meta->wallet_plan_id')
-                ->orWhere(function (Builder $c) {
-                    $c->where('type', 'commission')
-                        ->where(function (Builder $m) {
-                            $m->whereNull('meta->merchant_id')
-                                ->orWhere('meta->merchant_id', '')
-                                ->orWhere('meta->merchant_id', '0');
-                        });
+                ->orWhere(function (Builder $p) {
+                    $p->where('type', 'purchase')
+                        ->whereNotNull('meta->plan_id')
+                        ->whereNotNull('meta->plan_name');
                 });
+        });
+    }
+
+    /**
+     * Org marketing credits (newsletter/SMS/email), nonprofit commission without merchant — not supporter platform/wallet plans.
+     */
+    private static function scopeOrganizationSubscription(Builder $query): void
+    {
+        $query->where(function (Builder $q) {
+            $q->where(function (Builder $c) {
+                $c->where('type', 'commission')
+                    ->where(function (Builder $m) {
+                        $m->whereNull('meta->merchant_id')
+                            ->orWhere('meta->merchant_id', '')
+                            ->orWhere('meta->merchant_id', '0');
+                    });
+            })
+                ->orWhereIn('type', ['newsletter_pro_targeting_lifetime', 'sms_purchase', 'email_purchase'])
+                ->orWhereIn('meta->type', ['newsletter_pro_targeting_lifetime', 'sms_purchase', 'email_purchase']);
         });
     }
 
@@ -294,11 +318,21 @@ final class LedgerListFilters
         });
     }
 
+    private static function scopeGiftCard(Builder $query): void
+    {
+        $query->where(function (Builder $q) {
+            $q->where('related_type', GiftCard::class)
+                ->orWhere('related_type', 'like', '%GiftCard')
+                ->orWhere('type', 'gift_card_purchase')
+                ->orWhere('meta->type', 'gift_card_purchase')
+                ->orWhereNotNull('meta->gift_card_id');
+        });
+    }
+
     private static function scopeMarketplace(Builder $query): void
     {
         $query->where(function (Builder $q) {
             $q->where('related_type', Order::class)
-                ->orWhere('related_type', GiftCard::class)
                 ->orWhere('related_type', Raffle::class)
                 ->orWhere(function (Builder $p) {
                     $p->where('type', 'purchase')
@@ -363,6 +397,14 @@ final class LedgerListFilters
                                 ->orWhereNotNull('meta->fundme_campaign_id');
                         });
                 });
+        });
+
+        $query->whereNot(function (Builder $gc) {
+            $gc->where('related_type', GiftCard::class)
+                ->orWhere('related_type', 'like', '%GiftCard')
+                ->orWhere('type', 'gift_card_purchase')
+                ->orWhere('meta->type', 'gift_card_purchase')
+                ->orWhereNotNull('meta->gift_card_id');
         });
     }
 

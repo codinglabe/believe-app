@@ -255,19 +255,22 @@ class UnifiedLedgerPresenter
             'believe_points_purchase' => 'believe_points',
             'order' => $base === 'MerchantHubOfferRedemption'
                 ? 'merchant_hub'
-                : ($this->isOrgMarketingCommsProductType($this->effectiveWalletProductType($t))
-                    ? 'organization_subscription'
-                    : 'marketplace'),
+                : ($this->isGiftCardPurchaseContext($t)
+                    ? 'gift_card'
+                    : ($this->isOrgMarketingCommsProductType($this->effectiveWalletProductType($t))
+                        ? 'organization_subscription'
+                        : 'marketplace')),
             'service_order' => 'servicehub',
             'enrollment' => 'course',
-            'plan_subscription', 'wallet_plan_subscription' => 'organization_subscription',
-            'gift_card', 'raffle' => 'marketplace',
+            'plan_subscription', 'wallet_plan_subscription' => 'supporter_subscription',
+            'gift_card' => 'gift_card',
+            'raffle' => 'marketplace',
             'merchant_hub_redemption', 'merchant_hub_referral' => 'merchant_hub',
             'commission' => $this->moduleForCommission($t),
             'ledger_unclassified' => match ($base) {
                 'Enrollment' => 'course',
-                'Plan' => 'organization_subscription',
-                'GiftCard' => 'marketplace',
+                'Plan' => 'supporter_subscription',
+                'GiftCard' => 'gift_card',
                 'Raffle' => 'marketplace',
                 'MerchantHubOfferRedemption' => 'merchant_hub',
                 'MerchantHubReferralReward' => 'merchant_hub',
@@ -275,8 +278,8 @@ class UnifiedLedgerPresenter
             },
             default => match ($base) {
                 'Enrollment' => 'course',
-                'Plan' => 'organization_subscription',
-                'GiftCard' => 'marketplace',
+                'Plan' => 'supporter_subscription',
+                'GiftCard' => 'gift_card',
                 'Raffle' => 'marketplace',
                 'MerchantHubOfferRedemption' => 'merchant_hub',
                 'MerchantHubReferralReward' => 'merchant_hub',
@@ -307,7 +310,7 @@ class UnifiedLedgerPresenter
         $direct = strtolower(trim((string) ($t->type ?? '')));
         $fromMeta = strtolower(trim((string) ($meta['type'] ?? '')));
 
-        $canonical = ['newsletter_pro_targeting_lifetime', 'sms_purchase', 'email_purchase'];
+        $canonical = ['newsletter_pro_targeting_lifetime', 'sms_purchase', 'email_purchase', 'gift_card_purchase', 'fundme_donation'];
         if (in_array($fromMeta, $canonical, true)) {
             return $fromMeta;
         }
@@ -333,6 +336,27 @@ class UnifiedLedgerPresenter
     }
 
     /**
+     * Gift card purchases (Phaze / org flows): polymorphic GiftCard, explicit wallet type, or meta echoes.
+     */
+    private function isGiftCardPurchaseContext(Transaction $t): bool
+    {
+        $meta = is_array($t->meta) ? $t->meta : [];
+        $rt = $t->related_type ? ltrim((string) $t->related_type, '\\') : '';
+        if ($rt !== '' && (str_ends_with($rt, 'GiftCard') || class_basename($rt) === 'GiftCard')) {
+            return true;
+        }
+        $eff = $this->effectiveWalletProductType($t);
+        if ($eff === 'gift_card_purchase') {
+            return true;
+        }
+        if (! empty($meta['gift_card_id'])) {
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
      * Map `transactions.type` strings (product / checkout flows) to a BIU module.
      * Returns null so {@see moduleFromMetaOrType()} can still apply deposit / ledger heuristics.
      */
@@ -349,8 +373,8 @@ class UnifiedLedgerPresenter
             'newsletter_pro_targeting_lifetime',
             'sms_purchase',
             'email_purchase' => 'organization_subscription',
+            'gift_card_purchase' => 'gift_card',
             'purchase',
-            'gift_card_purchase',
             'raffle_sale',
             'raffle_tickets',
             'administrative_fee',
@@ -371,7 +395,7 @@ class UnifiedLedgerPresenter
             'donation' => 'donation',
             'plan_subscription',
             'wallet_subscription',
-            'kyc_fee',
+            'kyc_fee' => 'supporter_subscription',
             'merchant_subscription' => 'organization_subscription',
             'believe_points_purchase',
             'believe_points_auto_replenish',
@@ -405,6 +429,11 @@ class UnifiedLedgerPresenter
         // Org newsletter / SMS / email products: never classify as marketplace just because checkout has order_id.
         if ($this->isOrgMarketingCommsProductType($effectiveType)) {
             return 'organization_subscription';
+        }
+
+        // Gift cards: own module (not general Marketplace).
+        if ($this->isGiftCardPurchaseContext($t)) {
+            return 'gift_card';
         }
 
         // Meta keys (often set when related_type is null).
@@ -445,17 +474,25 @@ class UnifiedLedgerPresenter
                 return 'servicehub';
             }
             if ($base === 'Order') {
-                return $this->isOrgMarketingCommsProductType($effectiveType)
-                    ? 'organization_subscription'
-                    : 'marketplace';
+                if ($this->isOrgMarketingCommsProductType($effectiveType)) {
+                    return 'organization_subscription';
+                }
+                if ($this->isGiftCardPurchaseContext($t)) {
+                    return 'gift_card';
+                }
+
+                return 'marketplace';
             }
             if (str_ends_with($rt, 'Enrollment')) {
                 return 'course';
             }
             if ($base === 'Plan') {
-                return 'organization_subscription';
+                return 'supporter_subscription';
             }
-            if (str_ends_with($rt, 'GiftCard') || str_ends_with($rt, 'Raffle')) {
+            if (str_ends_with($rt, 'GiftCard')) {
+                return 'gift_card';
+            }
+            if (str_ends_with($rt, 'Raffle')) {
                 return 'marketplace';
             }
             if (str_ends_with($rt, 'MerchantHubOfferRedemption') || str_ends_with($rt, 'MerchantHubReferralReward')) {
@@ -467,11 +504,27 @@ class UnifiedLedgerPresenter
         }
 
         if (! empty($meta['subscription_id']) || str_contains(strtolower((string) ($meta['plan_name'] ?? '')), 'subscription')) {
-            return ! empty($meta['merchant_id']) ? 'merchant_subscription' : 'organization_subscription';
+            if (! empty($meta['merchant_id'])) {
+                return 'merchant_subscription';
+            }
+            if (! empty($meta['wallet_plan_id']) || ! empty($meta['plan_id'])) {
+                return 'supporter_subscription';
+            }
+
+            return 'organization_subscription';
+        }
+
+        if (! empty($meta['wallet_plan_id'])) {
+            return 'supporter_subscription';
+        }
+
+        // Platform plan checkout (PlansController success): type may be `purchase` with plan_id + plan_name.
+        if ($type === 'purchase' && ! empty($meta['plan_id']) && ! empty($meta['plan_name']) && empty($meta['order_id'])) {
+            return 'supporter_subscription';
         }
 
         if (in_array($type, ['plan_subscription', 'wallet_subscription', 'kyc_fee'], true)) {
-            return 'organization_subscription';
+            return 'supporter_subscription';
         }
 
         if ($type === 'adjustment' || ($meta['adjustment_reason'] ?? null)) {
@@ -572,16 +625,21 @@ class UnifiedLedgerPresenter
         if ($walletType === 'email_purchase') {
             return 'email_credit_purchase';
         }
+        if ($walletType === 'gift_card_purchase') {
+            return 'gift_card_purchase';
+        }
 
         return match ($module) {
             'donation' => $this->donationTransactionType($t, $donationPerspective),
             'fundme' => 'fundme_contribution',
             'campaign' => 'campaign_contribution',
             'believe_points' => 'believe_points_purchase',
+            'gift_card' => 'gift_card_purchase',
             'marketplace' => 'marketplace_sale',
             'servicehub' => 'service_payment',
             'course' => 'course_enrollment',
             'merchant_hub' => 'merchant_hub_sale',
+            'supporter_subscription' => 'supporter_subscription_paid',
             'organization_subscription' => 'organization_subscription_paid',
             'merchant_subscription' => 'merchant_subscription_paid',
             'wallet' => 'wallet_deposit',
@@ -667,6 +725,23 @@ class UnifiedLedgerPresenter
             $defaultTo['to_type'] = 'merchant';
         }
 
+        // Platform / wallet plans purchased by a supporter (not nonprofit org subscription billing).
+        if ($module === 'supporter_subscription') {
+            $payer = $walletUser;
+            $defaultFrom = [
+                'from_type' => 'supporter',
+                'from_name' => $payer?->name,
+                'from_email' => $payer?->email,
+                'from_id' => $payer?->id,
+            ];
+            $defaultTo = [
+                'to_type' => 'platform',
+                'to_name' => 'BIU Platform',
+                'to_email' => null,
+                'to_id' => null,
+            ];
+        }
+
         if ($module === 'organization_subscription' || $module === 'merchant_subscription') {
             $payer = $walletUser;
             $defaultFrom = [
@@ -745,7 +820,7 @@ class UnifiedLedgerPresenter
             $defaultTo['to_name'] = $orgName ?? $related['related_display_name'] ?? $defaultTo['to_name'];
         }
 
-        if ($module === 'marketplace') {
+        if ($module === 'marketplace' || $module === 'gift_card') {
             if ($walletUser) {
                 $payerOrg = Organization::forAuthUser($walletUser);
                 if ($payerOrg) {
