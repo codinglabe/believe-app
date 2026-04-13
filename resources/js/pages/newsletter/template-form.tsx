@@ -89,6 +89,12 @@ import {
     Mail,
     CheckCircle2,
 } from "lucide-react"
+import { cn } from "@/lib/utils"
+import {
+    NEWSLETTER_AI_BRIEF_EXAMPLES,
+    NEWSLETTER_AI_TONES,
+    type NewsletterAiTone,
+} from "@/lib/newsletter-ai-presets"
 import AppSidebarLayout from "@/layouts/app/app-sidebar-layout"
 import { formatHtmlPretty } from "@/lib/format-html"
 import {
@@ -167,35 +173,6 @@ function firstFieldError(err: unknown): string | undefined {
     return undefined
 }
 
-/** Sample briefs for AI Generate — click to fill the message box. */
-const AI_BRIEF_EXAMPLES: { label: string; text: string; tone?: "professional" | "warm" | "urgent" | "celebratory" }[] = [
-    {
-        label: "Weekly donor update",
-        tone: "warm",
-        text: "Weekly email to donors: thank them for ongoing support, share one short impact story (kids fed / families helped), include a stat if it fits, invite them to follow us on social, and a soft ask to consider a recurring gift. Keep it hopeful and personal.",
-    },
-    {
-        label: "Event invitation",
-        tone: "professional",
-        text: "Invite supporters to our annual community breakfast on a Saturday morning. Mention keynote speaker, free registration, parking, and RSVP link placeholder. Friendly but clear on date, time, and location merge fields we can fill later.",
-    },
-    {
-        label: "Program launch",
-        tone: "celebratory",
-        text: "Announce our new after-school tutoring program for middle schoolers. Explain who it serves, how to enroll or volunteer, and link to learn more. Celebratory tone — we have been working toward this for a year.",
-    },
-    {
-        label: "Year-end appeal",
-        tone: "urgent",
-        text: "Year-end fundraising email: remind readers their gift is tax-deductible before December 31, share urgency matching gift deadline, one paragraph on mission, clear donate call-to-action. Respectful, not pushy.",
-    },
-    {
-        label: "Volunteer recruitment",
-        tone: "warm",
-        text: "Recruit volunteers for weekend park cleanups next month. Need 20 spots, no experience required, snacks provided, sign up via our form. Warm and community-focused.",
-    },
-]
-
 /** Segmented control track + tab states (violet → fuchsia), aligned with newsletter create page. */
 const gradientTabTrack =
     "rounded-lg border border-violet-200/80 bg-gradient-to-r from-violet-100/50 via-fuchsia-100/40 to-indigo-100/45 p-1 shadow-sm dark:border-violet-800/55 dark:from-violet-950/55 dark:via-fuchsia-950/45 dark:to-indigo-950/45"
@@ -230,21 +207,40 @@ export default function NewsletterTemplateForm({
     const credits = Number(authUser.credits ?? 0)
     const aiTokensUsedAuth = Number(authUser.ai_tokens_used ?? 0)
     const aiTokensIncludedAuth = Number(authUser.ai_tokens_included ?? 0)
-    const hasAiTokensLeft = aiTokensIncludedAuth === 0 || aiTokensUsedAuth < aiTokensIncludedAuth
 
     const displayTokensUsed =
         templateAiResult && templateAiResult.ok ? templateAiResult.ai_tokens_used : aiTokensUsedAuth
     const displayTokensIncluded =
         templateAiResult && templateAiResult.ok ? templateAiResult.ai_tokens_included : aiTokensIncludedAuth
 
+    const hasAiTokensLeft = displayTokensIncluded === 0 || displayTokensUsed < displayTokensIncluded
+    const aiTokensRemaining =
+        displayTokensIncluded === 0 ? null : Math.max(0, displayTokensIncluded - displayTokensUsed)
+    const aiTokensOverBy =
+        displayTokensIncluded === 0 ? 0 : Math.max(0, displayTokensUsed - displayTokensIncluded)
+
     const [aiModalOpen, setAiModalOpen] = useState(false)
     const [sendVia, setSendVia] = useState<"email" | "sms" | "both">("email")
     const [aiOutputMode, setAiOutputMode] = useState<"plain" | "html">("plain")
     const [aiBrief, setAiBrief] = useState('')
-    const [aiTone, setAiTone] = useState('professional')
+    const [aiTone, setAiTone] = useState<NewsletterAiTone>("professional")
     const [aiLoading, setAiLoading] = useState(false)
     const [formattingHtml, setFormattingHtml] = useState(false)
     const [prettifyError, setPrettifyError] = useState<string | null>(null)
+    const [creditCheckoutLoading, setCreditCheckoutLoading] = useState(false)
+
+    const handleCreditTopUp = () => {
+        setCreditCheckoutLoading(true)
+        router.post(
+            route("credits.checkout"),
+            { amount: 1.0, return_route: "newsletter.templates" },
+            {
+                preserveScroll: true,
+                onError: () => setCreditCheckoutLoading(false),
+                onFinish: () => setCreditCheckoutLoading(false),
+            }
+        )
+    }
 
     const inferInitialBodyPreviewMode = (): "plain" | "html" => {
         const plain = (template?.content ?? "").trim()
@@ -915,7 +911,7 @@ export default function NewsletterTemplateForm({
                     </form>
 
                     <Dialog open={aiModalOpen} onOpenChange={setAiModalOpen}>
-                            <DialogContent className="max-h-[min(90vh,720px)] gap-0 overflow-y-auto overflow-x-hidden border-violet-200/70 p-0 shadow-2xl shadow-violet-500/15 sm:max-w-xl dark:border-violet-900/50">
+                            <DialogContent className="max-h-[min(92vh,800px)] gap-0 overflow-y-auto overflow-x-hidden border-violet-200/70 p-0 shadow-2xl shadow-violet-500/15 sm:max-w-2xl dark:border-violet-900/50">
                                 <div className="pointer-events-none absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r from-violet-500 via-fuchsia-500 to-indigo-500" />
                                 <motion.div
                                     key={aiModalOpen ? "open" : "closed"}
@@ -926,16 +922,16 @@ export default function NewsletterTemplateForm({
                                 >
                                     <DialogHeader className="space-y-2 text-left">
                                         <DialogTitle className="flex items-center gap-2 text-xl font-semibold tracking-tight">
-                                            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-violet-100 dark:bg-violet-950/80">
+                                            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500/20 to-fuchsia-500/15 ring-1 ring-violet-500/20 dark:from-violet-950/80 dark:to-fuchsia-950/50">
                                                 <Sparkles className="h-5 w-5 text-violet-600 dark:text-violet-400" />
                                             </span>
-                                            Generate with AI
+                                            AI template generator
                                         </DialogTitle>
-                                        <DialogDescription className="text-left text-sm leading-relaxed">
-                                            Uses your <strong>Send via</strong> choice from the sidebar: SMS = plain text only; Email = plain
-                                            or HTML (HTML drafts always include a matching plain-text body); Both = concise SMS copy plus
-                                            full HTML. Merge variables must match <strong>Available Variables</strong>. Usage counts toward
-                                            AI tokens.
+                                        <DialogDescription className="text-left text-sm leading-relaxed text-muted-foreground">
+                                            Pick a <strong className="text-foreground">tone</strong> — each one changes both copy and HTML
+                                            styling (layout, colors, CTA). Uses your <strong className="text-foreground">Send via</strong>{" "}
+                                            choice: SMS = short plain text; Email = rich HTML + plain twin when HTML is on; Both = SMS +
+                                            email. Merge fields must match <strong className="text-foreground">Available Variables</strong>.
                                         </DialogDescription>
                                     </DialogHeader>
 
@@ -943,26 +939,55 @@ export default function NewsletterTemplateForm({
                                         initial={{ opacity: 0 }}
                                         animate={{ opacity: 1 }}
                                         transition={{ delay: 0.08, duration: 0.25 }}
-                                        className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border border-border/80 bg-muted/40 px-3 py-2.5 text-xs"
+                                        className="mt-4 flex flex-col gap-2 rounded-lg border border-border/80 bg-muted/40 px-3 py-2.5 text-xs"
                                     >
-                                        <span className="inline-flex items-center gap-1.5 font-medium text-foreground">
-                                            <Coins className="h-3.5 w-3.5 shrink-0 text-amber-600 dark:text-amber-400" />
-                                            Credits: {credits.toLocaleString()}
-                                        </span>
-                                        <span className="inline-flex items-center gap-1.5 text-muted-foreground">
-                                            <Sparkles className="h-3.5 w-3.5 shrink-0 text-violet-600 dark:text-violet-400" />
-                                            {displayTokensIncluded === 0 ? (
-                                                <>
-                                                    Tokens used: {displayTokensUsed.toLocaleString()}
-                                                    <span className="text-muted-foreground/80"> (no cap)</span>
-                                                </>
-                                            ) : (
-                                                <>
-                                                    AI tokens: {displayTokensUsed.toLocaleString()} /{" "}
-                                                    {displayTokensIncluded.toLocaleString()}
-                                                </>
-                                            )}
-                                        </span>
+                                        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                                            <span className="inline-flex items-center gap-1.5 font-medium text-foreground">
+                                                <Coins className="h-3.5 w-3.5 shrink-0 text-amber-600 dark:text-amber-400" />
+                                                Wallet credits: {credits.toLocaleString()}
+                                            </span>
+                                            <span className="inline-flex flex-wrap items-center gap-x-1.5 text-muted-foreground">
+                                                <Sparkles className="h-3.5 w-3.5 shrink-0 text-violet-600 dark:text-violet-400" />
+                                                {displayTokensIncluded === 0 ? (
+                                                    <>
+                                                        AI tokens used: {displayTokensUsed.toLocaleString()}
+                                                        <span className="text-muted-foreground/80"> (no plan cap)</span>
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <span className="font-medium text-foreground">Plan AI tokens:</span>
+                                                        {displayTokensUsed.toLocaleString()} used of{" "}
+                                                        {displayTokensIncluded.toLocaleString()} included
+                                                        {aiTokensRemaining !== null && (
+                                                            <>
+                                                                {" "}
+                                                                ·{" "}
+                                                                <span
+                                                                    className={
+                                                                        aiTokensRemaining === 0
+                                                                            ? "font-semibold text-destructive"
+                                                                            : "font-medium text-foreground"
+                                                                    }
+                                                                >
+                                                                    {aiTokensRemaining.toLocaleString()} remaining
+                                                                </span>
+                                                                {aiTokensOverBy > 0 && (
+                                                                    <span className="text-destructive">
+                                                                        {" "}
+                                                                        (over allowance by{" "}
+                                                                        {aiTokensOverBy.toLocaleString()})
+                                                                    </span>
+                                                                )}
+                                                            </>
+                                                        )}
+                                                    </>
+                                                )}
+                                            </span>
+                                        </div>
+                                        <p className="text-[10px] leading-snug text-muted-foreground/90">
+                                            Top up adds wallet credits and, if your plan has a token cap, increases included AI tokens by
+                                            the same amount.
+                                        </p>
                                     </motion.div>
 
                                     <div className="mt-5 space-y-4">
@@ -973,12 +998,31 @@ export default function NewsletterTemplateForm({
                                                 on the server.
                                             </p>
                                         )}
-                                        {openAiConfigured && !hasAiTokensLeft && (
-                                            <div className="flex items-start gap-2 rounded-lg border border-destructive/35 bg-destructive/5 p-3 text-sm text-destructive">
-                                                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-                                                <span>
-                                                    AI token limit reached for this period (same as AI Chat). Upgrade or wait for renewal.
-                                                </span>
+                                        {openAiConfigured && !hasAiTokensLeft && displayTokensIncluded > 0 && (
+                                            <div className="flex flex-col gap-3 rounded-lg border border-destructive/35 bg-destructive/5 p-3 text-sm text-destructive sm:flex-row sm:items-center sm:justify-between">
+                                                <div className="flex min-w-0 items-start gap-2">
+                                                    <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                                                    <span>
+                                                        AI token limit reached (same as AI Chat). Top up to add credits and extend your
+                                                        included AI allowance, or wait for renewal.
+                                                    </span>
+                                                </div>
+                                                <Button
+                                                    type="button"
+                                                    size="sm"
+                                                    disabled={creditCheckoutLoading || aiLoading}
+                                                    onClick={handleCreditTopUp}
+                                                    className="shrink-0 inline-flex items-center gap-2 bg-primary px-4 py-2 font-medium text-primary-foreground hover:bg-primary/90"
+                                                >
+                                                    {creditCheckoutLoading ? (
+                                                        <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                                                    ) : (
+                                                        <>
+                                                            <Coins className="h-4 w-4" aria-hidden />
+                                                            Top up
+                                                        </>
+                                                    )}
+                                                </Button>
                                             </div>
                                         )}
                                         {openAiConfigured && hasAiTokensLeft && (
@@ -1021,58 +1065,99 @@ export default function NewsletterTemplateForm({
                                                             : "Generating SMS-friendly plain text and full HTML for email."}
                                                     </p>
                                                 )}
-                                                <div className="space-y-2">
-                                                    <Label htmlFor="ai_brief_modal" className="text-sm font-medium">
-                                                        What should this email say?
-                                                    </Label>
-                                                    <TextArea
-                                                        id="ai_brief_modal"
-                                                        value={aiBrief}
-                                                        onChange={(e) => setAiBrief(e.target.value)}
-                                                        onKeyDown={handleAiKeyDown}
-                                                        placeholder="Audience, goals, key points, tone, call to action…"
-                                                        rows={4}
-                                                        disabled={aiLoading}
-                                                        className="min-h-[100px] resize-y text-sm"
-                                                    />
-                                                    <p className="text-xs text-muted-foreground">
-                                                        Enter to generate · Shift+Enter for a new line
-                                                    </p>
-                                                    <div className="space-y-1.5">
-                                                        <p className="text-xs font-medium text-muted-foreground">Try an example</p>
-                                                        <div className="flex flex-wrap gap-1.5">
-                                                            {AI_BRIEF_EXAMPLES.map((ex) => (
+                                                <div className="space-y-3">
+                                                    <div className="space-y-2">
+                                                        <Label className="text-sm font-medium">Tone & visual style</Label>
+                                                        <p className="text-xs text-muted-foreground leading-relaxed">
+                                                            Each tone uses a different voice and HTML look (colors, header style, CTA). Choose
+                                                            before you write the brief.
+                                                        </p>
+                                                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                                                            {NEWSLETTER_AI_TONES.map(({ id, label, hint, Icon }) => {
+                                                                const active = aiTone === id
+                                                                return (
+                                                                    <button
+                                                                        key={id}
+                                                                        type="button"
+                                                                        disabled={aiLoading}
+                                                                        onClick={() => setAiTone(id)}
+                                                                        className={cn(
+                                                                            "flex w-full items-start gap-3 rounded-xl border p-3 text-left transition-all",
+                                                                            active
+                                                                                ? "border-violet-500 bg-gradient-to-br from-violet-500/10 to-fuchsia-500/5 shadow-sm ring-1 ring-violet-500/30 dark:border-violet-400/50 dark:from-violet-950/50 dark:to-fuchsia-950/20"
+                                                                                : "border-border/80 bg-card/50 hover:border-violet-300/60 hover:bg-muted/40 dark:hover:border-violet-800/50"
+                                                                        )}
+                                                                    >
+                                                                        <span
+                                                                            className={cn(
+                                                                                "mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg",
+                                                                                active
+                                                                                    ? "bg-violet-600 text-white dark:bg-violet-500"
+                                                                                    : "bg-muted text-muted-foreground"
+                                                                            )}
+                                                                        >
+                                                                            <Icon className="h-4 w-4" aria-hidden />
+                                                                        </span>
+                                                                        <span className="min-w-0">
+                                                                            <span className="block text-sm font-semibold text-foreground">
+                                                                                {label}
+                                                                            </span>
+                                                                            <span className="mt-0.5 block text-[11px] leading-snug text-muted-foreground">
+                                                                                {hint}
+                                                                            </span>
+                                                                        </span>
+                                                                    </button>
+                                                                )
+                                                            })}
+                                                        </div>
+                                                    </div>
+                                                    <div className="space-y-2">
+                                                        <Label htmlFor="ai_brief_modal" className="text-sm font-medium">
+                                                            What should this email say?
+                                                        </Label>
+                                                        <TextArea
+                                                            id="ai_brief_modal"
+                                                            value={aiBrief}
+                                                            onChange={(e) => setAiBrief(e.target.value)}
+                                                            onKeyDown={handleAiKeyDown}
+                                                            placeholder="Describe audience, goal, key facts, and the action you want (donate, RSVP, volunteer)…"
+                                                            rows={4}
+                                                            disabled={aiLoading}
+                                                            className="min-h-[108px] resize-y border-border/80 bg-background/80 text-sm"
+                                                        />
+                                                        <p className="text-xs text-muted-foreground">
+                                                            Enter to generate · Shift+Enter for a new line
+                                                        </p>
+                                                    </div>
+                                                    <div className="rounded-xl border border-border/70 bg-muted/25 p-3">
+                                                        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                                                            Example prompts
+                                                        </p>
+                                                        <p className="mt-1 text-[11px] text-muted-foreground leading-relaxed">
+                                                            Tap one to fill the box and matching tone — edit freely before generating.
+                                                        </p>
+                                                        <div className="mt-2.5 flex max-h-[168px] flex-wrap gap-1.5 overflow-y-auto pr-0.5">
+                                                            {NEWSLETTER_AI_BRIEF_EXAMPLES.map((ex) => (
                                                                 <Button
                                                                     key={ex.label}
                                                                     type="button"
                                                                     variant="secondary"
                                                                     size="sm"
-                                                                    className="h-7 rounded-full px-2.5 text-[11px] font-normal"
+                                                                    className="h-auto min-h-8 max-w-full whitespace-normal rounded-lg px-2.5 py-1.5 text-left text-[11px] font-normal leading-snug"
                                                                     disabled={aiLoading}
                                                                     onClick={() => {
                                                                         setAiBrief(ex.text)
-                                                                        if (ex.tone) setAiTone(ex.tone)
+                                                                        setAiTone(ex.tone)
                                                                     }}
                                                                 >
-                                                                    {ex.label}
+                                                                    <span className="font-medium text-foreground">{ex.label}</span>
+                                                                    <span className="mt-0.5 block text-[10px] text-muted-foreground">
+                                                                        {NEWSLETTER_AI_TONES.find((t) => t.id === ex.tone)?.label} tone
+                                                                    </span>
                                                                 </Button>
                                                             ))}
                                                         </div>
                                                     </div>
-                                                </div>
-                                                <div className="space-y-2">
-                                                    <Label className="text-sm font-medium">Tone</Label>
-                                                    <Select value={aiTone} onValueChange={setAiTone} disabled={aiLoading}>
-                                                        <SelectTrigger className="w-full sm:max-w-xs">
-                                                            <SelectValue />
-                                                        </SelectTrigger>
-                                                        <SelectContent>
-                                                            <SelectItem value="professional">Professional</SelectItem>
-                                                            <SelectItem value="warm">Warm</SelectItem>
-                                                            <SelectItem value="urgent">Urgent</SelectItem>
-                                                            <SelectItem value="celebratory">Celebratory</SelectItem>
-                                                        </SelectContent>
-                                                    </Select>
                                                 </div>
                                                 {briefValidationMessage && (
                                                     <p className="text-sm text-red-600 dark:text-red-400" role="alert">
@@ -1150,7 +1235,7 @@ export default function NewsletterTemplateForm({
                                         )}
                                     </div>
 
-                                    <DialogFooter className="mt-6 flex-col gap-2 sm:flex-row sm:justify-end">
+                                    <DialogFooter className="mt-6 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                                         <Button type="button" variant="outline" onClick={() => setAiModalOpen(false)}>
                                             Close
                                         </Button>

@@ -5,8 +5,10 @@ namespace App\Jobs;
 use App\Models\Newsletter;
 use App\Models\NewsletterEmail;
 use App\Models\User;
+use App\Services\FirebaseService;
 use App\Services\NewsletterTwilioSmsService;
 use Carbon\Carbon;
+use Illuminate\Support\Str;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -50,6 +52,9 @@ class SendNewsletterJob implements ShouldQueue
             $this->createEmailRecordsIfNeeded();
 
             $sendVia = $this->newsletter->send_via ?? 'email';
+            if ($sendVia === 'push') {
+                $this->enrichEmailRecordsWithLinkedUsersForPush();
+            }
             if (in_array($sendVia, ['sms', 'both'], true)) {
                 $sms = app(NewsletterTwilioSmsService::class);
                 if (! $sms->isConfigured()) {
@@ -161,14 +166,49 @@ class SendNewsletterJob implements ShouldQueue
             'target_type' => $this->newsletter->target_type,
             'target_users' => $this->newsletter->target_users,
             'target_organizations' => $this->newsletter->target_organizations,
+            'organization_segment' => $this->newsletter->target_criteria['organization_segment'] ?? null,
         ]);
+
+        $orgSegment = $this->newsletter->target_criteria['organization_segment'] ?? null;
+
+        // Imported newsletter contacts (CSV / manual) for this org — not User rows.
+        if ($orgSegment === 'newsletter_contacts' && $this->newsletter->organization_id) {
+            $orgId = (int) $this->newsletter->organization_id;
+            $recipients = \App\Models\NewsletterRecipient::query()
+                ->active()
+                ->where(function ($q) use ($orgId) {
+                    $q->where('organization_id', $orgId)
+                        ->orWhereNull('organization_id');
+                })
+                ->get();
+
+            if ($recipients->isEmpty()) {
+                throw new \Exception('No imported newsletter contacts found for this organization. Add contacts under Recipients or choose another audience.');
+            }
+
+            foreach ($recipients as $recipient) {
+                NewsletterEmail::create([
+                    'newsletter_id' => $this->newsletter->id,
+                    'newsletter_recipient_id' => $recipient->id,
+                    'email' => $recipient->email,
+                    'status' => 'pending',
+                ]);
+            }
+
+            Log::info("Created {$recipients->count()} email records from org newsletter contacts for newsletter {$this->newsletter->id}");
+
+            return;
+        }
+
+        $usesOrgAudienceSegment = $this->newsletter->organization_id && in_array($orgSegment, ['followers', 'donors', 'volunteers'], true);
 
         // For backward compatibility: if target_type is 'all' and no specific targets, try old NewsletterRecipient system first
         // If no NewsletterRecipient records exist, fall back to new system (all verified users)
         if ($this->newsletter->target_type === 'all' &&
             empty($this->newsletter->target_users) &&
             empty($this->newsletter->target_organizations) &&
-            empty($this->newsletter->target_roles)) {
+            empty($this->newsletter->target_roles) &&
+            ! $usesOrgAudienceSegment) {
 
             Log::info("Checking NewsletterRecipient system for newsletter {$this->newsletter->id}");
             $recipients = \App\Models\NewsletterRecipient::active()->get();
@@ -245,6 +285,53 @@ class SendNewsletterJob implements ShouldQueue
         }
 
         Log::info("Created email records for newsletter {$this->newsletter->id}");
+    }
+
+    /**
+     * Link newsletter email rows to User accounts by email so Firebase push can target device tokens.
+     */
+    protected function enrichEmailRecordsWithLinkedUsersForPush(): void
+    {
+        $records = NewsletterEmail::query()
+            ->where('newsletter_id', $this->newsletter->id)
+            ->where('status', 'pending')
+            ->get();
+
+        if ($records->isEmpty()) {
+            return;
+        }
+
+        $needEmail = $records->filter(function (NewsletterEmail $r) {
+            $m = $r->metadata ?? [];
+
+            return empty($m['user_id']);
+        });
+
+        if ($needEmail->isEmpty()) {
+            return;
+        }
+
+        $users = User::query()
+            ->whereIn('email', $needEmail->pluck('email')->unique()->all())
+            ->whereNotNull('email_verified_at')
+            ->get();
+
+        $byLower = [];
+        foreach ($users as $u) {
+            $byLower[strtolower(trim((string) $u->email))] = $u;
+        }
+
+        foreach ($needEmail as $record) {
+            $key = strtolower(trim($record->email));
+            if (! isset($byLower[$key])) {
+                continue;
+            }
+            $u = $byLower[$key];
+            $meta = is_array($record->metadata) ? $record->metadata : [];
+            $meta['user_id'] = $u->id;
+            $meta['user_name'] = $u->name;
+            $record->update(['metadata' => $meta]);
+        }
     }
 
     /**
@@ -422,10 +509,84 @@ class SendNewsletterJob implements ShouldQueue
             $processedHtmlContent = $this->processContent($emailData, true, false);
 
             // send_via: "email" = Laravel mail only (no Twilio). "sms" = Twilio SMS only (no mail).
-            // "both" = mail first, then SMS when a phone exists.
+            // "both" = mail first, then SMS when a phone exists. "push" = Firebase FCM only (no email/SMS).
             $sendVia = $this->newsletter->send_via ?? 'email';
             $sendEmail = in_array($sendVia, ['email', 'both'], true);
             $sendSms = in_array($sendVia, ['sms', 'both'], true);
+
+            if ($sendVia === 'push') {
+                $metadata = $emailRecord->metadata ?? [];
+                $pushUserId = $userId ?? (isset($metadata['user_id']) ? (int) $metadata['user_id'] : null);
+                if (! $pushUserId && $recipientEmail) {
+                    $pushUserId = User::query()->where('email', $recipientEmail)->whereNotNull('email_verified_at')->value('id');
+                }
+                if (! $pushUserId) {
+                    $emailRecord->update([
+                        'status' => 'failed',
+                        'error_message' => 'No app user linked to this email for push. Recipients need a verified account with push enabled.',
+                    ]);
+
+                    return;
+                }
+
+                $bodyPlain = trim(preg_replace('/\s+/', ' ', strip_tags($processedContent)));
+                $bodyPlain = $bodyPlain === '' ? Str::limit(strip_tags($processedSubject), 500, '…') : Str::limit($bodyPlain, 1500, '…');
+                $firebase = app(FirebaseService::class);
+                $clickUrl = is_string($emailData['public_view_link'] ?? null) ? (string) $emailData['public_view_link'] : url('/');
+                $results = $firebase->sendToUser(
+                    (int) $pushUserId,
+                    Str::limit($processedSubject, 200, '…'),
+                    $bodyPlain,
+                    [
+                        'source_type' => 'newsletter',
+                        'source_id' => (string) $this->newsletter->id,
+                        'click_action' => $clickUrl,
+                    ]
+                );
+
+                $anySuccess = false;
+                foreach ($results as $row) {
+                    if (! empty($row['success'])) {
+                        $anySuccess = true;
+                        break;
+                    }
+                }
+
+                if ($results === []) {
+                    $emailRecord->update([
+                        'status' => 'failed',
+                        'error_message' => 'No registered push devices for this user.',
+                        'metadata' => array_merge(is_array($metadata) ? $metadata : [], ['push_status' => 'no_tokens']),
+                    ]);
+
+                    return;
+                }
+
+                if (! $anySuccess) {
+                    $emailRecord->update([
+                        'status' => 'failed',
+                        'error_message' => 'Push delivery failed for all registered devices.',
+                        'metadata' => array_merge(is_array($metadata) ? $metadata : [], ['push_status' => 'all_failed']),
+                    ]);
+
+                    return;
+                }
+
+                $emailRecord->update([
+                    'status' => 'sent',
+                    'sent_at' => Carbon::now('UTC'),
+                    'message_id' => 'push_'.uniqid(),
+                    'metadata' => array_merge(is_array($metadata) ? $metadata : [], ['push_status' => 'sent']),
+                ]);
+
+                Log::info('Newsletter push delivery completed', [
+                    'newsletter_id' => $this->newsletter->id,
+                    'recipient_email' => $emailData['recipient_email'],
+                    'user_id' => $pushUserId,
+                ]);
+
+                return;
+            }
 
             $metadata = $emailRecord->metadata ?? [];
 
@@ -532,6 +693,7 @@ class SendNewsletterJob implements ShouldQueue
                 'delivery' => match ($sendVia) {
                     'sms' => 'sms_only',
                     'both' => 'email_and_sms',
+                    'push' => 'push_only',
                     default => 'email_only',
                 },
                 'recipient_email' => $emailData['recipient_email'],

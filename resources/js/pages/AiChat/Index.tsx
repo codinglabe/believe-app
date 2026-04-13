@@ -986,9 +986,17 @@ const AiChatIndex: React.FC<AiChatIndexProps> = ({
                   <AlertCircle className="h-5 w-5 text-destructive flex-shrink-0 mt-0.5" />
                   <div className="flex-1">
                     <div className="font-semibold text-destructive mb-1">AI token limit reached</div>
-                    <p className="text-sm text-destructive/90">
+                    <p className="text-sm text-destructive/90 mb-3">
                       You have used all your AI tokens for this period. Each message uses tokens based on the actual AI usage. Upgrade your plan or wait for your next allocation to continue.
                     </p>
+                    <button
+                      type="button"
+                      onClick={handleBuyCredits}
+                      className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors font-medium text-sm flex items-center gap-2 cursor-pointer"
+                    >
+                      <Coins className="h-4 w-4" />
+                      TopUp
+                    </button>
                   </div>
                 </div>
               </div>

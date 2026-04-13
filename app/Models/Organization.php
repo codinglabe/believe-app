@@ -494,6 +494,177 @@ class Organization extends Model
             ->get();
     }
 
+    /**
+     * Newsletter create: counts only (cheap initial Inertia payload).
+     *
+     * @return array{followers: int, donors: int, volunteers: int, newsletter_contacts: int}
+     */
+    public function newsletterAudienceCounts(): array
+    {
+        $orgId = $this->id;
+
+        $followersQ = User::query()
+            ->whereHas('favoriteOrganizations', function ($q) use ($orgId) {
+                $q->where('user_favorite_organizations.organization_id', $orgId);
+            })
+            ->whereNotNull('email_verified_at');
+
+        $donorUserIds = Donation::query()
+            ->where('organization_id', $orgId)
+            ->whereIn('status', ['completed', 'active'])
+            ->whereNotNull('user_id')
+            ->pluck('user_id')
+            ->merge(
+                FundMeDonation::query()
+                    ->where('organization_id', $orgId)
+                    ->where('status', FundMeDonation::STATUS_SUCCEEDED)
+                    ->whereNotNull('user_id')
+                    ->pluck('user_id')
+            )
+            ->unique()
+            ->values()
+            ->all();
+
+        $donorsQ = User::query()
+            ->whereIn('id', $donorUserIds)
+            ->whereNotNull('email_verified_at');
+
+        $volunteersQ = User::query()
+            ->whereHas('jobApplications', function ($q) use ($orgId) {
+                $q->where('status', 'accepted')
+                    ->whereHas('jobPost', function ($q2) use ($orgId) {
+                        $q2->where('organization_id', $orgId)
+                            ->where('type', 'volunteer');
+                    });
+            })
+            ->whereNotNull('email_verified_at');
+
+        $contactsQ = NewsletterRecipient::query()
+            ->active()
+            ->where(function ($q) use ($orgId) {
+                $q->where('organization_id', $orgId)
+                    ->orWhereNull('organization_id');
+            });
+
+        return [
+            'followers' => (int) (clone $followersQ)->count(),
+            'donors' => $donorUserIds === [] ? 0 : (int) (clone $donorsQ)->count(),
+            'volunteers' => (int) (clone $volunteersQ)->count(),
+            'newsletter_contacts' => (int) (clone $contactsQ)->count(),
+        ];
+    }
+
+    /**
+     * Full rows for one segment (loaded via Inertia partial visit when user selects a card).
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function newsletterAudienceDetailForSegment(string $segment, int $limit = 500): array
+    {
+        $orgId = $this->id;
+        $mapUser = static function (User $u): array {
+            return [
+                'id' => (int) $u->id,
+                'kind' => 'user',
+                'name' => (string) ($u->name ?? ''),
+                'email' => (string) ($u->email ?? ''),
+                'email_verified_at' => $u->email_verified_at?->toIso8601String(),
+                'roles' => $u->relationLoaded('roles')
+                    ? $u->roles->map(fn ($r) => ['name' => (string) $r->name])->values()->all()
+                    : [],
+            ];
+        };
+
+        return match ($segment) {
+            'followers' => User::query()
+                ->with('roles')
+                ->whereHas('favoriteOrganizations', function ($q) use ($orgId) {
+                    $q->where('user_favorite_organizations.organization_id', $orgId);
+                })
+                ->whereNotNull('email_verified_at')
+                ->orderBy('name')
+                ->limit($limit)
+                ->get()
+                ->map($mapUser)
+                ->values()
+                ->all(),
+            'donors' => $this->donorUsersQueryForOrg($orgId)
+                ->with('roles')
+                ->orderBy('name')
+                ->limit($limit)
+                ->get()
+                ->map($mapUser)
+                ->values()
+                ->all(),
+            'volunteers' => User::query()
+                ->with('roles')
+                ->whereHas('jobApplications', function ($q) use ($orgId) {
+                    $q->where('status', 'accepted')
+                        ->whereHas('jobPost', function ($q2) use ($orgId) {
+                            $q2->where('organization_id', $orgId)
+                                ->where('type', 'volunteer');
+                        });
+                })
+                ->whereNotNull('email_verified_at')
+                ->orderBy('name')
+                ->limit($limit)
+                ->get()
+                ->map($mapUser)
+                ->values()
+                ->all(),
+            'newsletter_contacts' => NewsletterRecipient::query()
+                ->where(function ($q) use ($orgId) {
+                    $q->where('organization_id', $orgId)
+                        ->orWhereNull('organization_id');
+                })
+                ->whereIn('status', ['active', 'unsubscribed'])
+                ->orderByRaw('COALESCE(name, email)')
+                ->limit($limit)
+                ->get()
+                ->map(static fn (NewsletterRecipient $r) => [
+                    'id' => (int) $r->id,
+                    'kind' => 'contact',
+                    'name' => (string) ($r->name ?? ''),
+                    'email' => (string) ($r->email ?? ''),
+                    'status' => (string) $r->status,
+                    'badge' => $r->status === 'active' ? 'Manual recipient' : 'Unsubscribed',
+                ])
+                ->values()
+                ->all(),
+            default => [],
+        };
+    }
+
+    /**
+     * Verified users who have donated to this org (wallet + FundMe).
+     */
+    protected function donorUsersQueryForOrg(int $organizationId): \Illuminate\Database\Eloquent\Builder
+    {
+        $donorUserIds = Donation::query()
+            ->where('organization_id', $organizationId)
+            ->whereIn('status', ['completed', 'active'])
+            ->whereNotNull('user_id')
+            ->pluck('user_id')
+            ->merge(
+                FundMeDonation::query()
+                    ->where('organization_id', $organizationId)
+                    ->where('status', FundMeDonation::STATUS_SUCCEEDED)
+                    ->whereNotNull('user_id')
+                    ->pluck('user_id')
+            )
+            ->unique()
+            ->values()
+            ->all();
+
+        if ($donorUserIds === []) {
+            return User::query()->whereRaw('1 = 0');
+        }
+
+        return User::query()
+            ->whereIn('id', $donorUserIds)
+            ->whereNotNull('email_verified_at');
+    }
+
     public function emailConnections()
     {
         return $this->hasMany(EmailConnection::class);

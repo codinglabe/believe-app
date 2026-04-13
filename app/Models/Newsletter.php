@@ -69,10 +69,46 @@ class Newsletter extends Model
     }
 
     /**
-     * Resolve user recipients. Not limited to donation/follow lists — uses roles, selections, and org links only.
+     * Total recipients for scheduling UI (users or imported emails).
+     */
+    public function resolvedTotalRecipientsCount(): int
+    {
+        $segment = $this->target_criteria['organization_segment'] ?? null;
+        if ($this->organization_id && $segment === 'newsletter_contacts') {
+            $orgId = (int) $this->organization_id;
+
+            return (int) NewsletterRecipient::query()
+                ->active()
+                ->where(function ($q) use ($orgId) {
+                    $q->where('organization_id', $orgId)
+                        ->orWhereNull('organization_id');
+                })
+                ->count();
+        }
+
+        return $this->getTargetedUsers()->count();
+    }
+
+    /**
+     * Resolve user recipients. Org-owned sends may use {@see $target_criteria} {@code organization_segment}
+     * (followers, donors, volunteers); imported contacts use {@see newsletter_contacts} and are not Users here.
      */
     public function getTargetedUsers(): Collection
     {
+        $segment = $this->target_criteria['organization_segment'] ?? null;
+
+        if ($segment && ! $this->organization_id) {
+            return collect();
+        }
+
+        if ($this->organization_id && $segment === 'newsletter_contacts') {
+            return collect();
+        }
+
+        if ($this->organization_id && in_array($segment, ['followers', 'donors', 'volunteers'], true)) {
+            return $this->usersForOrganizationSegment((string) $segment);
+        }
+
         switch ($this->target_type) {
             case 'all':
                 return User::query()->whereNotNull('email_verified_at')->get();
@@ -138,6 +174,66 @@ class Newsletter extends Model
             default:
                 return collect();
         }
+    }
+
+    /**
+     * Verified users for one organization audience segment (email sends).
+     */
+    protected function usersForOrganizationSegment(string $segment): Collection
+    {
+        $orgId = (int) $this->organization_id;
+
+        return match ($segment) {
+            'followers' => User::query()
+                ->whereHas('favoriteOrganizations', function ($q) use ($orgId) {
+                    $q->where('user_favorite_organizations.organization_id', $orgId);
+                })
+                ->whereNotNull('email_verified_at')
+                ->get(),
+            'donors' => $this->usersWhoDonatedToOrganization($orgId),
+            'volunteers' => User::query()
+                ->whereHas('jobApplications', function ($q) use ($orgId) {
+                    $q->where('status', 'accepted')
+                        ->whereHas('jobPost', function ($q2) use ($orgId) {
+                            $q2->where('organization_id', $orgId)
+                                ->where('type', 'volunteer');
+                        });
+                })
+                ->whereNotNull('email_verified_at')
+                ->get(),
+            default => collect(),
+        };
+    }
+
+    /**
+     * Distinct verified users who have completed donations to this organization (wallet + FundMe).
+     */
+    protected function usersWhoDonatedToOrganization(int $organizationId): Collection
+    {
+        $ids = Donation::query()
+            ->where('organization_id', $organizationId)
+            ->whereIn('status', ['completed', 'active'])
+            ->whereNotNull('user_id')
+            ->pluck('user_id')
+            ->merge(
+                FundMeDonation::query()
+                    ->where('organization_id', $organizationId)
+                    ->where('status', FundMeDonation::STATUS_SUCCEEDED)
+                    ->whereNotNull('user_id')
+                    ->pluck('user_id')
+            )
+            ->unique()
+            ->values()
+            ->all();
+
+        if ($ids === []) {
+            return collect();
+        }
+
+        return User::query()
+            ->whereIn('id', $ids)
+            ->whereNotNull('email_verified_at')
+            ->get();
     }
 
     public function getTargetedOrganizations(): Collection
