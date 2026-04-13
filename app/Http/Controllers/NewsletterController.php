@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Jobs\ProcessSmsWalletAutoRechargeJob;
 use App\Jobs\SendNewsletterJob;
 use App\Models\EmailPackage;
 use App\Models\Newsletter;
@@ -11,6 +12,7 @@ use App\Models\NewsletterTemplate;
 use App\Models\Organization;
 use App\Models\SmsPackage;
 use App\Models\User;
+use App\Services\BelievePointsPaymentMethodSyncService;
 use App\Services\NewsletterAiHtmlSanitizer;
 use App\Services\OpenAiService;
 use App\Support\StripeAutomaticTax;
@@ -20,6 +22,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Schema;
@@ -28,6 +31,7 @@ use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 use Laravel\Cashier\Cashier;
+use Stripe\Exception\ApiErrorException;
 
 class NewsletterController extends BaseController
 {
@@ -528,9 +532,12 @@ AIHTML;
      */
     protected function newsletterCreatePageData(?array $newsletterCreateAiResult = null, ?Request $request = null): array
     {
-        $templates = NewsletterTemplate::where('is_active', true)
-            ->select(['id', 'name', 'subject', 'content', 'template_type', 'html_content'])
-            ->get();
+        $req = $request ?? request();
+        $orgScope = $this->newsletterOrganizationScope($req);
+        $templateQuery = NewsletterTemplate::where('is_active', true)
+            ->select(['id', 'name', 'subject', 'content', 'template_type', 'html_content']);
+        $this->applyNewsletterOrganizationScope($templateQuery, $orgScope);
+        $templates = $templateQuery->get();
 
         $user = Auth::user();
         /** @var User $user */
@@ -690,6 +697,14 @@ AIHTML;
             ],
             'smsPackages' => $packages,
             'smsAutoRechargeEnabled' => (bool) ($user->sms_auto_recharge_enabled ?? false),
+            'smsAutoRecharge' => [
+                'threshold' => $user->sms_auto_recharge_threshold !== null ? (int) $user->sms_auto_recharge_threshold : null,
+                'package_id' => $user->sms_auto_recharge_package_id !== null ? (int) $user->sms_auto_recharge_package_id : null,
+                'has_payment_method' => filled($user->sms_auto_recharge_pm_id ?? null),
+                'card_brand' => $user->sms_auto_recharge_card_brand,
+                'card_last4' => $user->sms_auto_recharge_card_last4,
+                'last_recharge_at' => $user->sms_last_auto_recharge_at?->toIso8601String(),
+            ],
         ];
     }
 
@@ -706,19 +721,119 @@ AIHTML;
     }
 
     /**
+     * Organization IDs the authenticated user may access for newsletters and templates.
+     * Admins: unrestricted (returns null; callers skip org filters).
+     *
+     * @return array<int>|null  null = no org filter (admin); empty array = user has no org access
+     */
+    protected function newsletterOrganizationScope(Request $request): ?array
+    {
+        if ($this->isAdmin($request)) {
+            return null;
+        }
+
+        $user = $request->user();
+        if (! $user) {
+            return [];
+        }
+
+        $ids = collect();
+
+        $ids = $ids->merge(Organization::query()->where('user_id', $user->id)->pluck('id'));
+        $ids = $ids->merge($user->boardMemberships()->pluck('organization_id'));
+
+        $authOrg = Organization::forAuthUser($user);
+        if ($authOrg) {
+            $ids->push($authOrg->id);
+        }
+
+        return $ids->filter()->unique()->values()->map(fn ($id) => (int) $id)->all();
+    }
+
+    /**
+     * Limit queries on models that use {@see Newsletter::$organization_id} / {@see NewsletterTemplate::$organization_id}.
+     */
+    protected function applyNewsletterOrganizationScope(Builder $query, ?array $orgScope): void
+    {
+        if ($orgScope === null) {
+            return;
+        }
+        if ($orgScope === []) {
+            $query->whereRaw('0 = 1');
+
+            return;
+        }
+        $query->whereIn('organization_id', $orgScope);
+    }
+
+    protected function assertNewsletterAccessible(Request $request, Newsletter $newsletter): void
+    {
+        $scope = $this->newsletterOrganizationScope($request);
+        if ($scope === null) {
+            return;
+        }
+        $oid = $newsletter->organization_id;
+        if ($oid === null || ! in_array((int) $oid, $scope, true)) {
+            abort(403);
+        }
+    }
+
+    protected function assertNewsletterTemplateAccessible(Request $request, NewsletterTemplate $template): void
+    {
+        $scope = $this->newsletterOrganizationScope($request);
+        if ($scope === null) {
+            return;
+        }
+        $oid = $template->organization_id;
+        if ($oid === null || ! in_array((int) $oid, $scope, true)) {
+            abort(403);
+        }
+    }
+
+    /**
+     * Nonprofits listed on /newsletter/recipients must belong to the authenticated user's accessible orgs.
+     */
+    protected function applyRecipientsOrganizationsScope(Builder $organizationsQuery, ?array $orgScope): void
+    {
+        if ($orgScope === null) {
+            return;
+        }
+        if ($orgScope === []) {
+            $organizationsQuery->whereRaw('0 = 1');
+
+            return;
+        }
+        $organizationsQuery->whereIn('id', $orgScope);
+    }
+
+    protected function assertOrganizationInUserScope(Request $request, Organization $organization): void
+    {
+        $scope = $this->newsletterOrganizationScope($request);
+        if ($scope === null) {
+            return;
+        }
+        if (! in_array((int) $organization->id, $scope, true)) {
+            abort(403);
+        }
+    }
+
+    /**
      * Display newsletter dashboard
      */
     public function index(Request $request): Response
     {
         $this->authorizePermission($request, 'newsletter.read');
 
+        $orgScope = $this->newsletterOrganizationScope($request);
+
         $query = Newsletter::with(['template', 'organization'])
             ->select([
                 'id', 'subject', 'status', 'scheduled_at', 'send_date',
                 'sent_at', 'schedule_type', 'total_recipients', 'sent_count',
                 'delivered_count', 'opened_count', 'clicked_count',
-                'newsletter_template_id', 'organization_id',
+                'newsletter_template_id', 'organization_id', 'updated_at',
             ]);
+        $this->applyNewsletterOrganizationScope($query, $orgScope);
 
         // Apply search filter
         if ($request->has('search') && ! empty($request->search)) {
@@ -739,7 +854,7 @@ AIHTML;
             $query->where('status', $request->status);
         }
 
-        $newsletters = $query->latest()->paginate(10);
+        $newsletters = $query->latest()->paginate(5);
 
         // Format all dates - Convert from UTC (database) to user's timezone
         $userTimezone = config('app.timezone', 'UTC');
@@ -763,20 +878,30 @@ AIHTML;
                 $date = Carbon::parse($rawValue, 'UTC')->setTimezone($userTimezone);
                 $newsletter->sent_at_formatted = $date->format('M d, Y h:i A');
             }
+            if ($newsletter->updated_at) {
+                $newsletter->updated_at_formatted = Carbon::parse($newsletter->updated_at)->setTimezone($userTimezone)->format('M d, Y');
+            }
 
             return $newsletter;
         });
 
-        $templates = NewsletterTemplate::where('is_active', true)->get();
+        $templateQuery = NewsletterTemplate::where('is_active', true);
+        $this->applyNewsletterOrganizationScope($templateQuery, $orgScope);
+        $templates = $templateQuery->get();
 
-        $recipients = NewsletterRecipient::active()->count();
+        $recipientsQuery = NewsletterRecipient::active();
+        $this->applyNewsletterOrganizationScope($recipientsQuery, $orgScope);
+        $recipients = $recipientsQuery->count();
+
+        $sentQuery = Newsletter::where('status', 'sent');
+        $this->applyNewsletterOrganizationScope($sentQuery, $orgScope);
 
         $stats = [
             'total_newsletters' => $newsletters->total(),
-            'sent_newsletters' => Newsletter::where('status', 'sent')->count(),
+            'sent_newsletters' => $sentQuery->count(),
             'total_recipients' => $recipients,
-            'avg_open_rate' => $this->getAverageOpenRate(),
-            'avg_click_rate' => $this->getAverageClickRate(),
+            'avg_open_rate' => $this->getAverageOpenRate($orgScope),
+            'avg_click_rate' => $this->getAverageClickRate($orgScope),
         ];
 
         return Inertia::render('newsletter/index', array_merge([
@@ -795,6 +920,8 @@ AIHTML;
     {
         $this->authorizePermission($request, 'newsletter.read');
 
+        $orgScope = $this->newsletterOrganizationScope($request);
+
         $query = Newsletter::with(['template', 'organization'])
             ->select([
                 'id', 'subject', 'status', 'scheduled_at', 'send_date',
@@ -803,6 +930,7 @@ AIHTML;
                 'bounced_count', 'unsubscribed_count',
                 'newsletter_template_id', 'organization_id', 'created_at',
             ]);
+        $this->applyNewsletterOrganizationScope($query, $orgScope);
 
         // Apply search filter
         if ($request->has('search') && ! empty($request->search)) {
@@ -898,14 +1026,17 @@ AIHTML;
     {
         $this->authorizePermission($request, 'newsletter.read');
 
-        $templates = NewsletterTemplate::with('organization')
+        $orgScope = $this->newsletterOrganizationScope($request);
+
+        $templatesQuery = NewsletterTemplate::with('organization')
             ->select([
                 'id', 'name', 'subject', 'template_type', 'is_active',
                 'created_at', 'html_content', 'organization_id',
                 'frequency_limit', 'custom_frequency_days', 'frequency_notes',
             ])
-            ->latest()
-            ->paginate(10);
+            ->latest();
+        $this->applyNewsletterOrganizationScope($templatesQuery, $orgScope);
+        $templates = $templatesQuery->paginate(10);
 
         return Inertia::render('newsletter/templates', [
             'templates' => $templates,
@@ -919,12 +1050,14 @@ AIHTML;
     {
         $this->authorizePermission($request, 'newsletter.create');
 
-        $templates = NewsletterTemplate::where('is_active', true)
+        $orgScope = $this->newsletterOrganizationScope($request);
+        $templatesQuery = NewsletterTemplate::where('is_active', true)
             ->select([
                 'id', 'name', 'subject', 'content', 'template_type', 'html_content',
                 'frequency_limit', 'custom_frequency_days', 'frequency_notes',
-            ])
-            ->get();
+            ]);
+        $this->applyNewsletterOrganizationScope($templatesQuery, $orgScope);
+        $templates = $templatesQuery->get();
 
         $authOrg = Organization::forAuthUser($request->user());
 
@@ -1121,11 +1254,11 @@ AIHTML;
      */
     protected function renderNewsletterTemplateForm(?NewsletterTemplate $template, ?array $templateAiResult): Response
     {
-        $props = array_merge([
+        $props = [
             'previewData' => $this->newsletterTemplatePreviewData(),
             'openAiConfigured' => $this->openAiApiKeyIsConfigured(),
             'templateAiResult' => $templateAiResult,
-        ], $this->newsletterSmsWalletProps());
+        ];
         if ($template !== null) {
             $props['template'] = $template;
         }
@@ -1152,6 +1285,7 @@ AIHTML;
         if (! empty($validated['template_id'])) {
             $this->authorizePermission($request, 'newsletter.edit');
             $formTemplate = NewsletterTemplate::findOrFail((int) $validated['template_id']);
+            $this->assertNewsletterTemplateAccessible($request, $formTemplate);
         } else {
             $this->authorizePermission($request, 'newsletter.create');
         }
@@ -1666,8 +1800,10 @@ TXT;
             ]);
         }
 
+        $authOrg = Organization::forAuthUser($request->user());
+
         $template = NewsletterTemplate::create([
-            'organization_id' => null,
+            'organization_id' => $authOrg?->id,
             'name' => $request->name,
             'subject' => $request->subject,
             'content' => $contentTrim === '' ? '' : $request->content,
@@ -1689,6 +1825,7 @@ TXT;
         $this->authorizePermission($request, 'newsletter.read');
 
         $template = NewsletterTemplate::with('organization')->findOrFail($id);
+        $this->assertNewsletterTemplateAccessible($request, $template);
 
         return Inertia::render('newsletter/template-show', [
             'template' => $template,
@@ -1703,6 +1840,7 @@ TXT;
         $this->authorizePermission($request, 'newsletter.edit');
 
         $template = NewsletterTemplate::findOrFail($id);
+        $this->assertNewsletterTemplateAccessible($request, $template);
 
         return $this->renderNewsletterTemplateForm($template, null);
     }
@@ -1733,6 +1871,7 @@ TXT;
         }
 
         $template = NewsletterTemplate::findOrFail($id);
+        $this->assertNewsletterTemplateAccessible($request, $template);
 
         $template->update([
             'name' => $request->name,
@@ -1755,6 +1894,7 @@ TXT;
         $this->authorizePermission($request, 'newsletter.delete');
 
         $template = NewsletterTemplate::findOrFail($id);
+        $this->assertNewsletterTemplateAccessible($request, $template);
 
         // Check if template is being used by any newsletters
         $newsletterCount = $template->newsletters()->count();
@@ -1775,10 +1915,13 @@ TXT;
     {
         $this->authorizePermission($request, 'newsletter.read');
 
+        $orgScope = $this->newsletterOrganizationScope($request);
+
         $search = $request->input('search', '');
         $statusFilter = $request->input('status_filter', 'all');
 
         $organizationsQuery = $this->newsletterRecipientsOrganizationsQuery();
+        $this->applyRecipientsOrganizationsScope($organizationsQuery, $orgScope);
 
         // Apply search filter
         if (! empty($search) && trim($search) !== '') {
@@ -1813,7 +1956,17 @@ TXT;
 
         $organizations = $organizationsQuery->latest()->paginate(20);
 
-        $approvedOrgIds = Organization::query()->active()->excludingCareAllianceHubs()->pluck('id');
+        $approvedOrgIds = Organization::query()
+            ->active()
+            ->excludingCareAllianceHubs()
+            ->when($orgScope !== null, function (Builder $q) use ($orgScope) {
+                if ($orgScope === []) {
+                    $q->whereRaw('0 = 1');
+                } else {
+                    $q->whereIn('id', $orgScope);
+                }
+            })
+            ->pluck('id');
 
         $totalOrganizations = $approvedOrgIds->count();
         $activeSubscriptions = NewsletterRecipient::active()->whereIn('organization_id', $approvedOrgIds)->count();
@@ -1823,6 +1976,13 @@ TXT;
         $notSubscribed = Organization::query()
             ->active()
             ->excludingCareAllianceHubs()
+            ->when($orgScope !== null, function (Builder $q) use ($orgScope) {
+                if ($orgScope === []) {
+                    $q->whereRaw('0 = 1');
+                } else {
+                    $q->whereIn('id', $orgScope);
+                }
+            })
             ->whereDoesntHave('newsletterRecipients')
             ->count();
 
@@ -1834,8 +1994,15 @@ TXT;
             'not_subscribed' => $notSubscribed,
         ];
 
-        // Get manual recipients (not associated with organizations) with pagination
-        $manualRecipientsQuery = NewsletterRecipient::whereNull('organization_id');
+        // Manual contacts: admins see legacy rows with no org; others only see contacts tied to their org(s).
+        $manualRecipientsQuery = NewsletterRecipient::query();
+        if ($orgScope === null) {
+            $manualRecipientsQuery->whereNull('organization_id');
+        } elseif ($orgScope === []) {
+            $manualRecipientsQuery->whereRaw('0 = 1');
+        } else {
+            $manualRecipientsQuery->whereIn('organization_id', $orgScope);
+        }
 
         // Apply search filter for manual recipients
         $manualSearch = $request->input('manual_search', '');
@@ -1937,7 +2104,7 @@ TXT;
     }
 
     /**
-     * Manual recipient belongs to this org, or is a shared (null org) row visible in this org's audience.
+     * Manual recipient belongs to an org in the user's scope, or is a legacy null-org row (same rules as before for non-admins).
      */
     protected function assertCanManageManualRecipient(Request $request, NewsletterRecipient $recipient): void
     {
@@ -1945,11 +2112,21 @@ TXT;
         if (! $user instanceof User) {
             abort(403);
         }
-        $org = Organization::forAuthUser($user);
-        if (! $org) {
+        $scope = $this->newsletterOrganizationScope($request);
+        if ($scope === null) {
+            return;
+        }
+        if ($scope === []) {
             abort(403);
         }
-        if ($recipient->organization_id !== null && (int) $recipient->organization_id !== (int) $org->id) {
+        if ($recipient->organization_id === null) {
+            if (! Organization::forAuthUser($user)) {
+                abort(403);
+            }
+
+            return;
+        }
+        if (! in_array((int) $recipient->organization_id, $scope, true)) {
             abort(403);
         }
     }
@@ -2047,6 +2224,7 @@ TXT;
         $this->authorizePermission($request, 'newsletter.create');
 
         $organization = Organization::findOrFail($organizationId);
+        $this->assertOrganizationInUserScope($request, $organization);
 
         // Check if already has an active subscription
         $existingRecipient = NewsletterRecipient::where('email', $organization->email)->first();
@@ -2084,6 +2262,7 @@ TXT;
         $this->authorizePermission($request, 'newsletter.edit');
 
         $organization = Organization::findOrFail($organizationId);
+        $this->assertOrganizationInUserScope($request, $organization);
 
         // Find and update the recipient status
         $recipient = NewsletterRecipient::where('organization_id', $organization->id)
@@ -2147,10 +2326,13 @@ TXT;
     {
         $this->authorizePermission($request, 'newsletter.read');
 
+        $orgScope = $this->newsletterOrganizationScope($request);
+
         $search = $request->input('search', '');
         $statusFilter = $request->input('status_filter', 'all');
 
         $organizationsQuery = $this->newsletterRecipientsOrganizationsQuery();
+        $this->applyRecipientsOrganizationsScope($organizationsQuery, $orgScope);
 
         // Apply search filter
         if (! empty($search) && trim($search) !== '') {
@@ -2493,6 +2675,11 @@ TXT;
             return back()->withErrors($validator)->withInput();
         }
 
+        if ($request->filled('newsletter_template_id')) {
+            $tpl = NewsletterTemplate::findOrFail((int) $request->newsletter_template_id);
+            $this->assertNewsletterTemplateAccessible($request, $tpl);
+        }
+
         $sendVia = $request->input('send_via', 'email');
         $contentTrim = trim((string) $request->content);
         $htmlTrim = trim((string) $request->html_content);
@@ -2570,33 +2757,52 @@ TXT;
         $user = Auth::user();
         $userOrganization = Organization::forAuthUser($user);
 
-        // Get target recipients count
-        $newsletter = new Newsletter([
-            'organization_id' => $userOrganization->id ?? null,
-            'newsletter_template_id' => $request->input('newsletter_template_id'),
-            'subject' => $request->subject,
-            'content' => $contentTrim === '' ? '' : $request->content,
-            'html_content' => $htmlTrim === '' ? null : $request->html_content,
-            'send_via' => $sendVia,
-            'status' => $status,
-            'scheduled_at' => $sendDate, // Use send_date for scheduled_at as well for compatibility
-            'send_date' => $sendDate,
-            'schedule_type' => $request->schedule_type,
-            'recurring_settings' => $request->recurring_settings,
-            'target_type' => $request->target_type,
-            'target_users' => $request->target_users,
-            'target_organizations' => $request->target_organizations,
-            'target_roles' => $request->target_roles,
-            'target_criteria' => $request->target_criteria,
-            'is_public' => $request->is_public ?? false,
-        ]);
+        $newsletter = DB::transaction(function () use ($request, $userOrganization, $contentTrim, $htmlTrim, $sendVia, $status, $sendDate) {
+            $newsletter = new Newsletter([
+                'organization_id' => $userOrganization->id ?? null,
+                'newsletter_template_id' => $request->input('newsletter_template_id'),
+                'subject' => $request->subject,
+                'content' => $contentTrim === '' ? '' : $request->content,
+                'html_content' => $htmlTrim === '' ? null : $request->html_content,
+                'send_via' => $sendVia,
+                'status' => $status,
+                'scheduled_at' => $sendDate,
+                'send_date' => $sendDate,
+                'schedule_type' => $request->schedule_type,
+                'recurring_settings' => $request->recurring_settings,
+                'target_type' => $request->target_type,
+                'target_users' => $request->target_users,
+                'target_organizations' => $request->target_organizations,
+                'target_roles' => $request->target_roles,
+                'target_criteria' => $request->target_criteria,
+                'is_public' => $request->is_public ?? false,
+            ]);
 
-        // Calculate total recipients (org segment: followers/donors/volunteers/users, or imported contacts count)
-        $newsletter->total_recipients = $newsletter->resolvedTotalRecipientsCount();
-        $newsletter->save();
+            $newsletter->total_recipients = $newsletter->resolvedTotalRecipientsCount();
+            $newsletter->save();
+
+            $templateName = trim((string) $request->subject) !== ''
+                ? mb_substr(trim((string) $request->subject).' · '.now()->format('M j, Y g:i A'), 0, 255)
+                : mb_substr('Newsletter · '.now()->format('M j, Y g:i A'), 0, 255);
+
+            $template = NewsletterTemplate::create([
+                'organization_id' => $newsletter->organization_id,
+                'name' => $templateName,
+                'subject' => $request->subject,
+                'content' => $contentTrim === '' ? '' : $request->content,
+                'html_content' => $htmlTrim === '' ? null : $request->html_content,
+                'template_type' => 'newsletter',
+                'settings' => [],
+                'is_active' => true,
+            ]);
+
+            $newsletter->update(['newsletter_template_id' => $template->id]);
+
+            return $newsletter->fresh();
+        });
 
         return redirect()->route('newsletter.show', $newsletter->id)
-            ->with('success', 'Newsletter created successfully!');
+            ->with('success', 'Newsletter created successfully! A matching template was saved for reuse.');
     }
 
     /**
@@ -2616,6 +2822,8 @@ TXT;
                 'created_at', 'updated_at',
             ])
             ->findOrFail($id);
+
+        $this->assertNewsletterAccessible($request, $newsletter);
 
         // Format all dates - Convert from UTC (database) to user's timezone
         $userTimezone = config('app.timezone', 'UTC');
@@ -2729,6 +2937,8 @@ TXT;
 
         $newsletter = Newsletter::with('organization.user')->findOrFail($id);
 
+        $this->assertNewsletterAccessible($request, $newsletter);
+
         if (! in_array($newsletter->status, ['draft', 'paused'])) {
             return back()->with('error', 'Newsletter can only be sent from draft or paused status.');
         }
@@ -2788,9 +2998,10 @@ TXT;
     /**
      * Get average open rate
      */
-    private function getAverageOpenRate(): float
+    private function getAverageOpenRate(?array $organizationScope): float
     {
         $query = Newsletter::where('status', 'sent');
+        $this->applyNewsletterOrganizationScope($query, $organizationScope);
 
         $total = $query->sum('delivered_count');
         $opened = $query->sum('opened_count');
@@ -2801,9 +3012,10 @@ TXT;
     /**
      * Get average click rate
      */
-    private function getAverageClickRate(): float
+    private function getAverageClickRate(?array $organizationScope): float
     {
         $query = Newsletter::where('status', 'sent');
+        $this->applyNewsletterOrganizationScope($query, $organizationScope);
 
         $total = $query->sum('delivered_count');
         $clicked = $query->sum('clicked_count');
@@ -2819,7 +3031,12 @@ TXT;
         $this->authorizePermission($request, 'newsletter.edit');
 
         $newsletter = Newsletter::with(['template'])->findOrFail($id);
-        $templates = NewsletterTemplate::where('is_active', true)->get();
+        $this->assertNewsletterAccessible($request, $newsletter);
+
+        $orgScope = $this->newsletterOrganizationScope($request);
+        $templatesQuery = NewsletterTemplate::where('is_active', true);
+        $this->applyNewsletterOrganizationScope($templatesQuery, $orgScope);
+        $templates = $templatesQuery->get();
 
         $user = Auth::user();
 
@@ -2867,6 +3084,7 @@ TXT;
         $this->authorizePermission($request, 'newsletter.update');
 
         $newsletter = Newsletter::findOrFail($id);
+        $this->assertNewsletterAccessible($request, $newsletter);
 
         if ($request->filled('newsletter_template_id')) {
             $request->merge(['newsletter_template_id' => (int) $request->newsletter_template_id]);
@@ -2885,6 +3103,11 @@ TXT;
             'newsletter_template_id' => 'nullable|exists:newsletter_templates,id',
             'send_via' => 'required|in:email,sms,both,push',
         ]);
+
+        if ($request->filled('newsletter_template_id')) {
+            $tpl = NewsletterTemplate::findOrFail((int) $request->newsletter_template_id);
+            $this->assertNewsletterTemplateAccessible($request, $tpl);
+        }
 
         $sendVia = $request->input('send_via', 'email');
         $contentTrim = trim((string) $request->content);
@@ -2947,6 +3170,7 @@ TXT;
         $this->authorizePermission($request, 'newsletter.update');
 
         $newsletter = Newsletter::findOrFail($id);
+        $this->assertNewsletterAccessible($request, $newsletter);
 
         // Only allow schedule update for scheduled newsletters (not sent, failed, or sending)
         if (! in_array($newsletter->status, ['scheduled', 'draft'])) {
@@ -3026,6 +3250,7 @@ TXT;
         $this->authorizePermission($request, 'newsletter.update');
 
         $newsletter = Newsletter::findOrFail($id);
+        $this->assertNewsletterAccessible($request, $newsletter);
 
         // Allow pausing for scheduled and sending newsletters
         if (! in_array($newsletter->status, ['scheduled', 'sending'])) {
@@ -3049,6 +3274,7 @@ TXT;
         $this->authorizePermission($request, 'newsletter.update');
 
         $newsletter = Newsletter::findOrFail($id);
+        $this->assertNewsletterAccessible($request, $newsletter);
 
         // Only allow resuming for paused newsletters
         if ($newsletter->status !== 'paused') {
@@ -3086,6 +3312,8 @@ TXT;
         $this->authorizePermission($request, 'newsletter.send');
 
         $newsletter = Newsletter::with('organization.user')->findOrFail($id);
+
+        $this->assertNewsletterAccessible($request, $newsletter);
 
         Log::info('Newsletter found for manual send', [
             'newsletter_id' => $newsletter->id,
@@ -3245,6 +3473,8 @@ TXT;
 
         $newsletter = Newsletter::findOrFail($id);
 
+        $this->assertNewsletterAccessible($request, $newsletter);
+
         Log::info('Newsletter delete request', [
             'newsletter_id' => $newsletter->id,
             'status' => $newsletter->status,
@@ -3289,10 +3519,12 @@ TXT;
 
         $request->validate([
             'package_id' => 'required|exists:sms_packages,id',
+            'return_to' => 'nullable|in:newsletter',
         ]);
 
         $user = $request->user();
         $package = SmsPackage::active()->findOrFail((int) $request->input('package_id'));
+        $returnToNewsletter = $request->input('return_to') === 'newsletter';
 
         try {
             $transaction = $user->recordTransaction([
@@ -3311,13 +3543,18 @@ TXT;
 
             $amountInCents = StripeCustomerChargeAmount::chargeCentsFromNetUsd((float) $package->price, 'card');
 
+            $successQs = 'session_id={CHECKOUT_SESSION_ID}'.($returnToNewsletter ? '&return_to=newsletter&open_buy=sms' : '');
+            $cancelUrl = $returnToNewsletter
+                ? route('newsletter.index', ['canceled' => '1', 'open_buy' => 'sms'])
+                : route('newsletter.create').'?canceled=1';
+
             $checkout = $user->checkoutCharge(
                 $amountInCents,
                 $package->name,
                 1,
                 StripeAutomaticTax::mergeCheckoutOptions([
-                    'success_url' => route('newsletter.purchase-sms.success').'?session_id={CHECKOUT_SESSION_ID}',
-                    'cancel_url' => route('newsletter.create').'?canceled=1',
+                    'success_url' => route('newsletter.purchase-sms.success').'?'.$successQs,
+                    'cancel_url' => $cancelUrl,
                     'metadata' => [
                         'user_id' => (string) $user->id,
                         'transaction_id' => (string) $transaction->id,
@@ -3325,6 +3562,7 @@ TXT;
                         'sms_to_add' => (string) $package->sms_count,
                         'package_id' => (string) $package->id,
                         'amount' => (string) $package->price,
+                        'return_to' => $returnToNewsletter ? 'newsletter' : '',
                     ],
                     'payment_method_types' => ['card'],
                 ])
@@ -3352,18 +3590,33 @@ TXT;
 
         try {
             $sessionId = $request->query('session_id');
+            $toNewsletter = $request->query('return_to') === 'newsletter';
+
             if (! $sessionId) {
-                return redirect()->route('newsletter.create')->with('error', 'Invalid session.');
+                return $toNewsletter
+                    ? redirect()->route('newsletter.index', [
+                        'error' => 'Invalid session.',
+                        'open_buy' => 'sms',
+                    ])
+                    : redirect()->route('newsletter.create')->with('error', 'Invalid session.');
             }
 
             $user = $request->user();
             $session = Cashier::stripe()->checkout->sessions->retrieve($sessionId);
 
-            if ($session->payment_status !== 'paid') {
-                return redirect()->route('newsletter.create')->with('error', 'Payment was not completed.');
+            $metadata = is_object($session->metadata) ? (array) $session->metadata : (array) ($session->metadata ?? []);
+            if (! $toNewsletter && (($metadata['return_to'] ?? '') === 'newsletter')) {
+                $toNewsletter = true;
             }
 
-            $metadata = $session->metadata ?? [];
+            if ($session->payment_status !== 'paid') {
+                return $toNewsletter
+                    ? redirect()->route('newsletter.index', [
+                        'error' => 'Payment was not completed.',
+                        'open_buy' => 'sms',
+                    ])
+                    : redirect()->route('newsletter.create')->with('error', 'Payment was not completed.');
+            }
             $smsToAdd = (int) ($metadata['sms_to_add'] ?? 0);
             $transactionId = $metadata['transaction_id'] ?? null;
 
@@ -3386,36 +3639,247 @@ TXT;
                 }
             }
 
-            return redirect()->route('newsletter.create')->with(
-                'success',
-                "Successfully added {$smsToAdd} SMS credits to your wallet!"
-            );
+            $successMsg = "Successfully added {$smsToAdd} SMS credits to your wallet!";
+
+            return $toNewsletter
+                ? redirect()->route('newsletter.index', [
+                    'success' => $successMsg,
+                    'open_buy' => 'sms',
+                ])
+                : redirect()->route('newsletter.create')->with('success', $successMsg);
         } catch (\Exception $e) {
             Log::error('SMS purchase success handler error', [
                 'error' => $e->getMessage(),
                 'session_id' => $request->query('session_id'),
             ]);
 
-            return redirect()->route('newsletter.create')->with('error', 'Error confirming payment. Please contact support.');
+            $toNewsletter = $request->query('return_to') === 'newsletter';
+
+            return $toNewsletter
+                ? redirect()->route('newsletter.index', [
+                    'error' => 'Error confirming payment. Please contact support.',
+                    'open_buy' => 'sms',
+                ])
+                : redirect()->route('newsletter.create')->with('error', 'Error confirming payment. Please contact support.');
         }
     }
 
     /**
-     * Toggle SMS auto-recharge preference (billing automation can be wired later).
+     * SMS wallet: auto-recharge toggle, threshold, and package (charges via Laravel Cashier off-session).
      */
     public function updateSmsWalletPreferences(Request $request)
     {
         $this->authorizePermission($request, 'newsletter.create');
 
+        $user = $request->user();
+
         $validated = $request->validate([
             'sms_auto_recharge_enabled' => 'required|boolean',
+            'sms_auto_recharge_threshold' => 'nullable|integer|min:0|max:10000000',
+            'sms_auto_recharge_package_id' => 'nullable|integer|exists:sms_packages,id',
         ]);
 
-        $request->user()->update([
-            'sms_auto_recharge_enabled' => $validated['sms_auto_recharge_enabled'],
-        ]);
+        $enabled = (bool) $validated['sms_auto_recharge_enabled'];
+        $threshold = array_key_exists('sms_auto_recharge_threshold', $validated) && $validated['sms_auto_recharge_threshold'] !== null
+            ? (int) $validated['sms_auto_recharge_threshold']
+            : null;
+        $packageId = array_key_exists('sms_auto_recharge_package_id', $validated) && $validated['sms_auto_recharge_package_id'] !== null
+            ? (int) $validated['sms_auto_recharge_package_id']
+            : null;
+
+        if ($packageId !== null) {
+            $pkg = SmsPackage::active()->whereKey($packageId)->first();
+            if (! $pkg) {
+                throw ValidationException::withMessages([
+                    'sms_auto_recharge_package_id' => 'Select an active SMS package.',
+                ]);
+            }
+        }
+
+        if ($enabled) {
+            $request->validate([
+                'sms_auto_recharge_threshold' => 'required|integer|min:0|max:10000000',
+                'sms_auto_recharge_package_id' => 'required|integer|exists:sms_packages,id',
+                'sms_auto_recharge_policy_accepted' => 'required|accepted',
+            ]);
+            if (! $user->sms_auto_recharge_pm_id) {
+                throw ValidationException::withMessages([
+                    'sms_auto_recharge_enabled' => 'Add a saved card for SMS auto-recharge before enabling.',
+                ]);
+            }
+        }
+
+        $payload = [
+            'sms_auto_recharge_enabled' => $enabled,
+            'sms_auto_recharge_threshold' => $threshold,
+            'sms_auto_recharge_package_id' => $packageId,
+        ];
+        if ($enabled) {
+            $payload['sms_auto_recharge_agreed_at'] = now();
+        }
+        $user->update($payload);
+
+        if ($enabled) {
+            $user->refresh();
+            Bus::dispatchSync(new ProcessSmsWalletAutoRechargeJob($user->id));
+        }
 
         return back()->with('success', 'SMS wallet preferences updated.');
+    }
+
+    /**
+     * Stripe Checkout (setup mode) to save a card for SMS auto-recharge (Cashier customer).
+     */
+    public function smsAutoRechargeSetupPayment(Request $request)
+    {
+        $this->authorizePermission($request, 'newsletter.create');
+
+        $user = $request->user();
+
+        try {
+            $user->createOrGetStripeCustomer();
+            $user->refresh();
+
+            if (! $user->stripe_id) {
+                return redirect()->route('newsletter.index', [
+                    'error' => 'Could not create a Stripe billing profile. Please try again or contact support.',
+                    'open_buy' => 'sms',
+                ]);
+            }
+
+            $currency = strtolower((string) config('cashier.currency', 'usd'));
+
+            $session = Cashier::stripe()->checkout->sessions->create([
+                'customer' => $user->stripe_id,
+                'mode' => 'setup',
+                'currency' => $currency,
+                'payment_method_types' => ['card'],
+                'success_url' => route('newsletter.sms-auto-recharge.setup-success').'?session_id={CHECKOUT_SESSION_ID}&open_buy=sms',
+                'cancel_url' => route('newsletter.index', ['canceled' => '1', 'open_buy' => 'sms']),
+                'metadata' => [
+                    'user_id' => (string) $user->id,
+                    'type' => 'sms_auto_recharge_setup',
+                ],
+            ]);
+
+            return Inertia::location($session->url);
+        } catch (ApiErrorException $e) {
+            Log::error('SMS auto-recharge setup Stripe error', [
+                'user_id' => $user->id,
+                'message' => $e->getMessage(),
+            ]);
+
+            return redirect()->route('newsletter.index', [
+                'error' => 'Could not start card setup. Please try again or contact support.',
+                'open_buy' => 'sms',
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('SMS auto-recharge setup session error', [
+                'user_id' => $user->id,
+                'message' => $e->getMessage(),
+            ]);
+
+            return redirect()->route('newsletter.index', [
+                'error' => 'Could not start card setup. Please try again.',
+                'open_buy' => 'sms',
+            ]);
+        }
+    }
+
+    /**
+     * Return from Stripe setup mode — store payment method for off-session SMS purchases.
+     */
+    public function smsAutoRechargeSetupSuccess(Request $request)
+    {
+        $this->authorizePermission($request, 'newsletter.create');
+
+        $user = $request->user();
+        $sessionId = $request->query('session_id');
+
+        if (! $sessionId) {
+            return redirect()->route('newsletter.index', [
+                'error' => 'Invalid setup session.',
+                'open_buy' => 'sms',
+            ]);
+        }
+
+        try {
+            $session = Cashier::stripe()->checkout->sessions->retrieve((string) $sessionId);
+            if (($session->metadata->type ?? '') !== 'sms_auto_recharge_setup'
+                || (int) ($session->metadata->user_id ?? 0) !== (int) $user->id) {
+                return redirect()->route('newsletter.index', [
+                    'error' => 'This setup session does not match your account.',
+                    'open_buy' => 'sms',
+                ]);
+            }
+
+            $setupIntentId = $session->setup_intent;
+            if (! $setupIntentId) {
+                return redirect()->route('newsletter.index', [
+                    'error' => 'Could not confirm your card. Please try again.',
+                    'open_buy' => 'sms',
+                ]);
+            }
+
+            $setupIntent = Cashier::stripe()->setupIntents->retrieve(
+                is_string($setupIntentId) ? $setupIntentId : $setupIntentId->id
+            );
+            $pmId = is_string($setupIntent->payment_method)
+                ? $setupIntent->payment_method
+                : ($setupIntent->payment_method->id ?? null);
+            if (! $pmId) {
+                return redirect()->route('newsletter.index', [
+                    'error' => 'No payment method was saved.',
+                    'open_buy' => 'sms',
+                ]);
+            }
+
+            BelievePointsPaymentMethodSyncService::ensurePaymentMethodBelongsToCustomer($user, $pmId);
+            $pm = Cashier::stripe()->paymentMethods->retrieve($pmId);
+            $card = $pm->card ?? null;
+
+            $user->update([
+                'sms_auto_recharge_pm_id' => $pmId,
+                'sms_auto_recharge_card_brand' => $card->brand ?? null,
+                'sms_auto_recharge_card_last4' => $card->last4 ?? null,
+            ]);
+
+            $user->refresh();
+            if ($user->sms_auto_recharge_enabled) {
+                Bus::dispatchSync(new ProcessSmsWalletAutoRechargeJob($user->id));
+            }
+
+            $successMsg = 'Card saved. Set threshold and package, then enable SMS auto-recharge.';
+
+            return redirect()->route('newsletter.index', [
+                'success' => $successMsg,
+                'open_buy' => 'sms',
+            ]);
+        } catch (\Exception $e) {
+            Log::error('SMS auto-recharge setup success error: '.$e->getMessage());
+
+            return redirect()->route('newsletter.index', [
+                'error' => 'Could not save your card. Please try again.',
+                'open_buy' => 'sms',
+            ]);
+        }
+    }
+
+    /**
+     * Remove saved card and turn off SMS auto-recharge.
+     */
+    public function smsAutoRechargeRemovePaymentMethod(Request $request)
+    {
+        $this->authorizePermission($request, 'newsletter.create');
+
+        $request->user()->update([
+            'sms_auto_recharge_enabled' => false,
+            'sms_auto_recharge_pm_id' => null,
+            'sms_auto_recharge_card_brand' => null,
+            'sms_auto_recharge_card_last4' => null,
+        ]);
+
+        return back()->with('success', 'Saved card removed and SMS auto-recharge turned off.');
     }
 
     /**

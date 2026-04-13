@@ -501,9 +501,11 @@ class EmailInviteController extends BaseController
 
         $request->validate([
             'package_id' => 'required|exists:email_packages,id',
+            'return_to' => 'nullable|in:newsletter',
         ]);
 
         $user = $request->user();
+        $returnToNewsletter = $request->input('return_to') === 'newsletter';
 
         // Get the email package
         $package = EmailPackage::active()->findOrFail($request->input('package_id'));
@@ -528,13 +530,18 @@ class EmailInviteController extends BaseController
             $amountInCents = StripeCustomerChargeAmount::chargeCentsFromNetUsd((float) $package->price, 'card');
 
             // Create checkout session
+            $successQs = 'session_id={CHECKOUT_SESSION_ID}'.($returnToNewsletter ? '&return_to=newsletter&open_buy=email' : '');
+            $cancelUrl = $returnToNewsletter
+                ? route('newsletter.index', ['canceled' => '1', 'open_buy' => 'email'])
+                : route('email-invite.index').'?canceled=1';
+
             $checkout = $user->checkoutCharge(
                 $amountInCents,
                 $package->name,
                 1,
                 StripeAutomaticTax::mergeCheckoutOptions([
-                    'success_url' => route('email-invite.purchase.success').'?session_id={CHECKOUT_SESSION_ID}',
-                    'cancel_url' => route('email-invite.index').'?canceled=1',
+                    'success_url' => route('email-invite.purchase.success').'?'.$successQs,
+                    'cancel_url' => $cancelUrl,
                     'metadata' => [
                         'user_id' => $user->id,
                         'transaction_id' => $transaction->id,
@@ -542,6 +549,7 @@ class EmailInviteController extends BaseController
                         'emails_to_add' => $package->emails_count,
                         'package_id' => $package->id,
                         'amount' => $package->price,
+                        'return_to' => $returnToNewsletter ? 'newsletter' : '',
                     ],
                     'payment_method_types' => ['card'],
                 ])
@@ -570,9 +578,15 @@ class EmailInviteController extends BaseController
     {
         try {
             $sessionId = $request->query('session_id');
+            $toNewsletter = $request->query('return_to') === 'newsletter';
 
             if (! $sessionId) {
-                return redirect()->route('email-invite.index')->with('error', 'Invalid session ID.');
+                return $toNewsletter
+                    ? redirect()->route('newsletter.index', [
+                        'error' => 'Invalid session ID.',
+                        'open_buy' => 'email',
+                    ])
+                    : redirect()->route('email-invite.index')->with('error', 'Invalid session ID.');
             }
 
             $user = $request->user();
@@ -580,12 +594,21 @@ class EmailInviteController extends BaseController
             // Retrieve the checkout session from Stripe
             $session = Cashier::stripe()->checkout->sessions->retrieve($sessionId);
 
+            $metadata = is_object($session->metadata) ? (array) $session->metadata : (array) ($session->metadata ?? []);
+            if (! $toNewsletter && (($metadata['return_to'] ?? '') === 'newsletter')) {
+                $toNewsletter = true;
+            }
+
             if ($session->payment_status !== 'paid') {
-                return redirect()->route('email-invite.index')->with('error', 'Payment was not completed.');
+                return $toNewsletter
+                    ? redirect()->route('newsletter.index', [
+                        'error' => 'Payment was not completed.',
+                        'open_buy' => 'email',
+                    ])
+                    : redirect()->route('email-invite.index')->with('error', 'Payment was not completed.');
             }
 
             // Get metadata from session
-            $metadata = $session->metadata ?? [];
             $emailsToAdd = (int) ($metadata['emails_to_add'] ?? 0);
             $transactionId = $metadata['transaction_id'] ?? null;
 
@@ -620,7 +643,14 @@ class EmailInviteController extends BaseController
                 'session_id' => $sessionId,
             ]);
 
-            return redirect()->route('email-invite.index')->with('success', "Successfully purchased {$emailsToAdd} emails!");
+            $successMsg = "Successfully purchased {$emailsToAdd} emails!";
+
+            return $toNewsletter
+                ? redirect()->route('newsletter.index', [
+                    'success' => $successMsg,
+                    'open_buy' => 'email',
+                ])
+                : redirect()->route('email-invite.index')->with('success', $successMsg);
 
         } catch (\Exception $e) {
             Log::error('Email purchase success handler error', [
@@ -628,7 +658,14 @@ class EmailInviteController extends BaseController
                 'session_id' => $request->query('session_id'),
             ]);
 
-            return redirect()->route('email-invite.index')->with('error', 'Error processing payment. Please contact support.');
+            $toNewsletter = $request->query('return_to') === 'newsletter';
+
+            return $toNewsletter
+                ? redirect()->route('newsletter.index', [
+                    'error' => 'Error processing payment. Please contact support.',
+                    'open_buy' => 'email',
+                ])
+                : redirect()->route('email-invite.index')->with('error', 'Error processing payment. Please contact support.');
         }
     }
 }

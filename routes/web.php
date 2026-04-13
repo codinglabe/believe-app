@@ -1522,6 +1522,9 @@ Route::prefix('newsletter')->name('newsletter.')->group(function () {
     Route::post('/purchase-pro-targeting', [NewsletterController::class, 'purchaseProTargeting'])->name('purchase-pro-targeting');
     Route::get('/purchase-pro-targeting/success', [NewsletterController::class, 'purchaseProTargetingSuccess'])->name('purchase-pro-targeting.success');
     Route::post('/sms-wallet-preferences', [NewsletterController::class, 'updateSmsWalletPreferences'])->name('sms-wallet-preferences');
+    Route::get('/sms-auto-recharge/setup', [NewsletterController::class, 'smsAutoRechargeSetupPayment'])->name('sms-auto-recharge.setup');
+    Route::get('/sms-auto-recharge/setup-success', [NewsletterController::class, 'smsAutoRechargeSetupSuccess'])->name('sms-auto-recharge.setup-success');
+    Route::post('/sms-auto-recharge/remove-payment-method', [NewsletterController::class, 'smsAutoRechargeRemovePaymentMethod'])->name('sms-auto-recharge.remove-payment');
     Route::post('/create/ai-generate', [NewsletterController::class, 'generateNewsletterCreateWithAi'])->name('create.ai-generate');
     Route::get('/create-advanced', [NewsletterController::class, 'createAdvanced'])->name('create-advanced');
     Route::post('/', [NewsletterController::class, 'store'])->name('store');

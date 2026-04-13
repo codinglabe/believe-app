@@ -1,6 +1,8 @@
 import '../css/app.css';
-import './bootstrap'; // <--- Add this line
+import './bootstrap'; // sets window.axios — must run before timezone init
+import './lib/timezone-detection'; // X-Timezone on axios + fetch for every page
 
+import type { GlobalEvent } from '@inertiajs/core';
 import { createInertiaApp, router } from '@inertiajs/react';
 import { resolvePageComponent } from 'laravel-vite-plugin/inertia-helpers';
 import { configureEcho } from '@laravel/echo-react';
@@ -13,6 +15,7 @@ import { PWAUpdatePrompt } from './components/PWAUpdatePrompt';
 import { isLivestockDomain } from './lib/livestock-domain';
 import { isMerchantDomain } from './lib/merchant-domain';
 import { initializeMessaging, requestNotificationPermission } from './lib/firebase';
+import { getBrowserTimezone } from './lib/timezone-detection';
 import axios from 'axios';
 
 
@@ -55,8 +58,9 @@ createInertiaApp({
         }
 
         // After every Inertia navigation (including post-login redirect), sync meta so next POST doesn't get 419.
-        router.on('success', (event: { detail: { page: { props?: { csrf_token?: string } } } }) => {
-            const token = event.detail.page?.props?.csrf_token;
+        router.on('success', (event: GlobalEvent<'success'>) => {
+            const raw = event.detail.page?.props?.csrf_token;
+            const token = typeof raw === 'string' ? raw : '';
             if (token && typeof document !== 'undefined') {
                 const meta = document.querySelector('meta[name="csrf-token"]');
                 if (meta) meta.setAttribute('content', token);
@@ -83,6 +87,13 @@ createInertiaApp({
     },
 });
 
+// Every Inertia visit (GET/POST/Link) must send the browser IANA timezone so Laravel DetectTimezone applies it.
+if (typeof window !== 'undefined') {
+    router.on('before', (event: GlobalEvent<'before'>) => {
+        event.detail.visit.headers['X-Timezone'] = getBrowserTimezone();
+    });
+}
+
 // Global axios: always send CSRF from meta (kept in sync by CsrfTokenSync + router.on('success')).
 if (typeof window !== 'undefined') {
     const getCsrf = () => document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
@@ -90,6 +101,7 @@ if (typeof window !== 'undefined') {
     axios.defaults.withCredentials = true;
     axios.interceptors.request.use((config) => {
         config.headers['X-CSRF-TOKEN'] = getCsrf();
+        config.headers['X-Timezone'] = getBrowserTimezone();
         return config;
     });
     axios.interceptors.response.use(

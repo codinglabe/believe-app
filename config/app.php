@@ -60,13 +60,13 @@ return [
     | Application Timezone
     |--------------------------------------------------------------------------
     |
-    | Here you may specify the default timezone for your application, which
-    | will be used by the PHP date and date-time functions. The timezone
-    | is set to "UTC" by default as it is suitable for most use cases.
+    | Default for console, queues, and code outside an HTTP request. For web and
+    | API requests, App\Http\Middleware\DetectTimezone overrides this using the
+    | X-Timezone header (browser) or the authenticated user's stored timezone.
     |
     */
 
-    'timezone' => 'UTC',
+    'timezone' => env('APP_TIMEZONE', 'UTC'),
 
     /*
     |--------------------------------------------------------------------------

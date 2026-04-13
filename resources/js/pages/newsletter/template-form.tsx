@@ -97,13 +97,6 @@ import {
 } from "@/lib/newsletter-ai-presets"
 import AppSidebarLayout from "@/layouts/app/app-sidebar-layout"
 import { formatHtmlPretty } from "@/lib/format-html"
-import {
-    NewsletterSmsWalletCard,
-    type EmailUsagePackage,
-    type EmailUsageStats,
-    type SmsPackage,
-    type SmsStats,
-} from "@/components/newsletter/sms-wallet-card"
 
 /** Matches backend NewsletterController::NEWSLETTER_SMS_PLAIN_MAX_CHARS */
 const SMS_PLAIN_MAX_CHARS = 160
@@ -160,11 +153,6 @@ interface NewsletterTemplateFormProps {
     previewData?: PreviewData
     openAiConfigured?: boolean
     templateAiResult?: TemplateAiResult | null
-    emailStats?: EmailUsageStats
-    emailPackages?: EmailUsagePackage[]
-    smsStats?: SmsStats
-    smsPackages?: SmsPackage[]
-    smsAutoRechargeEnabled?: boolean
 }
 
 function firstFieldError(err: unknown): string | undefined {
@@ -186,11 +174,6 @@ export default function NewsletterTemplateForm({
     previewData,
     openAiConfigured = false,
     templateAiResult: templateAiResultProp = null,
-    emailStats,
-    emailPackages,
-    smsStats,
-    smsPackages,
-    smsAutoRechargeEnabled,
 }: NewsletterTemplateFormProps) {
     const [viewMode, setViewMode] = useState<'edit' | 'preview'>('edit')
     const isEditing = !!template
@@ -403,14 +386,6 @@ export default function NewsletterTemplateForm({
                         </div>
                     </div>
                 </div>
-
-                <NewsletterSmsWalletCard
-                    emailStats={emailStats}
-                    emailPackages={emailPackages}
-                    smsStats={smsStats}
-                    smsPackages={smsPackages}
-                    smsAutoRechargeEnabled={smsAutoRechargeEnabled}
-                />
 
                     <form onSubmit={handleSubmit}>
                         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">

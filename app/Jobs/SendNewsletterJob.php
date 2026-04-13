@@ -739,6 +739,8 @@ class SendNewsletterJob implements ShouldQueue
         $user = $this->resolveBillingUser();
         if ($user) {
             $user->increment('sms_used');
+            $user->refresh();
+            ProcessSmsWalletAutoRechargeJob::dispatch($user->id)->afterResponse();
         } else {
             Log::warning('Newsletter SMS sent but no billing user to increment sms_used', [
                 'newsletter_id' => $this->newsletter->id,
