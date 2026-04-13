@@ -282,8 +282,8 @@ Route::post('/unity-videos/engagement/comments', [CommunityVideoEngagementContro
 Route::get('/unity-live', [UnityLiveController::class, 'index'])->name('unity-live.index');
 Route::get('/unity-live/{slug}', [UnityLiveController::class, 'show'])->name('unity-live.show')->where('slug', '[a-zA-Z0-9_]+');
 
-// Supporter meeting: same as organization — index, create, edit, delete, room page (VDO.Ninja)
-Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:user'])->group(function () {
+// Unity Meet (supporter UI): personal meetings — also available to org / care alliance accounts from dashboard Tools
+Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:user|organization|organization_pending|care_alliance'])->group(function () {
     Route::get('/livestreams/supporter', [\App\Http\Controllers\SupporterLivestreamController::class, 'index'])->name('livestreams.supporter.index');
     Route::get('/livestreams/supporter/create', [\App\Http\Controllers\SupporterLivestreamController::class, 'create'])->name('livestreams.supporter.create');
     Route::post('/livestreams/supporter', [\App\Http\Controllers\SupporterLivestreamController::class, 'store'])->name('livestreams.supporter.store');

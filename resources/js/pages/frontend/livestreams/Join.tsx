@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import FrontendLayout from "@/layouts/frontend/frontend-layout"
+import UnityMeetLayout from "@/layouts/UnityMeetLayout"
 import { PageHead } from "@/components/frontend/PageHead"
 import {
   Video,
@@ -100,7 +100,7 @@ export default function SupporterMeetJoin({
     const initial = displayLabel.charAt(0).toUpperCase() || "G"
 
     return (
-      <FrontendLayout>
+      <UnityMeetLayout>
         <Head title={`In meeting: ${livestream.title || "Meeting"}`} />
         <div className="flex flex-col min-h-screen bg-background">
           <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-border bg-card shrink-0">
@@ -135,14 +135,14 @@ export default function SupporterMeetJoin({
             />
           </div>
         </div>
-      </FrontendLayout>
+      </UnityMeetLayout>
     )
   }
 
   // Livestream found but not joinable (ended, etc.)
   if (livestream && !canJoin) {
     return (
-      <FrontendLayout>
+      <UnityMeetLayout>
         <Head title={`Join: ${livestream.title || "Meeting"}`} />
         <div className="min-h-screen bg-background flex flex-col items-center justify-center p-6">
           <Alert className="max-w-md">
@@ -158,14 +158,14 @@ export default function SupporterMeetJoin({
             Back to Unity Meet
           </Link>
         </div>
-      </FrontendLayout>
+      </UnityMeetLayout>
     )
   }
 
   // Step 2a: Livestream validated — enter name and join (same page)
   if (livestream && canJoin) {
     return (
-      <FrontendLayout>
+      <UnityMeetLayout>
         <PageHead title="Join meeting" description={livestream.title || "Enter your name to join"} />
         <Head title={`Join: ${livestream.title || "Meeting"}`} />
         <div className="min-h-screen bg-background">
@@ -264,13 +264,13 @@ export default function SupporterMeetJoin({
             </Card>
           </div>
         </div>
-      </FrontendLayout>
+      </UnityMeetLayout>
     )
   }
 
   // Step 1: Meeting ID + Passcode form
   return (
-    <FrontendLayout>
+    <UnityMeetLayout>
       <PageHead
         title="Join a meeting"
         description="Enter the meeting ID and passcode to join a Unity Meet"
@@ -377,6 +377,6 @@ export default function SupporterMeetJoin({
           </Card>
         </div>
       </div>
-    </FrontendLayout>
+    </UnityMeetLayout>
   )
 }

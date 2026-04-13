@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Switch } from "@/components/admin/ui/switch"
 import { ArrowLeft } from "lucide-react"
-import FrontendLayout from "@/layouts/frontend/frontend-layout"
+import UnityMeetLayout from "@/layouts/UnityMeetLayout"
 import { PageHead } from "@/components/frontend/PageHead"
 
 const BRAND = {
@@ -51,7 +51,13 @@ export default function SupporterLivestreamEdit({ livestream }: Props) {
   }
 
   return (
-    <FrontendLayout>
+    <UnityMeetLayout
+      breadcrumbs={[
+        { title: 'Dashboard', href: '/dashboard' },
+        { title: 'Unity Meet Communications', href: '/livestreams/supporter' },
+        { title: 'Edit', href: `/livestreams/supporter/${livestream.id}/edit` },
+      ]}
+    >
       <PageHead title="Edit Meeting" description="Update meeting details." />
       <Head title="Edit Meeting" />
       <div className="min-h-screen bg-background">
@@ -176,6 +182,6 @@ export default function SupporterLivestreamEdit({ livestream }: Props) {
           </form>
         </div>
       </div>
-    </FrontendLayout>
+    </UnityMeetLayout>
   )
 }
