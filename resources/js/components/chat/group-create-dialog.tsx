@@ -1,17 +1,23 @@
 "use client"
 
 import React, { useState } from "react"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/chat/ui/dialog"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/chat/ui/dialog"
 import { Input } from "@/components/chat/ui/input"
 import { Textarea } from "@/components/chat/ui/textarea"
 import { Button } from "@/components/chat/ui/button"
 import { Label } from "@/components/chat/ui/label"
-import { RadioGroup, RadioGroupItem } from "@/components/chat/ui/radio-group"
 import { useChat } from "@/providers/chat-provider"
 import { UserAvatar } from "@/components/chat/user-avatar"
 import { Checkbox } from "@/components/chat/ui/checkbox"
 import { ScrollArea } from "@/components/chat/ui/scroll-area"
-import { Loader2Icon } from 'lucide-react'
+import { Loader2Icon } from "lucide-react"
 import {
   Select,
   SelectContent,
@@ -19,6 +25,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/chat/ui/select"
+import { cn } from "@/lib/utils"
+import {
+  chatGradientText,
+  chatPrimaryButtonClass,
+  chatInsetBorder,
+  chatInputFocusRing,
+  chatSegmentTrack,
+} from "./chat-brand"
 
 interface GroupCreateDialogProps {
   open: boolean
@@ -51,8 +65,14 @@ export function GroupCreateDialog({ open, onOpenChange }: GroupCreateDialogProps
     e.preventDefault()
     setIsLoading(true)
     try {
-      await createRoom(name, type, description, image || undefined, type === "private" ? selectedMembers : undefined, topicId)
-      // Reset form
+      await createRoom(
+        name,
+        type,
+        description,
+        image || undefined,
+        type === "private" ? selectedMembers : undefined,
+        topicId,
+      )
       setName("")
       setDescription("")
       setType("public")
@@ -67,122 +87,162 @@ export function GroupCreateDialog({ open, onOpenChange }: GroupCreateDialogProps
     }
   }
 
-  const availableMembers = allUsers.filter(user => user.id !== currentUser.id);
+  const availableMembers = allUsers.filter((user) => user.id !== currentUser.id)
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[425px]">
-        <DialogHeader>
-          <DialogTitle>Create New Chat Room</DialogTitle>
-          <DialogDescription>
-            Create a new public or private chat room.
-          </DialogDescription>
-        </DialogHeader>
-        <form onSubmit={handleSubmit} className="grid gap-4 py-4">
-          <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="name" className="text-right">
-              Name
-            </Label>
-            <Input
-              id="name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="col-span-3"
-              required
-            />
-          </div>
-          <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="description" className="text-right">
-              Description
-            </Label>
-            <Textarea
-              id="description"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              className="col-span-3"
-            />
-          </div>
-          <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="topic" className="text-right">
-              Topic
-            </Label>
-            <Select
-              value={topicId}
-              onValueChange={setTopicId}
-              required
-            >
-              <SelectTrigger className="col-span-3">
-                <SelectValue placeholder="Select a topic" />
-              </SelectTrigger>
-              <SelectContent>
-                {allTopics.map((topic) => (
-                  <SelectItem key={topic.id} value={topic.id.toString()}>
-                    {topic.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="type" className="text-right">
-              Type
-            </Label>
-            <RadioGroup
-              value={type}
-              onValueChange={(value: "public" | "private") => setType(value)}
-              className="col-span-3 flex gap-4"
-            >
-              <div className="flex items-center space-x-2">
-                <RadioGroupItem value="public" id="public" />
-                <Label htmlFor="public">Public</Label>
-              </div>
-              <div className="flex items-center space-x-2">
-                <RadioGroupItem value="private" id="private" />
-                <Label htmlFor="private">Private</Label>
-              </div>
-            </RadioGroup>
-          </div>
-          <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="image" className="text-right">
-              Image
-            </Label>
-            <Input id="image" type="file" onChange={handleImageChange} className="col-span-3" />
-          </div>
+      <DialogContent
+        className={cn(
+          "flex w-[calc(100vw-1rem)] max-w-[min(100%,22rem)] flex-col gap-0 overflow-hidden border-purple-500/20 p-0 sm:max-w-md",
+          "max-h-[min(92dvh,640px)]",
+        )}
+      >
+        <div className="shrink-0 border-b border-border/50 px-4 py-3 sm:px-5">
+          <DialogHeader className="space-y-1 text-left">
+            <DialogTitle className={`text-base font-bold sm:text-lg ${chatGradientText}`}>Create chat room</DialogTitle>
+            <DialogDescription className="text-xs leading-snug text-muted-foreground">
+              Name, topic & visibility — optional description, image, and members.
+            </DialogDescription>
+          </DialogHeader>
+        </div>
 
-          {type === "private" && (
-            <div>
-              <Label className="block text-sm font-medium text-foreground mb-2">
-                Select Members (Optional)
-              </Label>
-              <ScrollArea className="h-40 border rounded-md p-2">
-                {availableMembers.length > 0 ? (
-                  availableMembers.map((user) => (
-                    <div key={user.id} className="flex items-center gap-2 py-1">
-                      <Checkbox
-                        id={`member-${user.id}`}
-                        checked={selectedMembers.includes(user.id)}
-                        onCheckedChange={() => handleMemberToggle(user.id)}
-                      />
-                      <Label htmlFor={`member-${user.id}`} className="flex items-center gap-2 cursor-pointer">
-                        <UserAvatar user={user} className="h-7 w-7" />
-                        <span>{user.name}</span>
-                        {user.organization && (
-                          <span className="text-xs text-muted-foreground">({user.organization.name})</span>
-                        )}
-                      </Label>
-                    </div>
-                  ))
-                ) : (
-                  <p className="text-center text-muted-foreground text-sm py-4">No other users available.</p>
-                )}
-              </ScrollArea>
+        <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
+          <div className="min-h-0 flex-1 space-y-2.5 overflow-y-auto overscroll-contain px-4 py-3 sm:space-y-3 sm:px-5">
+            <div className="grid gap-2.5 sm:grid-cols-2 sm:gap-3">
+              <div className="space-y-1.5 sm:col-span-1">
+                <Label htmlFor="group-name" className="text-xs">
+                  Name
+                </Label>
+                <Input
+                  id="group-name"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  required
+                  className={cn("h-9 rounded-lg text-sm", chatInputFocusRing)}
+                  placeholder="Room name"
+                />
+              </div>
+              <div className="space-y-1.5 sm:col-span-1">
+                <Label htmlFor="group-topic" className="text-xs">
+                  Topic
+                </Label>
+                <Select value={topicId} onValueChange={setTopicId} required>
+                  <SelectTrigger id="group-topic" className={cn("h-9 w-full rounded-lg text-sm", chatInputFocusRing)}>
+                    <SelectValue placeholder="Select topic" />
+                  </SelectTrigger>
+                  <SelectContent position="popper" className="max-h-[min(280px,40vh)]">
+                    {allTopics.map((topic) => (
+                      <SelectItem key={topic.id} value={topic.id.toString()}>
+                        {topic.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
-          )}
 
-          <DialogFooter>
-            <Button type="submit" disabled={isLoading || !topicId}>
+            <div className="space-y-1.5">
+              <Label htmlFor="group-description" className="text-xs">
+                Description <span className="font-normal text-muted-foreground">(optional)</span>
+              </Label>
+              <Textarea
+                id="group-description"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                rows={2}
+                className={cn("min-h-[2.75rem] resize-none rounded-lg py-2 text-sm leading-snug", chatInputFocusRing)}
+                placeholder="Short summary…"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <span className="text-xs font-medium">Visibility</span>
+              <div className={cn(chatSegmentTrack, "flex gap-0.5 p-0.5")}>
+                {(
+                  [
+                    { id: "public" as const, label: "Public" },
+                    { id: "private" as const, label: "Private" },
+                  ]
+                ).map(({ id, label }) => (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => setType(id)}
+                    className={cn(
+                      "flex-1 rounded-md px-2 py-2 text-xs font-medium transition-all sm:text-sm",
+                      type === id
+                        ? chatPrimaryButtonClass
+                        : "text-muted-foreground hover:bg-background/80 hover:text-foreground",
+                    )}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="group-image" className="text-xs">
+                Image <span className="font-normal text-muted-foreground">(optional)</span>
+              </Label>
+              <Input
+                id="group-image"
+                type="file"
+                accept="image/*"
+                onChange={handleImageChange}
+                className={cn(
+                  "h-9 cursor-pointer rounded-lg py-1.5 text-xs file:mr-2 file:rounded file:border-0 file:bg-muted file:px-2 file:py-1 file:text-xs",
+                  chatInputFocusRing,
+                )}
+                aria-label="Room cover image"
+              />
+            </div>
+
+            {type === "private" && (
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Members (optional)</Label>
+                <div className={cn(chatInsetBorder, "overflow-hidden")}>
+                  <ScrollArea className="h-[min(7.5rem,22vh)]">
+                    <div className="p-1.5 pr-2">
+                      {availableMembers.length > 0 ? (
+                        availableMembers.map((user) => (
+                          <div
+                            key={user.id}
+                            className="flex items-center gap-2 rounded-md py-1 pl-0.5 pr-1 hover:bg-muted/50"
+                          >
+                            <Checkbox
+                              id={`member-${user.id}`}
+                              checked={selectedMembers.includes(user.id)}
+                              onCheckedChange={() => handleMemberToggle(user.id)}
+                            />
+                            <Label htmlFor={`member-${user.id}`} className="flex min-w-0 flex-1 cursor-pointer items-center gap-2">
+                              <UserAvatar user={user} className="h-7 w-7 shrink-0" />
+                              <span className="truncate text-xs font-medium sm:text-sm">{user.name}</span>
+                            </Label>
+                          </div>
+                        ))
+                      ) : (
+                        <p className="py-4 text-center text-xs text-muted-foreground">No other users.</p>
+                      )}
+                    </div>
+                  </ScrollArea>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter className="shrink-0 gap-2 border-t border-border/50 bg-muted/15 px-4 py-3 sm:flex-row sm:justify-end sm:px-5">
+            <Button type="button" variant="outline" size="sm" className="w-full rounded-lg sm:w-auto" onClick={() => onOpenChange(false)}>
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              size="sm"
+              disabled={isLoading || !topicId}
+              className={cn("w-full rounded-lg sm:w-auto", chatPrimaryButtonClass)}
+            >
               {isLoading && <Loader2Icon className="mr-2 h-4 w-4 animate-spin" />}
-              Create Room
+              Create
             </Button>
           </DialogFooter>
         </form>

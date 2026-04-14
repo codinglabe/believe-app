@@ -131,7 +131,7 @@ export const dashboardSidebarNavItems: (NavItem | NavGroup)[] = [
         icon: Megaphone,
         items: [
             {
-                title: 'Email',
+                title: 'Auto Drip Campaign',
                 icon: Mail,
                 items: [
                     {
@@ -162,7 +162,7 @@ export const dashboardSidebarNavItems: (NavItem | NavGroup)[] = [
                 ],
             },
             {
-                title: 'Newsletter',
+                title: 'Messaging Hb',
                 href: '/newsletter',
                 icon: Mail,
                 permission: 'newsletter.read',

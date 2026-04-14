@@ -6,6 +6,22 @@ import { UserAvatar } from "@/components/chat/user-avatar"
 import { cn } from "@/lib/utils"
 import { formatDistanceToNowStrict } from "date-fns"
 import { Badge } from "@/components/chat/ui/badge"
+import { chatGradientBg, chatGradientText } from "./chat-brand"
+
+function compactRelativeTime(iso: string): string {
+  const then = new Date(iso).getTime()
+  const sec = Math.max(0, Math.floor((Date.now() - then) / 1000))
+  if (sec < 45) return "now"
+  const min = Math.floor(sec / 60)
+  if (min < 60) return `${min}m`
+  const hr = Math.floor(min / 60)
+  if (hr < 24) return `${hr}h`
+  const d = Math.floor(hr / 24)
+  if (d < 7) return `${d}d`
+  const w = Math.floor(d / 7)
+  if (w < 52) return `${w}w`
+  return new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" })
+}
 
 interface ConversationItemProps {
   room: ChatRoom
@@ -46,49 +62,66 @@ export function ConversationItem({ room, isActive, onClick,  currentUser}: Conve
     return message;
   };
 
-  const lastMessageText = truncateMessage(room.last_message?.message);
+  const lastMessageText = truncateMessage(room.last_message?.message)
+
+  /** Short label for narrow panels; full phrase in tooltip. */
+  const shortTime = room.last_message?.created_at ? compactRelativeTime(room.last_message.created_at) : null
 
   return (
     <div
       className={cn(
-        "flex items-center gap-3 p-3 rounded-xl cursor-pointer transition-all duration-200",
-        "border border-transparent",
+        "flex min-w-0 max-w-full items-start gap-2.5 sm:gap-3 rounded-xl p-2.5 sm:p-3 cursor-pointer transition-all duration-200",
+        "border box-border",
         isActive
-          ? "bg-primary/10 border-primary/30 shadow-sm"
-          : "hover:bg-muted/50 hover:border-border/50 hover:shadow-sm",
+          ? "border-purple-500/35 bg-gradient-to-r from-purple-600/10 to-blue-600/10 shadow-md ring-1 ring-purple-500/15"
+          : "border-transparent hover:bg-muted/50 hover:border-border/50 hover:shadow-sm",
       )}
       onClick={onClick}
     >
-      <UserAvatar user={{ name: displayName, avatar: displayAvatar || '/placeholder.svg?height=32&width=32' }} className="h-10 w-10 flex-shrink-0" />
-      <div className="flex-1 min-w-0 overflow-hidden">
-        <div className="flex items-center justify-between gap-2">
-          <h3 className={cn(
-            "font-semibold truncate flex-1",
-            isActive ? "text-primary font-semibold" : "text-foreground"
-          )}>
+      <UserAvatar
+        user={{ name: displayName, avatar: displayAvatar || "/placeholder.svg?height=32&width=32" }}
+        className="h-10 w-10 shrink-0"
+      />
+      <div className="min-w-0 flex-1">
+        {/* Grid keeps the timestamp column from being clipped by flex overflow */}
+        <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-start gap-x-2 gap-y-0">
+          <h3
+            title={displayName}
+            className={cn(
+              "min-w-0 truncate text-left text-sm font-semibold leading-snug sm:text-base",
+              isActive ? `font-bold ${chatGradientText}` : "text-foreground",
+            )}
+          >
             {displayName}
           </h3>
-          {lastMessageTime && (
-            <span className={cn(
-              "text-xs whitespace-nowrap flex-shrink-0",
-              isActive ? "text-primary/70 font-medium" : "text-muted-foreground"
-            )}>
-              {lastMessageTime}
+          {lastMessageTime && shortTime && (
+            <span
+              title={lastMessageTime}
+              className={cn(
+                "whitespace-nowrap text-right text-[10px] font-medium tabular-nums leading-snug sm:text-xs",
+                isActive ? "text-purple-600 dark:text-purple-400" : "text-muted-foreground",
+              )}
+            >
+              {shortTime}
             </span>
           )}
         </div>
-        <div className="flex items-center justify-between gap-2 mt-1">
-          <p className={cn(
-            "text-sm truncate flex-1 min-w-0",
-            isActive ? "text-foreground/80" : "text-muted-foreground"
-          )}>
+        <div className="mt-0.5 flex min-w-0 items-center gap-2">
+          <p
+            title={lastMessageText}
+            className={cn(
+              "min-w-0 flex-1 truncate text-left text-xs sm:text-sm",
+              isActive ? "text-foreground/80" : "text-muted-foreground",
+            )}
+          >
             {lastMessageText}
           </p>
           {room.unread_count > 0 && (
             <Badge
               className={cn(
-                "ml-2 px-2 py-0.5 rounded-full text-xs font-bold flex-shrink-0",
-                isActive ? "bg-primary text-primary-foreground" : "bg-blue-500 text-white",
+                "shrink-0 px-2 py-0.5 text-[10px] font-bold leading-none sm:text-xs",
+                "rounded-full border-0 text-white shadow-sm",
+                isActive ? chatGradientBg : "bg-blue-500",
               )}
             >
               {room.unread_count}

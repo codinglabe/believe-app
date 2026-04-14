@@ -4,6 +4,8 @@ import React from "react"
 import { Dialog, DialogContent } from "@/components/chat/ui/dialog"
 import { X } from "lucide-react"
 import { Button } from "@/components/chat/ui/button"
+import { cn } from "@/lib/utils"
+import { chatGradientTopBar } from "./chat-brand"
 
 interface ImageViewerModalProps {
   isOpen: boolean
@@ -16,33 +18,37 @@ export function ImageViewerModal({ isOpen, onClose, imageUrl }: ImageViewerModal
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-7xl w-full p-0 overflow-hidden bg-black/95 border-none">
-        <div className="relative w-full h-[90vh] flex items-center justify-center">
-          {/* Close Button */}
+      <DialogContent
+        className={cn(
+          "max-w-7xl w-full overflow-hidden border-none bg-black/95 p-0",
+          "[&>button]:hidden",
+        )}
+      >
+        <div className="relative h-[90vh] w-full">
+          <div className={`${chatGradientTopBar} opacity-90`} aria-hidden />
+          {/* Close — default Radix close hidden via [&>button]:hidden */}
           <Button
             variant="ghost"
             size="icon"
             onClick={onClose}
-            className="absolute top-4 right-4 z-50 bg-black/50 hover:bg-black/70 text-white rounded-full p-2 h-10 w-10"
+            className="absolute right-4 top-5 z-50 h-11 w-11 rounded-full border border-white/10 bg-black/60 text-white shadow-lg ring-2 ring-purple-500/40 backdrop-blur-sm transition-all hover:bg-black/80 hover:ring-purple-400/60"
+            aria-label="Close image viewer"
           >
-            <X className="w-5 h-5" />
+            <X className="h-5 w-5" />
           </Button>
 
-          {/* Image */}
-          <img
-            src={imageUrl}
-            alt="Full size image"
-            className="max-w-full max-h-full object-contain cursor-zoom-in"
-            onClick={(e) => {
-              // Prevent closing when clicking on image
-              e.stopPropagation()
-            }}
-            onError={(e) => {
-              // Fallback if image fails to load
-              const target = e.target as HTMLImageElement
-              target.src = "/placeholder.svg"
-            }}
-          />
+          <div className="flex h-full w-full items-center justify-center px-2 pt-2">
+            <img
+              src={imageUrl}
+              alt="Full size attachment"
+              className="max-h-full max-w-full cursor-zoom-in object-contain"
+              onClick={(e) => e.stopPropagation()}
+              onError={(e) => {
+                const target = e.target as HTMLImageElement
+                target.src = "/placeholder.svg"
+              }}
+            />
+          </div>
         </div>
       </DialogContent>
     </Dialog>
