@@ -38,23 +38,22 @@ export function getTimezoneInfo() {
 }
 
 /**
- * Set timezone header for requests
+ * Set timezone header for axios and fetch (patched once per page load).
  */
 export function setTimezoneHeader() {
     const timezone = getBrowserTimezone();
 
-    // Set default header for all requests
     if (typeof window !== 'undefined' && window.axios) {
         window.axios.defaults.headers.common['X-Timezone'] = timezone;
     }
 
-    // Also set for fetch requests
-    if (typeof window !== 'undefined') {
-        const originalFetch = window.fetch;
-        window.fetch = function(input: RequestInfo | URL, init?: RequestInit) {
+    if (typeof window !== 'undefined' && !(window as unknown as { __tzFetchPatched?: boolean }).__tzFetchPatched) {
+        (window as unknown as { __tzFetchPatched?: boolean }).__tzFetchPatched = true;
+        const originalFetch = window.fetch.bind(window);
+        window.fetch = function (input: RequestInfo | URL, init?: RequestInit) {
+            const tz = getBrowserTimezone();
             const headers = new Headers(init?.headers);
-            headers.set('X-Timezone', timezone);
-
+            headers.set('X-Timezone', tz);
             return originalFetch(input, {
                 ...init,
                 headers,
@@ -127,17 +126,11 @@ export function convertUserTimezoneToUTC(userDate: string | Date, timezone?: str
 }
 
 /**
- * Initialize timezone detection
+ * Initialize timezone detection (axios, fetch). Call once on app boot after bootstrap sets window.axios.
  */
 export function initializeTimezoneDetection() {
-    // Set timezone header for all requests
     setTimezoneHeader();
-
-    // Log timezone info for debugging
-    const timezoneInfo = getTimezoneInfo();
-    console.log('Timezone detected:', timezoneInfo);
-
-    return timezoneInfo;
+    return getTimezoneInfo();
 }
 
 // Auto-initialize when module is loaded

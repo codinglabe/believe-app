@@ -1,16 +1,14 @@
 "use client"
 
-import { Head } from "@inertiajs/react"
+import { Head, Link, router } from "@inertiajs/react"
 import { motion } from "framer-motion"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
-import { Link } from "@inertiajs/react"
 import AppSidebarLayout from "@/layouts/app/app-sidebar-layout"
 import {
     NewsletterSmsWalletCard,
     type EmailUsagePackage,
     type EmailUsageStats,
+    type SmsAutoRechargeDetails,
     type SmsPackage,
     type SmsStats,
 } from "@/components/newsletter/sms-wallet-card"
@@ -18,42 +16,69 @@ import { ConfirmationModal } from "@/components/confirmation-modal"
 import { useEffect, useRef, useState } from "react"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious, PaginationEllipsis } from "@/components/admin/Pagination"
-import { router } from "@inertiajs/react"
 import {
-    Mail,
-    Users,
-    Eye,
-    MousePointer,
-    Plus,
-    FileText,
-    Send,
-    Edit,
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuSeparator,
+    DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import {
+    Pagination,
+    PaginationContent,
+    PaginationItem,
+    PaginationLink,
+} from "@/components/admin/Pagination"
+import { Badge } from "@/components/ui/badge"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import type { LucideIcon } from "lucide-react"
+import {
+    CalendarClock,
+    CheckCircle2,
+    CircleDashed,
+    FilePenLine,
+    Loader2,
     Pause,
-    Clock,
-    CheckCircle,
-    XCircle,
-    Target,
+    Plus,
+    Send,
+    Eye,
     Search,
-    Filter,
     X,
     Download,
-    ChevronRight,
+    ChevronDown,
+    LayoutGrid,
     Sparkles,
+    Mail,
+    Smartphone,
+    ShoppingCart,
+    XCircle,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import {
+    brandButtonClass,
+    brandButtonClassSm,
+    brandChipClass,
+    brandPaginationActiveClass,
+    brandSolidClass,
+} from "@/lib/brand-styles"
+
+const EMAIL_QUOTA_LOW_THRESHOLD = 10
+const SMS_CREDITS_LOW_THRESHOLD = 50
+
+const INERTIA_ONLY = ["newsletters", "stats", "search", "statusFilter"] as const
 
 interface Newsletter {
     id: number
     subject: string
-    status: 'draft' | 'paused' | 'scheduled' | 'sending' | 'sent' | 'failed'
+    status: "draft" | "paused" | "scheduled" | "sending" | "sent" | "failed"
     scheduled_at?: string
     scheduled_at_formatted?: string
     send_date?: string
     send_date_formatted?: string
     sent_at?: string
     sent_at_formatted?: string
-    schedule_type?: 'immediate' | 'scheduled' | 'recurring'
+    updated_at_formatted?: string
+    schedule_type?: "immediate" | "scheduled" | "recurring"
     total_recipients: number
     sent_count: number
     delivered_count: number
@@ -85,8 +110,8 @@ interface Stats {
 interface NewsletterIndexProps {
     newsletters: {
         data: Newsletter[]
-        links: any[]
-        meta: any
+        links: { url: string | null; label: string; active: boolean }[]
+        meta: { total?: number }
     }
     templates: Template[]
     stats: Stats
@@ -95,34 +120,183 @@ interface NewsletterIndexProps {
     smsStats?: SmsStats
     smsPackages?: SmsPackage[]
     smsAutoRechargeEnabled?: boolean
+    smsAutoRecharge?: SmsAutoRechargeDetails | null
+    search?: string
+    statusFilter?: string
+}
+
+const STATUS_TABS = [
+    { id: "all" as const, label: "All" },
+    { id: "draft" as const, label: "Draft" },
+    { id: "scheduled" as const, label: "Scheduled" },
+    { id: "sent" as const, label: "Sent" },
+]
+
+/** Pill styles for each newsletter row status (dark table). */
+function newsletterStatusBadgeClass(status: string): string {
+    switch (status) {
+        case "sent":
+            return "border-emerald-500/40 bg-emerald-500/15 text-emerald-200"
+        case "scheduled":
+            return "border-sky-500/40 bg-sky-500/15 text-sky-200"
+        case "draft":
+            return "border-amber-500/40 bg-amber-500/12 text-amber-200"
+        case "sending":
+            return "border-yellow-400/45 bg-yellow-400/12 text-yellow-100"
+        case "paused":
+            return "border-orange-500/40 bg-orange-500/12 text-orange-200"
+        case "failed":
+            return "border-red-500/45 bg-red-500/12 text-red-200"
+        default:
+            return "border-zinc-600 bg-zinc-800/70 text-zinc-300"
+    }
+}
+
+function newsletterStatusIcon(status: string): LucideIcon {
+    switch (status) {
+        case "sent":
+            return CheckCircle2
+        case "scheduled":
+            return CalendarClock
+        case "draft":
+            return FilePenLine
+        case "sending":
+            return Loader2
+        case "paused":
+            return Pause
+        case "failed":
+            return XCircle
+        default:
+            return CircleDashed
+    }
+}
+
+function NewsletterStatusBadge({ status }: { status: string }) {
+    const Icon = newsletterStatusIcon(status)
+    return (
+        <Badge
+            variant="outline"
+            className={cn(
+                "gap-1 rounded-full border px-2.5 py-0.5 text-[11px] font-semibold capitalize shadow-none",
+                newsletterStatusBadgeClass(status)
+            )}
+        >
+            <Icon
+                className={cn("size-3 shrink-0", status === "sending" && "animate-spin")}
+                aria-hidden
+            />
+            {status}
+        </Badge>
+    )
+}
+
+function DateColumn({ newsletter }: { newsletter: Newsletter }) {
+    if (newsletter.status === "sent" && newsletter.sent_at_formatted) {
+        const [datePart, ...rest] = newsletter.sent_at_formatted.split(",")
+        const timePart = rest.join(",").trim()
+        return (
+            <div className="text-sm">
+                <p className="font-medium text-zinc-100">{datePart.trim()}</p>
+                {timePart ? <p className="text-xs text-zinc-500">{timePart}</p> : null}
+            </div>
+        )
+    }
+    if (newsletter.status === "scheduled" && (newsletter.send_date_formatted || newsletter.scheduled_at_formatted)) {
+        const primary = newsletter.send_date_formatted || newsletter.scheduled_at_formatted || ""
+        return (
+            <div className="text-sm">
+                <p className="font-medium text-zinc-100">{primary}</p>
+                <p className="text-xs text-zinc-500">Scheduled send</p>
+            </div>
+        )
+    }
+    if (newsletter.updated_at_formatted) {
+        return (
+            <div className="text-sm">
+                <p className="text-zinc-400">Last edited</p>
+                <p className="font-medium text-zinc-200">{newsletter.updated_at_formatted}</p>
+            </div>
+        )
+    }
+    return <span className="text-sm text-zinc-500">—</span>
 }
 
 export default function NewsletterIndex({
     newsletters,
-    templates,
-    stats,
+    stats: _stats,
     emailStats,
     emailPackages,
     smsStats,
     smsPackages,
     smsAutoRechargeEnabled,
+    smsAutoRecharge,
+    search: searchFromServer = "",
+    statusFilter: statusFromServer = "all",
 }: NewsletterIndexProps) {
     const [showSuccessMessage, setShowSuccessMessage] = useState(false)
-    const [successMessage, setSuccessMessage] = useState('')
+    const [successMessage, setSuccessMessage] = useState("")
     const [isSendModalOpen, setIsSendModalOpen] = useState(false)
     const [newsletterToSend, setNewsletterToSend] = useState<Newsletter | null>(null)
-    const [searchTerm, setSearchTerm] = useState('')
-    const [statusFilter, setStatusFilter] = useState<string>('all')
+    const [searchTerm, setSearchTerm] = useState(searchFromServer)
+    const [statusFilter, setStatusFilter] = useState(statusFromServer)
     const filterEffectMounted = useRef(false)
+    const [buyEmailDialogOpen, setBuyEmailDialogOpen] = useState(false)
+    const [buySmsDialogOpen, setBuySmsDialogOpen] = useState(false)
+
+    useEffect(() => {
+        setSearchTerm(searchFromServer)
+        setStatusFilter(statusFromServer)
+    }, [searchFromServer, statusFromServer])
+
+    const [showErrorMessage, setShowErrorMessage] = useState(false)
+    const [errorMessage, setErrorMessage] = useState("")
 
     useEffect(() => {
         const urlParams = new URLSearchParams(window.location.search)
-        const success = urlParams.get('success')
+        const success = urlParams.get("success")
         if (success) {
             setSuccessMessage(decodeURIComponent(success))
             setShowSuccessMessage(true)
         }
+        const err = urlParams.get("error")
+        if (err) {
+            setErrorMessage(decodeURIComponent(err))
+            setShowErrorMessage(true)
+        }
+        const openBuy = urlParams.get("open_buy")
+        if (openBuy === "email") {
+            setBuyEmailDialogOpen(true)
+        }
+        if (openBuy === "sms") {
+            setBuySmsDialogOpen(true)
+        }
+
+        const stripKeys = ["success", "error", "open_buy", "canceled"] as const
+        let changed = false
+        stripKeys.forEach((k) => {
+            if (urlParams.has(k)) {
+                urlParams.delete(k)
+                changed = true
+            }
+        })
+        if (changed) {
+            const qs = urlParams.toString()
+            const next = window.location.pathname + (qs ? `?${qs}` : "") + window.location.hash
+            window.history.replaceState({}, "", next)
+        }
     }, [])
+
+    const pushFilters = (nextSearch: string, nextStatus: string) => {
+        const params: Record<string, string> = {}
+        if (nextSearch.trim()) params.search = nextSearch.trim()
+        if (nextStatus !== "all") params.status = nextStatus
+        router.get(route("newsletter.index"), params, {
+            preserveState: true,
+            preserveScroll: true,
+            replace: true,
+            only: [...INERTIA_ONLY],
+        })
+    }
 
     useEffect(() => {
         if (!filterEffectMounted.current) {
@@ -131,440 +305,481 @@ export default function NewsletterIndex({
         }
         const delay = searchTerm.trim() ? 400 : 0
         const timer = window.setTimeout(() => {
-            const params: Record<string, string> = {}
-            if (searchTerm.trim()) params.search = searchTerm.trim()
-            if (statusFilter !== 'all') params.status = statusFilter
-            router.get(route('newsletter.index'), params, {
-                preserveState: true,
-                replace: true,
-            })
+            pushFilters(searchTerm, statusFilter)
         }, delay)
         return () => window.clearTimeout(timer)
     }, [searchTerm, statusFilter])
 
-    const getStatusColor = (status: string) => {
-        switch (status) {
-            case 'draft': return 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200'
-            case 'paused': return 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200'
-            case 'scheduled': return 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
-            case 'sending': return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200'
-            case 'sent': return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
-            case 'failed': return 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
-            default: return 'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200'
-        }
+    const setTabOrStatus = (next: string) => {
+        setStatusFilter(next)
     }
 
-    const getStatusIcon = (status: string) => {
-        switch (status) {
-            case 'draft': return <Edit className="h-4 w-4" />
-            case 'paused': return <Pause className="h-4 w-4" />
-            case 'scheduled': return <Clock className="h-4 w-4" />
-            case 'sending': return <Send className="h-4 w-4" />
-            case 'sent': return <CheckCircle className="h-4 w-4" />
-            case 'failed': return <XCircle className="h-4 w-4" />
-            default: return <Edit className="h-4 w-4" />
+    const tabIsActive = (id: string) => {
+        if (id === "all") {
+            return statusFilter === "all" || ["sending", "paused", "failed"].includes(statusFilter)
         }
+        return statusFilter === id
     }
 
-    // Dates are already formatted in backend with user's timezone - just use them directly
+    const totalOnPage = newsletters.meta?.total ?? newsletters.data.length
 
-    const statCardClass =
-        "border border-border/60 bg-card shadow-sm transition-colors hover:border-violet-300/40 dark:hover:border-violet-800/50"
+    const emailLowBalance =
+        emailStats != null && emailStats.emails_left < EMAIL_QUOTA_LOW_THRESHOLD
+    const smsLowBalance = smsStats != null && smsStats.sms_left < SMS_CREDITS_LOW_THRESHOLD
+    /** Low balance — show buy affordance even if no packages (dialog explains). */
+    const showBuyEmailToolbar = emailStats != null && emailLowBalance
+    const showBuySmsToolbar = smsStats != null && smsLowBalance
 
     return (
         <AppSidebarLayout>
-            <Head title="Newsletters" />
+            <Head title="Newsletter Dashboard" />
 
-            <div className="w-full max-w-none animate-in fade-in duration-500 space-y-8 px-4 py-6 sm:px-6 lg:px-8">
-                {showSuccessMessage && (
-                    <motion.div
-                        initial={{ opacity: 0, y: -12 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        className="flex items-center justify-between rounded-xl border border-emerald-200/80 bg-emerald-50 px-4 py-3 text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-100"
-                    >
-                        <span className="text-sm font-medium">{successMessage}</span>
-                        <button
-                            type="button"
-                            onClick={() => setShowSuccessMessage(false)}
-                            className="rounded-md p-1 text-emerald-700 hover:bg-emerald-100 dark:text-emerald-300 dark:hover:bg-emerald-900/50"
-                            aria-label="Dismiss"
+            <div className="min-h-[calc(100vh-4rem)] w-full max-w-none bg-zinc-950 px-4 py-6 sm:px-6 lg:px-8 xl:px-10">
+                <div className="w-full max-w-none space-y-6">
+                    {showSuccessMessage && (
+                        <motion.div
+                            initial={{ opacity: 0, y: -12 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            className="flex items-center justify-between rounded-xl border border-emerald-500/30 bg-emerald-950/50 px-4 py-3 text-emerald-100"
                         >
-                            <X className="h-4 w-4" />
-                        </button>
-                    </motion.div>
-                )}
-
-                {/* Hero: what this page is + main actions */}
-                <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
-                    <div className="max-w-2xl space-y-3">
-                        <p className="text-xs font-semibold uppercase tracking-wide text-violet-600 dark:text-violet-400">
-                            Communications
-                        </p>
-                        <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">Newsletters</h1>
-                        <p className="text-base text-muted-foreground leading-relaxed">
-                            See every draft, scheduled send, and completed campaign in one place. Start something new, or open a row to
-                            review stats and recipients.
-                        </p>
-                    </div>
-                    <div className="flex shrink-0 flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center lg:justify-end">
-                        <Link href={route('newsletter.create')}>
-                            <Button
-                                size="lg"
-                                className="w-full bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white shadow-md hover:from-violet-700 hover:to-fuchsia-700 sm:w-auto"
+                            <span className="text-sm font-medium">{successMessage}</span>
+                            <button
+                                type="button"
+                                onClick={() => setShowSuccessMessage(false)}
+                                className="rounded-md p-1 text-emerald-300 hover:bg-emerald-900/50"
+                                aria-label="Dismiss"
                             >
-                                <Plus className="mr-2 h-5 w-5" />
+                                <X className="h-4 w-4" />
+                            </button>
+                        </motion.div>
+                    )}
+
+                    {showErrorMessage && (
+                        <motion.div
+                            initial={{ opacity: 0, y: -12 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            className="flex items-center justify-between rounded-xl border border-red-500/35 bg-red-950/40 px-4 py-3 text-red-100"
+                        >
+                            <span className="text-sm font-medium">{errorMessage}</span>
+                            <button
+                                type="button"
+                                onClick={() => setShowErrorMessage(false)}
+                                className="rounded-md p-1 text-red-300 hover:bg-red-900/50"
+                                aria-label="Dismiss"
+                            >
+                                <X className="h-4 w-4" />
+                            </button>
+                        </motion.div>
+                    )}
+
+                    {/* Header */}
+                    <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                            <h1 className="text-2xl font-bold tracking-tight text-white sm:text-3xl">Newsletter Dashboard</h1>
+                            <p className="mt-1 max-w-xl text-sm text-zinc-500">
+                                Drafts, scheduled sends, and completed newsletters in one place.
+                            </p>
+                        </div>
+                        <Link href={route("newsletter.create")}>
+                            <Button className={cn("w-full sm:w-auto", brandButtonClass)}>
+                                <Plus className="mr-2 h-4 w-4" />
                                 Create newsletter
                             </Button>
                         </Link>
-                        <Link href={route('newsletter.create-advanced')}>
-                            <Button size="lg" variant="outline" className="w-full border-border/80 sm:w-auto">
-                                <Target className="mr-2 h-4 w-4" />
-                                Advanced
-                            </Button>
-                        </Link>
+                    </div>
+
+                    {/* Sub-toolbar: quick nav + credit badges */}
+                    <div className="flex flex-col gap-3 rounded-xl border border-white/10 bg-zinc-900/60 px-3 py-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+                        <div className="flex flex-wrap items-center gap-2">
+                            <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        className="border-white/15 bg-zinc-950/80 text-zinc-200 hover:bg-zinc-800"
+                                    >
+                                        <LayoutGrid className="mr-2 h-4 w-4" />
+                                        Newsletters
+                                        <ChevronDown className="ml-2 h-3.5 w-3.5 opacity-60" />
+                                    </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="start" className="w-56 border-white/10 bg-zinc-950 text-zinc-100">
+                                    <DropdownMenuItem asChild className="focus:bg-zinc-800">
+                                        <Link href={route("newsletter.create")}>New newsletter</Link>
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem asChild className="focus:bg-zinc-800">
+                                        <Link href={route("newsletter.templates")}>Templates</Link>
+                                    </DropdownMenuItem>
+                                    <DropdownMenuSeparator className="bg-white/10" />
+                                    <DropdownMenuItem asChild className="focus:bg-zinc-800">
+                                        <Link href={route("newsletter.create-advanced")}>Advanced composer</Link>
+                                    </DropdownMenuItem>
+                                </DropdownMenuContent>
+                            </DropdownMenu>
+
+                            <div className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-zinc-950 px-3 py-1 text-xs font-medium text-zinc-300">
+                                <span className="text-zinc-500">Newsletters</span>
+                                <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-emerald-600/90 px-1.5 text-[11px] font-semibold text-white">
+                                    {totalOnPage}
+                                </span>
+                            </div>
+
+                            {emailStats && (
+                                <div className="inline-flex items-center gap-1">
+                                    <div
+                                        className={cn(
+                                            "inline-flex max-w-full flex-wrap items-center gap-x-2 gap-y-1 rounded-full border bg-zinc-950 px-3 py-1.5 text-xs font-medium text-zinc-300",
+                                            emailLowBalance ? "border-amber-500/45" : "border-white/10"
+                                        )}
+                                        title="Email quota: included in your plan and sent so far"
+                                    >
+                                        <span className="flex shrink-0 items-center gap-1.5">
+                                            <Mail className="h-3.5 w-3.5 text-sky-400" aria-hidden />
+                                            <span className="text-zinc-500">Email</span>
+                                        </span>
+                                        <span className="hidden h-3 w-px shrink-0 bg-white/10 sm:block" aria-hidden />
+                                        <span className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
+                                            <span className="tabular-nums font-semibold text-white">
+                                                {emailStats.emails_included.toLocaleString()}
+                                            </span>
+                                            <span className="text-zinc-500">included</span>
+                                            <span className="text-zinc-600">·</span>
+                                            <span className="tabular-nums font-semibold text-white">
+                                                {emailStats.emails_used.toLocaleString()}
+                                            </span>
+                                            <span className="text-zinc-500">sent</span>
+                                        </span>
+                                    </div>
+                                    {showBuyEmailToolbar ? (
+                                        <Button
+                                            type="button"
+                                            size="icon"
+                                            className={cn("h-8 w-8 shrink-0", brandButtonClassSm)}
+                                            aria-label="Buy email credits"
+                                            title="Buy email credits"
+                                            onClick={() => setBuyEmailDialogOpen(true)}
+                                        >
+                                            <ShoppingCart className="h-4 w-4" aria-hidden />
+                                        </Button>
+                                    ) : null}
+                                </div>
+                            )}
+
+                            {smsStats && (
+                                <div className="inline-flex items-center gap-1">
+                                    <div
+                                        className={cn(
+                                            "inline-flex max-w-full flex-wrap items-center gap-x-2 gap-y-1 rounded-full border bg-zinc-950 px-3 py-1.5 text-xs font-medium text-zinc-300",
+                                            smsLowBalance ? "border-amber-500/45" : "border-white/10"
+                                        )}
+                                        title="SMS credits: included in your balance and sent so far"
+                                    >
+                                        <span className="flex shrink-0 items-center gap-1.5">
+                                            <Smartphone className="h-3.5 w-3.5 text-blue-400" aria-hidden />
+                                            <span className="text-zinc-500">SMS credits</span>
+                                        </span>
+                                        <span className="hidden h-3 w-px shrink-0 bg-white/10 sm:block" aria-hidden />
+                                        <span className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
+                                            <span className="tabular-nums font-semibold text-white">
+                                                {smsStats.sms_included.toLocaleString()}
+                                            </span>
+                                            <span className="text-zinc-500">included</span>
+                                            <span className="text-zinc-600">·</span>
+                                            <span className="tabular-nums font-semibold text-white">
+                                                {smsStats.sms_used.toLocaleString()}
+                                            </span>
+                                            <span className="text-zinc-500">sent</span>
+                                        </span>
+                                    </div>
+                                    {showBuySmsToolbar ? (
+                                        <Button
+                                            type="button"
+                                            size="icon"
+                                            className={cn("h-8 w-8 shrink-0", brandButtonClassSm)}
+                                            aria-label="Buy SMS credits"
+                                            title="Buy SMS credits"
+                                            onClick={() => setBuySmsDialogOpen(true)}
+                                        >
+                                            <ShoppingCart className="h-4 w-4" aria-hidden />
+                                        </Button>
+                                    ) : null}
+                                </div>
+                            )}
+                        </div>
+
                         <Button
-                            size="lg"
+                            type="button"
                             variant="ghost"
-                            className="w-full text-muted-foreground sm:w-auto"
+                            size="sm"
+                            className="text-zinc-400 hover:bg-white/5 hover:text-zinc-200"
                             onClick={() => {
                                 const params = new URLSearchParams()
-                                if (searchTerm) params.append('search', searchTerm)
-                                if (statusFilter !== 'all') params.append('status', statusFilter)
-                                window.location.href = route('newsletter.export') + (params.toString() ? '?' + params.toString() : '')
+                                if (searchTerm) params.append("search", searchTerm)
+                                if (statusFilter !== "all") params.append("status", statusFilter)
+                                window.location.href = route("newsletter.export") + (params.toString() ? "?" + params.toString() : "")
                             }}
                         >
                             <Download className="mr-2 h-4 w-4" />
                             Export CSV
                         </Button>
                     </div>
-                </div>
 
-                <NewsletterSmsWalletCard
-                    emailStats={emailStats}
-                    emailPackages={emailPackages}
-                    smsStats={smsStats}
-                    smsPackages={smsPackages}
-                    smsAutoRechargeEnabled={smsAutoRechargeEnabled}
-                />
-
-                {/* At-a-glance metrics */}
-                <section aria-label="Overview statistics">
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                        <Card className={statCardClass}>
-                            <CardContent className="p-5">
-                                <div className="flex items-start gap-4">
-                                    <div className="rounded-lg bg-violet-500/10 p-2.5 text-violet-600 dark:text-violet-400">
-                                        <Mail className="h-5 w-5" aria-hidden />
-                                    </div>
-                                    <div className="min-w-0 flex-1">
-                                        <p className="text-xs font-medium text-muted-foreground">Campaigns</p>
-                                        <p className="mt-1 text-2xl font-bold tabular-nums text-foreground">{stats.total_newsletters}</p>
-                                        <p className="mt-0.5 text-xs text-muted-foreground">{stats.sent_newsletters} sent so far</p>
-                                    </div>
-                                </div>
-                            </CardContent>
-                        </Card>
-                        <Card className={statCardClass}>
-                            <CardContent className="p-5">
-                                <div className="flex items-start gap-4">
-                                    <div className="rounded-lg bg-emerald-500/10 p-2.5 text-emerald-600 dark:text-emerald-400">
-                                        <Users className="h-5 w-5" aria-hidden />
-                                    </div>
-                                    <div className="min-w-0 flex-1">
-                                        <p className="text-xs font-medium text-muted-foreground">Recipients (all sends)</p>
-                                        <p className="mt-1 text-2xl font-bold tabular-nums text-foreground">{stats.total_recipients}</p>
-                                        <p className="mt-0.5 text-xs text-muted-foreground">Total audience reach</p>
-                                    </div>
-                                </div>
-                            </CardContent>
-                        </Card>
-                        <Card className={statCardClass}>
-                            <CardContent className="p-5">
-                                <div className="flex items-start gap-4">
-                                    <div className="rounded-lg bg-sky-500/10 p-2.5 text-sky-600 dark:text-sky-400">
-                                        <Eye className="h-5 w-5" aria-hidden />
-                                    </div>
-                                    <div className="min-w-0 flex-1">
-                                        <p className="text-xs font-medium text-muted-foreground">Avg. open rate</p>
-                                        <p className="mt-1 text-2xl font-bold tabular-nums text-foreground">{stats.avg_open_rate}%</p>
-                                        <p className="mt-0.5 text-xs text-muted-foreground">Rough benchmark ~21%</p>
-                                    </div>
-                                </div>
-                            </CardContent>
-                        </Card>
-                        <Card className={statCardClass}>
-                            <CardContent className="p-5">
-                                <div className="flex items-start gap-4">
-                                    <div className="rounded-lg bg-amber-500/10 p-2.5 text-amber-600 dark:text-amber-400">
-                                        <MousePointer className="h-5 w-5" aria-hidden />
-                                    </div>
-                                    <div className="min-w-0 flex-1">
-                                        <p className="text-xs font-medium text-muted-foreground">Avg. click rate</p>
-                                        <p className="mt-1 text-2xl font-bold tabular-nums text-foreground">{stats.avg_click_rate}%</p>
-                                        <p className="mt-0.5 text-xs text-muted-foreground">Rough benchmark ~2.6%</p>
-                                    </div>
-                                </div>
-                            </CardContent>
-                        </Card>
+                    {/* Search + filter */}
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                        <div className="relative min-w-0 flex-1">
+                            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
+                            <Input
+                                placeholder="Search your newsletters…"
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                                className="border-white/10 bg-zinc-900/80 pl-9 pr-9 text-zinc-100 placeholder:text-zinc-600"
+                                aria-label="Search newsletters"
+                            />
+                            {searchTerm ? (
+                                <button
+                                    type="button"
+                                    onClick={() => setSearchTerm("")}
+                                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-zinc-500 hover:bg-white/10 hover:text-zinc-200"
+                                    aria-label="Clear search"
+                                >
+                                    <X className="h-4 w-4" />
+                                </button>
+                            ) : null}
+                        </div>
+                        <div className="w-full shrink-0 sm:w-56">
+                            <Select value={statusFilter} onValueChange={setTabOrStatus}>
+                                <SelectTrigger className="border-white/10 bg-zinc-900/80 text-zinc-100" aria-label="All newsletters">
+                                    <SelectValue placeholder="All newsletters" />
+                                </SelectTrigger>
+                                <SelectContent className="border-white/10 bg-zinc-950 text-zinc-100">
+                                    <SelectItem value="all">All newsletters</SelectItem>
+                                    <SelectItem value="draft">Drafts</SelectItem>
+                                    <SelectItem value="scheduled">Scheduled</SelectItem>
+                                    <SelectItem value="sent">Sent</SelectItem>
+                                    <SelectItem value="sending">Sending</SelectItem>
+                                    <SelectItem value="paused">Paused</SelectItem>
+                                    <SelectItem value="failed">Failed</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
                     </div>
-                </section>
 
-                {/* Setup shortcuts — plain language */}
-                <div className="rounded-xl border border-border/60 bg-muted/30 p-4 sm:p-5">
-                    <p className="mb-3 text-sm font-medium text-foreground">Before you send</p>
-                    <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-4">
-                        <Link
-                            href={route('newsletter.templates')}
-                            className="group inline-flex items-center gap-2 text-sm font-medium text-violet-600 hover:text-violet-700 dark:text-violet-400 dark:hover:text-violet-300"
-                        >
-                            <FileText className="h-4 w-4 shrink-0" />
-                            Reusable templates
-                            <ChevronRight className="h-4 w-4 opacity-60 transition-transform group-hover:translate-x-0.5" />
-                        </Link>
-                        <span className="hidden text-muted-foreground sm:inline" aria-hidden>
-                            ·
-                        </span>
-                        <Link
-                            href={route('newsletter.recipients')}
-                            className="group inline-flex items-center gap-2 text-sm font-medium text-violet-600 hover:text-violet-700 dark:text-violet-400 dark:hover:text-violet-300"
-                        >
-                            <Users className="h-4 w-4 shrink-0" />
-                            Who receives mail & SMS
-                            <ChevronRight className="h-4 w-4 opacity-60 transition-transform group-hover:translate-x-0.5" />
-                        </Link>
-                    </div>
-                </div>
-
-                {/* Find & filter */}
-                <Card className="border border-border/60 shadow-sm">
-                    <CardHeader className="pb-3">
-                        <CardTitle className="text-base">Find a campaign</CardTitle>
-                        <CardDescription>Search by subject or related text. Filter by where it is in the pipeline.</CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-4 pt-0">
-                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-                            <div className="relative flex-1">
-                                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                                <Input
-                                    placeholder="Search by subject, template, or organization…"
-                                    value={searchTerm}
-                                    onChange={(e) => setSearchTerm(e.target.value)}
-                                    className="border-border/80 pl-9 pr-9"
-                                    aria-label="Search newsletters"
-                                />
-                                {searchTerm ? (
+                    {/* Main card: tabs + table */}
+                    <div className="overflow-hidden rounded-2xl border border-white/10 bg-zinc-900/40 shadow-xl shadow-black/20">
+                        <div className="flex flex-col gap-3 border-b border-white/10 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+                            <div className="inline-flex flex-wrap gap-1 rounded-lg bg-zinc-950/80 p-1" aria-label="Newsletter status filters">
+                                {STATUS_TABS.map((tab) => (
                                     <button
+                                        key={tab.id}
                                         type="button"
-                                        onClick={() => setSearchTerm('')}
-                                        className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
-                                        aria-label="Clear search"
+                                        onClick={() => setTabOrStatus(tab.id)}
+                                        className={cn(
+                                            "rounded-md px-3 py-1.5 text-xs font-semibold transition-colors sm:text-sm",
+                                            tabIsActive(tab.id)
+                                                ? brandSolidClass
+                                                : "text-zinc-400 hover:bg-white/5 hover:text-zinc-200"
+                                        )}
                                     >
-                                        <X className="h-4 w-4" />
+                                        {tab.label}
                                     </button>
-                                ) : null}
+                                ))}
                             </div>
-                            <div className="w-full sm:w-[200px]">
-                                <Select value={statusFilter} onValueChange={setStatusFilter}>
-                                    <SelectTrigger className="border-border/80" aria-label="Filter by status">
-                                        <Filter className="mr-2 h-4 w-4 shrink-0 opacity-60" />
-                                        <SelectValue placeholder="Status" />
+                            <div className="flex flex-wrap items-center gap-2">
+                                <Select value={statusFilter} onValueChange={setTabOrStatus}>
+                                    <SelectTrigger className="h-9 min-w-[150px] border-white/10 bg-zinc-950 text-xs text-zinc-200">
+                                        <SelectValue placeholder="All newsletters" />
                                     </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="all">All statuses</SelectItem>
-                                        <SelectItem value="draft">Draft — not sent yet</SelectItem>
+                                    <SelectContent className="border-white/10 bg-zinc-950 text-zinc-100">
+                                        <SelectItem value="all">All newsletters</SelectItem>
+                                        <SelectItem value="draft">Draft</SelectItem>
                                         <SelectItem value="scheduled">Scheduled</SelectItem>
-                                        <SelectItem value="sending">Sending</SelectItem>
                                         <SelectItem value="sent">Sent</SelectItem>
+                                        <SelectItem value="sending">Sending</SelectItem>
                                         <SelectItem value="paused">Paused</SelectItem>
                                         <SelectItem value="failed">Failed</SelectItem>
                                     </SelectContent>
                                 </Select>
                             </div>
                         </div>
-                    </CardContent>
-                </Card>
 
-                {/* List */}
-                <Card className="border border-border/60 shadow-sm">
-                    <CardHeader className="flex flex-row flex-wrap items-end justify-between gap-4 border-b border-border/60 pb-4">
-                        <div>
-                            <CardTitle className="text-lg">Your campaigns</CardTitle>
-                            <CardDescription>
-                                Open one to see opens, clicks, and delivery. Use <strong className="font-medium text-foreground">Send</strong> only
-                                when you are ready to dispatch (it sends now and overrides a schedule).
-                            </CardDescription>
-                        </div>
-                        <p className="text-sm tabular-nums text-muted-foreground">
-                            {newsletters.data.length} of {newsletters.meta?.total ?? newsletters.data.length} on this page
-                        </p>
-                    </CardHeader>
-                    <CardContent className="pt-6">
-                        {newsletters.data.length > 0 ? (
-                            <ul className="space-y-3" role="list">
-                                {newsletters.data.map((newsletter) => (
-                                    <li
-                                        key={newsletter.id}
-                                        className={cn(
-                                            "min-w-0 rounded-xl border border-border/60 bg-card/80 p-4 transition-colors",
-                                            "hover:border-violet-300/50 hover:bg-muted/30 dark:hover:border-violet-800/40"
-                                        )}
-                                    >
-                                        <div className="flex min-w-0 flex-col gap-4 lg:flex-row lg:items-start lg:justify-between lg:gap-6">
-                                            <div className="min-w-0 flex-1 space-y-3">
-                                                <div className="flex flex-wrap items-center gap-2 gap-y-2">
-                                                    <h2 className="min-w-0 flex-1 text-base font-semibold leading-snug text-foreground sm:text-lg">
-                                                        <span className="sr-only">Subject: </span>
-                                                        {newsletter.subject || "(No subject)"}
-                                                    </h2>
-                                                    <Badge
-                                                        className={cn(
-                                                            "inline-flex shrink-0 items-center gap-1 border-0 capitalize",
-                                                            getStatusColor(newsletter.status)
-                                                        )}
-                                                    >
-                                                        {getStatusIcon(newsletter.status)}
-                                                        {newsletter.status}
-                                                    </Badge>
-                                                </div>
-                                                <dl className="grid grid-cols-1 gap-2 text-sm sm:grid-cols-2 xl:grid-cols-4">
-                                                    <div>
-                                                        <dt className="text-xs font-medium text-muted-foreground">Template</dt>
-                                                        <dd className="truncate text-foreground">
-                                                            {newsletter.template?.name ?? 'None'}
-                                                        </dd>
+                        <div className="overflow-x-auto">
+                            {newsletters.data.length > 0 ? (
+                                <Table>
+                                    <TableHeader>
+                                        <TableRow className="border-white/10 hover:bg-transparent">
+                                            <TableHead className="w-[140px] text-xs font-semibold uppercase tracking-wide text-zinc-500">
+                                                Status
+                                            </TableHead>
+                                            <TableHead className="min-w-[200px] text-xs font-semibold uppercase tracking-wide text-zinc-500">
+                                                Subject
+                                            </TableHead>
+                                            <TableHead className="w-[110px] text-xs font-semibold uppercase tracking-wide text-zinc-500">
+                                                Recipients
+                                            </TableHead>
+                                            <TableHead className="min-w-[160px] text-xs font-semibold uppercase tracking-wide text-zinc-500">
+                                                Date
+                                            </TableHead>
+                                            <TableHead className="min-w-[180px] whitespace-nowrap text-right text-xs font-semibold uppercase tracking-wide text-zinc-500">
+                                                Actions
+                                            </TableHead>
+                                        </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {newsletters.data.map((newsletter) => (
+                                            <TableRow
+                                                key={newsletter.id}
+                                                className="border-white/10 hover:bg-white/[0.03]"
+                                            >
+                                                <TableCell>
+                                                    <NewsletterStatusBadge status={newsletter.status} />
+                                                </TableCell>
+                                                <TableCell>
+                                                    <p className="font-semibold text-zinc-100">{newsletter.subject || "(No subject)"}</p>
+                                                    <div className="mt-1.5 flex flex-wrap gap-1.5">
+                                                        {newsletter.template?.name ? (
+                                                            <span className="rounded-md border border-white/10 bg-zinc-950 px-2 py-0.5 text-[11px] text-zinc-400">
+                                                                {newsletter.template.name}
+                                                            </span>
+                                                        ) : null}
+                                                        {newsletter.organization?.name ? (
+                                                            <span className={cn("rounded-md px-2 py-0.5 text-[11px]", brandChipClass)}>
+                                                                {newsletter.organization.name}
+                                                            </span>
+                                                        ) : null}
                                                     </div>
-                                                    <div>
-                                                        <dt className="text-xs font-medium text-muted-foreground">Recipients</dt>
-                                                        <dd className="tabular-nums text-foreground">{newsletter.total_recipients}</dd>
+                                                </TableCell>
+                                                <TableCell className="tabular-nums text-zinc-300">{newsletter.total_recipients}</TableCell>
+                                                <TableCell>
+                                                    <DateColumn newsletter={newsletter} />
+                                                </TableCell>
+                                                <TableCell className="w-[1%] whitespace-nowrap text-right">
+                                                    <div className="inline-flex flex-nowrap items-center justify-end gap-2">
+                                                        <Link href={route("newsletter.show", newsletter.id)} className="inline-flex shrink-0">
+                                                            <Button
+                                                                type="button"
+                                                                variant="outline"
+                                                                size="sm"
+                                                                className="border-white/15 bg-transparent text-zinc-200 hover:bg-white/10"
+                                                            >
+                                                                <Eye className="mr-1.5 h-3.5 w-3.5" />
+                                                                View
+                                                            </Button>
+                                                        </Link>
+                                                        {newsletter.status !== "sent" ? (
+                                                            <Button
+                                                                type="button"
+                                                                size="sm"
+                                                                className={cn("shrink-0", brandButtonClassSm)}
+                                                                onClick={() => {
+                                                                    setNewsletterToSend(newsletter)
+                                                                    setIsSendModalOpen(true)
+                                                                }}
+                                                            >
+                                                                <Send className="mr-1.5 h-3.5 w-3.5" />
+                                                                Send
+                                                            </Button>
+                                                        ) : null}
                                                     </div>
-                                                    {newsletter.sent_at_formatted ? (
-                                                        <div>
-                                                            <dt className="text-xs font-medium text-muted-foreground">Sent</dt>
-                                                            <dd className="text-foreground">{newsletter.sent_at_formatted}</dd>
-                                                        </div>
-                                                    ) : null}
-                                                    {newsletter.send_date_formatted || newsletter.scheduled_at_formatted ? (
-                                                        <div>
-                                                            <dt className="text-xs font-medium text-muted-foreground">Scheduled for</dt>
-                                                            <dd className="text-foreground">
-                                                                {newsletter.send_date_formatted || newsletter.scheduled_at_formatted}
-                                                                {newsletter.schedule_type && newsletter.schedule_type !== "immediate" ? (
-                                                                    <span className="ml-1 text-muted-foreground">({newsletter.schedule_type})</span>
-                                                                ) : null}
-                                                            </dd>
-                                                        </div>
-                                                    ) : null}
-                                                </dl>
-                                            </div>
-                                            <div className="flex min-w-0 w-full flex-wrap items-center justify-end gap-2 lg:max-w-md xl:max-w-lg">
-                                                <Link
-                                                    href={route('newsletter.show', newsletter.id)}
-                                                    className="inline-flex min-w-0 shrink-0"
-                                                >
-                                                    <Button variant="outline" size="sm" className="border-border/80 whitespace-nowrap">
-                                                        <Eye className="mr-2 h-4 w-4 shrink-0" />
-                                                        View
-                                                    </Button>
-                                                </Link>
-                                                {newsletter.status !== "sent" ? (
-                                                    <Button
-                                                        size="sm"
-                                                        className="shrink-0 whitespace-nowrap bg-emerald-600 text-white hover:bg-emerald-700"
-                                                        onClick={() => {
-                                                            setNewsletterToSend(newsletter)
-                                                            setIsSendModalOpen(true)
-                                                        }}
-                                                    >
-                                                        <Send className="mr-2 h-4 w-4 shrink-0" />
-                                                        Send now
-                                                    </Button>
-                                                ) : null}
-                                            </div>
-                                        </div>
-                                    </li>
-                                ))}
-                            </ul>
-                        ) : (
-                            <div className="rounded-xl border border-dashed border-border/80 bg-muted/20 px-6 py-12 text-center">
-                                <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-violet-500/10 text-violet-600 dark:text-violet-400">
-                                    <Sparkles className="h-6 w-6" aria-hidden />
-                                </div>
-                                <h3 className="mt-4 text-lg font-semibold text-foreground">Nothing here yet</h3>
-                                <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground leading-relaxed">
-                                    Create a newsletter to reach your list. You can reuse a template and schedule sends from the editor.
-                                </p>
-                                <div className="mt-6 flex flex-col items-center justify-center gap-3 sm:flex-row">
-                                    <Link href={route('newsletter.create')}>
-                                        <Button className="bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white hover:from-violet-700 hover:to-fuchsia-700">
+                                                </TableCell>
+                                            </TableRow>
+                                        ))}
+                                    </TableBody>
+                                </Table>
+                            ) : (
+                                <div className="px-6 py-16 text-center">
+                                    <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-purple-600/25 to-blue-600/25 text-purple-300">
+                                        <Sparkles className="h-6 w-6" aria-hidden />
+                                    </div>
+                                    <h3 className="mt-4 text-lg font-semibold text-white">No newsletters match</h3>
+                                    <p className="mx-auto mt-2 max-w-md text-sm text-zinc-500">
+                                        Try another filter or create a new newsletter.
+                                    </p>
+                                    <Link href={route("newsletter.create")} className="mt-6 inline-block">
+                                        <Button className={brandButtonClass}>
                                             <Plus className="mr-2 h-4 w-4" />
                                             Create newsletter
                                         </Button>
                                     </Link>
-                                    <Link href={route('newsletter.templates')}>
-                                        <Button variant="outline" className="border-border/80">
-                                            <FileText className="mr-2 h-4 w-4" />
-                                            Browse templates
-                                        </Button>
-                                    </Link>
                                 </div>
+                            )}
+                        </div>
+
+                        {newsletters.links && newsletters.links.length > 3 && (
+                            <div className="flex items-center justify-end gap-2 border-t border-white/10 px-4 py-4 sm:px-5">
+                                <Pagination className="mx-0 w-auto justify-end">
+                                    <PaginationContent className="justify-end">
+                                        {newsletters.links.map((link, index) => {
+                                            if (link.url === null) {
+                                                return (
+                                                    <PaginationItem key={index}>
+                                                        <span
+                                                            className="px-3 py-2 text-sm text-zinc-600"
+                                                            dangerouslySetInnerHTML={{ __html: link.label }}
+                                                        />
+                                                    </PaginationItem>
+                                                )
+                                            }
+                                            return (
+                                                <PaginationItem key={index}>
+                                                    <PaginationLink
+                                                        href={link.url || "#"}
+                                                        isActive={link.active}
+                                                        className={cn(link.active && brandPaginationActiveClass)}
+                                                        dangerouslySetInnerHTML={{ __html: link.label }}
+                                                    />
+                                                </PaginationItem>
+                                            )
+                                        })}
+                                    </PaginationContent>
+                                </Pagination>
                             </div>
                         )}
-                    </CardContent>
-                </Card>
-
-                {/* Pagination */}
-                {newsletters.links && newsletters.links.length > 3 && (
-                    <div className="flex justify-center mt-6">
-                        <Pagination>
-                            <PaginationContent>
-                                {newsletters.links.map((link: any, index: number) => {
-                                    if (link.url === null) {
-                                        return (
-                                            <PaginationItem key={index}>
-                                                <span className="px-3 py-2 text-gray-400 cursor-not-allowed" dangerouslySetInnerHTML={{ __html: link.label }} />
-                                            </PaginationItem>
-                                        )
-                                    }
-                                    return (
-                                        <PaginationItem key={index}>
-                                            <PaginationLink
-                                                href={link.url || '#'}
-                                                isActive={link.active}
-                                                dangerouslySetInnerHTML={{ __html: link.label }}
-                                            />
-                                        </PaginationItem>
-                                    )
-                                })}
-                            </PaginationContent>
-                        </Pagination>
                     </div>
-                )}
 
-                {/* Send Confirmation Modal */}
-                <ConfirmationModal
-                    isOpen={isSendModalOpen}
-                    onChange={setIsSendModalOpen}
-                    title="Send Newsletter"
-                    description={`Are you sure you want to send "${newsletterToSend?.subject}" immediately? This will override any scheduled time.`}
-                    confirmLabel="Send Now"
-                    cancelLabel="Cancel"
-                    onConfirm={() => {
-                        if (newsletterToSend) {
-                            const form = document.createElement('form');
-                            form.method = 'POST';
-                            form.action = route('newsletter.manual-send', newsletterToSend.id);
-                            
-                            const token = document.createElement('input');
-                            token.type = 'hidden';
-                            token.name = '_token';
-                            token.value = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
-                            
-                            form.appendChild(token);
-                            document.body.appendChild(form);
-                            form.submit();
-                        }
-                    }}
-                />
+                    {(emailStats || smsStats) && (
+                        <NewsletterSmsWalletCard
+                            variant="dialogsOnly"
+                            checkoutReturnToNewsletter
+                            emailStats={emailStats}
+                            emailPackages={emailPackages}
+                            smsStats={smsStats}
+                            smsPackages={smsPackages}
+                            smsAutoRechargeEnabled={smsAutoRechargeEnabled ?? false}
+                            smsAutoRecharge={smsAutoRecharge ?? null}
+                            statusFilter={statusFilter}
+                            showCreateButton={false}
+                            showFooterNav={false}
+                            buyEmailDialogOpen={buyEmailDialogOpen}
+                            onBuyEmailDialogOpenChange={setBuyEmailDialogOpen}
+                            buySmsDialogOpen={buySmsDialogOpen}
+                            onBuySmsDialogOpenChange={setBuySmsDialogOpen}
+                        />
+                    )}
+
+                    <ConfirmationModal
+                        isOpen={isSendModalOpen}
+                        onChange={setIsSendModalOpen}
+                        title="Send Newsletter"
+                        description={`Are you sure you want to send "${newsletterToSend?.subject}" immediately? This will override any scheduled time.`}
+                        confirmLabel="Send Now"
+                        cancelLabel="Cancel"
+                        onConfirm={() => {
+                            if (newsletterToSend) {
+                                const form = document.createElement("form")
+                                form.method = "POST"
+                                form.action = route("newsletter.manual-send", newsletterToSend.id)
+                                const token = document.createElement("input")
+                                token.type = "hidden"
+                                token.name = "_token"
+                                token.value = document.querySelector('meta[name="csrf-token"]')?.getAttribute("content") || ""
+                                form.appendChild(token)
+                                document.body.appendChild(form)
+                                form.submit()
+                            }
+                        }}
+                    />
+                </div>
             </div>
         </AppSidebarLayout>
     )

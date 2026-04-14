@@ -30,13 +30,15 @@ return Application::configure(basePath: dirname(__DIR__))
             'sidebar_state',
         ]);
 
+        // DetectTimezone must run before HandleInertiaRequests so config('app.timezone') and
+        // Carbon are correct for shared props and any date formatting in that middleware.
         $middleware->web(append: [
             HandleAppearance::class,
+            DetectTimezone::class, // Sets timezone for entire application (reads X-Timezone header)
             HandleInertiaRequests::class,
             AddLinkHeadersForPreloadedAssets::class,
             IncreaseUploadLimits::class,
             NoCacheAuthPages::class, // Prevent caching of login/register to avoid 419 CSRF
-            DetectTimezone::class, // Sets timezone for entire application
         ]);
 
         // Also apply timezone detection to API routes
