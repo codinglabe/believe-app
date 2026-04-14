@@ -17,7 +17,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
-import FrontendLayout from "@/layouts/frontend/frontend-layout"
+import UnityMeetLayout from "@/layouts/UnityMeetLayout"
 import { PageHead } from "@/components/frontend/PageHead"
 
 const BRAND = {
@@ -71,7 +71,7 @@ export default function SupporterLivestreamsIndex({ livestreams }: Props) {
   }
 
   return (
-    <FrontendLayout>
+    <UnityMeetLayout>
       <PageHead title="Unity Meet" description="Your meetings and livestreams with VDO.Ninja" />
       <Head title="Unity Meet" />
       <div className="min-h-screen bg-background">
@@ -352,6 +352,6 @@ export default function SupporterLivestreamsIndex({ livestreams }: Props) {
           )}
         </div>
       </div>
-    </FrontendLayout>
+    </UnityMeetLayout>
   )
 }

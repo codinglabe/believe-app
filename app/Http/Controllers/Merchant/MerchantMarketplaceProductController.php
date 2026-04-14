@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Merchant;
 use App\Http\Controllers\Controller;
 use App\Models\Category;
 use App\Models\MarketplaceProduct;
+use App\Services\MerchantMarketplacePoolListingService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\Rule;
@@ -105,6 +106,8 @@ class MerchantMarketplaceProductController extends Controller
         $validated['images'] = $existing ?: null;
 
         $marketplace_product->update($validated);
+        $marketplace_product->refresh();
+        app(MerchantMarketplacePoolListingService::class)->sync($marketplace_product);
 
         return redirect()->route('marketplace-products.index')
             ->with('success', 'Product updated.');
@@ -157,7 +160,7 @@ class MerchantMarketplaceProductController extends Controller
                 Rule::exists('categories', 'id')->where(fn ($q) => $q->whereNull('parent_id')->where('status', 'active')),
             ],
             'base_price' => ['required', 'numeric', 'min:0'],
-            'cost' => ['nullable', 'numeric', 'min:0'],
+            'cost' => ['required', 'numeric', 'min:0'],
             'inventory_quantity' => ['nullable', 'integer', 'min:0'],
             'unlimited_inventory' => ['sometimes', 'boolean'],
             'product_type' => ['required', Rule::in(['physical', 'digital', 'service', 'media'])],
@@ -166,7 +169,6 @@ class MerchantMarketplaceProductController extends Controller
             'nonprofit_marketplace_enabled' => ['required', 'boolean'],
             'pct_nonprofit' => [Rule::requiredIf($poolOn), 'nullable', 'numeric', 'min:0', 'max:100'],
             'pct_merchant' => [Rule::requiredIf($poolOn), 'nullable', 'numeric', 'min:0', 'max:100'],
-            'pct_biu' => [Rule::requiredIf($poolOn), 'nullable', 'numeric', 'min:0', 'max:100'],
             'min_resale_price' => ['nullable', 'numeric', 'min:0'],
             'suggested_retail_price' => ['nullable', 'numeric', 'min:0'],
             'nonprofit_approval_type' => ['required', Rule::in(['auto', 'manual'])],
@@ -185,13 +187,13 @@ class MerchantMarketplaceProductController extends Controller
 
         if (! empty($validated['nonprofit_marketplace_enabled'])) {
             $sum = (float) ($validated['pct_nonprofit'] ?? 0)
-                + (float) ($validated['pct_merchant'] ?? 0)
-                + (float) ($validated['pct_biu'] ?? 0);
+                + (float) ($validated['pct_merchant'] ?? 0);
             if (abs($sum - 100) > 0.01) {
                 throw \Illuminate\Validation\ValidationException::withMessages([
-                    'pct_nonprofit' => 'Nonprofit, merchant, and BIU percentages must total 100%.',
+                    'pct_nonprofit' => 'Nonprofit and merchant percentages must total 100%.',
                 ]);
             }
+            $validated['pct_biu'] = null;
         } else {
             $validated['pct_nonprofit'] = null;
             $validated['pct_merchant'] = null;

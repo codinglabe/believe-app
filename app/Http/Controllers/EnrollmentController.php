@@ -5,6 +5,9 @@ namespace App\Http\Controllers;
 use App\Models\Course;
 use App\Models\Enrollment;
 use App\Models\Transaction;
+use App\Services\BiuPlatformFeeService;
+use App\Support\StripeAutomaticTax;
+use App\Support\StripeCustomerChargeAmount;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -117,7 +120,7 @@ class EnrollmentController extends Controller
                 // For free courses, complete enrollment immediately
                 $enrollment->update([
                     'status' => 'active',
-                    'transaction_id' => 'free_enrollment_' . $enrollment->id,
+                    'transaction_id' => 'free_enrollment_'.$enrollment->id,
                 ]);
 
                 // Create transaction record for free enrollment
@@ -135,7 +138,7 @@ class EnrollmentController extends Controller
                         'course_id' => $course->id,
                         'course_name' => $course->name,
                         'enrollment_id' => $enrollment->enrollment_id,
-                        'pricing_type' => 'free'
+                        'pricing_type' => 'free',
                     ],
                     'processed_at' => now(),
                 ]);
@@ -146,7 +149,7 @@ class EnrollmentController extends Controller
                 DB::commit();
 
                 // Redirect to success page with enrollment_id as query parameter
-                return redirect(route('courses.enrollment.success') . '?enrollment_id=' . $enrollment->id)
+                return redirect(route('courses.enrollment.success').'?enrollment_id='.$enrollment->id)
                     ->with('success', 'Successfully enrolled in the course!');
             } else {
                 $paymentMethod = $validated['payment_method'] ?? 'stripe';
@@ -161,16 +164,18 @@ class EnrollmentController extends Controller
                         if (isset($enrollment)) {
                             $enrollment->update(['status' => 'failed']);
                         }
+
                         return redirect()->route('course.show', $course->slug)
                             ->with('error', "Insufficient Believe Points. You need {$pointsRequired} points but only have {$user->believe_points} points.");
                     }
 
                     // Deduct points
-                    if (!$user->deductBelievePoints($pointsRequired)) {
+                    if (! $user->deductBelievePoints($pointsRequired)) {
                         DB::rollBack();
                         if (isset($enrollment)) {
                             $enrollment->update(['status' => 'failed']);
                         }
+
                         return redirect()->route('course.show', $course->slug)
                             ->with('error', 'Failed to deduct Believe Points. Please try again.');
                     }
@@ -179,7 +184,7 @@ class EnrollmentController extends Controller
                     $enrollment->update([
                         'status' => 'active',
                         'payment_method' => 'believe_points',
-                        'transaction_id' => 'believe_points_enrollment_' . $enrollment->id,
+                        'transaction_id' => 'believe_points_enrollment_'.$enrollment->id,
                     ]);
 
                     // Create transaction record
@@ -193,13 +198,13 @@ class EnrollmentController extends Controller
                         'fee' => 0,
                         'currency' => 'USD',
                         'payment_method' => 'believe_points',
-                        'meta' => [
+                        'meta' => array_merge([
                             'course_id' => $course->id,
                             'course_name' => $course->name,
                             'enrollment_id' => $enrollment->enrollment_id,
                             'pricing_type' => 'paid',
                             'believe_points_used' => $pointsRequired,
-                        ],
+                        ], BiuPlatformFeeService::ledgerMetaSlice((float) $course->course_fee)),
                         'processed_at' => now(),
                     ]);
 
@@ -208,7 +213,7 @@ class EnrollmentController extends Controller
 
                     DB::commit();
 
-                    return redirect(route('courses.enrollment.success') . '?enrollment_id=' . $enrollment->id)
+                    return redirect(route('courses.enrollment.success').'?enrollment_id='.$enrollment->id)
                         ->with('success', 'Successfully enrolled in the course using Believe Points!');
                 }
 
@@ -223,24 +228,24 @@ class EnrollmentController extends Controller
                     'fee' => 0,
                     'currency' => 'USD',
                     'payment_method' => 'stripe',
-                    'meta' => [
+                    'meta' => array_merge([
                         'course_id' => $course->id,
                         'course_name' => $course->name,
                         'enrollment_id' => $enrollment->enrollment_id,
-                        'pricing_type' => 'paid'
-                    ],
+                        'pricing_type' => 'paid',
+                    ], BiuPlatformFeeService::ledgerMetaSlice((float) $course->course_fee)),
                     'processed_at' => null,
                 ]);
 
                 // For paid courses, proceed to Stripe checkout
-                $totalAmountInCents = (int) ($course->course_fee * 100);
+                $totalAmountInCents = StripeCustomerChargeAmount::chargeCentsFromNetUsd((float) $course->course_fee, 'card');
 
                 $checkout = $user->checkoutCharge(
                     $totalAmountInCents,
                     "Enrollment for {$course->name}",
                     1,
-                    [
-                        'success_url' => route('courses.enrollment.success') . '?session_id={CHECKOUT_SESSION_ID}',
+                    StripeAutomaticTax::mergeCheckoutOptions([
+                        'success_url' => route('courses.enrollment.success').'?session_id={CHECKOUT_SESSION_ID}',
                         'cancel_url' => route('courses.enrollment.cancel', $enrollment->id),
                         'metadata' => [
                             'enrollment_id' => $enrollment->id,
@@ -250,7 +255,7 @@ class EnrollmentController extends Controller
                             'course_fee' => $course->course_fee,
                         ],
                         'payment_method_types' => ['card'],
-                    ]
+                    ])
                 );
 
                 DB::commit();
@@ -265,7 +270,7 @@ class EnrollmentController extends Controller
             }
 
             return redirect()->back()->with([
-                'error' => 'Enrollment processing failed: ' . $e->getMessage(),
+                'error' => 'Enrollment processing failed: '.$e->getMessage(),
             ]);
         }
     }
@@ -279,12 +284,12 @@ class EnrollmentController extends Controller
         $enrollmentId = $request->get('enrollment_id');
 
         // Handle enrollment success with enrollment_id (no session_id) - check for free, Believe Points, or other payment methods
-        if ($enrollmentId && !$sessionId) {
+        if ($enrollmentId && ! $sessionId) {
             $enrollment = Enrollment::with([
                 'course.organization',
                 'course.topic',
                 'course.eventType',
-                'user'
+                'user',
             ])->find($enrollmentId);
 
             if ($enrollment) {
@@ -313,22 +318,22 @@ class EnrollmentController extends Controller
                 // If it's a paid course but not Believe Points and no session_id, it's an error
                 if ($enrollment->course->pricing_type === 'paid' && $enrollment->payment_method !== 'believe_points') {
                     return redirect()->route('course.index')->with([
-                        'warning' => 'Payment session missing. Please complete your payment.'
+                        'warning' => 'Payment session missing. Please complete your payment.',
                     ]);
                 }
             } else {
                 // Enrollment not found
                 return redirect()->route('course.index')->with([
-                    'error' => 'Enrollment not found. Please contact support if you believe this is an error.'
+                    'error' => 'Enrollment not found. Please contact support if you believe this is an error.',
                 ]);
             }
         }
 
         // Handle Stripe payment success - must have session_id
-        if (!$sessionId && !$enrollmentId) {
+        if (! $sessionId && ! $enrollmentId) {
             // No enrollment_id or session_id found
             return redirect()->route('course.index')->with([
-                'warning' => 'Invalid enrollment session. Please try enrolling again.'
+                'warning' => 'Invalid enrollment session. Please try enrolling again.',
             ]);
         }
 
@@ -340,7 +345,7 @@ class EnrollmentController extends Controller
                 'course.organization',
                 'course.topic',
                 'course.eventType',
-                'user'
+                'user',
             ])->findOrFail($session->metadata->enrollment_id);
 
             // Update enrollment with Stripe payment info
@@ -357,11 +362,15 @@ class EnrollmentController extends Controller
                 if ($transaction) {
                     $transaction->update([
                         'status' => Transaction::STATUS_COMPLETED,
-                        'meta' => array_merge($transaction->meta ?? [], [
-                            'stripe_session_id' => $session->id,
-                            'stripe_payment_intent' => $session->payment_intent,
-                            'payment_status' => $session->payment_status,
-                        ]),
+                        'meta' => array_merge(
+                            $transaction->meta ?? [],
+                            [
+                                'stripe_session_id' => $session->id,
+                                'stripe_payment_intent' => $session->payment_intent,
+                                'payment_status' => $session->payment_status,
+                            ],
+                            BiuPlatformFeeService::ledgerMetaSlice((float) $enrollment->course->course_fee)
+                        ),
                         'processed_at' => now(),
                     ]);
                 }
@@ -383,7 +392,7 @@ class EnrollmentController extends Controller
             DB::rollBack();
 
             return redirect()->route('course.index')->withErrors([
-                'message' => 'Error verifying payment: ' . $e->getMessage()
+                'message' => 'Error verifying payment: '.$e->getMessage(),
             ]);
         }
     }
@@ -430,7 +439,7 @@ class EnrollmentController extends Controller
             ->where('status', 'active')
             ->first();
 
-        if (!$enrollment) {
+        if (! $enrollment) {
             return redirect()->route('course.show', $course->slug)
                 ->with('error', 'No active enrollment found.');
         }
@@ -468,7 +477,7 @@ class EnrollmentController extends Controller
                     'course_name' => $course->name,
                     'enrollment_id' => $enrollment->enrollment_id,
                     'original_amount' => $enrollment->amount_paid,
-                    'cancellation_reason' => 'user_requested'
+                    'cancellation_reason' => 'user_requested',
                 ],
                 'processed_at' => now(),
             ]);
@@ -484,7 +493,7 @@ class EnrollmentController extends Controller
             DB::rollBack();
 
             return redirect()->back()->withErrors([
-                'cancellation' => 'Failed to cancel enrollment: ' . $e->getMessage(),
+                'cancellation' => 'Failed to cancel enrollment: '.$e->getMessage(),
             ]);
         }
     }
@@ -503,7 +512,7 @@ class EnrollmentController extends Controller
             ->where('amount_paid', '>', 0)
             ->first();
 
-        if (!$enrollment) {
+        if (! $enrollment) {
             return redirect()->route('course.show', $course->slug)
                 ->with('error', 'No eligible enrollment found for refund.');
         }
@@ -520,7 +529,7 @@ class EnrollmentController extends Controller
             DB::beginTransaction();
 
             // Process Stripe refund if there's a transaction ID
-            if ($enrollment->transaction_id && $enrollment->transaction_id !== 'free_enrollment_' . $enrollment->id) {
+            if ($enrollment->transaction_id && $enrollment->transaction_id !== 'free_enrollment_'.$enrollment->id) {
                 $stripe = Cashier::stripe();
                 $refund = $stripe->refunds->create([
                     'payment_intent' => $enrollment->transaction_id,
@@ -545,7 +554,7 @@ class EnrollmentController extends Controller
                         'enrollment_id' => $enrollment->enrollment_id,
                         'original_payment_intent' => $enrollment->transaction_id,
                         'stripe_refund_id' => $refund->id,
-                        'refund_reason' => 'requested_by_customer'
+                        'refund_reason' => 'requested_by_customer',
                     ],
                     'processed_at' => now(),
                 ]);
@@ -567,7 +576,7 @@ class EnrollmentController extends Controller
             DB::rollBack();
 
             return redirect()->back()->withErrors([
-                'refund' => 'Failed to process refund: ' . $e->getMessage(),
+                'refund' => 'Failed to process refund: '.$e->getMessage(),
             ]);
         }
     }
@@ -583,7 +592,7 @@ class EnrollmentController extends Controller
             'course.topic',
             'course.eventType',
             'course.organization',
-            'course.creator'
+            'course.creator',
         ])
             ->where('user_id', $user->id);
 
@@ -602,10 +611,11 @@ class EnrollmentController extends Controller
 
         $enrollments = $query->orderBy('enrolled_at', 'desc')->paginate(10);
 
-        $enrollments->getCollection()->transform(function ($enrollment) use ($user) {
+        $enrollments->getCollection()->transform(function ($enrollment) {
             if ($enrollment->status === 'active') {
                 $enrollment->course->meeting_link = $enrollment->course->meeting_link;
             }
+
             return $enrollment;
         });
 
@@ -640,12 +650,12 @@ class EnrollmentController extends Controller
             // Generate ID with date prefix for better uniqueness
             $datePrefix = now()->format('Ymd');
             $randomPart = strtoupper(Str::random(8));
-            $enrollmentId = 'ENR-' . $datePrefix . '-' . $randomPart;
+            $enrollmentId = 'ENR-'.$datePrefix.'-'.$randomPart;
 
             // Check if this ID already exists
             $exists = Enrollment::where('enrollment_id', $enrollmentId)->exists();
 
-            if (!$exists) {
+            if (! $exists) {
                 return $enrollmentId;
             }
 
@@ -654,16 +664,16 @@ class EnrollmentController extends Controller
             // If we've tried too many times, add more randomness
             if ($attempt >= $maxAttempts) {
                 $randomPart = strtoupper(Str::random(12));
-                $enrollmentId = 'ENR-' . $datePrefix . '-' . $randomPart . '-' . time();
+                $enrollmentId = 'ENR-'.$datePrefix.'-'.$randomPart.'-'.time();
                 // Final check before returning
-                if (!Enrollment::where('enrollment_id', $enrollmentId)->exists()) {
+                if (! Enrollment::where('enrollment_id', $enrollmentId)->exists()) {
                     return $enrollmentId;
                 }
             }
         } while ($attempt < $maxAttempts);
 
         // Fallback: use timestamp-based ID
-        return 'ENR-' . now()->format('YmdHis') . '-' . strtoupper(Str::random(8));
+        return 'ENR-'.now()->format('YmdHis').'-'.strtoupper(Str::random(8));
     }
 
     /**
@@ -681,14 +691,15 @@ class EnrollmentController extends Controller
             }
 
             // Combine date and time
-            $dateTimeString = $datePart . ' ' . $time;
+            $dateTimeString = $datePart.' '.$time;
+
             return Carbon::parse($dateTimeString);
 
         } catch (\Exception $e) {
             Log::error('DateTime parsing error in EnrollmentController', [
                 'date' => $date,
                 'time' => $time,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
 
             // Fallback to current time

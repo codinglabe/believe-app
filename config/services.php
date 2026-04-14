@@ -39,6 +39,24 @@ return [
         'secret' => env('STRIPE_SECRET'),
         'live_key' => env('STRIPE_LIVE_KEY'),
         'live_secret' => env('STRIPE_LIVE_SECRET'),
+        /**
+         * Stripe Tax: when true, Checkout Sessions pass automatic_tax.enabled (gift cards, donations, etc.).
+         * You must complete Stripe Dashboard → Tax first, including a valid head office / origin address.
+         * Test mode: https://dashboard.stripe.com/test/settings/tax — without this, Stripe returns
+         * "You must have a valid head office address to enable automatic tax calculation in test mode."
+         * Set STRIPE_AUTOMATIC_TAX=false until Tax settings are done, then turn it back on.
+         */
+        'automatic_tax' => filter_var(env('STRIPE_AUTOMATIC_TAX', false), FILTER_VALIDATE_BOOLEAN),
+        /** Default Stripe product tax codes (see Stripe Tax settings). */
+        'tax_code_physical' => env('STRIPE_TAX_CODE_PHYSICAL', 'txcd_99999999'),
+        'tax_code_digital' => env('STRIPE_TAX_CODE_DIGITAL', 'txcd_10000000'),
+        'tax_code_shipping' => env('STRIPE_TAX_CODE_SHIPPING', 'txcd_92010001'),
+        /**
+         * When true, card/ACH checkout amounts are grossed up so estimated net after Stripe
+         * processing fees matches the product/service total (customer pays the fee).
+         * Donations keep their own "donor covers fees" toggle; Believe Points checkout already grosses up.
+         */
+        'customer_pays_processing_fee' => filter_var(env('STRIPE_CUSTOMER_PAYS_PROCESSING_FEE', false), FILTER_VALIDATE_BOOLEAN),
     ],
 
     'plaid' => [
@@ -52,18 +70,51 @@ return [
         'sid' => env('TWILIO_ACCOUNT_SID'),
         'token' => env('TWILIO_AUTH_TOKEN'),
         'whatsapp_from' => env('TWILIO_FROM', 'whatsapp:+14155238886'),
+        /** E.164 sender for SMS (e.g. +15551234567). Not used for WhatsApp. */
+        'sms_from' => env('TWILIO_SMS_FROM'),
+        /** Optional: use a Messaging Service SID instead of sms_from. */
+        'sms_messaging_service_sid' => env('TWILIO_SMS_SERVICE_SID'),
+        /**
+         * Force account mode in errors/logs: trial, full, or auto (fetch from Twilio API).
+         * Use when API lookup is wrong or unavailable.
+         */
+        'account_mode' => env('TWILIO_ACCOUNT_MODE', 'auto'),
+
+        /**
+         * SSL for Twilio API (cURL). On Windows, set cafile to https://curl.se/ca/cacert.pem or TWILIO_VERIFY_SSL=false for local dev only.
+         */
+        'verify_ssl' => filter_var(env('TWILIO_VERIFY_SSL', true), FILTER_VALIDATE_BOOL),
+        'cafile' => env('TWILIO_CAFILE'),
     ],
 
     'firebase' => [
         'project_id' => env('FIREBASE_PROJECT_ID'),
         'credentials' => env('FIREBASE_CREDENTIALS', 'app/firebase/firebase-credentials.json'),
         'vapid_key' => env('FIREBASE_VAPID_KEY'),
+        /**
+         * OAuth + FCM use Guzzle/cURL. On Windows, "SSL certificate problem: unable to get local issuer certificate"
+         * is common until php.ini curl.cainfo is set — or set FIREBASE_CAFILE to https://curl.se/ca/cacert.pem path.
+         * For local dev only you may set FIREBASE_VERIFY_SSL=false (never in production).
+         */
+        'verify_ssl' => filter_var(env('FIREBASE_VERIFY_SSL', true), FILTER_VALIDATE_BOOL),
+        'cafile' => env('FIREBASE_CAFILE'),
     ],
 
     'openai' => [
         'api_key' => env('OPENAI_API_KEY'),
         // Set to false only on local/dev if you get "SSL certificate problem: unable to get local issuer certificate"
         'verify_ssl' => env('OPENAI_VERIFY_SSL', true),
+    ],
+
+    /*
+    | Newsletter / template AI HTML generation (OpenAI JSON mode).
+    | Default model is gpt-4o-mini (good layout quality vs cost). Override with NEWSLETTER_AI_MODEL in .env.
+    | Keep max_output_tokens <= 4096 unless your model supports higher (otherwise OpenAI returns HTTP 400).
+    */
+    'newsletter_ai' => [
+        'model' => env('NEWSLETTER_AI_MODEL', 'gpt-4o-mini'),
+        'temperature' => (float) env('NEWSLETTER_AI_TEMPERATURE', 0.74),
+        'max_output_tokens' => (int) env('NEWSLETTER_AI_MAX_TOKENS', 4096),
     ],
 
     /*

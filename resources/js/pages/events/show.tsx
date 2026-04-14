@@ -245,7 +245,7 @@ export default function ShowEvent({ event, userRole }: Props) {
                                             <span className="text-xs font-bold">🎯</span>
                                         </div>
                                         <div>
-                                            <p className="text-sm text-gray-500 dark:text-gray-400">Event Type</p>
+                                            <p className="text-sm text-gray-500 dark:text-gray-400">Event Topic</p>
                                             <p className="font-medium text-gray-900 dark:text-white">
                                                 {event.event_type.name}
                                             </p>

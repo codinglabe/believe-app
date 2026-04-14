@@ -36,8 +36,10 @@ interface Step2Data {
   shippingMethods: any[]
   shippingCost: number
   taxAmount: number
-    totalAmount: number
-     donationAmount: number
+  printifyTaxAmount: number
+  additionalSalesTaxAdjustment: number
+  totalAmount: number
+  donationAmount: number
 }
 
 export default function CheckoutIndex({

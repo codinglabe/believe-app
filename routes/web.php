@@ -39,6 +39,7 @@ use App\Http\Controllers\DeductibilityCodeController;
 use App\Http\Controllers\DonationController;
 use App\Http\Controllers\EnrollmentController;
 use App\Http\Controllers\EventController;
+use App\Http\Controllers\EventTypeController;
 use App\Http\Controllers\ExcelDataController;
 use App\Http\Controllers\ExploreByCauseController;
 use App\Http\Controllers\Facebook\AuthController;
@@ -97,6 +98,7 @@ use App\Http\Controllers\UnityLiveController;
 use App\Http\Controllers\UserProfileController;
 use App\Http\Controllers\UsersInterestedTopicsController;
 use App\Http\Controllers\VolunteerController;
+use App\Http\Controllers\VolunteerSupporterInterestsController;
 use App\Http\Controllers\VolunteerTimesheetController;
 use App\Http\Controllers\WalletController;
 use App\Http\Controllers\WebhookManagementController;
@@ -157,7 +159,7 @@ Route::middleware(['auth', 'EnsureEmailIsVerified'])->group(function () {
     Route::get('/find-supporters', [\App\Http\Controllers\FindSupportersController::class, 'index'])->name('find-supporters.index');
     Route::get('/search', [\App\Http\Controllers\PostController::class, 'searchPage'])->name('search.index');
     Route::get('/social-feed/search', [\App\Http\Controllers\PostController::class, 'search'])->name('social-feed.search');
-    // Toggle favorite organization — authenticated supporters and organization/care_alliance users (same UserFavoriteOrganization flow)
+    // Toggle favorite organization — supporter accounts only (see User::canFollowOrganizations)
     Route::post('/organizations/{id}/toggle-favorite', [\App\Http\Controllers\OrganizationController::class, 'toggleFavorite'])->name('organizations.toggle-favorite-search');
     Route::post('/organizations/{id}/toggle-favorite', [\App\Http\Controllers\OrganizationController::class, 'toggleFavorite'])->name('user.organizations.toggle-favorite');
     Route::post('/organizations/{id}/toggle-favorite', [\App\Http\Controllers\OrganizationController::class, 'toggleFavorite'])->name('organizations.toggle-favorite');
@@ -217,6 +219,8 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:admin'])->group(functi
     Route::put('/admin/seo', [AdminSeoController::class, 'update'])->name('admin.seo.update');
     Route::get('/admin/processing-fees', [\App\Http\Controllers\Admin\ProcessingFeeSettingsController::class, 'index'])->name('admin.processing-fees.index');
     Route::put('/admin/processing-fees', [\App\Http\Controllers\Admin\ProcessingFeeSettingsController::class, 'update'])->name('admin.processing-fees.update');
+    Route::get('/admin/biu-fee', [\App\Http\Controllers\Admin\BiuFeeSettingsController::class, 'index'])->name('admin.biu-fee.index');
+    Route::put('/admin/biu-fee', [\App\Http\Controllers\Admin\BiuFeeSettingsController::class, 'update'])->name('admin.biu-fee.update');
     Route::redirect('/admin/donation-fees', '/admin/processing-fees', 301);
     Route::put('/admin/donation-fees', [\App\Http\Controllers\Admin\ProcessingFeeSettingsController::class, 'update'])->name('admin.donation-fees.update');
     Route::get('/admin/kiosk', [App\Http\Controllers\Admin\KioskManagementController::class, 'index'])->name('admin.kiosk.index');
@@ -278,8 +282,8 @@ Route::post('/unity-videos/engagement/comments', [CommunityVideoEngagementContro
 Route::get('/unity-live', [UnityLiveController::class, 'index'])->name('unity-live.index');
 Route::get('/unity-live/{slug}', [UnityLiveController::class, 'show'])->name('unity-live.show')->where('slug', '[a-zA-Z0-9_]+');
 
-// Supporter meeting: same as organization — index, create, edit, delete, room page (VDO.Ninja)
-Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:user'])->group(function () {
+// Unity Meet (supporter UI): personal meetings — also available to org / care alliance accounts from dashboard Tools
+Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:user|organization|organization_pending|care_alliance'])->group(function () {
     Route::get('/livestreams/supporter', [\App\Http\Controllers\SupporterLivestreamController::class, 'index'])->name('livestreams.supporter.index');
     Route::get('/livestreams/supporter/create', [\App\Http\Controllers\SupporterLivestreamController::class, 'create'])->name('livestreams.supporter.create');
     Route::post('/livestreams/supporter', [\App\Http\Controllers\SupporterLivestreamController::class, 'store'])->name('livestreams.supporter.store');
@@ -305,6 +309,9 @@ Route::get('/live/{slug}', [LiveViewController::class, 'show'])->name('live.show
 
 Route::get('/jobs', [JobsController::class, 'index'])->name('jobs.index');
 Route::get('/volunteer-opportunities', [JobsController::class, 'volunteerOpportunities'])->name('volunteer-opportunities.index');
+Route::post('/volunteer-opportunities/volunteer-interests', [JobsController::class, 'saveVolunteerInterestStatement'])
+    ->name('volunteer-opportunities.save-interests')
+    ->middleware(['auth', 'EnsureEmailIsVerified', 'role:user']);
 Route::get('/jobs/{id}', [JobsController::class, 'show'])->name('jobs.show');
 Route::get('/get-job-positions', [JobsController::class, 'getJobPositions'])->name('jobs.positions.by-category');
 
@@ -485,6 +492,7 @@ Route::prefix('merchant-hub')->name('merchant-hub.')->group(function () {
     // SEO-friendly referral: /merchant-hub/offers/8/ref/ABC123 — stores ref in session, redirects to offer
     Route::get('/offers/{id}/ref/{refCode}', [App\Http\Controllers\MerchantRedemptionController::class, 'offerRefRedirect'])->name('offer.show.ref');
     Route::get('/offers/{id}', [App\Http\Controllers\MerchantHubOfferController::class, 'show'])->name('offer.show');
+    Route::get('/products/{marketplace_product}', [App\Http\Controllers\MerchantHubMarketplaceProductController::class, 'show'])->name('product.show');
 });
 
 // Merchant Hub Redemption Routes (Requires auth)
@@ -842,6 +850,7 @@ Route::prefix('admin/transactions')
     ->name('admin.transactions.')
     ->group(function () {
         Route::get('/ledger', [TransactionLedgerController::class, 'index'])->name('ledger');
+        Route::get('/ledger/export', [TransactionLedgerController::class, 'exportFlatFile'])->name('ledger.export');
         Route::get('/{transaction}', [TransactionLedgerController::class, 'show'])->name('show');
         Route::delete('/{transaction}', [TransactionLedgerController::class, 'destroy'])->name('destroy');
     });
@@ -1297,7 +1306,8 @@ Route::get('explore-by-cause', [\App\Http\Controllers\ExploreByCauseController::
 
 Route::post('explore-by-cause/toggle-interest/{category}', [\App\Http\Controllers\ExploreByCauseController::class, 'toggleUserInterest'])
     ->name('explore-by-cause.toggle-interest')
-    ->middleware(['auth', 'EnsureEmailIsVerified']);
+    ->middleware(['auth', 'EnsureEmailIsVerified'])
+    ->where('category', '[0-9]+');
 
 Route::get('supporter-activity', [SupporterActivityController::class, 'index'])
     ->name('supporter-activity.index')
@@ -1308,6 +1318,9 @@ Route::get('supporter-activity/supporters/{supporter}', [SupporterActivityContro
 
 Route::get('volunteers', [VolunteerController::class, 'index'])
     ->name('volunteers.index')
+    ->middleware(['role:organization|care_alliance', 'permission:volunteer.read']);
+Route::get('volunteers/supporter-interests', [VolunteerSupporterInterestsController::class, 'index'])
+    ->name('volunteers.supporter-interests.index')
     ->middleware(['role:organization|care_alliance', 'permission:volunteer.read']);
 
 // Volunteer Time Sheet Routes (must come before volunteers/{volunteer} to avoid route conflicts)
@@ -1344,11 +1357,11 @@ Route::get('volunteers/{volunteer}', [VolunteerController::class, 'show'])
     ->name('volunteers.show')
     ->middleware(['role:organization|care_alliance', 'permission:volunteer.read']);
 
-// Events Routes
+// Events Routes (create/store: nonprofit roles + event.create — see EnsureCanCreateEvents)
 Route::resource('events', EventController::class)->middleware([
     'index' => 'permission:event.read',
-    'create' => 'permission:event.create',
-    'store' => 'permission:event.create',
+    'create' => 'can.create.events',
+    'store' => 'can.create.events',
     'show' => 'permission:event.read',
     'edit' => 'permission:event.edit',
     'update' => 'permission:event.update',
@@ -1486,6 +1499,7 @@ Route::prefix('newsletter')->name('newsletter.')->group(function () {
     Route::get('/templates', [NewsletterController::class, 'templates'])->name('templates');
     Route::get('/templates/create', [NewsletterController::class, 'createTemplate'])->name('templates.create');
     Route::post('/templates', [NewsletterController::class, 'storeTemplate'])->name('templates.store');
+    Route::post('/templates/ai-generate', [NewsletterController::class, 'generateTemplateWithAi'])->name('templates.ai-generate');
     Route::get('/templates/{id}', [NewsletterController::class, 'showTemplate'])->name('templates.show');
     Route::get('/templates/{id}/edit', [NewsletterController::class, 'editTemplate'])->name('templates.edit');
     Route::put('/templates/{id}', [NewsletterController::class, 'updateTemplate'])->name('templates.update');
@@ -1499,8 +1513,19 @@ Route::prefix('newsletter')->name('newsletter.')->group(function () {
     Route::post('/recipients/import', [NewsletterController::class, 'importRecipients'])->name('recipients.import');
     Route::post('/recipients/manual/{recipientId}/subscribe', [NewsletterController::class, 'subscribeManualRecipient'])->name('recipients.manual.subscribe');
     Route::post('/recipients/manual/{recipientId}/unsubscribe', [NewsletterController::class, 'unsubscribeManualRecipient'])->name('recipients.manual.unsubscribe');
+    Route::patch('/recipients/manual/{recipient}', [NewsletterController::class, 'updateManualRecipient'])->name('recipients.manual.update');
+    Route::delete('/recipients/manual/{recipient}', [NewsletterController::class, 'destroyManualRecipient'])->name('recipients.manual.destroy');
     Route::get('/export', [NewsletterController::class, 'export'])->name('export');
     Route::get('/create', [NewsletterController::class, 'create'])->name('create');
+    Route::post('/purchase-sms', [NewsletterController::class, 'purchaseSms'])->name('purchase-sms');
+    Route::get('/purchase-sms/success', [NewsletterController::class, 'purchaseSmsSuccess'])->name('purchase-sms.success');
+    Route::post('/purchase-pro-targeting', [NewsletterController::class, 'purchaseProTargeting'])->name('purchase-pro-targeting');
+    Route::get('/purchase-pro-targeting/success', [NewsletterController::class, 'purchaseProTargetingSuccess'])->name('purchase-pro-targeting.success');
+    Route::post('/sms-wallet-preferences', [NewsletterController::class, 'updateSmsWalletPreferences'])->name('sms-wallet-preferences');
+    Route::get('/sms-auto-recharge/setup', [NewsletterController::class, 'smsAutoRechargeSetupPayment'])->name('sms-auto-recharge.setup');
+    Route::get('/sms-auto-recharge/setup-success', [NewsletterController::class, 'smsAutoRechargeSetupSuccess'])->name('sms-auto-recharge.setup-success');
+    Route::post('/sms-auto-recharge/remove-payment-method', [NewsletterController::class, 'smsAutoRechargeRemovePaymentMethod'])->name('sms-auto-recharge.remove-payment');
+    Route::post('/create/ai-generate', [NewsletterController::class, 'generateNewsletterCreateWithAi'])->name('create.ai-generate');
     Route::get('/create-advanced', [NewsletterController::class, 'createAdvanced'])->name('create-advanced');
     Route::post('/', [NewsletterController::class, 'store'])->name('store');
     Route::get('/{id}', [NewsletterController::class, 'show'])->name('show');
@@ -1573,10 +1598,18 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected'])->group(f
 
     // Topic Management Routes (Admin Only)
     Route::resource('topics', TopicController::class)->only(['index', 'store', 'update', 'destroy'])->middleware([
-        'index' => 'permission:topic.read',
+        'index' => 'can.read.topics',
         'store' => 'permission:topic.create',
         'update' => 'permission:topic.update',
         'destroy' => 'permission:topic.delete',
+    ]);
+
+    // Event types (admin CRUD; org / Care Alliance read — index matches EnsureCanReadEventTypes + controller)
+    Route::resource('event-types', EventTypeController::class)->only(['index', 'store', 'update', 'destroy'])->middleware([
+        'index' => 'can.read.event_types',
+        'store' => 'permission:event_type.create',
+        'update' => 'permission:event_type.update',
+        'destroy' => 'permission:event_type.delete',
     ]);
 });
 

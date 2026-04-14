@@ -7,6 +7,7 @@ import { PaperclipIcon, SendIcon, XIcon, ReplyIcon } from 'lucide-react'
 import { useChat } from "@/providers/chat-provider"
 import { Textarea } from "@/components/chat/ui/textarea"
 import { cn } from "@/lib/utils"
+import { chatGradientBg, chatGradientBgHover } from "./chat-brand"
 
 export function MessageInput() {
   const { sendMessage, setTypingStatus, replyingToMessage, setReplyingToMessage, currentUser } = useChat()
@@ -116,38 +117,45 @@ export function MessageInput() {
         </div>
       )}
 
-      <div className="flex items-end gap-2 bg-background border border-border/50 rounded-2xl p-2 shadow-sm focus-within:ring-2 focus-within:ring-primary/20 focus-within:border-primary/50 transition-all">
+      <div className="flex items-end gap-2 bg-background border border-border/60 rounded-2xl p-2 shadow-sm focus-within:ring-2 focus-within:ring-purple-500/25 focus-within:border-purple-500/35 dark:focus-within:ring-blue-500/20 dark:focus-within:border-blue-500/30 transition-all duration-200">
         <Button
+          type="button"
           variant="ghost"
           size="icon"
-          className="h-9 w-9 flex-shrink-0 hover:bg-muted rounded-xl"
+          className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl hover:bg-muted"
           onClick={() => fileInputRef.current?.click()}
         >
-          <PaperclipIcon className="h-5 w-5" />
+          <PaperclipIcon className="h-[18px] w-[18px]" strokeWidth={2} aria-hidden />
           <input
             type="file"
             ref={fileInputRef}
             className="hidden"
             multiple
+            aria-label="Attach files"
             onChange={handleAttachmentChange}
           />
         </Button>
         <Textarea
           ref={textareaRef}
           placeholder="Type your message..."
-          className="flex-1 resize-none min-h-[44px] max-h-[120px] border-0 bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 px-2 py-2.5 text-sm"
+          className="flex-1 resize-none border-0 bg-transparent px-1.5 py-2.5 text-sm leading-5 focus-visible:ring-0 focus-visible:ring-offset-0 min-h-[44px] max-h-[min(120px,35vh)]"
           value={message}
           onChange={handleMessageChange}
           onKeyDown={handleKeyDown}
           rows={1}
         />
         <Button
+          type="button"
           size="icon"
-          className="h-9 w-9 flex-shrink-0 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground shadow-sm disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+          className={cn(
+            "inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-white shadow-md disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200",
+            chatGradientBg,
+            chatGradientBgHover,
+          )}
           onClick={handleSendMessage}
           disabled={message.trim() === "" && attachments.length === 0}
         >
-          <SendIcon className="h-4 w-4" />
+          <SendIcon className="h-[18px] w-[18px]" strokeWidth={2} aria-hidden />
         </Button>
       </div>
     </div>

@@ -10,6 +10,7 @@ use App\Models\FollowerPosition;
 use App\Models\FollowingUserPosition;
 use App\Models\NteeCode;
 use App\Models\Organization;
+use App\Models\User;
 use App\Models\UserFavoriteOrganization;
 use App\Services\CareAlliancePublicPageService;
 use App\Services\ExcelDataTransformer;
@@ -842,7 +843,12 @@ class OrganizationController extends BaseController
 
     public function toggleFavorite(Request $request, int $id)
     {
+        /** @var User $user */
         $user = Auth::user();
+
+        if (! $user->canFollowOrganizations()) {
+            return $this->favoriteForbiddenForNonSupporterResponse($request);
+        }
 
         $ctx = $request->input('toggle_favorite_context');
         if (in_array($ctx, ['excel', 'organization', 'alliance'], true)) {
@@ -902,6 +908,24 @@ class OrganizationController extends BaseController
         }
 
         return $this->toggleFavoriteToggleRegisteredOrg($request, $user, $org);
+    }
+
+    /**
+     * @return \Illuminate\Http\RedirectResponse|\Illuminate\Http\JsonResponse
+     */
+    private function favoriteForbiddenForNonSupporterResponse(Request $request): mixed
+    {
+        $message = __('Only supporter accounts can follow organizations.');
+
+        $isAjax = $request->header('X-Requested-With') === 'XMLHttpRequest' && ! $request->header('X-Inertia');
+        if ($isAjax || $request->wantsJson() || $request->expectsJson()) {
+            return response()->json([
+                'success' => false,
+                'message' => $message,
+            ], 403);
+        }
+
+        return redirect()->back()->with('error', $message);
     }
 
     /**

@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
 class JobPost extends Model
 {
@@ -23,7 +24,7 @@ class JobPost extends Model
         'date_posted',
         'status',
         'position_id',
-        'organization_id'
+        'organization_id',
     ];
 
     // Relationships
@@ -40,5 +41,10 @@ class JobPost extends Model
     public function applications()
     {
         return $this->hasMany(JobApplication::class, 'job_post_id');
+    }
+
+    public function primaryActionCategories(): BelongsToMany
+    {
+        return $this->belongsToMany(PrimaryActionCategory::class, 'job_post_pac');
     }
 }

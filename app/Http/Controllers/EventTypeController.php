@@ -13,8 +13,8 @@ class EventTypeController extends BaseController
     protected function assertCanMutateEventTypes(Request $request): void
     {
         $user = $request->user();
-        if ($user && $user->hasNonprofitDashboardRole() && ! $user->hasRole('admin')) {
-            abort(403, 'You can view event types but cannot add, edit, or delete them.');
+        if (! $user?->hasRole('admin')) {
+            abort(403, 'Only administrators can add, edit, or delete event types.');
         }
     }
 
@@ -46,6 +46,7 @@ class EventTypeController extends BaseController
         return Inertia::render('admin/event-type/Index', [
             'eventTypes' => $eventTypes,
             'filters' => $filters,
+            'canManageEventTypes' => $user->hasRole('admin'),
         ]);
     }
 

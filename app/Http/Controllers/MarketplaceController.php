@@ -4,10 +4,11 @@ namespace App\Http\Controllers;
 
 use App\Models\Category;
 use App\Models\Organization;
+use App\Models\OrganizationProduct;
 use App\Models\Product;
 use App\Services\PrintifyService;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Str;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -37,22 +38,6 @@ class MarketplaceController extends Controller
 
         $search = $request->input('search');
 
-        $user = Auth::user();
-        $followedOrganizationIds = [];
-        $userOrganizationId = null;
-
-        if ($user) {
-            $followedOrganizationIds = $user->favoriteOrganizations()->pluck('organizations.id')->toArray();
-            $userOrganization = Organization::where('user_id', $user->id)->first();
-            $userOrganizationId = $userOrganization ? $userOrganization->id : null;
-        }
-
-        // Combine followed organizations and user's own organization
-        $allowedOrganizationIds = $followedOrganizationIds;
-        if ($userOrganizationId) {
-            $allowedOrganizationIds[] = $userOrganizationId;
-        }
-
         $products = Product::query()
             ->with(['organization', 'categories', 'variants'])
             ->when($search, function ($query, $search) {
@@ -69,24 +54,102 @@ class MarketplaceController extends Controller
             ->when(! empty($organizationIds), function ($query) use ($organizationIds) {
                 $query->whereIn('organization_id', $organizationIds);
             })
-            ->when($user && ! empty($allowedOrganizationIds), function ($query) use ($allowedOrganizationIds) {
-                $query->whereIn('organization_id', $allowedOrganizationIds);
-            })
             ->where('status', 'active')
             ->where('quantity_available', '>', 0)
             ->orderBy('created_at', 'desc')
             ->get();
 
-        // Process products with cached Printify images
-        $processedProducts = $this->processProductsWithImagesNDVariantsPrice($products);
+        // Catalog products (products table) + merchant-pool adoptions (organization_products)
+        $catalogRows = $this->processProductsWithImagesNDVariantsPrice($products)
+            ->map(function (array $row) {
+                $row['listing_kind'] = 'catalog';
+                $row['is_merchant_pool_listing'] = false;
+                $row['organization_product_id'] = null;
+                $row['_sort_ts'] = isset($row['created_at']) ? strtotime((string) $row['created_at']) : 0;
+
+                return $row;
+            });
+
+        $poolRows = OrganizationProduct::query()
+            ->with(['organization:id,name', 'marketplaceProduct.productCategory'])
+            ->where('status', 'active')
+            ->whereHas('marketplaceProduct', function ($q) {
+                $q->where('status', 'active')
+                    ->where('nonprofit_marketplace_enabled', true)
+                    ->where(function ($q2) {
+                        $q2->whereNull('inventory_quantity')
+                            ->orWhere('inventory_quantity', '>', 0);
+                    });
+            })
+            ->when($search, function ($q) use ($search) {
+                $like = '%'.$search.'%';
+                $q->whereHas('marketplaceProduct', function ($q2) use ($like) {
+                    $q2->where('name', 'like', $like)
+                        ->orWhere('description', 'like', $like);
+                });
+            })
+            ->when(! empty($categoryIds), function ($q) use ($categoryIds) {
+                $q->whereHas('marketplaceProduct', fn ($q2) => $q2->whereIn('category_id', $categoryIds));
+            })
+            ->when(! empty($organizationIds), function ($q) use ($organizationIds) {
+                $q->whereIn('organization_id', $organizationIds);
+            })
+            ->orderByDesc('created_at')
+            ->get();
+
+        $poolCards = $poolRows->map(function (OrganizationProduct $op) {
+            $mp = $op->marketplaceProduct;
+            if ($mp === null) {
+                return null;
+            }
+
+            $price = (float) $op->custom_price;
+            $images = $mp->images ?? [];
+            $first = is_array($images) && isset($images[0]) ? $images[0] : null;
+            $imageUrl = $first
+                ? (filter_var($first, FILTER_VALIDATE_URL) ? $first : asset('storage/'.ltrim((string) $first, '/')))
+                : null;
+            $qty = $mp->inventory_quantity !== null ? (int) $mp->inventory_quantity : 99999;
+
+            return [
+                'listing_kind' => 'pool',
+                'is_merchant_pool_listing' => true,
+                'organization_product_id' => $op->id,
+                'id' => $op->id,
+                'name' => $mp->name,
+                'description' => Str::limit(trim(strip_tags((string) ($mp->description ?? ''))), 320),
+                'price' => $price,
+                'min_price' => $price,
+                'max_price' => $price,
+                'price_display' => '$'.number_format($price, 2),
+                'unit_price' => $price,
+                'image' => $imageUrl,
+                'image_url' => $imageUrl ?? '/placeholder.svg',
+                'quantity_available' => $qty,
+                'rating' => 0,
+                'reviews' => 0,
+                'category' => $mp->productCategory ? ['id' => $mp->productCategory->id, 'name' => $mp->productCategory->name] : null,
+                'organization' => $op->organization ? ['id' => $op->organization->id, 'name' => $op->organization->name] : null,
+                'created_at' => $op->created_at?->toIso8601String(),
+                '_sort_ts' => $op->created_at?->getTimestamp() ?? 0,
+            ];
+        })->filter()->values();
+
+        $processedProducts = $catalogRows->concat($poolCards)
+            ->sortByDesc('_sort_ts')
+            ->values()
+            ->map(function (array $row) {
+                unset($row['_sort_ts']);
+
+                return $row;
+            })
+            ->values()
+            ->all();
 
         $categories = Category::query()->where('status', 'active')->parents()->orderBy('name')->get();
 
         $organizations = Organization::query()
             ->excludingCareAllianceHubs()
-            ->when($user && ! empty($allowedOrganizationIds), function ($query) use ($allowedOrganizationIds) {
-                $query->whereIn('id', $allowedOrganizationIds);
-            })
             ->get(['id', 'name']);
 
         return Inertia::render('frontend/marketplace', [

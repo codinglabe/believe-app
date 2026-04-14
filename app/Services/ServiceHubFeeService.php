@@ -11,18 +11,11 @@ use Illuminate\Support\Facades\Log;
 class ServiceHubFeeService
 {
     /**
-     * Get platform fee percentage (default 5.5%)
-     * Checks admin settings first, then falls back to env
+     * Platform fee % — same as global BIU fee ({@see BiuPlatformFeeService}).
      */
     public static function getPlatformFeePercentage(): float
     {
-        $setting = AdminSetting::get('service_hub_platform_fee_percentage');
-
-        if ($setting !== null) {
-            return (float) $setting;
-        }
-
-        return (float) config('services.service_hub.platform_fee_percentage', 5.5);
+        return BiuPlatformFeeService::getSalesPlatformFeePercentage();
     }
 
     /**

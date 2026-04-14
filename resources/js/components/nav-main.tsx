@@ -47,6 +47,26 @@ function roleRequirementMatches(
     return userRoles.some((ur) => ur.toLowerCase() === req);
 }
 
+/** Volunteers submenu: roster vs timesheet vs supporter-interests (avoid prefix false positives). */
+function volunteerDashboardHrefActive(href: string, path: string): boolean {
+    if (href === '/volunteers/timesheet') {
+        return path.startsWith('/volunteers/timesheet');
+    }
+    if (href === '/volunteers/supporter-interests') {
+        return path.startsWith('/volunteers/supporter-interests');
+    }
+    if (href === '/volunteers') {
+        if (!path.startsWith('/volunteers')) {
+            return false;
+        }
+        if (path.startsWith('/volunteers/timesheet') || path.startsWith('/volunteers/supporter-interests')) {
+            return false;
+        }
+        return path === '/volunteers' || /^\/volunteers\/\d+$/.test(path);
+    }
+    return false;
+}
+
 /** True if this href matches the current URL (exact, /create, /:id/edit, or prefix with /) */
 function itemMatchesUrl(href: string, url: string): boolean {
     if (url === href) return true;
@@ -229,7 +249,12 @@ export function NavMain({ items = [] }: NavMainProps) {
                             }
                             if (!isNavItem(subItem)) return false;
                             if (subItem.href === '/volunteers/timesheet') return pathname.startsWith('/volunteers/timesheet');
-                            if (subItem.href === '/volunteers') return pathname.startsWith('/volunteers') && !pathname.startsWith('/volunteers/timesheet');
+                            if (subItem.href === '/volunteers/supporter-interests') {
+                                return pathname.startsWith('/volunteers/supporter-interests');
+                            }
+                            if (subItem.href === '/volunteers') {
+                                return volunteerDashboardHrefActive('/volunteers', pathname);
+                            }
                             return itemMatchesUrl(subItem.href, pathname);
                         });
                     })();
@@ -292,10 +317,13 @@ export function NavMain({ items = [] }: NavMainProps) {
                                                     if (!isNavItem(subSubItem)) return false;
                                                     const basePath = subSubItem.href;
                                                     if (!basePath) return false;
-                                                    return subSubItem.href === page.url ||
-                                                        page.url.startsWith(`${basePath}/create`) ||
-                                                        !!page.url.match(new RegExp(`^${basePath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/\\d+/edit$`)) ||
-                                                        page.url.startsWith(basePath);
+                                                    if (basePath.startsWith('/volunteers')) {
+                                                        return volunteerDashboardHrefActive(basePath, pathname);
+                                                    }
+                                                    return subSubItem.href === pathname ||
+                                                        pathname.startsWith(`${basePath}/create`) ||
+                                                        !!pathname.match(new RegExp(`^${basePath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/\\d+/edit$`)) ||
+                                                        pathname.startsWith(basePath);
                                                 });
 
                                                 return (
@@ -436,10 +464,12 @@ export function NavMain({ items = [] }: NavMainProps) {
                                                                                         <SidebarMenuButton
                                                                                             asChild
                                                                                             isActive={
-                                                                                                subSubItem.href === page.url ||
-                                                                                                page.url.startsWith(subSubItem.href + '/create') ||
-                                                                                                !!page.url.match(new RegExp(`^${subSubItem.href.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/\\d+/edit$`)) ||
-                                                                                                page.url.startsWith(subSubItem.href)
+                                                                                                subSubItem.href.startsWith('/volunteers')
+                                                                                                    ? volunteerDashboardHrefActive(subSubItem.href, pathname)
+                                                                                                    : subSubItem.href === pathname ||
+                                                                                                      pathname.startsWith(subSubItem.href + '/create') ||
+                                                                                                      !!pathname.match(new RegExp(`^${subSubItem.href.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/\\d+/edit$`)) ||
+                                                                                                      pathname.startsWith(subSubItem.href)
                                                                                             }
                                                                                             tooltip={{ children: subSubItem.title }}
                                                                                             title={subSubItem.title}
@@ -467,7 +497,9 @@ export function NavMain({ items = [] }: NavMainProps) {
                                             const isActiveSecondLevel =
                                                 subItem.href === activeChildHref ||
                                                 (subItem.href === '/volunteers/timesheet' && pathname.startsWith('/volunteers/timesheet')) ||
-                                                (subItem.href === '/volunteers' && pathname.startsWith('/volunteers') && !pathname.startsWith('/volunteers/timesheet'));
+                                                (subItem.href === '/volunteers/supporter-interests' &&
+                                                    pathname.startsWith('/volunteers/supporter-interests')) ||
+                                                (subItem.href === '/volunteers' && volunteerDashboardHrefActive('/volunteers', pathname));
                                             return (
                                                 <motion.div
                                                     key={subItem.title}

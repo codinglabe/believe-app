@@ -24,6 +24,8 @@ interface Step2Data {
   shippingMethods: any[]
   shippingCost: number
   taxAmount: number
+  printifyTaxAmount: number
+  additionalSalesTaxAdjustment: number
   totalAmount: number
   donationAmount: number
 }
@@ -72,8 +74,15 @@ function Step2Form({ items, subtotal, donation_amount, step2Data, onBack }: Omit
 
   // State for current amounts
   const [currentTaxAmount, setCurrentTaxAmount] = useState(step2Data.taxAmount)
+  const [printifyTaxLine, setPrintifyTaxLine] = useState(step2Data.printifyTaxAmount ?? 0)
+  const [additionalTaxLine, setAdditionalTaxLine] = useState(step2Data.additionalSalesTaxAdjustment ?? 0)
   const [currentShippingCost, setCurrentShippingCost] = useState(step2Data.shippingCost)
+  /** Subtotal + shipping + tax (what the order is worth before Stripe pass-through). */
+  const [basketTotalAmount, setBasketTotalAmount] = useState(step2Data.totalAmount)
+  /** Shown on Pay button / order summary: card = gross incl. pass-through fee; Believe Points = basket only. */
   const [currentTotalAmount, setCurrentTotalAmount] = useState(step2Data.totalAmount)
+  const [stripeProcessingFeeAddon, setStripeProcessingFeeAddon] = useState(0)
+  const [customerPaysProcessingFee, setCustomerPaysProcessingFee] = useState(false)
   // Donation removed for Printify products - currentDonationAmount always 0
 
   // New state for tax calculation status
@@ -86,8 +95,30 @@ function Step2Form({ items, subtotal, donation_amount, step2Data, onBack }: Omit
   const [paymentError, setPaymentError] = useState("")
   const [cardComplete, setCardComplete] = useState(false)
 
-  // Calculate points required based on current total (updates after tax calculation)
-  const pointsRequired = currentTotalAmount
+  const applyPaymentIntentAmounts = (data: {
+    amount?: number
+    base_amount?: number
+    stripe_processing_fee_addon?: number
+    customer_pays_processing_fee?: boolean
+  }, mode: "stripe" | "believe_points") => {
+    const base = Number(data.base_amount ?? data.amount ?? 0)
+    const gross = Number(data.amount ?? base)
+    const addon = Number(data.stripe_processing_fee_addon ?? 0)
+    const pays = !!data.customer_pays_processing_fee
+    setBasketTotalAmount(base)
+    if (mode === "stripe") {
+      setStripeProcessingFeeAddon(addon)
+      setCustomerPaysProcessingFee(pays)
+      setCurrentTotalAmount(gross)
+    } else {
+      setStripeProcessingFeeAddon(0)
+      setCustomerPaysProcessingFee(false)
+      setCurrentTotalAmount(base)
+    }
+  }
+
+  // Believe Points deduct the merchandise/shipping/tax total only — not the card processing pass-through.
+  const pointsRequired = basketTotalAmount
   const hasEnoughPoints = currentBalance >= pointsRequired
 
   // Update points check when total amount changes
@@ -110,11 +141,39 @@ function Step2Form({ items, subtotal, donation_amount, step2Data, onBack }: Omit
     const m = step2Data.shippingMethods.find((x: { id?: string | number }) => String(x?.id) === String(methodId))
     if (m && typeof m.cost === "number") {
       setCurrentShippingCost(m.cost)
-      setCurrentTotalAmount(subtotal + m.cost + step2Data.taxAmount)
+      const nextBasket = subtotal + m.cost + currentTaxAmount
+      setBasketTotalAmount(nextBasket)
+      setCurrentTotalAmount(nextBasket)
     }
+    setStripeProcessingFeeAddon(0)
+    setCustomerPaysProcessingFee(false)
     setPaymentStep("initial")
     setPaymentIntentData(null)
     setPaymentError("")
+  }
+
+  const resetPaymentFlowAfterMethodSwitch = () => {
+    setPaymentStep("initial")
+    setPaymentIntentData(null)
+    setPaymentError("")
+    setStripeProcessingFeeAddon(0)
+    setCustomerPaysProcessingFee(false)
+    const m = step2Data.shippingMethods.find((x: { id?: string | number }) => String(x?.id) === String(selectedShippingMethod))
+    const ship = m && typeof m.cost === "number" ? m.cost : step2Data.shippingCost
+    const tax = isTaxCalculated ? currentTaxAmount : step2Data.taxAmount
+    const nextBasket = subtotal + ship + tax
+    setCurrentShippingCost(ship)
+    setCurrentTaxAmount(tax)
+    setBasketTotalAmount(nextBasket)
+    setCurrentTotalAmount(nextBasket)
+  }
+
+  const onPaymentMethodChange = (nextMethod: "stripe" | "believe_points") => {
+    if (nextMethod === paymentMethod) {
+      return
+    }
+    setPaymentMethod(nextMethod)
+    resetPaymentFlowAfterMethodSwitch()
   }
 
   // Initialize tax calculation status
@@ -187,13 +246,12 @@ function Step2Form({ items, subtotal, donation_amount, step2Data, onBack }: Omit
             throw new Error(intentResponse.data.error || "Failed to calculate amounts")
           }
 
-          // Update amounts from response
-          const finalAmount = intentResponse.data.amount || currentTotalAmount
           const finalTaxAmount = intentResponse.data.tax_amount || 0
           const finalShippingCost = intentResponse.data.shipping_cost || currentShippingCost
 
-          console.log('Tax & shipping calculated:', {
-            finalAmount,
+          console.log('Tax & shipping calculated (Believe Points — basket only):', {
+            base_amount: intentResponse.data.base_amount,
+            charged_if_card: intentResponse.data.amount,
             finalTaxAmount,
             finalShippingCost,
             currentBalance
@@ -201,15 +259,18 @@ function Step2Form({ items, subtotal, donation_amount, step2Data, onBack }: Omit
 
           // Update state with calculated amounts
           setCurrentTaxAmount(finalTaxAmount)
+          setPrintifyTaxLine(intentResponse.data.printify_tax_amount ?? 0)
+          setAdditionalTaxLine(intentResponse.data.additional_sales_tax_adjustment ?? 0)
           setCurrentShippingCost(finalShippingCost)
-          setCurrentTotalAmount(finalAmount)
+          applyPaymentIntentAmounts(intentResponse.data, "believe_points")
           setIsTaxCalculated(true)
           setTaxCalculationMessage(`Tax calculated: $${finalTaxAmount.toFixed(2)}`)
 
-          // Check if user has enough points after tax calculation
-          if (currentBalance < finalAmount) {
+          const pointsBasket = Number(intentResponse.data.base_amount ?? intentResponse.data.amount ?? 0)
+          // Check if user has enough points after tax calculation (never include card processing pass-through)
+          if (currentBalance < pointsBasket) {
             setPaymentStep('initial')
-            throw new Error(`Insufficient Believe Points. You need ${finalAmount.toFixed(2)} points but only have ${currentBalance.toFixed(2)} points.`)
+            throw new Error(`Insufficient Believe Points. You need ${pointsBasket.toFixed(2)} points but only have ${currentBalance.toFixed(2)} points.`)
           }
 
           // Move to ready state (same as Stripe flow)
@@ -296,20 +357,18 @@ function Step2Form({ items, subtotal, donation_amount, step2Data, onBack }: Omit
           throw new Error(intentResponse.data.error || "Failed to create payment intent")
         }
 
-        // Update local amounts with latest from server
-        if (intentResponse.data.amount !== undefined) {
-          setCurrentTotalAmount(intentResponse.data.amount)
-        }
         if (intentResponse.data.tax_amount !== undefined) {
           const newTaxAmount = intentResponse.data.tax_amount
           setCurrentTaxAmount(newTaxAmount)
+          setPrintifyTaxLine(intentResponse.data.printify_tax_amount ?? 0)
+          setAdditionalTaxLine(intentResponse.data.additional_sales_tax_adjustment ?? 0)
           setIsTaxCalculated(true)
           setTaxCalculationMessage(`Tax calculated: $${newTaxAmount.toFixed(2)}`)
         }
         if (intentResponse.data.shipping_cost !== undefined) {
           setCurrentShippingCost(intentResponse.data.shipping_cost)
         }
-        // Donation removed for Printify products
+        applyPaymentIntentAmounts(intentResponse.data, "stripe")
 
         // Store payment intent data for next step
         setPaymentIntentData({
@@ -534,11 +593,19 @@ function Step2Form({ items, subtotal, donation_amount, step2Data, onBack }: Omit
                       <div className="font-medium text-gray-900 dark:text-white">{m.name || "Shipping"}</div>
                       {m.estimated_days != null && m.estimated_days !== "—" && (
                         <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                          Est. {m.estimated_days} business days
+                          Est.{" "}
+                          {String(m.estimated_days).toLowerCase().includes("business day")
+                            ? m.estimated_days
+                            : `${m.estimated_days} business days`}
                         </div>
                       )}
                     </div>
-                    <div className="font-semibold text-gray-900 dark:text-white shrink-0">${Number(m.cost).toFixed(2)}</div>
+                    <div className="font-semibold text-gray-900 dark:text-white shrink-0">
+                      $
+                      {Number(
+                        String(selectedShippingMethod) === String(m.id) ? currentShippingCost : m.cost,
+                      ).toFixed(2)}
+                    </div>
                   </label>
                 ))}
               </div>
@@ -561,7 +628,7 @@ function Step2Form({ items, subtotal, donation_amount, step2Data, onBack }: Omit
                   name="payment_method"
                   value="stripe"
                   checked={paymentMethod === 'stripe'}
-                  onChange={(e) => setPaymentMethod(e.target.value as 'stripe' | 'believe_points')}
+                  onChange={() => onPaymentMethodChange('stripe')}
                   className="w-4 h-4 text-blue-600"
                 />
                 <CreditCard className="h-5 w-5 text-blue-600" />
@@ -582,7 +649,7 @@ function Step2Form({ items, subtotal, donation_amount, step2Data, onBack }: Omit
                   name="payment_method"
                   value="believe_points"
                   checked={paymentMethod === 'believe_points'}
-                  onChange={(e) => setPaymentMethod(e.target.value as 'stripe' | 'believe_points')}
+                  onChange={() => onPaymentMethodChange('believe_points')}
                   disabled={!hasEnoughPoints}
                   className="w-4 h-4 text-yellow-600"
                 />
@@ -770,34 +837,78 @@ function Step2Form({ items, subtotal, donation_amount, step2Data, onBack }: Omit
               </span>
             </div>
 
-            {/* Tax Display - Show different states */}
-            <div className="flex justify-between text-sm">
-              <span className="text-gray-600 dark:text-gray-400">Tax</span>
-              <span className={
-                isTaxCalculated
-                  ? "text-gray-600 dark:text-gray-400"
-                  : "text-yellow-600 dark:text-yellow-400 font-semibold"
-              }>
-                {paymentStep === 'calculating' ? (
-                  <span className="inline-flex items-center">
-                    <svg className="animate-spin h-3 w-3 mr-1" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    Calculating...
-                  </span>
-                ) : isTaxCalculated ? (
-                  `$${currentTaxAmount.toFixed(2)}`
-                ) : (
-                  <span className="inline-flex items-center">
-                    <svg className="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-                    </svg>
-                    Not calculated
-                  </span>
+            {/* Tax — Printify: show Printify portion + retail markup adjustment when applicable */}
+            {isTaxCalculated && (printifyTaxLine > 0.001 || additionalTaxLine > 0.001) ? (
+              <>
+                <div className="flex justify-between text-sm text-gray-600 dark:text-gray-400">
+                  <span>Sales tax (Printify)</span>
+                  <span>${printifyTaxLine.toFixed(2)}</span>
+                </div>
+                {additionalTaxLine > 0.001 && (
+                  <div className="flex justify-between text-sm text-gray-600 dark:text-gray-400">
+                    <span>Additional sales tax adjustment</span>
+                    <span>${additionalTaxLine.toFixed(2)}</span>
+                  </div>
                 )}
-              </span>
-            </div>
+                <div className="flex justify-between text-sm font-medium text-gray-700 dark:text-gray-300">
+                  <span>Total tax</span>
+                  <span>${currentTaxAmount.toFixed(2)}</span>
+                </div>
+              </>
+            ) : (
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-600 dark:text-gray-400">Tax</span>
+                <span className={
+                  isTaxCalculated
+                    ? "text-gray-600 dark:text-gray-400"
+                    : "text-yellow-600 dark:text-yellow-400 font-semibold"
+                }>
+                  {paymentStep === 'calculating' ? (
+                    <span className="inline-flex items-center">
+                      <svg className="animate-spin h-3 w-3 mr-1" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      Calculating...
+                    </span>
+                  ) : isTaxCalculated ? (
+                    `$${currentTaxAmount.toFixed(2)}`
+                  ) : (
+                    <span className="inline-flex items-center">
+                      <svg className="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                      </svg>
+                      Not calculated
+                    </span>
+                  )}
+                </span>
+              </div>
+            )}
+
+            {paymentMethod === "stripe" &&
+              isTaxCalculated &&
+              customerPaysProcessingFee &&
+              stripeProcessingFeeAddon > 0.0005 && (
+                <>
+                  <div className="flex justify-between text-sm border-t border-gray-200 dark:border-gray-700 pt-3 mt-1">
+                    <span className="text-gray-600 dark:text-gray-400">Order total (subtotal, shipping & tax)</span>
+                    <span className="font-medium text-gray-900 dark:text-white tabular-nums">
+                      ${basketTotalAmount.toFixed(2)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-sm items-baseline gap-2">
+                    <div>
+                      <span className="text-gray-600 dark:text-gray-400">Estimated card processing fee</span>
+                      <p className="text-xs text-gray-500 dark:text-gray-500 mt-0.5 max-w-[14rem]">
+                        Pass-through estimate (same model as Stripe). Your card is charged the total below.
+                      </p>
+                    </div>
+                    <span className="font-medium text-gray-900 dark:text-white tabular-nums shrink-0">
+                      ${stripeProcessingFeeAddon.toFixed(2)}
+                    </span>
+                  </div>
+                </>
+              )}
 
             {/* Total - Also show different states */}
             <div className="border-t border-gray-200 dark:border-gray-700 pt-3 flex justify-between font-bold text-lg">
@@ -805,7 +916,14 @@ function Step2Form({ items, subtotal, donation_amount, step2Data, onBack }: Omit
                 isTaxCalculated
                   ? "text-gray-900 dark:text-white"
                   : "text-yellow-700 dark:text-yellow-300"
-              }>Total</span>
+              }>
+                {paymentMethod === "stripe" &&
+                isTaxCalculated &&
+                customerPaysProcessingFee &&
+                stripeProcessingFeeAddon > 0.0005
+                  ? "Total charged"
+                  : "Total"}
+              </span>
               <span className={
                 isTaxCalculated
                   ? "text-blue-600 dark:text-blue-400"
@@ -845,11 +963,17 @@ function Step2Form({ items, subtotal, donation_amount, step2Data, onBack }: Omit
           {/* Donation Message - Removed for Printify products */}
 
           <div className="mt-6 p-3 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800">
-            <div className="flex items-center text-green-800 dark:text-green-400">
-              <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
+            <div className="flex items-start text-green-800 dark:text-green-400 gap-2">
+              <svg className="w-5 h-5 mt-0.5 shrink-0" fill="currentColor" viewBox="0 0 20 20">
                 <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
               </svg>
-              <span className="text-sm font-medium">All prices include applicable fees</span>
+              <span className="text-sm font-medium">
+                {paymentMethod === "stripe" &&
+                customerPaysProcessingFee &&
+                stripeProcessingFeeAddon > 0.0005
+                  ? "Estimated Stripe processing fee is shown above and included in your card total when applicable."
+                  : "Shipping and tax are shown in your order summary. Paying by card may include a processing fee pass-through when enabled for your site."}
+              </span>
             </div>
           </div>
 

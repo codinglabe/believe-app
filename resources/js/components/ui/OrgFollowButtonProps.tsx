@@ -13,6 +13,18 @@ import {
   DropdownMenuTrigger,
 } from "@/components/frontend/ui/dropdown-menu"
 
+function flashErrorFromPage(page: { props?: Record<string, unknown> }): string | null {
+  const props = page.props ?? {}
+  const flash = props.flash as { error?: string } | undefined
+  if (typeof flash?.error === "string" && flash.error) {
+    return flash.error
+  }
+  if (typeof props.error === "string" && props.error) {
+    return props.error
+  }
+  return null
+}
+
 interface OrgFollowButtonProps {
   organization: any
   auth: any
@@ -92,9 +104,14 @@ export default function OrgFollowButton({
 
   const followErrorToast = useCallback(() => {
     toast.error(
-      "Could not update follow. Sign in with a supporter or organization account, or you may be viewing your own hub."
+      "Could not update follow. Sign in with a verified supporter account, or you may be viewing your own organization."
     )
   }, [])
+
+  const canFollowOrganizations = Boolean(
+    auth?.user?.can_follow_organizations === true ||
+      (auth?.user?.can_follow_organizations === undefined && auth?.user?.role === "user")
+  )
 
   const inertiaPostOptions = useMemo(
     () => ({
@@ -104,21 +121,47 @@ export default function OrgFollowButton({
     []
   )
 
-  /** Care Alliance sends this so the id is not mistaken for an unrelated excel_data row. */
+  /**
+   * Backend resolves id against Excel vs Organization vs Care Alliance; context avoids id collisions
+   * (e.g. organizations.id 9 vs excel_data.id 9).
+   */
   const toggleFavoriteBody = useMemo(() => {
     const ctx =
       organization?.toggle_favorite_context ?? organization?.toggleFavoriteContext
     if (ctx === "excel" || ctx === "organization" || ctx === "alliance") {
       return { toggle_favorite_context: ctx }
     }
-    return {}
-  }, [organization?.toggle_favorite_context, organization?.toggleFavoriteContext])
+    if (
+      careAlliancePublicId != null &&
+      (organization?.is_care_alliance_public || organization?.isCareAlliancePublic)
+    ) {
+      return { toggle_favorite_context: "alliance" as const }
+    }
+    if (organization?.is_registered) {
+      return { toggle_favorite_context: "organization" as const }
+    }
+    return { toggle_favorite_context: "excel" as const }
+  }, [
+    organization?.toggle_favorite_context,
+    organization?.toggleFavoriteContext,
+    organization?.is_registered,
+    organization?.is_care_alliance_public,
+    organization?.isCareAlliancePublic,
+    careAlliancePublicId,
+  ])
 
   const handleToggleFollow = useCallback(() => {
     if (isLoading || updateInProgressRef.current) return
 
     if (!auth?.user) {
       window.location.href = route("login")
+      return
+    }
+
+    if (!canFollowOrganizations) {
+      toast.error(
+        "Only supporter accounts can follow organizations. Log in with your personal supporter profile."
+      )
       return
     }
 
@@ -129,10 +172,20 @@ export default function OrgFollowButton({
 
     updateInProgressRef.current = true
     setIsLoading(true)
-    setLocalIsFollowing(true)
 
     router.post(route("organizations.toggle-favorite", { id: favoriteId }), toggleFavoriteBody, {
       ...inertiaPostOptions,
+      onSuccess: page => {
+        const err = flashErrorFromPage(page)
+        if (err) {
+          toast.error(err)
+          setLocalIsFollowing(null)
+          setLocalNotifications(null)
+          return
+        }
+        setLocalIsFollowing(null)
+        setLocalNotifications(null)
+      },
       onError: () => {
         followErrorToast()
         setLocalIsFollowing(null)
@@ -144,6 +197,7 @@ export default function OrgFollowButton({
     })
   }, [
     auth?.user,
+    canFollowOrganizations,
     canToggleFollow,
     favoriteId,
     followErrorToast,
@@ -163,7 +217,13 @@ export default function OrgFollowButton({
 
     router.post(route("organizations.toggle-notifications", { id: favoriteId }), toggleFavoriteBody, {
       ...inertiaPostOptions,
-      onSuccess: () => {
+      onSuccess: page => {
+        const err = flashErrorFromPage(page)
+        if (err) {
+          toast.error(err)
+          setLocalNotifications(null)
+          return
+        }
         setLocalNotifications(nextNotifications)
       },
       onError: () => {
@@ -191,10 +251,20 @@ export default function OrgFollowButton({
 
     updateInProgressRef.current = true
     setIsLoading(true)
-    setLocalIsFollowing(false)
 
     router.post(route("organizations.toggle-favorite", { id: favoriteId }), toggleFavoriteBody, {
       ...inertiaPostOptions,
+      onSuccess: page => {
+        const err = flashErrorFromPage(page)
+        if (err) {
+          toast.error(err)
+          setLocalIsFollowing(null)
+          setLocalNotifications(null)
+          return
+        }
+        setLocalIsFollowing(null)
+        setLocalNotifications(null)
+      },
       onError: () => {
         followErrorToast()
         setLocalIsFollowing(null)

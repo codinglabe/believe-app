@@ -2,18 +2,18 @@
 
 namespace App\Http\Controllers;
 
+use App\Jobs\SyncEmailContacts;
 use App\Models\EmailConnection;
 use App\Models\EmailContact;
 use App\Models\EmailPackage;
 use App\Models\Organization;
 use App\Services\GmailService;
 use App\Services\OutlookService;
+use App\Support\StripeAutomaticTax;
+use App\Support\StripeCustomerChargeAmount;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Mail;
 use Inertia\Inertia;
-use App\Jobs\SyncEmailContacts;
 use Laravel\Cashier\Cashier;
 
 class EmailInviteController extends BaseController
@@ -24,25 +24,25 @@ class EmailInviteController extends BaseController
     public function index(Request $request)
     {
         $this->authorizePermission($request, 'email.invite.read');
-        
+
         $user = $request->user();
         $organization = Organization::where('user_id', $user->id)->first();
 
-        if (!$organization) {
+        if (! $organization) {
             abort(404, 'Organization not found');
         }
 
         $connections = $organization->emailConnections()->with('contacts')->get();
-        
+
         // Get pagination and filter parameters from request
         $perPage = $request->input('per_page', 50); // Default to 50 for initial load
         $page = $request->input('page', 1);
         $search = $request->input('search', '');
         $provider = $request->input('provider', 'all');
-        
+
         $query = $organization->emailContacts()
             ->with('emailConnection');
-        
+
         // Apply search filter
         if ($search) {
             $query->where(function ($q) use ($search) {
@@ -50,14 +50,14 @@ class EmailInviteController extends BaseController
                     ->orWhere('name', 'LIKE', "%{$search}%");
             });
         }
-        
+
         // Apply provider filter
         if ($provider && $provider !== 'all') {
             $query->whereHas('emailConnection', function ($q) use ($provider) {
                 $q->where('provider', $provider);
             });
         }
-        
+
         $contacts = $query->orderBy('created_at', 'desc')
             ->paginate($perPage, ['*'], 'page', $page)
             ->withQueryString();
@@ -112,11 +112,11 @@ class EmailInviteController extends BaseController
     public function connectGmail(Request $request)
     {
         $this->authorizePermission($request, 'email.invite.create');
-        
+
         $user = $request->user();
         $organization = Organization::where('user_id', $user->id)->first();
 
-        if (!$organization) {
+        if (! $organization) {
             return response()->json(['error' => 'Organization not found'], 404);
         }
 
@@ -137,7 +137,8 @@ class EmailInviteController extends BaseController
             // Redirect to OAuth URL
             return redirect($authUrl);
         } catch (\Exception $e) {
-            Log::error('Gmail connect error: ' . $e->getMessage());
+            Log::error('Gmail connect error: '.$e->getMessage());
+
             return response()->json(['error' => 'Failed to initiate Gmail connection'], 500);
         }
     }
@@ -148,11 +149,11 @@ class EmailInviteController extends BaseController
     public function connectOutlook(Request $request)
     {
         $this->authorizePermission($request, 'email.invite.create');
-        
+
         $user = $request->user();
         $organization = Organization::where('user_id', $user->id)->first();
 
-        if (!$organization) {
+        if (! $organization) {
             return response()->json(['error' => 'Organization not found'], 404);
         }
 
@@ -173,7 +174,8 @@ class EmailInviteController extends BaseController
             // Redirect to OAuth URL
             return redirect($authUrl);
         } catch (\Exception $e) {
-            Log::error('Outlook connect error: ' . $e->getMessage());
+            Log::error('Outlook connect error: '.$e->getMessage());
+
             return response()->json(['error' => 'Failed to initiate Outlook connection'], 500);
         }
     }
@@ -188,22 +190,22 @@ class EmailInviteController extends BaseController
 
         if ($error) {
             return redirect()->route('email-invite.index')
-                ->with('error', 'Authorization failed: ' . $error);
+                ->with('error', 'Authorization failed: '.$error);
         }
 
-        if (!$code) {
+        if (! $code) {
             return redirect()->route('email-invite.index')
                 ->with('error', 'Authorization code not provided');
         }
 
         $connectionId = session('email_connection_id');
-        if (!$connectionId) {
+        if (! $connectionId) {
             return redirect()->route('email-invite.index')
                 ->with('error', 'Connection session expired');
         }
 
         $connection = EmailConnection::find($connectionId);
-        if (!$connection) {
+        if (! $connection) {
             return redirect()->route('email-invite.index')
                 ->with('error', 'Connection not found');
         }
@@ -232,10 +234,11 @@ class EmailInviteController extends BaseController
             return redirect()->route('email-invite.index')
                 ->with('success', 'Email account connected successfully!');
         } catch (\Exception $e) {
-            Log::error('OAuth callback error: ' . $e->getMessage());
+            Log::error('OAuth callback error: '.$e->getMessage());
             $connection->delete();
+
             return redirect()->route('email-invite.index')
-                ->with('error', 'Failed to connect email account: ' . $e->getMessage());
+                ->with('error', 'Failed to connect email account: '.$e->getMessage());
         }
     }
 
@@ -245,11 +248,11 @@ class EmailInviteController extends BaseController
     public function syncContacts(Request $request, EmailConnection $connection)
     {
         $this->authorizePermission($request, 'email.invite.sync');
-        
+
         $user = $request->user();
         $organization = Organization::where('user_id', $user->id)->first();
 
-        if (!$organization || $connection->organization_id !== $organization->id) {
+        if (! $organization || $connection->organization_id !== $organization->id) {
             return redirect()->route('email-invite.index')
                 ->with('error', 'Unauthorized');
         }
@@ -265,7 +268,7 @@ class EmailInviteController extends BaseController
 
         // Dispatch job to sync contacts in the background
         SyncEmailContacts::dispatch($connection, $organization);
-        
+
         Log::info("Email contacts sync job dispatched for connection {$connection->id}");
 
         // Return Inertia response
@@ -279,30 +282,30 @@ class EmailInviteController extends BaseController
     public function checkSyncStatus(Request $request, EmailConnection $connection)
     {
         $this->authorizePermission($request, 'email.invite.sync');
-        
+
         $user = $request->user();
         $organization = Organization::where('user_id', $user->id)->first();
 
-        if (!$organization || $connection->organization_id !== $organization->id) {
+        if (! $organization || $connection->organization_id !== $organization->id) {
             return redirect()->route('email-invite.index')
                 ->with('error', 'Unauthorized');
         }
 
         // Refresh the connection to get latest data
         $connection->refresh();
-        
+
         // Get all connections for the response
         $connections = $organization->emailConnections()->with('contacts')->get();
-        
+
         // Get pagination and filter parameters from request (same as index method)
         $perPage = $request->input('per_page', 50);
         $page = $request->input('page', 1);
         $search = $request->input('search', '');
         $provider = $request->input('provider', 'all');
-        
+
         $query = $organization->emailContacts()
             ->with('emailConnection');
-        
+
         // Apply search filter
         if ($search) {
             $query->where(function ($q) use ($search) {
@@ -310,14 +313,14 @@ class EmailInviteController extends BaseController
                     ->orWhere('name', 'LIKE', "%{$search}%");
             });
         }
-        
+
         // Apply provider filter
         if ($provider && $provider !== 'all') {
             $query->whereHas('emailConnection', function ($q) use ($provider) {
                 $q->where('provider', $provider);
             });
         }
-        
+
         $contacts = $query->orderBy('created_at', 'desc')
             ->paginate($perPage, ['*'], 'page', $page)
             ->withQueryString();
@@ -375,7 +378,7 @@ class EmailInviteController extends BaseController
         $user = $request->user();
         $organization = Organization::where('user_id', $user->id)->first();
 
-        if (!$organization) {
+        if (! $organization) {
             return response()->json(['error' => 'Organization not found'], 404);
         }
 
@@ -401,7 +404,7 @@ class EmailInviteController extends BaseController
     public function sendInvites(Request $request)
     {
         $this->authorizePermission($request, 'email.invite.send');
-        
+
         $request->validate([
             'contact_ids' => 'required|array',
             'contact_ids.*' => 'exists:email_contacts,id',
@@ -411,7 +414,7 @@ class EmailInviteController extends BaseController
         $user = $request->user();
         $organization = Organization::where('user_id', $user->id)->first();
 
-        if (!$organization) {
+        if (! $organization) {
             return response()->json(['error' => 'Organization not found'], 404);
         }
 
@@ -451,11 +454,11 @@ class EmailInviteController extends BaseController
     public function disconnect(Request $request, EmailConnection $connection)
     {
         $this->authorizePermission($request, 'email.invite.delete');
-        
+
         $user = $request->user();
         $organization = Organization::where('user_id', $user->id)->first();
 
-        if (!$organization || $connection->organization_id !== $organization->id) {
+        if (! $organization || $connection->organization_id !== $organization->id) {
             return response()->json(['error' => 'Unauthorized'], 403);
         }
 
@@ -471,11 +474,11 @@ class EmailInviteController extends BaseController
     public function deleteContact(Request $request, EmailContact $contact)
     {
         $this->authorizePermission($request, 'email.invite.delete');
-        
+
         $user = $request->user();
         $organization = Organization::where('user_id', $user->id)->first();
 
-        if (!$organization || $contact->organization_id !== $organization->id) {
+        if (! $organization || $contact->organization_id !== $organization->id) {
             return response()->json(['error' => 'Unauthorized'], 403);
         }
 
@@ -495,13 +498,15 @@ class EmailInviteController extends BaseController
     public function purchaseEmails(Request $request)
     {
         $this->authorizePermission($request, 'email.invite.send');
-        
+
         $request->validate([
             'package_id' => 'required|exists:email_packages,id',
+            'return_to' => 'nullable|in:newsletter',
         ]);
 
         $user = $request->user();
-        
+        $returnToNewsletter = $request->input('return_to') === 'newsletter';
+
         // Get the email package
         $package = EmailPackage::active()->findOrFail($request->input('package_id'));
 
@@ -513,6 +518,7 @@ class EmailInviteController extends BaseController
                 'payment_method' => 'stripe',
                 'status' => 'pending',
                 'meta' => [
+                    'type' => 'email_purchase',
                     'emails_to_add' => $package->emails_count,
                     'package_id' => $package->id,
                     'package_name' => $package->name,
@@ -521,16 +527,21 @@ class EmailInviteController extends BaseController
             ]);
 
             // Calculate total amount in cents
-            $amountInCents = (int) ($package->price * 100);
+            $amountInCents = StripeCustomerChargeAmount::chargeCentsFromNetUsd((float) $package->price, 'card');
 
             // Create checkout session
+            $successQs = 'session_id={CHECKOUT_SESSION_ID}'.($returnToNewsletter ? '&return_to=newsletter&open_buy=email' : '');
+            $cancelUrl = $returnToNewsletter
+                ? route('newsletter.index', ['canceled' => '1', 'open_buy' => 'email'])
+                : route('email-invite.index').'?canceled=1';
+
             $checkout = $user->checkoutCharge(
                 $amountInCents,
                 $package->name,
                 1,
-                [
-                    'success_url' => route('email-invite.purchase.success') . '?session_id={CHECKOUT_SESSION_ID}',
-                    'cancel_url' => route('email-invite.index') . '?canceled=1',
+                StripeAutomaticTax::mergeCheckoutOptions([
+                    'success_url' => route('email-invite.purchase.success').'?'.$successQs,
+                    'cancel_url' => $cancelUrl,
                     'metadata' => [
                         'user_id' => $user->id,
                         'transaction_id' => $transaction->id,
@@ -538,20 +549,21 @@ class EmailInviteController extends BaseController
                         'emails_to_add' => $package->emails_count,
                         'package_id' => $package->id,
                         'amount' => $package->price,
+                        'return_to' => $returnToNewsletter ? 'newsletter' : '',
                     ],
                     'payment_method_types' => ['card'],
-                ]
+                ])
             );
-            
+
             // Return Inertia redirect to Stripe checkout
             return Inertia::location($checkout->url);
-            
+
         } catch (\Exception $e) {
             Log::error('Email purchase checkout error', [
                 'error' => $e->getMessage(),
                 'user_id' => $user->id,
             ]);
-            
+
             return back()->withErrors([
                 'message' => 'Failed to create checkout session. Please try again.',
                 'error' => $e->getMessage(),
@@ -566,22 +578,37 @@ class EmailInviteController extends BaseController
     {
         try {
             $sessionId = $request->query('session_id');
-            
-            if (!$sessionId) {
-                return redirect()->route('email-invite.index')->with('error', 'Invalid session ID.');
+            $toNewsletter = $request->query('return_to') === 'newsletter';
+
+            if (! $sessionId) {
+                return $toNewsletter
+                    ? redirect()->route('newsletter.index', [
+                        'error' => 'Invalid session ID.',
+                        'open_buy' => 'email',
+                    ])
+                    : redirect()->route('email-invite.index')->with('error', 'Invalid session ID.');
             }
 
             $user = $request->user();
-            
+
             // Retrieve the checkout session from Stripe
             $session = Cashier::stripe()->checkout->sessions->retrieve($sessionId);
-            
+
+            $metadata = is_object($session->metadata) ? (array) $session->metadata : (array) ($session->metadata ?? []);
+            if (! $toNewsletter && (($metadata['return_to'] ?? '') === 'newsletter')) {
+                $toNewsletter = true;
+            }
+
             if ($session->payment_status !== 'paid') {
-                return redirect()->route('email-invite.index')->with('error', 'Payment was not completed.');
+                return $toNewsletter
+                    ? redirect()->route('newsletter.index', [
+                        'error' => 'Payment was not completed.',
+                        'open_buy' => 'email',
+                    ])
+                    : redirect()->route('email-invite.index')->with('error', 'Payment was not completed.');
             }
 
             // Get metadata from session
-            $metadata = $session->metadata ?? [];
             $emailsToAdd = (int) ($metadata['emails_to_add'] ?? 0);
             $transactionId = $metadata['transaction_id'] ?? null;
 
@@ -599,6 +626,7 @@ class EmailInviteController extends BaseController
                         'meta' => array_merge(
                             $transaction->meta ?? [],
                             [
+                                'type' => 'email_purchase',
                                 'stripe_session_id' => $sessionId,
                                 'stripe_payment_intent' => $session->payment_intent,
                                 'payment_status' => $session->payment_status,
@@ -615,15 +643,29 @@ class EmailInviteController extends BaseController
                 'session_id' => $sessionId,
             ]);
 
-            return redirect()->route('email-invite.index')->with('success', "Successfully purchased {$emailsToAdd} emails!");
-            
+            $successMsg = "Successfully purchased {$emailsToAdd} emails!";
+
+            return $toNewsletter
+                ? redirect()->route('newsletter.index', [
+                    'success' => $successMsg,
+                    'open_buy' => 'email',
+                ])
+                : redirect()->route('email-invite.index')->with('success', $successMsg);
+
         } catch (\Exception $e) {
             Log::error('Email purchase success handler error', [
                 'error' => $e->getMessage(),
                 'session_id' => $request->query('session_id'),
             ]);
-            
-            return redirect()->route('email-invite.index')->with('error', 'Error processing payment. Please contact support.');
+
+            $toNewsletter = $request->query('return_to') === 'newsletter';
+
+            return $toNewsletter
+                ? redirect()->route('newsletter.index', [
+                    'error' => 'Error processing payment. Please contact support.',
+                    'open_buy' => 'email',
+                ])
+                : redirect()->route('email-invite.index')->with('error', 'Error processing payment. Please contact support.');
         }
     }
 }

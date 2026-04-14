@@ -8,7 +8,6 @@ use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Cashier\Billable;
-use Laravel\Cashier\Subscription;
 
 class Merchant extends Authenticatable
 {

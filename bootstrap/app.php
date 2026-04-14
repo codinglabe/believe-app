@@ -1,5 +1,11 @@
 <?php
 
+// PHP defines STDIN/STDOUT/STDERR only in CLI. Artisan::call() from HTTP (e.g. admin settings) loads
+// Symfony Console code that references STDIN; provide a harmless stream in web / php-fpm.
+if (! defined('STDIN')) {
+    define('STDIN', fopen('php://memory', 'r'));
+}
+
 use App\Http\Middleware\DetectTimezone;
 use App\Http\Middleware\HandleAppearance;
 use App\Http\Middleware\HandleInertiaRequests;
@@ -30,13 +36,15 @@ return Application::configure(basePath: dirname(__DIR__))
             'sidebar_state',
         ]);
 
+        // DetectTimezone must run before HandleInertiaRequests so config('app.timezone') and
+        // Carbon are correct for shared props and any date formatting in that middleware.
         $middleware->web(append: [
             HandleAppearance::class,
+            DetectTimezone::class, // Sets timezone for entire application (reads X-Timezone header)
             HandleInertiaRequests::class,
             AddLinkHeadersForPreloadedAssets::class,
             IncreaseUploadLimits::class,
             NoCacheAuthPages::class, // Prevent caching of login/register to avoid 419 CSRF
-            DetectTimezone::class, // Sets timezone for entire application
         ]);
 
         // Also apply timezone detection to API routes
@@ -57,6 +65,9 @@ return Application::configure(basePath: dirname(__DIR__))
             'barter.access' => \App\Http\Middleware\BarterNetworkAccess::class,
             'care_alliance.wallet' => \App\Http\Middleware\EnsureCareAllianceWalletEligible::class,
             'deny.care_alliance.hub' => \App\Http\Middleware\DenyCareAllianceHubUser::class,
+            'can.read.event_types' => \App\Http\Middleware\EnsureCanReadEventTypes::class,
+            'can.read.topics' => \App\Http\Middleware\EnsureCanReadTopics::class,
+            'can.create.events' => \App\Http\Middleware\EnsureCanCreateEvents::class,
             'ensure.service.hub.seller' => \App\Http\Middleware\EnsureServiceHubSeller::class,
         ]);
     })

@@ -47,6 +47,9 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin|car
             Route::post('/settings/application/optimize', [\App\Http\Controllers\Settings\ApplicationSettingsController::class, 'optimize'])->name('application.optimize');
             Route::post('/settings/application/clear', [\App\Http\Controllers\Settings\ApplicationSettingsController::class, 'clear'])->name('application.clear');
             Route::post('/settings/application/footer', [\App\Http\Controllers\Settings\ApplicationSettingsController::class, 'updateFooter'])->name('application.footer.update');
+            Route::post('/settings/application/storage-link', [\App\Http\Controllers\Settings\ApplicationSettingsController::class, 'storageLink'])->name('application.storage-link');
+            Route::post('/settings/application/migrate', [\App\Http\Controllers\Settings\ApplicationSettingsController::class, 'migrate'])->name('application.migrate');
+            Route::post('/settings/application/seed', [\App\Http\Controllers\Settings\ApplicationSettingsController::class, 'runSeed'])->name('application.seed');
         });
         Route::get('settings/appearance', function () {
             return Inertia::render('settings/appearance');

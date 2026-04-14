@@ -30,7 +30,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Switch } from "@/components/admin/ui/switch"
-import FrontendLayout from "@/layouts/frontend/frontend-layout"
+import UnityMeetLayout from "@/layouts/UnityMeetLayout"
 import { PageHead } from "@/components/frontend/PageHead"
 import {
   Copy,
@@ -379,7 +379,13 @@ export default function SupporterShowLivestream({ livestream }: Props) {
   )
 
   return (
-    <FrontendLayout>
+    <UnityMeetLayout
+      breadcrumbs={[
+        { title: 'Dashboard', href: '/dashboard' },
+        { title: 'Unity Meet Communications', href: '/livestreams/supporter' },
+        { title: livestream.title || 'Meeting', href: `/livestreams/supporter/${livestream.id}` },
+      ]}
+    >
       <PageHead title={livestream.title || "Meeting"} description="Host your meeting with VDO.Ninja" />
       <Head title={livestream.title || "Meeting"} />
       <div className="w-screen max-w-[100vw] relative left-1/2 -translate-x-1/2 overflow-hidden md:w-full md:max-w-none md:left-auto md:translate-x-0 md:overflow-visible">
@@ -720,6 +726,6 @@ export default function SupporterShowLivestream({ livestream }: Props) {
           </Tabs>
         </DialogContent>
       </Dialog>
-    </FrontendLayout>
+    </UnityMeetLayout>
   )
 }

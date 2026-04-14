@@ -2,97 +2,110 @@
 
 namespace Database\Seeders;
 
-use App\Models\User;
-// use Illuminate\Database\Console\Seeds\WithoutModelEvents;
+use Database\Seeders\Support\SeederRunTracker;
 use Illuminate\Database\Seeder;
 
 class DatabaseSeeder extends Seeder
 {
     /**
      * Seed the application's database.
+     *
+     * Each seeder class is recorded in the `seed_runs` table after it finishes successfully.
+     * Re-running `php artisan db:seed` skips classes that already completed.
+     * Set SEED_FORCE=true in .env to run every seeder again (still records completion).
      */
     public function run(): void
     {
-        // User::factory(10)->create();
-
-        // User::factory()->create([
-        //     'name' => 'Test User',
-        //     'email' => 'test@example.com',
-        // ]);
-
         // Run seeders sequentially (serialized) in the correct order
 
         // Step 1: Seed code tables first (foundation data)
-        $this->call(ActivityCodesTableSeeder::class);
-        $this->call(AffiliationCodesTableSeeder::class);
-        $this->call(ClassificationCodesTableSeeder::class);
-        $this->call(DeductibilityCodesTableSeeder::class);
-        $this->call(FoundationTypesTableSeeder::class);
-        $this->call(GroupCodesTableSeeder::class);
-        $this->call(NteeCodesTableSeeder::class);
-        $this->call(OrganizationStructuresTableSeeder::class);
-        $this->call(StatusCodesTableSeeder::class);
-        $this->call(SubsectionCodesTableSeeder::class);
+        $this->callUnlessSeeded(ActivityCodesTableSeeder::class);
+        $this->callUnlessSeeded(AffiliationCodesTableSeeder::class);
+        $this->callUnlessSeeded(ClassificationCodesTableSeeder::class);
+        $this->callUnlessSeeded(DeductibilityCodesTableSeeder::class);
+        $this->callUnlessSeeded(FoundationTypesTableSeeder::class);
+        $this->callUnlessSeeded(GroupCodesTableSeeder::class);
+        $this->callUnlessSeeded(NteeCodesTableSeeder::class);
+        $this->callUnlessSeeded(OrganizationStructuresTableSeeder::class);
+        $this->callUnlessSeeded(StatusCodesTableSeeder::class);
+        $this->callUnlessSeeded(SubsectionCodesTableSeeder::class);
 
         // Step 2: Seed roles and permissions
-        $this->call(RoleSeeder::class);
-        $this->call(AdminPermissionsSeeder::class);
-        $this->call(permissionsSeeder::class);
-        $this->call(ComprehensivePermissionsSeeder::class);
-        $this->call(ComplianceReviewPermissionSeeder::class);
-        $this->call(JobPostsPermisstionSeeder::class);
-        $this->call(LivestockPermissionsSeeder::class);
-        $this->call(assignRole::class);
+        $this->callUnlessSeeded(RoleSeeder::class);
+        $this->callUnlessSeeded(AdminPermissionsSeeder::class);
+        $this->callUnlessSeeded(permissionsSeeder::class);
+        $this->callUnlessSeeded(ComprehensivePermissionsSeeder::class);
+        $this->callUnlessSeeded(ComplianceReviewPermissionSeeder::class);
+        $this->callUnlessSeeded(JobPostsPermisstionSeeder::class);
+        $this->callUnlessSeeded(LivestockPermissionsSeeder::class);
+        $this->callUnlessSeeded(assignRole::class);
 
         // Step 3: Seed users and assign roles/permissions
-        $this->call(AssignRolePermissionToUsersSeeder::class);
-        $this->call(UsernameSeeder::class);
-        $this->call(OrganizationPendingRoleSeeder::class);
-        $this->call(testUserSeeder::class);
+        $this->callUnlessSeeded(AssignRolePermissionToUsersSeeder::class);
+        $this->callUnlessSeeded(UsernameSeeder::class);
+        $this->callUnlessSeeded(OrganizationPendingRoleSeeder::class);
+        $this->callUnlessSeeded(testUserSeeder::class);
 
         // Step 6: Seed fractional ownership test data
-        $this->call(FractionalOwnershipSeeder::class);
+        $this->callUnlessSeeded(FractionalOwnershipSeeder::class);
 
         // Step 4: Seed categories and other content
-        $this->call(CategorySeeder::class);
-        $this->call(PositionCategoriesAndJobPositionsSeeder::class);
-        $this->call(EventTypesTableSeeder::class);
-        $this->call(ChatRoomsSeeder::class);
-        $this->call(PlanSeeder::class);
-        $this->call(WalletPlanSeeder::class);
-        $this->call(ContactPageContentSeeder::class);
-        $this->call(PromotionalBannerSeeder::class);
-        $this->call(FundMeCategorySeeder::class);
+        $this->callUnlessSeeded(CategorySeeder::class);
+        $this->callUnlessSeeded(PositionCategoriesAndJobPositionsSeeder::class);
+        $this->callUnlessSeeded(EventTypesTableSeeder::class);
+        $this->callUnlessSeeded(ChatRoomsSeeder::class);
+        $this->callUnlessSeeded(PlanSeeder::class);
+        $this->callUnlessSeeded(WalletPlanSeeder::class);
+        $this->callUnlessSeeded(SmsPackageSeeder::class);
+        $this->callUnlessSeeded(ContactPageContentSeeder::class);
+        $this->callUnlessSeeded(PromotionalBannerSeeder::class);
+        $this->callUnlessSeeded(FundMeCategorySeeder::class);
 
         // Step 5: Seed organization-related data
-        $this->call(PrimaryActionCategoriesSeeder::class);
-        $this->call(OrganizationBoardMembersSeeder::class);
-        $this->call(OrganizationRoleSeeder::class);
+        $this->callUnlessSeeded(PrimaryActionCategoriesSeeder::class);
+        $this->callUnlessSeeded(OrganizationBoardMembersSeeder::class);
+        $this->callUnlessSeeded(OrganizationRoleSeeder::class);
 
         // Step 6: Seed additional data and utilities
-        $this->call(RegenerateStripeCustomerIdSeeder::class);
-        $this->call(ExistingUserReferralGenerate::class);
+        $this->callUnlessSeeded(RegenerateStripeCustomerIdSeeder::class);
+        $this->callUnlessSeeded(ExistingUserReferralGenerate::class);
 
-        $this->call(SupporterPositionsTableSeeder::class);
+        $this->callUnlessSeeded(SupporterPositionsTableSeeder::class);
 
         // Step 7: Seed merchant data
-        $this->call(MerchantSeeder::class);
-        $this->call(MerchantSubscriptionPlanSeeder::class);
+        $this->callUnlessSeeded(MerchantSeeder::class);
+        $this->callUnlessSeeded(MerchantSubscriptionPlanSeeder::class);
 
-        $this->call(StateSalesTaxCompleteSeeder::class);
-        $this->call(ServiceCategorySeeder::class);
+        $this->callUnlessSeeded(StateSalesTaxCompleteSeeder::class);
+        $this->callUnlessSeeded(ServiceCategorySeeder::class);
 
-        $this->call(SellerSkillsSeeder::class);
-        $this->call(LanguagesSeeder::class);
+        $this->callUnlessSeeded(SellerSkillsSeeder::class);
+        $this->callUnlessSeeded(LanguagesSeeder::class);
 
-        $this->call(CommunityVideosSeeder::class);
+        $this->callUnlessSeeded(CommunityVideosSeeder::class);
 
-        // Kiosk data (idempotent: safe to re-run without duplicates)
-        $this->call(KioskCategoriesSeeder::class);
-        $this->call(UsStatesSeeder::class);
-        $this->call(KioskSubcategoriesSeeder::class);
+        // Kiosk data
+        $this->callUnlessSeeded(KioskCategoriesSeeder::class);
+        $this->callUnlessSeeded(UsStatesSeeder::class);
+        $this->callUnlessSeeded(KioskSubcategoriesSeeder::class);
 
         // After all seeders: care_alliance role must match organization permissions (Spatie).
-        $this->call(CareAllianceMirrorOrganizationPermissionsSeeder::class);
+        $this->callUnlessSeeded(CareAllianceMirrorOrganizationPermissionsSeeder::class);
+    }
+
+    /**
+     * Run a seeder only if it has not completed successfully in a previous `db:seed` run.
+     */
+    protected function callUnlessSeeded(string $class): void
+    {
+        if (! SeederRunTracker::shouldRun($class)) {
+            $this->command?->info("Skipping {$class} (already seeded).");
+
+            return;
+        }
+
+        $this->call($class);
+
+        SeederRunTracker::markCompleted($class);
     }
 }

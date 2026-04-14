@@ -230,7 +230,7 @@ export default function OrganizationPage({
 
   /**
    * Normal org: hide on own profile. Care Alliance public: show Follow (toggle-favorite) whenever we can resolve
-   * the alliance slug — same POST as nonprofit profiles; supporters and organization accounts can favorite the hub.
+   * the alliance slug — same POST as nonprofit profiles; supporter accounts can follow the hub.
    */
   const showOrgFollowButton =
     (!organization.is_own_organization && !isCareAlliancePublic) ||
@@ -765,7 +765,7 @@ export default function OrganizationPage({
       routePath = `/organizations/${excelDataId}/toggle-favorite`
     }
     try {
-      const res = await axios.post(routePath)
+      const res = await axios.post(routePath, { toggle_favorite_context: 'excel' })
       if (res.data?.success !== false) {
         setFollowingStates(prev => ({ ...prev, [personId]: !prev[personId] }))
       }

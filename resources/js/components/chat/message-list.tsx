@@ -6,6 +6,7 @@ import { ScrollArea } from "@/components/chat/ui/scroll-area"
 import { ChatMessage } from "@/components/chat/chat-message"
 import { Loader2Icon, ChevronUpIcon } from 'lucide-react'
 import { Button } from "@/components/ui/button"
+import { chatAmbientBg, chatGradientBg, chatGradientBgHover } from "./chat-brand"
 
 export function MessageList() {
   const { messages, loadingMessages, hasMoreMessages, loadMoreMessages, currentUser } = useChat()
@@ -17,13 +18,14 @@ export function MessageList() {
 
   // Normalize message structure
   const normalizeMessage = useCallback((message: any) => {
+    const u = message.user || { id: 0, name: "Unknown" }
     return {
       ...message,
       message: message.content || message.message,
       user: {
-        ...message.user,
-        avatar_url: message.user.avatar || message.user.avatar_url
-      }
+        ...u,
+        avatar_url: u.avatar || u.avatar_url,
+      },
     }
   }, [])
 
@@ -116,7 +118,10 @@ const handleLoadMore = useCallback(async () => {
 
   return (
     <>
-      <ScrollArea className="h-full p-4 sm:p-6 overflow-y-auto bg-gradient-to-b from-background to-muted/20" viewportRef={scrollAreaRef}>
+      <ScrollArea
+        className={`h-full p-3 sm:p-5 md:p-6 overflow-y-auto ${chatAmbientBg}`}
+        viewportRef={scrollAreaRef}
+      >
         {hasMoreMessages && (
           <div className="flex justify-center py-3">
             <Button
@@ -124,7 +129,7 @@ const handleLoadMore = useCallback(async () => {
               size="sm"
               onClick={handleLoadMore}
               disabled={loadingMessages}
-              className="flex items-center gap-2 rounded-full hover:bg-muted border border-border/50 shadow-sm"
+              className="flex items-center gap-2 rounded-full border border-purple-500/20 bg-card/80 shadow-sm hover:bg-purple-500/10 hover:border-purple-500/30 transition-colors"
             >
               {loadingMessages ? (
                 <>
@@ -141,29 +146,29 @@ const handleLoadMore = useCallback(async () => {
           </div>
         )}
 
-        <div className="flex flex-col gap-3">
-          {messages.map((message, index) => {
-            const normalizedMessage = normalizeMessage(message)
-            return (
-              <ChatMessage
-                key={getMessageKey(message, index)}
-                message={normalizedMessage}
-                isOwnMessage={message.user.id === currentUser.id}
-              />
-            )
-          })}
-        </div>
-
-        {loadingMessages && messages.length === 0 && (
-          <div className="flex justify-center py-8">
-            <Loader2Icon className="h-6 w-6 animate-spin text-muted-foreground" />
+        {loadingMessages && messages.length === 0 ? (
+          <div className="flex justify-center items-center min-h-[200px] py-12">
+            <Loader2Icon className="h-8 w-8 animate-spin text-muted-foreground" />
+          </div>
+        ) : (
+          <div className="flex flex-col gap-3">
+            {messages.map((message, index) => {
+              const normalizedMessage = normalizeMessage(message)
+              return (
+                <ChatMessage
+                  key={getMessageKey(message, index)}
+                  message={normalizedMessage}
+                  isOwnMessage={normalizedMessage.user?.id === currentUser.id}
+                />
+              )
+            })}
           </div>
         )}
       </ScrollArea>
 
       {/* Floating "New Messages" button */}
       {showLoadButton && (
-        <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2">
+        <div className="absolute bottom-3 sm:bottom-4 left-1/2 z-10 -translate-x-1/2 px-2 max-w-[calc(100%-1rem)]">
           <Button
             variant="default"
             size="sm"
@@ -175,7 +180,7 @@ const handleLoadMore = useCallback(async () => {
                 })
               }
             }}
-            className="shadow-lg"
+            className={`shadow-lg text-white border-0 ${chatGradientBg} ${chatGradientBgHover}`}
           >
             <ChevronUpIcon className="h-4 w-4 mr-2 rotate-180" />
             New messages

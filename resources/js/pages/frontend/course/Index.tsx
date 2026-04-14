@@ -405,13 +405,13 @@ export default function FrontendCoursesListPage({
                       {/* Topic/Event Type Filter - Dynamic */}
                       {selectedType === "event" ? (
                         <div>
-                          <Label className="text-sm font-semibold text-gray-900 dark:text-white mb-2 block">Event Type</Label>
+                          <Label className="text-sm font-semibold text-gray-900 dark:text-white mb-2 block">Event Topic</Label>
                           <select
                             value={selectedEventTypeId || ""}
                             onChange={(e) => setSelectedEventTypeId(e.target.value ? Number.parseInt(e.target.value) : null)}
                             className="w-full px-3 py-2.5 h-12 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 transition-all duration-200"
                           >
-                            <option value="">All Event Types</option>
+                            <option value="">All Event Topics</option>
                             {eventTypes.map((eventType) => (
                               <option key={eventType.id} value={eventType.id}>
                                 {eventType.category ? `${eventType.category} - ${eventType.name}` : eventType.name}

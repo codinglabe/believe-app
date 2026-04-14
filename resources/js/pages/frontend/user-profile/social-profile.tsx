@@ -162,10 +162,12 @@ export default function SocialProfile() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          Accept: "application/json",
           "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]')?.getAttribute("content") || "",
           "X-Requested-With": "XMLHttpRequest",
         },
         credentials: "include",
+        body: JSON.stringify({ toggle_favorite_context: "excel" }),
       })
       if (response.ok) {
         const data = await response.json().catch(() => ({}))

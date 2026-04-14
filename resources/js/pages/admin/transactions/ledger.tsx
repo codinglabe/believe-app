@@ -1,9 +1,10 @@
 "use client"
 
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { Head, Link, router } from "@inertiajs/react"
 import { ConfirmationModal } from "@/components/admin/confirmation-modal"
 import type { UnifiedLedgerRow } from "@/components/admin/unified-ledger-card"
+import { transactionTypeBadgeClass, transactionTypeDisplayLabel } from "@/lib/transaction-type-labels"
 import { motion } from "framer-motion"
 import AppLayout from "@/layouts/app-layout"
 import { Badge } from "@/components/ui/badge"
@@ -17,13 +18,17 @@ import {
   ArrowRightLeft,
   Ban,
   AlertCircle,
+  Banknote,
   CheckCircle2,
   ChevronLeft,
   ChevronRight,
   Clock,
   Coins,
+  CreditCard,
   Info,
+  Landmark,
   Layers,
+  Minus,
   ScrollText,
   Search,
   TrendingUp,
@@ -33,6 +38,18 @@ import {
   Trash2,
   Heart,
   Building2,
+  Package,
+  Store,
+  UserCircle,
+  Download,
+  Loader2,
+  Link2,
+  IdCard,
+  Split,
+  UserPlus,
+  Cog,
+  Gift,
+  ShoppingBag,
 } from "lucide-react"
 import type { BreadcrumbItem } from "@/types"
 import { cn } from "@/lib/utils"
@@ -85,6 +102,18 @@ interface LedgerReport {
   payout_status: string | null
   organization_id: number | null
   organization_name: string | null
+  /** Marketplace orders: line subtotal, tax, shipping (from Order) */
+  subtotal_amount?: number | null
+  sales_tax_amount?: number | null
+  shipping_amount?: number | null
+  /** Selling modules: settlement splits (supplier/merchant, nonprofit, platform) */
+  supplier_payout?: number | null
+  organization_payout?: number | null
+  platform_payout?: number | null
+  /** From Order / ServiceOrder merge (Printify, merchant storefront, Service Hub seller). */
+  supplier_name?: string | null
+  supplier_type?: string | null
+  supporter_payout?: number | null
 }
 
 interface LaravelPagination<T> {
@@ -168,6 +197,96 @@ function formatAmountForLedger(pointsPay: boolean, n: number, currency: string, 
   return formatMoney(n, currency)
 }
 
+/** Workbook line amounts: prefer unified_ledger, fall back to ledger_report. */
+function ledgerReportLineAmount(
+  pointsPay: boolean,
+  u: UnifiedLedgerRow | undefined,
+  rep: LedgerReport | undefined,
+  key: "subtotal_amount" | "sales_tax_amount" | "shipping_amount",
+  cur: string,
+): ReactNode {
+  const fromU = u != null ? u[key] : undefined
+  const fromRep = rep?.[key]
+  const raw = fromU !== undefined && fromU !== null ? fromU : fromRep
+  if (raw === undefined || raw === null) return "—"
+  return formatAmountForLedger(pointsPay, Number(raw), cur, "text-muted-foreground")
+}
+
+function ledgerSupplierName(u: UnifiedLedgerRow | undefined, rep: LedgerReport | undefined): string {
+  const v = u?.supplier_name ?? rep?.supplier_name
+  return v != null && String(v).trim() !== "" ? String(v) : "—"
+}
+
+function ledgerSupplierType(u: UnifiedLedgerRow | undefined, rep: LedgerReport | undefined): string {
+  const v = u?.supplier_type ?? rep?.supplier_type
+  return v != null && String(v).trim() !== "" ? String(v) : "—"
+}
+
+/** Catalog base cost (unified_ledger); hidden for Points rows (same as detail card). */
+function ledgerSupplierCostCell(pointsPay: boolean, u: UnifiedLedgerRow | undefined, cur: string): ReactNode {
+  if (pointsPay || !u) return "—"
+  const n = u.supplier_cost_amount
+  if (n === null || n === undefined || !Number.isFinite(Number(n))) return "—"
+  return formatAmountForLedger(false, Number(n), cur, "text-muted-foreground")
+}
+
+/** Margin % + dollar markup when present (unified_ledger). */
+function ledgerMarkupCell(pointsPay: boolean, u: UnifiedLedgerRow | undefined, cur: string): ReactNode {
+  if (!u) return "—"
+  const p = u.selling_price_markup_percent
+  const a = u.selling_price_markup_amount
+  if (p == null && (a === null || a === undefined)) return "—"
+  const pctStr =
+    p != null
+      ? Number.isInteger(Number(p))
+        ? `${Number(p)}%`
+        : `${Number(p).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}%`
+      : ""
+  if (pointsPay) {
+    return pctStr || "—"
+  }
+  if (a != null && a !== undefined && Number.isFinite(Number(a))) {
+    return (
+      <span className="text-muted-foreground">
+        {pctStr ? (
+          <>
+            {pctStr}
+            <span className="mx-0.5 text-border">·</span>
+          </>
+        ) : null}
+        <span className="tabular-nums text-foreground">{formatMoney(Number(a), cur)}</span>
+      </span>
+    )
+  }
+  return pctStr || "—"
+}
+
+function ledgerPlatformFeeCell(pointsPay: boolean, u: UnifiedLedgerRow | undefined, rep: LedgerReport | undefined, cur: string): ReactNode {
+  if (pointsPay) return "—"
+  const raw = u != null ? u.biu_fee_amount : rep?.biu_fee
+  if (raw === undefined || raw === null) return "—"
+  return formatAmountForLedger(false, Number(raw), cur, "text-muted-foreground")
+}
+
+/** Workbook-style labels (all caps in UI). */
+function ledgerSupplierTypeDisplayLabel(supplierType: string): string {
+  switch (supplierType.toUpperCase()) {
+    case "PRINTIFY":
+      return "PRINTIFY"
+    case "MERCHANT_HUB":
+      return "MERCHANT HUB"
+    case "ORG_STOREFRONT":
+      return "ORGANIZATION"
+    case "MERCHANT":
+      return "STOREFRONT"
+    case "SUPPORTER":
+    case "SELLER":
+      return "SUPPORTER"
+    default:
+      return supplierType.replace(/_/g, " ").toUpperCase()
+  }
+}
+
 function formatLedgerDate(iso: string) {
   try {
     return new Date(iso).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })
@@ -210,19 +329,29 @@ function statusClass(status: string) {
   }
 }
 
-function typeClass(type: string) {
-  if (type === "refund") return "border-sky-500/40 bg-sky-500/[0.12] text-sky-900 dark:text-sky-100"
-  if (type === "withdrawal" || type === "transfer_out")
-    return "border-orange-500/40 bg-orange-500/[0.12] text-orange-900 dark:text-orange-100"
-  if (type === "deposit" || type === "transfer_in")
-    return "border-teal-500/40 bg-teal-500/[0.12] text-teal-900 dark:text-teal-100"
-  return "border-primary/35 bg-primary/12 text-primary"
+/** Normalize wallet `type` — some rows may have empty/null type in DB or legacy payloads. */
+function ledgerRowWalletType(row: LedgerRow): string {
+  const raw = row.type
+  const s = raw == null ? "" : String(raw).trim()
+  if (s !== "") {
+    return s
+  }
+  const fromUnified = row.unified_ledger?.transaction_type
+  const u = fromUnified == null ? "" : String(fromUnified).trim()
+  if (u !== "") {
+    return u
+  }
+  const meta = row.meta && typeof row.meta === "object" ? (row.meta as Record<string, unknown>) : {}
+  const metaType = meta.type
+  const m = metaType == null ? "" : String(metaType).trim()
+  return m
 }
 
 /** Wallet row type for the table: one pill only — icon + label (no stacked donation badge). */
 function ledgerRowTypeDisplay(row: LedgerRow): { label: string; className: string; icon: "arrows" | "heart" } {
   const meta = row.meta && typeof row.meta === "object" ? (row.meta as Record<string, unknown>) : {}
   const perspective = row.donation_ledger_perspective
+  const walletType = ledgerRowWalletType(row)
 
   if (meta.ledger_role === "donor_payment" || perspective === "donor") {
     return {
@@ -231,7 +360,7 @@ function ledgerRowTypeDisplay(row: LedgerRow): { label: string; className: strin
       icon: "heart",
     }
   }
-  if (perspective === "campaign" && row.type === "purchase") {
+  if (perspective === "campaign" && walletType === "purchase") {
     return {
       label: "Campaign gift",
       className: "border-amber-500/40 bg-amber-500/[0.12] text-amber-950 shadow-sm shadow-amber-500/10 dark:text-amber-100",
@@ -240,7 +369,7 @@ function ledgerRowTypeDisplay(row: LedgerRow): { label: string; className: strin
   }
 
   // Deposit / wallet credit from a donation: show a clear label — not a bare "Deposit" + mystery heart.
-  if (row.donation_badge && row.type === "deposit") {
+  if (row.donation_badge && walletType === "deposit") {
     if (perspective === "recipient_direct") {
       return {
         label: "Donation received",
@@ -265,8 +394,8 @@ function ledgerRowTypeDisplay(row: LedgerRow): { label: string; className: strin
   }
 
   return {
-    label: row.type.replace(/_/g, " "),
-    className: typeClass(row.type),
+    label: transactionTypeDisplayLabel(walletType),
+    className: transactionTypeBadgeClass(walletType === "" ? "purchase" : walletType),
     icon: "arrows",
   }
 }
@@ -274,20 +403,59 @@ function ledgerRowTypeDisplay(row: LedgerRow): { label: string; className: strin
 function moduleTableLabel(m: string) {
   const map: Record<string, string> = {
     donation: "Donation",
-    fundme: "FundMe",
+    fundme: "Support a project",
     campaign: "Campaign",
     believe_points: "Believe Points",
+    wallet: "Wallet",
     marketplace: "Marketplace",
+    gift_card: "Gift card",
     servicehub: "Service Hub",
     course: "Course",
     merchant_hub: "Merchant Hub",
     organization_subscription: "Org sub",
+    supporter_subscription: "Supporter sub",
     merchant_subscription: "Merchant sub",
     payout: "Payout",
     refund: "Refund",
     adjustment: "Adjustment",
   }
   return map[m] ?? m.replace(/_/g, " ")
+}
+
+function supplierTypeBadgeClassTable(supplierType: string) {
+  switch (supplierType.toUpperCase()) {
+    case "PRINTIFY":
+      return "border-orange-500/40 bg-orange-500/10 text-orange-950 dark:text-orange-100"
+    case "MERCHANT_HUB":
+      return "border-amber-500/45 bg-amber-500/10 text-amber-950 dark:text-amber-100"
+    case "ORG_STOREFRONT":
+    case "MERCHANT":
+      return "border-violet-500/40 bg-violet-500/10 text-violet-900 dark:text-violet-100"
+    case "SUPPORTER":
+    case "SELLER":
+      return "border-sky-500/40 bg-sky-500/10 text-sky-900 dark:text-sky-100"
+    default:
+      return "border-border/50 bg-muted/40 text-foreground"
+  }
+}
+
+function supplierTypeIconTable(supplierType: string): ReactNode {
+  const cls = "size-3 shrink-0 opacity-90"
+  switch (supplierType.toUpperCase()) {
+    case "PRINTIFY":
+      return <Package className={cls} aria-hidden />
+    case "MERCHANT_HUB":
+      return <ShoppingBag className={cls} aria-hidden />
+    case "ORG_STOREFRONT":
+    case "MERCHANT":
+      return <Store className={cls} aria-hidden />
+    case "SUPPORTER":
+      return <Heart className={cls} aria-hidden />
+    case "SELLER":
+      return <UserCircle className={cls} aria-hidden />
+    default:
+      return <Building2 className={cls} aria-hidden />
+  }
 }
 
 function providerBadgeClassTable(p: string) {
@@ -309,26 +477,164 @@ function processorFeeRailBadgeClass(kind: "stripe" | "bridge") {
 
 function partiesSummary(u: UnifiedLedgerRow | undefined): string {
   if (!u) return "—"
+  if (u.module === "believe_points") {
+    const name = (u.from_name ?? u.from_type)?.trim()
+    return name ? `Purchaser: ${name}` : "—"
+  }
   const from = u.from_name ?? u.from_type
   const to = u.to_name ?? u.to_type
   return `${from} → ${to}`
 }
 
-function isBelievePointsRow(u: UnifiedLedgerRow | undefined, paymentMethod: string | null | undefined): boolean {
-  return u?.provider === "points" || paymentMethod === "believe_points"
+function donationPaymentMethodFromMeta(meta: Record<string, unknown> | null | undefined): string {
+  const v = meta?.donation_payment_method
+  return typeof v === "string" ? v.toLowerCase() : ""
+}
+
+/** Points-style ledger row: unified provider, txn payment_method, or donation meta (recipient deposit rows). */
+function isLedgerRowPaidWithBelievePoints(
+  u: UnifiedLedgerRow | undefined,
+  paymentMethod: string | null | undefined,
+  row: Pick<LedgerRow, "meta">,
+): boolean {
+  const pm = (paymentMethod || "").toLowerCase()
+  if (pm === "believe_points" || u?.provider === "points") return true
+  const dpm = donationPaymentMethodFromMeta(row.meta)
+  return dpm === "believe_points" || dpm.includes("believe_point")
+}
+
+/** Donation module / donation badge + paid with Believe Points → show BIU Points in Provider & Payment. */
+function isDonationLedgerPointsRow(
+  u: UnifiedLedgerRow | undefined,
+  row: Pick<LedgerRow, "meta" | "donation_badge">,
+): boolean {
+  const isDonation = u?.module === "donation" || row.donation_badge === true
+  return isDonation && isLedgerRowPaidWithBelievePoints(u, row.payment_method, row)
+}
+
+function ledgerProviderDisplayLabel(u: UnifiedLedgerRow | undefined, row: LedgerRow): string {
+  if (isLedgerRowPaidWithBelievePoints(u, row.payment_method, row)) {
+    return isDonationLedgerPointsRow(u, row) ? "BIU Points" : "Believe Points"
+  }
+  if (u?.provider === "points") return "Believe Points"
+  if (!u) return "—"
+  return u.provider || "—"
+}
+
+/** Payment column badge when row is paid with Believe Points (donations → BIU Points). */
+function ledgerPointsPaymentLabel(u: UnifiedLedgerRow | undefined, row: LedgerRow): string {
+  return isDonationLedgerPointsRow(u, row) ? "BIU Points" : "Believe Points"
+}
+
+function ledgerPaymentMethodIcon(
+  paymentMethodLower: string,
+  provider: string | undefined,
+  pointsPay: boolean,
+): ReactNode {
+  if (pointsPay) {
+    return <Coins className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" aria-hidden />
+  }
+  if (provider === "stripe") {
+    return <CreditCard className="h-4 w-4 shrink-0 text-violet-600 dark:text-violet-400" aria-hidden />
+  }
+  if (provider === "bridge") {
+    return <Landmark className="h-4 w-4 shrink-0 text-sky-600 dark:text-sky-400" aria-hidden />
+  }
+  if (provider === "points") {
+    return <Coins className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" aria-hidden />
+  }
+
+  const pm = paymentMethodLower.trim()
+  const exact: Record<string, ReactNode> = {
+    stripe: <CreditCard className="h-4 w-4 shrink-0 text-violet-600 dark:text-violet-400" aria-hidden />,
+    card: <IdCard className="h-4 w-4 shrink-0 text-violet-500 dark:text-violet-300" aria-hidden />,
+    link: <Link2 className="h-4 w-4 shrink-0 text-indigo-600 dark:text-indigo-400" aria-hidden />,
+    us_bank_account: <Landmark className="h-4 w-4 shrink-0 text-sky-600 dark:text-sky-400" aria-hidden />,
+    ach: <Landmark className="h-4 w-4 shrink-0 text-sky-700 dark:text-sky-300" aria-hidden />,
+    sepa_debit: <Landmark className="h-4 w-4 shrink-0 text-teal-600 dark:text-teal-400" aria-hidden />,
+    donation: <Heart className="h-4 w-4 shrink-0 text-rose-500 dark:text-rose-400" aria-hidden />,
+    care_alliance_split: <Split className="h-4 w-4 shrink-0 text-violet-600 dark:text-violet-400" aria-hidden />,
+    believe_points: <Coins className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" aria-hidden />,
+    points: <Coins className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" aria-hidden />,
+    cash: <Banknote className="h-4 w-4 shrink-0 text-emerald-700 dark:text-emerald-300" aria-hidden />,
+    referral: <UserPlus className="h-4 w-4 shrink-0 text-cyan-600 dark:text-cyan-400" aria-hidden />,
+    free: <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" aria-hidden />,
+    system: <Cog className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />,
+    apple_pay: <Wallet className="h-4 w-4 shrink-0 text-slate-700 dark:text-slate-300" aria-hidden />,
+    google_pay: <Wallet className="h-4 w-4 shrink-0 text-blue-700 dark:text-blue-300" aria-hidden />,
+    paypal: <Wallet className="h-4 w-4 shrink-0 text-blue-600 dark:text-blue-400" aria-hidden />,
+    gift_card: <Gift className="h-4 w-4 shrink-0 text-fuchsia-600 dark:text-fuchsia-400" aria-hidden />,
+  }
+  if (pm && exact[pm]) {
+    return exact[pm]
+  }
+
+  if (paymentMethodLower.includes("stripe")) {
+    return <CreditCard className="h-4 w-4 shrink-0 text-violet-600 dark:text-violet-400" aria-hidden />
+  }
+  if (paymentMethodLower === "link" || paymentMethodLower.endsWith("_link")) {
+    return <Link2 className="h-4 w-4 shrink-0 text-indigo-600 dark:text-indigo-400" aria-hidden />
+  }
+  if (paymentMethodLower.includes("card")) {
+    return <IdCard className="h-4 w-4 shrink-0 text-violet-500 dark:text-violet-300" aria-hidden />
+  }
+  if (
+    paymentMethodLower.includes("bank") ||
+    paymentMethodLower.includes("ach") ||
+    paymentMethodLower.includes("bridge") ||
+    paymentMethodLower.includes("sepa")
+  ) {
+    return <Landmark className="h-4 w-4 shrink-0 text-sky-600 dark:text-sky-400" aria-hidden />
+  }
+  if (paymentMethodLower.includes("paypal")) {
+    return <Wallet className="h-4 w-4 shrink-0 text-blue-600 dark:text-blue-400" aria-hidden />
+  }
+  if (paymentMethodLower.includes("point") || paymentMethodLower.includes("believe_point")) {
+    return <Coins className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" aria-hidden />
+  }
+  if (paymentMethodLower.includes("donat")) {
+    return <Heart className="h-4 w-4 shrink-0 text-rose-500 dark:text-rose-400" aria-hidden />
+  }
+  if (paymentMethodLower.includes("split") || paymentMethodLower.includes("alliance")) {
+    return <Split className="h-4 w-4 shrink-0 text-violet-600 dark:text-violet-400" aria-hidden />
+  }
+  if (paymentMethodLower.includes("subscription") || paymentMethodLower.includes("plan")) {
+    return <Layers className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+  }
+  if (paymentMethodLower.includes("wallet")) {
+    return <Wallet className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+  }
+  if (paymentMethodLower.includes("cash") || paymentMethodLower.includes("money")) {
+    return <Banknote className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+  }
+  if (paymentMethodLower.includes("commission") || paymentMethodLower.includes("payout")) {
+    return <TrendingUp className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+  }
+  if (paymentMethodLower.includes("referral")) {
+    return <UserPlus className="h-4 w-4 shrink-0 text-cyan-600 dark:text-cyan-400" aria-hidden />
+  }
+
+  if (paymentMethodLower === "") {
+    return <Minus className="h-4 w-4 shrink-0 text-muted-foreground/60" aria-hidden />
+  }
+
+  return <Wallet className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
 }
 
 function moduleLabel(key: string): string {
   const map: Record<string, string> = {
     donation: "Donation",
-    fundme: "FundMe",
+    fundme: "Support a project",
     campaign: "Campaign",
     believe_points: "Believe Points",
+    wallet: "Wallet",
     marketplace: "Marketplace",
+    gift_card: "Gift card",
     servicehub: "Service hub",
     course: "Course",
     merchant_hub: "Merchant hub",
     organization_subscription: "Organization subscription",
+    supporter_subscription: "Supporter subscription",
     merchant_subscription: "Merchant subscription",
     payout: "Payout",
     refund: "Refund",
@@ -373,6 +679,7 @@ export default function TransactionLedger({
     ref: "",
   })
   const [isDeleting, setIsDeleting] = useState(false)
+  const [isExporting, setIsExporting] = useState(false)
 
   const filterSelectClass =
     "flex h-9 w-full min-w-0 rounded-md border border-border/60 bg-background px-2 py-1.5 text-xs text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25 sm:h-10 sm:text-sm"
@@ -393,6 +700,13 @@ export default function TransactionLedger({
     () => ledgerQueryParams(),
     [search, type, status, perPage, organizationId, module, period],
   )
+
+  /** Export URL; `router.visit` sends X-Inertia → server returns 409 + `Inertia::location` → full GET downloads XLSX. */
+  const ledgerExportUrl = useMemo(() => {
+    const qs = new URLSearchParams(ledgerQueryParams()).toString()
+    const base = route("admin.transactions.ledger.export")
+    return qs ? `${base}?${qs}` : base
+  }, [search, type, status, perPage, organizationId, module, period])
 
   useEffect(() => {
     if (skipSearchDebounceOnce.current) {
@@ -505,11 +819,42 @@ export default function TransactionLedger({
             </div>
             <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">Transaction ledger</h1>
             <p className="max-w-2xl text-sm text-muted-foreground sm:text-base">
-              Every wallet transaction in one place — each row includes a{" "}
-              <span className="font-medium text-foreground">unified finance summary</span> (module, From → To, gross/net,
-              Stripe/Bridge) aligned with the BIU ledger workbook and client exports.
+              Every wallet transaction in one place — columns follow the{" "}
+              <span className="font-medium text-foreground">unified ledger (all modules)</span> flow: identity, order lines
+              (subtotal, shipping, tax), supplier name/type,{" "}
+              <span className="font-medium text-foreground">catalog supplier cost</span> and{" "}
+              <span className="font-medium text-foreground">markup</span>, settlement (
+              <span className="font-medium text-foreground">supplier payout</span>, processing,{" "}
+              <span className="font-medium text-foreground">BIU platform fee</span>,{" "}
+              <span className="font-medium text-foreground">platform payout</span>), org / supporter payouts, net — plus provider,
+              payment, and related for ops.
             </p>
           </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="shrink-0 gap-2 self-start sm:self-auto min-w-[9.5rem]"
+            disabled={isExporting}
+            aria-busy={isExporting}
+            onClick={() => {
+              router.visit(ledgerExportUrl, {
+                preserveScroll: true,
+                preserveState: true,
+                onStart: () => setIsExporting(true),
+                onFinish: () => setIsExporting(false),
+                onError: () => setIsExporting(false),
+                onCancel: () => setIsExporting(false),
+              })
+            }}
+          >
+            {isExporting ? (
+              <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden />
+            ) : (
+              <Download className="h-4 w-4 shrink-0" aria-hidden />
+            )}
+            {isExporting ? "Exporting…" : "Export Excel"}
+          </Button>
         </motion.div>
 
         <motion.div
@@ -576,8 +921,8 @@ export default function TransactionLedger({
               <span className="font-normal text-muted-foreground">· {transactions.total} entries</span>
             </h2>
             <p className="max-w-2xl text-sm text-muted-foreground">
-              Scroll horizontally on smaller screens. Use <span className="font-medium text-foreground">View</span> for the full
-              unified finance row, fee breakdown, and Stripe details.
+              Scroll horizontally on smaller screens. Amounts use the unified row when present (same as the transaction detail
+              card). Use <span className="font-medium text-foreground">View</span> for full formulas and Stripe breakdown.
             </p>
           </div>
 
@@ -740,27 +1085,77 @@ export default function TransactionLedger({
               ) : (
                 <div className="overflow-hidden rounded-xl border border-border/60 bg-card shadow-sm ring-1 ring-border/20">
                   <div className="overflow-x-auto">
-                    <table className="w-full min-w-[1320px] border-collapse text-left text-base">
+                    <table className="w-full min-w-[2620px] border-collapse text-left text-base">
                       <thead>
-                        <tr className="border-b border-border/60 bg-muted/50 text-xs font-semibold uppercase tracking-wide text-muted-foreground sm:text-sm">
-                          <th className="sticky left-0 z-[1] whitespace-nowrap bg-muted/50 px-4 py-3.5 pl-4 shadow-[4px_0_12px_-4px_rgba(0,0,0,0.08)] dark:shadow-[4px_0_12px_-4px_rgba(0,0,0,0.35)]">
+                        <tr className="border-b border-border/60 bg-muted text-xs font-semibold uppercase tracking-wide text-muted-foreground sm:text-sm">
+                          <th
+                            className="sticky left-0 z-[2] w-64 min-w-[16rem] max-w-[20rem] bg-muted px-3 py-3.5 pl-3 text-left align-top shadow-[4px_0_12px_-4px_rgba(0,0,0,0.08)] dark:shadow-[4px_0_12px_-4px_rgba(0,0,0,0.35)] sm:px-4 sm:pl-4"
+                            title="Transaction type (deposit, purchase, donation, …)"
+                          >
+                            Transaction
+                          </th>
+                          <th
+                            className="sticky left-64 z-[2] w-[4.75rem] min-w-[4.25rem] bg-muted py-3.5 pl-2 pr-1 text-left font-mono normal-case shadow-[4px_0_12px_-4px_rgba(0,0,0,0.06)] dark:shadow-[4px_0_12px_-4px_rgba(0,0,0,0.3)]"
+                            title="Internal transaction id"
+                          >
                             Txn
                           </th>
                           <th className="whitespace-nowrap px-4 py-3.5">When</th>
                           <th className="min-w-[8rem] whitespace-nowrap px-4 py-3.5">Reference</th>
-                          <th className="whitespace-nowrap px-4 py-3.5">Type</th>
                           <th className="whitespace-nowrap px-4 py-3.5">Status</th>
                           <th className="whitespace-nowrap px-4 py-3.5">Module</th>
                           <th className="min-w-[7rem] whitespace-nowrap px-4 py-3.5">Event</th>
                           <th className="min-w-[12rem] px-4 py-3.5">From → To</th>
-                          <th className="whitespace-nowrap px-4 py-3.5 text-right">Amount</th>
+                          <th className="whitespace-nowrap px-4 py-3.5 text-right" title="Wallet ledger line amount">
+                            Wallet amt
+                          </th>
                           <th className="whitespace-nowrap px-4 py-3.5 text-right">Gross</th>
+                          <th className="whitespace-nowrap px-4 py-3.5 text-right" title="Product subtotal (order lines)">
+                            Subtotal
+                          </th>
+                          <th className="whitespace-nowrap px-4 py-3.5 text-right">Shipping</th>
+                          <th className="whitespace-nowrap px-4 py-3.5 text-right">Sales tax</th>
+                          <th className="min-w-[7rem] px-4 py-3.5" title="From marketplace order (Printify, merchant) or Service Hub seller">
+                            Supplier name
+                          </th>
+                          <th
+                            className="min-w-[6rem] whitespace-nowrap px-4 py-3.5"
+                            title="PRINTIFY, MERCHANT HUB, ORGANIZATION, SUPPORTER (Service Hub & courses)"
+                          >
+                            Supplier type
+                          </th>
+                          <th
+                            className="whitespace-nowrap px-4 py-3.5 text-right"
+                            title="Catalog base cost (Subtotal ÷ (1 + markup%) on lines; or stored source cost)"
+                          >
+                            Supplier cost
+                          </th>
+                          <th className="min-w-[6.5rem] whitespace-nowrap px-4 py-3.5 text-right" title="Margin % and dollar markup on catalog lines">
+                            Markup
+                          </th>
+                          <th className="whitespace-nowrap px-4 py-3.5 text-right" title="Settlement paid to supplier / merchant">
+                            Supplier payout
+                          </th>
+                          <th className="whitespace-nowrap px-4 py-3.5 text-right" title="Stripe + Bridge processing (detail on hover)">
+                            Processing
+                          </th>
+                          <th className="whitespace-nowrap px-4 py-3.5 text-right" title="BIU / platform fee on the order (not platform share)">
+                            Platform fee
+                          </th>
+                          <th className="whitespace-nowrap px-4 py-3.5 text-right" title="Platform share / payout retained">
+                            Platform payout
+                          </th>
+                          <th className="whitespace-nowrap px-4 py-3.5 text-right" title="Organization / nonprofit payout">
+                            Org payout
+                          </th>
+                          <th className="whitespace-nowrap px-4 py-3.5 text-right" title="Instructor / supporter share when applicable">
+                            Supporter payout
+                          </th>
                           <th className="whitespace-nowrap px-4 py-3.5 text-right">Net</th>
-                          <th className="min-w-[10rem] whitespace-nowrap px-4 py-3.5 text-right">Stripe / Bridge</th>
                           <th className="whitespace-nowrap px-4 py-3.5">Provider</th>
-                          <th className="min-w-[6rem] whitespace-nowrap px-4 py-3.5">Payment</th>
+                          <th className="min-w-[8.5rem] whitespace-nowrap px-4 py-4">Payment</th>
                           <th className="min-w-[8rem] px-4 py-3.5">Related</th>
-                          <th className="sticky right-0 z-[1] whitespace-nowrap bg-muted/50 px-4 py-3.5 pr-4 text-right shadow-[-4px_0_12px_-4px_rgba(0,0,0,0.08)] dark:shadow-[-4px_0_12px_-4px_rgba(0,0,0,0.35)]">
+                          <th className="sticky right-0 z-[1] whitespace-nowrap bg-muted px-4 py-3.5 pr-4 text-right shadow-[-4px_0_12px_-4px_rgba(0,0,0,0.08)] dark:shadow-[-4px_0_12px_-4px_rgba(0,0,0,0.35)]">
                             Actions
                           </th>
                         </tr>
@@ -775,23 +1170,78 @@ export default function TransactionLedger({
                           const netDisplayPlain = u != null ? u.net_amount : rep?.net_to_organization ?? null
                           const stripeFeeAmt = u != null ? u.stripe_fee_amount : rep?.stripe_fee ?? 0
                           const bridgeFeeAmt = u != null ? u.bridge_fee_amount : rep?.bridge_fee ?? 0
-                          const pointsPay = isBelievePointsRow(u, row.payment_method)
+                          const supplierPayout = u != null ? u.supplier_payout_amount : rep?.supplier_payout ?? null
+                          const orgPayout = u != null ? u.organization_payout_amount : rep?.organization_payout ?? null
+                          const platformPayout = u != null ? u.platform_payout_amount : rep?.platform_payout ?? null
+                          const supporterPayout = u != null ? u.supporter_payout_amount : rep?.supporter_payout ?? null
+                          const pointsPay = isLedgerRowPaidWithBelievePoints(u, row.payment_method, row)
+                          const processorTotal = pointsPay
+                            ? 0
+                            : u != null
+                              ? Number(u.processor_fee_amount)
+                              : Number(rep?.stripe_fee ?? 0) + Number(rep?.bridge_fee ?? 0)
+                          const processingTitle = !pointsPay
+                            ? `Stripe ${formatMoney(stripeFeeAmt, cur)} · Bridge ${formatMoney(bridgeFeeAmt, cur)}`
+                            : undefined
+                          const supplierNameCell = ledgerSupplierName(u, rep)
+                          const supplierTypeCell = ledgerSupplierType(u, rep)
 
                           return (
                             <tr
                               key={row.id}
                               className={cn(
-                                "border-b border-border/40 transition-colors hover:bg-muted/30",
-                                idx % 2 === 1 && "bg-muted/[0.2]",
+                                "border-b border-border/40 transition-colors hover:bg-muted/30 [&>td]:align-middle",
+                                idx % 2 === 1 && "bg-muted",
                               )}
                             >
                               <td
                                 className={cn(
-                                  "sticky left-0 z-[1] whitespace-nowrap border-r border-border/30 px-4 py-3 pl-4 font-mono text-sm font-semibold tabular-nums shadow-[4px_0_12px_-4px_rgba(0,0,0,0.06)] dark:shadow-[4px_0_12px_-4px_rgba(0,0,0,0.3)]",
-                                  idx % 2 === 1 ? "bg-muted/[0.25]" : "bg-card",
+                                  "sticky left-0 z-[2] w-64 min-w-[16rem] max-w-[20rem] border-r border-border/30 px-3 py-3 pl-3 align-top shadow-[4px_0_12px_-4px_rgba(0,0,0,0.06)] dark:shadow-[4px_0_12px_-4px_rgba(0,0,0,0.3)] sm:px-4 sm:pl-4",
+                                  idx % 2 === 1 ? "bg-muted" : "bg-card",
                                 )}
                               >
-                                <span className="text-foreground">#{row.id}</span>
+                                <Tooltip delayDuration={350}>
+                                  <TooltipTrigger asChild>
+                                    <span
+                                      className={cn(
+                                        "inline-flex w-fit max-w-full min-w-0 cursor-pointer items-center gap-1.5 rounded-full border px-2 py-1.5 text-left text-xs font-semibold uppercase leading-tight tracking-wide sm:px-2.5 sm:text-sm",
+                                        typeDisplay.className,
+                                      )}
+                                    >
+                                      {typeDisplay.icon === "heart" ? (
+                                        <Heart className="h-3.5 w-3.5 shrink-0 opacity-90 sm:h-4 sm:w-4" aria-hidden />
+                                      ) : (
+                                        <ArrowRightLeft className="h-3.5 w-3.5 shrink-0 opacity-80 sm:h-4 sm:w-4" aria-hidden />
+                                      )}
+                                      <span className="min-w-0 max-w-[11rem] truncate sm:max-w-[14rem]">{typeDisplay.label}</span>
+                                    </span>
+                                  </TooltipTrigger>
+                                  <TooltipContent
+                                    side="top"
+                                    sideOffset={8}
+                                    className="max-w-xs px-3 py-2 text-left text-xs font-medium normal-case leading-snug tracking-normal text-popover-foreground"
+                                  >
+                                    {row.donation_badge && row.donation_badge_label ? (
+                                      <>
+                                        <span className="font-semibold uppercase tracking-wide">{typeDisplay.label}</span>
+                                        <span className="mt-1 block text-[11px] font-normal text-muted-foreground">
+                                          {row.donation_badge_label}
+                                        </span>
+                                      </>
+                                    ) : (
+                                      typeDisplay.label
+                                    )}
+                                  </TooltipContent>
+                                </Tooltip>
+                              </td>
+                              <td
+                                className={cn(
+                                  "sticky left-64 z-[2] w-[4.75rem] min-w-[4.25rem] border-r border-border/30 py-3 pl-2 pr-1 text-left font-mono text-sm font-semibold tabular-nums text-foreground shadow-[4px_0_12px_-4px_rgba(0,0,0,0.05)] dark:shadow-[4px_0_12px_-4px_rgba(0,0,0,0.28)]",
+                                  idx % 2 === 1 ? "bg-muted" : "bg-card",
+                                )}
+                                title={`Transaction id ${row.id}`}
+                              >
+                                #{row.id}
                               </td>
                               <td className="whitespace-nowrap px-4 py-3 text-sm text-muted-foreground">
                                 {rep ? formatLedgerDate(rep.date) : new Date(row.created_at).toLocaleString()}
@@ -799,37 +1249,15 @@ export default function TransactionLedger({
                               <td className="max-w-[11rem] truncate px-4 py-3 font-mono text-sm text-foreground" title={row.transaction_id}>
                                 {row.transaction_id}
                               </td>
-                              <td className="px-4 py-3 align-middle">
-                                <div className="flex max-w-[15rem] flex-nowrap items-center">
-                                  <span
-                                    className={cn(
-                                      "inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-semibold uppercase leading-tight tracking-wide",
-                                      typeDisplay.className,
-                                    )}
-                                    title={
-                                      row.donation_badge && row.donation_badge_label
-                                        ? `${typeDisplay.label} — ${row.donation_badge_label}`
-                                        : typeDisplay.label
-                                    }
-                                  >
-                                    {typeDisplay.icon === "heart" ? (
-                                      <Heart className="h-4 w-4 shrink-0 opacity-90" aria-hidden />
-                                    ) : (
-                                      <ArrowRightLeft className="h-4 w-4 shrink-0 opacity-80" aria-hidden />
-                                    )}
-                                    <span className="truncate">{typeDisplay.label}</span>
-                                  </span>
-                                </div>
-                              </td>
                               <td className="whitespace-nowrap px-4 py-3">
                                 <span
                                   className={cn(
-                                    "inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-semibold capitalize",
+                                    "inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-semibold capitalize leading-none",
                                     statusClass(row.status),
                                   )}
                                 >
                                   {statusIcon(row.status)}
-                                  {row.status}
+                                  <span className="leading-none">{row.status}</span>
                                 </span>
                               </td>
                               <td className="whitespace-nowrap px-4 py-3 text-sm">
@@ -853,52 +1281,93 @@ export default function TransactionLedger({
                                   ? formatAmountForLedger(pointsPay, Number(grossDisplayPlain), cur, "text-muted-foreground")
                                   : "—"}
                               </td>
+                              <td className="whitespace-nowrap px-4 py-3 text-right text-sm tabular-nums text-muted-foreground">
+                                {ledgerReportLineAmount(pointsPay, u, rep, "subtotal_amount", cur)}
+                              </td>
+                              <td className="whitespace-nowrap px-4 py-3 text-right text-sm tabular-nums text-muted-foreground">
+                                {ledgerReportLineAmount(pointsPay, u, rep, "shipping_amount", cur)}
+                              </td>
+                              <td className="whitespace-nowrap px-4 py-3 text-right text-sm tabular-nums text-muted-foreground">
+                                {ledgerReportLineAmount(pointsPay, u, rep, "sales_tax_amount", cur)}
+                              </td>
+                              <td
+                                className="max-w-[11rem] truncate px-4 py-3 text-sm text-foreground"
+                                title={supplierNameCell !== "—" ? supplierNameCell : undefined}
+                              >
+                                {supplierNameCell}
+                              </td>
+                              <td className="px-4 py-3">
+                                {supplierTypeCell === "—" ? (
+                                  <span className="text-sm text-muted-foreground">—</span>
+                                ) : (
+                                  <Badge
+                                    variant="outline"
+                                    title={supplierTypeCell}
+                                    className={cn(
+                                      "h-auto max-w-[min(100%,10.5rem)] justify-start gap-1.5 px-2 py-1.5 font-mono text-[10px] font-semibold uppercase leading-none tracking-wide",
+                                      supplierTypeBadgeClassTable(supplierTypeCell),
+                                    )}
+                                  >
+                                    {supplierTypeIconTable(supplierTypeCell)}
+                                    <span className="min-w-0 truncate">{ledgerSupplierTypeDisplayLabel(supplierTypeCell)}</span>
+                                  </Badge>
+                                )}
+                              </td>
+                              <td className="whitespace-nowrap px-4 py-3 text-right text-sm tabular-nums text-muted-foreground">
+                                {ledgerSupplierCostCell(pointsPay, u, cur)}
+                              </td>
+                              <td className="whitespace-nowrap px-4 py-3 text-right text-sm tabular-nums text-muted-foreground">
+                                {ledgerMarkupCell(pointsPay, u, cur)}
+                              </td>
+                              <td className="whitespace-nowrap px-4 py-3 text-right text-sm tabular-nums text-muted-foreground">
+                                {supplierPayout != null && supplierPayout !== undefined
+                                  ? formatAmountForLedger(pointsPay, Number(supplierPayout), cur, "text-muted-foreground")
+                                  : "—"}
+                              </td>
+                              <td
+                                className="whitespace-nowrap px-4 py-3 text-right text-sm tabular-nums"
+                                title={processingTitle}
+                              >
+                                {pointsPay ? (
+                                  <Badge
+                                    variant="outline"
+                                    className={cn(
+                                      "inline-flex items-center justify-start gap-1 tabular-nums text-[10px] font-medium leading-none",
+                                      providerBadgeClassTable("points"),
+                                    )}
+                                  >
+                                    <Coins className="h-3 w-3 shrink-0" aria-hidden />
+                                    <span className="leading-none">No Fee</span>
+                                  </Badge>
+                                ) : (
+                                  <span className="text-muted-foreground">{formatMoney(processorTotal, cur)}</span>
+                                )}
+                              </td>
+                              <td className="whitespace-nowrap px-4 py-3 text-right text-sm tabular-nums text-muted-foreground">
+                                {ledgerPlatformFeeCell(pointsPay, u, rep, cur)}
+                              </td>
+                              <td className="whitespace-nowrap px-4 py-3 text-right text-sm tabular-nums text-muted-foreground">
+                                {platformPayout != null && platformPayout !== undefined
+                                  ? formatAmountForLedger(pointsPay, Number(platformPayout), cur, "text-muted-foreground")
+                                  : "—"}
+                              </td>
+                              <td className="whitespace-nowrap px-4 py-3 text-right text-sm tabular-nums text-muted-foreground">
+                                {orgPayout != null && orgPayout !== undefined
+                                  ? formatAmountForLedger(pointsPay, Number(orgPayout), cur, "text-muted-foreground")
+                                  : "—"}
+                              </td>
+                              <td className="whitespace-nowrap px-4 py-3 text-right text-sm tabular-nums text-muted-foreground">
+                                {supporterPayout != null && supporterPayout !== undefined
+                                  ? formatAmountForLedger(pointsPay, Number(supporterPayout), cur, "text-muted-foreground")
+                                  : "—"}
+                              </td>
                               <td className="whitespace-nowrap px-4 py-3 text-right text-sm font-semibold tabular-nums text-foreground">
                                 {netDisplayPlain != null && netDisplayPlain !== undefined
                                   ? formatAmountForLedger(pointsPay, Number(netDisplayPlain), cur)
                                   : "—"}
                               </td>
-                              <td className="px-4 py-3 text-right align-middle">
-                                {pointsPay ? (
-                                  <Badge
-                                    variant="outline"
-                                    className={cn(
-                                      "inline-flex items-center gap-1 tabular-nums text-[10px] font-medium leading-tight",
-                                      providerBadgeClassTable("points"),
-                                    )}
-                                  >
-                                    <Coins className="h-3 w-3 shrink-0" aria-hidden />
-                                    No Fee
-                                  </Badge>
-                                ) : (
-                                  <div className="inline-flex flex-col items-end gap-1.5">
-                                    <Badge
-                                      variant="outline"
-                                      className={cn("justify-end tabular-nums text-xs font-semibold", processorFeeRailBadgeClass("stripe"))}
-                                    >
-                                      Stripe {formatMoney(stripeFeeAmt, cur)}
-                                    </Badge>
-                                    <Badge
-                                      variant="outline"
-                                      className={cn("justify-end tabular-nums text-xs font-semibold", processorFeeRailBadgeClass("bridge"))}
-                                    >
-                                      Bridge {formatMoney(bridgeFeeAmt, cur)}
-                                    </Badge>
-                                  </div>
-                                )}
-                              </td>
                               <td className="whitespace-nowrap px-4 py-3">
-                                {u ? (
-                                  <span
-                                    className={cn(
-                                      "inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium capitalize",
-                                      providerBadgeClassTable(u.provider),
-                                    )}
-                                  >
-                                    {u.provider === "points" && <Coins className="h-4 w-4 shrink-0" aria-hidden />}
-                                    {u.provider === "points" ? "Believe Points" : u.provider}
-                                  </span>
-                                ) : pointsPay ? (
+                                {pointsPay ? (
                                   <span
                                     className={cn(
                                       "inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium",
@@ -906,28 +1375,48 @@ export default function TransactionLedger({
                                     )}
                                   >
                                     <Coins className="h-4 w-4 shrink-0" aria-hidden />
-                                    Believe Points
+                                    {ledgerProviderDisplayLabel(u, row)}
+                                  </span>
+                                ) : u ? (
+                                  <span
+                                    className={cn(
+                                      "inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium",
+                                      providerBadgeClassTable(u.provider),
+                                      u.provider !== "points" && "capitalize",
+                                    )}
+                                  >
+                                    {u.provider === "points" && <Coins className="h-4 w-4 shrink-0" aria-hidden />}
+                                    {ledgerProviderDisplayLabel(u, row)}
                                   </span>
                                 ) : (
                                   <span className="text-sm text-muted-foreground">—</span>
                                 )}
                               </td>
-                              <td className="max-w-[10rem] px-4 py-3">
-                                {row.payment_method === "believe_points" ? (
+                              <td className="whitespace-nowrap px-4 py-4">
+                                <span
+                                  className={cn(
+                                    "inline-flex min-h-[1.5rem] items-center gap-2 text-sm leading-normal",
+                                    pointsPay ? "text-foreground" : "text-muted-foreground",
+                                  )}
+                                >
+                                  {ledgerPaymentMethodIcon(
+                                    (row.payment_method || "").toLowerCase(),
+                                    u?.provider,
+                                    pointsPay,
+                                  )}
                                   <span
                                     className={cn(
-                                      "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-xs font-semibold",
-                                      providerBadgeClassTable("points"),
+                                      "whitespace-nowrap",
+                                      !pointsPay && row.payment_method && "capitalize",
                                     )}
                                   >
-                                    <Coins className="h-3.5 w-3.5 shrink-0" aria-hidden />
-                                    Believe Points
+                                    {pointsPay
+                                      ? ledgerPointsPaymentLabel(u, row)
+                                      : row.payment_method
+                                        ? row.payment_method.replace(/_/g, " ")
+                                        : "—"}
                                   </span>
-                                ) : row.payment_method ? (
-                                  <span className="text-sm capitalize text-muted-foreground">{row.payment_method.replace(/_/g, " ")}</span>
-                                ) : (
-                                  <span className="text-sm text-muted-foreground">—</span>
-                                )}
+                                </span>
                               </td>
                               <td className="max-w-[11rem] px-4 py-3">
                                 <div className="flex items-start gap-1.5">
@@ -966,7 +1455,7 @@ export default function TransactionLedger({
                               <td
                                 className={cn(
                                   "sticky right-0 z-[1] whitespace-nowrap border-l border-border/30 px-4 py-3 pr-4 text-right shadow-[-4px_0_12px_-4px_rgba(0,0,0,0.06)] dark:shadow-[-4px_0_12px_-4px_rgba(0,0,0,0.3)]",
-                                  idx % 2 === 1 ? "bg-muted/[0.25]" : "bg-card",
+                                  idx % 2 === 1 ? "bg-muted" : "bg-card",
                                 )}
                               >
                                 <div className="inline-flex flex-col items-end gap-1.5 sm:flex-row sm:items-center sm:justify-end sm:gap-2">

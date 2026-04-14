@@ -914,6 +914,18 @@ export default function OrderDetail() {
                         <span className="text-muted-foreground">Service Price</span>
                         <span className="font-medium">${order.amount.toFixed(2)}</span>
                       </div>
+                      {order.salesTax > 0 && (
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Sales tax (Stripe)</span>
+                          <span className="font-medium">${order.salesTax.toFixed(2)}</span>
+                        </div>
+                      )}
+                      {order.transactionFee > 0 && (
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Stripe processing fee</span>
+                          <span className="font-medium">${order.transactionFee.toFixed(2)}</span>
+                        </div>
+                      )}
                       <div className="border-t pt-4 flex justify-between">
                         <span className="font-semibold">Total Paid</span>
                         <span className="font-bold text-lg">${order.total.toFixed(2)}</span>
@@ -933,12 +945,15 @@ export default function OrderDetail() {
                         <span className="font-medium">-${order.platformFee.toFixed(2)}</span>
                       </div>
                       <div className="flex justify-between text-red-600 dark:text-red-400">
-                        <span className="text-muted-foreground">Transaction Fee</span>
+                        <span className="text-muted-foreground">Stripe processing fee</span>
                         <span className="font-medium">-${order.transactionFee.toFixed(2)}</span>
                       </div>
                       {order.salesTax > 0 && (
                         <div className="flex justify-between text-red-600 dark:text-red-400">
-                          <span className="text-muted-foreground">Sales Tax ({order.salesTaxRate}%)</span>
+                          <span className="text-muted-foreground">
+                            Sales tax (Stripe)
+                            {order.salesTaxRate > 0 ? ` (${order.salesTaxRate}%)` : ''}
+                          </span>
                           <span className="font-medium">-${order.salesTax.toFixed(2)}</span>
                         </div>
                       )}

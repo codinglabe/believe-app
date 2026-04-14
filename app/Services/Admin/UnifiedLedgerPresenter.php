@@ -2,6 +2,7 @@
 
 namespace App\Services\Admin;
 
+use App\Models\Order;
 use App\Models\Organization;
 use App\Models\Transaction;
 use App\Models\User;
@@ -27,14 +28,25 @@ class UnifiedLedgerPresenter
     ): array {
         $meta = is_array($t->meta) ? $t->meta : [];
         $sourceType = (string) ($ledgerReport['source_type'] ?? 'ledger_unclassified');
-        $module = $this->resolveModule($t, $sourceType);
+        $module = $this->resolveModule($t, $sourceType, $ledgerReport);
         $transactionType = $this->resolveTransactionType($t, $module, $sourceType, $donationPerspective);
         $parties = $this->resolveParties($t, $donationPayload, $donationPerspective, $ledgerReport, $related, $module);
         $amounts = $this->resolveAmounts($t, $meta, $ledgerReport);
+        $sellingPayouts = $this->resolveSellingPayoutAmounts($ledgerReport);
         $provider = $this->resolveProvider($t, $meta, $ledgerReport, $donationPayload);
         $reference = $this->resolveExternalReference($t, $meta);
         $relatedRecord = $this->resolveRelatedRecordLabel($t, $donationPayload, $related, $sourceType);
         $when = $t->processed_at ?? $t->created_at;
+        $orderForMarkup = $this->resolveOrderForSellingPriceMarkup($t);
+        $sellingPriceMarkupPercent = $orderForMarkup !== null
+            ? $this->resolveSellingPriceMarkupPercentFromOrder($orderForMarkup)
+            : null;
+        $sellingPriceMarkupAmount = $orderForMarkup !== null
+            ? $this->resolveSellingPriceMarkupAmountFromOrder($orderForMarkup)
+            : null;
+        $supplierCostAmount = $orderForMarkup !== null
+            ? $this->resolveSupplierCostAmountFromOrder($orderForMarkup)
+            : null;
 
         return [
             'txn_id' => $t->id,
@@ -62,16 +74,169 @@ class UnifiedLedgerPresenter
             'split_amount' => $amounts['split'],
             'refund_amount' => $amounts['refund'],
             'net_amount' => $amounts['net'],
+            'supplier_payout_amount' => $sellingPayouts['supplier'],
+            'organization_payout_amount' => $sellingPayouts['organization'],
+            'platform_payout_amount' => $sellingPayouts['platform'],
+            'supporter_payout_amount' => $sellingPayouts['supporter'],
             'currency' => $t->currency ?? 'USD',
             'status' => $t->status,
             'provider' => $provider,
             'reference' => $reference,
             'organization_id' => $ledgerReport['organization_id'] ?? null,
             'organization_name' => $ledgerReport['organization_name'] ?? null,
+            'supplier_name' => isset($ledgerReport['supplier_name']) && $ledgerReport['supplier_name'] !== ''
+                ? (string) $ledgerReport['supplier_name']
+                : null,
+            'supplier_type' => isset($ledgerReport['supplier_type']) && $ledgerReport['supplier_type'] !== ''
+                ? (string) $ledgerReport['supplier_type']
+                : null,
+            /** First marketplace line with a catalog Product: `products.profit_margin_percentage` (Printify / manual / hub resale). */
+            'selling_price_markup_percent' => $sellingPriceMarkupPercent,
+            /** Sum of (line retail − line cost) for lines with a Product + margin; cost from `source_cost`×qty or implied from % (retail×m/(100+m)). */
+            'selling_price_markup_amount' => $sellingPriceMarkupAmount,
+            /** Sum of supplier base cost for those catalog lines: `source_cost`×qty, else line ÷ (1 + %÷100); pairs with markup (Subtotal_line ≈ Cost + Markup). */
+            'supplier_cost_amount' => $supplierCostAmount,
         ];
     }
 
-    private function resolveModule(Transaction $t, string $sourceType): string
+    /**
+     * First line with a linked Product that has profit_margin_percentage.
+     */
+    private function resolveSellingPriceMarkupPercentFromOrder(Order $order): ?float
+    {
+        $order->loadMissing(['items.product']);
+        foreach ($order->items as $item) {
+            $product = $item->product;
+            if ($product !== null && $product->profit_margin_percentage !== null) {
+                return round((float) $product->profit_margin_percentage, 2);
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Total catalog markup dollars on the order: per line, if Product has profit_margin_percentage,
+     * use source_cost × qty vs line subtotal when source_cost is set; else retail × m/(100+m) when m > 0.
+     */
+    private function resolveSellingPriceMarkupAmountFromOrder(Order $order): ?float
+    {
+        $order->loadMissing(['items.product']);
+        $sum = 0.0;
+        $found = false;
+        foreach ($order->items as $item) {
+            $product = $item->product;
+            if ($product === null || $product->profit_margin_percentage === null) {
+                continue;
+            }
+            $m = (float) $product->profit_margin_percentage;
+            if ($m < 0) {
+                continue;
+            }
+            $lineSubtotal = (float) $item->subtotal;
+            $qty = max(1, (int) $item->quantity);
+            if ($lineSubtotal <= 0) {
+                continue;
+            }
+            $found = true;
+            $sourceCost = $product->source_cost;
+            if ($sourceCost !== null && (float) $sourceCost >= 0) {
+                $totalCost = (float) $sourceCost * $qty;
+                $sum += max(0.0, round($lineSubtotal - $totalCost, 2));
+            } elseif ($m > 0) {
+                $sum += round($lineSubtotal * ($m / (100.0 + $m)), 2);
+            }
+        }
+
+        return $found ? round($sum, 2) : null;
+    }
+
+    /**
+     * Per catalog line with margin: supplier cost = `source_cost`×qty, or retail ÷ (1 + markup%÷100) when cost is not stored.
+     * Sum of line costs for lines included in {@see resolveSellingPriceMarkupAmountFromOrder()}.
+     */
+    private function resolveSupplierCostAmountFromOrder(Order $order): ?float
+    {
+        $order->loadMissing(['items.product']);
+        $sum = 0.0;
+        $found = false;
+        foreach ($order->items as $item) {
+            $product = $item->product;
+            if ($product === null || $product->profit_margin_percentage === null) {
+                continue;
+            }
+            $m = (float) $product->profit_margin_percentage;
+            if ($m < 0) {
+                continue;
+            }
+            $lineSubtotal = (float) $item->subtotal;
+            $qty = max(1, (int) $item->quantity);
+            if ($lineSubtotal <= 0) {
+                continue;
+            }
+            $found = true;
+            $sourceCost = $product->source_cost;
+            if ($sourceCost !== null && (float) $sourceCost >= 0) {
+                $sum += round((float) $sourceCost * $qty, 2);
+            } elseif ($m > 0) {
+                $sum += round($lineSubtotal / (1.0 + $m / 100.0), 2);
+            } else {
+                $sum += round($lineSubtotal, 2);
+            }
+        }
+
+        return $found ? round($sum, 2) : null;
+    }
+
+    private function resolveOrderForSellingPriceMarkup(Transaction $t): ?Order
+    {
+        $meta = is_array($t->meta) ? $t->meta : [];
+        $rt = $t->related_type ? ltrim((string) $t->related_type, '\\') : '';
+        if (($rt === Order::class || str_ends_with($rt, 'Order')) && $t->related_id !== null && (int) $t->related_id > 0) {
+            return Order::query()->find((int) $t->related_id);
+        }
+        if (! empty($meta['order_id'])) {
+            $oid = (int) $meta['order_id'];
+            if ($oid > 0) {
+                return Order::query()->find($oid);
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Supplier / nonprofit / platform settlement lines for selling modules (marketplace, Service Hub, etc.).
+     *
+     * @param  array<string, mixed>  $ledgerReport
+     * @return array{supplier: float|null, organization: float|null, platform: float|null, supporter: float|null}
+     */
+    private function resolveSellingPayoutAmounts(array $ledgerReport): array
+    {
+        $pick = function (string $key) use ($ledgerReport): ?float {
+            if (! array_key_exists($key, $ledgerReport)) {
+                return null;
+            }
+            $v = $ledgerReport[$key];
+            if ($v === null || $v === '') {
+                return null;
+            }
+
+            return round((float) $v, 2);
+        };
+
+        return [
+            'supplier' => $pick('supplier_payout'),
+            'organization' => $pick('organization_payout'),
+            'platform' => $pick('platform_payout'),
+            'supporter' => $pick('supporter_payout'),
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $ledgerReport
+     */
+    private function resolveModule(Transaction $t, string $sourceType, array $ledgerReport = []): string
     {
         $rt = $t->related_type ? ltrim((string) $t->related_type, '\\') : '';
         $base = $rt !== '' ? class_basename($rt) : '';
@@ -88,29 +253,37 @@ class UnifiedLedgerPresenter
             'fundme_donation' => 'fundme',
             'care_alliance_donation' => 'campaign',
             'believe_points_purchase' => 'believe_points',
-            'order' => $base === 'MerchantHubOfferRedemption' ? 'merchant_hub' : 'marketplace',
+            'order' => $base === 'MerchantHubOfferRedemption'
+                ? 'merchant_hub'
+                : ($this->isGiftCardPurchaseContext($t)
+                    ? 'gift_card'
+                    : ($this->isOrgMarketingCommsProductType($this->effectiveWalletProductType($t))
+                        ? 'organization_subscription'
+                        : 'marketplace')),
             'service_order' => 'servicehub',
             'enrollment' => 'course',
-            'plan_subscription', 'wallet_plan_subscription' => 'organization_subscription',
-            'gift_card', 'raffle' => 'marketplace',
+            'plan_subscription', 'wallet_plan_subscription' => 'supporter_subscription',
+            'gift_card' => 'gift_card',
+            'raffle' => 'marketplace',
+            'merchant_hub_redemption', 'merchant_hub_referral' => 'merchant_hub',
             'commission' => $this->moduleForCommission($t),
             'ledger_unclassified' => match ($base) {
                 'Enrollment' => 'course',
-                'Plan' => 'organization_subscription',
-                'GiftCard' => 'marketplace',
+                'Plan' => 'supporter_subscription',
+                'GiftCard' => 'gift_card',
                 'Raffle' => 'marketplace',
                 'MerchantHubOfferRedemption' => 'merchant_hub',
                 'MerchantHubReferralReward' => 'merchant_hub',
-                default => $this->moduleFromMetaOrType($t),
+                default => $this->moduleFromMetaOrType($t, $ledgerReport),
             },
             default => match ($base) {
                 'Enrollment' => 'course',
-                'Plan' => 'organization_subscription',
-                'GiftCard' => 'marketplace',
+                'Plan' => 'supporter_subscription',
+                'GiftCard' => 'gift_card',
                 'Raffle' => 'marketplace',
                 'MerchantHubOfferRedemption' => 'merchant_hub',
                 'MerchantHubReferralReward' => 'merchant_hub',
-                default => $this->moduleFromMetaOrType($t),
+                default => $this->moduleFromMetaOrType($t, $ledgerReport),
             },
         };
     }
@@ -126,45 +299,296 @@ class UnifiedLedgerPresenter
         return 'organization_subscription';
     }
 
-    private function moduleFromMetaOrType(Transaction $t): string
+    /**
+     * Real product line for ledger classification. The DB `transactions.type` column was historically a
+     * short ENUM, so values like `newsletter_pro_targeting_lifetime` were stored as `purchase`. Prefer
+     * `meta['type']` (Stripe metadata echoed into meta) and known description patterns for legacy rows.
+     */
+    private function effectiveWalletProductType(Transaction $t): string
     {
         $meta = is_array($t->meta) ? $t->meta : [];
-        $type = $t->type ?? '';
+        $direct = strtolower(trim((string) ($t->type ?? '')));
+        $fromMeta = strtolower(trim((string) ($meta['type'] ?? '')));
+
+        $canonical = ['newsletter_pro_targeting_lifetime', 'sms_purchase', 'email_purchase', 'gift_card_purchase', 'fundme_donation'];
+        if (in_array($fromMeta, $canonical, true)) {
+            return $fromMeta;
+        }
+        if (in_array($direct, $canonical, true)) {
+            return $direct;
+        }
+
+        $desc = (string) ($meta['description'] ?? '');
+        if ($desc !== '' && str_contains($desc, 'Newsletter Pro targeting') && str_contains($desc, 'lifetime')) {
+            return 'newsletter_pro_targeting_lifetime';
+        }
+
+        return $direct;
+    }
+
+    private function isOrgMarketingCommsProductType(string $normalizedType): bool
+    {
+        return in_array(strtolower(trim($normalizedType)), [
+            'newsletter_pro_targeting_lifetime',
+            'sms_purchase',
+            'email_purchase',
+        ], true);
+    }
+
+    /**
+     * Gift card purchases (Phaze / org flows): polymorphic GiftCard, explicit wallet type, or meta echoes.
+     */
+    private function isGiftCardPurchaseContext(Transaction $t): bool
+    {
+        $meta = is_array($t->meta) ? $t->meta : [];
+        $rt = $t->related_type ? ltrim((string) $t->related_type, '\\') : '';
+        if ($rt !== '' && (str_ends_with($rt, 'GiftCard') || class_basename($rt) === 'GiftCard')) {
+            return true;
+        }
+        $eff = $this->effectiveWalletProductType($t);
+        if ($eff === 'gift_card_purchase') {
+            return true;
+        }
+        if (! empty($meta['gift_card_id'])) {
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * Map `transactions.type` strings (product / checkout flows) to a BIU module.
+     * Returns null so {@see moduleFromMetaOrType()} can still apply deposit / ledger heuristics.
+     */
+    private function resolveModuleSlugFromWalletType(string $type, Transaction $t): ?string
+    {
+        $type = strtolower(trim($type));
+        if ($type === '') {
+            return null;
+        }
+
+        return match ($type) {
+            'commission' => $this->moduleForCommission($t),
+            // Org marketing / comms products (sold by organizations — not catalog marketplace).
+            'newsletter_pro_targeting_lifetime',
+            'sms_purchase',
+            'email_purchase' => 'organization_subscription',
+            'gift_card_purchase' => 'gift_card',
+            'purchase',
+            'raffle_sale',
+            'raffle_tickets',
+            'administrative_fee',
+            'animal_purchase',
+            'winning_bid',
+            'redemption',
+            'credit_purchase',
+            'fractional_ownership',
+            'form_1023_application',
+            'compliance_application',
+            'merchant_hub_redemption' => 'marketplace',
+            'enrollment',
+            'free',
+            'paid',
+            'cancellation' => 'course',
+            'service_order' => 'servicehub',
+            'fundme_donation' => 'fundme',
+            'donation' => 'donation',
+            'plan_subscription',
+            'wallet_subscription',
+            'kyc_fee' => 'supporter_subscription',
+            'merchant_subscription' => 'organization_subscription',
+            'believe_points_purchase',
+            'believe_points_auto_replenish',
+            'believe_points_auto_replenish_setup' => 'believe_points',
+            'referral_reward',
+            'direct_referral',
+            'big_boss_override' => 'merchant_hub',
+            'deposit',
+            'withdrawal',
+            'refund',
+            'transfer_in',
+            'transfer_out',
+            'transfer' => null,
+            default => null,
+        };
+    }
+
+    /**
+     * When `source_type` is unclassified, infer module from meta, polymorphic type, and ledger report (selling columns).
+     *
+     * @param  array<string, mixed>  $ledgerReport
+     */
+    private function moduleFromMetaOrType(Transaction $t, array $ledgerReport = []): string
+    {
+        $meta = is_array($t->meta) ? $t->meta : [];
+        $type = (string) ($t->type ?? '');
+        $effectiveType = $this->effectiveWalletProductType($t);
+        $rt = $t->related_type ? ltrim((string) $t->related_type, '\\') : '';
+        $base = $rt !== '' ? class_basename($rt) : '';
+
+        // Org newsletter / SMS / email products: never classify as marketplace just because checkout has order_id.
+        if ($this->isOrgMarketingCommsProductType($effectiveType)) {
+            return 'organization_subscription';
+        }
+
+        // Gift cards: own module (not general Marketplace).
+        if ($this->isGiftCardPurchaseContext($t)) {
+            return 'gift_card';
+        }
+
+        // Meta keys (often set when related_type is null).
+        if (! empty($meta['order_id'])) {
+            return 'marketplace';
+        }
+        if (! empty($meta['service_order_id'])) {
+            return 'servicehub';
+        }
+        if (! empty($meta['enrollment_id'])) {
+            return 'course';
+        }
+        if (! empty($meta['care_alliance_donation_id'])) {
+            return 'campaign';
+        }
+        if (! empty($meta['fundme_donation_id']) || ! empty($meta['fundme_campaign_id'])) {
+            return 'fundme';
+        }
+        if (! empty($meta['donation_id'])) {
+            return 'donation';
+        }
+        if (! empty($meta['offer_id']) && ! empty($meta['receipt_code'])) {
+            return 'merchant_hub';
+        }
+
+        // When source_type is "ledger_unclassified", related_type usually tells the real module.
+        if ($rt !== '') {
+            if (str_ends_with($rt, 'BelievePointPurchase')) {
+                return 'believe_points';
+            }
+            if (str_contains($rt, 'CareAllianceDonation')) {
+                return 'campaign';
+            }
+            if (str_contains($rt, 'FundMeDonation')) {
+                return 'fundme';
+            }
+            if (str_ends_with($rt, 'ServiceOrder')) {
+                return 'servicehub';
+            }
+            if ($base === 'Order') {
+                if ($this->isOrgMarketingCommsProductType($effectiveType)) {
+                    return 'organization_subscription';
+                }
+                if ($this->isGiftCardPurchaseContext($t)) {
+                    return 'gift_card';
+                }
+
+                return 'marketplace';
+            }
+            if (str_ends_with($rt, 'Enrollment')) {
+                return 'course';
+            }
+            if ($base === 'Plan') {
+                return 'supporter_subscription';
+            }
+            if (str_ends_with($rt, 'GiftCard')) {
+                return 'gift_card';
+            }
+            if (str_ends_with($rt, 'Raffle')) {
+                return 'marketplace';
+            }
+            if (str_ends_with($rt, 'MerchantHubOfferRedemption') || str_ends_with($rt, 'MerchantHubReferralReward')) {
+                return 'merchant_hub';
+            }
+            if (str_ends_with($rt, 'Donation')) {
+                return 'donation';
+            }
+        }
 
         if (! empty($meta['subscription_id']) || str_contains(strtolower((string) ($meta['plan_name'] ?? '')), 'subscription')) {
-            return ! empty($meta['merchant_id']) ? 'merchant_subscription' : 'organization_subscription';
+            if (! empty($meta['merchant_id'])) {
+                return 'merchant_subscription';
+            }
+            if (! empty($meta['wallet_plan_id']) || ! empty($meta['plan_id'])) {
+                return 'supporter_subscription';
+            }
+
+            return 'organization_subscription';
+        }
+
+        if (! empty($meta['wallet_plan_id'])) {
+            return 'supporter_subscription';
+        }
+
+        // Platform plan checkout (PlansController success): type may be `purchase` with plan_id + plan_name.
+        if ($type === 'purchase' && ! empty($meta['plan_id']) && ! empty($meta['plan_name']) && empty($meta['order_id'])) {
+            return 'supporter_subscription';
         }
 
         if (in_array($type, ['plan_subscription', 'wallet_subscription', 'kyc_fee'], true)) {
-            return 'organization_subscription';
+            return 'supporter_subscription';
         }
 
         if ($type === 'adjustment' || ($meta['adjustment_reason'] ?? null)) {
             return 'adjustment';
         }
 
-        if ($type === 'commission') {
-            return $this->moduleForCommission($t);
+        $moduleFromWalletType = $this->resolveModuleSlugFromWalletType($effectiveType, $t);
+        if ($moduleFromWalletType !== null) {
+            return $moduleFromWalletType;
         }
 
-        if ($type === 'purchase') {
-            return 'marketplace';
-        }
+        // Ledger report: selling / checkout lines (Stripe settlement deposits often match this even without order_id in meta).
+        $subtotal = isset($ledgerReport['subtotal_amount']) ? (float) $ledgerReport['subtotal_amount'] : 0.0;
+        $supplierLabel = isset($ledgerReport['supplier_name']) ? trim((string) $ledgerReport['supplier_name']) : '';
+        $supplierPayout = isset($ledgerReport['supplier_payout']) && $ledgerReport['supplier_payout'] !== null && $ledgerReport['supplier_payout'] !== ''
+            ? (float) $ledgerReport['supplier_payout']
+            : null;
+        $hasSellingReport = $subtotal > 0
+            || $supplierLabel !== ''
+            || ($supplierPayout !== null && abs($supplierPayout) > 0.00001);
 
         if ($type === 'deposit') {
             $pm = strtolower((string) ($t->payment_method ?? ''));
             if (str_contains($pm, 'donat') || ! empty($meta['donation_id']) || ! empty($meta['care_alliance_donation_id'])) {
                 return 'donation';
             }
+            // Manual org wallet top-up (not a Stripe sale).
+            if (! empty($meta['deposited_by']) && ! empty($meta['organization_id'])) {
+                return 'wallet';
+            }
+            if (! empty($meta['order_id'])) {
+                return 'marketplace';
+            }
+            if ($hasSellingReport) {
+                return 'marketplace';
+            }
+            if (in_array($pm, ['stripe', 'card', 'link', 'us_bank_account', 'apple_pay', 'google_pay', 'klarna', 'affirm'], true)
+                || ! empty($meta['stripe_session_id'])
+                || ! empty($meta['payment_intent'])
+                || ! empty($meta['stripe_charge_id'])
+                || ! empty($meta['stripe_payment_intent'])) {
+                return 'marketplace';
+            }
+            if ($pm === 'wallet') {
+                return 'wallet';
+            }
 
-            return 'marketplace';
+            // Ambiguous deposit: treat as internal wallet movement, not a manual accounting adjustment.
+            return 'wallet';
         }
 
         if ($type === 'transfer_in') {
+            return 'payout';
+        }
+
+        if ($hasSellingReport && empty($meta['donation_id'])) {
             return 'marketplace';
         }
 
-        // Last resort: map to a real BIU workbook module (never "other").
+        if (strtolower((string) ($t->payment_method ?? '')) === 'wallet' && ! empty($meta['organization_id'])) {
+            return 'wallet';
+        }
+
+        // Last resort: prefer Marketplace over "adjustment" for unknown commerce-adjacent rows.
         return 'marketplace';
     }
 
@@ -191,17 +615,34 @@ class UnifiedLedgerPresenter
             return $isMerchant ? 'merchant_payout' : 'organization_payout';
         }
 
+        $walletType = $this->effectiveWalletProductType($t);
+        if ($walletType === 'newsletter_pro_targeting_lifetime') {
+            return 'newsletter_pro_targeting_purchase';
+        }
+        if ($walletType === 'sms_purchase') {
+            return 'sms_credit_purchase';
+        }
+        if ($walletType === 'email_purchase') {
+            return 'email_credit_purchase';
+        }
+        if ($walletType === 'gift_card_purchase') {
+            return 'gift_card_purchase';
+        }
+
         return match ($module) {
             'donation' => $this->donationTransactionType($t, $donationPerspective),
             'fundme' => 'fundme_contribution',
             'campaign' => 'campaign_contribution',
             'believe_points' => 'believe_points_purchase',
+            'gift_card' => 'gift_card_purchase',
             'marketplace' => 'marketplace_sale',
             'servicehub' => 'service_payment',
             'course' => 'course_enrollment',
             'merchant_hub' => 'merchant_hub_sale',
+            'supporter_subscription' => 'supporter_subscription_paid',
             'organization_subscription' => 'organization_subscription_paid',
             'merchant_subscription' => 'merchant_subscription_paid',
+            'wallet' => 'wallet_deposit',
             'payout' => 'organization_payout',
             'refund' => 'payment_refund',
             'adjustment' => 'adjustment',
@@ -284,6 +725,23 @@ class UnifiedLedgerPresenter
             $defaultTo['to_type'] = 'merchant';
         }
 
+        // Platform / wallet plans purchased by a supporter (not nonprofit org subscription billing).
+        if ($module === 'supporter_subscription') {
+            $payer = $walletUser;
+            $defaultFrom = [
+                'from_type' => 'supporter',
+                'from_name' => $payer?->name,
+                'from_email' => $payer?->email,
+                'from_id' => $payer?->id,
+            ];
+            $defaultTo = [
+                'to_type' => 'platform',
+                'to_name' => 'BIU Platform',
+                'to_email' => null,
+                'to_id' => null,
+            ];
+        }
+
         if ($module === 'organization_subscription' || $module === 'merchant_subscription') {
             $payer = $walletUser;
             $defaultFrom = [
@@ -362,17 +820,34 @@ class UnifiedLedgerPresenter
             $defaultTo['to_name'] = $orgName ?? $related['related_display_name'] ?? $defaultTo['to_name'];
         }
 
+        if ($module === 'marketplace' || $module === 'gift_card') {
+            if ($walletUser) {
+                $payerOrg = Organization::forAuthUser($walletUser);
+                if ($payerOrg) {
+                    $defaultFrom['from_type'] = 'organization';
+                    $defaultFrom['from_name'] = $payerOrg->name;
+                    $defaultFrom['from_email'] = $payerOrg->email ?: $walletUser->email;
+                    $defaultFrom['from_id'] = $payerOrg->id;
+                }
+            }
+            if ($orgName !== null && $orgName !== '') {
+                $defaultTo['to_type'] = 'organization';
+                $defaultTo['to_name'] = $orgName;
+                $defaultTo['to_id'] = $orgId ?? $defaultTo['to_id'];
+                $defaultTo['to_email'] = $orgEmail ?? $defaultTo['to_email'];
+            }
+        }
+
         if ($module === 'believe_points' && $walletUser) {
-            $party = $this->resolveBelievePointsPayerFromUser($walletUser);
             $defaultFrom = [
-                'from_type' => $party['from_type'],
-                'from_name' => $party['from_name'],
-                'from_email' => $party['from_email'],
-                'from_id' => $party['from_id'],
+                'from_type' => 'buyer',
+                'from_name' => $walletUser->name,
+                'from_email' => $walletUser->email,
+                'from_id' => (int) $walletUser->id,
             ];
             $defaultTo = [
-                'to_type' => 'platform',
-                'to_name' => 'BIU Platform',
+                'to_type' => '',
+                'to_name' => null,
                 'to_email' => null,
                 'to_id' => null,
             ];
@@ -444,6 +919,19 @@ class UnifiedLedgerPresenter
         $subtotal = $this->metaFloat($meta, ['subtotal_amount', 'subtotal', 'line_subtotal']);
         $tax = $this->metaFloat($meta, ['sales_tax_amount', 'sales_tax', 'tax_amount', 'tax_total']);
         $shipping = $this->metaFloat($meta, ['shipping_amount', 'shipping', 'shipping_total']);
+
+        $lrSub = $ledgerReport['subtotal_amount'] ?? null;
+        if ($lrSub !== null && is_numeric($lrSub) && (float) $lrSub > 0) {
+            $subtotal = round((float) $lrSub, 2);
+        }
+        $lrTax = $ledgerReport['sales_tax_amount'] ?? null;
+        if ($lrTax !== null && is_numeric($lrTax) && (float) $lrTax > 0) {
+            $tax = round((float) $lrTax, 2);
+        }
+        $lrShip = $ledgerReport['shipping_amount'] ?? null;
+        if ($lrShip !== null && is_numeric($lrShip) && (float) $lrShip > 0) {
+            $shipping = round((float) $lrShip, 2);
+        }
 
         if ($subtotal <= 0 && $gross > 0) {
             $subtotal = $gross - $tax - $shipping;

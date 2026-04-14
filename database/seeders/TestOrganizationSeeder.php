@@ -25,12 +25,15 @@ class TestOrganizationSeeder extends Seeder
             ]
         );
 
-        // Create test organization
-        Organization::firstOrCreate(
-            ['ein' => '12-3456789'],
+        // `organizations.ein` is varchar(9). Dashed EINs like "12-3456789" are truncated by MySQL and break
+        // firstOrCreate lookups — use 9 digits only (IRS format without hyphen).
+        $ein = '123456789';
+
+        Organization::updateOrCreate(
+            ['ein' => $ein],
             [
                 'user_id' => $user->id,
-                'ein' => '12-3456789',
+                'ein' => $ein,
                 'name' => 'Test Nonprofit Organization',
                 'ico' => null,
                 'street' => '123 Main Street',
@@ -68,7 +71,7 @@ class TestOrganizationSeeder extends Seeder
         $this->command->info('Test organization created successfully!');
         $this->command->info('Email: org.test@example.com');
         $this->command->info('Password: password');
-        $this->command->info('EIN: 12-3456789');
+        $this->command->info("EIN (stored, 9 chars): {$ein} — display as 12-3456789");
     }
 }
 

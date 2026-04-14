@@ -14,6 +14,10 @@ import type { BreadcrumbItem } from "@/types";
 import { ArrowLeft, Loader2, Upload } from "lucide-react";
 import { showErrorToast } from "@/lib/toast";
 import { route } from "ziggy-js";
+import {
+  OrganizationPrimaryActionCategoriesField,
+  type PrimaryActionCategoryOption,
+} from "@/components/organization-primary-action-categories-field";
 
 const breadcrumbs: BreadcrumbItem[] = [
   { title: "Dashboard", href: "/dashboard" },
@@ -42,6 +46,7 @@ interface Campaign {
   use_of_funds_confirmation: boolean;
   status: string;
   rejection_reason: string | null;
+  primary_action_category_ids?: number[];
 }
 
 interface Props {
@@ -49,6 +54,12 @@ interface Props {
   categories: Category[];
   narrativeMinLength: number;
   narrativeMinWords: number;
+  organizationPrimaryActionCategories: PrimaryActionCategoryOption[];
+}
+
+function firstError(err: string | string[] | undefined): string | undefined {
+  if (err == null) return undefined;
+  return typeof err === "string" ? err : err[0];
 }
 
 const helperPrompts = {
@@ -57,7 +68,13 @@ const helperPrompts = {
   expected_impact: "What outcomes do you expect in the next 3–12 months?",
 };
 
-export default function FundMeCampaignEdit({ campaign, categories, narrativeMinLength, narrativeMinWords }: Props) {
+export default function FundMeCampaignEdit({
+  campaign,
+  categories,
+  narrativeMinLength,
+  narrativeMinWords,
+  organizationPrimaryActionCategories,
+}: Props) {
   const [formData, setFormData] = useState({
     title: campaign.title,
     fundme_category_id: String(campaign.fundme_category_id),
@@ -68,8 +85,9 @@ export default function FundMeCampaignEdit({ campaign, categories, narrativeMinL
     expected_impact: campaign.expected_impact,
     use_of_funds_confirmation: campaign.use_of_funds_confirmation,
     status: "draft",
+    primary_action_category_ids: (campaign.primary_action_category_ids ?? []).map(String),
   });
-  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [errors, setErrors] = useState<Record<string, string | string[]>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
@@ -91,6 +109,9 @@ export default function FundMeCampaignEdit({ campaign, categories, narrativeMinL
     payload.set("use_of_funds_confirmation", formData.use_of_funds_confirmation ? "1" : "0");
     payload.set("status", status);
     if (formData.cover_image) payload.set("cover_image", formData.cover_image);
+    formData.primary_action_category_ids
+      .filter((id) => id !== "")
+      .forEach((id) => payload.append("primary_action_category_ids[]", id));
 
     router.post(route("fundme.campaigns.update", campaign.id), payload, {
       forceFormData: true,
@@ -160,8 +181,24 @@ export default function FundMeCampaignEdit({ campaign, categories, narrativeMinL
                     </SelectContent>
                   </Select>
                   {errors.fundme_category_id && (
-                    <p className="text-sm text-destructive">{errors.fundme_category_id}</p>
+                    <p className="text-sm text-destructive">{firstError(errors.fundme_category_id)}</p>
                   )}
+                </div>
+
+                <div className="md:col-span-2">
+                  <OrganizationPrimaryActionCategoriesField
+                    categories={organizationPrimaryActionCategories}
+                    selectedIds={formData.primary_action_category_ids}
+                    onSelectionChange={(ids) => {
+                      setFormData((prev) => ({ ...prev, primary_action_category_ids: ids }));
+                      setErrors((prev) => {
+                        const next = { ...prev };
+                        delete next.primary_action_category_ids;
+                        return next;
+                      });
+                    }}
+                    error={firstError(errors.primary_action_category_ids)}
+                  />
                 </div>
               </div>
 

@@ -15,6 +15,7 @@ class Product extends Model
         'description',
         'quantity',
         'unit_price',
+        'source_cost',
         'shipping_charge',
         'ship_from_name',
         'ship_from_street1',

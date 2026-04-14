@@ -87,6 +87,17 @@ class User extends Authenticatable implements MustVerifyEmail
         'wallet_connected_at',
         'emails_included',
         'emails_used',
+        'sms_included',
+        'sms_used',
+        'sms_auto_recharge_enabled',
+        'sms_auto_recharge_threshold',
+        'sms_auto_recharge_package_id',
+        'sms_auto_recharge_pm_id',
+        'sms_auto_recharge_card_brand',
+        'sms_auto_recharge_card_last4',
+        'sms_auto_recharge_agreed_at',
+        'sms_last_auto_recharge_at',
+        'newsletter_pro_targeting_purchased_at',
         'ai_tokens_included',
         'ai_tokens_used',
         'current_plan_details',
@@ -94,6 +105,7 @@ class User extends Authenticatable implements MustVerifyEmail
         'city',
         'state',
         'zipcode',
+        'volunteer_interest_statement',
         'youtube_channel_url',
         'youtube_access_token',
         'youtube_refresh_token',
@@ -133,6 +145,14 @@ class User extends Authenticatable implements MustVerifyEmail
             'current_plan_details' => 'array',
             'emails_included' => 'integer',
             'emails_used' => 'integer',
+            'sms_included' => 'integer',
+            'sms_used' => 'integer',
+            'sms_auto_recharge_enabled' => 'boolean',
+            'sms_auto_recharge_threshold' => 'integer',
+            'sms_auto_recharge_package_id' => 'integer',
+            'sms_auto_recharge_agreed_at' => 'datetime',
+            'sms_last_auto_recharge_at' => 'datetime',
+            'newsletter_pro_targeting_purchased_at' => 'datetime',
             'ai_tokens_included' => 'integer',
             'ai_tokens_used' => 'integer',
             'believe_points' => 'decimal:2',
@@ -449,6 +469,15 @@ class User extends Authenticatable implements MustVerifyEmail
         return $this->hasMany(BoardMember::class);
     }
 
+    /**
+     * Organizations this user is associated with via board membership (newsletter targeting: "users in orgs").
+     */
+    public function organizations(): BelongsToMany
+    {
+        return $this->belongsToMany(Organization::class, 'board_members', 'user_id', 'organization_id')
+            ->withTimestamps();
+    }
+
     public function canManageContent()
     {
         return $this->isOrganizationAdmin() || $this->isOrganizationLeader();
@@ -529,6 +558,23 @@ class User extends Authenticatable implements MustVerifyEmail
         }
 
         return in_array((string) $this->role, ['organization', 'organization_pending', 'care_alliance'], true);
+    }
+
+    /**
+     * Whether this account may follow nonprofits (Explore by Cause, favorites, etc.).
+     * Organization / Care Alliance / admin accounts cannot follow other organizations.
+     */
+    public function canFollowOrganizations(): bool
+    {
+        if ($this->hasRole('admin') || (string) $this->role === 'admin') {
+            return false;
+        }
+
+        if ($this->hasNonprofitDashboardRole()) {
+            return false;
+        }
+
+        return $this->hasRole('user') || (string) $this->role === 'user';
     }
 
     public function sendJobs()

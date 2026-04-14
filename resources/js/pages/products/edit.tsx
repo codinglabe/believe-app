@@ -40,6 +40,8 @@ interface Product {
     description: string;
     quantity: number;
     unit_price: number;
+    /** Your cost / listing cost saved at create (own or Merchant Hub sourced). */
+    source_cost?: number | string | null;
     profit_margin_percentage: number;
     owned_by: string;
     organization_id?: number | null;
@@ -116,6 +118,14 @@ interface Props {
 function numStr(v: unknown): string {
     if (v === null || v === undefined || v === '') return '';
     return String(v);
+}
+
+/** Cost entered at product creation (read-only on edit). */
+function formatSourceCostDisplay(v: unknown): string {
+    if (v === null || v === undefined || v === '') return '—';
+    const n = Number(v);
+    if (!Number.isFinite(n)) return '—';
+    return `$${n.toFixed(2)}`;
 }
 
 export default function Edit({
@@ -407,6 +417,14 @@ export default function Edit({
                                                         (digital)
                                                     </p>
                                                 )}
+                                                <p className="md:col-span-2">
+                                                    <span className="text-muted-foreground">Your cost (at creation):</span>{' '}
+                                                    <span className="font-medium">{formatSourceCostDisplay(product.source_cost)}</span>
+                                                </p>
+                                                <p className="text-muted-foreground text-xs md:col-span-2">
+                                                    The amount your organization entered as base cost when the listing was
+                                                    created (used with markup to set price). Not editable here.
+                                                </p>
                                             </div>
                                         )}
                                         {product.pricing_model === 'auction' && (
@@ -455,6 +473,47 @@ export default function Edit({
                                         <p>
                                             {printifyProviderResolved.location.city},{' '}
                                             {printifyProviderResolved.location.region}
+                                        </p>
+                                        <p className="mt-3 border-t border-green-200 pt-3 dark:border-green-800">
+                                            <span className="text-green-900/80 dark:text-green-100/80">
+                                                Selling price markup (at creation):
+                                            </span>{' '}
+                                            <span className="font-medium">
+                                                {product.profit_margin_percentage != null &&
+                                                String(product.profit_margin_percentage) !== ''
+                                                    ? `${Number(product.profit_margin_percentage).toFixed(2)}%`
+                                                    : '—'}
+                                            </span>
+                                        </p>
+                                        <p className="mt-1 text-xs opacity-90">
+                                            Variant production costs live in Printify; retail uses cost × (1 + markup ÷ 100).
+                                        </p>
+                                    </CardContent>
+                                </Card>
+                            )}
+
+                            {isPrintify && !printifyProviderResolved && (
+                                <Card className="border-green-200 bg-green-50/50 dark:border-green-800 dark:bg-green-950/20">
+                                    <CardHeader>
+                                        <CardTitle className="text-green-900 dark:text-green-100">Printify</CardTitle>
+                                        <CardDescription>
+                                            Provider details could not be loaded. Markup from when you created the listing:
+                                        </CardDescription>
+                                    </CardHeader>
+                                    <CardContent className="text-sm text-green-800 dark:text-green-200">
+                                        <p>
+                                            <span className="text-green-900/80 dark:text-green-100/80">
+                                                Selling price markup (at creation):
+                                            </span>{' '}
+                                            <span className="font-medium">
+                                                {product.profit_margin_percentage != null &&
+                                                String(product.profit_margin_percentage) !== ''
+                                                    ? `${Number(product.profit_margin_percentage).toFixed(2)}%`
+                                                    : '—'}
+                                            </span>
+                                        </p>
+                                        <p className="mt-1 text-xs opacity-90">
+                                            Production cost per variant is in Printify; retail uses cost × (1 + markup ÷ 100).
                                         </p>
                                     </CardContent>
                                 </Card>

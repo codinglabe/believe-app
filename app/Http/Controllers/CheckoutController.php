@@ -11,9 +11,15 @@ use App\Models\OrderSplit;
 use App\Models\ShippoShipment;
 use App\Models\TempOrder;
 use App\Models\Transaction;
+use App\Services\BiuPlatformFeeService;
+use App\Services\MarketplaceOrderLedgerService;
+use App\Services\MarketplaceOrganizationMarkupService;
+use App\Services\MarketplacePoolRevenueSplit;
 use App\Services\PrintifyService;
 use App\Services\ShippoService;
 use App\Services\StripeConfigService;
+use App\Services\StripeProcessingFeeEstimator;
+use App\Services\StripeTaxCalculationService;
 use App\Services\SupporterActivityService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -45,8 +51,8 @@ class CheckoutController extends Controller
         $cart = $user->cart()->with([
             'items.product',
             'items.variant',
-            'items.marketplaceProduct.merchant',
-            'items.organizationProduct.marketplaceProduct',
+            'items.marketplaceProduct.merchant.shippingAddresses',
+            'items.organizationProduct.marketplaceProduct.merchant.shippingAddresses',
             'items.organizationProduct.organization',
         ])->first();
 
@@ -55,8 +61,10 @@ class CheckoutController extends Controller
         }
 
         $subtotal = $cart->getTotal();
-        // Platform fee removed from customer payment - only organization pays it
-        // Platform fee will be calculated separately for organization view
+        $platformFeePct = BiuPlatformFeeService::getSalesPlatformFeePercentage();
+        $markupBasis = MarketplaceOrganizationMarkupService::basisFromCart($cart, $this->printifyService);
+        $feeBase = MarketplaceOrganizationMarkupService::platformFeeBaseUsd((float) $subtotal, $markupBasis);
+        $platformFee = BiuPlatformFeeService::platformFeeFromAmount($feeBase);
 
         return Inertia::render('Checkout/index', [
             'items' => $cart->items->map(function ($item) {
@@ -122,12 +130,13 @@ class CheckoutController extends Controller
                 ];
             }),
             'subtotal' => (float) $subtotal,
-            'platform_fee_percentage' => 0, // Platform fee removed from customer payment
-            'platform_fee' => 0, // Platform fee removed from customer payment
+            'platform_fee_percentage' => $platformFeePct,
+            'platform_fee' => $platformFee,
             // 'donation_percentage' => config('printify.optional_donation_percentage', 10), // Commented out - removed donation for Printify products
             'donation_percentage' => 0, // Set to 0 to disable donation
             // Prefer Stripe publishable key from database (payment_methods), fall back to .env
             'stripePublishableKey' => StripeConfigService::getPublishableKey() ?? config('services.stripe.key') ?? '',
+            'customerPaysProcessingFee' => StripeProcessingFeeEstimator::customerPaysProcessingFeeEnabled(),
         ]);
     }
 
@@ -154,8 +163,8 @@ class CheckoutController extends Controller
         $cart = $user->cart()->with([
             'items.product',
             'items.variant',
-            'items.marketplaceProduct.merchant',
-            'items.organizationProduct.marketplaceProduct',
+            'items.marketplaceProduct.merchant.shippingAddresses',
+            'items.organizationProduct.marketplaceProduct.merchant.shippingAddresses',
             'items.organizationProduct.organization',
         ])->first();
 
@@ -166,6 +175,9 @@ class CheckoutController extends Controller
         DB::beginTransaction();
         try {
             $subtotal = $cart->getTotal();
+            $markupBasis = MarketplaceOrganizationMarkupService::basisFromCart($cart, $this->printifyService);
+            $feeBase = MarketplaceOrganizationMarkupService::platformFeeBaseUsd((float) $subtotal, $markupBasis);
+            $platformFee = BiuPlatformFeeService::platformFeeFromAmount($feeBase);
 
             // Split full name
             $nameParts = explode(' ', $validated['name']);
@@ -173,7 +185,7 @@ class CheckoutController extends Controller
             $lastName = count($nameParts) > 1 ? implode(' ', array_slice($nameParts, 1)) : '';
 
             // Create temp order
-            // Platform fee removed from customer payment - only organization pays it
+            // platform_fee: BIU % on organization markup when present, else on full subtotal; not added to buyer total_amount
             $tempOrder = TempOrder::create([
                 'user_id' => $user->id,
                 'cart_id' => $cart->id,
@@ -187,7 +199,8 @@ class CheckoutController extends Controller
                 'zip' => $validated['zip'],
                 'country' => $validated['country'],
                 'subtotal' => $subtotal,
-                'platform_fee' => 0, // Platform fee removed - customers don't pay it
+                'platform_fee' => $platformFee,
+                'organization_markup_basis' => $markupBasis,
                 // 'donation_amount' => $validated['donation_amount'], // Commented out - removed donation for Printify products
                 'donation_amount' => 0, // Set to 0 - donation removed for Printify products
                 'total_amount' => $subtotal, // Platform fee removed from customer total
@@ -204,6 +217,8 @@ class CheckoutController extends Controller
             $printifyOrderId = null;
             $shippingData = [];
             $taxAmount = 0;
+            $printifyTaxPortion = 0.0;
+            $additionalSalesTaxAdjustment = 0.0;
             $shippoRateObjectId = null;
             $shippoCarrier = null;
             $shippoRateAmount = null;
@@ -235,9 +250,14 @@ class CheckoutController extends Controller
                         $validated['zip']
                     );
 
-                    // Extract tax from Printify order if available
-                    if (isset($shippingData['total_tax'])) {
-                        $taxAmount = ($shippingData['total_tax'] ?? 0) / 100;
+                    // LEGACY: Printify-reported tax + markup alignment (disabled when Stripe Tax is enabled).
+                    if (! StripeTaxCalculationService::enabled() && isset($shippingData['total_tax'])) {
+                        $rawPrintifyTax = ($shippingData['total_tax'] ?? 0) / 100;
+                        $split = $this->sumPrintifyRetailAndProductionCost($cart);
+                        $adj = $this->adjustPrintifySalesTaxForMarkup($rawPrintifyTax, $split['retail'], $split['cost']);
+                        $printifyTaxPortion = $adj['printify_tax'];
+                        $additionalSalesTaxAdjustment = $adj['additional_sales_tax_adjustment'];
+                        $taxAmount = $adj['total_tax'];
                     }
                 } else {
                     // Cart has Printify products but no valid line items (fallback to manual shipping)
@@ -300,7 +320,7 @@ class CheckoutController extends Controller
                     'mass_unit' => 'oz',
                 ];
 
-                if ($mp && $merchant && $mp->product_type === 'physical' && $canQuoteShippo) {
+                if ($mp && $merchant && $this->marketplaceProductNeedsShippoRates($mp) && $canQuoteShippo) {
                     $shipFrom = $this->shippoService->shipFromPayloadForMerchant($merchant);
                     try {
                         $ratesResult = $this->shippoService->getRatesForAddresses($shipFrom, $shipTo, $defaultParcel);
@@ -379,12 +399,12 @@ class CheckoutController extends Controller
                             'error' => $e->getMessage(),
                         ]);
                     }
-                } elseif ($mp && $mp->product_type !== 'physical') {
+                } elseif ($mp && $this->marketplaceProductIsDigitalDeliveryOnly($mp)) {
                     $shippingCost = 0;
                     $shippingMethods = [
                         [
                             'id' => 'digital',
-                            'name' => 'Digital / service delivery',
+                            'name' => 'Digital delivery',
                             'cost' => 0,
                             'estimated_days' => '—',
                         ],
@@ -406,7 +426,8 @@ class CheckoutController extends Controller
                     'methods' => $shippingMethods,
                 ];
 
-                if (! empty($validated['state'])) {
+                // LEGACY: Static state sales-tax table (disabled when Stripe Tax is enabled).
+                if (! StripeTaxCalculationService::enabled() && ! empty($validated['state'])) {
                     $stateCode = strtoupper($validated['state']);
                     $stateTax = \App\Models\StateSalesTax::where('state_code', $stateCode)->first();
 
@@ -416,6 +437,23 @@ class CheckoutController extends Controller
                         $taxAmount = ($subtotal * $taxRate) / 100;
                     }
                 }
+                $printifyTaxPortion = 0.0;
+                $additionalSalesTaxAdjustment = 0.0;
+            }
+
+            $stripeCalc = null;
+            if (StripeTaxCalculationService::enabled()) {
+                $stripeCalc = StripeTaxCalculationService::calculateForMarketplace(
+                    $tempOrder,
+                    $cart,
+                    (float) ($shippingData['cost'] ?? 0),
+                    fn (?\App\Models\MarketplaceProduct $mp) => $this->marketplaceProductIsDigitalDeliveryOnly($mp)
+                );
+                if ($stripeCalc !== null) {
+                    $taxAmount = $stripeCalc['tax_usd'];
+                    $printifyTaxPortion = 0.0;
+                    $additionalSalesTaxAdjustment = 0.0;
+                }
             }
 
             // Update temp order with shipping and tax
@@ -424,6 +462,10 @@ class CheckoutController extends Controller
                 'shipping_methods' => $shippingData['methods'] ?? [],
                 'shipping_cost' => $shippingData['cost'] ?? 0,
                 'tax_amount' => $taxAmount,
+                'printify_tax_amount' => $printifyTaxPortion,
+                'additional_sales_tax_adjustment' => $additionalSalesTaxAdjustment,
+                'stripe_tax_amount' => $stripeCalc !== null ? $stripeCalc['tax_usd'] : null,
+                'stripe_tax_calculation_id' => $stripeCalc !== null ? $stripeCalc['calculation_id'] : null,
                 'total_amount' => $subtotal + ($shippingData['cost'] ?? 0) + $taxAmount, // Platform fee removed from customer total
                 'shippo_rate_object_id' => $shippoRateObjectId,
                 'shippo_carrier' => $shippoCarrier,
@@ -440,6 +482,10 @@ class CheckoutController extends Controller
                 'shipping_methods' => $shippingData['methods'] ?? [],
                 'shipping_cost' => (float) ($shippingData['cost'] ?? 0),
                 'tax_amount' => (float) $taxAmount,
+                'printify_tax_amount' => (float) $printifyTaxPortion,
+                'additional_sales_tax_adjustment' => (float) $additionalSalesTaxAdjustment,
+                'stripe_tax_amount' => $tempOrder->stripe_tax_amount !== null ? (float) $tempOrder->stripe_tax_amount : null,
+                'stripe_tax_enabled' => StripeTaxCalculationService::enabled(),
                 'total_amount' => (float) $tempOrder->total_amount,
             ]);
         } catch (\Exception $e) {
@@ -602,6 +648,8 @@ class CheckoutController extends Controller
         $retryDelay = 2.5; // seconds
         $newTaxAmount = 0;
         $newShippingCost = 0;
+        $printifyTaxPortion = 0.0;
+        $additionalSalesTaxAdjustment = 0.0;
         $printifyStatus = null;
         $shippoPatch = [];
 
@@ -621,17 +669,25 @@ class CheckoutController extends Controller
                         'total_shipping' => $printifyOrder['total_shipping'] ?? 0,
                     ]);
 
-                    // Convert cents to dollars
-                    $newTaxAmount = (float) (($printifyOrder['total_tax'] ?? 0) / 100);
                     $newShippingCost = (float) (($printifyOrder['total_shipping'] ?? 0) / 100);
 
-                    // Check if tax is calculated (non-zero) or if status is ready
-                    $isTaxCalculated = $newTaxAmount > 0;
-                    $isStatusReady = in_array($printifyStatus, ['on-hold', 'pending', 'cost-calculation'])
-                        ? false
-                        : true;
+                    // LEGACY: Printify tax + markup alignment (skipped when Stripe Tax is enabled).
+                    if (! StripeTaxCalculationService::enabled()) {
+                        $rawPrintifyTax = (float) (($printifyOrder['total_tax'] ?? 0) / 100);
+                        $tempOrder->load(['cart.items.product']);
+                        $split = $this->sumPrintifyRetailAndProductionCost($tempOrder->cart);
+                        $adj = $this->adjustPrintifySalesTaxForMarkup($rawPrintifyTax, $split['retail'], $split['cost']);
+                        $newTaxAmount = $adj['total_tax'];
+                        $printifyTaxPortion = $adj['printify_tax'];
+                        $additionalSalesTaxAdjustment = $adj['additional_sales_tax_adjustment'];
+                    } else {
+                        $newTaxAmount = 0.0;
+                        $printifyTaxPortion = 0.0;
+                        $additionalSalesTaxAdjustment = 0.0;
+                    }
 
-                    // If tax is calculated OR we've reached max retries, break
+                    $isTaxCalculated = StripeTaxCalculationService::enabled() || $newTaxAmount > 0;
+
                     if ($isTaxCalculated || $attempt === $maxRetries) {
                         break;
                     }
@@ -646,15 +702,26 @@ class CheckoutController extends Controller
 
                     // If this is the last attempt, use fallback
                     if ($attempt === $maxRetries) {
-                        $newTaxAmount = $this->estimateTaxFallback($tempOrder);
-                        $newShippingCost = $tempOrder->shipping_cost;
-                        \Log::warning('Using estimated tax after all retries failed');
+                        if (StripeTaxCalculationService::enabled()) {
+                            $newShippingCost = (float) ($tempOrder->shipping_cost ?? 0);
+                            $newTaxAmount = 0.0;
+                            $printifyTaxPortion = 0.0;
+                            $additionalSalesTaxAdjustment = 0.0;
+                        } else {
+                            $newTaxAmount = $this->estimateTaxFallback($tempOrder);
+                            $newShippingCost = $tempOrder->shipping_cost;
+                            $printifyTaxPortion = $newTaxAmount;
+                            $additionalSalesTaxAdjustment = 0.0;
+                            \Log::warning('Using estimated tax after all retries failed');
+                        }
                     }
                 }
             }
         } else {
             // Manual products: tax from step 1; shipping from the method the buyer selected (Shippo rate id or flat "standard")
             $newTaxAmount = (float) ($tempOrder->tax_amount ?? 0);
+            $printifyTaxPortion = (float) ($tempOrder->printify_tax_amount ?? 0);
+            $additionalSalesTaxAdjustment = (float) ($tempOrder->additional_sales_tax_adjustment ?? 0);
             $methods = $tempOrder->shipping_methods ?? [];
             $selectedId = (string) $validated['shipping_method'];
 
@@ -685,14 +752,25 @@ class CheckoutController extends Controller
             }
         }
 
-        // // If tax is still 0 after retries, use estimation
-        // if ($newTaxAmount <= 0) {
-        //     $newTaxAmount = $this->estimateTaxFallback($tempOrder);
-        //     \Log::warning('Tax is 0 after retries, using estimated tax', [
-        //         'estimated_tax' => $newTaxAmount,
-        //         'printify_status' => $printifyStatus,
-        //     ]);
-        // }
+        $stripeCalc = null;
+        if (StripeTaxCalculationService::enabled()) {
+            $tempOrder->loadMissing([
+                'cart.items.product',
+                'cart.items.marketplaceProduct',
+                'cart.items.organizationProduct.marketplaceProduct',
+            ]);
+            $stripeCalc = StripeTaxCalculationService::calculateForMarketplace(
+                $tempOrder,
+                $tempOrder->cart,
+                $newShippingCost,
+                fn (?MarketplaceProduct $mp) => $this->marketplaceProductIsDigitalDeliveryOnly($mp)
+            );
+            if ($stripeCalc !== null) {
+                $newTaxAmount = $stripeCalc['tax_usd'];
+                $printifyTaxPortion = 0.0;
+                $additionalSalesTaxAdjustment = 0.0;
+            }
+        }
 
         // Calculate new total (platform fee removed - customers don't pay it)
         $newTotalAmount = $tempOrder->subtotal +
@@ -700,6 +778,10 @@ class CheckoutController extends Controller
             // $tempOrder->donation_amount + // Commented out - removed donation for Printify products
             $newShippingCost +
             $newTaxAmount;
+
+        $passThrough = StripeProcessingFeeEstimator::applyPassThroughIfEnabled($newTotalAmount, 'card');
+        $amountToChargeUsd = $passThrough['gross_usd'];
+        $processingFeeAddon = $passThrough['fee_addon_usd'];
 
         // Log the calculated amounts
         \Log::info('Final amounts for payment intent', [
@@ -710,14 +792,22 @@ class CheckoutController extends Controller
             'new_shipping' => $newShippingCost,
             'old_total' => $tempOrder->total_amount,
             'new_total' => $newTotalAmount,
+            'stripe_processing_fee_addon' => $processingFeeAddon,
+            'amount_to_charge_usd' => $amountToChargeUsd,
             'printify_status' => $printifyStatus,
         ]);
 
         // Update temp order with latest values (manual: merge Shippo rate id for label purchase)
+        // total_amount = basket (subtotal+shipping+tax); Stripe may charge more when customer pays processing fee.
         $tempOrder->update(array_merge([
             'tax_amount' => $newTaxAmount,
+            'printify_tax_amount' => $printifyTaxPortion,
+            'additional_sales_tax_adjustment' => $additionalSalesTaxAdjustment,
             'shipping_cost' => $newShippingCost,
+            'stripe_tax_amount' => $stripeCalc !== null ? $stripeCalc['tax_usd'] : null,
+            'stripe_tax_calculation_id' => $stripeCalc !== null ? $stripeCalc['calculation_id'] : null,
             'total_amount' => $newTotalAmount,
+            'stripe_processing_fee_addon' => $processingFeeAddon > 0 ? $processingFeeAddon : null,
             'selected_shipping_method' => $validated['shipping_method'],
             'printify_status' => $printifyStatus,
         ], $shippoPatch));
@@ -726,16 +816,17 @@ class CheckoutController extends Controller
         try {
             // Create Stripe payment intent with UPDATED amount
             $paymentIntent = PaymentIntent::create([
-                'amount' => (int) ($tempOrder->total_amount * 100),
+                'amount' => (int) round($amountToChargeUsd * 100),
                 'currency' => 'usd',
                 'description' => 'Marketplace Order - '.$user->email,
-                'metadata' => [
-                    'user_id' => $user->id,
-                    'temp_order_id' => $tempOrder->id,
+                'metadata' => array_filter([
+                    'user_id' => (string) $user->id,
+                    'temp_order_id' => (string) $tempOrder->id,
                     'order_type' => 'marketplace',
-                    'printify_status' => $printifyStatus,
+                    'printify_status' => $printifyStatus !== null ? (string) $printifyStatus : null,
                     'tax_calculated' => $newTaxAmount > 0 ? 'yes' : 'no',
-                ],
+                    'stripe_tax_calculation_id' => $tempOrder->stripe_tax_calculation_id,
+                ]),
                 'automatic_payment_methods' => [
                     'enabled' => true,
                 ],
@@ -747,12 +838,19 @@ class CheckoutController extends Controller
                 'success' => true,
                 'clientSecret' => $paymentIntent->client_secret,
                 'temp_order_id' => $tempOrder->id,
-                'amount' => (float) $tempOrder->total_amount,
+                'amount' => (float) $amountToChargeUsd,
+                'base_amount' => (float) $newTotalAmount,
+                'stripe_processing_fee_addon' => (float) $processingFeeAddon,
+                'customer_pays_processing_fee' => StripeProcessingFeeEstimator::customerPaysProcessingFeeEnabled(),
                 'tax_amount' => (float) $tempOrder->tax_amount,
+                'printify_tax_amount' => (float) $tempOrder->printify_tax_amount,
+                'additional_sales_tax_adjustment' => (float) $tempOrder->additional_sales_tax_adjustment,
                 'shipping_cost' => (float) $tempOrder->shipping_cost,
                 'donation_amount' => (float) $tempOrder->donation_amount,
                 'printify_status' => $printifyStatus,
                 'tax_estimated' => $newTaxAmount <= 0, // Flag if tax was estimated
+                'stripe_tax_amount' => $tempOrder->stripe_tax_amount !== null ? (float) $tempOrder->stripe_tax_amount : null,
+                'stripe_tax_enabled' => StripeTaxCalculationService::enabled(),
             ]);
         } catch (\Exception $e) {
             DB::rollBack();
@@ -815,10 +913,21 @@ class CheckoutController extends Controller
                     return response()->json(['error' => 'Payment intent ID is required for Stripe payments'], 400);
                 }
 
-                $paymentIntent = PaymentIntent::retrieve($validated['payment_intent_id']);
+                $paymentIntent = PaymentIntent::retrieve($validated['payment_intent_id'], [
+                    'expand' => ['latest_charge.balance_transaction'],
+                ]);
 
                 if ($paymentIntent->status !== 'succeeded') {
                     return response()->json(['error' => 'Payment not completed'], 400);
+                }
+            }
+
+            $stripeFeeUsd = 0.0;
+            if ($paymentMethod === 'stripe' && $paymentIntent !== null) {
+                $charge = $paymentIntent->latest_charge ?? null;
+                $bt = is_object($charge) ? ($charge->balance_transaction ?? null) : null;
+                if (is_object($bt) && isset($bt->fee)) {
+                    $stripeFeeUsd = (float) $bt->fee / 100;
                 }
             }
 
@@ -875,6 +984,14 @@ class CheckoutController extends Controller
                 'cart.items.organizationProduct.organization',
             ]);
 
+            $markupBasis = MarketplaceOrganizationMarkupService::basisFromCart($tempOrder->cart, $this->printifyService);
+            $feeBase = MarketplaceOrganizationMarkupService::platformFeeBaseUsd((float) $tempOrder->subtotal, $markupBasis);
+            $platformFee = BiuPlatformFeeService::platformFeeFromAmount($feeBase);
+            $tempOrder->update([
+                'platform_fee' => $platformFee,
+                'organization_markup_basis' => $markupBasis,
+            ]);
+
             $firstItem = $tempOrder->cart->items->first();
             $orderOrganizationId = null;
             if ($firstItem) {
@@ -887,17 +1004,35 @@ class CheckoutController extends Controller
                 }
             }
 
+            $chargedUsd = $paymentMethod === 'stripe' && $paymentIntent !== null
+                ? round((float) $paymentIntent->amount / 100, 2)
+                : (float) $tempOrder->total_amount;
+            $basketUsd = round(
+                (float) $tempOrder->subtotal + (float) $tempOrder->shipping_cost + (float) $tempOrder->tax_amount,
+                2
+            );
+            $processingAddon = $paymentMethod === 'stripe'
+                ? (float) ($tempOrder->stripe_processing_fee_addon ?? max(0.0, round($chargedUsd - $basketUsd, 2)))
+                : 0.0;
+
             // Create final order
             $order = Order::create([
                 'user_id' => $user->id,
                 'organization_id' => $orderOrganizationId,
                 'subtotal' => $tempOrder->subtotal,
-                'platform_fee' => $tempOrder->platform_fee,
+                'platform_fee' => $platformFee,
+                'organization_markup_basis' => $markupBasis,
                 // 'donation_amount' => $tempOrder->donation_amount, // Commented out - removed donation for Printify products
                 'donation_amount' => 0, // Set to 0 - donation removed for Printify products
                 'tax_amount' => $tempOrder->tax_amount,
+                'printify_tax_amount' => $tempOrder->printify_tax_amount ?? 0,
+                'additional_sales_tax_adjustment' => $tempOrder->additional_sales_tax_adjustment ?? 0,
+                'stripe_tax_amount' => $tempOrder->stripe_tax_amount,
+                'stripe_tax_calculation_id' => $tempOrder->stripe_tax_calculation_id,
+                'stripe_fee_amount' => $paymentMethod === 'stripe' ? round($stripeFeeUsd, 2) : null,
                 'shipping_cost' => $tempOrder->shipping_cost,
-                'total_amount' => $tempOrder->total_amount,
+                'stripe_processing_fee_addon' => $paymentMethod === 'stripe' && $processingAddon > 0 ? round($processingAddon, 2) : null,
+                'total_amount' => $chargedUsd,
                 'status' => 'processing',
                 'payment_status' => 'paid',
                 'payment_method' => $paymentMethod,
@@ -943,9 +1078,10 @@ class CheckoutController extends Controller
                     $useNonprofitSplit = $mp->nonprofit_marketplace_enabled
                         && abs($pctM + $pctN) > 0.01;
                     if ($useNonprofitSplit) {
-                        $mCents = (int) round($lineCents * $pctM / 100);
-                        $nCents = (int) round($lineCents * $pctN / 100);
-                        $bCents = $lineCents - $mCents - $nCents;
+                        $allocated = MarketplacePoolRevenueSplit::allocateLineCents($lineCents, $pctM, $pctN);
+                        $mCents = $allocated['merchant_cents'];
+                        $nCents = $allocated['nonprofit_cents'];
+                        $bCents = 0;
                     } else {
                         $mCents = $lineCents;
                         $nCents = 0;
@@ -996,9 +1132,10 @@ class CheckoutController extends Controller
                     $useNonprofitSplit = $mp->nonprofit_marketplace_enabled
                         && abs($pctM + $pctN) > 0.01;
                     if ($useNonprofitSplit) {
-                        $mCents = (int) round($lineCents * $pctM / 100);
-                        $nCents = (int) round($lineCents * $pctN / 100);
-                        $bCents = $lineCents - $mCents - $nCents;
+                        $allocated = MarketplacePoolRevenueSplit::allocateLineCents($lineCents, $pctM, $pctN);
+                        $mCents = $allocated['merchant_cents'];
+                        $nCents = $allocated['nonprofit_cents'];
+                        $bCents = 0;
                     } else {
                         // Merchant Hub direct sale (no nonprofit split): pay merchant 100% of line.
                         $mCents = $lineCents;
@@ -1063,9 +1200,10 @@ class CheckoutController extends Controller
                         $useNonprofitSplit = $mp->nonprofit_marketplace_enabled
                             && abs($pctM + $pctN) > 0.01;
                         if ($useNonprofitSplit) {
-                            $mCents = (int) round($lineCents * $pctM / 100);
-                            $nCents = (int) round($lineCents * $pctN / 100);
-                            $bCents = $lineCents - $mCents - $nCents;
+                            $allocated = MarketplacePoolRevenueSplit::allocateLineCents($lineCents, $pctM, $pctN);
+                            $mCents = $allocated['merchant_cents'];
+                            $nCents = $allocated['nonprofit_cents'];
+                            $bCents = 0;
                         } else {
                             $mCents = $lineCents;
                             $nCents = 0;
@@ -1126,23 +1264,40 @@ class CheckoutController extends Controller
             //     'organization_donations' => $organizationDonations
             // ]);
 
-            // Create transaction record for Believe Points payment
+            $ledgerMeta = MarketplaceOrderLedgerService::transactionMeta(
+                $order->fresh(['orderSplit']),
+                $stripeFeeUsd
+            );
+            $ledgerMeta['stripe_tax_amount'] = $order->stripe_tax_amount !== null
+                ? round((float) $order->stripe_tax_amount, 2)
+                : round((float) ($order->tax_amount ?? 0), 2);
+            $ledgerMeta['stripe_fee_amount'] = round($stripeFeeUsd, 2);
             if ($paymentMethod === 'believe_points') {
-                Transaction::record([
+                $ledgerMeta['believe_points_used'] = $pointsRequired;
+            }
+            if (! empty($tempOrder->printify_order_id)) {
+                $ledgerMeta['printify_order_id'] = $tempOrder->printify_order_id;
+            }
+
+            if (! Transaction::query()
+                ->where('related_type', Order::class)
+                ->where('related_id', $order->id)
+                ->where('type', 'purchase')
+                ->exists()) {
+                Transaction::create([
                     'user_id' => $user->id,
                     'related_id' => $order->id,
                     'related_type' => Order::class,
                     'type' => 'purchase',
                     'status' => Transaction::STATUS_COMPLETED,
-                    'amount' => $tempOrder->total_amount,
-                    'fee' => 0,
+                    'amount' => $order->total_amount,
+                    'fee' => $paymentMethod === 'stripe' ? round($stripeFeeUsd, 2) : 0,
                     'currency' => 'USD',
-                    'payment_method' => 'believe_points',
-                    'meta' => [
-                        'order_id' => $order->id,
-                        'believe_points_used' => $pointsRequired,
-                        'printify_order_id' => $tempOrder->printify_order_id,
-                    ],
+                    'payment_method' => $paymentMethod === 'stripe' ? 'stripe' : 'believe_points',
+                    'transaction_id' => $paymentMethod === 'stripe' && $paymentIntent !== null
+                        ? $paymentIntent->id
+                        : 'mp_order_'.$order->id.'_points',
+                    'meta' => $ledgerMeta,
                     'processed_at' => now(),
                 ]);
             }
@@ -1292,28 +1447,43 @@ class CheckoutController extends Controller
             // Get Printify order details
             $printifyOrder = $this->printifyService->getOrder($printifyOrderId);
 
-            $methods = [];
-            $defaultCost = 0;
+            // Printify bills shipping on the order as total_shipping (cents). shipping_method.cost is often 0
+            // until finalized — always align UI + temp_order with total_shipping so checkout matches the summary.
+            $defaultCost = round((float) (($printifyOrder['total_shipping'] ?? 0) / 100), 2);
 
-            if (isset($printifyOrder['shipping_method'])) {
-                $methods[] = [
-                    'id' => 'standard',
-                    'name' => 'Standard Shipping',
-                    'cost' => (float) (($printifyOrder['shipping_method']['cost'] ?? 0) / 100),
-                    'estimated_days' => '10-30 business days',
-                ];
+            $methodName = 'Standard Shipping';
+            if (isset($printifyOrder['shipping_method']) && is_array($printifyOrder['shipping_method'])) {
+                $sm = $printifyOrder['shipping_method'];
+                if (! empty($sm['title'])) {
+                    $methodName = (string) $sm['title'];
+                } elseif (! empty($sm['name'])) {
+                    $methodName = (string) $sm['name'];
+                }
+                $lineCost = round((float) (($sm['cost'] ?? 0) / 100), 2);
+                if ($defaultCost <= 0 && $lineCost > 0) {
+                    $defaultCost = $lineCost;
+                }
             }
 
-            $defaultCost = (float) (($printifyOrder['total_shipping'] ?? 0) / 100);
+            $methods = [
+                [
+                    'id' => 'standard',
+                    'name' => $methodName,
+                    'cost' => $defaultCost,
+                    // UI appends "business days"; keep range only here
+                    'estimated_days' => '10-30',
+                ],
+            ];
 
-            // Log donation distribution for debugging
             \Log::info('Printify order in checkout step1 submit', [
-                'printifyOrder' => $printifyOrder,
+                'printify_order_id' => $printifyOrderId,
+                'total_shipping_cents' => $printifyOrder['total_shipping'] ?? null,
+                'shipping_usd' => $defaultCost,
             ]);
 
             return [
                 'cost' => $defaultCost,
-                'total_tax' => $printifyOrder['total_tax'],
+                'total_tax' => $printifyOrder['total_tax'] ?? null,
                 'methods' => $methods,
             ];
 
@@ -1327,7 +1497,7 @@ class CheckoutController extends Controller
                         'id' => 'standard',
                         'name' => 'Standard Shipping',
                         'cost' => 9.99,
-                        'estimated_days' => '10-30 business days',
+                        'estimated_days' => '5-10',
                     ],
                 ],
             ];
@@ -1348,16 +1518,38 @@ class CheckoutController extends Controller
             ->findOrFail($validated['temp_order_id']);
 
         try {
-            // Check if this is a Printify order or manual product
-            if ($tempOrder->printify_order_id) {
-                // Get updated Printify order details
-                $printifyOrder = $this->printifyService->getOrder($tempOrder->printify_order_id);
+            $stripeCalc = null;
 
-                // Calculate new tax amount
-                $newTaxAmount = (float) (($printifyOrder['total_tax'] ?? 0) / 100);
+            if ($tempOrder->printify_order_id) {
+                $printifyOrder = $this->printifyService->getOrder($tempOrder->printify_order_id);
                 $shippingCost = (float) (($printifyOrder['total_shipping'] ?? 0) / 100);
 
-                // Log the tax update
+                if (StripeTaxCalculationService::enabled()) {
+                    $tempOrder->loadMissing([
+                        'cart.items.product',
+                        'cart.items.marketplaceProduct',
+                        'cart.items.organizationProduct.marketplaceProduct',
+                    ]);
+                    $stripeCalc = StripeTaxCalculationService::calculateForMarketplace(
+                        $tempOrder,
+                        $tempOrder->cart,
+                        $shippingCost,
+                        fn (?MarketplaceProduct $mp) => $this->marketplaceProductIsDigitalDeliveryOnly($mp)
+                    );
+                    $newTaxAmount = $stripeCalc !== null ? $stripeCalc['tax_usd'] : 0.0;
+                    $printifyTaxPortion = 0.0;
+                    $additionalSalesTaxAdjustment = 0.0;
+                } else {
+                    // LEGACY: Printify tax + markup alignment
+                    $rawPrintifyTax = (float) (($printifyOrder['total_tax'] ?? 0) / 100);
+                    $tempOrder->load(['cart.items.product']);
+                    $split = $this->sumPrintifyRetailAndProductionCost($tempOrder->cart);
+                    $adj = $this->adjustPrintifySalesTaxForMarkup($rawPrintifyTax, $split['retail'], $split['cost']);
+                    $newTaxAmount = $adj['total_tax'];
+                    $printifyTaxPortion = $adj['printify_tax'];
+                    $additionalSalesTaxAdjustment = $adj['additional_sales_tax_adjustment'];
+                }
+
                 \Log::info('Tax amount updated on Step2 load', [
                     'temp_order_id' => $tempOrder->id,
                     'old_tax_amount' => $tempOrder->tax_amount,
@@ -1365,28 +1557,50 @@ class CheckoutController extends Controller
                     'old_shipping_cost' => $tempOrder->shipping_cost,
                     'new_shipping_cost' => $shippingCost,
                     'printify_order_id' => $tempOrder->printify_order_id,
+                    'stripe_tax' => StripeTaxCalculationService::enabled(),
                 ]);
             } else {
-                // For manual products, use existing tax and shipping (already calculated in step 1)
-                $newTaxAmount = $tempOrder->tax_amount ?? 0;
-                $shippingCost = $tempOrder->shipping_cost ?? 0;
+                $shippingCost = (float) ($tempOrder->shipping_cost ?? 0);
 
-                \Log::info('Tax amount for manual product (no update needed)', [
+                if (StripeTaxCalculationService::enabled()) {
+                    $tempOrder->loadMissing([
+                        'cart.items.product',
+                        'cart.items.marketplaceProduct',
+                        'cart.items.organizationProduct.marketplaceProduct',
+                    ]);
+                    $stripeCalc = StripeTaxCalculationService::calculateForMarketplace(
+                        $tempOrder,
+                        $tempOrder->cart,
+                        $shippingCost,
+                        fn (?MarketplaceProduct $mp) => $this->marketplaceProductIsDigitalDeliveryOnly($mp)
+                    );
+                    $newTaxAmount = $stripeCalc !== null ? $stripeCalc['tax_usd'] : 0.0;
+                    $printifyTaxPortion = 0.0;
+                    $additionalSalesTaxAdjustment = 0.0;
+                } else {
+                    $newTaxAmount = $tempOrder->tax_amount ?? 0;
+                    $printifyTaxPortion = (float) ($tempOrder->printify_tax_amount ?? 0);
+                    $additionalSalesTaxAdjustment = (float) ($tempOrder->additional_sales_tax_adjustment ?? 0);
+                }
+
+                \Log::info('Tax amount for manual product (Step2 load)', [
                     'temp_order_id' => $tempOrder->id,
                     'tax_amount' => $newTaxAmount,
                     'shipping_cost' => $shippingCost,
+                    'stripe_tax' => StripeTaxCalculationService::enabled(),
                 ]);
             }
 
-            // Update temp order with new tax and shipping
             $oldTotal = $tempOrder->total_amount;
 
             $tempOrder->update([
                 'tax_amount' => $newTaxAmount,
+                'printify_tax_amount' => $printifyTaxPortion,
+                'additional_sales_tax_adjustment' => $additionalSalesTaxAdjustment,
                 'shipping_cost' => $shippingCost,
+                'stripe_tax_amount' => $stripeCalc !== null ? $stripeCalc['tax_usd'] : null,
+                'stripe_tax_calculation_id' => $stripeCalc !== null ? $stripeCalc['calculation_id'] : null,
                 'total_amount' => $tempOrder->subtotal +
-                    $tempOrder->platform_fee +
-                    // $tempOrder->donation_amount + // Commented out - removed donation for Printify products
                     $shippingCost +
                     $newTaxAmount,
             ]);
@@ -1397,6 +1611,8 @@ class CheckoutController extends Controller
             return response()->json([
                 'success' => true,
                 'tax_amount' => (float) $newTaxAmount,
+                'printify_tax_amount' => (float) $printifyTaxPortion,
+                'additional_sales_tax_adjustment' => (float) $additionalSalesTaxAdjustment,
                 'shipping_cost' => (float) $shippingCost,
                 'total_amount' => (float) $tempOrder->total_amount,
                 'amount_changed' => $amountChanged,
@@ -1413,5 +1629,130 @@ class CheckoutController extends Controller
                 'error' => 'Failed to update tax amount',
             ], 500);
         }
+    }
+
+    /**
+     * Merchant Hub / pool marketplace rows: types that ship from the merchant (matches org create flow: physical + service).
+     */
+    private function marketplaceProductNeedsShippoRates(?MarketplaceProduct $mp): bool
+    {
+        if (! $mp) {
+            return false;
+        }
+
+        return in_array((string) $mp->product_type, ['physical', 'service', 'media'], true);
+    }
+
+    /**
+     * Only true digital goods skip Shippo; service/media are still merchant-fulfilled physical-style shipments.
+     */
+    private function marketplaceProductIsDigitalDeliveryOnly(?MarketplaceProduct $mp): bool
+    {
+        return $mp && (string) $mp->product_type === 'digital';
+    }
+
+    /**
+     * Sum retail (cart) and Printify production cost for catalog Printify line items only.
+     *
+     * @return array{retail: float, cost: float}
+     */
+    private function sumPrintifyRetailAndProductionCost(?Cart $cart): array
+    {
+        $retail = 0.0;
+        $cost = 0.0;
+
+        if (! $cart || $cart->items->isEmpty()) {
+            return ['retail' => 0.0, 'cost' => 0.0];
+        }
+
+        $productCache = [];
+
+        foreach ($cart->items as $item) {
+            if (
+                ! $item->product_id
+                || ! $item->product
+                || empty($item->product->printify_product_id)
+                || empty($item->printify_variant_id)
+            ) {
+                continue;
+            }
+
+            $pid = (string) $item->product->printify_product_id;
+            if (! isset($productCache[$pid])) {
+                try {
+                    $productCache[$pid] = $this->printifyService->getProduct($pid);
+                } catch (\Exception $e) {
+                    \Log::warning('sumPrintifyRetailAndProductionCost: getProduct failed', [
+                        'printify_product_id' => $pid,
+                        'error' => $e->getMessage(),
+                    ]);
+                    $productCache[$pid] = [];
+                }
+            }
+
+            $details = $productCache[$pid];
+            $variantId = (int) $item->printify_variant_id;
+            $costCents = 0;
+            foreach ($details['variants'] ?? [] as $v) {
+                if ((int) ($v['id'] ?? 0) === $variantId) {
+                    $costCents = (int) ($v['cost'] ?? 0);
+                    break;
+                }
+            }
+
+            $qty = (int) $item->quantity;
+            $retail += (float) $item->unit_price * $qty;
+            $cost += ($costCents / 100) * $qty;
+        }
+
+        return [
+            'retail' => round($retail, 2),
+            'cost' => round($cost, 2),
+        ];
+    }
+
+    /**
+     * Printify remits tax on production; retail includes org markup. Scale total tax so the effective
+     * rate applies to full retail: T_retail ≈ T_printify × (R / C).
+     */
+    private function adjustPrintifySalesTaxForMarkup(float $printifyTaxDollars, float $retailSubtotal, float $productionCostSubtotal): array
+    {
+        $printifyTaxDollars = round($printifyTaxDollars, 2);
+
+        if ($productionCostSubtotal <= 0 || $printifyTaxDollars <= 0 || $retailSubtotal <= $productionCostSubtotal) {
+            return [
+                'printify_tax' => $printifyTaxDollars,
+                'additional_sales_tax_adjustment' => 0.0,
+                'total_tax' => $printifyTaxDollars,
+            ];
+        }
+
+        $ratio = $retailSubtotal / $productionCostSubtotal;
+        $totalRetailAligned = round($printifyTaxDollars * $ratio, 2);
+        $additional = max(0.0, round($totalRetailAligned - $printifyTaxDollars, 2));
+
+        return [
+            'printify_tax' => $printifyTaxDollars,
+            'additional_sales_tax_adjustment' => $additional,
+            'total_tax' => round($printifyTaxDollars + $additional, 2),
+        ];
+    }
+
+    private function estimateTaxFallback(TempOrder $tempOrder): float
+    {
+        $state = strtoupper((string) ($tempOrder->state ?? ''));
+        if ($state === '') {
+            return 0.0;
+        }
+
+        $stateTax = \App\Models\StateSalesTax::where('state_code', $state)->first();
+        if (! $stateTax) {
+            return 0.0;
+        }
+
+        $rate = (float) $stateTax->base_sales_tax_rate;
+        $subtotal = (float) $tempOrder->subtotal;
+
+        return round(($subtotal * $rate) / 100, 2);
     }
 }

@@ -437,7 +437,9 @@ export default function UserPage({
     setLoadingFollow(prev => ({ ...prev, [person.id]: true }))
 
     try {
-      const res = await axios.post(route('organizations.toggle-favorite', person.id))
+      const res = await axios.post(route('organizations.toggle-favorite', person.id), {
+        toggle_favorite_context: 'excel',
+      })
       if (res.data?.success !== false) {
         setFollowingStates(prev => ({ ...prev, [person.id]: !prev[person.id] }))
       }

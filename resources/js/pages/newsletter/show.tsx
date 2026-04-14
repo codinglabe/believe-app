@@ -31,11 +31,26 @@ import {
     Pause
 } from "lucide-react"
 
+function sendViaLabel(sendVia?: string): string {
+    switch (sendVia) {
+        case 'sms':
+            return 'SMS'
+        case 'both':
+            return 'Email & SMS'
+        case 'push':
+            return 'Push'
+        case 'email':
+        default:
+            return 'Email'
+    }
+}
+
 interface Newsletter {
     id: number
     subject: string
     content: string
     html_content: string
+    send_via?: 'email' | 'sms' | 'both' | 'push'
     status: 'draft' | 'paused' | 'scheduled' | 'sending' | 'sent' | 'failed'
     scheduled_at?: string
     scheduled_at_formatted?: string
@@ -55,11 +70,11 @@ interface Newsletter {
     clicked_count: number
     bounced_count: number
     unsubscribed_count: number
-    template: {
+    template?: {
         id: number
         name: string
         template_type: string
-    }
+    } | null
     organization?: {
         name: string
     }
@@ -202,10 +217,13 @@ export default function NewsletterShow({ newsletter, previewData }: NewsletterSh
                                 {newsletter.subject}
                             </h1>
                         </div>
-                        <div className="flex items-center gap-3">
+                        <div className="flex flex-wrap items-center gap-3">
                             <Badge className={getStatusColor(newsletter.status)}>
                                 {getStatusIcon(newsletter.status)}
                                 <span className="ml-1 capitalize">{newsletter.status}</span>
+                            </Badge>
+                            <Badge variant="outline" className="border-violet-300 text-violet-800 dark:border-violet-700 dark:text-violet-200 font-normal">
+                                Send via: {sendViaLabel(newsletter.send_via)}
                             </Badge>
                             {newsletter.sent_at_formatted && (
                                 <span className="text-sm text-gray-600 dark:text-gray-400">
@@ -556,7 +574,7 @@ export default function NewsletterShow({ newsletter, previewData }: NewsletterSh
 
                                 <div>
                                     <h3 className="font-semibold text-gray-900 dark:text-white mb-2">Template</h3>
-                                    <Badge variant="outline">{newsletter.template.name}</Badge>
+                                    <Badge variant="outline">{newsletter.template?.name ?? 'None'}</Badge>
                                 </div>
 
                                 <div>

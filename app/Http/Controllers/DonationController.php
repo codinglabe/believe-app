@@ -14,6 +14,9 @@ use App\Services\ImpactScoreService;
 use App\Services\SeoService;
 use App\Services\StripeConfigService;
 use App\Services\StripeEnvironmentSyncService;
+use App\Services\StripeProcessingFeeEstimator;
+use App\Support\StripeAutomaticTax;
+use App\Support\StripeCustomerChargeAmount;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
@@ -512,7 +515,12 @@ class DonationController extends Controller
             }
         }
 
-        $amountInCents = (int) round($checkoutTotalUsd * 100);
+        if ($paymentMethod === 'stripe' && ! $donorCoversFees && StripeProcessingFeeEstimator::customerPaysProcessingFeeEnabled()) {
+            $rail = $feeRail === 'bank' ? 'us_bank_account' : 'card';
+            $amountInCents = StripeCustomerChargeAmount::chargeCentsFromNetUsd($baseGiftUsd, $rail);
+        } else {
+            $amountInCents = (int) round($checkoutTotalUsd * 100);
+        }
         $organizationName = $organization->name;
         // Supporters and organization users can donate; block admin
         if ($user->hasRole('admin')) {
@@ -651,10 +659,7 @@ class DonationController extends Controller
                 'billing_address_collection' => 'auto',
             ];
 
-            if (config('donations.stripe_automatic_tax')) {
-                $checkoutOptions['automatic_tax'] = ['enabled' => true];
-                $checkoutOptions['customer_update'] = ['address' => 'auto'];
-            }
+            $checkoutOptions = StripeAutomaticTax::mergeCheckoutOptions($checkoutOptions);
 
             if ($validated['frequency'] !== 'one-time') {
                 $checkoutOptions['subscription_data'] = [

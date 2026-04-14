@@ -167,6 +167,10 @@ class HandleInertiaRequests extends Middleware
                     'email_verified_at' => $user->email_verified_at,
                     'joined' => $user->created_at->format('F Y'),
                     'has_active_subscription' => $hasActiveSubscription,
+                    'pending_pool_approval_count' => \App\Models\OrganizationProduct::query()
+                        ->where('status', 'pending_merchant_approval')
+                        ->whereHas('marketplaceProduct', fn ($q) => $q->where('merchant_id', $user->id))
+                        ->count(),
                 ];
             } elseif ($isLivestockDomain || ($user instanceof \App\Models\LivestockUser)) {
                 // Livestock user data
@@ -207,6 +211,7 @@ class HandleInertiaRequests extends Middleware
                         'email' => $user->email,
                         'phone' => $user->contact_number,
                         'role' => $user->role,
+                        'can_follow_organizations' => $user->canFollowOrganizations(),
                         'organization_role' => $user->organization_role ?? null,
                         'balance' => $user->balance,
                         'reward_points' => $user->reward_points ?? 0,
@@ -216,7 +221,7 @@ class HandleInertiaRequests extends Middleware
                         'ai_tokens_included' => $user->ai_tokens_included ?? 0,
                         'current_plan_id' => $user->current_plan_id ?? null,
                         'current_plan_details' => $user->current_plan_details ?? null,
-                        'image' => $user->role !== 'organization' ? ($user->image ? '/storage/'.$user->image : null) : ($user->organization?->user->image ? '/storage/'.$user->organization?->user->image : null),
+                        'image' => $user->role !== 'organization' ? ($user->image ? '/storage/'.$user->image : null) : ($user->organization?->user?->image ? '/storage/'.$user->organization?->user?->image : null),
                         'favorite_organizations_count' => $user->favoriteOrganizations()->count(),
                         'cover_img' => $user->role !== 'organization' ? ($user->cover_img ? '/storage/'.$user->cover_img : null) : ($user->organization?->user?->cover_img ? '/storage/'.$user->organization?->user?->cover_img : null),
                         'dob' => $user->dob,

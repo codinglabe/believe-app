@@ -7,6 +7,8 @@ use App\Models\MerchantHubOfferRedemption;
 use App\Models\MerchantHubReferralReward;
 use App\Models\Order;
 use App\Models\Transaction;
+use App\Services\BiuPlatformFeeService;
+use App\Support\StripeCustomerChargeAmount;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -336,7 +338,7 @@ class MerchantRedemptionController extends Controller
                 'shipping_postal_code' => $request->shipping_postal_code,
                 'shipping_country' => strtoupper($request->shipping_country),
             ]);
-            $amountCents = (int) round($cashAmount * 100);
+            $amountCents = StripeCustomerChargeAmount::chargeCentsFromNetUsd($cashAmount, 'card');
             if ($amountCents < 50) {
                 return back()->withErrors(['error' => 'Minimum charge amount is 0.50. This offer cannot be purchased with cash.']);
             }
@@ -429,7 +431,7 @@ class MerchantRedemptionController extends Controller
 
                 $receiptCode = 'RED-'.strtoupper(Str::random(8));
 
-                $amountCents = (int) round($cashAmount * 100);
+                $amountCents = StripeCustomerChargeAmount::chargeCentsFromNetUsd($cashAmount, 'card');
                 $currency = strtolower($offer->currency ?? 'usd');
                 $checkout = $user->checkout([
                     [
@@ -586,12 +588,12 @@ class MerchantRedemptionController extends Controller
                     'currency' => $redemption->offer->currency ?? 'USD',
                     'payment_method' => 'stripe',
                     'transaction_id' => $session->payment_intent ?? null,
-                    'meta' => [
+                    'meta' => array_merge([
                         'stripe_session_id' => $sessionId,
                         'points_spent' => 0,
                         'offer_id' => $redemption->offer->id,
                         'receipt_code' => $redemption->receipt_code,
-                    ],
+                    ], BiuPlatformFeeService::ledgerMetaSlice((float) $redemption->cash_spent)),
                     'processed_at' => now(),
                 ]);
             } else {
@@ -625,12 +627,12 @@ class MerchantRedemptionController extends Controller
                     'currency' => strtoupper($offer->currency ?? $currency),
                     'payment_method' => 'stripe',
                     'transaction_id' => $session->payment_intent ?? null,
-                    'meta' => [
+                    'meta' => array_merge([
                         'stripe_session_id' => $sessionId,
                         'points_spent' => 0,
                         'offer_id' => $redemption->offer->id,
                         'receipt_code' => $redemption->receipt_code,
-                    ],
+                    ], BiuPlatformFeeService::ledgerMetaSlice((float) $redemption->cash_spent)),
                     'processed_at' => now(),
                 ]);
             }

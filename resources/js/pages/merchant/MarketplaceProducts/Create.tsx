@@ -28,7 +28,6 @@ interface ProductRow {
   nonprofit_marketplace_enabled: boolean
   pct_nonprofit: string | number | null
   pct_merchant: string | number | null
-  pct_biu: string | number | null
   min_resale_price: string | number | null
   suggested_retail_price: string | number | null
   nonprofit_approval_type: string
@@ -62,8 +61,7 @@ export default function MerchantMarketplaceProductForm({ product, categories = [
     digital_delivery_notes: product?.digital_delivery_notes ?? "",
     nonprofit_marketplace_enabled: product?.nonprofit_marketplace_enabled ?? false,
     pct_nonprofit: product?.pct_nonprofit != null ? String(product.pct_nonprofit) : "30",
-    pct_merchant: product?.pct_merchant != null ? String(product.pct_merchant) : "60",
-    pct_biu: product?.pct_biu != null ? String(product.pct_biu) : "10",
+    pct_merchant: product?.pct_merchant != null ? String(product.pct_merchant) : "70",
     min_resale_price: product?.min_resale_price != null ? String(product.min_resale_price) : "",
     suggested_retail_price: product?.suggested_retail_price != null ? String(product.suggested_retail_price) : "",
     nonprofit_approval_type: product?.nonprofit_approval_type ?? "auto",
@@ -114,7 +112,6 @@ export default function MerchantMarketplaceProductForm({ product, categories = [
       nonprofit_marketplace_enabled: data.nonprofit_marketplace_enabled,
       pct_nonprofit: data.pct_nonprofit,
       pct_merchant: data.pct_merchant,
-      pct_biu: data.pct_biu,
       min_resale_price: data.min_resale_price,
       suggested_retail_price: data.suggested_retail_price,
       nonprofit_approval_type: data.nonprofit_approval_type,
@@ -125,7 +122,7 @@ export default function MerchantMarketplaceProductForm({ product, categories = [
       entries.inventory_quantity = data.inventory_quantity
     }
     Object.entries(entries).forEach(([k, v]) => {
-      if (v === "" && k !== "name" && k !== "base_price" && k !== "product_type" && k !== "status" && k !== "nonprofit_marketplace_enabled" && k !== "unlimited_inventory") return
+      if (v === "" && k !== "name" && k !== "base_price" && k !== "cost" && k !== "product_type" && k !== "status" && k !== "nonprofit_marketplace_enabled" && k !== "unlimited_inventory") return
       formData.append(k, typeof v === "boolean" ? (v ? "1" : "0") : String(v))
     })
     formData.append("category_id", data.category_id === "" ? "" : String(data.category_id))
@@ -210,13 +207,32 @@ export default function MerchantMarketplaceProductForm({ product, categories = [
               </div>
               <div className="grid sm:grid-cols-2 gap-4">
                 <div>
-                  <MerchantLabel>Base price (USD)</MerchantLabel>
-                  <MerchantInput type="number" step="0.01" min="0" value={data.base_price} onChange={(e) => setData("base_price", e.target.value)} />
+                  <MerchantLabel>
+                    Base price (USD) <span className="text-red-400">*</span>
+                  </MerchantLabel>
+                  <MerchantInput
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    required
+                    value={data.base_price}
+                    onChange={(e) => setData("base_price", e.target.value)}
+                  />
                   {err("base_price") && <p className="text-red-400 text-sm mt-1">{err("base_price")}</p>}
                 </div>
                 <div>
-                  <MerchantLabel>Cost (optional)</MerchantLabel>
-                  <MerchantInput type="number" step="0.01" min="0" value={data.cost} onChange={(e) => setData("cost", e.target.value)} />
+                  <MerchantLabel>
+                    Cost (USD) <span className="text-red-400">*</span>
+                  </MerchantLabel>
+                  <MerchantInput
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    required
+                    value={data.cost}
+                    onChange={(e) => setData("cost", e.target.value)}
+                  />
+                  {err("cost") && <p className="text-red-400 text-sm mt-1">{err("cost")}</p>}
                 </div>
               </div>
               <div className="grid sm:grid-cols-2 gap-4">
@@ -432,7 +448,7 @@ export default function MerchantMarketplaceProductForm({ product, categories = [
               </p>
               {data.nonprofit_marketplace_enabled && (
                 <>
-                  <div className="grid sm:grid-cols-3 gap-4">
+                  <div className="grid sm:grid-cols-2 gap-4">
                     <div>
                       <MerchantLabel>% to nonprofit</MerchantLabel>
                       <MerchantInput type="number" step="0.01" value={data.pct_nonprofit} onChange={(e) => setData("pct_nonprofit", e.target.value)} />
@@ -443,12 +459,8 @@ export default function MerchantMarketplaceProductForm({ product, categories = [
                       <MerchantInput type="number" step="0.01" value={data.pct_merchant} onChange={(e) => setData("pct_merchant", e.target.value)} />
                       {err("pct_merchant") && <p className="text-red-400 text-sm mt-1">{err("pct_merchant")}</p>}
                     </div>
-                    <div>
-                      <MerchantLabel>% to BIU</MerchantLabel>
-                      <MerchantInput type="number" step="0.01" value={data.pct_biu} onChange={(e) => setData("pct_biu", e.target.value)} />
-                      {err("pct_biu") && <p className="text-red-400 text-sm mt-1">{err("pct_biu")}</p>}
-                    </div>
                   </div>
+                  <p className="text-xs text-gray-500">Nonprofit and merchant shares must total 100%.</p>
                   <div className="grid sm:grid-cols-2 gap-4">
                     <div>
                       <MerchantLabel>Minimum resale price (optional)</MerchantLabel>

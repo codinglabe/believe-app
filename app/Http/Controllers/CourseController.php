@@ -4,22 +4,21 @@ namespace App\Http\Controllers;
 
 use App\Jobs\SendCourseNotification;
 use App\Models\Course;
-use App\Models\Topic;
 use App\Models\Enrollment;
 use App\Models\Organization;
+use App\Models\Topic;
+use App\Services\SeoService;
 use Illuminate\Http\Request;
-use Inertia\Inertia;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Validation\Rule;
-use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Log;
-use App\Services\SeoService;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
+use Inertia\Inertia;
 
 class CourseController extends BaseController
 {
-
     /**
      * Display a listing of courses for the public view.
      */
@@ -32,9 +31,9 @@ class CourseController extends BaseController
             ->withCount(['enrollmentsCount as enrolled_count'])
             ->when($filters['search'] ?? null, function ($query, $search) {
                 $query->where(function ($q) use ($search) {
-                    $q->where('name', 'like', '%' . $search . '%')
-                        ->orWhere('target_audience', 'like', '%' . $search . '%')
-                        ->orWhere('description', 'like', '%' . $search . '%');
+                    $q->where('name', 'like', '%'.$search.'%')
+                        ->orWhere('target_audience', 'like', '%'.$search.'%')
+                        ->orWhere('description', 'like', '%'.$search.'%');
                 });
             })
             ->when($filters['type'] ?? null, function ($query, $type) {
@@ -78,6 +77,7 @@ class CourseController extends BaseController
         $courses->getCollection()->transform(function ($course) {
             $course->organization_name = optional($course->organization->organization)->name;
             $course->enrolled = $course->enrolled_count ?? 0;
+
             return $course;
         });
 
@@ -102,25 +102,25 @@ class CourseController extends BaseController
         $baseSeo = SeoService::forPage('courses');
         $seoTitle = $baseSeo['title'];
         $seoParts = [];
-        if (!empty($filters['type']) && $filters['type'] !== 'all') {
+        if (! empty($filters['type']) && $filters['type'] !== 'all') {
             $seoParts[] = $filters['type'] === 'event' ? 'Events' : 'Courses';
         }
-        if (!empty($filters['pricing_type']) && $filters['pricing_type'] !== 'all') {
+        if (! empty($filters['pricing_type']) && $filters['pricing_type'] !== 'all') {
             $seoParts[] = $filters['pricing_type'] === 'free' ? 'Free' : 'Paid';
         }
-        if (!empty($filters['format']) && $filters['format'] !== 'all') {
+        if (! empty($filters['format']) && $filters['format'] !== 'all') {
             $formatLabels = ['online' => 'Online', 'in_person' => 'In Person', 'hybrid' => 'Hybrid'];
             $seoParts[] = $formatLabels[$filters['format']] ?? $filters['format'];
         }
-        if (!empty($filters['search'])) {
-            $seoParts[] = '“' . Str::limit($filters['search'], 30) . '”';
+        if (! empty($filters['search'])) {
+            $seoParts[] = '“'.Str::limit($filters['search'], 30).'”';
         }
-        if (!empty($seoParts)) {
-            $seoTitle = implode(' ', $seoParts) . ' - ' . $baseSeo['title'];
+        if (! empty($seoParts)) {
+            $seoTitle = implode(' ', $seoParts).' - '.$baseSeo['title'];
         }
         $seoDescription = $baseSeo['description'];
-        if (!empty($filters['search'])) {
-            $seoDescription = 'Find courses and events matching your search. ' . $seoDescription;
+        if (! empty($filters['search'])) {
+            $seoDescription = 'Find courses and events matching your search. '.$seoDescription;
         }
 
         return Inertia::render('frontend/course/Index', [
@@ -147,7 +147,7 @@ class CourseController extends BaseController
             'courses_status',
             'courses_type',
             'courses_course_type',
-            'courses_topic'
+            'courses_topic',
         ]);
 
         $user = Auth::user();
@@ -162,43 +162,39 @@ class CourseController extends BaseController
         }
 
         // 🔍 Search functionality
-        if (!empty($filters['courses_search'])) {
+        if (! empty($filters['courses_search'])) {
             $search = $filters['courses_search'];
             $query->where(function ($q) use ($search) {
-                $q->where('name', 'like', '%' . $search . '%')
-                    ->orWhere('description', 'like', '%' . $search . '%')
-                    ->orWhere('target_audience', 'like', '%' . $search . '%')
-                    ->orWhere('community_impact', 'like', '%' . $search . '%')
+                $q->where('name', 'like', '%'.$search.'%')
+                    ->orWhere('description', 'like', '%'.$search.'%')
+                    ->orWhere('target_audience', 'like', '%'.$search.'%')
+                    ->orWhere('community_impact', 'like', '%'.$search.'%')
                     ->orWhereHas('organization', function ($orgQuery) use ($search) {
-                        $orgQuery->where('name', 'like', '%' . $search . '%');
+                        $orgQuery->where('name', 'like', '%'.$search.'%');
                     });
             });
         }
 
-        // 🔎 Topic/Event Type filter - depends on course_course_type
-        if (!empty($filters['courses_topic'])) {
+        // 🔎 Topic/Event Type filter - depends on course_course_type (both use event_types)
+        if (! empty($filters['courses_topic'])) {
             $courseType = $filters['courses_course_type'] ?? '';
-            if ($courseType === 'event') {
-                // Filter by event_type_id when type is event
+            if ($courseType === 'event' || $courseType === 'course') {
                 $query->where('event_type_id', $filters['courses_topic']);
-            } else {
-                // Filter by topic_id when type is course or not specified
-            $query->where('topic_id', $filters['courses_topic']);
             }
         }
 
         // 🔎 Pricing type filter
-        if (!empty($filters['courses_type'])) {
+        if (! empty($filters['courses_type'])) {
             $query->where('pricing_type', $filters['courses_type']);
         }
 
         // 🔎 Course/Event type filter
-        if (!empty($filters['courses_course_type'])) {
+        if (! empty($filters['courses_course_type'])) {
             $query->where('type', $filters['courses_course_type']);
         }
 
         // 🔎 Status filter
-        if (!empty($filters['courses_status'])) {
+        if (! empty($filters['courses_status'])) {
             $status = $filters['courses_status'];
             $now = now();
 
@@ -230,10 +226,10 @@ class CourseController extends BaseController
         // Replace enrolled count with actual count from enrollments table
         $courses->getCollection()->transform(function ($course) {
             $course->enrolled = $course->enrolled_count ?? 0;
+
             return $course;
         });
 
-        $topics = Topic::orderBy('name')->get(['id', 'name']);
         $eventTypes = \App\Models\EventType::where('is_active', true)
             ->orderBy('category')
             ->orderBy('name')
@@ -247,13 +243,11 @@ class CourseController extends BaseController
 
         return Inertia::render('admin/course/Index', [
             'courses' => $courses,
-            'topics' => $topics,
             'eventTypes' => $eventTypes,
             'filters' => $filters,
             'statistics' => $statistics,
         ]);
     }
-
 
     /**
      * Calculate course statistics for the admin dashboard
@@ -289,16 +283,14 @@ class CourseController extends BaseController
     public function create(Request $request)
     {
         $this->authorizePermission($request, 'course.create');
-        $topics = Topic::orderBy('name')->get(['id', 'name']);
         $eventTypes = \App\Models\EventType::where('is_active', true)
             ->orderBy('category')
             ->orderBy('name')
             ->get(['id', 'name', 'category']);
 
-        return Inertia::render('admin/course/Create', [
-            'topics' => $topics,
+        return Inertia::render('admin/course/Create', array_merge([
             'eventTypes' => $eventTypes,
-        ]);
+        ], $this->organizationPrimaryActionCategoriesPageProps($request)));
     }
 
     /**
@@ -312,13 +304,18 @@ class CourseController extends BaseController
         $typeLabel = $type === 'course' ? 'course' : 'event';
         $typeLabelCapital = $type === 'course' ? 'Course' : 'Event';
 
-        $validated = $request->validate([
+        $validated = $request->validate(array_merge([
             // Basic Information
             'name' => 'required|string|max:255|unique:courses,name',
             'description' => 'required|string',
             'type' => ['required', Rule::in(['course', 'event'])],
-            'topic_id' => ['required_if:type,course', 'nullable', 'exists:topics,id'],
-            'event_type_id' => ['required_if:type,event', 'nullable', 'exists:event_types,id'],
+            'topic_id' => ['nullable', 'exists:topics,id'],
+            'event_type_id' => [
+                'required_if:type,course',
+                'required_if:type,event',
+                'nullable',
+                'exists:event_types,id',
+            ],
             'meeting_link' => 'nullable|url|max:500', // Added meeting_link validation
 
             // Pricing
@@ -340,8 +337,8 @@ class CourseController extends BaseController
             'target_audience' => 'required|string|max:255',
             'community_impact' => 'nullable|string',
 
-            // Course Content
-            'learning_outcomes' => 'required|array|min:1',
+            // Course Content (optional — admin create/edit no longer collects this section)
+            'learning_outcomes' => ['nullable', 'array'],
             'learning_outcomes.*' => 'string|max:255',
             'prerequisites' => 'nullable|array',
             'prerequisites.*' => 'string|max:255',
@@ -356,7 +353,7 @@ class CourseController extends BaseController
 
             // Media
             'image' => 'nullable|image|mimes:jpeg,png,jpg,gif,svg|max:2048',
-        ], [
+        ], $this->primaryActionCategoryIdsValidation($request)), [
             // Custom error messages
             'name.required' => "The {$typeLabelCapital} name is required.",
             'name.unique' => "A {$typeLabel} with this name already exists.",
@@ -364,10 +361,9 @@ class CourseController extends BaseController
             'description.required' => "The {$typeLabelCapital} description is required.",
             'type.required' => 'Please select a type (Course or Event).',
             'type.in' => 'Type must be either Course or Event.',
-            'topic_id.required_if' => 'Please select a course topic.',
             'topic_id.exists' => 'The selected topic is invalid.',
-            'event_type_id.required_if' => 'Please select an event type.',
-            'event_type_id.exists' => 'The selected event type is invalid.',
+            'event_type_id.required_if' => 'Please select a topic.',
+            'event_type_id.exists' => 'The selected topic is invalid.',
             'meeting_link.url' => 'The meeting link must be a valid URL.',
             'meeting_link.max' => 'The meeting link may not be greater than 500 characters.',
             'pricing_type.required' => 'Please select a pricing type.',
@@ -417,7 +413,8 @@ class CourseController extends BaseController
                     'exists' => \Illuminate\Support\Facades\Storage::disk('public')->exists($imagePath),
                 ]);
             } catch (\Exception $e) {
-                \Illuminate\Support\Facades\Log::error('Failed to upload course image: ' . $e->getMessage());
+                \Illuminate\Support\Facades\Log::error('Failed to upload course image: '.$e->getMessage());
+
                 return redirect()->back()
                     ->withInput()
                     ->withErrors(['image' => 'Failed to upload image. Please try again.']);
@@ -431,7 +428,7 @@ class CourseController extends BaseController
 
         // Ensure unique slug
         while (Course::where('slug', $slug)->exists()) {
-            $slug = $originalSlug . '-' . $counter;
+            $slug = $originalSlug.'-'.$counter;
             $counter++;
         }
 
@@ -445,7 +442,7 @@ class CourseController extends BaseController
 
                 // Form data
                 'type' => $validated['type'],
-                'topic_id' => $validated['topic_id'] ?? null,
+                'topic_id' => null,
                 'event_type_id' => $validated['event_type_id'] ?? null,
                 'name' => $validated['name'],
                 'slug' => $slug,
@@ -472,7 +469,7 @@ class CourseController extends BaseController
                 'community_impact' => $validated['community_impact'],
 
                 // Course Content
-                'learning_outcomes' => $validated['learning_outcomes'],
+                'learning_outcomes' => $validated['learning_outcomes'] ?? [],
                 'prerequisites' => $validated['prerequisites'] ?? [],
                 'materials_needed' => $validated['materials_needed'] ?? [],
                 'accessibility_features' => $validated['accessibility_features'] ?? [],
@@ -491,6 +488,7 @@ class CourseController extends BaseController
                 'last_updated' => now(),
             ]);
 
+            $this->syncPrimaryActionCategories($course, $request);
 
             DB::commit();
 
@@ -499,7 +497,7 @@ class CourseController extends BaseController
             return redirect()->route('admin.courses.index')->with('success', 'Community course created successfully!');
         } catch (\Exception $e) {
             DB::rollBack();
-            Log::error('Failed to create course: ' . $e->getMessage());
+            Log::error('Failed to create course: '.$e->getMessage());
 
             return redirect()->back()
                 ->withInput()
@@ -551,13 +549,13 @@ class CourseController extends BaseController
                 $timePart = substr($timePart, 0, 5);
             }
             // Combine date and time
-            $startDateTime = \Carbon\Carbon::createFromFormat('Y-m-d H:i', $datePart . ' ' . $timePart);
+            $startDateTime = \Carbon\Carbon::createFromFormat('Y-m-d H:i', $datePart.' '.$timePart);
         } catch (\Exception $e) {
             // Fallback: try to parse start_date as date only
             try {
                 $dateOnly = \Carbon\Carbon::parse($course->start_date)->format('Y-m-d');
                 $timeOnly = substr($course->start_time ?? '00:00', 0, 5); // Get HH:mm format
-                $startDateTime = \Carbon\Carbon::createFromFormat('Y-m-d H:i', $dateOnly . ' ' . $timeOnly);
+                $startDateTime = \Carbon\Carbon::createFromFormat('Y-m-d H:i', $dateOnly.' '.$timeOnly);
             } catch (\Exception $e2) {
                 // Final fallback: use current time + 1 hour as default (so it's not started)
                 $startDateTime = \Carbon\Carbon::now()->addHour();
@@ -592,7 +590,7 @@ class CourseController extends BaseController
         // For free courses, users can enroll directly
         // Allow enrollment for 'available' and 'almost_full' statuses
         // Only block if: user is enrolled, course is full, course has started, or user is creator
-        $canEnroll = !$hasActiveEnrollment
+        $canEnroll = ! $hasActiveEnrollment
             && $status !== 'full'
             && $status !== 'started'
             && $status !== 'unavailable';
@@ -731,14 +729,13 @@ class CourseController extends BaseController
             abort(403, 'Unauthorized access to this course.');
         }
 
-        $topics = Topic::orderBy('name')->get(['id', 'name']);
         $eventTypes = \App\Models\EventType::where('is_active', true)
             ->orderBy('category')
             ->orderBy('name')
             ->get(['id', 'name', 'category']);
 
         // Format the course data properly for the form
-        $courseData = $course->load(['topic', 'eventType', 'organization', 'creator']);
+        $courseData = $course->load(['topic', 'eventType', 'organization', 'creator', 'primaryActionCategories']);
 
         // Ensure dates are in proper format
         $courseData->start_date = $course->start_date instanceof \Carbon\Carbon
@@ -755,11 +752,12 @@ class CourseController extends BaseController
             ? $course->start_time->format('H:i')
             : (is_string($course->start_time) ? substr($course->start_time, 0, 5) : $course->start_time);
 
-        return Inertia::render('admin/course/Edit', [
+        $courseData->primary_action_category_ids = $course->primaryActionCategories->pluck('id')->map(fn ($id) => (int) $id)->values()->all();
+
+        return Inertia::render('admin/course/Edit', array_merge([
             'course' => $courseData,
-            'topics' => $topics,
             'eventTypes' => $eventTypes,
-        ]);
+        ], $this->organizationPrimaryActionCategoriesPageProps($request)));
     }
 
     /**
@@ -777,7 +775,7 @@ class CourseController extends BaseController
         $typeLabel = $type === 'course' ? 'course' : 'event';
         $typeLabelCapital = $type === 'course' ? 'Course' : 'Event';
 
-        $validated = $request->validate([
+        $validated = $request->validate(array_merge([
             // Basic Information
             'name' => [
                 'required',
@@ -787,8 +785,13 @@ class CourseController extends BaseController
             ],
             'description' => 'required|string',
             'type' => ['required', Rule::in(['course', 'event'])],
-            'topic_id' => ['required_if:type,course', 'nullable', 'exists:topics,id'],
-            'event_type_id' => ['required_if:type,event', 'nullable', 'exists:event_types,id'],
+            'topic_id' => ['nullable', 'exists:topics,id'],
+            'event_type_id' => [
+                'required_if:type,course',
+                'required_if:type,event',
+                'nullable',
+                'exists:event_types,id',
+            ],
             'meeting_link' => 'nullable|url|max:500', // Added meeting_link validation
 
             // Pricing
@@ -810,8 +813,8 @@ class CourseController extends BaseController
             'target_audience' => 'required|string|max:255',
             'community_impact' => 'nullable|string',
 
-            // Course Content
-            'learning_outcomes' => 'required|array|min:1',
+            // Course Content (optional — admin create/edit no longer collects this section)
+            'learning_outcomes' => ['nullable', 'array'],
             'learning_outcomes.*' => 'string|max:255',
             'prerequisites' => 'nullable|array',
             'prerequisites.*' => 'string|max:255',
@@ -826,7 +829,7 @@ class CourseController extends BaseController
 
             // Media
             'image' => 'nullable|image|mimes:jpeg,png,jpg,gif,svg|max:2048',
-        ], [
+        ], $this->primaryActionCategoryIdsValidation($request)), [
             // Custom error messages
             'name.required' => "The {$typeLabelCapital} name is required.",
             'name.unique' => "A {$typeLabel} with this name already exists.",
@@ -834,10 +837,9 @@ class CourseController extends BaseController
             'description.required' => "The {$typeLabelCapital} description is required.",
             'type.required' => 'Please select a type (Course or Event).',
             'type.in' => 'Type must be either Course or Event.',
-            'topic_id.required_if' => 'Please select a course topic.',
             'topic_id.exists' => 'The selected topic is invalid.',
-            'event_type_id.required_if' => 'Please select an event type.',
-            'event_type_id.exists' => 'The selected event type is invalid.',
+            'event_type_id.required_if' => 'Please select a topic.',
+            'event_type_id.exists' => 'The selected topic is invalid.',
             'meeting_link.url' => 'The meeting link must be a valid URL.',
             'meeting_link.max' => 'The meeting link may not be greater than 500 characters.',
             'pricing_type.required' => 'Please select a pricing type.',
@@ -891,7 +893,8 @@ class CourseController extends BaseController
                     'exists' => Storage::disk('public')->exists($imagePath),
                 ]);
             } catch (\Exception $e) {
-                Log::error('Failed to update course image: ' . $e->getMessage());
+                Log::error('Failed to update course image: '.$e->getMessage());
+
                 return redirect()->back()
                     ->withInput()
                     ->withErrors(['image' => 'Failed to upload image. Please try again.']);
@@ -906,7 +909,7 @@ class CourseController extends BaseController
             $counter = 1;
 
             while (Course::where('slug', $slug)->where('id', '!=', $course->id)->exists()) {
-                $slug = $originalSlug . '-' . $counter;
+                $slug = $originalSlug.'-'.$counter;
                 $counter++;
             }
         }
@@ -916,8 +919,8 @@ class CourseController extends BaseController
 
             $course->update([
                 'type' => $validated['type'],
-                'topic_id' => !empty($validated['topic_id']) ? $validated['topic_id'] : null,
-                'event_type_id' => !empty($validated['event_type_id']) ? $validated['event_type_id'] : null,
+                'topic_id' => null,
+                'event_type_id' => ! empty($validated['event_type_id']) ? $validated['event_type_id'] : null,
                 'name' => $validated['name'],
                 'slug' => $slug,
                 'description' => $validated['description'],
@@ -943,7 +946,7 @@ class CourseController extends BaseController
                 'community_impact' => $validated['community_impact'],
 
                 // Course Content
-                'learning_outcomes' => $validated['learning_outcomes'],
+                'learning_outcomes' => $validated['learning_outcomes'] ?? [],
                 'prerequisites' => $validated['prerequisites'] ?? [],
                 'materials_needed' => $validated['materials_needed'] ?? [],
                 'accessibility_features' => $validated['accessibility_features'] ?? [],
@@ -959,13 +962,14 @@ class CourseController extends BaseController
                 'last_updated' => now(),
             ]);
 
+            $this->syncPrimaryActionCategories($course, $request);
 
             DB::commit();
 
             return redirect()->route('admin.courses.index')->with('success', 'Community course updated successfully!');
         } catch (\Exception $e) {
             DB::rollBack();
-            Log::error('Failed to update course: ' . $e->getMessage());
+            Log::error('Failed to update course: '.$e->getMessage());
 
             return redirect()->back()
                 ->withInput()
@@ -999,7 +1003,8 @@ class CourseController extends BaseController
             return redirect()->route('admin.courses.index')->with('success', 'Course deleted successfully!');
         } catch (\Exception $e) {
             DB::rollBack();
-            Log::error("Error deleting course: " . $e->getMessage());
+            Log::error('Error deleting course: '.$e->getMessage());
+
             return redirect()->back()->with('error', 'Failed to delete course. An unexpected error occurred.');
         }
     }

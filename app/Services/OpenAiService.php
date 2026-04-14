@@ -264,21 +264,24 @@ PROMPT;
     /**
      * Chat completion with JSON object response (structured output).
      *
+     * @param  ?float  $temperature  Defaults to 0.35 (conservative). Pass higher (e.g. 0.7) for creative HTML/newsletter drafts.
+     * @param  ?int  $maxTokensOverride  Override max output tokens for long JSON (e.g. HTML bodies).
      * @return array{content: string, total_tokens: int, finish_reason: ?string}
      */
-    public function chatCompletionJson(array $messages, ?string $model = null): array
+    public function chatCompletionJson(array $messages, ?string $model = null, ?float $temperature = null, ?int $maxTokensOverride = null): array
     {
         $model = $model ?: config('services.kiosk_provider_ingest.model', 'gpt-3.5-turbo');
-        $maxTokens = (int) config('services.kiosk_provider_ingest.max_output_tokens', 4096);
+        $maxTokens = $maxTokensOverride ?? (int) config('services.kiosk_provider_ingest.max_output_tokens', 4096);
         if ($maxTokens < 256) {
             $maxTokens = 4096;
         }
+        $temperature = $temperature ?? 0.35;
 
         try {
             $response = $this->httpClient()->post($this->apiUrl, [
                 'model' => $model,
                 'messages' => $messages,
-                'temperature' => 0.35,
+                'temperature' => $temperature,
                 'max_tokens' => $maxTokens,
                 'response_format' => ['type' => 'json_object'],
             ]);

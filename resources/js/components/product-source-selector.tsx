@@ -1,85 +1,21 @@
 'use client';
 
 import React from 'react';
+import { Link } from '@inertiajs/react';
 import { Card } from '@/components/ui/card';
-import { Check, ExternalLink, ShoppingBag, Circle, Store } from 'lucide-react';
+import { Check, ExternalLink, ShoppingBag, Circle } from 'lucide-react';
 
 interface ProductSourceSelectorProps {
   selected: 'printify' | 'manual';
   onSelect: (source: 'printify' | 'manual') => void;
-  /** Organization: nested under "My Source Product" — own vs merchant hub */
-  showManualSubSource?: boolean;
-  manualSubSource?: 'own' | 'merchant_hub';
-  onManualSubSourceChange?: (source: 'own' | 'merchant_hub') => void;
-}
-
-export function ManualProductSourceTypeRow({
-  value,
-  onChange,
-}: {
-  value: 'own' | 'merchant_hub';
-  onChange: (source: 'own' | 'merchant_hub') => void;
-}) {
-  return (
-    <div className="space-y-3">
-      <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">Product source type</p>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <button
-          type="button"
-          onClick={() => onChange('own')}
-          className={`flex flex-col rounded-xl border-2 p-4 text-left transition-all ${
-            value === 'own'
-              ? 'border-emerald-500 bg-emerald-50/80 shadow-md dark:border-emerald-400 dark:bg-emerald-950/40'
-              : 'border-gray-200 bg-white hover:border-emerald-300 dark:border-gray-600 dark:bg-gray-800 dark:hover:border-emerald-700'
-          }`}
-        >
-          <div className="mb-2 flex items-center justify-between">
-            <span className="font-semibold text-gray-900 dark:text-gray-100">Own product sell</span>
-            {value === 'own' ? (
-              <Check className="h-5 w-5 shrink-0 text-emerald-600 dark:text-emerald-400" />
-            ) : (
-              <Circle className="h-4 w-4 text-gray-400" />
-            )}
-          </div>
-          <p className="text-xs leading-relaxed text-gray-600 dark:text-gray-400">
-            Create and price your listing manually, same as before.
-          </p>
-        </button>
-        <button
-          type="button"
-          onClick={() => onChange('merchant_hub')}
-          className={`flex flex-col rounded-xl border-2 p-4 text-left transition-all ${
-            value === 'merchant_hub'
-              ? 'border-amber-500 bg-amber-50/80 shadow-md dark:border-amber-400 dark:bg-amber-950/40'
-              : 'border-gray-200 bg-white hover:border-amber-300 dark:border-gray-600 dark:bg-gray-800 dark:hover:border-amber-700'
-          }`}
-        >
-          <div className="mb-2 flex items-center justify-between gap-2">
-            <span className="flex items-center gap-2 font-semibold text-gray-900 dark:text-gray-100">
-              <Store className="h-4 w-4 shrink-0 text-amber-700 dark:text-amber-400" />
-              Merchant Hub product sell
-            </span>
-            {value === 'merchant_hub' ? (
-              <Check className="h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" />
-            ) : (
-              <Circle className="h-4 w-4 text-gray-400" />
-            )}
-          </div>
-          <p className="text-xs leading-relaxed text-gray-600 dark:text-gray-400">
-            Pick a merchant, choose one of their hub products, and ship from the merchant&apos;s address.
-          </p>
-        </button>
-      </div>
-    </div>
-  );
+  /** Organization: short note + link to Merchant product pool when “My Source” is selected */
+  showOrganizationPoolHint?: boolean;
 }
 
 export function ProductSourceSelector({
   selected,
   onSelect,
-  showManualSubSource = false,
-  manualSubSource = 'own',
-  onManualSubSourceChange,
+  showOrganizationPoolHint = false,
 }: ProductSourceSelectorProps) {
   return (
     <div className="space-y-4">
@@ -281,12 +217,23 @@ export function ProductSourceSelector({
               </div>
             </div>
 
-            {showManualSubSource && selected === 'manual' && onManualSubSourceChange && (
+            {showOrganizationPoolHint && selected === 'manual' && (
               <div
                 className="mt-6 border-t border-gray-200 pt-6 dark:border-gray-700"
                 onClick={(e) => e.stopPropagation()}
               >
-                <ManualProductSourceTypeRow value={manualSubSource} onChange={onManualSubSourceChange} />
+                <p className="text-xs leading-relaxed text-gray-600 dark:text-gray-400">
+                  <span className="font-semibold text-gray-800 dark:text-gray-200">Merchant pool products:</span>{' '}
+                  Add them from{' '}
+                  <Link
+                    href="/marketplace/product-pool"
+                    className="font-medium text-emerald-700 underline underline-offset-2 hover:text-emerald-800 dark:text-emerald-400 dark:hover:text-emerald-300"
+                  >
+                    Commerce → Merchant product pool
+                  </Link>
+                  . They appear as your organization&apos;s listings; payment and orders work like other marketplace sales, and Shippo uses the{' '}
+                  <span className="font-medium">merchant&apos;s</span> ship-from address.
+                </p>
               </div>
             )}
           </div>

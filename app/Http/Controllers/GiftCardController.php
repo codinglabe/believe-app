@@ -5,16 +5,20 @@ namespace App\Http\Controllers;
 use App\Models\GiftCard;
 use App\Models\Organization;
 use App\Models\Transaction;
+use App\Services\BiuPlatformFeeService;
 use App\Services\GiftCardService;
+use App\Support\StripeAutomaticTax;
+use App\Support\StripeCustomerChargeAmount;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
 use Laravel\Cashier\Cashier;
-use Stripe\Stripe;
 use Stripe\Checkout\Session as StripeSession;
+use Stripe\Exception\ApiErrorException;
 use Stripe\Refund;
+use Stripe\Stripe;
 
 class GiftCardController extends Controller
 {
@@ -52,10 +56,10 @@ class GiftCardController extends Controller
         ];
 
         // Fetch brands from Phaze API (cached and optimized with cURL)
-        $brands = $this->giftCardService->getGiftBrands($countryFilter, (int)$currentPage);
+        $brands = $this->giftCardService->getGiftBrands($countryFilter, (int) $currentPage);
 
         // Ensure brands is an array
-        if (!is_array($brands)) {
+        if (! is_array($brands)) {
             Log::warning('GiftCardController: getGiftBrands returned non-array', [
                 'country' => $countryFilter,
                 'currentPage' => $currentPage,
@@ -74,10 +78,11 @@ class GiftCardController extends Controller
         }
 
         // Apply search filter if provided (client-side filtering for better performance)
-        if ($search && !empty($brands)) {
+        if ($search && ! empty($brands)) {
             $searchLower = strtolower($search);
             $brands = array_filter($brands, function ($brand) use ($searchLower) {
                 $brandName = strtolower($brand['productName'] ?? '');
+
                 return strpos($brandName, $searchLower) !== false;
             });
             // Re-index array after filter
@@ -106,9 +111,9 @@ class GiftCardController extends Controller
 
                 foreach ($possibleFields as $field) {
                     if (isset($brand[$field]) &&
-                        !empty($brand[$field]) &&
-                        !is_numeric($brand[$field]) &&
-                        !preg_match('/^[0-9]+/', $brand[$field])) {
+                        ! empty($brand[$field]) &&
+                        ! is_numeric($brand[$field]) &&
+                        ! preg_match('/^[0-9]+/', $brand[$field])) {
                         $brandName = trim($brand[$field]);
                         break;
                     }
@@ -129,7 +134,7 @@ class GiftCardController extends Controller
         $lastPage = max(1, ceil($total / $perPage));
         $giftCards = [
             'data' => $paginatedBrands,
-            'current_page' => (int)$currentPage,
+            'current_page' => (int) $currentPage,
             'last_page' => $lastPage,
             'per_page' => $perPage,
             'total' => $total,
@@ -183,7 +188,7 @@ class GiftCardController extends Controller
             if ($i == 1 || $i == $lastPage || ($i >= $currentPage - 2 && $i <= $currentPage + 2)) {
                 $links[] = [
                     'url' => route('gift-cards.index', array_merge($queryParams, ['page' => $i])),
-                    'label' => (string)$i,
+                    'label' => (string) $i,
                     'active' => $i == $currentPage,
                 ];
             } elseif ($i == $currentPage - 3 || $i == $currentPage + 3) {
@@ -221,12 +226,12 @@ class GiftCardController extends Controller
         $user = Auth::user();
 
         // Only organizations can create gift cards
-        if (!$user) {
+        if (! $user) {
             abort(403, 'You must be logged in to create gift cards.');
         }
 
         // Check role - only organization and admin can create gift cards
-        if (!in_array($user->role, ['organization', 'organization_pending', 'admin'])) {
+        if (! in_array($user->role, ['organization', 'organization_pending', 'admin'])) {
             abort(403, 'Only organizations can create gift cards.');
         }
 
@@ -239,10 +244,10 @@ class GiftCardController extends Controller
         $brands = $this->giftCardService->getGiftBrands($selectedCountry);
 
         // Check if API key is configured
-        $apiKeyConfigured = !empty(config('services.phaze.api_key'));
+        $apiKeyConfigured = ! empty(config('services.phaze.api_key'));
         $apiError = null;
 
-        if (!$apiKeyConfigured) {
+        if (! $apiKeyConfigured) {
             $apiError = 'Phaze API key is not configured. Please set PHAZE_API_KEY in your .env file.';
         } elseif (empty($brands)) {
             // Check recent logs for API errors
@@ -280,7 +285,7 @@ class GiftCardController extends Controller
         $user = Auth::user();
 
         // Only organizations can create gift cards
-        if (!$user || !in_array($user->role, ['organization', 'organization_pending', 'admin'])) {
+        if (! $user || ! in_array($user->role, ['organization', 'organization_pending', 'admin'])) {
             return response()->json([
                 'success' => false,
                 'message' => 'Only organizations can create gift cards.',
@@ -301,13 +306,13 @@ class GiftCardController extends Controller
 
         // Get brand data from Phaze API if product_id is provided
         $brandData = null;
-        if (!empty($validated['product_id'])) {
+        if (! empty($validated['product_id'])) {
             // Fetch brand details from Phaze API to store in meta
             // Convert country name to country code for API (e.g., "United States" -> "USA")
             $countryName = $validated['country'] ?? 'United States';
             $countryCode = $this->getCountryCode($countryName);
             $brands = $this->giftCardService->getGiftBrands($countryCode);
-            $selectedBrand = collect($brands)->firstWhere('productId', (int)$validated['product_id']);
+            $selectedBrand = collect($brands)->firstWhere('productId', (int) $validated['product_id']);
 
             if ($selectedBrand) {
                 $brandData = [
@@ -328,7 +333,7 @@ class GiftCardController extends Controller
             // Get organization
             $organization = $user->organization;
 
-            if (!$organization) {
+            if (! $organization) {
                 return back()->withErrors([
                     'organization' => 'Organization not found.',
                 ]);
@@ -361,10 +366,11 @@ class GiftCardController extends Controller
             return redirect()->route('gift-cards.created')->with('success', 'Gift card created successfully!');
 
         } catch (\Exception $e) {
-            Log::error('Error creating gift card: ' . $e->getMessage(), [
+            Log::error('Error creating gift card: '.$e->getMessage(), [
                 'user_id' => $user->id,
                 'error' => $e->getTraceAsString(),
             ]);
+
             return back()->withErrors([
                 'error' => 'An error occurred while creating the gift card. Please try again.',
             ]);
@@ -391,12 +397,13 @@ class GiftCardController extends Controller
         $isInertiaRequest = $request->header('X-Inertia');
 
         // Only users can purchase gift cards (guests need to login)
-        if (!$user || $user->role !== 'user') {
+        if (! $user || $user->role !== 'user') {
             if ($isInertiaRequest) {
                 return back()->withErrors([
                     'auth' => 'Please login as a user to purchase gift cards.',
                 ]);
             }
+
             return response()->json([
                 'success' => false,
                 'message' => 'Please login as a user to purchase gift cards.',
@@ -416,17 +423,21 @@ class GiftCardController extends Controller
         try {
             DB::beginTransaction();
 
+            // Phaze `/brands/country/{code}` expects codes like USA, Canada — normalize display names (e.g. United States).
+            $countryForPhaze = $this->getCountryCode($validated['country']);
+
             // Verify user follows the selected organization
             $isFollowing = \App\Models\UserFavoriteOrganization::where('user_id', $user->id)
                 ->where('organization_id', $validated['organization_id'])
                 ->exists();
 
-            if (!$isFollowing) {
+            if (! $isFollowing) {
                 if ($isInertiaRequest) {
                     return back()->withErrors([
                         'organization_id' => 'You can only purchase gift cards for organizations you follow.',
                     ]);
                 }
+
                 return response()->json([
                     'success' => false,
                     'message' => 'You can only purchase gift cards for organizations you follow.',
@@ -434,21 +445,22 @@ class GiftCardController extends Controller
             }
 
             // Fetch brand details from Phaze API to validate amount restrictions
-            $brands = $this->giftCardService->getGiftBrands($validated['country'], 1);
+            $brands = $this->giftCardService->getGiftBrands($countryForPhaze, 1);
             $selectedBrand = null;
             foreach ($brands as $brand) {
-                if (isset($brand['productId']) && (int)$brand['productId'] === (int)$validated['productId']) {
+                if (isset($brand['productId']) && (int) $brand['productId'] === (int) $validated['productId']) {
                     $selectedBrand = $brand;
                     break;
                 }
             }
 
-            if (!$selectedBrand) {
+            if (! $selectedBrand) {
                 if ($isInertiaRequest) {
                     return back()->withErrors([
                         'productId' => 'Brand not found.',
                     ]);
                 }
+
                 return response()->json([
                     'success' => false,
                     'message' => 'Brand not found.',
@@ -465,12 +477,13 @@ class GiftCardController extends Controller
 
             // Validate amount
             if ($validated['amount'] < $minVal) {
-                $errorMessage = "Amount must be at least " . number_format($minVal, 2) . " " . ($validated['currency'] ?? 'USD');
+                $errorMessage = 'Amount must be at least '.number_format($minVal, 2).' '.($validated['currency'] ?? 'USD');
                 if ($isInertiaRequest) {
                     return back()->withErrors([
                         'amount' => $errorMessage,
                     ]);
                 }
+
                 return response()->json([
                     'success' => false,
                     'message' => $errorMessage,
@@ -478,12 +491,13 @@ class GiftCardController extends Controller
             }
 
             if ($hasMaxLimit && $validated['amount'] > $maxVal) {
-                $errorMessage = "Amount must be between " . number_format($minVal, 2) . " and " . number_format($maxVal, 2) . " " . ($validated['currency'] ?? 'USD');
+                $errorMessage = 'Amount must be between '.number_format($minVal, 2).' and '.number_format($maxVal, 2).' '.($validated['currency'] ?? 'USD');
                 if ($isInertiaRequest) {
                     return back()->withErrors([
                         'amount' => $errorMessage,
                     ]);
                 }
+
                 return response()->json([
                     'success' => false,
                     'message' => $errorMessage,
@@ -498,13 +512,14 @@ class GiftCardController extends Controller
             $organization = \App\Models\Organization::findOrFail($validated['organization_id']);
 
             // Check if organization has approved gift card terms
-            if (!$organization->gift_card_terms_approved) {
+            if (! $organization->gift_card_terms_approved) {
                 if ($isInertiaRequest) {
                     return back()->withErrors([
                         'organization_id' => 'This organization has not approved the gift card program terms yet. Gift cards cannot be purchased for this organization until they approve the terms in their settings.',
                         'error' => 'Organization approval required: This organization needs to approve the gift card program terms before purchases can be made.',
                     ]);
                 }
+
                 return response()->json([
                     'success' => false,
                     'message' => 'This organization has not approved the gift card program terms yet. Please contact the organization.',
@@ -523,6 +538,7 @@ class GiftCardController extends Controller
                             'payment_method' => "Insufficient Believe Points. You need {$pointsRequired} points but only have {$user->believe_points} points.",
                         ]);
                     }
+
                     return response()->json([
                         'success' => false,
                         'message' => "Insufficient Believe Points. You need {$pointsRequired} points but only have {$user->believe_points} points.",
@@ -530,32 +546,30 @@ class GiftCardController extends Controller
                 }
 
                 // Deduct points
-                if (!$user->deductBelievePoints($pointsRequired)) {
+                if (! $user->deductBelievePoints($pointsRequired)) {
                     DB::rollBack();
                     if ($isInertiaRequest) {
                         return back()->withErrors([
                             'payment_method' => 'Failed to deduct Believe Points. Please try again.',
                         ]);
                     }
+
                     return response()->json([
                         'success' => false,
                         'message' => 'Failed to deduct Believe Points. Please try again.',
                     ], 500);
                 }
 
-                // Fetch brand information for meta (same as Stripe flow)
-                $country = $validated['country'] ?? 'USA';
-                $brands = $this->giftCardService->getGiftBrands($country, 1);
-                $selectedBrand = collect($brands)->firstWhere('productId', (int)$validated['productId']);
+                // `$selectedBrand` from the Phaze lookup above is used for meta (same as Stripe flow).
 
                 // Process gift card purchase directly (skip Stripe)
                 $orderId = \Illuminate\Support\Str::uuid()->toString();
                 $phazePurchaseData = [
-                    'productId' => (int)$validated['productId'],
+                    'productId' => (int) $validated['productId'],
                     'amount' => $purchaseAmount,
                     'currency' => $currency,
                     'orderId' => $orderId,
-                    'externalUserId' => (string)$user->id,
+                    'externalUserId' => (string) $user->id,
                 ];
 
                 $phazePurchaseResult = $this->giftCardService->purchaseGiftCard($phazePurchaseData);
@@ -566,7 +580,7 @@ class GiftCardController extends Controller
                     'card_number_keys' => array_keys($phazePurchaseResult ?? []),
                 ]);
 
-                if (!$phazePurchaseResult) {
+                if (! $phazePurchaseResult) {
                     // Refund points if Phaze purchase fails
                     $user->addBelievePoints($pointsRequired);
                     DB::rollBack();
@@ -579,6 +593,7 @@ class GiftCardController extends Controller
                             'payment_method' => $errorMessage,
                         ]);
                     }
+
                     return response()->json([
                         'success' => false,
                         'message' => $errorMessage,
@@ -592,7 +607,7 @@ class GiftCardController extends Controller
                     DB::rollBack();
 
                     $phazeError = $phazePurchaseResult['error'] ?? 'Unknown error from gift card provider';
-                    $errorMessage = 'Gift card purchase failed: ' . $phazeError . '. Your points have been refunded.';
+                    $errorMessage = 'Gift card purchase failed: '.$phazeError.'. Your points have been refunded.';
 
                     Log::error('Phaze purchase returned error for Believe Points', [
                         'phaze_error' => $phazeError,
@@ -605,6 +620,7 @@ class GiftCardController extends Controller
                             'payment_method' => $errorMessage,
                         ]);
                     }
+
                     return response()->json([
                         'success' => false,
                         'message' => $errorMessage,
@@ -620,11 +636,11 @@ class GiftCardController extends Controller
 
                 // First, check if Phaze provides commission as a direct amount
                 if (isset($phazePurchaseResult['commission']) && is_numeric($phazePurchaseResult['commission'])) {
-                    $totalCommission = (float)$phazePurchaseResult['commission'];
+                    $totalCommission = (float) $phazePurchaseResult['commission'];
                 } elseif (isset($phazePurchaseResult['phazeCommission']) && is_numeric($phazePurchaseResult['phazeCommission'])) {
-                    $totalCommission = (float)$phazePurchaseResult['phazeCommission'];
+                    $totalCommission = (float) $phazePurchaseResult['phazeCommission'];
                 } elseif (isset($phazePurchaseResult['commissionAmount']) && is_numeric($phazePurchaseResult['commissionAmount'])) {
-                    $totalCommission = (float)$phazePurchaseResult['commissionAmount'];
+                    $totalCommission = (float) $phazePurchaseResult['commissionAmount'];
                 }
 
                 // If we have a commission amount, calculate the percentage for reference
@@ -640,7 +656,7 @@ class GiftCardController extends Controller
 
                     if ($commissionPercentage !== null && is_numeric($commissionPercentage)) {
                         // Commission is a percentage of the purchase amount
-                        $totalCommission = ($purchaseAmount * (float)$commissionPercentage) / 100;
+                        $totalCommission = ($purchaseAmount * (float) $commissionPercentage) / 100;
                     }
                 }
 
@@ -682,7 +698,7 @@ class GiftCardController extends Controller
                 // Ensure brand name is set (same as Stripe flow)
                 $finalBrandName = $selectedBrand['productName'] ?? $validated['brand_name'];
                 if (empty($finalBrandName)) {
-                    $finalBrandName = 'Gift Card #' . ($validated['productId'] ?? 'Unknown');
+                    $finalBrandName = 'Gift Card #'.($validated['productId'] ?? 'Unknown');
                 }
 
                 // Create gift card record with all commission details (same structure as Stripe)
@@ -746,12 +762,12 @@ class GiftCardController extends Controller
                 ];
 
                 // Update card_number if provided in Phaze response (same as Stripe flow)
-                if (isset($phazePurchaseResult['cardNumber']) && !empty($phazePurchaseResult['cardNumber'])) {
+                if (isset($phazePurchaseResult['cardNumber']) && ! empty($phazePurchaseResult['cardNumber'])) {
                     $updateData['card_number'] = $phazePurchaseResult['cardNumber'];
                     Log::info('Card number found in Phaze initial response (cardNumber)', [
                         'gift_card_id' => $giftCard->id,
                     ]);
-                } elseif (isset($phazePurchaseResult['card_number']) && !empty($phazePurchaseResult['card_number'])) {
+                } elseif (isset($phazePurchaseResult['card_number']) && ! empty($phazePurchaseResult['card_number'])) {
                     $updateData['card_number'] = $phazePurchaseResult['card_number'];
                     Log::info('Card number found in Phaze initial response (card_number)', [
                         'gift_card_id' => $giftCard->id,
@@ -782,12 +798,12 @@ class GiftCardController extends Controller
                 ]);
 
                 // Create transaction record
-                $transactionMeta = [
+                $transactionMeta = array_merge([
                     'gift_card_id' => $giftCard->id,
                     'believe_points_used' => $pointsRequired,
                     'phaze_order_id' => $phazePurchaseResult['orderId'] ?? null,
                     'brand' => $validated['brand_name'],
-                ];
+                ], BiuPlatformFeeService::ledgerMetaSlice((float) $purchaseAmount));
 
                 if ($phazePurchaseResult) {
                     $transactionMeta['phaze_purchase_id'] = $phazePurchaseResult['id'] ?? null;
@@ -804,7 +820,7 @@ class GiftCardController extends Controller
                     'fee' => 0,
                     'currency' => $currency,
                     'payment_method' => 'believe_points',
-                    'transaction_id' => 'believe_points_gift_card_' . $giftCard->id,
+                    'transaction_id' => 'believe_points_gift_card_'.$giftCard->id,
                     'meta' => $transactionMeta,
                     'processed_at' => now(),
                 ]);
@@ -822,7 +838,7 @@ class GiftCardController extends Controller
                         );
                         $giftCard->update(['is_sent' => true]);
                     } catch (\Exception $e) {
-                        Log::error('Failed to send gift card receipt email (Believe Points): ' . $e->getMessage());
+                        Log::error('Failed to send gift card receipt email (Believe Points): '.$e->getMessage());
                     }
                 }
 
@@ -833,6 +849,7 @@ class GiftCardController extends Controller
                     return redirect()->route('gift-cards.success', ['gift_card_id' => $giftCard->id])
                         ->with('success', 'Gift card purchased successfully using Believe Points!');
                 }
+
                 return response()->json([
                     'success' => true,
                     'message' => 'Gift card purchased successfully using Believe Points!',
@@ -840,23 +857,39 @@ class GiftCardController extends Controller
                 ]);
             }
 
+            if (empty(config('services.stripe.secret'))) {
+                DB::rollBack();
+                Log::error('Gift card purchase: Stripe secret key is not configured.');
+
+                if ($isInertiaRequest) {
+                    return back()->withErrors([
+                        'error' => 'Payments are not configured. Please try again later or contact support.',
+                    ]);
+                }
+
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Payments are not configured. Please contact support.',
+                ], 503);
+            }
+
             // Create Stripe checkout session (default payment method)
-            $session = StripeSession::create([
+            $session = StripeSession::create(StripeAutomaticTax::mergeCheckoutSessionParams([
                 'payment_method_types' => ['card'],
                 'line_items' => [[
                     'price_data' => [
                         'currency' => strtolower($currency),
                         'product_data' => [
-                            'name' => $validated['brand_name'] . ' Gift Card',
-                            'description' => 'Gift Card Purchase for ' . $organization->name,
+                            'name' => $validated['brand_name'].' Gift Card',
+                            'description' => 'Gift Card Purchase for '.$organization->name,
                         ],
-                        'unit_amount' => (int)($purchaseAmount * 100),
+                        'unit_amount' => StripeCustomerChargeAmount::chargeCentsFromNetUsd((float) $purchaseAmount, 'card'),
                     ],
                     'quantity' => 1,
                 ]],
                 'mode' => 'payment',
                 'customer_email' => $user->email,
-                'success_url' => route('gift-cards.success') . '?session_id={CHECKOUT_SESSION_ID}',
+                'success_url' => route('gift-cards.success').'?session_id={CHECKOUT_SESSION_ID}',
                 'cancel_url' => route('gift-cards.index'),
                 'metadata' => [
                     'user_id' => $user->id,
@@ -868,7 +901,7 @@ class GiftCardController extends Controller
                     'currency' => $currency,
                     'type' => 'gift_card_purchase',
                 ],
-            ]);
+            ]));
 
             DB::commit();
 
@@ -888,9 +921,34 @@ class GiftCardController extends Controller
             DB::rollBack();
             // Re-throw validation exceptions so Inertia can handle them properly
             throw $e;
+        } catch (ApiErrorException $e) {
+            DB::rollBack();
+            Log::error('Stripe API error (gift card purchase)', [
+                'message' => $e->getMessage(),
+                'stripe_code' => $e->getStripeCode(),
+            ]);
+
+            $isInertiaRequest = $request->header('X-Inertia');
+            $userMessage = config('app.debug')
+                ? $e->getMessage()
+                : 'We could not start secure checkout. Please try again in a moment, or contact support if this continues.';
+
+            if ($isInertiaRequest) {
+                return back()->withErrors([
+                    'error' => $userMessage,
+                ]);
+            }
+
+            return response()->json([
+                'success' => false,
+                'message' => $userMessage,
+            ], 502);
         } catch (\Exception $e) {
             DB::rollBack();
-            Log::error('Error processing gift card purchase: ' . $e->getMessage());
+            Log::error('Error processing gift card purchase: '.$e->getMessage(), [
+                'exception' => $e,
+            ]);
+            report($e);
 
             $isInertiaRequest = $request->header('X-Inertia');
             if ($isInertiaRequest) {
@@ -913,7 +971,7 @@ class GiftCardController extends Controller
     {
         do {
             // Generate 16-digit card number
-            $cardNumber = str_pad((string)mt_rand(0, 9999999999999999), 16, '0', STR_PAD_LEFT);
+            $cardNumber = str_pad((string) mt_rand(0, 9999999999999999), 16, '0', STR_PAD_LEFT);
         } while (GiftCard::where('card_number', $cardNumber)->exists());
 
         return $cardNumber;
@@ -948,7 +1006,7 @@ class GiftCardController extends Controller
         $paymentMethod = $request->get('payment_method', 'stripe');
 
         // Handle Believe Points payment (no Stripe session)
-        if (!$sessionId) {
+        if (! $sessionId) {
             $user = auth()->user();
             $giftCardId = $request->get('gift_card_id');
 
@@ -977,17 +1035,17 @@ class GiftCardController extends Controller
                     }
 
                     // If purchase data not available, use stored data from meta
-                    if (!$phazePurchaseData && isset($giftCard->meta['phaze_purchase'])) {
+                    if (! $phazePurchaseData && isset($giftCard->meta['phaze_purchase'])) {
                         $phazePurchaseData = $giftCard->meta['phaze_purchase'];
                     }
 
                     // Also check for phaze_initial_response as fallback
-                    if (!$phazePurchaseData && isset($giftCard->meta['phaze_initial_response'])) {
+                    if (! $phazePurchaseData && isset($giftCard->meta['phaze_initial_response'])) {
                         $phazePurchaseData = $giftCard->meta['phaze_initial_response'];
                     }
 
                     // If we still don't have purchase data but have external_id, try to construct basic info
-                    if (!$phazePurchaseData && $giftCard->external_id) {
+                    if (! $phazePurchaseData && $giftCard->external_id) {
                         $phazePurchaseData = [
                             'id' => $giftCard->external_id,
                             'status' => $giftCard->meta['phaze_status'] ?? 'pending',
@@ -1041,17 +1099,17 @@ class GiftCardController extends Controller
                     }
 
                     // If purchase data not available, use stored data from meta
-                    if (!$phazePurchaseData && isset($giftCard->meta['phaze_purchase'])) {
+                    if (! $phazePurchaseData && isset($giftCard->meta['phaze_purchase'])) {
                         $phazePurchaseData = $giftCard->meta['phaze_purchase'];
                     }
 
                     // Also check for phaze_initial_response as fallback
-                    if (!$phazePurchaseData && isset($giftCard->meta['phaze_initial_response'])) {
+                    if (! $phazePurchaseData && isset($giftCard->meta['phaze_initial_response'])) {
                         $phazePurchaseData = $giftCard->meta['phaze_initial_response'];
                     }
 
                     // If we still don't have purchase data but have external_id, try to construct basic info
-                    if (!$phazePurchaseData && $giftCard->external_id) {
+                    if (! $phazePurchaseData && $giftCard->external_id) {
                         $phazePurchaseData = [
                             'id' => $giftCard->external_id,
                             'status' => $giftCard->meta['phaze_status'] ?? 'pending',
@@ -1095,13 +1153,14 @@ class GiftCardController extends Controller
                 $userId = $metadata->user_id ?? null;
                 $organizationId = $metadata->organization_id ?? null;
                 $productId = $metadata->product_id ?? null;
-                $purchaseAmount = isset($metadata->purchase_amount) ? (float)$metadata->purchase_amount : 0;
+                $purchaseAmount = isset($metadata->purchase_amount) ? (float) $metadata->purchase_amount : 0;
                 $brandName = $metadata->brand_name ?? 'Gift Card';
                 $country = $metadata->country ?? 'USA';
                 $currency = $metadata->currency ?? 'USD';
 
-                if (!$userId || !$organizationId || !$productId) {
+                if (! $userId || ! $organizationId || ! $productId) {
                     DB::rollBack();
+
                     return redirect()->route('gift-cards.index')->withErrors([
                         'message' => 'Invalid payment metadata.',
                     ]);
@@ -1111,10 +1170,10 @@ class GiftCardController extends Controller
                 $brands = $this->giftCardService->getGiftBrands($country, 1);
                 $selectedBrand = null;
                 foreach ($brands as $brand) {
-                    if (isset($brand['productId']) && (int)$brand['productId'] === (int)$productId) {
+                    if (isset($brand['productId']) && (int) $brand['productId'] === (int) $productId) {
                         $selectedBrand = $brand;
                         // Ensure productName exists
-                        if (!isset($selectedBrand['productName']) || empty($selectedBrand['productName'])) {
+                        if (! isset($selectedBrand['productName']) || empty($selectedBrand['productName'])) {
                             $selectedBrand['productName'] = $brandName;
                         }
                         break;
@@ -1127,7 +1186,7 @@ class GiftCardController extends Controller
                 // Ensure brand name is set
                 $finalBrandName = $selectedBrand['productName'] ?? $brandName;
                 if (empty($finalBrandName)) {
-                    $finalBrandName = 'Gift Card #' . ($productId ?? 'Unknown');
+                    $finalBrandName = 'Gift Card #'.($productId ?? 'Unknown');
                 }
 
                 // Create gift card record
@@ -1168,17 +1227,16 @@ class GiftCardController extends Controller
 
                 // Purchase gift card via Phaze API (after Stripe payment success)
                 $phazePurchaseData = [
-                    'productId' => (int)$productId,
+                    'productId' => (int) $productId,
                     'amount' => $purchaseAmount,
                     'currency' => $currency,
                     'orderId' => $orderId,
-                    'externalUserId' => (string)$userId, // Required by Phaze API
+                    'externalUserId' => (string) $userId, // Required by Phaze API
                 ];
 
                 $phazePurchaseResult = $this->giftCardService->purchaseGiftCard($phazePurchaseData);
 
                 Log::info('Phaze purchase result', ['result' => $phazePurchaseResult]);
-
 
                 if ($phazePurchaseResult) {
                     // Calculate commissions from Phaze response
@@ -1198,11 +1256,11 @@ class GiftCardController extends Controller
 
                     // First, check if Phaze provides commission as a direct amount (this is what organization should receive)
                     if (isset($phazePurchaseResult['commission']) && is_numeric($phazePurchaseResult['commission'])) {
-                        $totalCommission = (float)$phazePurchaseResult['commission'];
+                        $totalCommission = (float) $phazePurchaseResult['commission'];
                     } elseif (isset($phazePurchaseResult['phazeCommission']) && is_numeric($phazePurchaseResult['phazeCommission'])) {
-                        $totalCommission = (float)$phazePurchaseResult['phazeCommission'];
+                        $totalCommission = (float) $phazePurchaseResult['phazeCommission'];
                     } elseif (isset($phazePurchaseResult['commissionAmount']) && is_numeric($phazePurchaseResult['commissionAmount'])) {
-                        $totalCommission = (float)$phazePurchaseResult['commissionAmount'];
+                        $totalCommission = (float) $phazePurchaseResult['commissionAmount'];
                     }
 
                     // If we have a commission amount, calculate the percentage for reference
@@ -1218,7 +1276,7 @@ class GiftCardController extends Controller
 
                         if ($commissionPercentage !== null && is_numeric($commissionPercentage)) {
                             // Commission is a percentage of the purchase amount
-                            $totalCommission = ($purchaseAmount * (float)$commissionPercentage) / 100;
+                            $totalCommission = ($purchaseAmount * (float) $commissionPercentage) / 100;
                         }
                     }
 
@@ -1283,7 +1341,7 @@ class GiftCardController extends Controller
                     ];
 
                     // Update card_number if provided
-                    if (isset($phazePurchaseResult['cardNumber']) && !empty($phazePurchaseResult['cardNumber'])) {
+                    if (isset($phazePurchaseResult['cardNumber']) && ! empty($phazePurchaseResult['cardNumber'])) {
                         $updateData['card_number'] = $phazePurchaseResult['cardNumber'];
                     }
 
@@ -1299,7 +1357,7 @@ class GiftCardController extends Controller
                     if ($phazePurchaseResult && isset($phazePurchaseResult['error'])) {
                         $phazeError = $phazePurchaseResult['error'];
                     } elseif ($phazePurchaseResult && isset($phazePurchaseResult['httpStatusCode'])) {
-                        $phazeError = $phazePurchaseResult['error'] ?? 'Purchase failed with HTTP ' . $phazePurchaseResult['httpStatusCode'];
+                        $phazeError = $phazePurchaseResult['error'] ?? 'Purchase failed with HTTP '.$phazePurchaseResult['httpStatusCode'];
                     }
 
                     Log::error('Phaze purchase API call failed, but Stripe payment succeeded - Processing refund', [
@@ -1325,7 +1383,7 @@ class GiftCardController extends Controller
                         if ($session->payment_intent) {
                             $refund = Refund::create([
                                 'payment_intent' => $session->payment_intent,
-                                'amount' => (int)($purchaseAmount * 100), // Convert to cents
+                                'amount' => (int) ($purchaseAmount * 100), // Convert to cents
                                 'reason' => 'requested_by_customer',
                                 'metadata' => [
                                     'gift_card_id' => $giftCard->id,
@@ -1412,11 +1470,11 @@ class GiftCardController extends Controller
                 // Transaction status will be updated based on Phaze purchase result
                 if ($giftCard->user) {
                     $transactionStatus = $phazePurchaseResult ? 'completed' : 'failed';
-                    $transactionMeta = [
+                    $transactionMeta = array_merge([
                         'gift_card_id' => $giftCard->id,
                         'brand' => $brandName,
                         'phaze_order_id' => $orderId,
-                    ];
+                    ], BiuPlatformFeeService::ledgerMetaSlice((float) $purchaseAmount));
 
                     if ($phazePurchaseResult) {
                         $transactionMeta['phaze_purchase_id'] = $phazePurchaseResult['id'] ?? null;
@@ -1454,7 +1512,7 @@ class GiftCardController extends Controller
                         : 'We are processing your refund. Please contact support if you have any questions.';
 
                     return redirect()->route('gift-cards.index')->withErrors([
-                        'message' => 'Gift card purchase could not be completed. ' . $refundInfo . ' Error: ' . ($giftCard->meta['phaze_error'] ?? 'Purchase failed'),
+                        'message' => 'Gift card purchase could not be completed. '.$refundInfo.' Error: '.($giftCard->meta['phaze_error'] ?? 'Purchase failed'),
                     ]);
                 }
 
@@ -1467,7 +1525,7 @@ class GiftCardController extends Controller
                         );
                         $giftCard->update(['is_sent' => true]);
                     } catch (\Exception $e) {
-                        Log::error('Failed to send gift card receipt email: ' . $e->getMessage());
+                        Log::error('Failed to send gift card receipt email: '.$e->getMessage());
                     }
                 }
 
@@ -1487,7 +1545,8 @@ class GiftCardController extends Controller
             }
         } catch (\Exception $e) {
             DB::rollBack();
-            Log::error('Error processing gift card success: ' . $e->getMessage());
+            Log::error('Error processing gift card success: '.$e->getMessage());
+
             return redirect()->route('gift-cards.index')->withErrors([
                 'message' => 'An error occurred while processing your payment.',
             ]);
@@ -1505,7 +1564,7 @@ class GiftCardController extends Controller
     {
         $user = Auth::user();
 
-        if (!$user) {
+        if (! $user) {
             return redirect()->route('login');
         }
 
@@ -1542,21 +1601,21 @@ class GiftCardController extends Controller
             // Find the specific brand by productId
             $brand = null;
             foreach ($brands as $b) {
-                if (isset($b['productId']) && (string)$b['productId'] === (string)$productId) {
+                if (isset($b['productId']) && (string) $b['productId'] === (string) $productId) {
                     $brand = $b;
                     break;
                 }
             }
 
-            if (!$brand) {
+            if (! $brand) {
                 return redirect()->route('gift-cards.index')->withErrors([
                     'message' => 'Brand not found.',
                 ]);
             }
 
             // Ensure brand has productName
-            if (!isset($brand['productName']) || empty($brand['productName'])) {
-                $brand['productName'] = 'Gift Card #' . ($brand['productId'] ?? 'Unknown');
+            if (! isset($brand['productName']) || empty($brand['productName'])) {
+                $brand['productName'] = 'Gift Card #'.($brand['productId'] ?? 'Unknown');
             }
 
             // Get user's following organizations if user is logged in and has user role
@@ -1565,13 +1624,15 @@ class GiftCardController extends Controller
                 $followingOrganizations = \App\Models\UserFavoriteOrganization::with('organization')
                     ->where('user_id', $user->id)
                     ->get()
+                    ->filter(fn ($fav) => $fav->organization_id && $fav->organization)
                     ->map(function ($fav) {
                         return [
-                            'id' => $fav->organization_id,
+                            'id' => (int) $fav->organization_id,
                             'name' => $fav->organization->name ?? 'Unknown',
                             'gift_card_terms_approved' => $fav->organization->gift_card_terms_approved ?? false,
                         ];
                     })
+                    ->values()
                     ->toArray();
             }
 
@@ -1598,12 +1659,12 @@ class GiftCardController extends Controller
             $giftCardModel = GiftCard::find($giftCard);
         } elseif (is_string($giftCard)) {
             // If it's a string, try to find by ID
-            $giftCardModel = GiftCard::find((int)$giftCard);
+            $giftCardModel = GiftCard::find((int) $giftCard);
         }
 
         if ($giftCardModel) {
             // Only allow viewing if user owns this gift card OR if organization owns it
-            if (!$user) {
+            if (! $user) {
                 return redirect()->route('login');
             }
 
@@ -1643,7 +1704,7 @@ class GiftCardController extends Controller
                 }
 
                 // Also check for phaze_initial_response as fallback
-                if (!$phazePurchaseData && isset($giftCardModel->meta['phaze_initial_response']) && is_array($giftCardModel->meta['phaze_initial_response'])) {
+                if (! $phazePurchaseData && isset($giftCardModel->meta['phaze_initial_response']) && is_array($giftCardModel->meta['phaze_initial_response'])) {
                     $phazePurchaseData = $giftCardModel->meta['phaze_initial_response'];
                 }
 
@@ -1655,10 +1716,10 @@ class GiftCardController extends Controller
                         // Only use API data if it's valid, not an error, and has more information than stored data
                         if ($apiPurchaseData &&
                             is_array($apiPurchaseData) &&
-                            !empty($apiPurchaseData) &&
-                            !isset($apiPurchaseData['error']) &&
-                            !isset($apiPurchaseData['httpStatusCode']) &&
-                            !isset($apiPurchaseData['message'])) {
+                            ! empty($apiPurchaseData) &&
+                            ! isset($apiPurchaseData['error']) &&
+                            ! isset($apiPurchaseData['httpStatusCode']) &&
+                            ! isset($apiPurchaseData['message'])) {
                             // Merge API data with stored data (API data takes precedence for status updates)
                             $phazePurchaseData = array_merge($phazePurchaseData, $apiPurchaseData);
                         } elseif (isset($apiPurchaseData['error']) || isset($apiPurchaseData['message'])) {
@@ -1682,7 +1743,7 @@ class GiftCardController extends Controller
 
                 // If we still don't have purchase data but have external_id, try to construct basic info
                 // Also merge any additional data from meta
-                if (!$phazePurchaseData && $giftCardModel->external_id) {
+                if (! $phazePurchaseData && $giftCardModel->external_id) {
                     $phazePurchaseData = [
                         'id' => $giftCardModel->external_id,
                         'status' => $giftCardModel->meta['phaze_status'] ?? 'pending',
@@ -1728,33 +1789,33 @@ class GiftCardController extends Controller
                     if (isset($giftCardModel->meta['phaze_purchase']['externalUserId'])) {
                         $phazePurchaseData['externalUserId'] = $giftCardModel->meta['phaze_purchase']['externalUserId'];
                     } elseif ($giftCardModel->user_id) {
-                        $phazePurchaseData['externalUserId'] = (string)$giftCardModel->user_id;
+                        $phazePurchaseData['externalUserId'] = (string) $giftCardModel->user_id;
                     }
                 }
 
                 // Ensure orderID/orderId compatibility for frontend
                 if ($phazePurchaseData && is_array($phazePurchaseData)) {
                     // Ensure both orderId and orderID are set for compatibility
-                    if (isset($phazePurchaseData['orderId']) && !isset($phazePurchaseData['orderID'])) {
+                    if (isset($phazePurchaseData['orderId']) && ! isset($phazePurchaseData['orderID'])) {
                         $phazePurchaseData['orderID'] = $phazePurchaseData['orderId'];
                     }
-                    if (isset($phazePurchaseData['orderID']) && !isset($phazePurchaseData['orderId'])) {
+                    if (isset($phazePurchaseData['orderID']) && ! isset($phazePurchaseData['orderId'])) {
                         $phazePurchaseData['orderId'] = $phazePurchaseData['orderID'];
                     }
 
                     // Also ensure cardNumber/card_number compatibility
-                    if (isset($phazePurchaseData['cardNumber']) && !isset($phazePurchaseData['card_number'])) {
+                    if (isset($phazePurchaseData['cardNumber']) && ! isset($phazePurchaseData['card_number'])) {
                         $phazePurchaseData['card_number'] = $phazePurchaseData['cardNumber'];
                     }
-                    if (isset($phazePurchaseData['card_number']) && !isset($phazePurchaseData['cardNumber'])) {
+                    if (isset($phazePurchaseData['card_number']) && ! isset($phazePurchaseData['cardNumber'])) {
                         $phazePurchaseData['cardNumber'] = $phazePurchaseData['card_number'];
                     }
 
                     // Ensure baseCurrency/currency compatibility
-                    if (isset($phazePurchaseData['baseCurrency']) && !isset($phazePurchaseData['currency'])) {
+                    if (isset($phazePurchaseData['baseCurrency']) && ! isset($phazePurchaseData['currency'])) {
                         $phazePurchaseData['currency'] = $phazePurchaseData['baseCurrency'];
                     }
-                    if (isset($phazePurchaseData['currency']) && !isset($phazePurchaseData['baseCurrency'])) {
+                    if (isset($phazePurchaseData['currency']) && ! isset($phazePurchaseData['baseCurrency'])) {
                         $phazePurchaseData['baseCurrency'] = $phazePurchaseData['currency'];
                     }
                 }
@@ -1792,7 +1853,7 @@ class GiftCardController extends Controller
                 ];
 
                 // Render different views based on user role
-                if ($organizationOwnsCard && !$userOwnsCard) {
+                if ($organizationOwnsCard && ! $userOwnsCard) {
                     // Organization viewing (not the purchaser) - use organization layout
                     return Inertia::render('GiftCards/OrganizationShow', [
                         'giftCard' => $giftCardData,
@@ -1862,7 +1923,7 @@ class GiftCardController extends Controller
         $user = Auth::user();
 
         // Only organizations and admins can view purchased cards
-        if (!$user || !in_array($user->role, ['organization', 'organization_pending', 'admin'])) {
+        if (! $user || ! in_array($user->role, ['organization', 'organization_pending', 'admin'])) {
             abort(403, 'Only organizations can view purchased gift cards.');
         }
 
@@ -1896,7 +1957,6 @@ class GiftCardController extends Controller
         ]);
     }
 
-
     /**
      * Delete a gift card (only by organization owner or admin)
      * Can only delete if card is not purchased yet
@@ -1905,7 +1965,7 @@ class GiftCardController extends Controller
     {
         $user = Auth::user();
 
-        if (!$user) {
+        if (! $user) {
             abort(401, 'Unauthorized');
         }
 
@@ -1913,7 +1973,7 @@ class GiftCardController extends Controller
         $isAdmin = $user->role === 'admin';
         $isOwner = $giftCard->organization_id && $user->organization && $giftCard->organization_id === $user->organization->id;
 
-        if (!$isAdmin && !$isOwner) {
+        if (! $isAdmin && ! $isOwner) {
             abort(403, 'You do not have permission to delete this gift card.');
         }
 
@@ -1937,7 +1997,7 @@ class GiftCardController extends Controller
     {
         $user = Auth::user();
 
-        if (!$user) {
+        if (! $user) {
             abort(401, 'Unauthorized');
         }
 
@@ -1945,7 +2005,7 @@ class GiftCardController extends Controller
         $isAdmin = $user->role === 'admin';
         $isOwner = $giftCard->organization_id && $user->organization && $giftCard->organization_id === $user->organization->id;
 
-        if (!$isAdmin && !$isOwner) {
+        if (! $isAdmin && ! $isOwner) {
             abort(403, 'You do not have permission to modify this gift card.');
         }
 
@@ -1973,7 +2033,7 @@ class GiftCardController extends Controller
         $user = Auth::user();
 
         // Check if user has permission to download this gift card receipt
-        if (!$user) {
+        if (! $user) {
             abort(401, 'Unauthorized');
         }
 
@@ -1993,18 +2053,18 @@ class GiftCardController extends Controller
             }
         }
 
-        if (!$canDownload) {
+        if (! $canDownload) {
             abort(403, 'You do not have permission to download this gift card receipt.');
         }
 
         // Only allow download for purchased cards
-        if (!$giftCard->purchased_at) {
+        if (! $giftCard->purchased_at) {
             abort(404, 'Gift card receipt is not available for unpurchased cards.');
         }
 
         try {
             // Check if dompdf is available
-            if (!class_exists(\Barryvdh\DomPDF\Facade\Pdf::class)) {
+            if (! class_exists(\Barryvdh\DomPDF\Facade\Pdf::class)) {
                 return redirect()->back()->withErrors([
                     'error' => 'PDF generation is not available. Please contact support.',
                 ]);
@@ -2038,12 +2098,12 @@ class GiftCardController extends Controller
 
             // Generate filename
             $date = $giftCard->purchased_at->format('Y-m-d');
-            $filename = 'Gift-Card-Receipt-' . $giftCard->id . '-' . $date . '.pdf';
+            $filename = 'Gift-Card-Receipt-'.$giftCard->id.'-'.$date.'.pdf';
 
             // Download PDF
             return $pdf->download($filename);
         } catch (\Exception $e) {
-            Log::error('Failed to generate gift card PDF receipt: ' . $e->getMessage(), [
+            Log::error('Failed to generate gift card PDF receipt: '.$e->getMessage(), [
                 'gift_card_id' => $giftCard->id,
                 'user_id' => $user->id,
                 'error' => $e->getTraceAsString(),
@@ -2064,27 +2124,29 @@ class GiftCardController extends Controller
         $user = Auth::user();
 
         // Only allow authenticated users (admin or organization for testing)
-        if (!$user) {
+        if (! $user) {
             if ($request->expectsJson()) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Unauthorized',
                 ], 401);
             }
+
             return redirect()->route('login');
         }
 
         try {
-            $giftCardService = new \App\Services\GiftCardService();
+            $giftCardService = new \App\Services\GiftCardService;
             $transactionData = $giftCardService->lookupTransactionByOrderId($orderId);
 
-            if (!$transactionData) {
+            if (! $transactionData) {
                 if ($request->expectsJson()) {
                     return response()->json([
                         'success' => false,
                         'message' => 'Transaction not found or lookup failed',
                     ], 404);
                 }
+
                 return redirect()->back()->withErrors([
                     'error' => 'Transaction not found or lookup failed',
                 ]);
@@ -2106,7 +2168,7 @@ class GiftCardController extends Controller
             ]);
 
         } catch (\Exception $e) {
-            Log::error('Error looking up transaction: ' . $e->getMessage(), [
+            Log::error('Error looking up transaction: '.$e->getMessage(), [
                 'order_id' => $orderId,
                 'user_id' => $user->id ?? null,
             ]);
@@ -2114,14 +2176,13 @@ class GiftCardController extends Controller
             if ($request->expectsJson()) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Error looking up transaction: ' . $e->getMessage(),
+                    'message' => 'Error looking up transaction: '.$e->getMessage(),
                 ], 500);
             }
 
             return redirect()->back()->withErrors([
-                'error' => 'Error looking up transaction: ' . $e->getMessage(),
+                'error' => 'Error looking up transaction: '.$e->getMessage(),
             ]);
         }
     }
 }
-

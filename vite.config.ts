@@ -6,7 +6,11 @@ import { defineConfig } from 'vite';
 
 export default defineConfig({
     optimizeDeps: {
-        include: ['obs-websocket-js'],
+        include: [
+            'obs-websocket-js',
+            'prettier/standalone',
+            'prettier/plugins/html',
+        ],
     },
     build: {
         commonjsOptions: {

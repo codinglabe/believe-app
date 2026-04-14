@@ -41,6 +41,12 @@ Schedule::command('newsletter:process-scheduled')
     ->withoutOverlapping()
     ->runInBackground();
 
+// SMS wallet: Cashier off-session auto-recharge when balance is low (also dispatched after each SMS send)
+Schedule::command('sms:auto-recharge-scan')
+    ->everyFifteenMinutes()
+    ->withoutOverlapping()
+    ->runInBackground();
+
 // Clean up old send jobs (optional)
 Schedule::command('sendJobs:cleanup')
     ->daily()

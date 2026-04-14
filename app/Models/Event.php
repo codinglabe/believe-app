@@ -11,6 +11,7 @@ class Event extends Model
         'organization_id',
         'user_id',
         'event_type_id',
+        'primary_action_category_id',
         'name',
         'description',
         'start_date',
@@ -52,15 +53,21 @@ class Event extends Model
         return $this->belongsTo(EventType::class);
     }
 
+    public function primaryActionCategory(): BelongsTo
+    {
+        return $this->belongsTo(PrimaryActionCategory::class);
+    }
+
     public function getFullAddressAttribute(): string
     {
         $parts = array_filter([$this->address, $this->city, $this->state, $this->zip]);
+
         return implode(', ', $parts);
     }
 
     public function getStatusColorAttribute(): string
     {
-        return match($this->status) {
+        return match ($this->status) {
             'upcoming' => 'blue',
             'ongoing' => 'green',
             'completed' => 'gray',

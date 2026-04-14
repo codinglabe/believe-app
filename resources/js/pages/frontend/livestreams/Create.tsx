@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Switch } from "@/components/admin/ui/switch"
 import { Video, ArrowLeft, Mic, Camera, Download } from "lucide-react"
-import FrontendLayout from "@/layouts/frontend/frontend-layout"
+import UnityMeetLayout from "@/layouts/UnityMeetLayout"
 import { PageHead } from "@/components/frontend/PageHead"
 
 const BRAND = {
@@ -37,7 +37,13 @@ export default function SupporterCreateLivestream({ authUserDisplayName = "" }: 
   }
 
   return (
-    <FrontendLayout>
+    <UnityMeetLayout
+      breadcrumbs={[
+        { title: 'Dashboard', href: '/dashboard' },
+        { title: 'Unity Meet Communications', href: '/livestreams/supporter' },
+        { title: 'Create', href: '/livestreams/supporter/create' },
+      ]}
+    >
       <PageHead title="Start a New Meeting" description="Create a meeting in one click. Invite others and go live when you're ready." />
       <Head title="Start a New Meeting" />
       <div className="min-h-screen bg-background">
@@ -166,6 +172,6 @@ export default function SupporterCreateLivestream({ authUserDisplayName = "" }: 
           </form>
         </div>
       </div>
-    </FrontendLayout>
+    </UnityMeetLayout>
   )
 }

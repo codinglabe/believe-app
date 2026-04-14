@@ -2,17 +2,18 @@
 
 namespace App\Http\Controllers;
 
-use Stripe\Stripe;
 use App\Models\Order;
+use App\Models\OrderProduct;
+use App\Models\OrderShippingInfo;
 use App\Models\Product;
 use App\Models\Service;
-use Illuminate\Support\Str;
-use App\Models\OrderProduct;
-use Illuminate\Http\Request;
-use App\Models\OrderShippingInfo;
-use Illuminate\Support\Facades\Auth;
 use App\Services\StripeConfigService;
+use App\Support\StripeCustomerChargeAmount;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Str;
 use Stripe\Checkout\Session as StripeSession;
+use Stripe\Stripe;
 
 class PurchaseOrderController extends Controller
 {
@@ -42,7 +43,7 @@ class PurchaseOrderController extends Controller
                         'product_data' => [
                             'name' => $product->name,
                         ],
-                        'unit_amount' => (int)($product->unit_price * 100),
+                        'unit_amount' => StripeCustomerChargeAmount::chargeCentsFromNetUsd((float) $product->unit_price, 'card'),
                     ],
                     'quantity' => $item['quantity'],
                 ];
@@ -52,7 +53,7 @@ class PurchaseOrderController extends Controller
             $environment = StripeConfigService::getEnvironment();
             $credentials = StripeConfigService::getCredentials($environment);
 
-            if ($credentials && !empty($credentials['secret_key'])) {
+            if ($credentials && ! empty($credentials['secret_key'])) {
                 Stripe::setApiKey($credentials['secret_key']);
             } else {
                 // Fallback to env if database credentials not found
@@ -64,7 +65,7 @@ class PurchaseOrderController extends Controller
                 'line_items' => $lineItems,
                 'mode' => 'payment',
                 'customer_email' => $validated['email'],
-                'success_url' => route('purchase.success') . '?session_id={CHECKOUT_SESSION_ID}',
+                'success_url' => route('purchase.success').'?session_id={CHECKOUT_SESSION_ID}',
                 'cancel_url' => route('purchase.cancel'),
                 'metadata' => [
                     'user_id' => Auth::id(),
@@ -77,20 +78,18 @@ class PurchaseOrderController extends Controller
                 ],
             ]);
 
-
             return response()->json(['url' => $session->url]);
         } catch (\Exception $e) {
             // You can customize this error handling as needed
-            return back()->withErrors(['stripe' => 'Payment processing failed: ' . $e->getMessage()]);
+            return back()->withErrors(['stripe' => 'Payment processing failed: '.$e->getMessage()]);
         }
     }
-
 
     public function purchaseSuccess(Request $request)
     {
         try {
             $session_id = $request->get('session_id');
-            if (!$session_id) {
+            if (! $session_id) {
                 return back()->withErrors(['stripe' => 'Missing Stripe session ID.']);
             }
 
@@ -98,7 +97,7 @@ class PurchaseOrderController extends Controller
             $environment = StripeConfigService::getEnvironment();
             $credentials = StripeConfigService::getCredentials($environment);
 
-            if ($credentials && !empty($credentials['secret_key'])) {
+            if ($credentials && ! empty($credentials['secret_key'])) {
                 Stripe::setApiKey($credentials['secret_key']);
             } else {
                 // Fallback to env if database credentials not found
@@ -108,10 +107,8 @@ class PurchaseOrderController extends Controller
             // Get session from Stripe
             $session = StripeSession::retrieve($session_id);
 
-
-
             do {
-                $referenceNumber = 'ORD-' . strtoupper(Str::random(10));
+                $referenceNumber = 'ORD-'.strtoupper(Str::random(10));
             } while (Order::where('reference_number', $referenceNumber)->exists());
 
             // Retrieve metadata from Stripe
@@ -172,11 +169,9 @@ class PurchaseOrderController extends Controller
                 'api_response' => json_encode($session),
             ]);
 
-
-
             return redirect()->route('order.success', ['order' => $order->id])->with('success', 'Order placed successfully!');
         } catch (\Exception $e) {
-            return back()->withErrors(['stripe' => 'Error on success page: ' . $e->getMessage()]);
+            return back()->withErrors(['stripe' => 'Error on success page: '.$e->getMessage()]);
         }
     }
 
@@ -185,7 +180,7 @@ class PurchaseOrderController extends Controller
         try {
             return view('order.success');
         } catch (\Exception $e) {
-            return back()->withErrors(['stripe' => 'Error on cancel page: ' . $e->getMessage()]);
+            return back()->withErrors(['stripe' => 'Error on cancel page: '.$e->getMessage()]);
         }
     }
 
@@ -194,7 +189,7 @@ class PurchaseOrderController extends Controller
         try {
             return view('order.cancel');
         } catch (\Exception $e) {
-            return back()->withErrors(['stripe' => 'Error on cancel page: ' . $e->getMessage()]);
+            return back()->withErrors(['stripe' => 'Error on cancel page: '.$e->getMessage()]);
         }
     }
 }

@@ -42,7 +42,7 @@ export function ChatMessage({ message, isOwnMessage }: ChatMessageProps) {
       )}
       <div
         className={cn(
-          "flex flex-col max-w-[75%] sm:max-w-[65%]",
+          "flex flex-col max-w-[min(85%,28rem)] sm:max-w-[65%]",
           isOwnMessage ? "items-end" : "items-start",
         )}
       >
@@ -70,10 +70,10 @@ export function ChatMessage({ message, isOwnMessage }: ChatMessageProps) {
         )}
         <div
           className={cn(
-            "relative rounded-2xl px-4 py-2.5 text-sm shadow-sm transition-all duration-200",
+            "relative rounded-2xl px-3.5 sm:px-4 py-2.5 text-sm shadow-sm transition-all duration-200",
             "hover:shadow-md",
             isOwnMessage
-              ? "bg-gradient-to-br from-primary to-primary/90 text-primary-foreground rounded-br-md"
+              ? "bg-gradient-to-br from-purple-600 to-blue-600 text-white rounded-br-md shadow-purple-500/15"
               : "bg-card border border-border/50 rounded-bl-md",
           )}
         >
@@ -130,7 +130,12 @@ export function ChatMessage({ message, isOwnMessage }: ChatMessageProps) {
             "flex items-center gap-1.5 mt-1.5",
             isOwnMessage ? "justify-end" : "justify-start"
           )}>
-            <span className="text-[0.65rem] text-muted-foreground/70">
+            <span
+              className={cn(
+                "text-[0.65rem]",
+                isOwnMessage ? "text-white/75" : "text-muted-foreground/70",
+              )}
+            >
               {format(new Date(message.created_at), "HH:mm")}
             </span>
           </div>

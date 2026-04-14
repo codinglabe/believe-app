@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Copy, Check, Play, ArrowLeft } from "lucide-react"
-import FrontendLayout from "@/layouts/frontend/frontend-layout"
+import UnityMeetLayout from "@/layouts/UnityMeetLayout"
 import { PageHead } from "@/components/frontend/PageHead"
 
 const BRAND = {
@@ -36,7 +36,13 @@ export default function SupporterReady({ livestream }: Props) {
   }
 
   return (
-    <FrontendLayout>
+    <UnityMeetLayout
+      breadcrumbs={[
+        { title: 'Dashboard', href: '/dashboard' },
+        { title: 'Unity Meet Communications', href: '/livestreams/supporter' },
+        { title: 'Ready', href: `/livestreams/supporter/ready/${livestream.id}` },
+      ]}
+    >
       <PageHead title="Meeting ready" description="Invite others and start the meeting when ready." />
       <Head title="Meeting ready" />
       <div className="min-h-screen bg-background">
@@ -132,6 +138,6 @@ export default function SupporterReady({ livestream }: Props) {
           </Card>
         </div>
       </div>
-    </FrontendLayout>
+    </UnityMeetLayout>
   )
 }

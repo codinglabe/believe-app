@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
-import { Head, router, Link } from '@inertiajs/react';
+import React, { useState, useEffect } from 'react';
+import { Head, router, Link, usePage } from '@inertiajs/react';
+import toast from 'react-hot-toast';
 import FrontendLayout from '@/layouts/frontend/frontend-layout';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -16,9 +17,7 @@ interface InterestCategory {
     id: number;
     name: string;
     slug: string;
-    description: string | null;
-    color: string;
-    icon: string | null;
+    description?: string | null;
 }
 
 interface OrgItem {
@@ -29,6 +28,7 @@ interface OrgItem {
     city: string | null;
     state: string | null;
     website: string | null;
+    is_following: boolean;
 }
 
 interface EventItem {
@@ -76,19 +76,80 @@ interface Props {
     volunteers: VolunteerItem[];
     impactCounts: ImpactCounts;
     myCauses: InterestCategory[];
+    canFollowOrganizations: boolean;
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
-function OrganizationCard({ org }: { org: OrgItem }) {
-    const [followed, setFollowed] = useState(false);
+function OrganizationCard({ org, canFollowOrganizations }: { org: OrgItem; canFollowOrganizations: boolean }) {
+    const { auth } = usePage<{ auth?: { user?: { id?: number } } }>().props;
+    const [followed, setFollowed] = useState(org.is_following);
+
+    useEffect(() => {
+        setFollowed(org.is_following);
+    }, [org.is_following]);
 
     const handleFollow = () => {
-        router.post(`/organizations/${org.id}/toggle-favorite`, {}, {
+        router.post(`/organizations/${org.id}/toggle-favorite`, { toggle_favorite_context: 'organization' }, {
             preserveScroll: true,
-            onSuccess: () => setFollowed(f => !f),
+            // Inertia v2 defaults POST to preserveState: true, which can keep stale org rows / follow UI after redirect
+            preserveState: false,
+            onSuccess: page => {
+                const props = page.props as {
+                    organizations?: OrgItem[];
+                    flash?: { error?: string };
+                    error?: string;
+                };
+                const flashErr = props.flash?.error;
+                const err = (typeof flashErr === 'string' && flashErr) || (typeof props.error === 'string' && props.error);
+                if (err) {
+                    toast.error(err);
+                    return;
+                }
+                const row = props.organizations?.find(o => o.id === org.id);
+                if (row) {
+                    setFollowed(row.is_following);
+                } else {
+                    setFollowed(f => !f);
+                }
+            },
+            onError: () => {
+                toast.error('Could not update follow. Please try again.');
+            },
         });
     };
+
+    const followControl = !auth?.user ? (
+        <Link href="/login" className="flex-1">
+            <Button variant="outline" size="sm" className="w-full text-xs">
+                <Users className="w-3 h-3 mr-1" />
+                Sign in to follow
+            </Button>
+        </Link>
+    ) : !canFollowOrganizations ? (
+        <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="flex-1 text-xs opacity-60 cursor-not-allowed"
+            disabled
+            title="Only supporter accounts can follow organizations"
+        >
+            <Users className="w-3 h-3 mr-1" />
+            Follow
+        </Button>
+    ) : (
+        <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className={`flex-1 text-xs transition-colors ${followed ? 'bg-blue-50 text-blue-700 border-blue-300 dark:bg-blue-950/40 dark:text-blue-200' : ''}`}
+            onClick={handleFollow}
+        >
+            <Users className="w-3 h-3 mr-1" />
+            {followed ? 'Unfollow' : 'Follow'}
+        </Button>
+    );
 
     return (
         <Card className="hover:shadow-md transition-shadow">
@@ -115,15 +176,7 @@ function OrganizationCard({ org }: { org: OrgItem }) {
                     </div>
                 </div>
                 <div className="flex gap-2 mt-3">
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        className={`flex-1 text-xs transition-colors ${followed ? 'bg-blue-50 text-blue-700 border-blue-300' : ''}`}
-                        onClick={handleFollow}
-                    >
-                        <Users className="w-3 h-3 mr-1" />
-                        {followed ? 'Following' : 'Follow'}
-                    </Button>
+                    {followControl}
                     <Link href="/donate" className="flex-1">
                         <Button size="sm" className="w-full text-xs bg-orange-500 hover:bg-orange-600 text-white border-0">
                             <Heart className="w-3 h-3 mr-1" /> Donate
@@ -246,15 +299,56 @@ export default function ExploreByCause({
     volunteers,
     impactCounts,
     myCauses,
+    canFollowOrganizations,
 }: Props) {
-    const [activeTab, setActiveTab] = useState<TabType>('all');
+    const { auth } = usePage<{ auth?: { user?: { id?: number } } }>().props;
 
+    const validTabs: TabType[] = ['all', 'organizations', 'events', 'courses', 'volunteers'];
+
+    const getTabFromUrl = (): TabType => {
+        const params = new URLSearchParams(window.location.search);
+        const t = params.get('tab') as TabType;
+        return validTabs.includes(t) ? t : 'all';
+    };
+
+    // Sync with ?tab= on first paint so follow/unfollow (preserveState: false) does not jump back to "All"
+    const [activeTab, setActiveTab] = useState<TabType>(() =>
+        typeof window !== 'undefined' ? getTabFromUrl() : 'all'
+    );
+
+    // When user changes tab, update URL query param (no page reload)
+    const handleTabChange = (tab: TabType) => {
+        setActiveTab(tab);
+        const params = new URLSearchParams(window.location.search);
+        if (tab === 'all') {
+            params.delete('tab');
+        } else {
+            params.set('tab', tab);
+        }
+        const newUrl = `${window.location.pathname}?${params.toString()}`;
+        window.history.replaceState({}, '', newUrl);
+    };
+
+    // When cause changes, keep the current tab in the URL
     const handleCauseChange = (slug: string) => {
-        router.get('/explore-by-cause', { interest: slug }, { preserveScroll: false });
+        const params: Record<string, string> = { interest: slug };
+        if (activeTab !== 'all') params.tab = activeTab;
+        router.get('/explore-by-cause', params, { preserveScroll: false });
     };
 
     const handleToggleInterest = (categoryId: number) => {
-        router.post(`/explore-by-cause/toggle-interest/${categoryId}`, {}, { preserveScroll: true });
+        router.post(`/explore-by-cause/toggle-interest/${categoryId}`, {}, {
+            preserveScroll: true,
+            onSuccess: page => {
+                const flash = (page.props as { flash?: { error?: string } }).flash;
+                if (flash?.error) {
+                    toast.error(flash.error);
+                    return;
+                }
+                router.reload({ only: ['myCauses'] });
+            },
+            onError: () => toast.error('Could not update your causes.'),
+        });
     };
 
     const tabs: { key: TabType; label: string; count: number; icon: React.ReactNode }[] = [
@@ -308,15 +402,40 @@ export default function ExploreByCause({
 
                             {/* Action Buttons */}
                             <div className="flex flex-wrap gap-2">
-                                <Button
-                                    variant="outline"
-                                    size="sm"
-                                    className="text-blue-600 border-blue-300 hover:bg-blue-50"
-                                    onClick={() => selectedCategory && handleToggleInterest(selectedCategory.id)}
-                                >
-                                    <Users className="w-3.5 h-3.5 mr-1" />
-                                    Follow
-                                </Button>
+                                {!auth?.user ? (
+                                    <Link href="/login">
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            className="text-blue-600 border-blue-300 hover:bg-blue-50"
+                                        >
+                                            <Users className="w-3.5 h-3.5 mr-1" />
+                                            Sign in to follow cause
+                                        </Button>
+                                    </Link>
+                                ) : !canFollowOrganizations ? (
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        className="text-blue-600 border-blue-300 opacity-60 cursor-not-allowed"
+                                        disabled
+                                        title="Only supporter accounts can follow causes"
+                                    >
+                                        <Users className="w-3.5 h-3.5 mr-1" />
+                                        Follow cause
+                                    </Button>
+                                ) : (
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        className="text-blue-600 border-blue-300 hover:bg-blue-50"
+                                        onClick={() => selectedCategory && handleToggleInterest(selectedCategory.id)}
+                                    >
+                                        <Users className="w-3.5 h-3.5 mr-1" />
+                                        Follow cause
+                                    </Button>
+                                )}
                                 <Link href="/donate">
                                     <Button size="sm" className="bg-orange-500 hover:bg-orange-600 text-white border-0">
                                         <Heart className="w-3.5 h-3.5 mr-1" />
@@ -362,7 +481,7 @@ export default function ExploreByCause({
                                 {tabs.map(tab => (
                                     <button
                                         key={tab.key}
-                                        onClick={() => setActiveTab(tab.key)}
+                                        onClick={() => handleTabChange(tab.key)}
                                         className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium whitespace-nowrap transition-colors ${
                                             activeTab === tab.key
                                                 ? 'bg-blue-600 text-white shadow-sm'
@@ -411,14 +530,14 @@ export default function ExploreByCause({
                                                 <Building2 className="w-4 h-4 text-blue-500" />
                                                 Organizations
                                             </h2>
-                                            <button onClick={() => setActiveTab('organizations')} className="text-xs text-blue-500 hover:underline flex items-center gap-1">
+                                            <button onClick={() => handleTabChange('organizations')} className="text-xs text-blue-500 hover:underline flex items-center gap-1">
                                                 View all <ArrowRight className="w-3 h-3" />
                                             </button>
                                         </div>
                                     )}
                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                         {(activeTab === 'all' ? organizations.slice(0, 4) : organizations).map(org => (
-                                            <OrganizationCard key={org.id} org={org} />
+                                            <OrganizationCard key={org.id} org={org} canFollowOrganizations={canFollowOrganizations} />
                                         ))}
                                     </div>
                                 </section>
@@ -433,7 +552,7 @@ export default function ExploreByCause({
                                                 <Calendar className="w-4 h-4 text-purple-500" />
                                                 Events
                                             </h2>
-                                            <button onClick={() => setActiveTab('events')} className="text-xs text-blue-500 hover:underline flex items-center gap-1">
+                                            <button onClick={() => handleTabChange('events')} className="text-xs text-blue-500 hover:underline flex items-center gap-1">
                                                 View all <ArrowRight className="w-3 h-3" />
                                             </button>
                                         </div>
@@ -455,7 +574,7 @@ export default function ExploreByCause({
                                                 <BookOpen className="w-4 h-4 text-green-500" />
                                                 Courses
                                             </h2>
-                                            <button onClick={() => setActiveTab('courses')} className="text-xs text-blue-500 hover:underline flex items-center gap-1">
+                                            <button onClick={() => handleTabChange('courses')} className="text-xs text-blue-500 hover:underline flex items-center gap-1">
                                                 View all <ArrowRight className="w-3 h-3" />
                                             </button>
                                         </div>
@@ -477,7 +596,7 @@ export default function ExploreByCause({
                                                 <HandHeart className="w-4 h-4 text-orange-500" />
                                                 Volunteer Opportunities
                                             </h2>
-                                            <button onClick={() => setActiveTab('volunteers')} className="text-xs text-blue-500 hover:underline flex items-center gap-1">
+                                            <button onClick={() => handleTabChange('volunteers')} className="text-xs text-blue-500 hover:underline flex items-center gap-1">
                                                 View all <ArrowRight className="w-3 h-3" />
                                             </button>
                                         </div>
@@ -497,41 +616,54 @@ export default function ExploreByCause({
                             {/* Your Causes */}
                             <Card>
                                 <CardContent className="p-4">
-                                    <h2 className="font-semibold text-gray-900 dark:text-white mb-3">Your Causes</h2>
+                                    <div className="flex items-center justify-between mb-3">
+                                        <h2 className="font-semibold text-gray-900 dark:text-white">Your Causes</h2>
+                                        {myCauses.length === 0 && (
+                                            <Link href="/profile/edit" className="text-xs text-blue-500 hover:underline">
+                                                Set interests
+                                            </Link>
+                                        )}
+                                    </div>
+
+                                    {/* Show user's profile interests if logged in and they have some */}
                                     {myCauses.length > 0 ? (
                                         <div className="flex flex-wrap gap-2">
                                             {myCauses.map(cause => (
                                                 <button
                                                     key={cause.id}
                                                     onClick={() => handleCauseChange(cause.slug)}
-                                                    className={`px-3 py-1 rounded-full text-sm font-medium transition-colors ${
+                                                    className={`px-3 py-1.5 rounded-full text-sm font-medium transition-all border ${
                                                         selectedCategory?.slug === cause.slug
-                                                            ? 'text-white shadow-sm'
-                                                            : 'bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 hover:bg-blue-100'
+                                                            ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
+                                                            : 'bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-700 hover:bg-blue-100'
                                                     }`}
-                                                    style={selectedCategory?.slug === cause.slug ? { backgroundColor: cause.color || '#3B82F6' } : {}}
                                                 >
                                                     {cause.name}
                                                 </button>
                                             ))}
                                         </div>
                                     ) : (
-                                        <div className="space-y-2">
-                                            {categories.slice(0, 5).map(cat => (
-                                                <button
-                                                    key={cat.id}
-                                                    onClick={() => handleCauseChange(cat.slug)}
-                                                    className={`px-3 py-1 rounded-full text-sm font-medium transition-colors mr-2 mb-1 ${
-                                                        selectedCategory?.slug === cat.slug
-                                                            ? 'text-white'
-                                                            : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200'
-                                                    }`}
-                                                    style={selectedCategory?.slug === cat.slug ? { backgroundColor: cat.color || '#3B82F6' } : {}}
-                                                >
-                                                    {cat.name}
-                                                </button>
-                                            ))}
-                                        </div>
+                                        /* Fallback: show all categories when user has no profile interests */
+                                        <>
+                                            <p className="text-xs text-gray-400 dark:text-gray-500 mb-2">
+                                                Set your interests in your profile to personalise this list.
+                                            </p>
+                                            <div className="flex flex-wrap gap-2">
+                                                {categories.map(cat => (
+                                                    <button
+                                                        key={cat.id}
+                                                        onClick={() => handleCauseChange(cat.slug)}
+                                                        className={`px-3 py-1.5 rounded-full text-sm font-medium transition-all border ${
+                                                            selectedCategory?.slug === cat.slug
+                                                                ? 'bg-blue-600 text-white border-blue-600 shadow-sm'
+                                                                : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-600 hover:bg-gray-200 dark:hover:bg-gray-600'
+                                                        }`}
+                                                    >
+                                                        {cat.name}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </>
                                     )}
                                 </CardContent>
                             </Card>
@@ -559,7 +691,7 @@ export default function ExploreByCause({
                                                 <CheckCircle2 className="w-4 h-4 text-green-500 shrink-0" />
                                                 <span>
                                                     <strong className="text-gray-900 dark:text-white">{impactCounts.events}</strong>
-                                                    <span className="text-gray-500 dark:text-gray-400"> Events this week</span>
+                                                    <span className="text-gray-500 dark:text-gray-400"> Upcoming events</span>
                                                 </span>
                                             </div>
                                             <div className="flex items-center gap-2 text-sm mb-2">

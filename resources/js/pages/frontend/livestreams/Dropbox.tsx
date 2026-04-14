@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useRef } from "react"
-import FrontendLayout from "@/layouts/frontend/frontend-layout"
+import UnityMeetLayout from "@/layouts/UnityMeetLayout"
 import { Head, Link, router } from "@inertiajs/react"
 import axios from "axios"
 import { Card, CardContent } from "@/components/ui/card"
@@ -105,7 +105,13 @@ export default function SupporterDropbox({
   const isSearching = searchQuery.trim() !== "" && searching
 
   return (
-    <FrontendLayout>
+    <UnityMeetLayout
+      breadcrumbs={[
+        { title: 'Dashboard', href: '/dashboard' },
+        { title: 'Unity Meet Communications', href: '/livestreams/supporter' },
+        { title: 'Dropbox recordings', href: '#' },
+      ]}
+    >
       <PageHead title="Dropbox recordings" description="View and manage your meeting recordings saved to Dropbox." />
       <Head title="Dropbox recordings" />
 
@@ -307,7 +313,7 @@ export default function SupporterDropbox({
           )}
         </main>
       </div>
-    </FrontendLayout>
+    </UnityMeetLayout>
   )
 }
 

@@ -10,10 +10,13 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 import { ConfirmationModal } from "@/components/admin/confirmation-modal"
 import { UnifiedLedgerCard, type UnifiedLedgerRow } from "@/components/admin/unified-ledger-card"
+import { transactionTypeBadgeClass, transactionTypeDisplayLabel } from "@/lib/transaction-type-labels"
 import {
   ArrowLeft,
+  ArrowRightLeft,
   CalendarClock,
   CheckCircle2,
   Clock,
@@ -109,6 +112,10 @@ interface DonationLedgerInfo {
   donation_date?: string | null
   donor_user_id?: number | null
   recipient_user_id?: number | null
+  /** Stripe checkout: donor paid processing on top vs nonprofit absorbs fee from charge */
+  donor_covers_processing_fees?: boolean
+  checkout_total?: number | null
+  processing_fee_estimate?: number | null
 }
 
 /** Full financial breakdown (same shape as ledger index report payload). */
@@ -126,6 +133,15 @@ interface LedgerReportRow {
   payout_status: string | null
   organization_id: number | null
   organization_name: string | null
+  supplier_payout?: number | null
+  organization_payout?: number | null
+  platform_payout?: number | null
+  supporter_payout?: number | null
+  supplier_name?: string | null
+  supplier_type?: string | null
+  subtotal_amount?: number | null
+  sales_tax_amount?: number | null
+  shipping_amount?: number | null
 }
 
 /** Who this row is primarily about: personal user, nonprofit wallet, or Care Alliance. */
@@ -161,6 +177,8 @@ interface TransactionDetail {
   user: { id: number; name: string; email: string } | null
   meta: Record<string, unknown> | null
   donation: DonationLedgerInfo | null
+  /** True when a donation record is linked (same as ledger index). */
+  donation_badge?: boolean
   donation_badge_label?: string
   donation_ledger_perspective?: string | null
   ledger_actor_context?: LedgerActorContext | null
@@ -186,43 +204,59 @@ function formatMoney(n: number, currency: string) {
   }
 }
 
-function typeBadgeClass(type: string): string {
-  switch (type) {
-    case "deposit":
-    case "transfer_in":
-      return "border-emerald-500/40 bg-emerald-500/[0.1] text-emerald-900 dark:text-emerald-100"
-    case "withdrawal":
-    case "transfer_out":
-      return "border-sky-500/40 bg-sky-500/[0.1] text-sky-900 dark:text-sky-100"
-    case "purchase":
-      return "border-violet-500/40 bg-violet-500/[0.1] text-violet-900 dark:text-violet-100"
-    case "refund":
-      return "border-amber-500/40 bg-amber-500/[0.1] text-amber-950 dark:text-amber-100"
-    case "commission":
-      return "border-orange-500/40 bg-orange-500/[0.1] text-orange-950 dark:text-orange-100"
-    default:
-      return "border-border/60 bg-muted/40 text-foreground"
-  }
-}
-
-/** Donor gifts are stored as purchase-type rows; surface “Donation” in the UI when metadata says so. */
-function adminTransactionTypeDisplay(t: TransactionDetail): { badgeLabel: string; badgeClass: string } {
+/** Same rules as the ledger table “Transaction” column (icon + label). */
+function transactionShowLedgerTypeDisplay(t: TransactionDetail): { label: string; className: string; icon: "arrows" | "heart" } {
   const meta = t.meta && typeof t.meta === "object" ? (t.meta as Record<string, unknown>) : {}
-  if (meta.ledger_role === "donor_payment" || t.donation_ledger_perspective === "donor") {
+  const perspective = t.donation_ledger_perspective
+
+  if (meta.ledger_role === "donor_payment" || perspective === "donor") {
     return {
-      badgeLabel: "Donation",
-      badgeClass: "border-rose-500/40 bg-rose-500/[0.1] text-rose-900 dark:text-rose-100",
+      label: "Donation",
+      className:
+        "border-rose-500/40 bg-rose-500/[0.12] text-rose-900 shadow-sm shadow-rose-500/10 dark:text-rose-100",
+      icon: "heart",
     }
   }
-  if (t.donation_ledger_perspective === "campaign" && t.type === "purchase") {
+  if (perspective === "campaign" && t.type === "purchase") {
     return {
-      badgeLabel: "Campaign gift",
-      badgeClass: "border-amber-500/40 bg-amber-500/[0.1] text-amber-950 dark:text-amber-100",
+      label: "Campaign gift",
+      className:
+        "border-amber-500/40 bg-amber-500/[0.12] text-amber-950 shadow-sm shadow-amber-500/10 dark:text-amber-100",
+      icon: "heart",
     }
   }
+
+  if (t.donation_badge && t.type === "deposit") {
+    if (perspective === "recipient_direct") {
+      return {
+        label: "Donation received",
+        className:
+          "border-emerald-500/45 bg-emerald-500/[0.12] text-emerald-900 shadow-sm shadow-emerald-500/10 dark:text-emerald-100",
+        icon: "heart",
+      }
+    }
+    if (perspective === "recipient_split") {
+      return {
+        label: "Donation received (split)",
+        className:
+          "border-teal-500/45 bg-teal-500/[0.12] text-teal-900 shadow-sm shadow-teal-500/10 dark:text-teal-100",
+        icon: "heart",
+      }
+    }
+    if (perspective === "alliance_fee") {
+      return {
+        label: "Alliance fee",
+        className:
+          "border-violet-500/45 bg-violet-500/[0.12] text-violet-900 shadow-sm shadow-violet-500/10 dark:text-violet-100",
+        icon: "arrows",
+      }
+    }
+  }
+
   return {
-    badgeLabel: t.type.replace(/_/g, " "),
-    badgeClass: typeBadgeClass(t.type),
+    label: transactionTypeDisplayLabel(t.type),
+    className: transactionTypeBadgeClass(t.type),
+    icon: "arrows",
   }
 }
 
@@ -244,6 +278,16 @@ function statusBadgeClass(status: string): string {
     default:
       return "border-border/60 bg-muted/40 text-foreground"
   }
+}
+
+/** How gross vs net are interpreted on the unified ledger for Stripe Believe donations. */
+function stripeDonationLedgerExplanation(d: DonationLedgerInfo | null): string | null {
+  if (!d || d.missing || d.kind === "care_alliance_campaign") return null
+  if (d.payment_method !== "stripe") return null
+  if (d.donor_covers_processing_fees) {
+    return "Donor covered processing: Gross is the total amount paid. Net is that payment minus the processing fee (and any other fees listed)—what the nonprofit receives. The fee row is the portion that goes to the processor."
+  }
+  return "Nonprofit absorbs processing: NET is the donation amount minus the processing fee (and any other fees listed). Org payout matches that net settlement."
 }
 
 function ledgerActorContextIcon(kind: LedgerActorContext["kind"]): ComponentType<{ className?: string }> {
@@ -342,11 +386,11 @@ export default function TransactionShow({ transaction: t }: Props) {
 
   const breadcrumbs: BreadcrumbItem[] = [
     { title: "Dashboard", href: "/dashboard" },
-    { title: "Transaction ledger", href: "/admin/transactions/ledger" },
+    { title: "Transaction ledger", href: route("admin.transactions.ledger") },
     { title: t.transaction_id, href: "#" },
   ]
 
-  const txType = adminTransactionTypeDisplay(t)
+  const txTypeDisplay = transactionShowLedgerTypeDisplay(t)
 
   const metaJson =
     t.meta && Object.keys(t.meta).length > 0 ? JSON.stringify(t.meta, null, 2) : null
@@ -355,6 +399,7 @@ export default function TransactionShow({ transaction: t }: Props) {
 
   const actorCtx = t.ledger_actor_context
   const ActorHeaderIcon = actorCtx ? ledgerActorContextIcon(actorCtx.kind) : User
+  const donationStripeLedgerHint = stripeDonationLedgerExplanation(t.donation)
 
   const handleDelete = () => {
     setDeleting(true)
@@ -381,32 +426,56 @@ export default function TransactionShow({ transaction: t }: Props) {
         >
           <div className="space-y-3">
             <Link
-              href="/admin/transactions/ledger"
+              href={route("admin.transactions.ledger")}
               className="inline-flex items-center gap-2 text-sm font-medium text-primary/90 transition-colors hover:text-primary hover:underline"
             >
               <ArrowLeft className="h-4 w-4" />
               Back to ledger
             </Link>
-            <Badge
-              variant="outline"
-              className="gap-1.5 rounded-full border-primary/25 bg-primary/[0.07] px-3 py-1 text-xs font-medium text-primary"
-            >
-              <ScrollText className="h-3.5 w-3.5" />
-              Transaction
-            </Badge>
             <h1 className="font-mono text-2xl font-bold tracking-tight text-foreground sm:text-3xl">{t.transaction_id}</h1>
             <div className="flex flex-wrap items-center gap-2">
-              <Badge variant="outline" className={cn("capitalize", txType.badgeClass)}>
-                {txType.badgeLabel}
-              </Badge>
-              <Badge variant="outline" className={cn("capitalize", statusBadgeClass(t.status))}>
+              <Tooltip delayDuration={350}>
+                <TooltipTrigger asChild>
+                  <span
+                    className={cn(
+                      "inline-flex max-w-full min-w-0 cursor-pointer items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-xs font-semibold uppercase leading-none tracking-wide sm:text-sm",
+                      txTypeDisplay.className,
+                    )}
+                  >
+                    {txTypeDisplay.icon === "heart" ? (
+                      <Heart className="h-3.5 w-3.5 shrink-0 opacity-90 sm:h-4 sm:w-4" aria-hidden />
+                    ) : (
+                      <ArrowRightLeft className="h-3.5 w-3.5 shrink-0 opacity-80 sm:h-4 sm:w-4" aria-hidden />
+                    )}
+                    <span className="min-w-0 max-w-[min(100%,14rem)] truncate sm:max-w-[18rem]">{txTypeDisplay.label}</span>
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent
+                  side="top"
+                  sideOffset={8}
+                  className="max-w-xs px-3 py-2 text-left text-xs font-medium normal-case leading-snug tracking-normal text-popover-foreground"
+                >
+                  {t.donation_badge_label ? (
+                    <>
+                      <span className="font-semibold uppercase tracking-wide">{txTypeDisplay.label}</span>
+                      <span className="mt-1 block text-[11px] font-normal text-muted-foreground">{t.donation_badge_label}</span>
+                    </>
+                  ) : (
+                    txTypeDisplay.label
+                  )}
+                </TooltipContent>
+              </Tooltip>
+              <span
+                className="inline-flex items-center rounded-md border border-border/50 bg-muted/30 px-2 py-1 font-mono text-sm font-semibold tabular-nums text-foreground"
+                title={`Transaction id ${t.id}`}
+              >
+                #{t.id}
+              </span>
+              <Badge variant="outline" className={cn("capitalize leading-none", statusBadgeClass(t.status))}>
                 <span className="inline-flex items-center gap-1.5">
                   {statusIcon(t.status)}
-                  {t.status}
+                  <span className="leading-none">{t.status}</span>
                 </span>
-              </Badge>
-              <Badge variant="outline" className="font-mono text-[10px] uppercase tracking-wide text-muted-foreground">
-                #{t.id}
               </Badge>
               {actorCtx && (
                 <Badge
@@ -427,7 +496,7 @@ export default function TransactionShow({ transaction: t }: Props) {
           </div>
           <div className="flex flex-wrap gap-2 sm:justify-end">
             <Button variant="outline" className="rounded-full border-border/55 bg-background/60 hover:bg-muted/40" asChild>
-              <Link href="/admin/transactions/ledger">Close</Link>
+              <Link href={route("admin.transactions.ledger")}>Close</Link>
             </Button>
             <Button
               variant="destructive"
@@ -445,8 +514,25 @@ export default function TransactionShow({ transaction: t }: Props) {
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.04, duration: 0.35 }}
+            className="space-y-3"
           >
+            <div className="flex flex-col gap-1">
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <ScrollText className="h-4 w-4 shrink-0 text-primary/80" aria-hidden />
+                <h2 className="text-sm font-semibold uppercase tracking-wide">Unified finance</h2>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Final unified ledger row — same columns and supplier labels as the admin ledger table.
+              </p>
+            </div>
             <UnifiedLedgerCard data={t.unified_ledger} />
+            {donationStripeLedgerHint && (
+              <Alert className="border-border/60 bg-muted/30">
+                <Info className="h-4 w-4" />
+                <AlertTitle className="text-sm">Stripe donation · Gross and net</AlertTitle>
+                <AlertDescription className="text-sm text-muted-foreground">{donationStripeLedgerHint}</AlertDescription>
+              </Alert>
+            )}
           </motion.div>
         )}
 
@@ -467,13 +553,44 @@ export default function TransactionShow({ transaction: t }: Props) {
               <div className="space-y-2">
                 <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Type &amp; status</p>
                 <div className="flex flex-wrap items-center gap-2">
-                  <Badge variant="outline" className={cn("capitalize", txType.badgeClass)}>
-                    {txType.badgeLabel}
-                  </Badge>
-                  <Badge variant="outline" className={cn("capitalize", statusBadgeClass(t.status))}>
+                  <Tooltip delayDuration={350}>
+                    <TooltipTrigger asChild>
+                      <span
+                        className={cn(
+                          "inline-flex max-w-full min-w-0 cursor-pointer items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-xs font-semibold uppercase leading-none tracking-wide sm:text-sm",
+                          txTypeDisplay.className,
+                        )}
+                      >
+                        {txTypeDisplay.icon === "heart" ? (
+                          <Heart className="h-3.5 w-3.5 shrink-0 opacity-90 sm:h-4 sm:w-4" aria-hidden />
+                        ) : (
+                          <ArrowRightLeft className="h-3.5 w-3.5 shrink-0 opacity-80 sm:h-4 sm:w-4" aria-hidden />
+                        )}
+                        <span className="min-w-0 max-w-[min(100%,14rem)] truncate sm:max-w-[18rem]">{txTypeDisplay.label}</span>
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent
+                      side="top"
+                      sideOffset={8}
+                      className="max-w-xs px-3 py-2 text-left text-xs font-medium normal-case leading-snug tracking-normal text-popover-foreground"
+                    >
+                      {t.donation_badge_label ? (
+                        <>
+                          <span className="font-semibold uppercase tracking-wide">{txTypeDisplay.label}</span>
+                          <span className="mt-1 block text-[11px] font-normal text-muted-foreground">{t.donation_badge_label}</span>
+                        </>
+                      ) : (
+                        txTypeDisplay.label
+                      )}
+                    </TooltipContent>
+                  </Tooltip>
+                  <span className="rounded-md border border-border/50 bg-muted/25 px-2 py-0.5 font-mono text-xs font-semibold tabular-nums text-foreground">
+                    #{t.id}
+                  </span>
+                  <Badge variant="outline" className={cn("capitalize leading-none", statusBadgeClass(t.status))}>
                     <span className="inline-flex items-center gap-1.5">
                       {statusIcon(t.status)}
-                      {t.status}
+                      <span className="leading-none">{t.status}</span>
                     </span>
                   </Badge>
                 </div>

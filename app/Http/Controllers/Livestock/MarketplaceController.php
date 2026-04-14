@@ -3,15 +3,17 @@
 namespace App\Http\Controllers\Livestock;
 
 use App\Http\Controllers\BaseController;
-use App\Models\LivestockListing;
 use App\Models\LivestockAnimal;
-use App\Models\OwnershipHistory;
+use App\Models\LivestockListing;
 use App\Models\LivestockPayout;
+use App\Models\OwnershipHistory;
+use App\Support\StripeAutomaticTax;
+use App\Support\StripeCustomerChargeAmount;
 use Illuminate\Http\Request;
-use Inertia\Inertia;
-use Inertia\Response;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Inertia\Inertia;
+use Inertia\Response;
 use Laravel\Cashier\Cashier;
 
 class MarketplaceController extends BaseController
@@ -31,32 +33,32 @@ class MarketplaceController extends BaseController
         $location = $request->get('location', '');
 
         $query = LivestockListing::with([
-            'animal' => function($q) {
+            'animal' => function ($q) {
                 $q->with(['primaryPhoto', 'seller', 'currentOwner']);
             },
-            'seller'
+            'seller',
         ])->where('status', 'active');
 
         // Apply filters
         if ($search) {
-            $query->where(function($q) use ($search) {
+            $query->where(function ($q) use ($search) {
                 $q->where('title', 'LIKE', "%{$search}%")
-                  ->orWhere('description', 'LIKE', "%{$search}%")
-                  ->orWhereHas('animal', function($animalQuery) use ($search) {
-                      $animalQuery->where('breed', 'LIKE', "%{$search}%")
-                                  ->orWhere('ear_tag', 'LIKE', "%{$search}%");
-                  });
+                    ->orWhere('description', 'LIKE', "%{$search}%")
+                    ->orWhereHas('animal', function ($animalQuery) use ($search) {
+                        $animalQuery->where('breed', 'LIKE', "%{$search}%")
+                            ->orWhere('ear_tag', 'LIKE', "%{$search}%");
+                    });
             });
         }
 
         if ($species) {
-            $query->whereHas('animal', function($q) use ($species) {
+            $query->whereHas('animal', function ($q) use ($species) {
                 $q->where('species', $species);
             });
         }
 
         if ($breed) {
-            $query->whereHas('animal', function($q) use ($breed) {
+            $query->whereHas('animal', function ($q) use ($breed) {
                 $q->where('breed', 'LIKE', "%{$breed}%");
             });
         }
@@ -70,7 +72,7 @@ class MarketplaceController extends BaseController
         }
 
         if ($location) {
-            $query->whereHas('animal', function($q) use ($location) {
+            $query->whereHas('animal', function ($q) use ($location) {
                 $q->where('location', 'LIKE', "%{$location}%");
             });
         }
@@ -105,14 +107,14 @@ class MarketplaceController extends BaseController
     /**
      * Show a single animal listing.
      */
-public function show(Request $request, $id): Response
+    public function show(Request $request, $id): Response
     {
         // Allow viewing both active and sold listings (for viewing from animal details page)
         $listing = LivestockListing::with([
-            'animal' => function($q) {
+            'animal' => function ($q) {
                 $q->with([
                     'photos',
-                    'healthRecords' => function($healthQuery) {
+                    'healthRecords' => function ($healthQuery) {
                         $healthQuery->orderBy('record_date', 'desc')->limit(5);
                     },
                     'parentLink.father',
@@ -123,7 +125,7 @@ public function show(Request $request, $id): Response
                     'ownershipHistory.newOwner',
                 ]);
             },
-            'seller'
+            'seller',
         ])->whereIn('status', ['active', 'sold'])->findOrFail($id);
 
         return Inertia::render('Livestock/Marketplace/Show', [
@@ -137,14 +139,14 @@ public function show(Request $request, $id): Response
     public function checkout(Request $request, $id)
     {
         $user = $request->user('livestock');
-        
-        if (!$user) {
+
+        if (! $user) {
             return redirect()->route('livestock.login')
                 ->with('error', 'Please login to purchase an animal.');
         }
 
         // Only buyers can purchase animals
-        if (!$user->buyerProfile) {
+        if (! $user->buyerProfile) {
             return back()->withErrors(['error' => 'Only buyers can purchase animals. Please create a buyer profile first.']);
         }
 
@@ -163,8 +165,7 @@ public function show(Request $request, $id): Response
         }
 
         try {
-            // Calculate amount in cents
-            $amountInCents = (int) ($listing->price * 100);
+            $amountInCents = StripeCustomerChargeAmount::chargeCentsFromNetUsd((float) $listing->price, 'card');
             $currency = strtolower($listing->currency ?? 'usd');
 
             // Create checkout session
@@ -172,9 +173,9 @@ public function show(Request $request, $id): Response
                 $amountInCents,
                 "Purchase: {$listing->title} - {$listing->animal->breed}",
                 1,
-                [
-                    'success_url' => route('marketplace.purchase.success') . '?session_id={CHECKOUT_SESSION_ID}&listing_id=' . $listing->id,
-                    'cancel_url' => route('marketplace.purchase.cancel') . '?listing_id=' . $listing->id,
+                StripeAutomaticTax::mergeCheckoutOptions([
+                    'success_url' => route('marketplace.purchase.success').'?session_id={CHECKOUT_SESSION_ID}&listing_id='.$listing->id,
+                    'cancel_url' => route('marketplace.purchase.cancel').'?listing_id='.$listing->id,
                     'metadata' => [
                         'user_id' => $user->id,
                         'listing_id' => $listing->id,
@@ -185,12 +186,12 @@ public function show(Request $request, $id): Response
                         'type' => 'animal_purchase',
                     ],
                     'payment_method_types' => ['card'],
-                ]
+                ])
             );
 
             // Return Inertia redirect to Stripe checkout
             return Inertia::location($checkout->url);
-            
+
         } catch (\Exception $e) {
             Log::error('Animal purchase checkout error', [
                 'error' => $e->getMessage(),
@@ -198,7 +199,7 @@ public function show(Request $request, $id): Response
                 'listing_id' => $id,
                 'trace' => $e->getTraceAsString(),
             ]);
-            
+
             return back()->withErrors([
                 'error' => 'Failed to create checkout session. Please try again.',
             ]);
@@ -213,22 +214,22 @@ public function show(Request $request, $id): Response
         try {
             $sessionId = $request->query('session_id');
             $listingId = $request->query('listing_id');
-            
-            if (!$sessionId || !$listingId) {
+
+            if (! $sessionId || ! $listingId) {
                 return redirect()->route('marketplace.index')
                     ->with('error', 'Invalid session. Please try again.');
             }
 
             $user = $request->user('livestock');
-            
-            if (!$user) {
+
+            if (! $user) {
                 return redirect()->route('livestock.login')
                     ->with('error', 'Please login to complete purchase.');
             }
 
             // Retrieve the checkout session from Stripe
             $session = Cashier::stripe()->checkout->sessions->retrieve($sessionId);
-            
+
             if ($session->payment_status !== 'paid') {
                 return redirect()->route('marketplace.show', $listingId)
                     ->with('error', 'Payment was not completed.');
@@ -332,7 +333,7 @@ public function show(Request $request, $id): Response
 
                 return redirect()->route('animals.show', $listing->animal_id)
                     ->with('success', 'Animal purchased successfully! You are now the owner.');
-                    
+
             } catch (\Exception $e) {
                 DB::rollBack();
                 Log::error('Animal purchase processing error', [
@@ -341,18 +342,18 @@ public function show(Request $request, $id): Response
                     'listing_id' => $listingId,
                     'session_id' => $sessionId,
                 ]);
-                
+
                 return redirect()->route('marketplace.show', $listingId)
                     ->with('error', 'Purchase processing failed. Please contact support.');
             }
-            
+
         } catch (\Exception $e) {
             Log::error('Animal purchase success handler error', [
                 'error' => $e->getMessage(),
                 'session_id' => $request->query('session_id'),
                 'listing_id' => $request->query('listing_id'),
             ]);
-            
+
             return redirect()->route('marketplace.index')
                 ->with('error', 'Error processing payment. Please contact support.');
         }
@@ -364,12 +365,12 @@ public function show(Request $request, $id): Response
     public function purchaseCancel(Request $request)
     {
         $listingId = $request->query('listing_id');
-        
+
         if ($listingId) {
             return redirect()->route('marketplace.show', $listingId)
                 ->with('info', 'Purchase was cancelled. You can try again anytime.');
         }
-        
+
         return redirect()->route('marketplace.index')
             ->with('info', 'Purchase was cancelled.');
     }

@@ -7,16 +7,48 @@ use App\Jobs\SendEventNotification;
 use App\Models\Event;
 use App\Models\EventType;
 use App\Models\Organization;
+use App\Services\SeoService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Inertia\Inertia;
-use App\Services\SeoService;
 use Inertia\Response;
 
 class EventController extends BaseController
 {
+    /**
+     * Create flow: permission or nonprofit dashboard Spatie roles (aligned with EnsureCanCreateEvents).
+     */
+    protected function authorizeEventCreate(Request $request): void
+    {
+        $user = $request->user();
+        if ($user === null) {
+            abort(403);
+        }
+        if ($user->hasRole('admin') || $user->can('event.create')) {
+            return;
+        }
+        if ($user->hasAnyRole(['organization', 'care_alliance', 'organization_pending'])) {
+            return;
+        }
+        abort(403, 'You do not have permission to create events.');
+    }
+
+    /**
+     * Event type pickers: nonprofit dashboard accounts see the full catalog (including inactive);
+     * everyone else sees active types only.
+     */
+    protected function eventTypesForEventForms(Request $request): \Illuminate\Support\Collection
+    {
+        $query = EventType::query()->orderBy('category')->orderBy('name');
+        if ($this->isOrganization($request)) {
+            return $query->get();
+        }
+
+        return $query->where('is_active', true)->get();
+    }
+
     /**
      * Display a listing of the resource.
      */
@@ -27,7 +59,7 @@ class EventController extends BaseController
 
         $user = Auth::user();
         $events = [];
-        $eventTypes = EventType::where('is_active', true)->orderBy('category')->orderBy('name')->get();
+        $eventTypes = $this->eventTypesForEventForms($request);
 
         if ($this->isAdmin($request)) {
             // Admin can see all events
@@ -40,9 +72,9 @@ class EventController extends BaseController
             }
         } else {
             // Regular users can see their own events and public events
-            $events = Event::where(function($query) use ($user) {
+            $events = Event::where(function ($query) use ($user) {
                 $query->where('user_id', $user->id)
-                      ->orWhere('visibility', 'public');
+                    ->orWhere('visibility', 'public');
             })->with(['organization', 'user', 'eventType'])->latest()->paginate(12);
         }
 
@@ -58,16 +90,16 @@ class EventController extends BaseController
      */
     public function create(Request $request)
     {
-        // Check if user has permission to create events
-        $this->authorizePermission($request, 'event.create');
+        $this->authorizeEventCreate($request);
 
         $user = Auth::user();
-        $eventTypes = EventType::where('is_active', true)->orderBy('category')->orderBy('name')->get();
+        $eventTypes = $this->eventTypesForEventForms($request);
 
-        return Inertia::render('events/create', [
+        return Inertia::render('events/create', array_merge([
             'eventTypes' => $eventTypes,
             'userRole' => $user->role,
-        ]);
+            'showOrganizationCauses' => Organization::forAuthUser($user) !== null,
+        ], $this->organizationPrimaryActionCategoriesPageProps($request)));
     }
 
     /**
@@ -75,19 +107,25 @@ class EventController extends BaseController
      */
     public function store(EventRequest $request)
     {
+        $this->authorizeEventCreate($request);
+
         $user = Auth::user();
 
-        // Allow both organizations and regular users to create events
-        if (!in_array($user->role, ['organization', 'user'])) {
+        $legacyRole = (string) $user->role;
+        $isOrgSide = in_array($legacyRole, ['organization', 'care_alliance', 'organization_pending'], true)
+            || $user->hasAnyRole(['organization', 'care_alliance', 'organization_pending']);
+
+        // Allow org-side accounts and regular users to create events
+        if (! $isOrgSide && ! in_array($legacyRole, ['user'], true) && ! $user->hasRole('user')) {
             abort(403, 'Only organizations and users can create events.');
         }
 
         $data = $request->validated();
 
         // Handle organization_id and user_id based on user role
-        if ($user->role === 'organization') {
-            $organization = Organization::where('user_id', $user->id)->first();
-            if (!$organization) {
+        if ($isOrgSide) {
+            $organization = Organization::forAuthUser($user);
+            if (! $organization) {
                 abort(404, 'Organization not found.');
             }
             $data['organization_id'] = $organization->id;
@@ -128,7 +166,7 @@ class EventController extends BaseController
     /**
      * Show the form for editing the specified resource.
      */
-    public function edit(string $id)
+    public function edit(Request $request, string $id)
     {
         $user = Auth::user();
         $event = Event::findOrFail($id);
@@ -136,19 +174,20 @@ class EventController extends BaseController
         // Check if user can edit this event
         if ($user->role === 'organization') {
             $organization = Organization::where('user_id', $user->id)->first();
-            if (!$organization || $event->organization_id !== $organization->id) {
+            if (! $organization || $event->organization_id !== $organization->id) {
                 abort(403, 'You can only edit your own events.');
             }
         } elseif ($user->role !== 'admin') {
             abort(403, 'Unauthorized.');
         }
 
-        $eventTypes = EventType::where('is_active', true)->orderBy('category')->orderBy('name')->get();
+        $eventTypes = $this->eventTypesForEventForms($request);
 
-        return Inertia::render('events/edit', [
-            'event' => $event,
+        return Inertia::render('events/edit', array_merge([
+            'event' => $event->load('primaryActionCategory:id,name'),
             'eventTypes' => $eventTypes,
-        ]);
+            'showOrganizationCauses' => Organization::forAuthUser($user) !== null,
+        ], $this->organizationPrimaryActionCategoriesPageProps($request)));
     }
 
     /**
@@ -164,7 +203,7 @@ class EventController extends BaseController
         // Check if user can update this event
         if ($user->role === 'organization') {
             $organization = Organization::where('user_id', $user->id)->first();
-            if (!$organization || $event->organization_id !== $organization->id) {
+            if (! $organization || $event->organization_id !== $organization->id) {
                 abort(403, 'You can only update your own events.');
             }
         } elseif ($user->role !== 'admin') {
@@ -200,7 +239,7 @@ class EventController extends BaseController
         // Check if user can delete this event
         if ($user->role === 'organization') {
             $organization = Organization::where('user_id', $user->id)->first();
-            if (!$organization || $event->organization_id !== $organization->id) {
+            if (! $organization || $event->organization_id !== $organization->id) {
                 abort(403, 'You can only delete your own events.');
             }
         } elseif ($user->role !== 'admin') {
@@ -256,7 +295,7 @@ class EventController extends BaseController
         // Check if user can update this event
         if ($user->role === 'organization') {
             $organization = Organization::where('user_id', $user->id)->first();
-            if (!$organization || $event->organization_id !== $organization->id) {
+            if (! $organization || $event->organization_id !== $organization->id) {
                 abort(403, 'You can only update your own events.');
             }
         } elseif ($user->role !== 'admin') {
@@ -264,17 +303,13 @@ class EventController extends BaseController
         }
 
         $request->validate([
-            'status' => 'required|in:upcoming,ongoing,completed,cancelled'
+            'status' => 'required|in:upcoming,ongoing,completed,cancelled',
         ]);
 
         $event->update(['status' => $request->status]);
 
         return response()->json(['message' => 'Event status updated successfully!']);
     }
-
-
-
-
 
     public function alleventsPage(Request $request): Response
     {
@@ -322,11 +357,11 @@ class EventController extends BaseController
             ->with(['organization', 'eventType', 'user.organization'])
             ->when($search, function ($query, $search) {
                 $query->where(function ($q) use ($search) {
-                    $q->where('name', 'like', '%' . $search . '%')
-                        ->orWhere('description', 'like', '%' . $search . '%')
-                        ->orWhere('location', 'like', '%' . $search . '%')
-                        ->orWhere('city', 'like', '%' . $search . '%')
-                        ->orWhere('state', 'like', '%' . $search . '%');
+                    $q->where('name', 'like', '%'.$search.'%')
+                        ->orWhere('description', 'like', '%'.$search.'%')
+                        ->orWhere('location', 'like', '%'.$search.'%')
+                        ->orWhere('city', 'like', '%'.$search.'%')
+                        ->orWhere('state', 'like', '%'.$search.'%');
                 });
             })->when($status, function ($query, $status) {
                 $query->where('status', $status);
@@ -349,7 +384,7 @@ class EventController extends BaseController
             });
 
         // Only show public events to non-authenticated users or non-admin users
-        if (!$user || $user->role !== 'admin') {
+        if (! $user || $user->role !== 'admin') {
             $events->where('visibility', 'public');
         }
 
@@ -359,30 +394,30 @@ class EventController extends BaseController
         $baseSeo = SeoService::forPage('all_events');
         $seoTitle = $baseSeo['title'];
         $seoParts = [];
-        if (!empty($search)) {
-            $seoParts[] = '“' . Str::limit($search, 30) . '”';
+        if (! empty($search)) {
+            $seoParts[] = '“'.Str::limit($search, 30).'”';
         }
-        if (!empty($status) && $status !== 'all') {
+        if (! empty($status) && $status !== 'all') {
             $seoParts[] = ucfirst($status);
         }
-        if (!empty($eventTypeId) && $eventTypeId !== 'all') {
+        if (! empty($eventTypeId) && $eventTypeId !== 'all') {
             $eventType = $eventTypes->firstWhere('id', (int) $eventTypeId);
             if ($eventType) {
                 $seoParts[] = $eventType->name;
             }
         }
-        if (!empty($cityFilter) && $cityFilter !== 'all') {
+        if (! empty($cityFilter) && $cityFilter !== 'all') {
             $seoParts[] = $cityFilter;
         }
-        if (!empty($stateFilter) && $stateFilter !== 'all') {
+        if (! empty($stateFilter) && $stateFilter !== 'all') {
             $seoParts[] = $stateFilter;
         }
-        if (!empty($seoParts)) {
-            $seoTitle = implode(' ', $seoParts) . ' - ' . $baseSeo['title'];
+        if (! empty($seoParts)) {
+            $seoTitle = implode(' ', $seoParts).' - '.$baseSeo['title'];
         }
         $seoDescription = $baseSeo['description'];
-        if (!empty($search)) {
-            $seoDescription = 'Find events matching your search. ' . $seoDescription;
+        if (! empty($search)) {
+            $seoDescription = 'Find events matching your search. '.$seoDescription;
         }
 
         return Inertia::render('frontend/events', [
@@ -416,13 +451,13 @@ class EventController extends BaseController
 
         // Check if user can view this event
         if ($event->visibility === 'private') {
-            if (!$user) {
+            if (! $user) {
                 abort(403, 'This event is private and requires authentication.');
             }
 
             if ($user->role === 'organization') {
                 $organization = Organization::where('user_id', $user->id)->first();
-                if (!$organization || $event->organization_id !== $organization->id) {
+                if (! $organization || $event->organization_id !== $organization->id) {
                     abort(403, 'You can only view your own private events.');
                 }
             } elseif ($user->role !== 'admin') {
@@ -445,7 +480,7 @@ class EventController extends BaseController
     public function userEvents(Request $request)
     {
         $user = Auth::user();
-        $eventTypes = EventType::where('is_active', true)->orderBy('category')->orderBy('name')->get();
+        $eventTypes = $this->eventTypesForEventForms($request);
 
         // Get search query and status filter from request
         $searchQuery = $request->get('search', '');
@@ -453,7 +488,7 @@ class EventController extends BaseController
 
         // Build the base query
         $query = Event::with(['organization', 'user', 'eventType'])
-            ->where(function($query) use ($user) {
+            ->where(function ($query) use ($user) {
                 $query->where('user_id', $user->id);
 
                 // If user is organization, also include organization events
@@ -467,10 +502,10 @@ class EventController extends BaseController
 
         // Apply search filter
         if ($searchQuery) {
-            $query->where(function($q) use ($searchQuery) {
-                $q->where('name', 'like', '%' . $searchQuery . '%')
-                  ->orWhere('description', 'like', '%' . $searchQuery . '%')
-                  ->orWhere('location', 'like', '%' . $searchQuery . '%');
+            $query->where(function ($q) use ($searchQuery) {
+                $q->where('name', 'like', '%'.$searchQuery.'%')
+                    ->orWhere('description', 'like', '%'.$searchQuery.'%')
+                    ->orWhere('location', 'like', '%'.$searchQuery.'%');
             });
         }
 
@@ -485,7 +520,7 @@ class EventController extends BaseController
         // Add search and filter parameters to pagination links
         $events->appends([
             'search' => $searchQuery,
-            'status' => $statusFilter
+            'status' => $statusFilter,
         ]);
 
         return Inertia::render('frontend/user-profile/events/index', [
@@ -493,24 +528,24 @@ class EventController extends BaseController
             'eventTypes' => $eventTypes,
             'filters' => [
                 'search' => $searchQuery,
-                'status' => $statusFilter
-            ]
+                'status' => $statusFilter,
+            ],
         ]);
     }
 
     /**
      * Show the form for creating a new user event
      */
-    public function userCreate()
+    public function userCreate(Request $request)
     {
         $user = Auth::user();
 
         // Allow both organizations and regular users to create events
-        if (!in_array($user->role, ['organization', 'user'])) {
+        if (! in_array($user->role, ['organization', 'user'])) {
             abort(403, 'Only organizations and users can create events.');
         }
 
-        $eventTypes = EventType::where('is_active', true)->orderBy('category')->orderBy('name')->get();
+        $eventTypes = $this->eventTypesForEventForms($request);
 
         return Inertia::render('frontend/user-profile/events/create', [
             'eventTypes' => $eventTypes,
@@ -525,7 +560,7 @@ class EventController extends BaseController
         $user = Auth::user();
 
         // Allow both organizations and regular users to create events
-        if (!in_array($user->role, ['organization', 'user'])) {
+        if (! in_array($user->role, ['organization', 'user'])) {
             abort(403, 'Only organizations and users can create events.');
         }
 
@@ -534,7 +569,7 @@ class EventController extends BaseController
         // Handle organization_id and user_id based on user role
         if ($user->role === 'organization') {
             $organization = Organization::where('user_id', $user->id)->first();
-            if (!$organization) {
+            if (! $organization) {
                 abort(404, 'Organization not found.');
             }
             $data['organization_id'] = $organization->id;
@@ -567,7 +602,7 @@ class EventController extends BaseController
         // Check if user can view this event
         if ($user->role === 'organization') {
             $organization = Organization::where('user_id', $user->id)->first();
-            if (!$organization || ($event->organization_id !== $organization->id && $event->user_id !== $user->id)) {
+            if (! $organization || ($event->organization_id !== $organization->id && $event->user_id !== $user->id)) {
                 abort(403, 'You can only view your own events.');
             }
         } elseif ($event->user_id !== $user->id) {
@@ -582,7 +617,7 @@ class EventController extends BaseController
     /**
      * Show the form for editing the specified user event
      */
-    public function userEdit(string $id)
+    public function userEdit(Request $request, string $id)
     {
         $user = Auth::user();
         $event = Event::findOrFail($id);
@@ -590,14 +625,14 @@ class EventController extends BaseController
         // Check if user can edit this event
         if ($user->role === 'organization') {
             $organization = Organization::where('user_id', $user->id)->first();
-            if (!$organization || ($event->organization_id !== $organization->id && $event->user_id !== $user->id)) {
+            if (! $organization || ($event->organization_id !== $organization->id && $event->user_id !== $user->id)) {
                 abort(403, 'You can only edit your own events.');
             }
         } elseif ($event->user_id !== $user->id) {
             abort(403, 'You can only edit your own events.');
         }
 
-        $eventTypes = EventType::where('is_active', true)->orderBy('category')->orderBy('name')->get();
+        $eventTypes = $this->eventTypesForEventForms($request);
 
         return Inertia::render('frontend/user-profile/events/edit', [
             'event' => $event,
@@ -616,7 +651,7 @@ class EventController extends BaseController
         // Check if user can update this event
         if ($user->role === 'organization') {
             $organization = Organization::where('user_id', $user->id)->first();
-            if (!$organization || ($event->organization_id !== $organization->id && $event->user_id !== $user->id)) {
+            if (! $organization || ($event->organization_id !== $organization->id && $event->user_id !== $user->id)) {
                 abort(403, 'You can only update your own events.');
             }
         } elseif ($event->user_id !== $user->id) {
@@ -652,7 +687,7 @@ class EventController extends BaseController
         // Check if user can delete this event
         if ($user->role === 'organization') {
             $organization = Organization::where('user_id', $user->id)->first();
-            if (!$organization || ($event->organization_id !== $organization->id && $event->user_id !== $user->id)) {
+            if (! $organization || ($event->organization_id !== $organization->id && $event->user_id !== $user->id)) {
                 abort(403, 'You can only delete your own events.');
             }
         } elseif ($event->user_id !== $user->id) {

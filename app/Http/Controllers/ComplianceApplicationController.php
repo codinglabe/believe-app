@@ -4,6 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Models\AdminSetting;
 use App\Models\ComplianceApplication;
+use App\Support\StripeAutomaticTax;
+use App\Support\StripeCustomerChargeAmount;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -18,7 +20,7 @@ class ComplianceApplicationController extends Controller
         $user = $request->user();
         $organization = $user->organization;
 
-        if (!$organization) {
+        if (! $organization) {
             abort(404);
         }
 
@@ -93,7 +95,7 @@ class ComplianceApplicationController extends Controller
         $user = $request->user();
         $organization = $user->organization;
 
-        if (!$organization) {
+        if (! $organization) {
             return redirect()->route('dashboard')->with('error', 'You are not eligible to submit a compliance application.');
         }
 
@@ -109,7 +111,7 @@ class ComplianceApplicationController extends Controller
         ]);
 
         $applicationFee = (float) AdminSetting::get('compliance_application_fee', 399.00);
-        $amountInCents = (int) round($applicationFee * 100);
+        $amountInCents = StripeCustomerChargeAmount::chargeCentsFromNetUsd((float) $applicationFee, 'card');
 
         $activeApplication = $organization->complianceApplications()
             ->whereIn('status', ['pending_payment', 'awaiting_review'])
@@ -174,8 +176,8 @@ class ComplianceApplicationController extends Controller
                 $amountInCents,
                 '501(c)(3) compliance assistance application fee',
                 1,
-                [
-                    'success_url' => route('compliance.apply.success', $application) . '?session_id={CHECKOUT_SESSION_ID}',
+                StripeAutomaticTax::mergeCheckoutOptions([
+                    'success_url' => route('compliance.apply.success', $application).'?session_id={CHECKOUT_SESSION_ID}',
                     'cancel_url' => route('compliance.apply.cancel', $application),
                     'metadata' => [
                         'type' => 'compliance_application',
@@ -186,7 +188,7 @@ class ComplianceApplicationController extends Controller
                         'assistance_types' => implode(',', $assistanceTypes),
                     ],
                     'payment_method_types' => ['card'],
-                ]
+                ])
             );
 
             $application->update([
@@ -220,7 +222,7 @@ class ComplianceApplicationController extends Controller
 
         $sessionId = $request->query('session_id');
 
-        if (!$sessionId) {
+        if (! $sessionId) {
             return redirect()->route('compliance.apply.show')->with('error', 'Missing checkout session identifier.');
         }
 

@@ -2,17 +2,18 @@
 
 namespace App\Http\Controllers;
 
-use App\Services\StripeProcessingFeeEstimator;
-use App\Models\NodeSell;
 use App\Models\NodeBoss;
 use App\Models\NodeReferral;
+use App\Models\NodeSell;
 use App\Models\NodeShare;
+use App\Support\StripeAutomaticTax;
+use App\Support\StripeCustomerChargeAmount;
 use Illuminate\Http\Request;
-use Inertia\Inertia;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use Inertia\Inertia;
 use Laravel\Cashier\Cashier;
 use Stripe\Stripe;
 
@@ -83,9 +84,7 @@ class NodeSellController extends Controller
         $user = Auth::user();
         $amount = $validated['amount'];
 
-        $processingFee = StripeProcessingFeeEstimator::estimateCardFeeOnChargeUsd((float) $amount);
-        $totalAmount = $amount + $processingFee;
-        $totalAmountInCents = (int) ($totalAmount * 100);
+        $totalAmountInCents = StripeCustomerChargeAmount::chargeCentsFromNetUsd((float) $amount, 'card');
         $stripeSecret = app()->environment('production')
             ? config('services.stripe.live_secret')
             : config('cashier.secret');
@@ -106,7 +105,7 @@ class NodeSellController extends Controller
                 $referral = NodeReferral::where('referral_link', $ref)->first();
                 if ($referral) {
                     // Prevent self referral usage except admin/org
-                    if ($referral->user_id == $user->id && !$request->user()->hasRole(['admin', 'organization'])) {
+                    if ($referral->user_id == $user->id && ! $request->user()->hasRole(['admin', 'organization'])) {
                         return redirect()->back()->with('warning', 'You cannot use your own referral link.');
                     }
                     if ($referral->node_boss_id == $nodeBoss->id) {
@@ -131,8 +130,8 @@ class NodeSellController extends Controller
                 'message' => $validated['message'] ?? null,
                 'status' => 'pending',
                 'payment_method' => 'stripe',
-                'transaction_id' => 'temp_' . rand(100000, 999999),
-                'certificate_id' => 'CERT-' . strtoupper(Str::random(8)),
+                'transaction_id' => 'temp_'.rand(100000, 999999),
+                'certificate_id' => 'CERT-'.strtoupper(Str::random(8)),
                 'purchase_date' => now(),
                 'is_big_boss' => $willBeBigBoss,
             ]);
@@ -144,8 +143,8 @@ class NodeSellController extends Controller
                 $totalAmountInCents,
                 "Share purchase for {$nodeBoss->name}",
                 1,
-                [
-                    'success_url' => route('node-share.success') . '?session_id={CHECKOUT_SESSION_ID}',
+                StripeAutomaticTax::mergeCheckoutOptions([
+                    'success_url' => route('node-share.success').'?session_id={CHECKOUT_SESSION_ID}',
                     'cancel_url' => route('node-share.cancel'),
                     'metadata' => [
                         'node_sell_id' => $nodeSell->id,
@@ -157,7 +156,7 @@ class NodeSellController extends Controller
                         'will_be_big_boss' => $willBeBigBoss ? '1' : '0',
                     ],
                     'payment_method_types' => ['card', 'afterpay_clearpay', 'affirm'],
-                ]
+                ])
             );
 
             return Inertia::location($checkout->url);
@@ -166,8 +165,9 @@ class NodeSellController extends Controller
             if (isset($nodeSell)) {
                 $nodeSell->update(['status' => 'failed']);
             }
+
             return redirect()->back()->withErrors([
-                'payment' => 'Payment processing failed: ' . $e->getMessage(),
+                'payment' => 'Payment processing failed: '.$e->getMessage(),
             ]);
         }
     }
@@ -178,9 +178,9 @@ class NodeSellController extends Controller
     public function success(Request $request)
     {
         $sessionId = $request->get('session_id');
-        if (!$sessionId) {
+        if (! $sessionId) {
             return redirect()->route('nodeboss.index')->with([
-                'warning' => 'Invalid purchase session'
+                'warning' => 'Invalid purchase session',
             ]);
         }
 
@@ -199,7 +199,7 @@ class NodeSellController extends Controller
                 'purchase_date' => now(),
             ]);
 
-            if (!empty($session->metadata->referral_id)) {
+            if (! empty($session->metadata->referral_id)) {
                 $nodeSell->update([
                     'node_referral_id' => $session->metadata->referral_id,
                 ]);
@@ -220,8 +220,9 @@ class NodeSellController extends Controller
             return Inertia::location(route('certificate.show', $nodeSell->id));
         } catch (\Exception $e) {
             DB::rollBack();
+
             return redirect()->route('nodeboss.index')->withErrors([
-                'message' => 'Error verifying payment: ' . $e->getMessage()
+                'message' => 'Error verifying payment: '.$e->getMessage(),
             ]);
         }
     }
@@ -251,7 +252,7 @@ class NodeSellController extends Controller
 
         // Get parent referral if exists
         $parentReferralId = null;
-        if (!empty($metadata->referral_id)) {
+        if (! empty($metadata->referral_id)) {
             $parentReferral = NodeReferral::find($metadata->referral_id);
             if ($parentReferral) {
                 $parentReferralId = $parentReferral->id;
@@ -262,14 +263,14 @@ class NodeSellController extends Controller
         NodeReferral::updateOrCreate(
             [
                 'user_id' => $user->id,
-                'node_boss_id' => $nodeBoss->id
+                'node_boss_id' => $nodeBoss->id,
             ],
             [
                 'node_share_id' => $nodeSell->node_share_id,
                 'node_sell_id' => $nodeSell->id,
                 'parent_referral_id' => $parentReferralId,
                 'status' => 'active',
-                'referral_link' => $user->referral_code ?? Str::slug($user->name) . '-' . rand(1000, 9999),
+                'referral_link' => $user->referral_code ?? Str::slug($user->name).'-'.rand(1000, 9999),
                 'parchentage' => $commissionPercentage,
                 'is_big_boss' => $nodeSell->is_big_boss,
                 'level' => $parentReferralId ? 2 : 1, // Level 1 for Big Boss, Level 2 for referred users
@@ -287,7 +288,7 @@ class NodeSellController extends Controller
         }
 
         $directReferral = NodeReferral::find($metadata->referral_id);
-        if (!$directReferral || $directReferral->user_id == $nodeSell->user_id) {
+        if (! $directReferral || $directReferral->user_id == $nodeSell->user_id) {
             return; // Invalid referral or self-referral
         }
 
@@ -312,7 +313,7 @@ class NodeSellController extends Controller
         ]);
 
         // Handle Big Boss commission if the direct referrer is not a Big Boss
-        if (!$directReferral->is_big_boss && $directReferral->parent_referral_id) {
+        if (! $directReferral->is_big_boss && $directReferral->parent_referral_id) {
             $bigBossReferral = NodeReferral::find($directReferral->parent_referral_id);
 
             if ($bigBossReferral && $bigBossReferral->is_big_boss && $bigBossReferral->user_id != $nodeSell->user_id) {
@@ -354,17 +355,19 @@ class NodeSellController extends Controller
 
         if ($existingShare) {
             Log::info("Using existing share ID: {$existingShare->id} with remaining: {$existingShare->remaining}");
+
             return $existingShare;
         }
 
         // If no existing share can accommodate the amount, create a new one
         Log::info("Creating new share for node_boss_id: {$nodeBossId}, amount: {$amount}");
+
         return NodeShare::create([
             'node_boss_id' => $nodeBossId,
             'cost' => NodeShare::DEFAULT_SHARE_AMOUNT, // 2000.00
             'sold' => 0,
             'remaining' => NodeShare::DEFAULT_SHARE_AMOUNT,
-            'status' => 'open'
+            'status' => 'open',
         ]);
     }
 
@@ -419,12 +422,12 @@ class NodeSellController extends Controller
                         ->update(['status' => 'canceled']);
                 }
             } catch (\Exception $e) {
-                Log::error('Error updating canceled share purchase: ' . $e->getMessage());
+                Log::error('Error updating canceled share purchase: '.$e->getMessage());
             }
         }
 
         return Inertia::render('frontend/SharePurchaseCancel', [
-            'message' => 'Your share purchase was canceled. You can try again anytime.'
+            'message' => 'Your share purchase was canceled. You can try again anytime.',
         ]);
     }
 
@@ -437,7 +440,7 @@ class NodeSellController extends Controller
             ->findOrFail($nodeSellId);
 
         // Ensure user can only view their own certificate or is admin
-        if ($nodeSell->user_id !== Auth::id() && !Auth::user()->hasRole('admin')) {
+        if ($nodeSell->user_id !== Auth::id() && ! Auth::user()->hasRole('admin')) {
             abort(403);
         }
 
@@ -474,7 +477,7 @@ class NodeSellController extends Controller
             // Mail::to($nodeSell->buyer_email)->send(new ShareCertificateMail($nodeSell));
             return back()->with('success', 'Certificate sent to your email successfully!');
         } catch (\Exception $e) {
-            return back()->withErrors(['email' => 'Failed to send certificate: ' . $e->getMessage()]);
+            return back()->withErrors(['email' => 'Failed to send certificate: '.$e->getMessage()]);
         }
     }
 
@@ -496,7 +499,7 @@ class NodeSellController extends Controller
             // return $pdf->download('certificate-' . $nodeSell->certificate_id . '.pdf');
             return back()->with('success', 'Certificate download will start shortly!');
         } catch (\Exception $e) {
-            return back()->withErrors(['download' => 'Failed to download certificate: ' . $e->getMessage()]);
+            return back()->withErrors(['download' => 'Failed to download certificate: '.$e->getMessage()]);
         }
     }
 
@@ -513,8 +516,8 @@ class NodeSellController extends Controller
         if ($request->has('search') && $request->input('search') !== '') {
             $search = $request->input('search');
             $query->whereHas('nodeBoss', function ($q) use ($search) {
-                $q->where('name', 'like', '%' . $search . '%')
-                    ->orWhere('description', 'like', '%' . $search . '%');
+                $q->where('name', 'like', '%'.$search.'%')
+                    ->orWhere('description', 'like', '%'.$search.'%');
             });
         }
 
@@ -582,7 +585,7 @@ class NodeSellController extends Controller
 
         return response()->json([
             'message' => 'Sold share updated successfully.',
-            'soldShare' => $nodeSell
+            'soldShare' => $nodeSell,
         ]);
     }
 
@@ -592,6 +595,7 @@ class NodeSellController extends Controller
     public function destroy(NodeSell $nodeSell)
     {
         $nodeSell->delete();
+
         return response()->json(['message' => 'Sold share deleted successfully.']);
     }
 }

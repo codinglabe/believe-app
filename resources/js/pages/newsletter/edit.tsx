@@ -24,21 +24,27 @@ import {
     AlertCircle,
     Code,
     Copy,
-    Check
+    Check,
+    MessageSquare,
+    CheckCircle2,
 } from "lucide-react"
+
+/** Matches backend NewsletterController::NEWSLETTER_SMS_PLAIN_MAX_CHARS */
+const SMS_PLAIN_MAX_CHARS = 160
 
 interface Newsletter {
     id: number
     subject: string
     content: string
     html_content: string
+    send_via?: string
     status: string
-    newsletter_template_id: number
-    template: {
+    newsletter_template_id: number | null
+    template?: {
         id: number
         name: string
         template_type: string
-    }
+    } | null
 }
 
 interface Template {
@@ -134,12 +140,25 @@ export default function NewsletterEdit({ newsletter, templates, previewData }: N
     })
     const [showPreview, setShowPreview] = useState(false)
 
+    const initialSendVia: "email" | "sms" | "both" =
+        newsletter.send_via === "sms" || newsletter.send_via === "both" || newsletter.send_via === "email"
+            ? newsletter.send_via
+            : "email"
+
     const { data, setData, put, processing, errors, reset } = useForm({
         subject: newsletter.subject,
         content: newsletter.content,
         html_content: newsletter.html_content || '',
-        newsletter_template_id: newsletter.newsletter_template_id,
+        newsletter_template_id: newsletter.newsletter_template_id ?? '',
+        send_via: initialSendVia,
     })
+
+    const editHasBody =
+        data.send_via === "sms"
+            ? Boolean(data.content?.trim())
+            : data.send_via === "both"
+              ? Boolean(data.content?.trim() && data.html_content?.trim())
+              : Boolean(data.content?.trim() || data.html_content?.trim())
 
     // Use real data from backend, fallback to demo data if not available
     const sampleData: PreviewData = previewData || {
@@ -204,42 +223,44 @@ export default function NewsletterEdit({ newsletter, templates, previewData }: N
         <AppSidebarLayout>
             <Head title={`Edit Newsletter: ${newsletter.subject}`} />
 
-            <div className="space-y-6 sm:space-y-8 animate-in fade-in duration-500 m-10">
+            <div className="w-full min-w-0 max-w-full space-y-6 px-4 py-6 sm:space-y-8 sm:px-6 lg:px-8 animate-in fade-in duration-500">
                 {/* Header */}
-                <div className="flex flex-col space-y-4 sm:space-y-0 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="space-y-2 animate-in slide-in-from-left duration-700">
-                        <div className="flex items-center gap-3">
+                <div className="flex min-w-0 flex-col gap-4 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
+                    <div className="min-w-0 flex-1 space-y-2 animate-in slide-in-from-left duration-700">
+                        <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center sm:gap-3">
                             <Button
                                 variant="outline"
                                 size="sm"
+                                className="w-fit shrink-0"
                                 onClick={() => router.get(route('newsletter.show', newsletter.id))}
                             >
                                 <ArrowLeft className="h-4 w-4 mr-2" />
                                 Back
                             </Button>
-                            <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-gray-900 dark:text-white">
+                            <h1 className="min-w-0 break-words text-2xl font-bold text-gray-900 sm:text-3xl lg:text-4xl dark:text-white">
                                 Edit Newsletter
                             </h1>
                         </div>
-                        <p className="text-sm sm:text-base lg:text-lg text-gray-600 dark:text-gray-400">
+                        <p className="text-sm text-gray-600 sm:text-base lg:text-lg dark:text-gray-400">
                             Update your email campaign content and settings
                         </p>
                     </div>
                     <div className="animate-in slide-in-from-right duration-700">
-                        <div className="flex flex-col sm:flex-row gap-2">
+                        <div className="flex min-w-0 w-full flex-wrap gap-2 sm:w-auto sm:max-w-md sm:justify-end lg:max-w-none">
                             <Button
                                 variant="outline"
                                 onClick={handleDelete}
-                                className="text-red-600 hover:text-red-700 hover:border-red-300"
+                                className="min-w-0 shrink-0 whitespace-nowrap text-red-600 hover:text-red-700 hover:border-red-300"
                             >
-                                <Trash2 className="h-4 w-4 mr-2" />
+                                <Trash2 className="h-4 w-4 mr-2 shrink-0" />
                                 <span className="hidden sm:inline">Delete</span>
+                                <span className="sm:hidden">Del</span>
                             </Button>
                             <Button
                                 onClick={handleSend}
-                                className="bg-green-600 hover:bg-green-700"
+                                className="min-w-0 shrink-0 whitespace-nowrap bg-green-600 hover:bg-green-700"
                             >
-                                <Send className="h-4 w-4 mr-2" />
+                                <Send className="h-4 w-4 mr-2 shrink-0" />
                                 <span className="hidden sm:inline">Send Now</span>
                                 <span className="sm:hidden">Send</span>
                             </Button>
@@ -248,10 +269,52 @@ export default function NewsletterEdit({ newsletter, templates, previewData }: N
                 </div>
 
                 {/* Edit Form */}
-                <form onSubmit={handleSubmit} className="space-y-6">
-                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <form onSubmit={handleSubmit} className="min-w-0 space-y-6">
+                    <div className="grid min-w-0 grid-cols-1 gap-6 lg:grid-cols-3">
                         {/* Main Content */}
-                        <div className="lg:col-span-2 space-y-6">
+                        <div className="min-w-0 space-y-6 lg:col-span-2">
+                            <Card className="shadow-lg">
+                                <CardHeader>
+                                    <CardTitle>Send via</CardTitle>
+                                    <CardDescription>
+                                        SMS is plain text only. Both requires SMS plain text and HTML for email.
+                                    </CardDescription>
+                                </CardHeader>
+                                <CardContent className="space-y-2">
+                                    <div className="flex rounded-lg border border-gray-200 bg-gray-50 p-1 dark:border-gray-600 dark:bg-gray-800/80">
+                                        {(
+                                            [
+                                                { id: "sms" as const, label: "SMS", icon: MessageSquare },
+                                                { id: "email" as const, label: "Email", icon: Mail },
+                                                { id: "both" as const, label: "Both", icon: CheckCircle2 },
+                                            ] as const
+                                        ).map(({ id, label, icon: Icon }) => (
+                                            <button
+                                                key={id}
+                                                type="button"
+                                                onClick={() => {
+                                                    setData("send_via", id)
+                                                    if (id === "sms") {
+                                                        setData("html_content", "")
+                                                    }
+                                                }}
+                                                className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-2.5 text-xs font-medium transition-colors sm:text-sm ${
+                                                    data.send_via === id
+                                                        ? "bg-blue-600 text-white shadow-sm dark:bg-blue-600"
+                                                        : "text-gray-600 hover:bg-white hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-white"
+                                                }`}
+                                            >
+                                                <Icon className="h-3.5 w-3.5 shrink-0 sm:h-4 sm:w-4" />
+                                                {label}
+                                            </button>
+                                        ))}
+                                    </div>
+                                    {errors.send_via && (
+                                        <p className="text-sm text-red-600 dark:text-red-400">{errors.send_via}</p>
+                                    )}
+                                </CardContent>
+                            </Card>
+
                             <Card className="shadow-lg">
                                 <CardHeader>
                                     <CardTitle className="flex items-center gap-2">
@@ -259,7 +322,10 @@ export default function NewsletterEdit({ newsletter, templates, previewData }: N
                                         Newsletter Content
                                     </CardTitle>
                                     <CardDescription>
-                                        Update the subject and content of your newsletter
+                                        {data.send_via === "sms" &&
+                                            `Plain text only for SMS — max ${SMS_PLAIN_MAX_CHARS} characters.`}
+                                        {data.send_via === "email" && "Plain and/or HTML for email."}
+                                        {data.send_via === "both" && "Plain text for SMS and HTML for email (both required)."}
                                     </CardDescription>
                                 </CardHeader>
                                 <CardContent className="space-y-4">
@@ -282,14 +348,28 @@ export default function NewsletterEdit({ newsletter, templates, previewData }: N
                                     </div>
 
                                     <div>
-                                        <Label htmlFor="content">Text Content</Label>
+                                        <Label htmlFor="content">
+                                            {data.send_via === "sms"
+                                                ? "SMS message (plain text)"
+                                                : data.send_via === "both"
+                                                  ? "SMS message (plain text, required)"
+                                                  : "Text content"}
+                                        </Label>
                                         <TextArea
                                             id="content"
                                             value={data.content}
                                             onChange={(e) => setData('content', e.target.value)}
-                                            placeholder="Enter the text version of your newsletter..."
+                                            placeholder="Plain text body..."
+                                            maxLength={
+                                                data.send_via === "sms" ? SMS_PLAIN_MAX_CHARS : undefined
+                                            }
                                             className="mt-1 min-h-[200px]"
                                         />
+                                        {data.send_via === "sms" && (
+                                            <p className="mt-1 text-xs text-muted-foreground">
+                                                {(data.content?.length ?? 0)} / {SMS_PLAIN_MAX_CHARS} characters
+                                            </p>
+                                        )}
                                         {errors.content && (
                                             <p className="text-red-600 dark:text-red-400 text-sm mt-1 flex items-center gap-1">
                                                 <AlertCircle className="h-3 w-3" />
@@ -298,28 +378,34 @@ export default function NewsletterEdit({ newsletter, templates, previewData }: N
                                         )}
                                     </div>
 
-                                    <div>
-                                        <Label htmlFor="html_content">HTML Content (Optional)</Label>
-                                        <TextArea
-                                            id="html_content"
-                                            value={data.html_content}
-                                            onChange={(e) => setData('html_content', e.target.value)}
-                                            placeholder="Enter the HTML version of your newsletter..."
-                                            className="mt-1 min-h-[300px] font-mono text-sm"
-                                        />
-                                        {errors.html_content && (
-                                            <p className="text-red-600 dark:text-red-400 text-sm mt-1 flex items-center gap-1">
-                                                <AlertCircle className="h-3 w-3" />
-                                                {errors.html_content}
-                                            </p>
-                                        )}
-                                    </div>
+                                    {data.send_via !== "sms" && (
+                                        <div>
+                                            <Label htmlFor="html_content">
+                                                {data.send_via === "both"
+                                                    ? "HTML content for email (required)"
+                                                    : "HTML content (optional)"}
+                                            </Label>
+                                            <TextArea
+                                                id="html_content"
+                                                value={data.html_content}
+                                                onChange={(e) => setData('html_content', e.target.value)}
+                                                placeholder="HTML version..."
+                                                className="mt-1 min-h-[300px] font-mono text-sm"
+                                            />
+                                            {errors.html_content && (
+                                                <p className="text-red-600 dark:text-red-400 text-sm mt-1 flex items-center gap-1">
+                                                    <AlertCircle className="h-3 w-3" />
+                                                    {errors.html_content}
+                                                </p>
+                                            )}
+                                        </div>
+                                    )}
                                 </CardContent>
                             </Card>
                         </div>
 
                         {/* Sidebar */}
-                        <div className="space-y-6">
+                        <div className="min-w-0 space-y-6">
                             {/* Template Selection */}
                             <Card className="shadow-lg">
                                 <CardHeader>
@@ -335,13 +421,23 @@ export default function NewsletterEdit({ newsletter, templates, previewData }: N
                                     <div>
                                         <Label htmlFor="template">Newsletter Template</Label>
                                         <Select
-                                            value={data.newsletter_template_id.toString()}
-                                            onValueChange={(value) => setData('newsletter_template_id', parseInt(value))}
+                                            value={
+                                                data.newsletter_template_id === '' || data.newsletter_template_id === null
+                                                    ? '__none__'
+                                                    : String(data.newsletter_template_id)
+                                            }
+                                            onValueChange={(value) =>
+                                                setData(
+                                                    'newsletter_template_id',
+                                                    value === '__none__' ? '' : parseInt(value, 10)
+                                                )
+                                            }
                                         >
                                             <SelectTrigger className="mt-1">
-                                                <SelectValue placeholder="Select a template" />
+                                                <SelectValue placeholder="No template (optional)" />
                                             </SelectTrigger>
                                             <SelectContent>
+                                                <SelectItem value="__none__">No template</SelectItem>
                                                 {templates.map((template) => (
                                                     <SelectItem key={template.id} value={template.id.toString()}>
                                                         {template.name}
@@ -364,7 +460,7 @@ export default function NewsletterEdit({ newsletter, templates, previewData }: N
                                 <CardContent className="space-y-3">
                                     <Button
                                         type="submit"
-                                        disabled={processing || !data.subject || !data.content}
+                                        disabled={processing || !data.subject || !editHasBody}
                                         className="w-full"
                                     >
                                         <Save className="h-4 w-4 mr-2" />
@@ -375,7 +471,7 @@ export default function NewsletterEdit({ newsletter, templates, previewData }: N
                                         type="button"
                                         variant="outline"
                                         onClick={() => setShowPreview(true)}
-                                        disabled={!data.subject && !data.content}
+                                        disabled={!data.subject && !editHasBody}
                                         className="w-full"
                                     >
                                         <Eye className="h-4 w-4 mr-2" />
@@ -505,7 +601,9 @@ export default function NewsletterEdit({ newsletter, templates, previewData }: N
                                     </div>
                                     <div className="flex justify-between">
                                         <span className="text-sm text-gray-600 dark:text-gray-400">Template:</span>
-                                        <span className="text-sm font-medium">{newsletter.template.name}</span>
+                                        <span className="text-sm font-medium">
+                                            {newsletter.template?.name ?? 'None'}
+                                        </span>
                                     </div>
                                     <div className="flex justify-between">
                                         <span className="text-sm text-gray-600 dark:text-gray-400">Created:</span>
@@ -533,7 +631,7 @@ export default function NewsletterEdit({ newsletter, templates, previewData }: N
 
                 {/* Preview Modal */}
                 <Dialog open={showPreview} onOpenChange={setShowPreview}>
-                    <DialogContent className="!max-w-[95vw] !w-[95vw] sm:!max-w-[90vw] sm:!w-[90vw] lg:!max-w-[85vw] lg:!w-[85vw] xl:!max-w-[80vw] xl:!w-[80vw] max-h-[90vh] overflow-y-auto">
+                    <DialogContent className="w-[calc(100vw-2rem)] max-w-xl max-h-[min(85vh,720px)] overflow-y-auto sm:max-w-2xl">
                         <DialogHeader>
                             <DialogTitle>Newsletter Preview</DialogTitle>
                             <DialogDescription>

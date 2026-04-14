@@ -7,7 +7,6 @@ use App\Models\JobPosition;
 use App\Models\JobPost;
 use App\Models\Organization;
 use App\Models\PositionCategory;
-use Illuminate\Container\Attributes\Auth;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 
@@ -50,13 +49,13 @@ class JobsController extends Controller
                 $query->where('position_id', $positionId);
             })
             ->when($request->organization_id, function ($query, $organizationId) {
-                    $query->where('organization_id', $organizationId);
+                $query->where('organization_id', $organizationId);
             })
             ->when(auth()->check(), function ($query) {
                 $query->withExists([
                     'applications as has_applied' => function ($q) {
                         $q->where('user_id', auth()->id());
-                    }
+                    },
                 ]);
             })
             ->orderBy('created_at', 'desc')
@@ -74,8 +73,8 @@ class JobsController extends Controller
         }
 
         $organizations = Organization::orderBy('name')
-                ->pluck('name', 'id')
-                ->toArray();
+            ->pluck('name', 'id')
+            ->toArray();
 
         return Inertia::render('frontend/jobs/index', [
             'jobs' => $jobs,
@@ -90,7 +89,7 @@ class JobsController extends Controller
                 'state',
                 'organization_id',
                 'position_category_id',
-                'position_id'
+                'position_id',
             ]),
         ]);
     }
@@ -131,7 +130,7 @@ class JobsController extends Controller
                 $query->withExists([
                     'applications as has_applied' => function ($q) {
                         $q->where('user_id', auth()->id());
-                    }
+                    },
                 ]);
             })
             ->orderBy('created_at', 'desc')
@@ -149,14 +148,20 @@ class JobsController extends Controller
         }
 
         $organizations = Organization::orderBy('name')
-                ->pluck('name', 'id')
-                ->toArray();
+            ->pluck('name', 'id')
+            ->toArray();
+
+        $volunteerInterestStatement = null;
+        if ($request->user() && $request->user()->role === 'user') {
+            $volunteerInterestStatement = $request->user()->volunteer_interest_statement;
+        }
 
         return Inertia::render('frontend/jobs/volunteer-opportunities', [
             'jobs' => $jobs,
             'organizations' => $organizations,
             'positionCategories' => $positionCategories,
             'positions' => $positions,
+            'volunteerInterestStatement' => $volunteerInterestStatement,
             'filters' => $request->only([
                 'search',
                 'location_type',
@@ -164,15 +169,30 @@ class JobsController extends Controller
                 'state',
                 'organization_id',
                 'position_category_id',
-                'position_id'
+                'position_id',
             ]),
         ]);
+    }
+
+    public function saveVolunteerInterestStatement(Request $request)
+    {
+        $validated = $request->validate([
+            'volunteer_interest_statement' => ['nullable', 'string', 'max:2000'],
+        ]);
+
+        $request->user()->update([
+            'volunteer_interest_statement' => $validated['volunteer_interest_statement'] !== ''
+                ? $validated['volunteer_interest_statement']
+                : null,
+        ]);
+
+        return back();
     }
 
     public function getJobPositions(Request $request)
     {
         $request->validate([
-            'category_id' => 'required|exists:position_categories,id'
+            'category_id' => 'required|exists:position_categories,id',
         ]);
 
         $positions = JobPosition::where('category_id', $request->category_id)
@@ -184,14 +204,14 @@ class JobsController extends Controller
 
     public function show($id)
     {
-        $job = JobPost::with(['organization', 'organization.user' , 'position', 'position.category'])
-                        ->when(auth()->check(), function ($query) {
-                            $query->withExists([
-                                'applications as has_applied' => function ($q) {
-                                    $q->where('user_id', auth()->id());
-                                }
-                            ]);
-                        })->findOrFail($id);
+        $job = JobPost::with(['organization', 'organization.user', 'position', 'position.category'])
+            ->when(auth()->check(), function ($query) {
+                $query->withExists([
+                    'applications as has_applied' => function ($q) {
+                        $q->where('user_id', auth()->id());
+                    },
+                ]);
+            })->findOrFail($id);
 
         return Inertia::render('frontend/jobs/show', [
             'job' => $job,

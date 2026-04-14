@@ -1,13 +1,14 @@
 import FrontendLayout from "@/layouts/frontend/frontend-layout";
-import { Link, router } from "@inertiajs/react";
+import { Link, router, useForm } from "@inertiajs/react";
 import { PageHead } from "@/components/frontend/PageHead";
 import { Button } from "@/components/frontend/ui/button";
 import { Input } from "@/components/frontend/ui/input";
+import { Textarea } from "@/components/frontend/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/frontend/ui/select";
 import { useState, useEffect, useRef } from "react";
 import { HeartHandshake, Search, Loader2, ChevronRight, ChevronLeft, X, Filter, SlidersHorizontal, Building2 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import { JobStatusBadge, JobTypeBadge, LocationTypeBadge } from "@/components/frontend/jobs/badge";
+import { JobStatusBadge, LocationTypeBadge } from "@/components/frontend/jobs/badge";
 import { Badge } from "@/components/frontend/ui/badge";
 import { Label } from "@/components/frontend/ui/label";
 import axios from "axios";
@@ -65,11 +66,21 @@ interface VolunteerOpportunitiesProps {
   auth?: {
     user: {
       role: string;
+      name?: string;
     };
   };
+  volunteerInterestStatement?: string | null;
 }
 
-export default function VolunteerOpportunities({ jobs, organizations, positionCategories, positions: initialPositions, filters, auth }: VolunteerOpportunitiesProps) {
+export default function VolunteerOpportunities({ jobs, organizations, positionCategories, positions: initialPositions, filters, auth, volunteerInterestStatement }: VolunteerOpportunitiesProps) {
+  const interestForm = useForm({
+    volunteer_interest_statement: volunteerInterestStatement ?? "",
+  });
+
+  useEffect(() => {
+    interestForm.setData("volunteer_interest_statement", volunteerInterestStatement ?? "");
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- keep form in sync when Inertia reloads page props
+  }, [volunteerInterestStatement]);
   const [search, setSearch] = useState(filters.search || '');
   const [locationType, setLocationType] = useState(filters.location_type || '');
   const [city, setCity] = useState(filters.city || '');
@@ -206,7 +217,7 @@ export default function VolunteerOpportunities({ jobs, organizations, positionCa
                 <div className="flex-1 relative min-w-0">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 h-4 w-4 sm:h-5 sm:w-5 pointer-events-none" />
                   <Input
-                    placeholder="Search opportunities..."
+                    placeholder="Search volunteer opportunities..."
                     className="pl-10 sm:pl-12 pr-4 h-11 sm:h-12 bg-gray-50 dark:bg-gray-900 border-gray-200 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20 text-sm sm:text-base"
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
@@ -345,6 +356,59 @@ export default function VolunteerOpportunities({ jobs, organizations, positionCa
               className={`${showFilters ? "fixed inset-y-0 left-0 z-50 w-full max-w-[280px] sm:max-w-xs overflow-y-auto" : "hidden"} lg:!relative lg:inset-auto lg:z-auto lg:block lg:w-72 lg:max-w-none xl:w-80 flex-shrink-0`}
             >
               <div className="bg-white dark:bg-gray-800 rounded-r-xl lg:rounded-xl border border-gray-200 dark:border-gray-700 shadow-xl lg:shadow-sm p-4 sm:p-5 lg:sticky lg:top-24 min-h-full lg:min-h-0">
+                {auth?.user?.role === "user" && (
+                  <div className="mb-6 pb-6 border-b border-gray-200 dark:border-gray-700">
+                    <h3 className="text-base font-semibold text-gray-900 dark:text-white mb-1">
+                      Hi{auth.user.name ? `, ${auth.user.name.split(" ")[0]}` : ""}! What would you like to volunteer for?
+                    </h3>
+                    <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
+                      Describe the roles, skills, or causes you care about—beyond the filters below.
+                    </p>
+                    <form
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        interestForm.post(route("volunteer-opportunities.save-interests"), { preserveScroll: true });
+                      }}
+                    >
+                      <Label htmlFor="volunteer-interest-statement" className="sr-only">
+                        What you would like to volunteer for
+                      </Label>
+                      <Textarea
+                        id="volunteer-interest-statement"
+                        value={interestForm.data.volunteer_interest_statement}
+                        onChange={(e) => interestForm.setData("volunteer_interest_statement", e.target.value)}
+                        maxLength={2000}
+                        rows={4}
+                        placeholder="e.g. Tutoring, weekend events, remote graphic design, animal welfare outreach…"
+                        className="min-h-[100px] bg-gray-50 dark:bg-gray-900 border-gray-300 dark:border-gray-700 text-sm text-gray-900 dark:text-white resize-y"
+                      />
+                      <div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-2 mt-3">
+                        <span className="text-xs text-gray-500 dark:text-gray-400 tabular-nums">
+                          {interestForm.data.volunteer_interest_statement.length}/2000
+                        </span>
+                        <Button
+                          type="submit"
+                          disabled={interestForm.processing}
+                          size="sm"
+                          className="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 text-white"
+                        >
+                          {interestForm.processing ? (
+                            <>
+                              <Loader2 className="h-4 w-4 animate-spin mr-2 inline" />
+                              Saving…
+                            </>
+                          ) : (
+                            "Save"
+                          )}
+                        </Button>
+                      </div>
+                      {interestForm.errors.volunteer_interest_statement && (
+                        <p className="text-sm text-red-600 dark:text-red-400 mt-2">{interestForm.errors.volunteer_interest_statement}</p>
+                      )}
+                    </form>
+                  </div>
+                )}
+
                 <div className="flex items-center justify-between mb-6">
                   <div className="flex items-center gap-2">
                     <Filter className="h-5 w-5 text-violet-600 dark:text-violet-400" />

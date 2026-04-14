@@ -10,6 +10,10 @@ import AppLayout from '@/layouts/app-layout';
 import type { BreadcrumbItem } from '@/types';
 import { ArrowLeft, Save } from 'lucide-react';
 import { showErrorToast } from '@/lib/toast';
+import {
+    OrganizationPrimaryActionCategoriesField,
+    type PrimaryActionCategoryOption,
+} from '@/components/organization-primary-action-categories-field';
 
 const breadcrumbs: BreadcrumbItem[] = [
     { title: 'Dashboard', href: '/dashboard' },
@@ -42,6 +46,7 @@ interface JobPost {
     organization: {
         name: string;
     };
+    primary_action_category_ids?: number[];
 }
 
 interface Props {
@@ -51,6 +56,7 @@ interface Props {
     locationTypeOptions: Record<string, string>;
     statusOptions: Record<string, string>;
     currencyOptions: Record<string, string>;
+    organizationPrimaryActionCategories: PrimaryActionCategoryOption[];
 }
 
 export default function Edit({
@@ -60,6 +66,7 @@ export default function Edit({
     locationTypeOptions,
     statusOptions,
     currencyOptions,
+    organizationPrimaryActionCategories,
 }: Props) {
     const [formData, setFormData] = useState({
         position_id: jobPost.position_id?.toString() || '',
@@ -78,6 +85,7 @@ export default function Edit({
         application_deadline: jobPost.application_deadline || '',
         date_posted: jobPost.date_posted || '',
         status: jobPost.status || 'draft',
+        primary_action_category_ids: (jobPost.primary_action_category_ids ?? []).map(String),
     });
 
     const [errors, setErrors] = useState<Record<string, string>>({});
@@ -102,6 +110,7 @@ export default function Edit({
             application_deadline: jobPost.application_deadline || '',
             date_posted: jobPost.date_posted || '',
             status: jobPost.status,
+            primary_action_category_ids: (jobPost.primary_action_category_ids ?? []).map(String),
         });
     }, [jobPost]);
 
@@ -404,6 +413,15 @@ export default function Edit({
                                     )}
                                 </div>
                             </div>
+
+                            <OrganizationPrimaryActionCategoriesField
+                                categories={organizationPrimaryActionCategories}
+                                selectedIds={formData.primary_action_category_ids}
+                                onSelectionChange={(ids) =>
+                                    setFormData((prev) => ({ ...prev, primary_action_category_ids: ids }))
+                                }
+                                error={errors.primary_action_category_ids}
+                            />
 
                             <div className="space-y-2">
                                 <Label htmlFor="description">Description *</Label>
