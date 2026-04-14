@@ -40,8 +40,11 @@ return [
         'live_key' => env('STRIPE_LIVE_KEY'),
         'live_secret' => env('STRIPE_LIVE_SECRET'),
         /**
-         * Stripe Tax: marketplace uses the Tax Calculation API; Checkout Sessions (donations, courses, etc.)
-         * use automatic_tax when this is true. Enable Stripe Tax in the Stripe Dashboard for your account.
+         * Stripe Tax: when true, Checkout Sessions pass automatic_tax.enabled (gift cards, donations, etc.).
+         * You must complete Stripe Dashboard → Tax first, including a valid head office / origin address.
+         * Test mode: https://dashboard.stripe.com/test/settings/tax — without this, Stripe returns
+         * "You must have a valid head office address to enable automatic tax calculation in test mode."
+         * Set STRIPE_AUTOMATIC_TAX=false until Tax settings are done, then turn it back on.
          */
         'automatic_tax' => filter_var(env('STRIPE_AUTOMATIC_TAX', false), FILTER_VALIDATE_BOOLEAN),
         /** Default Stripe product tax codes (see Stripe Tax settings). */

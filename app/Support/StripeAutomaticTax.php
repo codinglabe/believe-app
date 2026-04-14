@@ -26,11 +26,15 @@ final class StripeAutomaticTax
         }
 
         $checkoutOptions['automatic_tax'] = ['enabled' => true];
-        $checkoutOptions['customer_update'] = array_merge(
-            is_array($checkoutOptions['customer_update'] ?? null) ? $checkoutOptions['customer_update'] : [],
-            ['address' => 'auto']
-        );
         $checkoutOptions['billing_address_collection'] = $checkoutOptions['billing_address_collection'] ?? 'required';
+
+        // Stripe: customer_update is only valid when an existing Customer id is passed (not guest customer_email).
+        if (! empty($checkoutOptions['customer'])) {
+            $checkoutOptions['customer_update'] = array_merge(
+                is_array($checkoutOptions['customer_update'] ?? null) ? $checkoutOptions['customer_update'] : [],
+                ['address' => 'auto']
+            );
+        }
 
         return $checkoutOptions;
     }
@@ -48,11 +52,15 @@ final class StripeAutomaticTax
         }
 
         $sessionParams['automatic_tax'] = ['enabled' => true];
-        $sessionParams['customer_update'] = array_merge(
-            is_array($sessionParams['customer_update'] ?? null) ? $sessionParams['customer_update'] : [],
-            ['address' => 'auto']
-        );
         $sessionParams['billing_address_collection'] = $sessionParams['billing_address_collection'] ?? 'required';
+
+        // Stripe: customer_update is only valid when `customer` is set; guest sessions use customer_email only.
+        if (! empty($sessionParams['customer'])) {
+            $sessionParams['customer_update'] = array_merge(
+                is_array($sessionParams['customer_update'] ?? null) ? $sessionParams['customer_update'] : [],
+                ['address' => 'auto']
+            );
+        }
 
         return $sessionParams;
     }

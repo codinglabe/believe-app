@@ -16,6 +16,7 @@ use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
 use Laravel\Cashier\Cashier;
 use Stripe\Checkout\Session as StripeSession;
+use Stripe\Exception\ApiErrorException;
 use Stripe\Refund;
 use Stripe\Stripe;
 
@@ -422,6 +423,9 @@ class GiftCardController extends Controller
         try {
             DB::beginTransaction();
 
+            // Phaze `/brands/country/{code}` expects codes like USA, Canada — normalize display names (e.g. United States).
+            $countryForPhaze = $this->getCountryCode($validated['country']);
+
             // Verify user follows the selected organization
             $isFollowing = \App\Models\UserFavoriteOrganization::where('user_id', $user->id)
                 ->where('organization_id', $validated['organization_id'])
@@ -441,7 +445,7 @@ class GiftCardController extends Controller
             }
 
             // Fetch brand details from Phaze API to validate amount restrictions
-            $brands = $this->giftCardService->getGiftBrands($validated['country'], 1);
+            $brands = $this->giftCardService->getGiftBrands($countryForPhaze, 1);
             $selectedBrand = null;
             foreach ($brands as $brand) {
                 if (isset($brand['productId']) && (int) $brand['productId'] === (int) $validated['productId']) {
@@ -556,10 +560,7 @@ class GiftCardController extends Controller
                     ], 500);
                 }
 
-                // Fetch brand information for meta (same as Stripe flow)
-                $country = $validated['country'] ?? 'USA';
-                $brands = $this->giftCardService->getGiftBrands($country, 1);
-                $selectedBrand = collect($brands)->firstWhere('productId', (int) $validated['productId']);
+                // `$selectedBrand` from the Phaze lookup above is used for meta (same as Stripe flow).
 
                 // Process gift card purchase directly (skip Stripe)
                 $orderId = \Illuminate\Support\Str::uuid()->toString();
@@ -856,6 +857,22 @@ class GiftCardController extends Controller
                 ]);
             }
 
+            if (empty(config('services.stripe.secret'))) {
+                DB::rollBack();
+                Log::error('Gift card purchase: Stripe secret key is not configured.');
+
+                if ($isInertiaRequest) {
+                    return back()->withErrors([
+                        'error' => 'Payments are not configured. Please try again later or contact support.',
+                    ]);
+                }
+
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Payments are not configured. Please contact support.',
+                ], 503);
+            }
+
             // Create Stripe checkout session (default payment method)
             $session = StripeSession::create(StripeAutomaticTax::mergeCheckoutSessionParams([
                 'payment_method_types' => ['card'],
@@ -904,9 +921,34 @@ class GiftCardController extends Controller
             DB::rollBack();
             // Re-throw validation exceptions so Inertia can handle them properly
             throw $e;
+        } catch (ApiErrorException $e) {
+            DB::rollBack();
+            Log::error('Stripe API error (gift card purchase)', [
+                'message' => $e->getMessage(),
+                'stripe_code' => $e->getStripeCode(),
+            ]);
+
+            $isInertiaRequest = $request->header('X-Inertia');
+            $userMessage = config('app.debug')
+                ? $e->getMessage()
+                : 'We could not start secure checkout. Please try again in a moment, or contact support if this continues.';
+
+            if ($isInertiaRequest) {
+                return back()->withErrors([
+                    'error' => $userMessage,
+                ]);
+            }
+
+            return response()->json([
+                'success' => false,
+                'message' => $userMessage,
+            ], 502);
         } catch (\Exception $e) {
             DB::rollBack();
-            Log::error('Error processing gift card purchase: '.$e->getMessage());
+            Log::error('Error processing gift card purchase: '.$e->getMessage(), [
+                'exception' => $e,
+            ]);
+            report($e);
 
             $isInertiaRequest = $request->header('X-Inertia');
             if ($isInertiaRequest) {

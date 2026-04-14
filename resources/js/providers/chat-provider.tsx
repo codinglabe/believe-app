@@ -139,6 +139,7 @@ interface ChatContextType {
   searchQuery: string
   setSearchQuery: React.Dispatch<React.SetStateAction<string>>
   allTopics: ChatTopic[]
+  loadingMessages: boolean
 }
 
 export interface ChatTopic {
@@ -161,12 +162,17 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [replyingToMessage, setReplyingToMessage] = useState<ChatMessage | null>(null)
   const [searchQuery, setSearchQuery] = useState<string>("")
   const [allTopics, setAllTopics] = useState<ChatTopic[]>([])
+  const [loadingMessages, setLoadingMessages] = useState(false)
 
   const allUsers = (props.allUsers as User[]) || []
   const currentUser = props.currentUser as User
 
   const messagesContainerRef = useRef<HTMLDivElement>(null)
   const isScrolledToBottomRef = useRef(true)
+  /** Only apply HTTP-fetched messages if they belong to the room currently being viewed (avoids race when switching chats). */
+  const messagesRoomIdRef = useRef<number | null>(null)
+  const activeRoomRef = useRef<ChatRoom | null>(null)
+  activeRoomRef.current = activeRoom
 
   useEffect(() => {
     const fetchTopics = async () => {
@@ -240,6 +246,8 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
         current_page: number
       }>(`/chat/rooms/${roomId}/messages`, { params: { page } })
 
+      if (messagesRoomIdRef.current !== roomId) return
+
       setMessages((prev) => {
         const newMessages = data.messages.filter((msg) => !prev.some((pMsg) => pMsg.id === msg.id))
         return append ? [...newMessages.reverse(), ...prev] : newMessages.reverse()
@@ -253,12 +261,59 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [])
 
+  const deduplicateMessages = useCallback((messages: ChatMessage[]) => {
+    const seen = new Set()
+    return messages.filter((msg) => {
+      const duplicate = seen.has(msg.id)
+      seen.add(msg.id)
+      return !duplicate
+    })
+  }, [])
+
+  /** Load thread over HTTP whenever the selected room changes — works with Reverb off. */
+  useEffect(() => {
+    if (!activeRoom?.id) {
+      messagesRoomIdRef.current = null
+      setMessages([])
+      setHasMoreMessages(false)
+      setCurrentPage(1)
+      setLoadingMessages(false)
+      return
+    }
+
+    const roomId = activeRoom.id
+    messagesRoomIdRef.current = roomId
+    setMessages([])
+    setCurrentPage(1)
+    setTypingUsers([])
+    setReplyingToMessage(null)
+    setLoadingMessages(true)
+
+    let cancelled = false
+
+    ;(async () => {
+      try {
+        await fetchMessages(roomId, 1, false)
+        if (!cancelled && messagesRoomIdRef.current === roomId) {
+          await markRoomAsRead(roomId)
+        }
+      } finally {
+        if (!cancelled) setLoadingMessages(false)
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [activeRoom?.id, fetchMessages, markRoomAsRead])
+
   useEffect(() => {
     if (!echo || !currentUser?.id) return
 
     const privateChannel = echo.private(`user.${currentUser.id}`)
 
     privateChannel.listen(".MessageSent", (e: any) => {
+      const ar = activeRoomRef.current
       // Handle room updates
       if (e.room_update) {
         setChatRooms((prev) => {
@@ -267,7 +322,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
               ? {
                   ...room,
                   last_message: e.room_update.last_message,
-                  unread_count: activeRoom?.id === e.room_update.room_id ? 0 : room.unread_count + 1,
+                  unread_count: ar?.id === e.room_update.room_id ? 0 : room.unread_count + 1,
                 }
               : room,
           )
@@ -281,12 +336,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
         })
       }
 
-      // Handle message if in active room
-      //   if (activeRoom?.id === e.message?.chat_room_id) {
-      //     setMessages(prev => [...prev, e.message]);
-      //   }
-
-      if (e.message && activeRoom?.id === e.message?.chat_room_id && activeRoom?.type === "direct") {
+      if (e.message && ar?.id === e.message?.chat_room_id && ar?.type === "direct") {
         setMessages((prev) => {
           const existingMessage = prev.find((msg) => msg.id === e.message.id)
           if (existingMessage) return prev
@@ -296,7 +346,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         // Mark as read if message is from another user
         if (e.message.user.id !== currentUser.id) {
-          markRoomAsRead(activeRoom.id)
+          markRoomAsRead(ar.id)
         }
       }
     })
@@ -305,141 +355,137 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       privateChannel.stopListening(".MessageSent")
       echo.leave(`user.${currentUser.id}`)
     }
-  }, [currentUser?.id, activeRoom]) // Fixed dependency array to use full activeRoom object
+  }, [currentUser?.id, markRoomAsRead, deduplicateMessages])
 
-  // Real-time event handling
+  // Real-time event handling (subscriptions only — messages load via HTTP above)
   useEffect(() => {
-    // Wait for Echo to be available
-    const initializeEcho = () => {
-      if (!echo) {
-        console.warn("Echo not initialized yet, retrying...")
-        setTimeout(initializeEcho, 100)
+    if (!echo || !activeRoom) return
+
+    const roomId = activeRoom.id
+    const roomType = activeRoom.type
+
+    let channelName: string
+    let channel: any
+
+    switch (roomType) {
+      case "public":
+        channelName = `public-chat.${roomId}`
+        channel = echo.channel(channelName)
+        break
+      case "private":
+        channelName = `private-chat.${roomId}`
+        channel = echo.private(channelName)
+        break
+      case "direct":
+        channelName = `direct-chat.${roomId}`
+        channel = echo.private(channelName)
+        break
+      default:
         return
-      }
+    }
 
-      if (!activeRoom) {
-        console.warn("No active room selected")
-        return
-      }
-
-      let channelName: string
-      let channel: any
-
-      switch (activeRoom.type) {
-        case "public":
-          channelName = `public-chat.${activeRoom.id}`
-          channel = echo.channel(channelName)
-          break
-        case "private":
-          channelName = `private-chat.${activeRoom.id}`
-          channel = echo.private(channelName)
-          break
-        case "direct":
-          channelName = `direct-chat.${activeRoom.id}`
-          channel = echo.private(channelName)
-          break
-        default:
-          return
-      }
-
-      // Clear existing state when changing rooms
-      setMessages([])
-      setCurrentPage(1)
-      setTypingUsers([])
-      setReplyingToMessage(null)
-
-      // Load initial messages
-      fetchMessages(activeRoom.id).then(() => markRoomAsRead(activeRoom.id))
-
-      // Message listener
-      channel.listen(".MessageSent", (e: { message: ChatMessage }) => {
+    // Message listener (merge with optimistic sends)
+    channel.listen(".MessageSent", (e: { message: ChatMessage }) => {
         setMessages((prev) => {
-          // Check if message already exists (from optimistic update)
-          const exists = prev.some((m) => m.id === e.message.id)
-          return exists ? prev : [...prev, e.message]
+          const existingMessage = prev.find((msg) => msg.id === e.message.id)
+          if (existingMessage) return prev
+
+          const optimisticMatch = prev.find(
+            (msg) =>
+              typeof msg.id === "number" &&
+              msg.id > 1_000_000_000_000 &&
+              msg.user?.id === e.message.user.id &&
+              msg.message === e.message.message,
+          )
+
+          if (optimisticMatch) {
+            return deduplicateMessages([...prev.filter((msg) => msg.id !== optimisticMatch.id), e.message])
+          }
+
+          return deduplicateMessages([...prev, e.message])
         })
 
         if (e.message.user.id !== currentUser.id) {
-          markRoomAsRead(activeRoom.id)
+          markRoomAsRead(roomId)
         }
       })
 
-      // Typing indicator listener
-      channel.listen(".user.typing", (e: { user: User; is_typing: boolean }) => {
-        setTypingUsers((prev) =>
-          e.is_typing ? [...prev.filter((u) => u.id !== e.user.id), e.user] : prev.filter((u) => u.id !== e.user.id),
-        )
-      })
+    // Typing indicator listener
+    channel.listen(".user.typing", (e: { user: User; is_typing: boolean }) => {
+      setTypingUsers((prev) =>
+        e.is_typing ? [...prev.filter((u) => u.id !== e.user.id), e.user] : prev.filter((u) => u.id !== e.user.id),
+      )
+    })
 
-      // Add membership event listeners
-      channel.listen(".member.joined", (e: { user: User }) => {
-        setChatRooms((prev) =>
-          prev.map((room) =>
-            room.id === activeRoom.id
-              ? {
-                  ...room,
-                  members: [...room.members, e.user],
-                  is_member: room.id === activeRoom.id ? true : room.is_member,
-                }
-              : room,
-          ),
-        )
+    // Add membership event listeners
+    channel.listen(".member.joined", (e: { user: User }) => {
+      setChatRooms((prev) =>
+        prev.map((room) =>
+          room.id === roomId
+            ? {
+                ...room,
+                members: [...room.members, e.user],
+                is_member: room.id === roomId ? true : room.is_member,
+              }
+            : room,
+        ),
+      )
 
-        if (activeRoom.id === activeRoom?.id) {
-          setActiveRoom((prev) =>
-            prev
-              ? {
-                  ...prev,
-                  members: [...prev.members, e.user],
-                  is_member: true,
-                }
-              : null,
-          )
-        }
-      })
+      setActiveRoom((prev) =>
+        prev && prev.id === roomId
+          ? {
+              ...prev,
+              members: [...prev.members, e.user],
+              is_member: true,
+            }
+          : prev,
+      )
+    })
 
-      channel.listen(".member.left", (e: { user_id: number }) => {
-        setChatRooms((prev) =>
-          prev.map((room) =>
-            room.id === activeRoom.id
-              ? {
-                  ...room,
-                  members: room.members.filter((m) => m.id !== e.user_id),
-                  is_member:
-                    room.id === activeRoom.id
-                      ? room.members.some((m) => m.id === currentUser.id && m.id !== e.user_id)
-                      : room.is_member,
-                }
-              : room,
-          ),
-        )
+    channel.listen(".member.left", (e: { user_id: number }) => {
+      setChatRooms((prev) =>
+        prev.map((room) =>
+          room.id === roomId
+            ? {
+                ...room,
+                members: room.members.filter((m) => m.id !== e.user_id),
+                is_member:
+                  room.id === roomId
+                    ? room.members.some((m) => m.id === currentUser.id && m.id !== e.user_id)
+                    : room.is_member,
+              }
+            : room,
+        ),
+      )
 
-        if (activeRoom.id === activeRoom?.id) {
-          setActiveRoom((prev) =>
-            prev
-              ? {
-                  ...prev,
-                  members: prev.members.filter((m) => m.id !== e.user_id),
-                  is_member: prev.members.some((m) => m.id === currentUser.id && m.id !== e.user_id),
-                }
-              : null,
-          )
-        }
-      })
+      setActiveRoom((prev) =>
+        prev && prev.id === roomId
+          ? {
+              ...prev,
+              members: prev.members.filter((m) => m.id !== e.user_id),
+              is_member: prev.members.some((m) => m.id === currentUser.id && m.id !== e.user_id),
+            }
+          : prev,
+      )
+    })
 
-      // Presence channel for private/direct chats
-      if (activeRoom.type !== "public") {
-        const presenceChannel = echo.join(`presence-chat.${activeRoom.id}`)
+    // Presence channel for private/direct chats
+    if (roomType !== "public") {
+      const presenceChannel = echo.join(`presence-chat.${roomId}`)
 
-        presenceChannel
-          .here((users: User[]) => setActiveUsers(users))
-          .joining((user: User) => setActiveUsers((prev) => [...prev, user]))
-          .leaving((user: User) => setActiveUsers((prev) => prev.filter((u) => u.id !== user.id)))
-      }
+      presenceChannel
+        .here((users: User[]) => setActiveUsers(users))
+        .joining((user: User) => setActiveUsers((prev) => [...prev, user]))
+        .leaving((user: User) => setActiveUsers((prev) => prev.filter((u) => u.id !== user.id)))
     }
 
-    initializeEcho()
-  }, [activeRoom, currentUser.id, fetchMessages, markRoomAsRead])
+    return () => {
+      echo.leave(channelName)
+      if (roomType !== "public") {
+        echo.leave(`presence-chat.${roomId}`)
+      }
+    }
+  }, [activeRoom, currentUser.id, deduplicateMessages, markRoomAsRead])
 
   const createRoom = useCallback(
     async (
@@ -549,10 +595,10 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => {
       publicChannel.stopListening(".RoomCreated")
       privateChannel.stopListening(".RoomCreated")
-      echo.leave("chat-rooms.public")
-      echo.leave(`user.${currentUser.id}`)
+      echo.leave("chat-rooms")
+      // Do not echo.leave(user.*) here — the MessageSent effect owns that subscription.
     }
-  }, [currentUser.id, addMembers, leaveRoom, activeRoom])
+  }, [currentUser.id, addMembers, leaveRoom])
 
   const loadMoreMessages = useCallback(() => {
     if (activeRoom && hasMoreMessages) {
@@ -560,13 +606,29 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [activeRoom, hasMoreMessages, currentPage, fetchMessages])
 
-  const deduplicateMessages = useCallback((messages: ChatMessage[]) => {
-    const seen = new Set()
-    return messages.filter((msg) => {
-      const duplicate = seen.has(msg.id)
-      seen.add(msg.id)
-      return !duplicate
+  const updateRoomPreview = useCallback((roomId: number, messageText: string, createdAt: string, senderName: string) => {
+    const patchRoom = (room: ChatRoom) =>
+      room.id === roomId
+        ? {
+            ...room,
+            last_message: {
+              message: messageText,
+              created_at: createdAt,
+              user_name: senderName,
+            },
+          }
+        : room
+
+    setChatRooms((prev) => {
+      const updated = prev.map(patchRoom)
+      return [...updated].sort((a, b) => {
+        const timeA = a.last_message?.created_at || a.created_at
+        const timeB = b.last_message?.created_at || b.created_at
+        return new Date(timeB).getTime() - new Date(timeA).getTime()
+      })
     })
+
+    setActiveRoom((prev) => (prev && prev.id === roomId ? patchRoom(prev) : prev))
   }, [])
 
   const createDirectChat = useCallback(async (userId: number) => {
@@ -593,29 +655,36 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (!activeRoom) return
 
       const tempId = Date.now()
-      const optimisticMessage: ChatMessage = {
-        id: tempId,
-        message,
-        attachments: attachments.map((file) => ({
-          name: file.name,
-          url: URL.createObjectURL(file),
-          type: file.type,
-          size: file.size,
-        })),
-        created_at: new Date().toISOString(),
-        is_edited: false,
-        user: currentUser,
-        reply_to_message: replyToMessageId
-          ? {
-              id: replyToMessageId,
-              message: messages.find((m) => m.id === replyToMessageId)?.message || "",
-              user: { name: currentUser.name },
-            }
-          : undefined,
-        chat_room_id: activeRoom.id,
-      }
+      const nowIso = new Date().toISOString()
+      const attachmentPreviews = attachments.map((file) => ({
+        name: file.name,
+        url: URL.createObjectURL(file),
+        type: file.type,
+        size: file.size,
+      }))
 
-      // setMessages(prev => deduplicateMessages([...prev, optimisticMessage]));
+      setMessages((prev) => {
+        const replySource = replyToMessageId ? prev.find((m) => m.id === replyToMessageId) : undefined
+        const optimisticMessage: ChatMessage = {
+          id: tempId,
+          message,
+          attachments: attachmentPreviews,
+          created_at: nowIso,
+          is_edited: false,
+          user: currentUser,
+          reply_to_message:
+            replyToMessageId && replySource
+              ? {
+                  id: replyToMessageId,
+                  message: replySource.message,
+                  user: { name: replySource.user.name },
+                }
+              : undefined,
+          chat_room_id: activeRoom.id,
+        }
+        return deduplicateMessages([...prev, optimisticMessage])
+      })
+      updateRoomPreview(activeRoom.id, message || "[Attachment]", nowIso, currentUser.name)
       setReplyingToMessage(null)
 
       const formData = new FormData()
@@ -624,54 +693,30 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (replyToMessageId) formData.append("reply_to_message_id", replyToMessageId.toString())
 
       try {
-        await api.post(`/chat/rooms/${activeRoom.id}/messages`, formData, {
+        const { data } = await api.post<{ message: ChatMessage }>(`/chat/rooms/${activeRoom.id}/messages`, formData, {
           headers: { "Content-Type": "multipart/form-data" },
         })
+
+        if (data?.message) {
+          const serverMessage = data.message
+          setMessages((prev) => deduplicateMessages(prev.map((msg) => (msg.id === tempId ? serverMessage : msg))))
+          updateRoomPreview(
+            activeRoom.id,
+            serverMessage.message || "[Attachment]",
+            serverMessage.created_at,
+            serverMessage.user?.name || currentUser.name,
+          )
+        }
       } catch (error) {
         console.error("Error sending message:", error)
         setMessages((prev) => prev.filter((msg) => msg.id !== tempId))
         toast.error("Failed to send message")
+      } finally {
+        attachmentPreviews.forEach((file) => URL.revokeObjectURL(file.url))
       }
     },
-    [activeRoom, currentUser, messages, deduplicateMessages],
+    [activeRoom, currentUser, deduplicateMessages, updateRoomPreview],
   )
-
-  // Update your real-time event listener
-  useEffect(() => {
-    if (!echo || !activeRoom) return
-
-    const channelName = activeRoom.type === "public" ? `public-chat.${activeRoom.id}` : `private-chat.${activeRoom.id}`
-
-    const channel = activeRoom.type === "public" ? echo.channel(channelName) : echo.private(channelName)
-
-    channel.listen(".MessageSent", (e: { message: ChatMessage }) => {
-      setMessages((prev) => {
-        const existingMessage = prev.find((msg) => msg.id === e.message.id)
-        if (existingMessage) return prev
-
-        const optimisticMatch = prev.find(
-          (msg) =>
-            msg.id > 1000000 && // Temporary ID
-            msg.user.id === e.message.user.id &&
-            msg.message === e.message.message,
-        )
-
-        if (optimisticMatch) {
-          return deduplicateMessages([...prev.filter((msg) => msg.id !== optimisticMatch.id), e.message])
-        }
-
-        return deduplicateMessages([...prev, e.message])
-      })
-
-      if (e.message.user.id !== currentUser.id) {
-        markRoomAsRead(activeRoom.id)
-      }
-    })
-
-    return () => {
-      echo.leave(channelName)
-    }
-  }, [activeRoom, currentUser.id, deduplicateMessages, markRoomAsRead])
 
   const deleteMessage = useCallback(async (messageId: number) => {
     try {
@@ -770,6 +815,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
         searchQuery,
         setSearchQuery,
         allTopics,
+        loadingMessages,
       }}
     >
       {children}

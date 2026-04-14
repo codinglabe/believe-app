@@ -17,13 +17,14 @@ export function MessageList() {
 
   // Normalize message structure
   const normalizeMessage = useCallback((message: any) => {
+    const u = message.user || { id: 0, name: "Unknown" }
     return {
       ...message,
       message: message.content || message.message,
       user: {
-        ...message.user,
-        avatar_url: message.user.avatar || message.user.avatar_url
-      }
+        ...u,
+        avatar_url: u.avatar || u.avatar_url,
+      },
     }
   }, [])
 
@@ -141,22 +142,22 @@ const handleLoadMore = useCallback(async () => {
           </div>
         )}
 
-        <div className="flex flex-col gap-3">
-          {messages.map((message, index) => {
-            const normalizedMessage = normalizeMessage(message)
-            return (
-              <ChatMessage
-                key={getMessageKey(message, index)}
-                message={normalizedMessage}
-                isOwnMessage={message.user.id === currentUser.id}
-              />
-            )
-          })}
-        </div>
-
-        {loadingMessages && messages.length === 0 && (
-          <div className="flex justify-center py-8">
-            <Loader2Icon className="h-6 w-6 animate-spin text-muted-foreground" />
+        {loadingMessages && messages.length === 0 ? (
+          <div className="flex justify-center items-center min-h-[200px] py-12">
+            <Loader2Icon className="h-8 w-8 animate-spin text-muted-foreground" />
+          </div>
+        ) : (
+          <div className="flex flex-col gap-3">
+            {messages.map((message, index) => {
+              const normalizedMessage = normalizeMessage(message)
+              return (
+                <ChatMessage
+                  key={getMessageKey(message, index)}
+                  message={normalizedMessage}
+                  isOwnMessage={normalizedMessage.user?.id === currentUser.id}
+                />
+              )
+            })}
           </div>
         )}
       </ScrollArea>

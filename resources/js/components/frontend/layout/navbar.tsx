@@ -508,18 +508,21 @@ export default function Navbar() {
                                           <div className="p-3 space-y-3">
                                               {/* Reward Points */}
                                               {auth?.user?.reward_points !== undefined && (
-                                                  <div className="flex items-center justify-between p-2 rounded-lg bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/20 dark:to-indigo-950/20 border border-blue-200 dark:border-blue-800">
-                                                      <div className="flex items-center gap-2">
-                                                          <div className="h-8 w-8 rounded-full bg-blue-500 flex items-center justify-center">
+                                                  <div className="flex items-center justify-between gap-2 p-2 rounded-lg bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/20 dark:to-indigo-950/20 border border-blue-200 dark:border-blue-800">
+                                                      <div className="flex items-center gap-2 min-w-0">
+                                                          <div className="h-8 w-8 shrink-0 rounded-full bg-blue-500 flex items-center justify-center">
                                                               <Gift className="h-4 w-4 text-white" />
                                                           </div>
-                                                          <div>
+                                                          <div className="min-w-0">
                                                               <p className="text-xs text-muted-foreground">Reward Points</p>
                                                               <p className="text-sm font-semibold text-blue-700 dark:text-blue-300">
                                                                   {(auth.user.reward_points || 0).toLocaleString()}
                                                               </p>
                                                           </div>
                                                       </div>
+                                                      <span className="shrink-0 text-xs font-semibold text-blue-600 dark:text-blue-400">
+                                                          Earned
+                                                      </span>
                                                   </div>
                                               )}
 
@@ -796,18 +799,21 @@ export default function Navbar() {
                                               <div className="px-3 py-2 space-y-2">
                                                   {/* Reward Points */}
                                                   {auth?.user?.reward_points !== undefined && (
-                                                      <div className="flex items-center justify-between p-2 rounded-lg bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/20 dark:to-indigo-950/20 border border-blue-200 dark:border-blue-800">
-                                                          <div className="flex items-center gap-2">
-                                                              <div className="h-8 w-8 rounded-full bg-blue-500 flex items-center justify-center">
+                                                      <div className="flex items-center justify-between gap-2 p-2 rounded-lg bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/20 dark:to-indigo-950/20 border border-blue-200 dark:border-blue-800">
+                                                          <div className="flex items-center gap-2 min-w-0">
+                                                              <div className="h-8 w-8 shrink-0 rounded-full bg-blue-500 flex items-center justify-center">
                                                                   <Gift className="h-4 w-4 text-white" />
                                                               </div>
-                                                              <div>
+                                                              <div className="min-w-0">
                                                                   <p className="text-xs text-muted-foreground">Reward Points</p>
                                                                   <p className="text-sm font-semibold text-blue-700 dark:text-blue-300">
                                                                       {(auth.user.reward_points || 0).toLocaleString()}
                                                                   </p>
                                                               </div>
                                                           </div>
+                                                          <span className="shrink-0 text-xs font-semibold text-blue-600 dark:text-blue-400">
+                                                              Earned
+                                                          </span>
                                                       </div>
                                                   )}
 
