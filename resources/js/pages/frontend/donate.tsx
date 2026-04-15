@@ -43,6 +43,8 @@ interface DonateCause {
   supporters: number
   alliance_slug?: string
   care_alliance_id?: number
+  /** Lifetime total this logged-in user has donated to this recipient (from server). */
+  donated_total?: number
 }
 
 function CauseAvatar({
@@ -111,6 +113,8 @@ const DEFAULT_PROCESSING_FEE_RATES: ProcessingFeeRates = {
 interface DonatePageProps {
   seo?: { title: string; description?: string }
   organizations: DonateCause[]
+  /** Causes the current user has donated to (with totals); empty when logged out. */
+  donatedCauses?: DonateCause[]
   user?: User | null
   message?: string
   searchQuery?: string
@@ -145,9 +149,18 @@ const NON_CASH_TYPES: { id: NonCashType; label: string; icon: typeof Gift }[] = 
 const CONDITION_OPTIONS = ["New", "Like New", "Good", "Fair", "Poor"]
 
 // The component now accepts props from Laravel via Inertia
+function causeMatchesSearch(cause: DonateCause, rawQuery: string): boolean {
+  const q = rawQuery.trim().toLowerCase()
+  if (!q) return true
+  if (cause.name.toLowerCase().includes(q)) return true
+  if (cause.description && cause.description.toLowerCase().includes(q)) return true
+  return false
+}
+
 export default function DonatePage({
   seo,
   organizations: initialOrganizations,
+  donatedCauses: initialDonatedCauses = [],
   user,
   searchQuery: initialSearchQuery = "",
   thisYearDonated = 0,
@@ -190,6 +203,7 @@ export default function DonatePage({
   // Get user's Believe Points balance
   const pageProps = usePage().props as any
   const authUser = pageProps.auth?.user || null
+  const donatedCauses = (pageProps.donatedCauses as DonateCause[] | undefined) ?? initialDonatedCauses
   const currentBalance = parseFloat(authUser?.believe_points || '0') || 0
   const [searchQuery, setSearchQuery] = useState(initialSearchQuery) // Initialize with prop from Laravel
   const [isSearchFocused, setIsSearchFocused] = useState(false)
@@ -291,8 +305,22 @@ export default function DonatePage({
   const givingProgress = givingGoal > 0 ? Math.min(100, (thisYearDonated / givingGoal) * 100) : 0
 
   const selectedCause = useMemo(() => {
-    return initialOrganizations.find((cause) => cause.id === selectedCauseId)
-  }, [selectedCauseId, initialOrganizations])
+    if (!selectedCauseId) return undefined
+    return (
+      initialOrganizations.find((cause) => cause.id === selectedCauseId) ??
+      donatedCauses.find((cause) => cause.id === selectedCauseId)
+    )
+  }, [selectedCauseId, initialOrganizations, donatedCauses])
+
+  const donatedCausesFiltered = useMemo(
+    () => donatedCauses.filter((c) => causeMatchesSearch(c, searchQuery)),
+    [donatedCauses, searchQuery],
+  )
+  const allOrganizationsFiltered = useMemo(() => {
+    const matched = initialOrganizations.filter((c) => causeMatchesSearch(c, searchQuery))
+    const donatedIds = new Set(donatedCausesFiltered.map((c) => c.id))
+    return matched.filter((c) => !donatedIds.has(c.id))
+  }, [initialOrganizations, searchQuery, donatedCausesFiltered])
 
   const donationSubscriptionModalRecipientKind = useMemo((): "organization" | "care_alliance" => {
     if (selectedCause?.kind === "care_alliance") {
@@ -544,13 +572,13 @@ export default function DonatePage({
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5 }}
-              className="rounded-2xl border border-slate-200/70 bg-white/60 backdrop-blur-xl shadow-xl shadow-black/10 overflow-hidden text-slate-900 dark:text-white dark:border-white/10 dark:bg-purple-950/40"
+              className="relative z-30 rounded-2xl border border-slate-200/70 bg-white/60 backdrop-blur-xl shadow-xl shadow-black/10 overflow-visible text-slate-900 dark:text-white dark:border-white/10 dark:bg-purple-950/40"
             >
-              <div className="px-5 py-4 flex items-center gap-2 border-b border-slate-200/70 dark:border-white/10">
+              <div className="rounded-t-2xl px-5 py-4 flex items-center gap-2 border-b border-slate-200/70 dark:border-white/10">
                 <Heart className="h-5 w-5 text-purple-300 fill-purple-400/80 shrink-0" />
                 <h2 className="text-lg font-bold text-slate-900 dark:text-white">Select Your Donation</h2>
               </div>
-              <div className="p-5 space-y-5">
+              <div className="p-5 space-y-5 rounded-b-2xl">
                 <p className="text-sm text-slate-600 dark:text-white/70">Choose amount to donate.</p>
                 {/* Org search */}
                 <div className="relative" ref={searchContainerRef}>
@@ -600,29 +628,74 @@ export default function DonatePage({
                       </motion.div>
                     )}
                   </AnimatePresence>
-                  {isSearchFocused && !selectedCause && (searchQuery || initialOrganizations.length > 0) && (
-                    <div className="absolute z-20 w-full mt-1 rounded-lg border border-slate-200/70 bg-white/90 backdrop-blur-xl shadow-xl max-h-52 overflow-y-auto dark:border-white/20 dark:bg-purple-950/95">
+                  {isSearchFocused &&
+                    !selectedCause &&
+                    (searchQuery || initialOrganizations.length > 0 || donatedCauses.length > 0) && (
+                    <div className="absolute left-0 right-0 top-full z-50 mt-1 rounded-lg border border-slate-200/70 bg-white/90 backdrop-blur-xl shadow-xl max-h-72 overflow-y-auto dark:border-white/20 dark:bg-purple-950/95">
                       {isSearchingOrganizations ? (
                         <div className="p-3 text-center text-sm text-slate-600/70 dark:text-white/60 flex items-center justify-center gap-2">
                           <Loader2 className="h-4 w-4 animate-spin" /> Searching...
                         </div>
-                      ) : initialOrganizations.length === 0 ? (
+                      ) : donatedCausesFiltered.length === 0 && allOrganizationsFiltered.length === 0 ? (
                         <p className="p-3 text-sm text-slate-600/70 dark:text-white/60">No organizations found.</p>
                       ) : (
-                        initialOrganizations.map((cause) => (
-                          <button
-                            key={cause.id}
-                            type="button"
-                            className="w-full p-3 text-left hover:bg-white/80 flex items-center gap-3 text-slate-900 dark:hover:bg-white/10 dark:text-white"
-                            onClick={() => handleCauseSelect(cause.id)}
-                          >
-                            <CauseAvatar name={cause.name} src={cause.image} shape="square" className="h-9 w-9" />
-                            <div className="min-w-0 flex flex-col gap-1">
-                              <div className="font-medium text-sm truncate">{cause.name}</div>
-                              <CauseKindBadge kind={cause.kind} />
+                        <>
+                          {donatedCausesFiltered.length > 0 && (
+                            <div role="group" aria-label="Organizations you have donated to">
+                              <div className="sticky top-0 z-10 px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500 bg-white/95 border-b border-slate-200/60 dark:text-white/55 dark:bg-purple-950/98 dark:border-white/10">
+                                Organizations you&apos;ve supported
+                              </div>
+                              {donatedCausesFiltered.map((cause) => (
+                                <button
+                                  key={cause.id}
+                                  type="button"
+                                  className="w-full p-3 text-left hover:bg-white/80 flex items-center gap-3 text-slate-900 border-b border-slate-100/80 dark:hover:bg-white/10 dark:text-white dark:border-white/5"
+                                  onClick={() => handleCauseSelect(cause.id)}
+                                >
+                                  <CauseAvatar name={cause.name} src={cause.image} shape="square" className="h-9 w-9" />
+                                  <div className="min-w-0 flex flex-col gap-0.5 flex-1">
+                                    <div className="font-medium text-sm truncate">{cause.name}</div>
+                                    <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                                      <CauseKindBadge kind={cause.kind} />
+                                      {typeof cause.donated_total === "number" && cause.donated_total > 0 && (
+                                        <span className="text-xs text-slate-600 dark:text-white/55">
+                                          You gave $
+                                          {cause.donated_total.toLocaleString("en-US", {
+                                            minimumFractionDigits: 0,
+                                            maximumFractionDigits: 2,
+                                          })}
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                </button>
+                              ))}
                             </div>
-                          </button>
-                        ))
+                          )}
+                          {allOrganizationsFiltered.length > 0 && (
+                            <div role="group" aria-label="All organizations">
+                              {donatedCausesFiltered.length > 0 && (
+                                <div className="sticky top-0 z-10 px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500 bg-white/95 border-b border-slate-200/60 dark:text-white/55 dark:bg-purple-950/98 dark:border-white/10">
+                                  All organizations
+                                </div>
+                              )}
+                              {allOrganizationsFiltered.map((cause) => (
+                                <button
+                                  key={cause.id}
+                                  type="button"
+                                  className="w-full p-3 text-left hover:bg-white/80 flex items-center gap-3 text-slate-900 border-b border-slate-100/80 last:border-b-0 dark:hover:bg-white/10 dark:text-white dark:border-white/5"
+                                  onClick={() => handleCauseSelect(cause.id)}
+                                >
+                                  <CauseAvatar name={cause.name} src={cause.image} shape="square" className="h-9 w-9" />
+                                  <div className="min-w-0 flex flex-col gap-1">
+                                    <div className="font-medium text-sm truncate">{cause.name}</div>
+                                    <CauseKindBadge kind={cause.kind} />
+                                  </div>
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </>
                       )}
                     </div>
                   )}
@@ -965,13 +1038,13 @@ export default function DonatePage({
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.1 }}
-              className="rounded-2xl border border-slate-200/80 bg-white/75 backdrop-blur-xl shadow-xl shadow-black/10 overflow-hidden text-slate-900 dark:text-white dark:border-white/10 dark:bg-purple-950/40"
+              className="relative z-30 rounded-2xl border border-slate-200/80 bg-white/75 backdrop-blur-xl shadow-xl shadow-black/10 overflow-visible text-slate-900 dark:text-white dark:border-white/10 dark:bg-purple-950/40"
             >
-              <div className="px-5 py-4 flex items-center gap-2 border-b border-slate-200/80 dark:border-white/10">
+              <div className="rounded-t-2xl px-5 py-4 flex items-center gap-2 border-b border-slate-200/80 dark:border-white/10">
                 <FileText className="h-5 w-5 text-purple-300 shrink-0" />
                 <h2 className="text-lg font-bold text-slate-900 dark:text-white">Donate a Non-Cash Asset</h2>
               </div>
-              <div className="p-5 space-y-4">
+              <div className="p-5 space-y-4 rounded-b-2xl">
                 <div>
                   <Label className="text-sm text-slate-700/80 dark:text-white/80 mb-1 block">Donation Item</Label>
                   <Input
@@ -1042,7 +1115,7 @@ export default function DonatePage({
                     ) : null}
                   </div>
                   {nonCashSearchFocused && (
-                    <div className="absolute z-20 w-full mt-1 rounded-lg border border-slate-200/70 bg-white/90 backdrop-blur-xl shadow-xl max-h-48 overflow-y-auto dark:border-white/20 dark:bg-purple-950/95">
+                    <div className="absolute left-0 right-0 top-full z-50 mt-1 rounded-lg border border-slate-200/70 bg-white/90 backdrop-blur-xl shadow-xl max-h-48 overflow-y-auto dark:border-white/20 dark:bg-purple-950/95">
                       {initialOrganizations
                         .filter((o) => !nonCashSearchQuery || o.name.toLowerCase().includes(nonCashSearchQuery.toLowerCase()))
                         .slice(0, 8)

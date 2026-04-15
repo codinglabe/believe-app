@@ -3,11 +3,13 @@
 namespace App\Http\Controllers;
 
 use App\Models\Category;
+use App\Models\Order;
 use App\Models\Organization;
 use App\Models\OrganizationProduct;
 use App\Models\Product;
 use App\Services\PrintifyService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Str;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -152,11 +154,28 @@ class MarketplaceController extends Controller
             ->excludingCareAllianceHubs()
             ->get(['id', 'name']);
 
+        $purchaseOrganizationIds = [];
+        $authUser = Auth::user();
+        if ($authUser && $authUser->role === 'user') {
+            $purchaseOrganizationIds = Order::query()
+                ->where('user_id', $authUser->id)
+                ->where('payment_status', 'paid')
+                ->whereNotNull('organization_id')
+                ->selectRaw('organization_id, MAX(created_at) as last_purchase')
+                ->groupBy('organization_id')
+                ->orderByDesc('last_purchase')
+                ->pluck('organization_id')
+                ->map(fn ($id) => (int) $id)
+                ->values()
+                ->all();
+        }
+
         return Inertia::render('frontend/marketplace', [
             'seo' => \App\Services\SeoService::forPage('marketplace'),
             'products' => $processedProducts,
             'categories' => $categories,
             'organizations' => $organizations,
+            'purchaseOrganizationIds' => $purchaseOrganizationIds,
             'selectedCategories' => $categoryIds,
             'selectedOrganizations' => $organizationIds,
             'search' => $search,

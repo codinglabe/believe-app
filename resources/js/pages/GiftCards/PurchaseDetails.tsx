@@ -1,7 +1,7 @@
 "use client"
 
 import { Head, router, useForm, usePage } from "@inertiajs/react"
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/frontend/ui/card"
 import { Button } from "@/components/frontend/ui/button"
 import { Input } from "@/components/frontend/ui/input"
@@ -25,7 +25,10 @@ import toast from "react-hot-toast"
 import {
     Select,
     SelectContent,
+    SelectGroup,
     SelectItem,
+    SelectLabel,
+    SelectSeparator,
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select"
@@ -52,6 +55,10 @@ interface Organization {
     gift_card_terms_approved?: boolean
 }
 
+interface OrganizationGiftCardPurchase extends Organization {
+    purchased_total?: number
+}
+
 interface PurchaseDetailsProps {
     brand: Brand
     country: string
@@ -61,11 +68,21 @@ interface PurchaseDetailsProps {
         email: string
         role: string
     } | null
-    followingOrganizations: Organization[]
+    organizations: Organization[]
+    giftCardPurchaseOrganizations?: OrganizationGiftCardPurchase[]
 }
 
-export default function PurchaseDetailsPage({ brand, country, user, followingOrganizations }: PurchaseDetailsProps) {
+export default function PurchaseDetailsPage({
+    brand,
+    country,
+    user,
+    organizations: organizationsProp,
+    giftCardPurchaseOrganizations: giftCardPurchaseOrganizationsProp = [],
+}: PurchaseDetailsProps) {
     const page = usePage()
+    const pageProps = page.props as PurchaseDetailsProps & { auth?: unknown }
+    const organizations = pageProps.organizations ?? organizationsProp
+    const giftCardPurchaseOrganizations = pageProps.giftCardPurchaseOrganizations ?? giftCardPurchaseOrganizationsProp
     const auth = (page.props as any).auth
     const currentBalance = parseFloat(auth?.user?.believe_points) || 0
 
@@ -134,10 +151,23 @@ export default function PurchaseDetailsPage({ brand, country, user, followingOrg
         setData('organization_id', parseInt(orgId))
     }
 
-    // Get selected organization details (guard null id from bad API data)
-    const selectedOrganization = followingOrganizations.find(
-        (org) => org.id != null && String(org.id) === selectedOrganizationId
+    const purchaseOrgIds = useMemo(
+        () => new Set(giftCardPurchaseOrganizations.map((o) => Number(o.id))),
+        [giftCardPurchaseOrganizations],
     )
+    const organizationsRest = useMemo(
+        () => organizations.filter((o) => o.id != null && !purchaseOrgIds.has(Number(o.id))),
+        [organizations, purchaseOrgIds],
+    )
+
+    // Get selected organization details (guard null id from bad API data)
+    const selectedOrganization = useMemo(() => {
+        if (!selectedOrganizationId) return undefined
+        return (
+            giftCardPurchaseOrganizations.find((org) => org.id != null && String(org.id) === selectedOrganizationId) ??
+            organizations.find((org) => org.id != null && String(org.id) === selectedOrganizationId)
+        )
+    }, [selectedOrganizationId, giftCardPurchaseOrganizations, organizations])
     const isOrganizationApproved = selectedOrganization?.gift_card_terms_approved ?? false
 
     const handlePurchase = (e: React.FormEvent) => {
@@ -329,7 +359,7 @@ export default function PurchaseDetailsPage({ brand, country, user, followingOrg
                                         )}
 
                                         {/* Organization Selection */}
-                                        {user && user.role === 'user' && followingOrganizations.length > 0 && (
+                                        {user && user.role === 'user' && organizations.length > 0 && (
                                             <div>
                                                 <Label className="text-base mb-4 block dark:text-gray-300">
                                                     Select Organization <span className="text-destructive">*</span>
@@ -339,18 +369,49 @@ export default function PurchaseDetailsPage({ brand, country, user, followingOrg
                                                         <Building2 className="h-4 w-4 mr-2" />
                                                         <SelectValue placeholder="Choose an organization" />
                                                     </SelectTrigger>
-                                                    <SelectContent className="dark:bg-gray-800">
-                                                        {followingOrganizations
-                                                            .filter((org) => org.id != null)
-                                                            .map((org) => (
-                                                            <SelectItem
-                                                                key={org.id}
-                                                                value={String(org.id)}
-                                                                className="dark:hover:bg-gray-700"
-                                                            >
-                                                                {org.name}
-                                                            </SelectItem>
-                                                        ))}
+                                                    <SelectContent className="dark:bg-gray-800 max-h-80">
+                                                        {giftCardPurchaseOrganizations.filter((org) => org.id != null).length > 0 && (
+                                                            <SelectGroup>
+                                                                <SelectLabel className="text-muted-foreground text-xs font-semibold uppercase tracking-wide">
+                                                                    Your gift card purchases
+                                                                </SelectLabel>
+                                                                {giftCardPurchaseOrganizations
+                                                                    .filter((org) => org.id != null)
+                                                                    .map((org) => (
+                                                                        <SelectItem
+                                                                            key={org.id}
+                                                                            value={String(org.id)}
+                                                                            className="dark:hover:bg-gray-700"
+                                                                        >
+                                                                            {org.name}
+                                                                            {typeof org.purchased_total === "number" && org.purchased_total > 0
+                                                                                ? ` — ${formatCurrency(org.purchased_total)} total`
+                                                                                : ""}
+                                                                        </SelectItem>
+                                                                    ))}
+                                                            </SelectGroup>
+                                                        )}
+                                                        {giftCardPurchaseOrganizations.length > 0 && organizationsRest.length > 0 && (
+                                                            <SelectSeparator className="dark:bg-gray-600" />
+                                                        )}
+                                                        {organizationsRest.length > 0 && (
+                                                            <SelectGroup>
+                                                                {giftCardPurchaseOrganizations.length > 0 && (
+                                                                    <SelectLabel className="text-muted-foreground text-xs font-semibold uppercase tracking-wide">
+                                                                        All organizations
+                                                                    </SelectLabel>
+                                                                )}
+                                                                {organizationsRest.map((org) => (
+                                                                    <SelectItem
+                                                                        key={org.id}
+                                                                        value={String(org.id)}
+                                                                        className="dark:hover:bg-gray-700"
+                                                                    >
+                                                                        {org.name}
+                                                                    </SelectItem>
+                                                                ))}
+                                                            </SelectGroup>
+                                                        )}
                                                     </SelectContent>
                                                 </Select>
                                                 {errors.organization_id && (
@@ -548,9 +609,9 @@ export default function PurchaseDetailsPage({ brand, country, user, followingOrg
                                             <Button disabled className="w-full" variant="outline" size="lg">
                                                 Only users can purchase gift cards
                                             </Button>
-                                        ) : followingOrganizations.length === 0 ? (
+                                        ) : organizations.length === 0 ? (
                                             <Button disabled className="w-full" variant="outline" size="lg">
-                                                You need to follow at least one organization to purchase gift cards
+                                                No organizations are available for gift card purchase
                                             </Button>
                                         ) : (
                                             <Button
@@ -619,9 +680,7 @@ export default function PurchaseDetailsPage({ brand, country, user, followingOrg
                                                     Organization:
                                                 </span>
                                                 <span className="font-medium text-right max-w-[150px] truncate dark:text-white">
-                                                    {followingOrganizations.find(
-                                                    (org) => org.id != null && String(org.id) === selectedOrganizationId
-                                                )?.name || ''}
+                                                    {selectedOrganization?.name || ""}
                                                 </span>
                                             </div>
                                         )}

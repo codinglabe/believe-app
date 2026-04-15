@@ -8,7 +8,7 @@ import { Input } from "@/components/frontend/ui/input"
 import { Textarea } from "@/components/frontend/ui/textarea"
 import { Link, router, usePage } from "@inertiajs/react"
 import { PageHead } from "@/components/frontend/PageHead"
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useMemo } from "react"
 import debounce from "lodash.debounce"
 import pickBy from "lodash.pickby"
 import axios from "axios"
@@ -73,6 +73,8 @@ interface PageProps {
     products: Product[];
     categories: any[];
     organizations: any[];
+    /** Marketplace order history: org ids, most recent purchase first */
+    purchaseOrganizationIds?: number[];
     selectedCategories: number[];
     selectedOrganizations: number[];
     search: string;
@@ -91,10 +93,13 @@ export default function Marketplace({
     products,
     categories,
     organizations,
+    purchaseOrganizationIds = [],
     selectedCategories,
     selectedOrganizations,
     search
 }: PageProps) {
+    const page = usePage<PageProps>()
+    const purchaseOrganizationIdsResolved = page.props.purchaseOrganizationIds ?? purchaseOrganizationIds
     const [isFavorite, setIsFavorite] = useState(false)
     const [currentProductPage, setCurrentProductPage] = useState(1)
     const [showCartModal, setShowCartModal] = useState(false)
@@ -193,6 +198,42 @@ export default function Marketplace({
         product.is_merchant_pool_listing && product.organization_product_id
             ? `/marketplace/pool/${product.organization_product_id}`
             : `/products/${product.id}`
+
+    const { marketplacePurchaseOrgsFirst, marketplaceOrganizationsRest } = useMemo(() => {
+        const byId = new Map<number, any>()
+        for (const o of organizations || []) {
+            byId.set(Number(o.id), o)
+        }
+        const purchased: any[] = []
+        const seen = new Set<number>()
+        for (const rawId of purchaseOrganizationIdsResolved) {
+            const id = Number(rawId)
+            const row = byId.get(id)
+            if (row && !seen.has(id)) {
+                seen.add(id)
+                purchased.push(row)
+            }
+        }
+        const rest = (organizations || []).filter((o: any) => !seen.has(Number(o.id)))
+        return { marketplacePurchaseOrgsFirst: purchased, marketplaceOrganizationsRest: rest }
+    }, [organizations, purchaseOrganizationIdsResolved])
+
+    const renderOrgCheckboxRow = (organization: any) => (
+        <label
+            key={organization.id}
+            className="flex items-center space-x-3 cursor-pointer group p-2 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+        >
+            <input
+                type="checkbox"
+                checked={filters.organizations.includes(Number(organization.id))}
+                onChange={() => toggleOrganization(Number(organization.id))}
+                className="h-4 w-4 text-purple-600 border-gray-300 rounded focus:ring-purple-500 focus:ring-2 shrink-0"
+            />
+            <span className="text-sm text-gray-700 dark:text-gray-300 group-hover:text-gray-900 dark:group-hover:text-white transition-colors truncate">
+                {organization.name}
+            </span>
+        </label>
+    )
 
     return (
         <FrontendLayout>
@@ -310,20 +351,29 @@ export default function Marketplace({
                                                 className="overflow-hidden"
                                             >
                                                 <CardContent className="space-y-3 pt-4" style={{ height: '240px', maxHeight: '240px' }}>
-                                                    <div className="overflow-y-auto h-full pr-2" style={{ maxHeight: '240px' }}>
-                                                        {organizations.map((organization: any) => (
-                                                            <label key={organization.id} className="flex items-center space-x-3 cursor-pointer group p-2 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
-                                                                <input
-                                                                    type="checkbox"
-                                                                    checked={filters.organizations.includes(Number(organization.id))}
-                                                                    onChange={() => toggleOrganization(Number(organization.id))}
-                                                                    className="h-4 w-4 text-purple-600 border-gray-300 rounded focus:ring-purple-500 focus:ring-2 shrink-0"
-                                                                />
-                                                                <span className="text-sm text-gray-700 dark:text-gray-300 group-hover:text-gray-900 dark:group-hover:text-white transition-colors truncate">
-                                                                    {organization.name}
-                                                                </span>
-                                                            </label>
-                                                        ))}
+                                                    <div className="overflow-y-auto h-full pr-2 space-y-3" style={{ maxHeight: '240px' }}>
+                                                        {marketplacePurchaseOrgsFirst.length > 0 && (
+                                                            <div>
+                                                                <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 px-2 pb-1">
+                                                                    You&apos;ve purchased from
+                                                                </p>
+                                                                <div className="space-y-0">
+                                                                    {marketplacePurchaseOrgsFirst.map((organization: any) => renderOrgCheckboxRow(organization))}
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                        {marketplaceOrganizationsRest.length > 0 && (
+                                                            <div>
+                                                                {marketplacePurchaseOrgsFirst.length > 0 && (
+                                                                    <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 px-2 pb-1 pt-1 border-t border-gray-100 dark:border-gray-600">
+                                                                        All organizations
+                                                                    </p>
+                                                                )}
+                                                                <div className="space-y-0">
+                                                                    {marketplaceOrganizationsRest.map((organization: any) => renderOrgCheckboxRow(organization))}
+                                                                </div>
+                                                            </div>
+                                                        )}
                                                     </div>
                                                 </CardContent>
                                             </motion.div>
