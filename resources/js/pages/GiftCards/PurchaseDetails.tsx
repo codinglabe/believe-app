@@ -74,6 +74,13 @@ interface PurchaseDetailsProps {
     giftCardPurchaseOrganizations?: OrganizationGiftCardPurchase[]
 }
 
+/** Phaze HTML often includes inline dark colors; force readable text in light + dark mode */
+const brandHtmlBlockClassName =
+    "prose prose-sm max-w-none dark:prose-invert " +
+    "text-slate-700 dark:text-slate-200 " +
+    "[&_*]:!text-slate-700 dark:[&_*]:!text-slate-200 [&_a]:!text-primary dark:[&_a]:!text-primary " +
+    "[&_strong]:!text-slate-900 dark:[&_strong]:!text-slate-100 [&_*]:break-words"
+
 export default function PurchaseDetailsPage({
     brand,
     country,
@@ -307,7 +314,7 @@ export default function PurchaseDetailsPage({
                                                 About This Brand
                                             </h3>
                                             <div
-                                                className="text-muted-foreground prose prose-sm max-w-none dark:prose-invert"
+                                                className={brandHtmlBlockClassName}
                                                 dangerouslySetInnerHTML={{ __html: brand.productDescription }}
                                             />
                                         </div>
@@ -318,7 +325,7 @@ export default function PurchaseDetailsPage({
                                         <div>
                                             <h3 className="text-lg font-semibold mb-3 dark:text-white">How to Use</h3>
                                             <div
-                                                className="text-muted-foreground prose prose-sm max-w-none dark:prose-invert"
+                                                className={brandHtmlBlockClassName}
                                                 dangerouslySetInnerHTML={{ __html: brand.howToUse }}
                                             />
                                         </div>
@@ -329,7 +336,7 @@ export default function PurchaseDetailsPage({
                                         <div>
                                             <h3 className="text-lg font-semibold mb-3 dark:text-white">Terms and Conditions</h3>
                                             <div
-                                                className="text-muted-foreground prose prose-sm max-w-none dark:prose-invert"
+                                                className={brandHtmlBlockClassName}
                                                 dangerouslySetInnerHTML={{ __html: brand.termsAndConditions }}
                                             />
                                         </div>
@@ -343,7 +350,7 @@ export default function PurchaseDetailsPage({
                                                 Expiry & Validity
                                             </h3>
                                             <div
-                                                className="text-muted-foreground prose prose-sm max-w-none dark:prose-invert"
+                                                className={brandHtmlBlockClassName}
                                                 dangerouslySetInnerHTML={{ __html: brand.expiryAndValidity }}
                                             />
                                         </div>
@@ -777,7 +784,7 @@ export default function PurchaseDetailsPage({
                                 </CardContent>
                             </Card>
 
-                            {brand.discount && brand.discount > 0 && (
+                            {(brand.discount ?? 0) > 0 && (
                                 <Card className="bg-gradient-to-r from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-800/20 border-2 border-green-300 dark:border-green-700 shadow-lg">
                                     <CardContent className="pt-6">
                                         <div className="flex flex-col items-center gap-2 text-center">
