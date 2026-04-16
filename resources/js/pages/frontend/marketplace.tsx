@@ -37,6 +37,11 @@ interface Product {
     price: number;
     price_display: string;
     unit_price: number;
+    is_at_cost_pricing?: boolean;
+    typical_retail_display?: string;
+    at_cost_display?: string;
+    platform_fee_percentage?: number;
+    platform_fee_display?: string;
     image: string;
     image_url: string;
     quantity_available: number;
@@ -95,7 +100,6 @@ export default function Marketplace({
     selectedOrganizations,
     search
 }: PageProps) {
-    const [isFavorite, setIsFavorite] = useState(false)
     const [currentProductPage, setCurrentProductPage] = useState(1)
     const [showCartModal, setShowCartModal] = useState(false)
     const [showFilters, setShowFilters] = useState(false)
@@ -197,7 +201,7 @@ export default function Marketplace({
     return (
         <FrontendLayout>
             <PageHead title="Marketplace" description="Discover products from verified nonprofits. Shop and support causes you care about." />
-            <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
+            <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-violet-50 to-white dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
                 {/* Hero Section */}
                 <section className="bg-gradient-to-br from-purple-600 via-blue-600 to-purple-700 dark:from-gray-900 dark:via-gray-800 dark:to-purple-900 py-12 sm:py-16 md:py-20">
                     <div className="container mx-auto px-4 sm:px-6 lg:px-8">
@@ -234,7 +238,7 @@ export default function Marketplace({
                                         placeholder="Search products..."
                                         value={filters.search}
                                         onChange={handleSearchChange}
-                                        className="w-full pl-12 pr-4 h-12 sm:h-14 bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 transition-all duration-200 shadow-sm"
+                                        className="w-full pl-12 pr-4 h-12 sm:h-14 bg-white/70 dark:bg-gray-800 border-white/60 dark:border-gray-600 rounded-xl text-gray-900 dark:text-white focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 transition-all duration-200 shadow-[0_10px_30px_rgba(99,102,241,0.12)] backdrop-blur-sm"
                                     />
                                 </div>
                             </div>
@@ -269,7 +273,7 @@ export default function Marketplace({
                             >
                                 {/* Filter Header */}
                                 <div className="flex items-center justify-between mb-4">
-                                    <h3 className="text-lg font-bold text-gray-900 dark:text-white">Filters</h3>
+                                    <h3 className="text-lg font-bold text-slate-900 dark:text-white">Filters</h3>
                                     {activeFilterCount > 0 && (
                                         <Button
                                             onClick={clearAllFilters}
@@ -282,15 +286,15 @@ export default function Marketplace({
                                     )}
                                 </div>
 
-                                <Card className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 shadow-md">
-                                    <CardHeader className="pb-3 bg-gradient-to-r from-purple-50 to-blue-50 dark:from-gray-700 dark:to-gray-700 rounded-t-lg">
+                                <Card className="bg-white/70 dark:bg-gray-800 border-white/50 dark:border-gray-700 shadow-[0_14px_40px_rgba(0,0,0,0.08)] backdrop-blur-sm">
+                                    <CardHeader className="pb-3 bg-gradient-to-r from-purple-100 to-indigo-100 dark:from-gray-700 dark:to-gray-700 rounded-t-xl">
                                         <button
                                             type="button"
                                             onClick={() => setIsOrganizationsExpanded(!isOrganizationsExpanded)}
                                             className="w-full flex items-center justify-between text-left"
                                         >
-                                            <CardTitle className="text-base font-semibold text-gray-900 dark:text-white flex items-center gap-2">
-                                                <Building className="h-4 w-4 text-purple-600 shrink-0" />
+                                            <CardTitle className="text-base font-semibold text-slate-900 dark:text-white flex items-center gap-2">
+                                                <Building className="h-4 w-4 text-purple-700 dark:text-purple-400 shrink-0" />
                                                 Organizations
                                             </CardTitle>
                                             {isOrganizationsExpanded ? (
@@ -319,7 +323,7 @@ export default function Marketplace({
                                                                     onChange={() => toggleOrganization(Number(organization.id))}
                                                                     className="h-4 w-4 text-purple-600 border-gray-300 rounded focus:ring-purple-500 focus:ring-2 shrink-0"
                                                                 />
-                                                                <span className="text-sm text-gray-700 dark:text-gray-300 group-hover:text-gray-900 dark:group-hover:text-white transition-colors truncate">
+                                                                <span className="text-sm text-slate-700 dark:text-gray-300 group-hover:text-slate-900 dark:group-hover:text-white transition-colors truncate">
                                                                     {organization.name}
                                                                 </span>
                                                             </label>
@@ -332,13 +336,13 @@ export default function Marketplace({
                                 </Card>
 
                                 {/* Categories Filter */}
-                                <Card className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 shadow-md">
-                                    <CardHeader className="pb-3 bg-gradient-to-r from-purple-50 to-blue-50 dark:from-gray-700 dark:to-gray-700 rounded-t-lg">
+                                <Card className="bg-white/70 dark:bg-gray-800 border-white/50 dark:border-gray-700 shadow-[0_14px_40px_rgba(0,0,0,0.08)] backdrop-blur-sm">
+                                    <CardHeader className="pb-3 bg-gradient-to-r from-purple-100 to-indigo-100 dark:from-gray-700 dark:to-gray-700 rounded-t-xl">
                                         <button
                                             onClick={() => setIsCategoriesExpanded(!isCategoriesExpanded)}
                                             className="w-full flex items-center justify-between"
                                         >
-                                            <CardTitle className="text-base font-semibold text-gray-900 dark:text-white">
+                                            <CardTitle className="text-base font-semibold text-slate-900 dark:text-white">
                                                 Categories
                                             </CardTitle>
                                             {isCategoriesExpanded ? (
@@ -421,13 +425,13 @@ export default function Marketplace({
                                                     key={`${product.listing_kind ?? "catalog"}-${product.id}`}
                                                 >
                                                 <Card
-                                                    className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 hover:shadow-xl transition-all duration-300 group hover:border-purple-300 dark:hover:border-purple-600 overflow-hidden"
+                                                    className="group overflow-hidden border border-slate-200/70 bg-white text-slate-900 shadow-[0_16px_40px_rgba(15,23,42,0.12)] transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_22px_60px_rgba(99,102,241,0.22)] dark:border-white/10 dark:bg-gradient-to-b dark:from-slate-950 dark:via-slate-950 dark:to-indigo-950/70 dark:text-white"
                                                 >
                                                     <div className="relative overflow-hidden">
                                                         <img
                                                             src={product.image || product.image_url || "/placeholder.svg"}
                                                             alt={product.name}
-                                                            className="w-full h-56 object-cover group-hover:scale-110 transition-transform duration-500"
+                                                            className="w-full h-56 object-cover group-hover:scale-110 transition-transform duration-500 opacity-95"
                                                         />
                                                         {product.quantity_available <= 0 && (
                                                             <div className="absolute top-3 right-3 bg-red-500 text-white px-3 py-1.5 rounded-full text-xs font-semibold shadow-lg">
@@ -437,13 +441,13 @@ export default function Marketplace({
                                                         <div className="absolute top-3 left-3 flex flex-col gap-1.5 items-start max-w-[85%]">
                                                             <Badge
                                                                 variant="secondary"
-                                                                className="bg-slate-700/90 text-white text-xs font-medium border-0 shadow-md"
+                                                                className="bg-black/50 text-white text-xs font-medium border border-white/10 shadow-md backdrop-blur-sm"
                                                             >
                                                                 {product.is_merchant_pool_listing ? "Merchant pool" : "Organization"}
                                                             </Badge>
                                                             <Badge
                                                                 variant="secondary"
-                                                                className="bg-white/95 dark:bg-gray-800/95 backdrop-blur-sm text-gray-800 dark:text-gray-200 text-xs font-medium border-0 shadow-md"
+                                                                className="bg-white/95 text-slate-900 text-xs font-medium border border-slate-200 shadow-md backdrop-blur-sm dark:bg-white/10 dark:text-white dark:border-white/10"
                                                             >
                                                                 {product.category?.name || 'Uncategorized'}
                                                             </Badge>
@@ -451,45 +455,79 @@ export default function Marketplace({
                                                         {product.organization && (
                                                             <Badge
                                                                 variant="outline"
-                                                                className="absolute bottom-3 left-3 bg-purple-100 dark:bg-purple-900/80 text-purple-800 dark:text-purple-200 text-xs font-medium border-0 shadow-md max-w-[90%] truncate"
+                                                                className="absolute bottom-3 left-3 bg-purple-500/15 text-purple-100 text-xs font-medium border border-purple-400/20 shadow-md max-w-[90%] truncate backdrop-blur-sm dark:text-purple-100"
                                                             >
                                                                 {product.organization.name}
                                                             </Badge>
                                                         )}
                                                     </div>
                                                     <CardContent className="p-5 sm:p-6">
-                                                        <div className="flex justify-between items-start mb-3 gap-2">
-                                                            <h4 className="text-lg font-bold text-gray-900 dark:text-white group-hover:text-purple-600 dark:group-hover:text-purple-400 transition-colors line-clamp-2 flex-1">
+                                                        <div className="mb-3">
+                                                            <h4 className="text-lg font-bold text-slate-900 group-hover:text-indigo-700 transition-colors line-clamp-2 dark:text-white dark:group-hover:text-purple-200">
                                                                 {product.name}
                                                             </h4>
-                                                            <span className="text-xl font-bold text-purple-600 dark:text-purple-400 whitespace-nowrap ml-2">
-                                                                {product.price_display}
-                                                            </span>
                                                         </div>
 
-                                                        <p className="text-gray-600 dark:text-gray-300 mb-4 text-sm leading-relaxed line-clamp-3 min-h-[3.75rem]">
+                                                        <p className="text-slate-600 mb-4 text-sm leading-relaxed line-clamp-3 min-h-[3.75rem] dark:text-white/75">
                                                             {product.description}
                                                         </p>
 
-                                                        <div className="flex items-center justify-between mb-4 pb-4 border-b border-gray-100 dark:border-gray-700">
-                                                            <div className="flex items-center gap-1">
-                                                                {[...Array(5)].map((_, i) => (
-                                                                    <Star
-                                                                        key={i}
-                                                                        className={`h-4 w-4 ${
-                                                                            i < Math.floor(product.rating || 0)
-                                                                                ? "text-yellow-400 fill-current"
-                                                                                : "text-gray-300 dark:text-gray-600"
-                                                                        }`}
-                                                                    />
-                                                                ))}
-                                                                <span className="text-sm text-gray-600 dark:text-gray-400 ml-1 font-medium">
-                                                                    {product.rating || 0} ({product.reviews || 0})
+                                                        {product.is_at_cost_pricing ? (
+                                                            (() => {
+                                                                const at = Number(String(product.at_cost_display ?? '').replace(/[^0-9.]/g, '')) || 0
+                                                                const retail = Number(String(product.typical_retail_display ?? '').replace(/[^0-9.]/g, '')) || 0
+                                                                const save = Math.max(0, retail - at)
+                                                                return (
+                                                                    <div className="mb-4 rounded-2xl border border-emerald-500/20 bg-gradient-to-br from-emerald-500/10 via-white to-indigo-500/10 p-4 shadow-[0_10px_30px_rgba(15,23,42,0.08)] dark:border-emerald-400/20 dark:bg-gradient-to-br dark:from-emerald-400/10 dark:via-white/5 dark:to-purple-500/10 dark:shadow-[0_10px_30px_rgba(0,0,0,0.35)]">
+                                                                        <div className="flex items-start justify-between gap-4">
+                                                                            <div>
+                                                                                <p className="text-[11px] uppercase tracking-[0.22em] text-emerald-700/80 dark:text-emerald-200/80">
+                                                                                    Your Price
+                                                                                </p>
+                                                                                <div className="flex items-end gap-2">
+                                                                                    <p className="text-3xl font-extrabold text-emerald-700 tabular-nums dark:text-emerald-300">
+                                                                                        {product.at_cost_display}
+                                                                                    </p>
+                                                                                    <span className="text-sm font-semibold text-emerald-800/90 pb-1 dark:text-emerald-100/90">
+                                                                                        At Cost
+                                                                                    </span>
+                                                                                </div>
+                                                                            </div>
+                                                                            <div className="text-right">
+                                                                                <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500 dark:text-white/60">Typical Retail</p>
+                                                                                <p className="text-sm text-slate-600 line-through tabular-nums dark:text-white/80">
+                                                                                    {product.typical_retail_display}
+                                                                                </p>
+                                                                            </div>
+                                                                        </div>
+                                                                        <div className="mt-3 rounded-xl bg-slate-900/5 px-3 py-2 text-sm text-slate-700 border border-slate-200 dark:bg-black/30 dark:text-white/80 dark:border-white/10">
+                                                                            Platform fee adds <span className="font-semibold text-slate-900 dark:text-white">{product.platform_fee_display}</span> at checkout
+                                                                        </div>
+                                                                        {save > 0 && (
+                                                                            <p className="mt-2 text-sm text-emerald-700/80 dark:text-emerald-200/80">
+                                                                                You save <span className="font-semibold text-emerald-800 tabular-nums dark:text-emerald-200">${save.toFixed(2)}</span>
+                                                                            </p>
+                                                                        )}
+                                                                    </div>
+                                                                )
+                                                            })()
+                                                        ) : (
+                                                            <div className="mb-4">
+                                                                <span className="text-2xl font-bold text-indigo-700 whitespace-nowrap tabular-nums dark:text-purple-200">
+                                                                    {product.price_display}
                                                                 </span>
                                                             </div>
-                                                            <span className="text-xs text-gray-500 dark:text-gray-400 font-medium">
+                                                        )}
+
+                                                        <div className="flex items-center justify-between mb-4 pb-4 border-b border-slate-200 dark:border-white/10">
+                                                            <span className="text-xs text-slate-500 font-medium dark:text-white/60">
                                                                 {product.quantity_available} in stock
                                                             </span>
+                                                            {product.quantity_available > 0 && product.quantity_available <= 5 && (
+                                                                <span className="text-xs font-semibold text-amber-700 dark:text-amber-200">
+                                                                    Low stock
+                                                                </span>
+                                                            )}
                                                         </div>
 
                                                         <div className="flex gap-2">
@@ -505,7 +543,7 @@ export default function Marketplace({
                                                             >
                                                                 <Button
                                                                     disabled={product.quantity_available <= 0}
-                                                                    className="w-full h-11 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white font-semibold disabled:bg-gray-400 disabled:cursor-not-allowed shadow-md hover:shadow-lg transition-all duration-300"
+                                                                    className="w-full h-11 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white font-semibold disabled:bg-gray-500 disabled:cursor-not-allowed shadow-md hover:shadow-lg transition-all duration-300"
                                                                 >
                                                                     <ShoppingCart className="mr-2 h-4 w-4" />
                                                                     Buy Now

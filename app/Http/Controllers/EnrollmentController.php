@@ -6,7 +6,6 @@ use App\Models\Course;
 use App\Models\Enrollment;
 use App\Models\Transaction;
 use App\Services\BiuPlatformFeeService;
-use App\Support\StripeAutomaticTax;
 use App\Support\StripeCustomerChargeAmount;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -244,7 +243,7 @@ class EnrollmentController extends Controller
                     $totalAmountInCents,
                     "Enrollment for {$course->name}",
                     1,
-                    StripeAutomaticTax::mergeCheckoutOptions([
+                    [
                         'success_url' => route('courses.enrollment.success').'?session_id={CHECKOUT_SESSION_ID}',
                         'cancel_url' => route('courses.enrollment.cancel', $enrollment->id),
                         'metadata' => [
@@ -255,7 +254,7 @@ class EnrollmentController extends Controller
                             'course_fee' => $course->course_fee,
                         ],
                         'payment_method_types' => ['card'],
-                    ])
+                    ]
                 );
 
                 DB::commit();

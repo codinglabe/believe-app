@@ -3,7 +3,6 @@
 namespace App\Http\Controllers;
 
 use App\Models\Transaction;
-use App\Support\StripeAutomaticTax;
 use App\Support\StripeCustomerChargeAmount;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -61,7 +60,7 @@ class CreditPurchaseController extends Controller
                 $amountInCents,
                 "Purchase {$creditsToAdd} Credits",
                 1,
-                StripeAutomaticTax::mergeCheckoutOptions([
+                [
                     'success_url' => route('credits.success').'?session_id={CHECKOUT_SESSION_ID}&return_route='.urlencode($returnRoute),
                     'cancel_url' => route('credits.cancel').'?return_route='.urlencode($returnRoute),
                     'metadata' => [
@@ -73,7 +72,7 @@ class CreditPurchaseController extends Controller
                         'return_route' => $returnRoute,
                     ],
                     'payment_method_types' => ['card'],
-                ])
+                ]
             );
 
             // Return Inertia redirect to Stripe checkout

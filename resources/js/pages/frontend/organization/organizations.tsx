@@ -141,14 +141,13 @@ export default function OrganizationsPage() {
   const handleToggleFavorite = (org: Organization, e: React.MouseEvent) => {
     e.preventDefault()
     e.stopPropagation()
-    if (!org.is_registered || favoritingId !== null) return
+    if (favoritingId !== null) return
     if (!isAuthenticated) {
       setShowSignInPopup(true)
       return
     }
     setFavoritingId(org.id)
-    const newState = !org.is_favorited
-    router.post(route("organizations.toggle-favorite", org.id), { toggle_favorite_context: 'organization' }, {
+    router.post(route("organizations.toggle-favorite", org.id), { toggle_favorite_context: "excel" }, {
       preserveScroll: true,
       preserveState: false,
       onSuccess: page => {
@@ -324,22 +323,20 @@ export default function OrganizationsPage() {
                             </Link>
                           </td>
                           <td className="px-4 py-3">
-                            {org.is_registered ? (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="h-8 border-blue-600 text-blue-600 hover:bg-blue-50 dark:border-blue-400 dark:text-blue-400 dark:hover:bg-blue-900/30"
-                                onClick={(e) => handleToggleFavorite(org, e)}
-                                disabled={favoritingId === org.id}
-                              >
-                                <Heart
-                                  className={`h-4 w-4 mr-1 ${org.is_favorited ? "fill-current" : ""}`}
-                                />
-                                Follow
-                              </Button>
-                            ) : (
-                              <span className="text-gray-400 dark:text-gray-500 text-xs">—</span>
-                            )}
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className={`h-8 border-blue-600 text-blue-600 hover:bg-blue-50 dark:border-blue-400 dark:text-blue-400 dark:hover:bg-blue-900/30 ${org.is_favorited ? "bg-blue-50 dark:bg-blue-900/40" : ""}`}
+                              onClick={(e) => handleToggleFavorite(org, e)}
+                              disabled={favoritingId === org.id}
+                              aria-pressed={org.is_favorited}
+                            >
+                              <Heart
+                                className={`h-4 w-4 mr-1 ${org.is_favorited ? "fill-current" : ""}`}
+                              />
+                              {org.is_favorited ? "Following" : "Follow"}
+                            </Button>
                           </td>
                         </tr>
                       ))}
@@ -379,18 +376,18 @@ export default function OrganizationsPage() {
                         >
                           View
                         </Link>
-                        {org.is_registered && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="border-blue-600 text-blue-600 dark:border-blue-400 dark:text-blue-400"
-                            onClick={(e) => handleToggleFavorite(org, e)}
-                            disabled={favoritingId === org.id}
-                          >
-                            <Heart className={`h-4 w-4 mr-1 ${org.is_favorited ? "fill-current" : ""}`} />
-                            Follow
-                          </Button>
-                        )}
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className={`border-blue-600 text-blue-600 dark:border-blue-400 dark:text-blue-400 ${org.is_favorited ? "bg-blue-50 dark:bg-blue-900/40" : ""}`}
+                          onClick={(e) => handleToggleFavorite(org, e)}
+                          disabled={favoritingId === org.id}
+                          aria-pressed={org.is_favorited}
+                        >
+                          <Heart className={`h-4 w-4 mr-1 ${org.is_favorited ? "fill-current" : ""}`} />
+                          {org.is_favorited ? "Following" : "Follow"}
+                        </Button>
                       </div>
                     </div>
                   </motion.div>

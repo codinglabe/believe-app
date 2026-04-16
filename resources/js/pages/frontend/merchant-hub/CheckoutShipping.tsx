@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
 import { Link, router, usePage } from '@inertiajs/react'
+import axios from 'axios'
 import { PageHead } from '@/components/frontend/PageHead'
 import FrontendLayout from '@/layouts/frontend/frontend-layout'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/frontend/ui/card'
@@ -14,11 +15,15 @@ interface OfferSummary {
   image: string
   merchantName: string
   amount: number
+  platformFee: number
+  pointsRequired: number
+  userPoints: number
   currency: string
 }
 
 interface Props {
   offer: OfferSummary
+  defaultPaymentMethod?: 'points' | 'cash'
 }
 
 const COUNTRY_OPTIONS = [
@@ -39,9 +44,29 @@ const COUNTRY_OPTIONS = [
   { value: 'OTHER', label: 'Other' },
 ]
 
-export default function CheckoutShipping({ offer }: Props) {
+interface ShippingMethod {
+  id: string
+  name: string
+  cost: number
+  provider?: string
+  estimated_days?: string
+  total_amount: number
+  stripe_processing_fee_addon?: number
+  charged_total?: number
+}
+
+export default function CheckoutShipping({ offer, defaultPaymentMethod = 'cash' }: Props) {
   const { errors } = usePage().props as { errors?: Record<string, string> }
   const [submitting, setSubmitting] = useState(false)
+  const [quoting, setQuoting] = useState(false)
+  const [paymentMethod, setPaymentMethod] = useState<'points' | 'cash'>(defaultPaymentMethod)
+  const [shipmentId, setShipmentId] = useState('')
+  const [shippingMethods, setShippingMethods] = useState<ShippingMethod[]>([])
+  const [selectedRateId, setSelectedRateId] = useState('')
+  const [subtotalAmount, setSubtotalAmount] = useState<number>(offer.amount)
+  const [platformFeeAmount, setPlatformFeeAmount] = useState<number>(offer.platformFee ?? 0)
+  const [taxAmount, setTaxAmount] = useState<number>(0)
+  const [quoteError, setQuoteError] = useState('')
   const [form, setForm] = useState({
     shipping_name: '',
     shipping_line1: '',
@@ -58,14 +83,64 @@ export default function CheckoutShipping({ offer }: Props) {
     return '/storage/' + src.replace(/^\//, '')
   }
 
+  const selectedMethod = shippingMethods.find(m => m.id === selectedRateId) || null
+  const shippingCost = selectedMethod?.cost ?? 0
+  const basketTotal =
+    selectedMethod?.total_amount ?? subtotalAmount + platformFeeAmount + taxAmount + shippingCost
+  const stripeProcessingFeeAddon =
+    paymentMethod === 'cash' ? Number(selectedMethod?.stripe_processing_fee_addon ?? 0) : 0
+  const chargedTotal =
+    paymentMethod === 'cash'
+      ? Number(selectedMethod?.charged_total ?? basketTotal + stripeProcessingFeeAddon)
+      : basketTotal
+  const hasEnoughPoints = offer.userPoints >= offer.pointsRequired
+
+  const quoteRates = async () => {
+    setQuoting(true)
+    setQuoteError('')
+    try {
+      const response = await axios.post('/merchant-hub/checkout/rates', {
+        offer_id: offer.id,
+        payment_method: paymentMethod,
+        ...form,
+      })
+      const methods: ShippingMethod[] = response.data.shipping_methods || []
+      setShippingMethods(methods)
+      setSelectedRateId(methods[0]?.id ?? '')
+      setShipmentId(response.data.shipment_id ?? '')
+      setSubtotalAmount(Number(response.data.subtotal_amount ?? offer.amount))
+      setPlatformFeeAmount(Number(response.data.platform_fee_amount ?? offer.platformFee ?? 0))
+      setTaxAmount(Number(response.data.tax_amount ?? 0))
+    } catch (error: any) {
+      const message = error?.response?.data?.error || 'Failed to fetch shipping options.'
+      setQuoteError(message)
+      setShippingMethods([])
+      setSelectedRateId('')
+      setShipmentId('')
+    } finally {
+      setQuoting(false)
+    }
+  }
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
+    if (!selectedRateId || !shipmentId) {
+      setQuoteError('Please get shipping options and select a shipping method.')
+      return
+    }
+    if (paymentMethod === 'points' && !hasEnoughPoints) {
+      setQuoteError(`You need ${offer.pointsRequired} points but only have ${offer.userPoints}.`)
+      return
+    }
     setSubmitting(true)
     const country = form.shipping_country === 'OTHER' ? 'US' : form.shipping_country
     router.post('/merchant-hub/checkout', {
       offer_id: offer.id,
+      payment_method: paymentMethod,
       ...form,
       shipping_country: country,
+      shippo_shipment_id: shipmentId,
+      shippo_rate_object_id: selectedRateId,
     }, {
       preserveScroll: true,
       onFinish: () => setSubmitting(false),
@@ -127,6 +202,39 @@ export default function CheckoutShipping({ offer }: Props) {
             </CardHeader>
             <CardContent>
               <form onSubmit={handleSubmit} className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Payment method</Label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setPaymentMethod('points')}
+                      className={`h-10 rounded-md border text-sm font-medium ${
+                        paymentMethod === 'points'
+                          ? 'border-blue-600 text-blue-600'
+                          : 'border-input text-foreground'
+                      }`}
+                    >
+                      Use points ({offer.pointsRequired})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPaymentMethod('cash')}
+                      className={`h-10 rounded-md border text-sm font-medium ${
+                        paymentMethod === 'cash'
+                          ? 'border-green-600 text-green-600'
+                          : 'border-input text-foreground'
+                      }`}
+                    >
+                      Pay with cash
+                    </button>
+                  </div>
+                  {paymentMethod === 'points' && (
+                    <p className={`text-xs ${hasEnoughPoints ? 'text-emerald-600' : 'text-amber-600'}`}>
+                      You have {offer.userPoints} points (need {offer.pointsRequired}).
+                    </p>
+                  )}
+                </div>
+
                 <div className="space-y-2">
                   <Label htmlFor="shipping_name">Full name</Label>
                   <Input
@@ -232,13 +340,100 @@ export default function CheckoutShipping({ offer }: Props) {
                     <p className="text-sm text-red-800 dark:text-red-200">{errors.error}</p>
                   </div>
                 )}
+
+                {quoteError && (
+                  <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+                    <p className="text-sm text-red-800 dark:text-red-200">{quoteError}</p>
+                  </div>
+                )}
+
+                <Button
+                  type="button"
+                  onClick={quoteRates}
+                  disabled={quoting}
+                  variant="outline"
+                  className="w-full h-11"
+                >
+                  {quoting ? 'Loading shipping options...' : 'Get shipping options'}
+                </Button>
+
+                {shippingMethods.length > 0 && (
+                  <div className="space-y-3">
+                    <p className="text-sm font-medium">Choose shipping</p>
+                    {shippingMethods.map(method => (
+                      <label
+                        key={method.id}
+                        className={`flex items-center justify-between rounded-md border p-3 cursor-pointer ${
+                          selectedRateId === method.id ? 'border-blue-600' : 'border-input'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="radio"
+                            checked={selectedRateId === method.id}
+                            onChange={() => setSelectedRateId(method.id)}
+                          />
+                          <div>
+                            <p className="text-sm font-medium">{method.name}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {method.estimated_days && method.estimated_days !== '—'
+                                ? `${method.estimated_days} business days`
+                                : 'Estimated time unavailable'}
+                            </p>
+                          </div>
+                        </div>
+                        <p className="text-sm font-semibold">{offer.currency} {method.cost.toFixed(2)}</p>
+                      </label>
+                    ))}
+                  </div>
+                )}
+
+                <div className="rounded-lg border p-3 space-y-1.5 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Subtotal</span>
+                    <span>{offer.currency} {subtotalAmount.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Platform fee</span>
+                    <span>{offer.currency} {platformFeeAmount.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Shipping</span>
+                    <span>{offer.currency} {shippingCost.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">State sales tax</span>
+                    <span>{offer.currency} {taxAmount.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between pt-1 border-t font-semibold">
+                    <span>{paymentMethod === 'cash' ? 'Order total' : 'Total'}</span>
+                    <span>{offer.currency} {basketTotal.toFixed(2)}</span>
+                  </div>
+                  {paymentMethod === 'cash' && stripeProcessingFeeAddon > 0 && (
+                    <>
+                      <div className="flex justify-between text-muted-foreground">
+                        <span className="text-xs sm:text-sm">Est. card processing fee</span>
+                        <span>{offer.currency} {stripeProcessingFeeAddon.toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between font-semibold">
+                        <span>Total charged (card)</span>
+                        <span>{offer.currency} {chargedTotal.toFixed(2)}</span>
+                      </div>
+                    </>
+                  )}
+                </div>
+
                 <Button
                   type="submit"
-                  disabled={submitting}
+                  disabled={submitting || !selectedRateId || !shipmentId || (paymentMethod === 'points' && !hasEnoughPoints)}
                   className="w-full h-12 text-base"
                   size="lg"
                 >
-                  {submitting ? 'Processing...' : `Continue to payment — ${offer.currency} ${Number(offer.amount).toFixed(2)}`}
+                  {submitting
+                    ? 'Processing...'
+                    : paymentMethod === 'points'
+                      ? `Confirm with points + shipping — ${offer.currency} ${basketTotal.toFixed(2)}`
+                      : `Continue to payment — ${offer.currency} ${chargedTotal.toFixed(2)}`}
                 </Button>
               </form>
             </CardContent>

@@ -216,6 +216,8 @@ class HandleInertiaRequests extends Middleware
                         'balance' => $user->balance,
                         'reward_points' => $user->reward_points ?? 0,
                         'believe_points' => $user->believe_points ?? 0,
+                        'gifted_believe_points' => $user->gifted_believe_points ?? 0,
+                        'believe_points_total' => $user->totalBelievePointsBalance(),
                         'credits' => $user->credits ?? 0,
                         'ai_tokens_used' => $user->ai_tokens_used ?? 0,
                         'ai_tokens_included' => $user->ai_tokens_included ?? 0,

@@ -8,7 +8,6 @@ use App\Models\RaffleWinner;
 use App\Models\Transaction;
 use App\Models\User;
 use App\Services\BiuPlatformFeeService;
-use App\Support\StripeAutomaticTax;
 use App\Support\StripeCustomerChargeAmount;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -239,7 +238,7 @@ class RaffleController extends BaseController
                 $totalInCents,
                 "Raffle tickets for {$raffle->title}",
                 1,
-                StripeAutomaticTax::mergeCheckoutOptions([
+                [
                     'success_url' => route('raffles.success').'?session_id={CHECKOUT_SESSION_ID}',
                     'cancel_url' => route('raffles.cancel'),
                     'metadata' => [
@@ -250,7 +249,7 @@ class RaffleController extends BaseController
                         'type' => 'raffle_tickets',
                     ],
                     'payment_method_types' => ['card', 'afterpay_clearpay', 'affirm'],
-                ])
+                ]
             );
 
             return Inertia::location($checkout->url);

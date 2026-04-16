@@ -176,6 +176,22 @@ class StripeProcessingFeeEstimator
         if (! self::customerPaysProcessingFeeEnabled()) {
             return ['net_usd' => $net, 'gross_usd' => $net, 'fee_addon_usd' => 0.0];
         }
+
+        return self::applyPassThrough($net, $rail);
+    }
+
+    /**
+     * Gross up a net basket/service total so estimated Stripe fees are paid by the customer,
+     * regardless of any feature flag / config.
+     *
+     * @return array{net_usd: float, gross_usd: float, fee_addon_usd: float}
+     */
+    public static function applyPassThrough(float $netUsd, string $rail = 'card'): array
+    {
+        $net = round(max(0, $netUsd), 2);
+        if ($net <= 0) {
+            return ['net_usd' => 0.0, 'gross_usd' => 0.0, 'fee_addon_usd' => 0.0];
+        }
         $gross = $rail === 'us_bank_account'
             ? self::grossUpAchChargeUsdForNetGiftUsd($net)
             : self::grossUpCardChargeUsdForNetGiftUsd($net);

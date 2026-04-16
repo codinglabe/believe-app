@@ -21,12 +21,14 @@ use App\Services\BiuPlatformFeeService;
 use App\Services\PrintifyService;
 use App\Services\ShippoService;
 use App\Services\SupporterActivityService;
-use App\Support\StripeAutomaticTax;
 use App\Support\StripeCustomerChargeAmount;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
@@ -118,6 +120,7 @@ class ProductController extends BaseController
             'merchants_for_ship_from' => $merchantsForShipFrom,
             'blueprints' => $blueprints,
             'printify_enabled' => ! empty($blueprints),
+            'defaultMarkupPercentage' => (float) config('app.printify_profit_margin', 25),
         ]);
     }
 
@@ -310,7 +313,7 @@ class ProductController extends BaseController
                 }
 
             } catch (\Exception $e) {
-                \Log::error('Error fetching Printify product: '.$e->getMessage());
+                Log::error('Error fetching Printify product: '.$e->getMessage());
                 // Fallback: use database variants if available
                 $variantsWithImages = [];
                 if ($product->variants->isNotEmpty()) {
@@ -330,12 +333,15 @@ class ProductController extends BaseController
             }
         } else {
             // For manual products, create a simple variant structure
+            $manualCost = $product->source_cost !== null
+                ? (float) $product->source_cost
+                : (float) ($product->unit_price ?? 0);
             $variantsWithImages = [
                 [
                     'id' => 'manual',
                     'sku' => $product->sku,
                     'name' => $product->name,
-                    'cost' => 0,
+                    'cost' => $manualCost,
                     'price' => $product->unit_price ?? 0,
                     'is_available' => $product->quantity_available > 0,
                     'grams' => 0,
@@ -384,6 +390,7 @@ class ProductController extends BaseController
             'printifyProduct' => $printifyProduct,
             'variants' => $variantsWithImages,
             'firstVariant' => $firstVariant,
+            'platformFeePercentage' => BiuPlatformFeeService::getSalesPlatformFeePercentage(),
             'biddingInfo' => $biddingInfo,
             'biddingClosed' => $biddingClosed,
             'winnerStatus' => $winnerStatus,
@@ -708,7 +715,7 @@ class ProductController extends BaseController
                             $hasActiveSubscription = $organization->user->subscribed();
                         } catch (\Exception $e) {
                             // If subscription check fails, log but don't block
-                            \Log::warning('Failed to check subscription status', [
+                            Log::warning('Failed to check subscription status', [
                                 'user_id' => $organization->user->id,
                                 'error' => $e->getMessage(),
                             ]);
@@ -731,7 +738,7 @@ class ProductController extends BaseController
 
         $productTypeInput = $request->input('type', 'physical');
         $quantityRule = 'required|integer|min:0';
-        $unitPriceRule = $pricingModel === 'fixed' ? 'required|numeric|min:0' : 'nullable|numeric|min:0';
+        $unitPriceRule = $pricingModel === 'fixed' ? 'nullable|numeric|min:0' : 'nullable|numeric|min:0';
 
         // Base validation rules for all products
         $rules = [
@@ -763,7 +770,6 @@ class ProductController extends BaseController
         if ($isPrintifyProduct) {
             // Printify product validation
             $rules = array_merge($rules, [
-                'profit_margin_percentage' => 'required|numeric|min:0|max:1000',
                 'printify_blueprint_id' => 'required|integer',
                 'printify_provider_id' => 'required|integer',
                 'printify_variants' => 'required|array|min:1',
@@ -801,8 +807,8 @@ class ProductController extends BaseController
             }
 
             if (in_array($pricingModel, ['fixed', 'offer'], true)) {
-                $rules['source_cost'] = ['nullable', 'numeric', 'min:0'];
-                $rules['profit_margin_percentage'] = ['nullable', 'numeric', 'min:0', 'max:1000'];
+                $rules['source_cost'] = ['required', 'numeric', 'min:0'];
+                $rules['profit_margin_percentage'] = ['prohibited'];
             }
 
             if ($productTypeInput === 'physical') {
@@ -865,16 +871,8 @@ class ProductController extends BaseController
 
         $validated = $request->validate($rules, $messages);
 
-        if (! $isPrintifyProduct && in_array($pricingModel, ['fixed', 'offer'], true)) {
-            $marginInput = $request->input('profit_margin_percentage');
-            $hasMargin = $marginInput !== null && $marginInput !== '';
-
-            if ($hasMargin && $request->filled('source_cost')) {
-                $costBase = (float) $request->input('source_cost');
-                if ($costBase >= 0) {
-                    $validated['unit_price'] = round($costBase * (1 + ((float) $marginInput) / 100), 2);
-                }
-            }
+        if (! $isPrintifyProduct && in_array($pricingModel, ['fixed', 'offer'], true) && $request->filled('source_cost')) {
+            $validated['unit_price'] = round((float) $request->input('source_cost'), 2);
         }
 
         $validated = $this->normalizeValidatedManualPhysicalShipFrom($validated, $isPrintifyProduct);
@@ -914,8 +912,7 @@ class ProductController extends BaseController
                     throw new \Exception('Failed to fetch product details');
                 }
 
-                // Step 3: Update with correct pricing for ALL variants — selling price = cost × (1 + markup%)
-                $profitMargin = (float) ($validated['profit_margin_percentage'] ?? config('app.printify_profit_margin', 25));
+                // Step 3: Set retail to production cost (at cost)
 
                 // Build updated variants - update ALL variants in the product
                 $updatedVariants = [];
@@ -929,8 +926,8 @@ class ProductController extends BaseController
 
                     $costInCents = $variant['cost'] ?? 0;
 
-                    // Selling price (cents) = cost × (1 + markup/100)
-                    $sellingPriceInCents = (int) round($costInCents * (1 + $profitMargin / 100));
+                    // Selling price (cents) = production cost (at cost)
+                    $sellingPriceInCents = (int) round($costInCents);
 
                     $updatedVariants[] = [
                         'id' => $variant['id'],
@@ -938,11 +935,10 @@ class ProductController extends BaseController
                         'is_enabled' => $isSelected, // Only enable selected variants
                     ];
 
-                    \Log::info('Prepared variant for update', [
+                    Log::info('Prepared variant for update', [
                         'variant_id' => $variant['id'],
                         'is_selected' => $isSelected,
                         'cost_in_cents' => $costInCents,
-                        'profit_margin_percent' => $profitMargin,
                         'selling_price_in_cents' => $sellingPriceInCents,
                     ]);
                 }
@@ -969,14 +965,14 @@ class ProductController extends BaseController
                 $updateResponse = $this->printifyService->updateProduct($printifyProductId, $updatePayload);
 
                 if (isset($updateResponse['status']) && $updateResponse['status'] === 'error') {
-                    \Log::error('Printify update failed', [
+                    Log::error('Printify update failed', [
                         'payload' => $updatePayload,
                         'response' => $updateResponse,
                     ]);
                     throw new \Exception('Printify update failed: '.$updateResponse['message']);
                 }
 
-                \Log::info('Printify product updated successfully', [
+                Log::info('Printify product updated successfully', [
                     'product_id' => $printifyProductId,
                     'total_variants' => count($updatedVariants),
                     'enabled_variants' => count($selectedVariantIds),
@@ -995,16 +991,12 @@ class ProductController extends BaseController
                 $productData['printify_product_id'] = $printifyProductId;
                 $productData['printify_blueprint_id'] = $request->printify_blueprint_id;
                 $productData['printify_provider_id'] = $request->printify_provider_id;
-                $productData['profit_margin_percentage'] = (float) ($validated['profit_margin_percentage'] ?? config('app.printify_profit_margin', 25));
+                $productData['profit_margin_percentage'] = null;
             } else {
                 // For manual products: unit price only; shipping comes from Shippo when the customer checks out
                 $productData['unit_price'] = $validated['unit_price'] ?? 0;
                 $productData['shipping_charge'] = null;
-
-                $manualMargin = $request->input('profit_margin_percentage');
-                $productData['profit_margin_percentage'] = ($manualMargin !== null && $manualMargin !== '')
-                    ? (float) $manualMargin
-                    : (float) config('app.printify_profit_margin', 25);
+                $productData['profit_margin_percentage'] = null;
 
                 if ($request->filled('source_cost')) {
                     $productData['source_cost'] = (float) $request->input('source_cost');
@@ -1194,13 +1186,14 @@ class ProductController extends BaseController
                         'contents' => $base64,  // এখানে contents হবে, content না
                     ];
 
-                    $uploadResult = \Http::withToken(config('printify.api_key'))
+                    /** @var \Illuminate\Http\Client\Response $resp */
+                    $resp = Http::withToken(config('printify.api_key'))
                         ->withHeaders([
                             'Accept' => 'application/json',
                         ])
-                        ->post('https://api.printify.com/v1/uploads/images.json', $payload)
-                        ->throw()
-                        ->json();
+                        ->post('https://api.printify.com/v1/uploads/images.json', $payload);
+                    $resp->throw();
+                    $uploadResult = $resp->json();
                 } else {
                     // First upload the image to Printify
                     $uploadResult = $this->printifyService->uploadImage($fullUrl);
@@ -1220,7 +1213,7 @@ class ProductController extends BaseController
                 ];
 
             } catch (\Exception $e) {
-                \Log::error('Failed to prepare Printify image', [
+                Log::error('Failed to prepare Printify image', [
                     'image_url' => $imageUrl,
                     'error' => $e->getMessage(),
                 ]);
@@ -1283,7 +1276,7 @@ class ProductController extends BaseController
                     }
                 }
             } catch (\Exception $e) {
-                \Log::error('Failed to fetch Printify product data: '.$e->getMessage());
+                Log::error('Failed to fetch Printify product data: '.$e->getMessage());
             }
         }
 
@@ -1437,7 +1430,7 @@ class ProductController extends BaseController
                 $this->autoUnpublishPrintifyProduct($product);
             }
         } catch (\Exception $e) {
-            \Log::error('Failed to handle Printify publish status', [
+            Log::error('Failed to handle Printify publish status', [
                 'product_id' => $product->id,
                 'printify_product_id' => $product->printify_product_id,
                 'old_status' => $oldStatus,
@@ -1459,7 +1452,7 @@ class ProductController extends BaseController
             $publishResult = $this->printifyService->publishProduct($product->printify_product_id);
 
             if ($publishResult['success']) {
-                \Log::info('Printify product auto-published', [
+                Log::info('Printify product auto-published', [
                     'product_id' => $product->id,
                     'printify_product_id' => $product->printify_product_id,
                 ]);
@@ -1471,14 +1464,14 @@ class ProductController extends BaseController
                     route('product.show', $product->id) // Your product URL
                 );
             } else {
-                \Log::warning('Printify product auto-publish failed', [
+                Log::warning('Printify product auto-publish failed', [
                     'product_id' => $product->id,
                     'printify_product_id' => $product->printify_product_id,
                     'error' => $publishResult['error'] ?? 'Unknown error',
                 ]);
             }
         } catch (\Exception $e) {
-            \Log::error('Auto-publish Printify product failed', [
+            Log::error('Auto-publish Printify product failed', [
                 'product_id' => $product->id,
                 'printify_product_id' => $product->printify_product_id,
                 'error' => $e->getMessage(),
@@ -1495,19 +1488,19 @@ class ProductController extends BaseController
             $unpublishResult = $this->printifyService->unpublishProduct($product->printify_product_id);
 
             if ($unpublishResult['success']) {
-                \Log::info('Printify product auto-unpublished', [
+                Log::info('Printify product auto-unpublished', [
                     'product_id' => $product->id,
                     'printify_product_id' => $product->printify_product_id,
                 ]);
             } else {
-                \Log::warning('Printify product auto-unpublish failed', [
+                Log::warning('Printify product auto-unpublish failed', [
                     'product_id' => $product->id,
                     'printify_product_id' => $product->printify_product_id,
                     'error' => $unpublishResult['error'] ?? 'Unknown error',
                 ]);
             }
         } catch (\Exception $e) {
-            \Log::error('Auto-unpublish Printify product failed', [
+            Log::error('Auto-unpublish Printify product failed', [
                 'product_id' => $product->id,
                 'printify_product_id' => $product->printify_product_id,
                 'error' => $e->getMessage(),
@@ -1810,7 +1803,7 @@ class ProductController extends BaseController
             return back()->with('info', 'No valid winning bid (none met reserve price if set). All bidders marked as lost.');
         }
 
-        \DB::transaction(function () use ($product, $winningBid) {
+        DB::transaction(function () use ($product, $winningBid) {
             $product->bids()->where('id', '!=', $winningBid->id)->whereIn('status', ['active', 'winning'])->update(['status' => 'lost']);
             $winningBid->update(['status' => 'winning']);
 
@@ -1869,7 +1862,7 @@ class ProductController extends BaseController
             return back()->withErrors(['bid' => 'This bid cannot be selected as winner.']);
         }
 
-        \DB::transaction(function () use ($product, $bid) {
+        DB::transaction(function () use ($product, $bid) {
             $product->bids()->where('id', '!=', $bid->id)->whereIn('status', ['active', 'winning'])->update(['status' => 'lost']);
             $bid->update(['status' => 'winning']);
 
@@ -2032,13 +2025,10 @@ class ProductController extends BaseController
         $bidAmount = (float) $winningBid->bid_amount;
         $shippingCost = (float) $picked['cost'];
 
-        // LEGACY: StateSalesTax table — skipped when Stripe Checkout automatic tax is enabled.
         $taxAmount = 0.0;
-        if (! StripeAutomaticTax::enabled()) {
-            $stateCode = strtoupper(trim((string) ($winningBid->state ?? '')));
-            $taxRow = StateSalesTax::where('state_code', $stateCode)->first();
-            $taxAmount = $taxRow ? round(($bidAmount * (float) $taxRow->base_sales_tax_rate) / 100, 2) : 0.0;
-        }
+        $stateCode = strtoupper(trim((string) ($winningBid->state ?? '')));
+        $taxRow = StateSalesTax::where('state_code', $stateCode)->first();
+        $taxAmount = $taxRow ? round(($bidAmount * (float) $taxRow->base_sales_tax_rate) / 100, 2) : 0.0;
 
         $totalAmount = $bidAmount + $shippingCost + $taxAmount;
         $amountCents = StripeCustomerChargeAmount::chargeCentsFromNetUsd($totalAmount, 'card');
@@ -2054,7 +2044,7 @@ class ProductController extends BaseController
             'shippo_currency' => $picked['currency'] ?? 'USD',
         ]);
 
-        $checkoutOptions = StripeAutomaticTax::mergeCheckoutOptions([
+        $checkoutOptions = [
             'success_url' => route('products.winning-bid.success', ['product' => $product->id]).'?session_id={CHECKOUT_SESSION_ID}',
             'cancel_url' => route('user.profile.bid-wins'),
             'metadata' => [
@@ -2067,7 +2057,7 @@ class ProductController extends BaseController
                 'tax_amount' => (string) $taxAmount,
             ],
             'payment_method_types' => ['card'],
-        ]);
+        ];
         $checkout = $user->checkoutCharge(
             $amountCents,
             'Winning bid: '.$product->name,
@@ -2103,15 +2093,13 @@ class ProductController extends BaseController
         if (! $winningBid) {
             return redirect()->route('user.profile.bid-wins')->with('error', 'Winning bid not found.');
         }
-        \DB::beginTransaction();
+        DB::beginTransaction();
         try {
             $amount = (float) $winningBid->bid_amount;
             $shippingCost = (float) ($winningBid->shippo_shipping_cost ?? 0);
-            $stripeTaxCents = (int) ($session->total_details->amount_tax ?? 0);
-            $taxAmount = $stripeTaxCents > 0
-                ? round($stripeTaxCents / 100, 2)
-                : (float) ($winningBid->shippo_tax_amount ?? 0);
-            $totalAmount = $amount + $shippingCost + $taxAmount;
+            $taxAmount = (float) ($winningBid->shippo_tax_amount ?? 0);
+            $platformFee = BiuPlatformFeeService::platformFeeFromAmount($amount);
+            $totalAmount = $amount + $platformFee + $shippingCost + $taxAmount;
 
             if (empty($winningBid->address_line1) || empty($winningBid->zip) || empty($winningBid->country)) {
                 abort(422, 'Winner shipping address is missing.');
@@ -2126,8 +2114,7 @@ class ProductController extends BaseController
                 'total_amount' => $totalAmount,
                 'shipping_cost' => $shippingCost,
                 'tax_amount' => $taxAmount,
-                'stripe_tax_amount' => $stripeTaxCents > 0 ? round($stripeTaxCents / 100, 2) : null,
-                'platform_fee' => BiuPlatformFeeService::platformFeeFromAmount($amount),
+                'platform_fee' => $platformFee,
                 'donation_amount' => 0,
                 'status' => 'processing',
                 'payment_status' => 'paid',
@@ -2214,13 +2201,13 @@ class ProductController extends BaseController
                 'quantity_ordered' => $product->quantity_ordered + 1,
                 'quantity_available' => max(0, $product->quantity_available - 1),
             ]);
-            \DB::commit();
+            DB::commit();
 
             try {
                 $order->load('items');
                 app(SupporterActivityService::class)->recordPurchasesForOrder($order);
             } catch (\Throwable $e) {
-                \Log::warning('Supporter activity (purchase) failed', [
+                Log::warning('Supporter activity (purchase) failed', [
                     'order_id' => $order->id,
                     'error' => $e->getMessage(),
                 ]);
@@ -2228,8 +2215,8 @@ class ProductController extends BaseController
 
             return redirect()->route('user.profile.orders')->with('success', 'Payment complete. Your order has been placed.');
         } catch (\Exception $e) {
-            \DB::rollBack();
-            \Log::error('Winning bid payment success error: '.$e->getMessage());
+            DB::rollBack();
+            Log::error('Winning bid payment success error: '.$e->getMessage());
 
             return redirect()->route('user.profile.bid-wins')->with('error', 'Failed to create order.');
         }

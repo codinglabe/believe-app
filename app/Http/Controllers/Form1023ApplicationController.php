@@ -4,7 +4,6 @@ namespace App\Http\Controllers;
 
 use App\Models\AdminSetting;
 use App\Models\Form1023Application;
-use App\Support\StripeAutomaticTax;
 use App\Support\StripeCustomerChargeAmount;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -579,7 +578,7 @@ class Form1023ApplicationController extends Controller
                 $amountInCents,
                 'Form 1023 - Application for Recognition of Exemption',
                 1,
-                StripeAutomaticTax::mergeCheckoutOptions([
+                [
                     'success_url' => route('form1023.apply.success', $application).'?session_id={CHECKOUT_SESSION_ID}',
                     'cancel_url' => route('form1023.apply.cancel', $application),
                     'metadata' => [
@@ -590,7 +589,7 @@ class Form1023ApplicationController extends Controller
                         'user_id' => $user->id,
                     ],
                     'payment_method_types' => ['card', 'afterpay_clearpay', 'affirm'],
-                ])
+                ]
             );
 
             $application->update([
@@ -767,7 +766,7 @@ class Form1023ApplicationController extends Controller
                 $amountInCents,
                 'Form 1023 - Application for Recognition of Exemption',
                 1,
-                StripeAutomaticTax::mergeCheckoutOptions([
+                [
                     'success_url' => route('form1023.apply.success', $application).'?session_id={CHECKOUT_SESSION_ID}',
                     'cancel_url' => route('form1023.apply.cancel', $application),
                     'metadata' => [
@@ -778,7 +777,7 @@ class Form1023ApplicationController extends Controller
                         'user_id' => $user->id,
                     ],
                     'payment_method_types' => ['card', 'afterpay_clearpay', 'affirm'],
-                ])
+                ]
             );
 
             $application->update([
@@ -1112,7 +1111,7 @@ class Form1023ApplicationController extends Controller
                 $amountInCents,
                 'Form 1023 - Application for Recognition of Exemption',
                 1,
-                StripeAutomaticTax::mergeCheckoutOptions([
+                [
                     'success_url' => route('form1023.apply.success', $application).'?session_id={CHECKOUT_SESSION_ID}',
                     'cancel_url' => route('form1023.apply.cancel', $application),
                     'metadata' => [
@@ -1123,7 +1122,7 @@ class Form1023ApplicationController extends Controller
                         'user_id' => $user->id,
                     ],
                     'payment_method_types' => ['card', 'afterpay_clearpay', 'affirm'],
-                ])
+                ]
             );
 
             $application->update([

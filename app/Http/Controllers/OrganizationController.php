@@ -129,7 +129,8 @@ class OrganizationController extends BaseController
 
         // Find registered organizations with these EINs
         $registeredOrgs = [];
-        $userFavorites = [];
+        $userFavoriteOrgIds = [];
+        $userFavoriteExcelIds = [];
 
         if (! empty($eins)) {
             $registeredOrgs = Organization::whereIn('ein', $eins)
@@ -137,14 +138,26 @@ class OrganizationController extends BaseController
                 ->excludingCareAllianceHubs()
                 ->get()
                 ->keyBy('ein');
+        }
 
-            // Get user favorites if authenticated
-            if (Auth::check() && ! $registeredOrgs->isEmpty()) {
-                $userFavorites = UserFavoriteOrganization::where('user_id', Auth::id())
-                    ->whereIn('organization_id', $registeredOrgs->pluck('id'))
-                    ->pluck('organization_id')
-                    ->toArray();
-            }
+        $pageExcelIds = $organizations->pluck('id')->filter()->map(fn ($id) => (int) $id)->values()->all();
+        $registeredOrgIds = collect($registeredOrgs)->pluck('id')->filter()->map(fn ($id) => (int) $id)->values()->all();
+
+        if (Auth::check() && ($pageExcelIds !== [] || $registeredOrgIds !== [])) {
+            $favoriteRows = UserFavoriteOrganization::query()
+                ->where('user_id', Auth::id())
+                ->where(function ($q) use ($pageExcelIds, $registeredOrgIds) {
+                    if ($pageExcelIds !== []) {
+                        $q->whereIn('excel_data_id', $pageExcelIds);
+                    }
+                    if ($registeredOrgIds !== []) {
+                        $q->orWhereIn('organization_id', $registeredOrgIds);
+                    }
+                })
+                ->get(['organization_id', 'excel_data_id']);
+
+            $userFavoriteOrgIds = $favoriteRows->pluck('organization_id')->filter()->map(fn ($id) => (int) $id)->unique()->values()->all();
+            $userFavoriteExcelIds = $favoriteRows->pluck('excel_data_id')->filter()->map(fn ($id) => (int) $id)->unique()->values()->all();
         }
 
         // Get NTEE codes and their categories/descriptions for the organizations
@@ -163,7 +176,7 @@ class OrganizationController extends BaseController
         }
 
         // Transform the data
-        $transformedOrganizations = $organizations->getCollection()->map(function ($item) use ($registeredOrgs, $userFavorites, $nteeCategories, $nteeDescriptions) {
+        $transformedOrganizations = $organizations->getCollection()->map(function ($item) use ($registeredOrgs, $userFavoriteOrgIds, $userFavoriteExcelIds, $nteeCategories, $nteeDescriptions) {
             $rowData = $item->row_data;
             $nteeCode = $item->ntee_code_virtual ?? $rowData[26] ?? '';
 
@@ -184,11 +197,16 @@ class OrganizationController extends BaseController
             // Check if this excel data organization is registered
             $isRegistered = isset($registeredOrgs[$item->ein]);
 
-            // For registered organizations, check if they're favorited by the user
             $isFavorited = false;
-            if ($isRegistered && Auth::check()) {
-                $registeredOrg = $registeredOrgs[$item->ein];
-                $isFavorited = in_array($registeredOrg->id, $userFavorites);
+            if (Auth::check()) {
+                $excelRowId = (int) $item->id;
+                if ($isRegistered) {
+                    $registeredOrg = $registeredOrgs[$item->ein];
+                    $isFavorited = in_array((int) $registeredOrg->id, $userFavoriteOrgIds, true)
+                        || in_array($excelRowId, $userFavoriteExcelIds, true);
+                } else {
+                    $isFavorited = in_array($excelRowId, $userFavoriteExcelIds, true);
+                }
             }
 
             return [

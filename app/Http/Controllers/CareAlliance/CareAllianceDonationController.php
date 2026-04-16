@@ -10,7 +10,6 @@ use App\Models\Organization;
 use App\Services\CareAllianceSplitService;
 use App\Services\SeoService;
 use App\Services\StripeEnvironmentSyncService;
-use App\Support\StripeAutomaticTax;
 use App\Support\StripeCustomerChargeAmount;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -168,7 +167,7 @@ class CareAllianceDonationController extends Controller
             }
             $user->refresh();
 
-            $checkoutOptions = StripeAutomaticTax::mergeCheckoutOptions([
+            $checkoutOptions = [
                 'success_url' => route('care-alliance.donations.success').'?session_id={CHECKOUT_SESSION_ID}',
                 'cancel_url' => route('care-alliance.campaigns.donate', [
                     'allianceSlug' => $allianceSlug,
@@ -178,7 +177,7 @@ class CareAllianceDonationController extends Controller
                     'care_alliance_donation_id' => (string) $donation->id,
                 ],
                 'payment_method_types' => ['card'],
-            ]);
+            ];
 
             $chargeCents = StripeCustomerChargeAmount::chargeCentsFromNetUsd($validated['amount_cents'] / 100, 'card');
 

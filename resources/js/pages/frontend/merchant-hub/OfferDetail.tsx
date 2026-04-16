@@ -439,16 +439,19 @@ export default function OfferDetail({ offerId, offer: initialOffer, relatedOffer
                         </p>
                       )}
                       <div className="flex flex-col sm:flex-row gap-2">
-                        <Button
-                          onClick={() => handleRedeem('points')}
-                          disabled={isRedeeming || redemptionEligibility.userPoints < offer.pointsRequired}
-                          className="flex-1 h-12 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 disabled:opacity-50"
-                          size="lg"
-                        >
-                          {isRedeeming ? 'Processing...' : redemptionEligibility.userPoints >= offer.pointsRequired ? `Use ${offer.pointsRequired.toLocaleString()} points` : `Need ${offer.pointsRequired.toLocaleString()} points`}
-                        </Button>
+                        <Link href={`/merchant-hub/offers/${offer.id}/checkout?payment_method=points`} className="flex-1">
+                          <Button
+                            disabled={redemptionEligibility.userPoints < offer.pointsRequired}
+                            className="w-full h-12 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 disabled:opacity-50"
+                            size="lg"
+                          >
+                            {redemptionEligibility.userPoints >= offer.pointsRequired
+                              ? `Use ${offer.pointsRequired.toLocaleString()} points`
+                              : `Need ${offer.pointsRequired.toLocaleString()} points`}
+                          </Button>
+                        </Link>
                         {(offer.communityCashPrice ?? 0) > 0 && (
-                          <Link href={`/merchant-hub/offers/${offer.id}/checkout`}>
+                          <Link href={`/merchant-hub/offers/${offer.id}/checkout?payment_method=cash`}>
                             <Button
                               variant="outline"
                               className="flex-1 h-12 w-full border-green-500 text-green-600 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20"

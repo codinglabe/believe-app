@@ -24,6 +24,8 @@ interface Order {
   status: string
   payment_status: string
   payment_method?: string | null
+  subtotal?: number
+  platform_fee?: number
   total_amount: number
   shipping_cost?: number
   tax_amount?: number
@@ -161,7 +163,12 @@ export default function ProfileOrders() {
                           </div>
                           <div className="flex items-center gap-1">
                             <DollarSign className="h-4 w-4" />
-                            <span>${order.total_amount}</span>
+                            <span>${Number(order.total_amount).toFixed(2)}</span>
+                            {Number(order.platform_fee) > 0 && (
+                              <span className="text-gray-500 dark:text-gray-500">
+                                (includes platform fee ${Number(order.platform_fee).toFixed(2)})
+                              </span>
+                            )}
                             {order.shipping_cost != null && order.shipping_cost > 0 && (
                               <span className="text-gray-500 dark:text-gray-500">
                                 (incl. shipping ${Number(order.shipping_cost).toFixed(2)})

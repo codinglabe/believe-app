@@ -33,6 +33,8 @@ import {
 interface Brand {
     productId?: number
     productName?: string
+    /** From server: false for Visa/Mastercard-style open-loop products */
+    allowedForGiftedPoints?: boolean
     productImage?: string
     denominations?: number[]
     valueRestrictions?: {
@@ -67,7 +69,11 @@ interface PurchaseDetailsProps {
 export default function PurchaseDetailsPage({ brand, country, user, followingOrganizations }: PurchaseDetailsProps) {
     const page = usePage()
     const auth = (page.props as any).auth
-    const currentBalance = parseFloat(auth?.user?.believe_points) || 0
+    const purchasedBelievePoints = parseFloat(auth?.user?.believe_points) || 0
+    const giftedBelievePoints = parseFloat(auth?.user?.gifted_believe_points) || 0
+    const totalBelievePoints =
+        parseFloat(auth?.user?.believe_points_total) || purchasedBelievePoints + giftedBelievePoints
+    const skuAllowsGifted = brand.allowedForGiftedPoints !== false
 
     const [selectedAmount, setSelectedAmount] = useState<number | null>(null)
     const [customAmount, setCustomAmount] = useState("")
@@ -196,6 +202,10 @@ export default function PurchaseDetailsPage({ brand, country, user, followingOrg
                           (maxVal === null || data.amount <= maxVal) &&
                           data.amount > 0
     const isValidForm = isValidAmount && selectedOrganizationId
+
+    const believePointsSufficientForSku =
+        data.amount > 0 &&
+        (skuAllowsGifted ? totalBelievePoints >= data.amount : purchasedBelievePoints >= data.amount)
 
     return (
         <FrontendLayout>
@@ -493,31 +503,39 @@ export default function PurchaseDetailsPage({ brand, country, user, followingOrg
                                                         paymentMethod === 'believe_points'
                                                             ? 'border-primary bg-primary/10 dark:bg-primary/20'
                                                             : 'border-input hover:border-primary/50 dark:border-gray-600 dark:hover:border-gray-500'
-                                                    } ${currentBalance < data.amount ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                                                    } ${!believePointsSufficientForSku ? 'opacity-50 cursor-not-allowed' : ''}`}>
                                                         <input
                                                             type="radio"
                                                             name="payment_method"
                                                             value="believe_points"
                                                             checked={paymentMethod === 'believe_points'}
                                                             onChange={(e) => setPaymentMethod(e.target.value as 'stripe' | 'believe_points')}
-                                                            disabled={currentBalance < data.amount}
+                                                            disabled={!believePointsSufficientForSku}
                                                             className="w-4 h-4 text-primary"
                                                         />
                                                         <Coins className="h-5 w-5 text-yellow-600" />
                                                         <div className="flex-1">
                                                             <div className="font-semibold flex items-center gap-2 dark:text-white">
                                                                 Pay with Believe Points
-                                                                {currentBalance < data.amount && (
+                                                                {!believePointsSufficientForSku && (
                                                                     <Badge variant="destructive" className="text-xs">
                                                                         Insufficient
                                                                     </Badge>
                                                                 )}
                                                             </div>
                                                             <div className="text-sm text-muted-foreground">
-                                                                Your balance: {currentBalance.toFixed(2)} points
-                                                                {currentBalance >= data.amount && (
-                                                                    <span className="text-green-600 dark:text-green-400 ml-2">
-                                                                        (You'll have {(currentBalance - data.amount).toFixed(2)} points remaining)
+                                                                Total: {totalBelievePoints.toFixed(2)} points
+                                                                <span className="block text-xs mt-0.5">
+                                                                    Purchased {purchasedBelievePoints.toFixed(2)}
+                                                                    {giftedBelievePoints > 0 && (
+                                                                        <span className="text-amber-600 dark:text-amber-400">
+                                                                            {' '}· Gifted {giftedBelievePoints.toFixed(2)}
+                                                                        </span>
+                                                                    )}
+                                                                </span>
+                                                                {believePointsSufficientForSku && (
+                                                                    <span className="text-green-600 dark:text-green-400 ml-2 block sm:inline">
+                                                                        (About {(totalBelievePoints - data.amount).toFixed(2)} points remaining after purchase)
                                                                     </span>
                                                                 )}
                                                             </div>
@@ -525,10 +543,18 @@ export default function PurchaseDetailsPage({ brand, country, user, followingOrg
                                                     </label>
                                                 </div>
 
-                                                {paymentMethod === 'believe_points' && currentBalance < data.amount && (
+                                                {!skuAllowsGifted && giftedBelievePoints > 0 && (
+                                                    <p className="text-xs text-amber-700 dark:text-amber-300 bg-amber-500/10 border border-amber-500/30 rounded-md p-2">
+                                                        Gifted Believe Points cannot be used for Visa or Mastercard products. This card can only be paid with your purchased Believe Points balance.
+                                                    </p>
+                                                )}
+
+                                                {paymentMethod === 'believe_points' && !believePointsSufficientForSku && (
                                                     <p className="text-sm text-destructive flex items-center gap-1">
                                                         <CheckCircle className="h-4 w-4" />
-                                                        You need {data.amount.toFixed(2)} points but only have {currentBalance.toFixed(2)} points.
+                                                        {skuAllowsGifted
+                                                            ? `You need ${data.amount.toFixed(2)} points but only have ${totalBelievePoints.toFixed(2)} points.`
+                                                            : `You need ${data.amount.toFixed(2)} purchased points for this card; you have ${purchasedBelievePoints.toFixed(2)} purchased (${giftedBelievePoints.toFixed(2)} gifted cannot be applied here).`}
                                                     </p>
                                                 )}
                                             </div>
@@ -557,7 +583,7 @@ export default function PurchaseDetailsPage({ brand, country, user, followingOrg
                                                 type="submit"
                                                 className="w-full bg-gradient-to-r from-primary to-primary/90 hover:from-primary/90 hover:to-primary shadow-lg dark:from-primary dark:to-primary/90"
                                                 size="lg"
-                                                disabled={!isValidForm || processing || !isOrganizationApproved || (paymentMethod === 'believe_points' && currentBalance < data.amount)}
+                                                disabled={!isValidForm || processing || !isOrganizationApproved || (paymentMethod === 'believe_points' && !believePointsSufficientForSku)}
                                             >
                                                 {processing ? (
                                                     <>

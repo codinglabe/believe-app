@@ -69,7 +69,6 @@ interface Order {
   subtotal: number
   shipping_cost: number
   tax_amount: number
-  stripe_tax_amount?: number | null
   stripe_fee_amount?: number | null
   stripe_processing_fee_addon?: number | null
   printify_tax_amount?: number
@@ -470,7 +469,7 @@ export default function OrderDetails() {
                     <div>
                       <span className="text-gray-600 dark:text-gray-400">Platform Fee</span>
                       <p className="text-xs text-gray-500 dark:text-gray-500 mt-0.5 max-w-[14rem]">
-                        Deducted from the organization&apos;s selling margin (not added to what you paid).
+                        Added to this order as the platform service fee.
                       </p>
                     </div>
                     <span className="font-medium text-gray-900 dark:text-white tabular-nums shrink-0">
@@ -490,22 +489,9 @@ export default function OrderDetails() {
                     </span>
                   </div>
                   {(() => {
-                    const stripeTax = Number(order?.stripe_tax_amount) || 0
-                    const hasStripeTax = stripeTax > 0
                     const showPrintifyBreakdown =
                       (Number(order?.printify_tax_amount) > 0 ||
-                        Number(order?.additional_sales_tax_adjustment) > 0) &&
-                      !hasStripeTax
-                    if (hasStripeTax) {
-                      return (
-                        <div className="flex justify-between">
-                          <span className="text-gray-600 dark:text-gray-400">Sales tax (Stripe)</span>
-                          <span className="font-medium text-gray-900 dark:text-white">
-                            ${stripeTax.toFixed(2)}
-                          </span>
-                        </div>
-                      )
-                    }
+                        Number(order?.additional_sales_tax_adjustment) > 0)
                     if (showPrintifyBreakdown) {
                       return (
                         <>

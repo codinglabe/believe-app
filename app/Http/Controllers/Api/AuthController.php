@@ -14,7 +14,6 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Validator;
-use Illuminate\Validation\ValidationException;
 
 class AuthController extends Controller
 {
@@ -31,20 +30,22 @@ class AuthController extends Controller
      */
     private function getCountryCodeFromIp(?string $ip): ?string
     {
-        if (!$ip || $ip === '127.0.0.1' || $ip === '::1') {
+        if (! $ip || $ip === '127.0.0.1' || $ip === '::1') {
             return null;
         }
         try {
             $response = Http::timeout(2)->get("https://ip-api.com/json/{$ip}", [
                 'fields' => 'countryCode',
             ]);
-            if (!$response->successful()) {
+            if (! $response->successful()) {
                 return null;
             }
             $code = $response->json('countryCode');
+
             return is_string($code) && strlen($code) === 2 ? strtoupper($code) : null;
         } catch (\Throwable $e) {
             Log::debug('GeoIP lookup failed', ['ip' => $ip, 'error' => $e->getMessage()]);
+
             return null;
         }
     }
@@ -67,7 +68,7 @@ class AuthController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Validation error',
-                'errors' => $validator->errors()
+                'errors' => $validator->errors(),
             ], 422);
         }
 
@@ -82,7 +83,7 @@ class AuthController extends Controller
         ]);
 
         // Assign role if not already assigned
-        if (!$user->hasRole('user')) {
+        if (! $user->hasRole('user')) {
             $user->assignRole('user');
         }
 
@@ -150,16 +151,16 @@ class AuthController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Validation error',
-                'errors' => $validator->errors()
+                'errors' => $validator->errors(),
             ], 422);
         }
 
         $user = User::where('email', $request->email)->first();
 
-        if (!$user || !Hash::check($request->password, $user->password)) {
+        if (! $user || ! Hash::check($request->password, $user->password)) {
             return response()->json([
                 'success' => false,
-                'message' => 'Invalid credentials'
+                'message' => 'Invalid credentials',
             ], 401);
         }
 
@@ -193,7 +194,7 @@ class AuthController extends Controller
     public function logout(Request $request)
     {
         $user = $request->user();
-        
+
         if ($user) {
             // Revoke all tokens for the user
             $user->tokens->each(function ($token) {
@@ -203,7 +204,7 @@ class AuthController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'Logged out successfully'
+            'message' => 'Logged out successfully',
         ]);
     }
 
@@ -224,9 +225,11 @@ class AuthController extends Controller
                 'balance' => $user->balance ?? 0,
                 'reward_points' => $user->reward_points ?? 0,
                 'believe_points' => $user->believe_points ?? 0,
+                'gifted_believe_points' => $user->gifted_believe_points ?? 0,
+                'believe_points_total' => $user->totalBelievePointsBalance(),
                 'email_verified_at' => $user->email_verified_at ? $user->email_verified_at->toIso8601String() : null,
                 'role' => $user->role ?? 'user',
-            ]
+            ],
         ]);
     }
 
@@ -245,6 +248,7 @@ class AuthController extends Controller
                 'user_id' => $user->id,
                 'bridge_customer_id' => $existingIntegration->bridge_customer_id,
             ]);
+
             return;
         }
 
@@ -274,7 +278,7 @@ class AuthController extends Controller
 
         $kycLinkResult = $this->bridgeService->createKYCLink($kycLinkData);
 
-        if (!$kycLinkResult['success']) {
+        if (! $kycLinkResult['success']) {
             Log::error('Failed to create Bridge KYC Link', [
                 'user_id' => $user->id,
                 'error' => $kycLinkResult['error'] ?? 'Unknown error',
@@ -296,8 +300,8 @@ class AuthController extends Controller
         }
 
         // Save Bridge integration
-        if (!$existingIntegration) {
-            $existingIntegration = new BridgeIntegration();
+        if (! $existingIntegration) {
+            $existingIntegration = new BridgeIntegration;
             $existingIntegration->integratable_id = $user->id;
             $existingIntegration->integratable_type = User::class;
         }
@@ -357,7 +361,7 @@ class AuthController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Validation error',
-                'errors' => $validator->errors()
+                'errors' => $validator->errors(),
             ], 422);
         }
 
@@ -369,7 +373,7 @@ class AuthController extends Controller
             ->where('code', $code)
             ->first();
 
-        if (!$verificationCode) {
+        if (! $verificationCode) {
             return response()->json([
                 'success' => false,
                 'message' => 'The code you entered is incorrect',
@@ -395,7 +399,7 @@ class AuthController extends Controller
         // Get user
         $user = $verificationCode->user;
 
-        if (!$user) {
+        if (! $user) {
             return response()->json([
                 'success' => false,
                 'message' => 'User not found.',
@@ -443,13 +447,13 @@ class AuthController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Validation error',
-                'errors' => $validator->errors()
+                'errors' => $validator->errors(),
             ], 422);
         }
 
         $user = User::where('email', $request->email)->first();
 
-        if (!$user) {
+        if (! $user) {
             return response()->json([
                 'success' => false,
                 'message' => 'User not found.',

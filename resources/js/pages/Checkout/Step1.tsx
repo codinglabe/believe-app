@@ -59,8 +59,7 @@ export default function Step1({
   const [isLoading, setIsLoading] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
 
-  // Platform fee removed - customers don't pay it
-  const orderTotal = subtotal
+  const orderTotal = subtotal + platform_fee
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target
@@ -121,7 +120,6 @@ export default function Step1({
     try {
       const response = await axios.post("/checkout/step1", {
         ...formData,
-        // platform_fee: Number.parseFloat(platform_fee.toFixed(2)), // Removed - customers don't pay platform fee
         donation_amount: 0, // Donation disabled for Printify products
       })
 
@@ -379,7 +377,10 @@ export default function Step1({
                 <span>Subtotal</span>
                 <span>${subtotal.toFixed(2)}</span>
               </div>
-              {/* Platform Fee removed - customers don't pay it */}
+              <div className="flex justify-between text-gray-600 dark:text-gray-400">
+                <span>Platform fee ({platform_fee_percentage.toFixed(0)}%)</span>
+                <span>${platform_fee.toFixed(2)}</span>
+              </div>
               <div className="flex justify-between font-bold text-gray-900 dark:text-white border-t border-gray-200 dark:border-gray-700 pt-3">
                 <span>Before Shipping & Tax</span>
                 <span>${orderTotal.toFixed(2)}</span>

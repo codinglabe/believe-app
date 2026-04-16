@@ -6,8 +6,10 @@ use App\Models\Category;
 use App\Models\Organization;
 use App\Models\OrganizationProduct;
 use App\Models\Product;
+use App\Services\BiuPlatformFeeService;
 use App\Services\PrintifyService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -168,8 +170,11 @@ class MarketplaceController extends Controller
      */
     private function processProductsWithImagesNDVariantsPrice($products)
     {
-        return $products->map(function ($product) {
+        $platformFeePercentage = BiuPlatformFeeService::getSalesPlatformFeePercentage();
+
+        return $products->map(function ($product) use ($platformFeePercentage) {
             $productData = $product->toArray();
+            $isAtCostPricing = ! empty($product->organization_id) && $product->pricing_model === 'fixed';
 
             // Handle Printify products
             if ($product->printify_product_id) {
@@ -181,6 +186,7 @@ class MarketplaceController extends Controller
                     // Calculate min and max price from product variants using Printify variant prices
                     if ($productData['variants'] && count($productData['variants']) > 0) {
                         $prices = [];
+                        $costs = [];
 
                         foreach ($productData['variants'] as $productVariant) {
                             $variantId = $productVariant['printify_variant_id'];
@@ -191,6 +197,9 @@ class MarketplaceController extends Controller
                                     // Convert cents to dollars and add to prices array
                                     $priceInDollars = $printifyVariant['price'] / 100;
                                     $prices[] = $priceInDollars;
+                                    if (isset($printifyVariant['cost'])) {
+                                        $costs[] = $printifyVariant['cost'] / 100;
+                                    }
                                     break;
                                 }
                             }
@@ -213,6 +222,15 @@ class MarketplaceController extends Controller
                             // Set base price as minimum
                             $productData['price'] = $minPrice;
                         }
+
+                        if (! empty($costs)) {
+                            $minCost = min($costs);
+                            $maxCost = max($costs);
+                            $productData['at_cost_price'] = $minCost;
+                            $productData['at_cost_display'] = $minCost === $maxCost
+                                ? '$'.number_format($minCost, 2)
+                                : 'From $'.number_format($minCost, 2);
+                        }
                     }
 
                     $firstEnabledVariantPrice = null;
@@ -233,22 +251,41 @@ class MarketplaceController extends Controller
                         $productData['printify_images'] = $printifyProduct['images'];
                     }
                 } catch (\Exception $e) {
-                    \Log::error('Error processing Printify product in marketplace: '.$e->getMessage());
+                    Log::error('Error processing Printify product in marketplace: '.$e->getMessage());
                     // Fallback to basic product data
                 }
             } else {
                 // Handle manual products
                 $unitPrice = $product->unit_price ?? 0;
+                $atCost = $product->source_cost !== null ? (float) $product->source_cost : (float) $unitPrice;
                 $productData['price'] = $unitPrice;
                 $productData['min_price'] = $unitPrice;
                 $productData['max_price'] = $unitPrice;
                 $productData['price_display'] = '$'.number_format($unitPrice, 2);
+                $productData['at_cost_price'] = $atCost;
+                $productData['at_cost_display'] = '$'.number_format($atCost, 2);
 
                 // Use product image if available
                 if ($product->image) {
                     $productData['image'] = $product->image;
                     $productData['image_url'] = $product->image;
                 }
+            }
+
+            $retailAmount = (float) ($productData['price'] ?? $product->unit_price ?? 0);
+            $atCostAmount = (float) ($productData['at_cost_price'] ?? $retailAmount);
+            $effectiveAmount = $isAtCostPricing ? $atCostAmount : $retailAmount;
+
+            $productData['is_at_cost_pricing'] = $isAtCostPricing;
+            $productData['typical_retail_price'] = $retailAmount;
+            $productData['typical_retail_display'] = (string) ($productData['price_display'] ?? '$'.number_format($retailAmount, 2));
+            $productData['platform_fee_percentage'] = $platformFeePercentage;
+            $productData['platform_fee_amount'] = round($effectiveAmount * ($platformFeePercentage / 100), 2);
+            $productData['platform_fee_display'] = '$'.number_format($productData['platform_fee_amount'], 2);
+
+            if ($isAtCostPricing) {
+                $productData['price'] = $atCostAmount;
+                $productData['price_display'] = (string) ($productData['at_cost_display'] ?? '$'.number_format($atCostAmount, 2));
             }
 
             return $productData;

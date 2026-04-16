@@ -15,14 +15,18 @@ Schedule::command('irs:bmf:import --update-only --chunk=1000')
     ->withoutOverlapping()
     ->runInBackground();
 
-
 Schedule::command('rss:warm-nonprofit')->everyFifteenMinutes();
+
+// Followers: in-app + push when someone they follow has a birthday (once per follower–celebrant per year)
+Schedule::command('supporters:notify-birthdays')
+    ->dailyAt('08:00')
+    ->withoutOverlapping()
+    ->runInBackground();
 
 // Warm Unity Videos cache so /unity-videos loads quickly on first visit
 Schedule::command('unity-videos:warm-cache')->everyFiveMinutes();
 
-Schedule::command("model:prune", ['--model' => [\App\Models\SendJob::class]])->daily()->at("03:00")->withoutOverlapping()->runInBackground();
-
+Schedule::command('model:prune', ['--model' => [\App\Models\SendJob::class]])->daily()->at('03:00')->withoutOverlapping()->runInBackground();
 
 Schedule::command('drops:dispatch-due')
     ->everyMinute()
@@ -87,7 +91,6 @@ Schedule::command('log:clean --size=10')
     ->hourly()
     ->withoutOverlapping()
     ->runInBackground();
-
 
 Schedule::command('service-orders:auto-complete')
     ->hourly()

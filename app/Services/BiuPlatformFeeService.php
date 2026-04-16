@@ -8,11 +8,12 @@ use App\Models\AdminSetting;
  * BIU platform fee % for all sales modules (marketplace, service hub, courses, raffles, gift cards, merchant hub).
  *
  * Applied to the sale base amount (product subtotal, ticket total, course fee, gift card face paid, merchant cash spent — not tax/shipping).
- * Marketplace: when {@see MarketplaceOrganizationMarkupService} yields organization markup &gt; 0, pass that as the base so the fee is taken from org profit/margin, not from supplier portions.
- * Not added to what the buyer pays; recorded for splits and the transaction ledger (client workbook: platform_fee deducted from margin).
+ * For marketplace product orders this fee is added to the buyer-facing order total and should appear on receipts / invoices.
  */
 final class BiuPlatformFeeService
 {
+    public const DEFAULT_SALES_PLATFORM_FEE_PERCENTAGE = 10.0;
+
     /** Canonical admin setting (single knob on /admin/biu-fee). */
     public const SETTING_KEY_SALES = 'biu_sales_platform_fee_percentage';
 
@@ -37,7 +38,7 @@ final class BiuPlatformFeeService
             return max(0.0, min(100.0, (float) $v3));
         }
 
-        return 0.0;
+        return self::DEFAULT_SALES_PLATFORM_FEE_PERCENTAGE;
     }
 
     public static function platformFeeFromAmount(float $saleBaseUsd): float

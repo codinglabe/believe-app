@@ -33,7 +33,8 @@ interface Step2Data {
 interface Step2Props {
   items: CartItem[]
   subtotal: number
-  // platform_fee: number // Removed - customers don't pay platform fee
+  platform_fee_percentage: number
+  platform_fee: number
   donation_amount: number
   step2Data: Step2Data
   stripePublishableKey: string
@@ -63,7 +64,7 @@ const cardElementOptions = {
   hidePostalCode: true,
 }
 
-function Step2Form({ items, subtotal, donation_amount, step2Data, onBack }: Omit<Step2Props, "stripePublishableKey">) {
+function Step2Form({ items, subtotal, platform_fee_percentage, platform_fee, donation_amount, step2Data, onBack }: Omit<Step2Props, "stripePublishableKey">) {
   const stripe = useStripe()
   const elements = useElements()
   const [stripeLoaded, setStripeLoaded] = useState(false)
@@ -141,7 +142,7 @@ function Step2Form({ items, subtotal, donation_amount, step2Data, onBack }: Omit
     const m = step2Data.shippingMethods.find((x: { id?: string | number }) => String(x?.id) === String(methodId))
     if (m && typeof m.cost === "number") {
       setCurrentShippingCost(m.cost)
-      const nextBasket = subtotal + m.cost + currentTaxAmount
+      const nextBasket = subtotal + platform_fee + m.cost + currentTaxAmount
       setBasketTotalAmount(nextBasket)
       setCurrentTotalAmount(nextBasket)
     }
@@ -161,7 +162,7 @@ function Step2Form({ items, subtotal, donation_amount, step2Data, onBack }: Omit
     const m = step2Data.shippingMethods.find((x: { id?: string | number }) => String(x?.id) === String(selectedShippingMethod))
     const ship = m && typeof m.cost === "number" ? m.cost : step2Data.shippingCost
     const tax = isTaxCalculated ? currentTaxAmount : step2Data.taxAmount
-    const nextBasket = subtotal + ship + tax
+    const nextBasket = subtotal + platform_fee + ship + tax
     setCurrentShippingCost(ship)
     setCurrentTaxAmount(tax)
     setBasketTotalAmount(nextBasket)
@@ -817,7 +818,10 @@ function Step2Form({ items, subtotal, donation_amount, step2Data, onBack }: Omit
               <span>Subtotal</span>
               <span>${subtotal.toFixed(2)}</span>
             </div>
-            {/* Platform Fee removed - customers don't pay it */}
+            <div className="flex justify-between text-sm text-gray-600 dark:text-gray-400">
+              <span>Platform fee ({platform_fee_percentage.toFixed(0)}%)</span>
+              <span>${platform_fee.toFixed(2)}</span>
+            </div>
             {/* Donation Amount - Removed for Printify products */}
 
             <div className="flex justify-between text-sm text-gray-600 dark:text-gray-400">
@@ -850,10 +854,6 @@ function Step2Form({ items, subtotal, donation_amount, step2Data, onBack }: Omit
                     <span>${additionalTaxLine.toFixed(2)}</span>
                   </div>
                 )}
-                <div className="flex justify-between text-sm font-medium text-gray-700 dark:text-gray-300">
-                  <span>Total tax</span>
-                  <span>${currentTaxAmount.toFixed(2)}</span>
-                </div>
               </>
             ) : (
               <div className="flex justify-between text-sm">
@@ -887,11 +887,10 @@ function Step2Form({ items, subtotal, donation_amount, step2Data, onBack }: Omit
 
             {paymentMethod === "stripe" &&
               isTaxCalculated &&
-              customerPaysProcessingFee &&
               stripeProcessingFeeAddon > 0.0005 && (
                 <>
                   <div className="flex justify-between text-sm border-t border-gray-200 dark:border-gray-700 pt-3 mt-1">
-                    <span className="text-gray-600 dark:text-gray-400">Order total (subtotal, shipping & tax)</span>
+                    <span className="text-gray-600 dark:text-gray-400">Order total (subtotal, platform fee, shipping & tax)</span>
                     <span className="font-medium text-gray-900 dark:text-white tabular-nums">
                       ${basketTotalAmount.toFixed(2)}
                     </span>
@@ -919,7 +918,6 @@ function Step2Form({ items, subtotal, donation_amount, step2Data, onBack }: Omit
               }>
                 {paymentMethod === "stripe" &&
                 isTaxCalculated &&
-                customerPaysProcessingFee &&
                 stripeProcessingFeeAddon > 0.0005
                   ? "Total charged"
                   : "Total"}
@@ -969,10 +967,9 @@ function Step2Form({ items, subtotal, donation_amount, step2Data, onBack }: Omit
               </svg>
               <span className="text-sm font-medium">
                 {paymentMethod === "stripe" &&
-                customerPaysProcessingFee &&
                 stripeProcessingFeeAddon > 0.0005
-                  ? "Estimated Stripe processing fee is shown above and included in your card total when applicable."
-                  : "Shipping and tax are shown in your order summary. Paying by card may include a processing fee pass-through when enabled for your site."}
+                  ? "Estimated Stripe processing fee is shown above and included in your card total."
+                  : "Platform fee, shipping, and tax are shown in your order summary."}
               </span>
             </div>
           </div>

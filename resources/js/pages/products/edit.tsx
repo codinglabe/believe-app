@@ -42,7 +42,7 @@ interface Product {
     unit_price: number;
     /** Your cost / listing cost saved at create (own or Merchant Hub sourced). */
     source_cost?: number | string | null;
-    profit_margin_percentage: number;
+    profit_margin_percentage?: number | null;
     owned_by: string;
     organization_id?: number | null;
     status: string;
@@ -452,9 +452,7 @@ export default function Edit({
                                                 <p>Offer to next if unpaid: {product.offer_to_next_if_unpaid ? 'Yes' : 'No'}</p>
                                             </div>
                                         )}
-                                        <p className="text-muted-foreground">
-                                            Profit margin: {product.profit_margin_percentage ?? '—'}%
-                                        </p>
+                                        {/* Markup removed: at-cost pricing */}
                                     </CardContent>
                                 </Card>
                             )}
@@ -474,19 +472,8 @@ export default function Edit({
                                             {printifyProviderResolved.location.city},{' '}
                                             {printifyProviderResolved.location.region}
                                         </p>
-                                        <p className="mt-3 border-t border-green-200 pt-3 dark:border-green-800">
-                                            <span className="text-green-900/80 dark:text-green-100/80">
-                                                Selling price markup (at creation):
-                                            </span>{' '}
-                                            <span className="font-medium">
-                                                {product.profit_margin_percentage != null &&
-                                                String(product.profit_margin_percentage) !== ''
-                                                    ? `${Number(product.profit_margin_percentage).toFixed(2)}%`
-                                                    : '—'}
-                                            </span>
-                                        </p>
-                                        <p className="mt-1 text-xs opacity-90">
-                                            Variant production costs live in Printify; retail uses cost × (1 + markup ÷ 100).
+                                        <p className="mt-3 border-t border-green-200 pt-3 text-xs opacity-90 dark:border-green-800">
+                                            This product is sold at cost. Typical retail is a reference-only display.
                                         </p>
                                     </CardContent>
                                 </Card>
@@ -501,19 +488,8 @@ export default function Edit({
                                         </CardDescription>
                                     </CardHeader>
                                     <CardContent className="text-sm text-green-800 dark:text-green-200">
-                                        <p>
-                                            <span className="text-green-900/80 dark:text-green-100/80">
-                                                Selling price markup (at creation):
-                                            </span>{' '}
-                                            <span className="font-medium">
-                                                {product.profit_margin_percentage != null &&
-                                                String(product.profit_margin_percentage) !== ''
-                                                    ? `${Number(product.profit_margin_percentage).toFixed(2)}%`
-                                                    : '—'}
-                                            </span>
-                                        </p>
-                                        <p className="mt-1 text-xs opacity-90">
-                                            Production cost per variant is in Printify; retail uses cost × (1 + markup ÷ 100).
+                                        <p className="text-xs opacity-90">
+                                            This product is sold at cost. Typical retail is a reference-only display.
                                         </p>
                                     </CardContent>
                                 </Card>

@@ -2,9 +2,9 @@
 
 namespace App\Services;
 
+use App\Models\User;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
-use App\Models\User;
 
 class GiftCardService
 {
@@ -18,7 +18,7 @@ class GiftCardService
         $explicitBaseUrl = env('PHAZE_BASE_URL');
 
         // If explicit base URL is set, use it
-        if (!empty($explicitBaseUrl)) {
+        if (! empty($explicitBaseUrl)) {
             return rtrim($explicitBaseUrl, '/');
         }
 
@@ -59,7 +59,8 @@ class GiftCardService
             $requestBody = json_encode($body, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
         }
 
-        $stringToSign = $requestMethod . $requestPath . $apiSecret . $requestBody;
+        $stringToSign = $requestMethod.$requestPath.$apiSecret.$requestBody;
+
         return hash('sha256', $stringToSign);
     }
 
@@ -70,7 +71,7 @@ class GiftCardService
     private function makeCurlRequest(string $method, string $endpoint, array $headers = [], $body = null): ?array
     {
         $baseUrl = $this->getBaseUrl();
-        $fullUrl = rtrim($baseUrl, '/') . $endpoint;
+        $fullUrl = rtrim($baseUrl, '/').$endpoint;
 
         $ch = curl_init();
 
@@ -90,7 +91,7 @@ class GiftCardService
         // Set headers
         $headerArray = [];
         foreach ($headers as $key => $value) {
-            $headerArray[] = $key . ': ' . $value;
+            $headerArray[] = $key.': '.$value;
         }
         curl_setopt($ch, CURLOPT_HTTPHEADER, $headerArray);
 
@@ -117,6 +118,7 @@ class GiftCardService
                 'error' => $error,
                 'endpoint' => $endpoint,
             ]);
+
             return null;
         }
 
@@ -128,6 +130,7 @@ class GiftCardService
                 'endpoint' => $endpoint,
                 'http_code' => $httpCode,
             ]);
+
             return null;
         }
 
@@ -143,6 +146,7 @@ class GiftCardService
             // Return error data with httpStatusCode so caller can check for errors
             if (is_array($data)) {
                 $data['httpStatusCode'] = $httpCode;
+
                 return $data;
             }
 
@@ -170,7 +174,8 @@ class GiftCardService
 
             return $this->makeCurlRequest('GET', $endpoint, $headers);
         } catch (\Exception $e) {
-            Log::error('Error fetching Phaze account status: ' . $e->getMessage());
+            Log::error('Error fetching Phaze account status: '.$e->getMessage());
+
             return null;
         }
     }
@@ -207,7 +212,8 @@ class GiftCardService
 
             return $this->makeCurlRequest('POST', $endpoint, $headers, $disbursementData);
         } catch (\Exception $e) {
-            Log::error('Error creating Phaze disbursement: ' . $e->getMessage());
+            Log::error('Error creating Phaze disbursement: '.$e->getMessage());
+
             return null;
         }
     }
@@ -218,7 +224,7 @@ class GiftCardService
     public function getDisbursementStatus(string $disbursementId): ?array
     {
         try {
-            $endpoint = '/disbursements/' . $disbursementId;
+            $endpoint = '/disbursements/'.$disbursementId;
             $headers = [
                 'API-Key' => $this->getApiKey(),
                 'Content-Type' => 'application/json',
@@ -227,7 +233,8 @@ class GiftCardService
 
             return $this->makeCurlRequest('GET', $endpoint, $headers);
         } catch (\Exception $e) {
-            Log::error('Error fetching Phaze disbursement status: ' . $e->getMessage());
+            Log::error('Error fetching Phaze disbursement status: '.$e->getMessage());
+
             return null;
         }
     }
@@ -236,7 +243,7 @@ class GiftCardService
      * Purchase gift card via Phaze API
      * This is called after Stripe payment is successful
      *
-     * @param array $data Purchase data including productId, amount, currency, orderId, externalUserId
+     * @param  array  $data  Purchase data including productId, amount, currency, orderId, externalUserId
      * @return array|null Purchase response from Phaze API
      */
     public function purchaseGiftCard(array $data): ?array
@@ -269,7 +276,7 @@ class GiftCardService
 
             $response = $this->makeCurlRequest('POST', $endpoint, $headers, $purchaseData);
 
-            if (!$response) {
+            if (! $response) {
                 // Try without signature as fallback
                 if ($signature) {
                     Log::info('Phaze purchase: Retrying without signature', [
@@ -281,7 +288,7 @@ class GiftCardService
                 }
             }
 
-            if (!$response) {
+            if (! $response) {
                 Log::warning('Phaze purchase API call failed', [
                     'orderId' => $purchaseData['orderId'],
                     'productId' => $purchaseData['productId'],
@@ -292,10 +299,11 @@ class GiftCardService
 
             return $response;
         } catch (\Exception $e) {
-            Log::error('Error purchasing gift card from Phaze API: ' . $e->getMessage(), [
+            Log::error('Error purchasing gift card from Phaze API: '.$e->getMessage(), [
                 'data' => $data,
                 'trace' => $e->getTraceAsString(),
             ]);
+
             return null;
         }
     }
@@ -303,24 +311,25 @@ class GiftCardService
     /**
      * Get purchase details from Phaze API by purchase/transaction ID
      *
-     * @param string $purchaseId The Phaze purchase/transaction ID
+     * @param  string  $purchaseId  The Phaze purchase/transaction ID
      * @return array|null Purchase details from Phaze API
      */
     public function getPurchaseDetails(string $purchaseId): ?array
     {
         try {
-            $endpoint = '/purchase/' . $purchaseId;
+            $endpoint = '/purchase/'.$purchaseId;
             $apiKey = $this->getApiKey();
 
             if (empty($apiKey)) {
                 Log::warning('Phaze API key not configured');
+
                 return null;
             }
 
             // Generate signature
             $apiSecret = $this->getApiSecret();
             $signature = null;
-            if (!empty($apiSecret)) {
+            if (! empty($apiSecret)) {
                 $signature = $this->generateSignature('GET', $endpoint, null);
             }
 
@@ -338,7 +347,7 @@ class GiftCardService
             // Make request with cURL
             $response = $this->makeCurlRequest('GET', $endpoint, $headers);
 
-            if (!$response) {
+            if (! $response) {
                 // Try without signature as fallback
                 if ($signature) {
                     unset($headers['Signature']);
@@ -348,9 +357,10 @@ class GiftCardService
 
             return $response;
         } catch (\Exception $e) {
-            Log::error('Error fetching purchase details from Phaze API: ' . $e->getMessage(), [
+            Log::error('Error fetching purchase details from Phaze API: '.$e->getMessage(), [
                 'purchase_id' => $purchaseId,
             ]);
+
             return null;
         }
     }
@@ -359,25 +369,26 @@ class GiftCardService
      * Lookup transaction by order ID from Phaze API
      * This is a fallback method - webhooks are preferred for real-time updates
      *
-     * @param string $orderId The order ID to lookup
+     * @param  string  $orderId  The order ID to lookup
      * @return array|null Transaction data or null on failure
      */
     public function lookupTransactionByOrderId(string $orderId): ?array
     {
         try {
-            $endpoint = '/transaction/' . urlencode($orderId);
+            $endpoint = '/transaction/'.urlencode($orderId);
             $baseUrl = $this->getBaseUrl();
             $apiKey = $this->getApiKey();
 
             if (empty($apiKey)) {
                 Log::warning('Phaze API key not configured');
+
                 return null;
             }
 
             // Generate signature
             $apiSecret = $this->getApiSecret();
             $signature = null;
-            if (!empty($apiSecret)) {
+            if (! empty($apiSecret)) {
                 $signature = $this->generateSignature('GET', $endpoint, null);
             }
 
@@ -395,7 +406,7 @@ class GiftCardService
             // Make request with cURL
             $response = $this->makeCurlRequest('GET', $endpoint, $headers);
 
-            if (!$response) {
+            if (! $response) {
                 // Try without signature as fallback
                 if ($signature) {
                     unset($headers['Signature']);
@@ -405,6 +416,7 @@ class GiftCardService
 
             if ($response && isset($response['httpCode']) && $response['httpCode'] >= 200 && $response['httpCode'] < 300) {
                 $data = json_decode($response['body'], true);
+
                 return $data;
             }
 
@@ -416,10 +428,11 @@ class GiftCardService
 
             return null;
         } catch (\Exception $e) {
-            Log::error('Error looking up transaction by order ID: ' . $e->getMessage(), [
+            Log::error('Error looking up transaction by order ID: '.$e->getMessage(), [
                 'order_id' => $orderId,
                 'trace' => $e->getTraceAsString(),
             ]);
+
             return null;
         }
     }
@@ -428,31 +441,47 @@ class GiftCardService
      * Get gift card brands from Phaze API for a specific country
      * Optimized with caching and cURL
      *
-     * @param string $country Country name (e.g., "USA", "Canada", "UK")
-     * @param int $currentPage Page number for pagination (default: 1)
+     * @param  string  $country  Country name (e.g., "USA", "Canada", "UK")
+     * @param  int  $currentPage  Page number for pagination (default: 1)
      * @return array List of brands
      */
     public function getGiftBrands(string $country = 'USA', int $currentPage = 1): array
     {
-        // Create cache key
-        $cacheKey = "phaze_brands_{$country}_page_{$currentPage}";
+        $payload = $this->getGiftBrandsPagePayload($country, $currentPage);
 
-        // Try to get from cache first
+        return $payload['brands'];
+    }
+
+    /**
+     * Brands for one Phaze API page plus pagination hints from the API response (when present).
+     *
+     * @return array{brands: array, total: int|null, last_page: int|null, per_page: int|null}
+     */
+    public function getGiftBrandsPagePayload(string $country = 'USA', int $currentPage = 1): array
+    {
+        // v2: cache stores structured payload (brands + meta); bump key so old entries are ignored
+        $cacheKey = "phaze_brands_v2_{$country}_page_{$currentPage}";
+
         return Cache::remember($cacheKey, self::CACHE_DURATION, function () use ($country, $currentPage) {
             try {
                 $apiKey = $this->getApiKey();
                 if (empty($apiKey)) {
-                    return [];
+                    return [
+                        'brands' => [],
+                        'total' => null,
+                        'last_page' => null,
+                        'per_page' => null,
+                    ];
                 }
 
                 // Build endpoint
-                $endpointPath = '/brands/country/' . urlencode($country);
-                $endpoint = $endpointPath . '?currentPage=' . $currentPage;
+                $endpointPath = '/brands/country/'.urlencode($country);
+                $endpoint = $endpointPath.'?currentPage='.$currentPage;
 
                 // Generate signature
                 $apiSecret = $this->getApiSecret();
                 $signature = null;
-                if (!empty($apiSecret)) {
+                if (! empty($apiSecret)) {
                     $signature = $this->generateSignature('GET', $endpoint, null);
                 }
 
@@ -470,7 +499,7 @@ class GiftCardService
                 // Make request with cURL
                 $response = $this->makeCurlRequest('GET', $endpoint, $headers);
 
-                if (!$response) {
+                if (! $response) {
                     // Try without signature as fallback
                     if ($signature) {
                         unset($headers['Signature']);
@@ -479,14 +508,20 @@ class GiftCardService
                 }
 
                 // Check for API errors
-                if (!$response || !is_array($response)) {
+                if (! $response || ! is_array($response)) {
                     Log::warning('Phaze API brands request failed or returned invalid response', [
                         'country' => $country,
                         'currentPage' => $currentPage,
                         'endpoint' => $endpoint,
                         'response_type' => gettype($response),
                     ]);
-                    return [];
+
+                    return [
+                        'brands' => [],
+                        'total' => null,
+                        'last_page' => null,
+                        'per_page' => null,
+                    ];
                 }
 
                 // Check if response contains an error
@@ -497,7 +532,13 @@ class GiftCardService
                         'error' => $response['error'] ?? $response['message'] ?? 'Unknown error',
                         'http_status' => $response['httpStatusCode'] ?? null,
                     ]);
-                    return [];
+
+                    return [
+                        'brands' => [],
+                        'total' => null,
+                        'last_page' => null,
+                        'per_page' => null,
+                    ];
                 }
 
                 // Extract brands from response
@@ -508,8 +549,10 @@ class GiftCardService
                         $brandName = null;
 
                         // Helper function to check if a value looks like a productId
-                        $isProductId = function($value) {
-                            if (empty($value)) return true;
+                        $isProductId = function ($value) {
+                            if (empty($value)) {
+                                return true;
+                            }
                             $value = trim($value);
                             // ProductIds are usually long numbers (10+ digits)
                             // Brand names usually have letters or are shorter
@@ -524,6 +567,7 @@ class GiftCardService
                             if (preg_match('/^Gift Card #?[0-9]+$/', $value)) {
                                 return true; // This is a generated name, not a real brand name
                             }
+
                             return false;
                         };
 
@@ -539,14 +583,14 @@ class GiftCardService
                             'productTitle',
                             'merchantName',
                             'storeName',
-                            'vendorName'
+                            'vendorName',
                         ];
 
                         foreach ($possibleFields as $field) {
-                            if (isset($brand[$field]) && !empty($brand[$field])) {
+                            if (isset($brand[$field]) && ! empty($brand[$field])) {
                                 $value = trim($brand[$field]);
                                 // Skip if it looks like a productId
-                                if (!$isProductId($value)) {
+                                if (! $isProductId($value)) {
                                     $brandName = $value;
                                     break;
                                 }
@@ -559,7 +603,7 @@ class GiftCardService
                         } else {
                             // Log available fields for debugging (only once per cache cycle to avoid spam)
                             static $hasLoggedStructure = false;
-                            if (!$hasLoggedStructure) {
+                            if (! $hasLoggedStructure) {
                                 Log::info('Phaze API brand structure - checking for name fields', [
                                     'productId' => $brand['productId'] ?? 'unknown',
                                     'available_fields' => array_keys($brand),
@@ -572,7 +616,7 @@ class GiftCardService
                         }
 
                         // Ensure productId is preserved
-                        if (!isset($brand['productId'])) {
+                        if (! isset($brand['productId'])) {
                             Log::warning('Brand missing productId', [
                                 'available_fields' => array_keys($brand),
                             ]);
@@ -581,7 +625,25 @@ class GiftCardService
                         return $brand;
                     }, $response['brands']);
 
-                    return $brands;
+                    $total = $response['totalBrands'] ?? $response['totalCount'] ?? $response['total'] ?? $response['numberOfBrands'] ?? null;
+                    $lastPage = $response['lastPage'] ?? $response['totalPages'] ?? $response['total_pages'] ?? null;
+                    $perPageHint = $response['perPage'] ?? $response['pageSize'] ?? $response['page_size'] ?? null;
+                    if ($total !== null) {
+                        $total = (int) $total;
+                    }
+                    if ($lastPage !== null) {
+                        $lastPage = (int) $lastPage;
+                    }
+                    if ($perPageHint !== null) {
+                        $perPageHint = (int) $perPageHint;
+                    }
+
+                    return [
+                        'brands' => $brands,
+                        'total' => $total,
+                        'last_page' => $lastPage,
+                        'per_page' => $perPageHint,
+                    ];
                 }
 
                 // Log if response structure is unexpected
@@ -589,17 +651,28 @@ class GiftCardService
                     'country' => $country,
                     'currentPage' => $currentPage,
                     'response_keys' => is_array($response) ? array_keys($response) : 'not_array',
-                    'response_preview' => is_array($response) ? json_encode(array_slice($response, 0, 3)) : substr((string)$response, 0, 200),
+                    'response_preview' => is_array($response) ? json_encode(array_slice($response, 0, 3)) : substr((string) $response, 0, 200),
                 ]);
 
-                return [];
+                return [
+                    'brands' => [],
+                    'total' => null,
+                    'last_page' => null,
+                    'per_page' => null,
+                ];
             } catch (\Exception $e) {
-                Log::error('Error fetching gift card brands from Phaze API: ' . $e->getMessage(), [
+                Log::error('Error fetching gift card brands from Phaze API: '.$e->getMessage(), [
                     'country' => $country,
                     'currentPage' => $currentPage,
                     'trace' => $e->getTraceAsString(),
                 ]);
-                return [];
+
+                return [
+                    'brands' => [],
+                    'total' => null,
+                    'last_page' => null,
+                    'per_page' => null,
+                ];
             }
         });
     }
@@ -607,11 +680,12 @@ class GiftCardService
     /**
      * Clear cache for a specific country
      */
-    public function clearBrandsCache(string $country = null): void
+    public function clearBrandsCache(?string $country = null): void
     {
         if ($country) {
             // Clear specific country cache
             for ($page = 1; $page <= 10; $page++) {
+                Cache::forget("phaze_brands_v2_{$country}_page_{$page}");
                 Cache::forget("phaze_brands_{$country}_page_{$page}");
             }
         } else {
@@ -619,6 +693,7 @@ class GiftCardService
             $countries = ['USA', 'Canada', 'UK', 'France', 'India', 'Italy', 'Japan'];
             foreach ($countries as $countryCode) {
                 for ($page = 1; $page <= 10; $page++) {
+                    Cache::forget("phaze_brands_v2_{$countryCode}_page_{$page}");
                     Cache::forget("phaze_brands_{$countryCode}_page_{$page}");
                 }
             }

@@ -15,7 +15,6 @@ use App\Services\SeoService;
 use App\Services\StripeConfigService;
 use App\Services\StripeEnvironmentSyncService;
 use App\Services\StripeProcessingFeeEstimator;
-use App\Support\StripeAutomaticTax;
 use App\Support\StripeCustomerChargeAmount;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -658,8 +657,6 @@ class DonationController extends Controller
                 'payment_method_types' => $feeRail === 'bank' ? ['us_bank_account'] : ['card'],
                 'billing_address_collection' => 'auto',
             ];
-
-            $checkoutOptions = StripeAutomaticTax::mergeCheckoutOptions($checkoutOptions);
 
             if ($validated['frequency'] !== 'one-time') {
                 $checkoutOptions['subscription_data'] = [

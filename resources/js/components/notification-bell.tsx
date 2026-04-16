@@ -42,6 +42,7 @@ interface NotificationBellProps {
 }
 
 const CARE_ALLIANCE_INVITATION_TYPE = "care_alliance_invitation"
+const SUPPORTER_BIRTHDAY_TYPE = "supporter_birthday"
 
 function parseNotificationPayload(data: unknown): Record<string, any> {
   if (data == null) {
@@ -144,6 +145,8 @@ export function NotificationBell({ userId, emailVerified = true, onNotificationC
         router.visit(`/notifications/content/${notification.content_item_id}`)
       } else if (notification.type === CARE_ALLIANCE_INVITATION_TYPE) {
         router.visit("/organization/alliance-membership?tab=invitations#care-alliance-invitations")
+      } else if (notification.type === SUPPORTER_BIRTHDAY_TYPE && notification.meta?.celebrant_id != null) {
+        router.visit(`/supporters/birthday-gift/${notification.meta.celebrant_id}`)
       }
 
       return true
@@ -306,6 +309,9 @@ export function NotificationBell({ userId, emailVerified = true, onNotificationC
     typeof notification.meta?.invitation_id === "number" &&
     notification.meta?.show_care_alliance_actions !== false
 
+  const showSupporterBirthdayActions = (notification: Notification) =>
+    notification.type === SUPPORTER_BIRTHDAY_TYPE && notification.meta?.celebrant_id != null
+
   const handleCareAllianceInvitationAction = async (
     e: MouseEvent<HTMLButtonElement>,
     notification: Notification,
@@ -435,6 +441,43 @@ export function NotificationBell({ userId, emailVerified = true, onNotificationC
                             onClick={(e) => handleCareAllianceInvitationAction(e, notification, "decline")}
                           >
                             Decline
+                          </Button>
+                        </div>
+                      )}
+                      {showSupporterBirthdayActions(notification) && (
+                        <div className="flex flex-wrap gap-2 pt-2">
+                          <Button
+                            type="button"
+                            size="sm"
+                            className="h-8 bg-gradient-to-r from-blue-600 to-violet-600 text-white border-0"
+                            onClick={async (e) => {
+                              e.preventDefault()
+                              e.stopPropagation()
+                              const id = notification.meta?.celebrant_id
+                              if (id == null) return
+                              await markAsRead(notification)
+                              router.visit(`/supporters/birthday-gift/${id}`)
+                            }}
+                          >
+                            Send Gift
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="h-8"
+                            onClick={(e) => {
+                              e.preventDefault()
+                              e.stopPropagation()
+                              const slug = notification.meta?.celebrant_slug
+                              if (slug) {
+                                router.visit(`/users/${slug}`)
+                              } else if (notification.meta?.celebrant_id != null) {
+                                router.visit(`/users/${notification.meta.celebrant_id}`)
+                              }
+                            }}
+                          >
+                            View profile
                           </Button>
                         </div>
                       )}

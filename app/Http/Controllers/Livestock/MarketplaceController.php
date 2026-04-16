@@ -7,7 +7,6 @@ use App\Models\LivestockAnimal;
 use App\Models\LivestockListing;
 use App\Models\LivestockPayout;
 use App\Models\OwnershipHistory;
-use App\Support\StripeAutomaticTax;
 use App\Support\StripeCustomerChargeAmount;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -173,7 +172,7 @@ class MarketplaceController extends BaseController
                 $amountInCents,
                 "Purchase: {$listing->title} - {$listing->animal->breed}",
                 1,
-                StripeAutomaticTax::mergeCheckoutOptions([
+                [
                     'success_url' => route('marketplace.purchase.success').'?session_id={CHECKOUT_SESSION_ID}&listing_id='.$listing->id,
                     'cancel_url' => route('marketplace.purchase.cancel').'?listing_id='.$listing->id,
                     'metadata' => [
@@ -186,7 +185,7 @@ class MarketplaceController extends BaseController
                         'type' => 'animal_purchase',
                     ],
                     'payment_method_types' => ['card'],
-                ])
+                ]
             );
 
             // Return Inertia redirect to Stripe checkout

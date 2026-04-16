@@ -4,7 +4,6 @@ namespace App\Http\Controllers;
 
 use App\Models\AdminSetting;
 use App\Models\ComplianceApplication;
-use App\Support\StripeAutomaticTax;
 use App\Support\StripeCustomerChargeAmount;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -176,7 +175,7 @@ class ComplianceApplicationController extends Controller
                 $amountInCents,
                 '501(c)(3) compliance assistance application fee',
                 1,
-                StripeAutomaticTax::mergeCheckoutOptions([
+                [
                     'success_url' => route('compliance.apply.success', $application).'?session_id={CHECKOUT_SESSION_ID}',
                     'cancel_url' => route('compliance.apply.cancel', $application),
                     'metadata' => [
@@ -188,7 +187,7 @@ class ComplianceApplicationController extends Controller
                         'assistance_types' => implode(',', $assistanceTypes),
                     ],
                     'payment_method_types' => ['card'],
-                ])
+                ]
             );
 
             $application->update([

@@ -6,7 +6,6 @@ use App\Models\FractionalAsset;
 use App\Models\FractionalListing;
 use App\Models\FractionalOffering;
 use App\Models\FractionalOrder;
-use App\Support\StripeAutomaticTax;
 use App\Support\StripeCustomerChargeAmount;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -877,7 +876,7 @@ class FractionalOwnershipController extends Controller
                 $totalAmountInCents,
                 $description,
                 1,
-                StripeAutomaticTax::mergeCheckoutOptions([
+                [
                     'success_url' => route('fractional.purchase.success').'?session_id={CHECKOUT_SESSION_ID}',
                     'cancel_url' => route('fractional.purchase.cancel').'?offering_id='.$offering->id,
                     'metadata' => [
@@ -893,7 +892,7 @@ class FractionalOwnershipController extends Controller
                         'type' => 'fractional_ownership',
                     ],
                     'payment_method_types' => ['card'],
-                ])
+                ]
             );
 
             DB::commit();

@@ -2,12 +2,16 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Merchant;
 use App\Models\MerchantHubOffer;
 use App\Models\MerchantHubOfferRedemption;
 use App\Models\MerchantHubReferralReward;
 use App\Models\Order;
+use App\Models\StateSalesTax;
 use App\Models\Transaction;
 use App\Services\BiuPlatformFeeService;
+use App\Services\ShippoService;
+use App\Services\StripeProcessingFeeEstimator;
 use App\Support\StripeCustomerChargeAmount;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -21,6 +25,8 @@ use SimpleSoftwareIO\QrCode\Facades\QrCode;
 class MerchantRedemptionController extends Controller
 {
     private const REFERRAL_POINTS = 500;
+
+    public function __construct(private readonly ShippoService $shippoService) {}
 
     /**
      * Ensure redemption has a share_token (for post-purchase share link).
@@ -204,6 +210,18 @@ class MerchantRedemptionController extends Controller
                     'merchant_name' => $r->offer->merchant->name ?? 'N/A',
                     'points_used' => (int) $r->points_spent,
                     'cash_paid' => $r->cash_spent ? (float) $r->cash_spent : null,
+                    'subtotal_amount' => $r->subtotal_amount ? (float) $r->subtotal_amount : null,
+                    'shipping_cost' => $r->shipping_cost ? (float) $r->shipping_cost : 0,
+                    'tax_amount' => $r->tax_amount ? (float) $r->tax_amount : 0,
+                    'platform_fee_amount' => $r->platform_fee_amount ? (float) $r->platform_fee_amount : 0,
+                    'total_amount' => $r->total_amount ? (float) $r->total_amount : (float) ($r->cash_spent ?? 0),
+                    'stripe_processing_fee_addon' => $r->stripe_processing_fee_addon !== null
+                        ? (float) $r->stripe_processing_fee_addon
+                        : null,
+                    'shipping_status' => $r->shipping_status,
+                    'tracking_number' => $r->tracking_number,
+                    'tracking_url' => $r->tracking_url,
+                    'label_url' => $r->label_url,
                     'status' => $r->status,
                     'purchased_at' => $r->created_at->toIso8601String(),
                     'confirmed_url' => route('merchant-hub.redemption.confirmed', $r->receipt_code),
@@ -269,6 +287,7 @@ class MerchantRedemptionController extends Controller
             $referencePrice = ($offer->points_required / 1000) * 100 / (float) $offer->discount_percentage;
         }
         $communityCashPrice = $referencePrice > 0 ? round($referencePrice, 2) : 0; // Full amount when paying with cash (no points)
+        $platformFee = BiuPlatformFeeService::platformFeeFromAmount((float) $communityCashPrice);
         $imageUrl = $offer->image_url;
         if ($imageUrl && ! filter_var($imageUrl, FILTER_VALIDATE_URL)) {
             $imageUrl = asset('storage/'.ltrim($imageUrl, '/'));
@@ -281,15 +300,21 @@ class MerchantRedemptionController extends Controller
                 'image' => $imageUrl ?: '/placeholder.jpg',
                 'merchantName' => $offer->merchant->name,
                 'amount' => $communityCashPrice,
+                'platformFee' => $platformFee,
+                'pointsRequired' => (int) ($offer->points_required ?? 0),
+                'userPoints' => (int) ($user->reward_points ?? 0),
                 'currency' => $offer->currency ?? 'USD',
             ],
+            'defaultPaymentMethod' => in_array($request->string('payment_method')->toString(), ['points', 'cash'], true)
+                ? $request->string('payment_method')->toString()
+                : 'cash',
         ]);
     }
 
     /**
-     * Submit shipping address and create Stripe checkout for pay with cash.
+     * Quote Shippo rates from merchant address to buyer shipping address.
      */
-    public function checkoutStore(Request $request)
+    public function checkoutRates(Request $request)
     {
         $request->validate([
             'offer_id' => 'required|integer|exists:merchant_hub_offers,id',
@@ -300,34 +325,201 @@ class MerchantRedemptionController extends Controller
             'shipping_state' => 'nullable|string|max:100',
             'shipping_postal_code' => 'required|string|max:20',
             'shipping_country' => 'required|string|size:2',
+            'payment_method' => 'required|in:points,cash',
         ]);
         $user = Auth::user();
         if (! $user) {
-            return back()->withErrors(['error' => 'You must be logged in.']);
+            return response()->json(['error' => 'You must be logged in.'], 401);
         }
         $offer = MerchantHubOffer::with('merchant')->findOrFail($request->offer_id);
         if (! $offer->isAvailable()) {
-            return back()->withErrors(['error' => 'This offer is no longer available.']);
+            return response()->json(['error' => 'This offer is no longer available.'], 422);
         }
         $referencePrice = (float) ($offer->reference_price ?? 0);
         if ($referencePrice <= 0 && $offer->points_required > 0 && $offer->discount_percentage > 0) {
             $referencePrice = ($offer->points_required / 1000) * 100 / (float) $offer->discount_percentage;
         }
         if ($referencePrice <= 0) {
-            return back()->withErrors(['error' => 'This offer does not support cash purchase.']);
+            return response()->json(['error' => 'This offer does not support purchase.'], 422);
         }
-        $cashAmount = round($referencePrice, 2); // Full amount when paying with cash (no points)
+
+        $subtotalAmount = round($referencePrice, 2); // Full amount when paying with cash (no points)
+        $platformFeeAmount = BiuPlatformFeeService::platformFeeFromAmount((float) $subtotalAmount);
+
+        if (! $this->shippoService->isConfigured()) {
+            return response()->json(['error' => 'Shippo is not configured.'], 503);
+        }
+
+        $merchantModel = $this->resolveMerchantAddressOwner($offer);
+        if (! $merchantModel) {
+            return response()->json(['error' => 'Merchant shipping address is not configured.'], 422);
+        }
+
+        $shipFrom = $this->shippoService->shipFromPayloadForMerchant($merchantModel);
+        $shipTo = [
+            'name' => (string) $request->shipping_name,
+            'street1' => (string) $request->shipping_line1,
+            'street2' => (string) ($request->shipping_line2 ?? ''),
+            'city' => (string) $request->shipping_city,
+            'state' => (string) ($request->shipping_state ?? ''),
+            'zip' => (string) $request->shipping_postal_code,
+            'country' => $this->shippoService->normalizeCountryToIso2((string) $request->shipping_country),
+            'phone' => $this->shippoService->ensureRecipientPhoneForShippo($user->contact_number ?? null),
+            'email' => (string) $user->email,
+        ];
+        $parcel = [
+            'length' => '10',
+            'width' => '8',
+            'height' => '4',
+            'distance_unit' => 'in',
+            'weight' => '16',
+            'mass_unit' => 'oz',
+        ];
+        $ratesResult = $this->shippoService->getRatesForAddresses($shipFrom, $shipTo, $parcel);
+        if (empty($ratesResult['success']) || empty($ratesResult['rates'])) {
+            return response()->json(['error' => $ratesResult['error'] ?? 'No shipping rates found.'], 422);
+        }
+
+        $methods = $this->shippoService->ratesToCheckoutMethods($ratesResult['rates']);
+        if ($methods === []) {
+            return response()->json(['error' => 'No shipping methods available for this address.'], 422);
+        }
+
+        $taxAmount = $this->calculateStateSalesTaxForAmount(
+            (float) $subtotalAmount,
+            (string) ($request->shipping_state ?? '')
+        );
+
+        $paymentMethod = (string) $request->payment_method;
+        $methods = array_map(function (array $m) use ($subtotalAmount, $platformFeeAmount, $taxAmount, $paymentMethod) {
+            $shipping = round((float) ($m['cost'] ?? 0), 2);
+            $m['cost'] = $shipping;
+            $basket = round($subtotalAmount + $platformFeeAmount + $taxAmount + $shipping, 2);
+            $m['total_amount'] = $basket;
+            if ($paymentMethod === 'cash') {
+                $pt = StripeProcessingFeeEstimator::applyPassThrough($basket, 'card');
+                $m['stripe_processing_fee_addon'] = $pt['fee_addon_usd'];
+                $m['charged_total'] = $pt['gross_usd'];
+            } else {
+                $m['stripe_processing_fee_addon'] = 0.0;
+                $m['charged_total'] = $basket;
+            }
+
+            return $m;
+        }, $methods);
+
+        return response()->json([
+            'success' => true,
+            'shipment_id' => $ratesResult['shipment_id'] ?? null,
+            'shipping_methods' => $methods,
+            'subtotal_amount' => $subtotalAmount,
+            'platform_fee_amount' => $platformFeeAmount,
+            'tax_amount' => $taxAmount,
+            'points_required' => (int) ($offer->points_required ?? 0),
+            'user_points' => (int) ($user->reward_points ?? 0),
+            'payment_method' => $paymentMethod,
+            'stripe_processing_fee_applied' => $paymentMethod === 'cash',
+        ]);
+    }
+
+    /**
+     * Submit shipping + shipping method and continue to payment/confirmation.
+     */
+    public function checkoutStore(Request $request)
+    {
+        $request->validate([
+            'offer_id' => 'required|integer|exists:merchant_hub_offers,id',
+            'payment_method' => 'required|in:points,cash',
+            'shipping_name' => 'required|string|max:255',
+            'shipping_line1' => 'required|string|max:255',
+            'shipping_line2' => 'nullable|string|max:255',
+            'shipping_city' => 'required|string|max:100',
+            'shipping_state' => 'nullable|string|max:100',
+            'shipping_postal_code' => 'required|string|max:20',
+            'shipping_country' => 'required|string|size:2',
+            'shippo_shipment_id' => 'required|string|max:120',
+            'shippo_rate_object_id' => 'required|string|max:120',
+        ]);
+        $user = Auth::user();
+        if (! $user) {
+            return back()->withErrors(['error' => 'You must be logged in.']);
+        }
+
+        $offer = MerchantHubOffer::with('merchant')->findOrFail($request->offer_id);
+        if (! $offer->isAvailable()) {
+            return back()->withErrors(['error' => 'This offer is no longer available.']);
+        }
+
+        if (! $this->shippoService->isConfigured()) {
+            return back()->withErrors(['error' => 'Shipping is not configured.']);
+        }
+
+        $rates = $this->shippoService->retrieveShipmentRates((string) $request->shippo_shipment_id);
+        if (empty($rates['success']) || empty($rates['rates'])) {
+            return back()->withErrors(['error' => $rates['error'] ?? 'Could not refresh shipping rates. Please try again.']);
+        }
+        $methods = $this->shippoService->ratesToCheckoutMethods($rates['rates']);
+        $selectedRate = collect($methods)->first(function ($m) use ($request) {
+            return (string) ($m['id'] ?? '') === (string) $request->shippo_rate_object_id;
+        });
+        if (! $selectedRate) {
+            return back()->withErrors(['error' => 'Selected shipping method is no longer available. Please refresh rates.']);
+        }
+
+        $referencePrice = (float) ($offer->reference_price ?? 0);
+        if ($referencePrice <= 0 && $offer->points_required > 0 && $offer->discount_percentage > 0) {
+            $referencePrice = ($offer->points_required / 1000) * 100 / (float) $offer->discount_percentage;
+        }
+        if ($referencePrice <= 0) {
+            return back()->withErrors(['error' => 'This offer does not support purchase.']);
+        }
+
+        $subtotalAmount = round($referencePrice, 2);
+        $platformFeeAmount = BiuPlatformFeeService::platformFeeFromAmount((float) $subtotalAmount);
+        $shippingCost = round((float) ($selectedRate['cost'] ?? 0), 2);
+        $taxAmount = $this->calculateStateSalesTaxForAmount(
+            (float) $subtotalAmount,
+            (string) ($request->shipping_state ?? '')
+        );
+        $totalAmount = round($subtotalAmount + $platformFeeAmount + $shippingCost + $taxAmount, 2);
         $receiptCode = 'RED-'.strtoupper(Str::random(8));
-        if (! config('cashier.secret')) {
-            return back()->withErrors(['error' => 'Stripe is not configured. Set STRIPE_SECRET in your .env file.']);
-        }
+        $paymentMethod = (string) $request->payment_method;
+        $cardPassThrough = $paymentMethod === 'cash'
+            ? StripeProcessingFeeEstimator::applyPassThrough($totalAmount, 'card')
+            : ['gross_usd' => $totalAmount, 'fee_addon_usd' => 0.0];
+        $chargedGrossUsd = round((float) $cardPassThrough['gross_usd'], 2);
+        $stripeProcessingFeeAddon = round(max(0.0, (float) $cardPassThrough['fee_addon_usd']), 2);
+
         DB::beginTransaction();
         try {
+            $pointsRequired = (int) ($offer->points_required ?? 0);
+
+            if ($paymentMethod === 'points') {
+                $user->refresh();
+                $userPoints = (int) ($user->reward_points ?? 0);
+                if ($userPoints < $pointsRequired) {
+                    DB::rollBack();
+
+                    return back()->withErrors(['error' => 'You do not have enough reward points for this offer.']);
+                }
+            }
+
             $redemption = MerchantHubOfferRedemption::create([
                 'merchant_hub_offer_id' => $offer->id,
                 'user_id' => $user->id,
-                'points_spent' => 0,
-                'cash_spent' => $cashAmount,
+                'points_spent' => $paymentMethod === 'points' ? $pointsRequired : 0,
+                'cash_spent' => $paymentMethod === 'cash' ? $chargedGrossUsd : 0,
+                'subtotal_amount' => $subtotalAmount,
+                'platform_fee_amount' => $platformFeeAmount,
+                'shipping_cost' => $shippingCost,
+                'tax_amount' => $taxAmount,
+                'total_amount' => $totalAmount,
+                'stripe_processing_fee_addon' => $paymentMethod === 'cash' && $stripeProcessingFeeAddon > 0
+                    ? $stripeProcessingFeeAddon
+                    : null,
+                'shippo_shipment_id' => (string) $request->shippo_shipment_id,
+                'shippo_rate_object_id' => (string) $request->shippo_rate_object_id,
+                'carrier' => $selectedRate['provider'] ?? null,
                 'status' => 'pending',
                 'receipt_code' => $receiptCode,
                 'shipping_name' => $request->shipping_name,
@@ -336,12 +528,72 @@ class MerchantRedemptionController extends Controller
                 'shipping_city' => $request->shipping_city,
                 'shipping_state' => $request->shipping_state,
                 'shipping_postal_code' => $request->shipping_postal_code,
-                'shipping_country' => strtoupper($request->shipping_country),
+                'shipping_country' => strtoupper((string) $request->shipping_country),
             ]);
-            $amountCents = StripeCustomerChargeAmount::chargeCentsFromNetUsd($cashAmount, 'card');
+
+            if ($paymentMethod === 'points') {
+                $user->decrement('reward_points', $pointsRequired);
+                \App\Models\RewardPointLedger::createDebit(
+                    $user->id,
+                    'merchant_hub_redemption',
+                    $redemption->id,
+                    $pointsRequired,
+                    "Redeemed merchant offer: {$offer->title}",
+                    [
+                        'offer_id' => $offer->id,
+                        'offer_title' => $offer->title,
+                        'merchant_name' => $offer->merchant->name,
+                        'receipt_code' => $receiptCode,
+                        'redemption_id' => $redemption->id,
+                    ]
+                );
+
+                $redemption->update(['status' => 'approved']);
+                $this->ensureShareToken($redemption);
+                $this->attemptShippoLabelPurchaseForRedemption($redemption);
+
+                Transaction::create([
+                    'user_id' => $user->id,
+                    'related_id' => $redemption->id,
+                    'related_type' => MerchantHubOfferRedemption::class,
+                    'type' => 'purchase',
+                    'status' => 'completed',
+                    'amount' => 0,
+                    'fee' => 0,
+                    'currency' => $offer->currency ?? 'USD',
+                    'payment_method' => 'points',
+                    'meta' => [
+                        'points_spent' => $pointsRequired,
+                        'offer_id' => $offer->id,
+                        'receipt_code' => $receiptCode,
+                        'shipping_cost' => $shippingCost,
+                        'tax_amount' => $taxAmount,
+                        'platform_fee_amount' => $platformFeeAmount,
+                        'total_amount' => $totalAmount,
+                        'shippo_shipment_id' => $redemption->shippo_shipment_id,
+                        'shippo_rate_object_id' => $redemption->shippo_rate_object_id,
+                    ],
+                    'processed_at' => now(),
+                ]);
+
+                DB::commit();
+
+                return redirect()->route('merchant-hub.redemption.confirmed', $redemption->receipt_code);
+            }
+
+            if (! config('cashier.secret')) {
+                DB::rollBack();
+
+                return back()->withErrors(['error' => 'Stripe is not configured.']);
+            }
+
+            $amountCents = (int) round($chargedGrossUsd * 100);
             if ($amountCents < 50) {
+                DB::rollBack();
+
                 return back()->withErrors(['error' => 'Minimum charge amount is 0.50. This offer cannot be purchased with cash.']);
             }
+
             $currency = strtolower($offer->currency ?? 'usd');
             $merchantName = $offer->merchant ? $offer->merchant->name : 'Merchant';
             $checkout = $user->checkout([
@@ -358,31 +610,39 @@ class MerchantRedemptionController extends Controller
                 ],
             ], [
                 'success_url' => route('merchant-hub.redemption.stripe-success').'?session_id={CHECKOUT_SESSION_ID}',
-                'cancel_url' => route('merchant-hub.offer.checkout', $offer->id),
+                'cancel_url' => route('merchant-hub.offer.checkout', $offer->id).'?payment_method=cash',
                 'payment_method_types' => ['card'],
-                'metadata' => [
+                'automatic_tax' => ['enabled' => false],
+                'metadata' => array_filter([
                     'redemption_id' => (string) $redemption->id,
                     'user_id' => (string) $user->id,
                     'offer_id' => (string) $offer->id,
                     'type' => 'merchant_hub_redemption',
                     'payment_method' => 'cash',
-                    'cash_amount' => (string) $cashAmount,
+                    'cash_amount' => (string) $chargedGrossUsd,
+                    'basket_total' => (string) $totalAmount,
+                    'stripe_processing_fee_addon' => (string) $stripeProcessingFeeAddon,
+                    'subtotal_amount' => (string) $subtotalAmount,
+                    'platform_fee_amount' => (string) $platformFeeAmount,
+                    'shipping_cost' => (string) $shippingCost,
+                    'tax_amount' => (string) $taxAmount,
+                    'shippo_shipment_id' => (string) $request->shippo_shipment_id,
+                    'shippo_rate_object_id' => (string) $request->shippo_rate_object_id,
                     'receipt_code' => $receiptCode,
                     'currency' => $currency,
-                ],
+                ], fn ($v) => $v !== null && $v !== ''),
             ]);
+
             DB::commit();
 
             return Inertia::location($checkout->url);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             DB::rollBack();
             Log::error('Merchant hub checkout error: '.$e->getMessage(), [
                 'exception' => $e,
-                'trace' => $e->getTraceAsString(),
             ]);
-            $message = config('app.debug') ? $e->getMessage() : 'Could not start checkout. Please try again.';
 
-            return back()->withErrors(['error' => $message]);
+            return back()->withErrors(['error' => 'Could not start checkout. Please try again.']);
         }
     }
 
@@ -449,6 +709,8 @@ class MerchantRedemptionController extends Controller
                     'success_url' => route('merchant-hub.redemption.stripe-success').'?session_id={CHECKOUT_SESSION_ID}',
                     'cancel_url' => route('merchant-hub.offer.show', $offer->id),
                     'payment_method_types' => ['card'],
+                    // Merchant hub offer checkout uses app-side state tax; disable Stripe automatic tax.
+                    'automatic_tax' => ['enabled' => false],
                     'metadata' => [
                         'user_id' => (string) $user->id,
                         'offer_id' => (string) $offer->id,
@@ -577,6 +839,8 @@ class MerchantRedemptionController extends Controller
                 $redemption = MerchantHubOfferRedemption::with(['offer'])->findOrFail($redemptionId);
                 $redemption->update(['status' => 'approved']);
                 $this->ensureShareToken($redemption);
+                $this->attemptShippoLabelPurchaseForRedemption($redemption);
+
                 Transaction::create([
                     'user_id' => $redemption->user_id,
                     'related_id' => $redemption->id,
@@ -593,7 +857,7 @@ class MerchantRedemptionController extends Controller
                         'points_spent' => 0,
                         'offer_id' => $redemption->offer->id,
                         'receipt_code' => $redemption->receipt_code,
-                    ], BiuPlatformFeeService::ledgerMetaSlice((float) $redemption->cash_spent)),
+                    ], BiuPlatformFeeService::ledgerMetaSlice((float) ($redemption->subtotal_amount ?? $redemption->cash_spent))),
                     'processed_at' => now(),
                 ]);
             } else {
@@ -632,7 +896,7 @@ class MerchantRedemptionController extends Controller
                         'points_spent' => 0,
                         'offer_id' => $redemption->offer->id,
                         'receipt_code' => $redemption->receipt_code,
-                    ], BiuPlatformFeeService::ledgerMetaSlice((float) $redemption->cash_spent)),
+                    ], BiuPlatformFeeService::ledgerMetaSlice((float) ($redemption->subtotal_amount ?? $redemption->cash_spent))),
                     'processed_at' => now(),
                 ]);
             }
@@ -769,6 +1033,65 @@ class MerchantRedemptionController extends Controller
             } catch (\Exception $e2) {
                 return response('QR Code generation failed', 500);
             }
+        }
+    }
+
+    private function calculateStateSalesTaxForAmount(float $amountUsd, string $state): float
+    {
+        $state = strtoupper(trim($state));
+        if ($state === '' || $amountUsd <= 0) {
+            return 0.0;
+        }
+
+        $stateTax = StateSalesTax::where('state_code', $state)->first();
+        if (! $stateTax) {
+            return 0.0;
+        }
+
+        $rate = (float) $stateTax->base_sales_tax_rate;
+
+        return round(($amountUsd * $rate) / 100, 2);
+    }
+
+    private function resolveMerchantAddressOwner(MerchantHubOffer $offer): ?Merchant
+    {
+        return Merchant::where('business_name', $offer->merchant->name)
+            ->orWhere('name', $offer->merchant->name)
+            ->with('shippingAddresses')
+            ->first();
+    }
+
+    private function attemptShippoLabelPurchaseForRedemption(MerchantHubOfferRedemption $redemption): void
+    {
+        try {
+            if (
+                ! $this->shippoService->isConfigured()
+                || empty($redemption->shippo_rate_object_id)
+                || ! empty($redemption->tracking_number)
+            ) {
+                return;
+            }
+
+            $purchase = $this->shippoService->purchaseLabel((string) $redemption->shippo_rate_object_id);
+            if (($purchase['success'] ?? false) !== true) {
+                return;
+            }
+
+            $redemption->update([
+                'shippo_transaction_id' => $purchase['transaction_id'] ?? null,
+                'tracking_number' => $purchase['tracking_number'] ?? null,
+                'tracking_url' => $purchase['tracking_url'] ?? null,
+                'label_url' => $purchase['label_url'] ?? null,
+                'carrier' => $purchase['carrier'] ?? $redemption->carrier,
+                'shipping_status' => 'label_created',
+                'shipped_at' => now(),
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Shippo label purchase failed for merchant hub offer', [
+                'redemption_id' => $redemption->id,
+                'offer_id' => $redemption->merchant_hub_offer_id,
+                'error' => $e->getMessage(),
+            ]);
         }
     }
 

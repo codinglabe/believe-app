@@ -46,6 +46,7 @@ class User extends Authenticatable implements MustVerifyEmail
         'balance',
         'reward_points',
         'believe_points',
+        'gifted_believe_points',
         'believe_points_auto_replenish_enabled',
         'believe_points_auto_replenish_threshold',
         'believe_points_auto_replenish_amount',
@@ -156,6 +157,7 @@ class User extends Authenticatable implements MustVerifyEmail
             'ai_tokens_included' => 'integer',
             'ai_tokens_used' => 'integer',
             'believe_points' => 'decimal:2',
+            'gifted_believe_points' => 'decimal:2',
             'believe_points_auto_replenish_enabled' => 'boolean',
             'believe_points_auto_replenish_threshold' => 'decimal:2',
             'believe_points_auto_replenish_amount' => 'decimal:2',
@@ -894,6 +896,81 @@ class User extends Authenticatable implements MustVerifyEmail
         ProcessBelievePointsAutoReplenishJob::dispatch($this->id)->afterResponse();
 
         return true;
+    }
+
+    /**
+     * Purchased Believe Points + Gifted Believe Points (display total wallet).
+     */
+    public function totalBelievePointsBalance(): float
+    {
+        $p = round((float) ($this->believe_points ?? 0), 2);
+        $g = round((float) ($this->gifted_believe_points ?? 0), 2);
+
+        return round($p + $g, 2);
+    }
+
+    /**
+     * Credit points received as a supporter gift (restricted bucket).
+     */
+    public function addGiftedBelievePoints(float $points): void
+    {
+        $points = round(max(0, (float) $points), 2);
+        if ($points <= 0) {
+            return;
+        }
+        $this->increment('gifted_believe_points', $points);
+    }
+
+    /**
+     * Deduct Believe Points for a gift-card purchase, consuming gifted balance first when the SKU allows it.
+     *
+     * @return array{from_gifted: float, from_purchased: float}|null Null if insufficient balance.
+     */
+    public function deductBelievePointsForGiftCard(float $amount, bool $productAllowsGifted): ?array
+    {
+        $amount = round(max(0, (float) $amount), 2);
+        if ($amount <= 0) {
+            return ['from_gifted' => 0.0, 'from_purchased' => 0.0];
+        }
+
+        $this->refresh();
+        $gifted = round((float) ($this->gifted_believe_points ?? 0), 2);
+        $purchased = round((float) ($this->believe_points ?? 0), 2);
+
+        $fromGifted = $productAllowsGifted ? min($gifted, $amount) : 0.0;
+        $fromPurchased = round($amount - $fromGifted, 2);
+
+        if ($fromPurchased > $purchased + 0.000001) {
+            return null;
+        }
+
+        if ($fromGifted > 0) {
+            $this->decrement('gifted_believe_points', $fromGifted);
+        }
+        if ($fromPurchased > 0) {
+            $this->decrement('believe_points', $fromPurchased);
+            ProcessBelievePointsAutoReplenishJob::dispatch($this->id)->afterResponse();
+        }
+
+        return [
+            'from_gifted' => round($fromGifted, 2),
+            'from_purchased' => round($fromPurchased, 2),
+        ];
+    }
+
+    /**
+     * Refund a gift-card Believe Points payment back into the same buckets.
+     */
+    public function refundBelievePointsGiftCardBuckets(float $fromGifted, float $fromPurchased): void
+    {
+        $fromGifted = round(max(0, (float) $fromGifted), 2);
+        $fromPurchased = round(max(0, (float) $fromPurchased), 2);
+        if ($fromGifted > 0) {
+            $this->increment('gifted_believe_points', $fromGifted);
+        }
+        if ($fromPurchased > 0) {
+            $this->increment('believe_points', $fromPurchased);
+        }
     }
 
     /**

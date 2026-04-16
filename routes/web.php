@@ -92,6 +92,7 @@ use App\Http\Controllers\SitemapController;
 use App\Http\Controllers\SocialMediaController;
 use App\Http\Controllers\StatusCodeController;
 use App\Http\Controllers\SupporterActivityController;
+use App\Http\Controllers\SupporterBelievePointGiftController;
 use App\Http\Controllers\TopicController;
 use App\Http\Controllers\TransactionController;
 use App\Http\Controllers\UnityLiveController;
@@ -157,6 +158,8 @@ Route::get('/find-care-alliances', [\App\Http\Controllers\FindCareAlliancesContr
 Route::middleware(['auth', 'EnsureEmailIsVerified'])->group(function () {
     Route::get('/social-feed', [\App\Http\Controllers\PostController::class, 'index'])->name('social-feed.index');
     Route::get('/find-supporters', [\App\Http\Controllers\FindSupportersController::class, 'index'])->name('find-supporters.index');
+    Route::get('/supporters/birthday-gift/{celebrant}', [SupporterBelievePointGiftController::class, 'showBirthdayGift'])->name('supporters.birthday-gift');
+    Route::post('/supporters/birthday-gift/{celebrant}', [SupporterBelievePointGiftController::class, 'sendBirthdayGift'])->name('supporters.birthday-gift.send');
     Route::get('/search', [\App\Http\Controllers\PostController::class, 'searchPage'])->name('search.index');
     Route::get('/social-feed/search', [\App\Http\Controllers\PostController::class, 'search'])->name('social-feed.search');
     // Toggle favorite organization — supporter accounts only (see User::canFollowOrganizations)
@@ -499,6 +502,7 @@ Route::prefix('merchant-hub')->name('merchant-hub.')->group(function () {
 Route::middleware(['auth', 'EnsureEmailIsVerified'])->prefix('merchant-hub')->name('merchant-hub.')->group(function () {
     Route::get('/my-purchases', [App\Http\Controllers\MerchantRedemptionController::class, 'myPurchases'])->name('my-purchases');
     Route::get('/offers/{id}/checkout', [App\Http\Controllers\MerchantRedemptionController::class, 'checkoutShow'])->name('offer.checkout');
+    Route::post('/checkout/rates', [App\Http\Controllers\MerchantRedemptionController::class, 'checkoutRates'])->name('checkout.rates');
     Route::post('/checkout', [App\Http\Controllers\MerchantRedemptionController::class, 'checkoutStore'])->name('checkout.store');
     Route::post('/redeem', [App\Http\Controllers\MerchantRedemptionController::class, 'redeem'])->name('redeem');
     Route::get('/redemption/stripe-success', [App\Http\Controllers\MerchantRedemptionController::class, 'stripeSuccess'])->name('redemption.stripe-success');

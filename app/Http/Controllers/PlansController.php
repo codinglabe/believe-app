@@ -6,7 +6,6 @@ use App\Models\Plan;
 use App\Models\Transaction;
 use App\Models\User;
 use App\Models\WalletPlan;
-use App\Support\StripeAutomaticTax;
 use App\Support\StripeCustomerChargeAmount;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -309,9 +308,7 @@ class PlansController extends Controller
                     $checkoutSessionData['customer_email'] = $user->email;
                 }
 
-                $checkoutSession = $stripe->checkout->sessions->create(
-                    StripeAutomaticTax::mergeCheckoutSessionParams($checkoutSessionData)
-                );
+                $checkoutSession = $stripe->checkout->sessions->create($checkoutSessionData);
 
                 return Inertia::location($checkoutSession->url);
             } else {
@@ -321,9 +318,9 @@ class PlansController extends Controller
                     $amountInCents,
                     "Purchase {$plan->name} Plan".(! empty($currencyFields) ? ' + Add-ons' : ''),
                     1,
-                    StripeAutomaticTax::mergeCheckoutOptions(array_merge($checkoutOptions, [
+                    array_merge($checkoutOptions, [
                         'line_items' => $oneTimeItems,
-                    ]))
+                    ])
                 );
 
                 return Inertia::location($checkout->url);
