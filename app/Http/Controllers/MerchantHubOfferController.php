@@ -288,32 +288,6 @@ class MerchantHubOfferController extends Controller
             $merchantWebsite = $merchantModel->website;
         }
 
-        // Get related offers (same category, exclude current)
-        $relatedOffers = MerchantHubOffer::with(['merchant', 'category'])
-            ->where('merchant_hub_category_id', $offer->merchant_hub_category_id)
-            ->where('id', '!=', $offer->id)
-            ->active()
-            ->withAvailableInventory()
-            ->limit(6)
-            ->get()
-            ->map(function ($relatedOffer) {
-                $relImage = $relatedOffer->image_url;
-                if ($relImage && ! filter_var($relImage, FILTER_VALIDATE_URL)) {
-                    $relImage = asset('storage/'.ltrim($relImage, '/'));
-                }
-
-                return [
-                    'id' => (string) $relatedOffer->id,
-                    'title' => $relatedOffer->title,
-                    'image' => $relImage ?: '/placeholder.jpg',
-                    'pointsRequired' => $relatedOffer->points_required,
-                    'cashRequired' => $relatedOffer->cash_required ? (float) $relatedOffer->cash_required : null,
-                    'merchantName' => $relatedOffer->merchant->name,
-                    'category' => $relatedOffer->category->name,
-                    'description' => $relatedOffer->short_description ?: $relatedOffer->description,
-                ];
-            });
-
         // Convert image_url to same-origin URL (works locally and on live)
         $imageUrl = $offer->image_url;
         if ($imageUrl && ! filter_var($imageUrl, FILTER_VALIDATE_URL)) {
@@ -463,7 +437,6 @@ class MerchantHubOfferController extends Controller
         return Inertia::render('frontend/merchant-hub/OfferDetail', [
             'offerId' => $id,
             'offer' => $transformedOffer,
-            'relatedOffers' => $relatedOffers,
             'redemptionEligibility' => $redemptionEligibility,
             'redemption_success' => $redemptionSuccess,
         ]);

@@ -78,11 +78,10 @@ interface RedemptionEligibility {
 interface Props {
   offerId: string
   offer?: Offer
-  relatedOffers?: Offer[]
   redemptionEligibility?: RedemptionEligibility
 }
 
-export default function OfferDetail({ offerId, offer: initialOffer, relatedOffers: initialRelatedOffers = [], redemptionEligibility: initialRedemptionEligibility }: Props) {
+export default function OfferDetail({ offerId, offer: initialOffer, redemptionEligibility: initialRedemptionEligibility }: Props) {
   const { auth, errors, redemption_success } = usePage().props as any
   const [selectedImageIndex, setSelectedImageIndex] = useState(0)
   const [isRedeeming, setIsRedeeming] = useState(false)
@@ -125,38 +124,6 @@ export default function OfferDetail({ offerId, offer: initialOffer, relatedOffer
     rating: 4.8,
     reviews: 32
   }
-
-  const relatedOffers: Offer[] = initialRelatedOffers.length > 0 ? initialRelatedOffers : [
-    {
-      id: '2',
-      title: 'Fitness Class Pass',
-      image: '/placeholder.jpg',
-      pointsRequired: 7500,
-      merchantName: 'Fitness Center',
-      category: 'Services',
-      description: 'Unlimited classes for one month'
-    },
-    {
-      id: '3',
-      title: 'Wireless Earbuds',
-      image: '/placeholder.jpg',
-      pointsRequired: 10000,
-      cashRequired: 25,
-      merchantName: 'Tech Store',
-      category: 'Electronics',
-      description: 'Premium wireless earbuds with noise cancellation'
-    },
-    {
-      id: '4',
-      title: 'Dinner for Two',
-      image: '/placeholder.jpg',
-      pointsRequired: 8000,
-      cashRequired: 30,
-      merchantName: 'Fine Dining Restaurant',
-      category: 'Dining',
-      description: 'Three-course dinner for two people'
-    }
-  ]
 
   // Calculate if user can redeem
   const canRedeem = auth?.user && redemptionEligibility.canRedeem && (initialOffer?.isAvailable ?? true)
@@ -560,74 +527,6 @@ export default function OfferDetail({ offerId, offer: initialOffer, relatedOffer
               </Card>
             </div>
           </div>
-
-          {/* Related Offers */}
-          {relatedOffers.length > 0 && (
-            <div className="mt-12">
-              <h2 className="text-2xl font-bold mb-6">Related Offers</h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {relatedOffers.map((relatedOffer) => (
-                  <motion.div
-                    key={relatedOffer.id}
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.3 }}
-                  >
-                    <Card className="h-full hover:shadow-lg transition-all duration-300 cursor-pointer group">
-                      <div className="relative h-48 w-full overflow-hidden rounded-t-lg bg-muted">
-                        <img
-                          src={offerImageSrc(relatedOffer.image)}
-                          alt={relatedOffer.title}
-                          className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
-                          onError={(e) => {
-                            (e.target as HTMLImageElement).src = '/placeholder.jpg'
-                          }}
-                        />
-                        <Badge
-                          className={`absolute top-2 right-2 ${getCategoryColor(relatedOffer.category)}`}
-                        >
-                          {relatedOffer.category}
-                        </Badge>
-                      </div>
-                      <CardHeader>
-                        <CardTitle className="line-clamp-2">{relatedOffer.title}</CardTitle>
-                        <CardDescription className="flex items-center gap-1">
-                          <Store className="w-3 h-3" />
-                          {relatedOffer.merchantName}
-                        </CardDescription>
-                      </CardHeader>
-                      <CardContent>
-                        <p className="text-sm text-muted-foreground mb-4 line-clamp-2">
-                          {relatedOffer.description}
-                        </p>
-                        <div className="space-y-2">
-                          <div className="flex items-center justify-between">
-                            <span className="text-sm font-medium">Points:</span>
-                            <span className="text-sm font-bold text-blue-600 dark:text-blue-400">
-                              {relatedOffer.pointsRequired.toLocaleString()}
-                            </span>
-                          </div>
-                          {relatedOffer.cashRequired && (
-                            <div className="flex items-center justify-between">
-                              <span className="text-sm font-medium">Cash:</span>
-                              <span className="text-sm font-bold">
-                                ${relatedOffer.cashRequired.toFixed(2)}
-                              </span>
-                            </div>
-                          )}
-                          <Link href={`/merchant-hub/offers/${relatedOffer.id}`}>
-                            <Button className="w-full mt-4 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700" size="sm">
-                              View Details
-                            </Button>
-                          </Link>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  </motion.div>
-                ))}
-              </div>
-            </div>
-          )}
         </div>
       </div>
 
