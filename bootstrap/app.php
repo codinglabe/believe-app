@@ -1,5 +1,11 @@
 <?php
 
+// PHP defines STDIN/STDOUT/STDERR only in CLI. Artisan::call() from HTTP (e.g. admin settings) loads
+// Symfony Console code that references STDIN; provide a harmless stream in web / php-fpm.
+if (! defined('STDIN')) {
+    define('STDIN', fopen('php://memory', 'r'));
+}
+
 use App\Http\Middleware\DetectTimezone;
 use App\Http\Middleware\HandleAppearance;
 use App\Http\Middleware\HandleInertiaRequests;

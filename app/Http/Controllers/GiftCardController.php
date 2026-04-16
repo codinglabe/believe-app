@@ -453,24 +453,6 @@ class GiftCardController extends Controller
             // Phaze `/brands/country/{code}` expects codes like USA, Canada — normalize display names (e.g. United States).
             $countryForPhaze = $this->getCountryCode($validated['country']);
 
-            // Verify user follows the selected organization
-            $isFollowing = \App\Models\UserFavoriteOrganization::where('user_id', $user->id)
-                ->where('organization_id', $validated['organization_id'])
-                ->exists();
-
-            if (! $isFollowing) {
-                if ($isInertiaRequest) {
-                    return back()->withErrors([
-                        'organization_id' => 'You can only purchase gift cards for organizations you follow.',
-                    ]);
-                }
-
-                return response()->json([
-                    'success' => false,
-                    'message' => 'You can only purchase gift cards for organizations you follow.',
-                ], 403);
-            }
-
             // Fetch brand details from Phaze API to validate amount restrictions
             $brands = $this->giftCardService->getGiftBrands($countryForPhaze, 1);
             $selectedBrand = null;
@@ -1661,24 +1643,58 @@ class GiftCardController extends Controller
                 $brand['productName'] = 'Gift Card #'.($brand['productId'] ?? 'Unknown');
             }
 
+<<<<<<< HEAD
             $brand = $this->withGiftedEligibility($brand);
 
             // Get user's following organizations if user is logged in and has user role
             $followingOrganizations = [];
+=======
+            // All approved nonprofits eligible for beneficiary selection (same idea as /donate).
+            $organizations = Organization::query()
+                ->where('registration_status', 'approved')
+                ->excludingCareAllianceHubs()
+                ->orderBy('name')
+                ->get(['id', 'name', 'gift_card_terms_approved'])
+                ->map(fn (Organization $o) => [
+                    'id' => (int) $o->id,
+                    'name' => $o->name,
+                    'gift_card_terms_approved' => (bool) $o->gift_card_terms_approved,
+                ])
+                ->values()
+                ->all();
+
+            // Orgs this user has bought gift cards for — latest purchase first, with lifetime total.
+            $giftCardPurchaseOrganizations = [];
+>>>>>>> 6fbdfd39b484f3c967bf0454a85157a300a4ca89
             if ($user && $user->role === 'user') {
-                $followingOrganizations = \App\Models\UserFavoriteOrganization::with('organization')
+                $aggregates = GiftCard::query()
                     ->where('user_id', $user->id)
-                    ->get()
-                    ->filter(fn ($fav) => $fav->organization_id && $fav->organization)
-                    ->map(function ($fav) {
-                        return [
-                            'id' => (int) $fav->organization_id,
-                            'name' => $fav->organization->name ?? 'Unknown',
-                            'gift_card_terms_approved' => $fav->organization->gift_card_terms_approved ?? false,
-                        ];
-                    })
-                    ->values()
-                    ->toArray();
+                    ->whereNotNull('purchased_at')
+                    ->whereNotNull('organization_id')
+                    ->selectRaw('organization_id')
+                    ->selectRaw('SUM(amount) as purchased_total')
+                    ->selectRaw('MAX(purchased_at) as last_purchased_at')
+                    ->groupBy('organization_id')
+                    ->orderByDesc('last_purchased_at')
+                    ->get();
+
+                $orgById = Organization::query()
+                    ->whereIn('id', $aggregates->pluck('organization_id'))
+                    ->get(['id', 'name', 'gift_card_terms_approved'])
+                    ->keyBy('id');
+
+                foreach ($aggregates as $row) {
+                    $o = $orgById->get($row->organization_id);
+                    if ($o === null) {
+                        continue;
+                    }
+                    $giftCardPurchaseOrganizations[] = [
+                        'id' => (int) $o->id,
+                        'name' => $o->name,
+                        'gift_card_terms_approved' => (bool) $o->gift_card_terms_approved,
+                        'purchased_total' => (float) $row->purchased_total,
+                    ];
+                }
             }
 
             return Inertia::render('GiftCards/PurchaseDetails', [
@@ -1690,7 +1706,8 @@ class GiftCardController extends Controller
                     'email' => $user->email,
                     'role' => $user->role,
                 ] : null,
-                'followingOrganizations' => $followingOrganizations,
+                'organizations' => $organizations,
+                'giftCardPurchaseOrganizations' => $giftCardPurchaseOrganizations,
             ]);
         }
 

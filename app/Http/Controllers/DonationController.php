@@ -290,6 +290,75 @@ class DonationController extends Controller
                 })
                 ->values()
                 ->all();
+
+            // Full cause rows for the org dropdown: organizations this user has donated to (with lifetime total).
+            // Newest donation first (most recently active recipient).
+            $donationAggregates = Donation::query()
+                ->where('user_id', $user->id)
+                ->whereIn('status', ['completed', 'active'])
+                ->selectRaw('organization_id')
+                ->selectRaw('care_alliance_id')
+                ->selectRaw('SUM(amount) as donated_total')
+                ->selectRaw('MAX(donation_date) as last_donated_at')
+                ->groupBy('organization_id', 'care_alliance_id')
+                ->orderByDesc('last_donated_at')
+                ->get();
+
+            $donatedCauses = [];
+            foreach ($donationAggregates as $agg) {
+                $donatedTotal = (float) $agg->donated_total;
+                if ($agg->care_alliance_id) {
+                    $alliance = CareAlliance::query()
+                        ->where('id', $agg->care_alliance_id)
+                        ->with('creator:id,image')
+                        ->first();
+                    if ($alliance) {
+                        $recipient = $publicPage->donationRecipientOrganizationForAlliance($alliance);
+                        if ($recipient !== null) {
+                            $image = null;
+                            if ($alliance->creator?->image) {
+                                $img = (string) $alliance->creator->image;
+                                $image = str_starts_with($img, 'http') ? $img : asset('storage/'.ltrim($img, '/'));
+                            }
+                            $donatedCauses[] = [
+                                'id' => 'ca-'.$alliance->id,
+                                'kind' => 'care_alliance',
+                                'organization_id' => $recipient->id,
+                                'name' => $alliance->name,
+                                'description' => $alliance->description
+                                    ? strip_tags((string) $alliance->description)
+                                    : 'Care Alliance — shared fundraising for member nonprofits.',
+                                'image' => $image,
+                                'raised' => (float) ($recipient->balance ?? 0),
+                                'goal' => 0,
+                                'supporters' => $recipient->donations()->distinct('user_id')->count('user_id'),
+                                'alliance_slug' => $alliance->slug,
+                                'care_alliance_id' => $alliance->id,
+                                'donated_total' => $donatedTotal,
+                            ];
+
+                            continue;
+                        }
+                    }
+                }
+                $org = Organization::query()->find($agg->organization_id);
+                if ($org) {
+                    $donatedCauses[] = [
+                        'id' => 'org-'.$org->id,
+                        'kind' => 'organization',
+                        'organization_id' => $org->id,
+                        'name' => $org->name,
+                        'description' => $org->description ?? $org->mission ?? 'No description available.',
+                        'image' => $org->registered_user_image ? asset('storage/'.$org->registered_user_image) : null,
+                        'raised' => (float) ($org->balance ?? 0),
+                        'goal' => 0,
+                        'supporters' => $org->donations()->distinct('user_id')->count('user_id'),
+                        'donated_total' => $donatedTotal,
+                    ];
+                }
+            }
+        } else {
+            $donatedCauses = [];
         }
 
         $feePreview = null;
@@ -319,6 +388,7 @@ class DonationController extends Controller
             'thisYearDonated' => $thisYearDonated,
             'givingGoal' => $givingGoal,
             'topOrganizations' => $topOrganizations,
+            'donatedCauses' => $donatedCauses,
             'feePreview' => $feePreview,
         ]);
     }
