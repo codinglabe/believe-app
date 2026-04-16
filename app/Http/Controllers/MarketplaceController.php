@@ -10,11 +10,8 @@ use App\Models\Product;
 use App\Services\BiuPlatformFeeService;
 use App\Services\PrintifyService;
 use Illuminate\Http\Request;
-<<<<<<< HEAD
-use Illuminate\Support\Facades\Log;
-=======
 use Illuminate\Support\Facades\Auth;
->>>>>>> 6fbdfd39b484f3c967bf0454a85157a300a4ca89
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Inertia\Inertia;
 use Inertia\Response;

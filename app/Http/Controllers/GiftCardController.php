@@ -1643,12 +1643,8 @@ class GiftCardController extends Controller
                 $brand['productName'] = 'Gift Card #'.($brand['productId'] ?? 'Unknown');
             }
 
-<<<<<<< HEAD
             $brand = $this->withGiftedEligibility($brand);
 
-            // Get user's following organizations if user is logged in and has user role
-            $followingOrganizations = [];
-=======
             // All approved nonprofits eligible for beneficiary selection (same idea as /donate).
             $organizations = Organization::query()
                 ->where('registration_status', 'approved')
@@ -1665,7 +1661,6 @@ class GiftCardController extends Controller
 
             // Orgs this user has bought gift cards for — latest purchase first, with lifetime total.
             $giftCardPurchaseOrganizations = [];
->>>>>>> 6fbdfd39b484f3c967bf0454a85157a300a4ca89
             if ($user && $user->role === 'user') {
                 $aggregates = GiftCard::query()
                     ->where('user_id', $user->id)
