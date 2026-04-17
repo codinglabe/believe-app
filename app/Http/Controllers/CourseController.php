@@ -7,6 +7,7 @@ use App\Models\Course;
 use App\Models\Enrollment;
 use App\Models\Organization;
 use App\Models\Topic;
+use App\Services\CourseTaxClassificationService;
 use App\Services\SeoService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -290,6 +291,7 @@ class CourseController extends BaseController
 
         return Inertia::render('admin/course/Create', array_merge([
             'eventTypes' => $eventTypes,
+            'organizationName' => Organization::query()->where('user_id', Auth::id())->value('name'),
         ], $this->organizationPrimaryActionCategoriesPageProps($request)));
     }
 
@@ -353,7 +355,7 @@ class CourseController extends BaseController
 
             // Media
             'image' => 'nullable|image|mimes:jpeg,png,jpg,gif,svg|max:2048',
-        ], $this->primaryActionCategoryIdsValidation($request)), [
+        ], CourseTaxClassificationService::validationRules(), $this->primaryActionCategoryIdsValidation($request)), [
             // Custom error messages
             'name.required' => "The {$typeLabelCapital} name is required.",
             'name.unique' => "A {$typeLabel} with this name already exists.",
@@ -402,6 +404,8 @@ class CourseController extends BaseController
             'image.max' => 'The image may not be greater than 2MB.',
         ]);
 
+        CourseTaxClassificationService::validateFeeBreakdown($request);
+
         // Handle image upload
         $imagePath = null;
         if ($request->hasFile('image')) {
@@ -435,7 +439,7 @@ class CourseController extends BaseController
         try {
             DB::beginTransaction();
 
-            $course = Course::create([
+            $course = Course::create(array_merge([
                 // Auto-populated fields
                 'organization_id' => Auth::id(),
                 'user_id' => Auth::id(),
@@ -486,7 +490,7 @@ class CourseController extends BaseController
                 'rating' => 0.0,
                 'total_reviews' => 0,
                 'last_updated' => now(),
-            ]);
+            ], CourseTaxClassificationService::persistenceFromRequest($request)));
 
             $this->syncPrimaryActionCategories($course, $request);
 
@@ -510,14 +514,20 @@ class CourseController extends BaseController
      */
     public function publicShow(Course $course)
     {
-        $course->load(['topic', 'eventType', 'organization', 'creator']);
+        $course->load(['topic', 'eventType', 'organization.organization', 'creator']);
 
-        // Check if current user is enrolled (if authenticated)
+        // Official org profile name (nonprofit listing) — same as publicIndex; prefer over individual creator for display
+        $course->organization_name = optional($course->organization?->organization)->name
+            ?? Organization::where('user_id', $course->organization_id)->value('name');
+
+        // Current enrollment for UI: only active / pending / completed (not cancelled or refunded — user can enroll again)
         $userEnrollment = null;
         $user = Auth::user();
         if (Auth::check()) {
             $userEnrollment = Enrollment::where('user_id', Auth::id())
                 ->where('course_id', $course->id)
+                ->whereIn('status', ['active', 'completed', 'pending'])
+                ->orderByDesc('id')
                 ->first();
         }
 
@@ -581,8 +591,8 @@ class CourseController extends BaseController
             $status = 'available';
         }
 
-        // Check if user has an active enrollment (not cancelled/refunded)
-        $hasActiveEnrollment = $userEnrollment && in_array($userEnrollment->status ?? '', ['active', 'completed', 'pending']);
+        // User is considered enrolled only when we loaded a non-terminal enrollment above
+        $hasActiveEnrollment = $userEnrollment !== null;
 
         // Allow enrollment/registration if available and not full/started, regardless of paid/free
         // Button should be visible and active until the actual start date/time
@@ -757,6 +767,7 @@ class CourseController extends BaseController
         return Inertia::render('admin/course/Edit', array_merge([
             'course' => $courseData,
             'eventTypes' => $eventTypes,
+            'organizationName' => Organization::query()->where('user_id', Auth::id())->value('name'),
         ], $this->organizationPrimaryActionCategoriesPageProps($request)));
     }
 
@@ -829,7 +840,7 @@ class CourseController extends BaseController
 
             // Media
             'image' => 'nullable|image|mimes:jpeg,png,jpg,gif,svg|max:2048',
-        ], $this->primaryActionCategoryIdsValidation($request)), [
+        ], CourseTaxClassificationService::validationRules(), $this->primaryActionCategoryIdsValidation($request)), [
             // Custom error messages
             'name.required' => "The {$typeLabelCapital} name is required.",
             'name.unique' => "A {$typeLabel} with this name already exists.",
@@ -877,6 +888,8 @@ class CourseController extends BaseController
             'image.max' => 'The image may not be greater than 2MB.',
         ]);
 
+        CourseTaxClassificationService::validateFeeBreakdown($request);
+
         // Handle image upload
         $imagePath = $course->image;
         if ($request->hasFile('image')) {
@@ -917,7 +930,7 @@ class CourseController extends BaseController
         try {
             DB::beginTransaction();
 
-            $course->update([
+            $course->update(array_merge([
                 'type' => $validated['type'],
                 'topic_id' => null,
                 'event_type_id' => ! empty($validated['event_type_id']) ? $validated['event_type_id'] : null,
@@ -960,7 +973,7 @@ class CourseController extends BaseController
 
                 // Update timestamp
                 'last_updated' => now(),
-            ]);
+            ], CourseTaxClassificationService::persistenceFromRequest($request)));
 
             $this->syncPrimaryActionCategories($course, $request);
 

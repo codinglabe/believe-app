@@ -59,10 +59,10 @@ interface Course {
   language: string
   target_audience: string
   community_impact: string | null
-  learning_outcomes: string[]
-  prerequisites: string[]
-  materials_needed: string[]
-  accessibility_features: string[]
+  learning_outcomes: string[] | null
+  prerequisites: string[] | null
+  materials_needed: string[] | null
+  accessibility_features: string[] | null
   certificate_provided: boolean
   volunteer_opportunities: boolean
   image: string | null
@@ -647,12 +647,12 @@ export default function FrontendCoursesListPage({
                           Volunteer Ops
                         </Badge>
                       )}
-                      {course.learning_outcomes.length > 0 && (
+                      {(course.learning_outcomes?.length ?? 0) > 0 && (
                         <Badge variant="secondary" className="text-xs px-2 py-1">
-                          {course.learning_outcomes.length} Outcomes
+                          {course.learning_outcomes?.length ?? 0} Outcomes
                         </Badge>
                       )}
-                      {course.accessibility_features.length > 0 && (
+                      {(course.accessibility_features?.length ?? 0) > 0 && (
                         <Badge variant="secondary" className="text-xs px-2 py-1">
                           Accessible
                         </Badge>

@@ -18,6 +18,7 @@ import {
   OrganizationPrimaryActionCategoriesField,
   type PrimaryActionCategoryOption,
 } from "@/components/organization-primary-action-categories-field"
+import BiuCourseTaxIntake from "@/components/biu-course-tax-intake"
 
 interface Topic {
   id: number
@@ -80,6 +81,17 @@ interface Course {
   formatted_format: string
   meeting_link?: string | null
   primary_action_category_ids?: number[]
+  course_delivery_type?: "online" | "live" | "hybrid" | null
+  has_physical_materials?: boolean | null
+  pricing_structure?: "bundled" | "separate" | null
+  requires_shipping?: boolean | null
+  tax_ack_outside_ca?: boolean | null
+  tax_ack_auto_calculate?: boolean | null
+  tax_classification?: string | null
+  course_content_type?: string | null
+  digital_course_fee?: number | null
+  materials_fee?: number | null
+  shipping_fee_amount?: number | null
 }
 
 interface EventType {
@@ -92,10 +104,11 @@ interface AdminCoursesEditProps {
   course: Course
   eventTypes: EventType[]
   organizationPrimaryActionCategories: PrimaryActionCategoryOption[]
+  organizationName?: string | null
 }
 
 export default function AdminCoursesEdit() {
-  const { course, eventTypes, organizationPrimaryActionCategories } =
+  const { course, eventTypes, organizationPrimaryActionCategories, organizationName } =
     usePage<AdminCoursesEditProps>().props
   const { auth } = usePage().props as { auth: { user: User } }
 
@@ -158,14 +171,70 @@ export default function AdminCoursesEdit() {
     _method: "PUT",
 
     primary_action_category_ids: (course.primary_action_category_ids ?? []).map(String),
+    course_delivery_type:
+      (course.course_delivery_type as "online" | "live" | "hybrid" | undefined) || "online",
+    course_content_type:
+      (course.course_content_type as
+        | "written_material"
+        | "video_streamed"
+        | "video_streamed_downloadable"
+        | "general"
+        | undefined) || "general",
+    has_physical_materials: Boolean(course.has_physical_materials),
+    pricing_structure: (course.pricing_structure ?? "") as "" | "bundled" | "separate",
+    requires_shipping: Boolean(course.requires_shipping),
+    digital_course_fee: course.digital_course_fee != null ? String(course.digital_course_fee) : "",
+    materials_fee: course.materials_fee != null ? String(course.materials_fee) : "",
+    shipping_fee_amount: course.shipping_fee_amount != null ? String(course.shipping_fee_amount) : "",
+    tax_ack_outside_ca: Boolean(course.tax_ack_outside_ca),
+    tax_ack_auto_calculate: Boolean(course.tax_ack_auto_calculate),
   })
 
   const validateTab = (tab: string): boolean => {
     switch (tab) {
-      case "basics":
+      case "basics": {
         const hasType = !!data.type
         const hasTopicOrEventType = !!data.event_type_id
-        return !!(data.name && data.description && hasType && hasTopicOrEventType)
+        const feeSplit =
+          data.type === "course" &&
+          data.pricing_type === "paid" &&
+          data.has_physical_materials &&
+          data.pricing_structure === "separate"
+        const hasPricing =
+          !!data.pricing_type &&
+          (data.pricing_type === "free" ||
+            (data.pricing_type === "paid" &&
+              (feeSplit
+                ? !!(data.digital_course_fee && data.materials_fee)
+                : !!data.course_fee)))
+        const basicsOk = !!(
+          data.name &&
+          data.description &&
+          hasType &&
+          hasTopicOrEventType &&
+          hasPricing
+        )
+        const needsBiuTax = data.type === "course" && data.pricing_type === "paid"
+        if (!basicsOk) {
+          return false
+        }
+        if (!needsBiuTax) {
+          return true
+        }
+        if (!data.course_delivery_type) {
+          return false
+        }
+        if (data.course_delivery_type === "online" && !data.course_content_type) {
+          return false
+        }
+        if (data.has_physical_materials && !data.pricing_structure) {
+          return false
+        }
+        if (!data.tax_ack_outside_ca || !data.tax_ack_auto_calculate) {
+          return false
+        }
+        return true
+      }
       case "schedule":
         return !!(
           data.meeting_link &&
@@ -195,7 +264,22 @@ export default function AdminCoursesEdit() {
     if (Object.keys(errors).length > 0) {
       const errorFields = Object.keys(errors)
       if (
-        errorFields.some((field) => ["name", "description", "event_type_id", "type", "pricing_type", "course_fee"].includes(field))
+        errorFields.some((field) =>
+          [
+            "name",
+            "description",
+            "event_type_id",
+            "type",
+            "pricing_type",
+            "course_fee",
+            "course_delivery_type",
+            "has_physical_materials",
+            "pricing_structure",
+            "requires_shipping",
+            "tax_ack_outside_ca",
+            "tax_ack_auto_calculate",
+          ].includes(field),
+        )
       ) {
         setCurrentTab("basics")
       } else if (
@@ -407,20 +491,54 @@ export default function AdminCoursesEdit() {
                             <SelectItem value="paid">Paid</SelectItem>
                           </SelectContent>
                         </Select>
-                        {data.pricing_type === "paid" && (
-                          <Input
-                            type="number"
-                            min="0"
-                            step="5"
-                            value={data.course_fee}
-                            onChange={(e) => setData("course_fee", e.target.value)}
-                            placeholder="Price ($)"
-                            className="flex-1"
-                          />
-                        )}
+                        {data.pricing_type === "paid" &&
+                          !(
+                            data.type === "course" &&
+                            data.has_physical_materials &&
+                            data.pricing_structure === "separate"
+                          ) && (
+                            <Input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={data.course_fee}
+                              onChange={(e) => setData("course_fee", e.target.value)}
+                              placeholder="Price ($)"
+                              className="flex-1"
+                            />
+                          )}
+                        {data.pricing_type === "paid" &&
+                          data.type === "course" &&
+                          data.has_physical_materials &&
+                          data.pricing_structure === "separate" && (
+                            <p className="text-sm text-muted-foreground flex-1">
+                              Set digital, materials, and optional shipping in the BIU section — total updates the price.
+                            </p>
+                          )}
                       </div>
                     </div>
                   </div>
+
+                  <BiuCourseTaxIntake
+                    show={data.type === "course" && data.pricing_type === "paid"}
+                    data={{
+                      course_delivery_type: data.course_delivery_type,
+                      course_content_type: data.course_content_type,
+                      has_physical_materials: data.has_physical_materials,
+                      pricing_structure: data.pricing_structure,
+                      requires_shipping: data.requires_shipping,
+                      digital_course_fee: data.digital_course_fee,
+                      materials_fee: data.materials_fee,
+                      shipping_fee_amount: data.shipping_fee_amount,
+                      tax_ack_outside_ca: data.tax_ack_outside_ca,
+                      tax_ack_auto_calculate: data.tax_ack_auto_calculate,
+                    }}
+                    setData={setData}
+                    errors={errors}
+                    organizationName={organizationName}
+                    courseType={data.type}
+                    pricingType={data.pricing_type}
+                  />
 
                   <OrganizationPrimaryActionCategoriesField
                     categories={organizationPrimaryActionCategories}

@@ -943,15 +943,17 @@ export default function OrganizationPage({
                   <MapPin className="w-4 h-4" />
                   <span className="truncate max-w-[150px] sm:max-w-none text-gray-900 dark:text-white">{location}</span>
                 </div>
-                <div className="flex items-center gap-1.5">
-                  <Zap className="w-4 h-4 text-yellow-500" />
-                  <span className="text-gray-900 dark:text-white font-medium">
-                    {believePointsBalance >= 1000
-                      ? `${(believePointsBalance / 1000).toFixed(1)}K`
-                      : believePointsBalance.toLocaleString()}
-                  </span>
-                  <span className="text-gray-900 dark:text-white">Believer Points</span>
-                </div>
+                {organization.is_own_organization && (
+                  <div className="flex items-center gap-1.5">
+                    <Zap className="w-4 h-4 text-yellow-500" />
+                    <span className="text-gray-900 dark:text-white font-medium">
+                      {believePointsBalance >= 1000
+                        ? `${(believePointsBalance / 1000).toFixed(1)}K`
+                        : believePointsBalance.toLocaleString()}
+                    </span>
+                    <span className="text-gray-900 dark:text-white">Believer Points</span>
+                  </div>
+                )}
                 <div className="flex items-center gap-1.5">
                   <Users className="w-4 h-4" />
                   <span className="text-gray-900 dark:text-white">
@@ -1009,21 +1011,29 @@ export default function OrganizationPage({
                   <div className="rounded-xl border border-indigo-500/20 dark:border-indigo-400/15 bg-white dark:bg-[#111827] shadow-sm animate-in fade-in slide-in-from-left-4 duration-500 delay-100 p-4">
                     <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-3">Activity snapshot</p>
                     <div className="flex items-center justify-between">
-                      <div className="text-center flex-1">
-                        <p className="text-lg font-bold text-gray-900 dark:text-white tabular-nums">
-                          {believePointsBalance >= 1000
-                            ? `${(believePointsBalance / 1000).toFixed(1)}k`
-                            : believePointsBalance.toLocaleString()}
-                        </p>
-                        <p className="text-[10px] text-gray-500 dark:text-gray-500">Network points</p>
-                        <div className="mt-1 space-y-0.5">
-                          <p className="text-[9px] text-green-400">+{believePointsEarned.toLocaleString()} earned</p>
-                          {believePointsSpent > 0 && (
-                            <p className="text-[9px] text-red-400">-{believePointsSpent.toLocaleString()} spent</p>
-                          )}
+                      {organization.is_own_organization && (
+                        <div className="text-center flex-1">
+                          <p className="text-lg font-bold text-gray-900 dark:text-white tabular-nums">
+                            {believePointsBalance >= 1000
+                              ? `${(believePointsBalance / 1000).toFixed(1)}k`
+                              : believePointsBalance.toLocaleString()}
+                          </p>
+                          <p className="text-[10px] text-gray-500 dark:text-gray-500">Network points</p>
+                          <div className="mt-1 space-y-0.5">
+                            <p className="text-[9px] text-green-400">+{believePointsEarned.toLocaleString()} earned</p>
+                            {believePointsSpent > 0 && (
+                              <p className="text-[9px] text-red-400">-{believePointsSpent.toLocaleString()} spent</p>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                      <div className="text-center flex-1 border-x border-gray-200 dark:border-white/10 px-1">
+                      )}
+                      <div
+                        className={`text-center flex-1 px-1 ${
+                          organization.is_own_organization
+                            ? "border-x border-gray-200 dark:border-white/10"
+                            : "border-r border-gray-200 dark:border-white/10"
+                        }`}
+                      >
                         <p className="text-lg font-bold text-gray-900 dark:text-white tabular-nums">{partnerOrganizationsCount || 0}</p>
                         <p className="text-[10px] text-gray-500 dark:text-gray-500">Member orgs</p>
                       </div>
@@ -1066,20 +1076,22 @@ export default function OrganizationPage({
                     </div>
 
                     <div className="flex items-center justify-between py-3 border-t border-gray-200 dark:border-white/10">
-                      <div className="text-center">
-                        <p className="text-lg font-bold text-gray-900 dark:text-white">
-                          {believePointsBalance >= 1000
-                            ? `${(believePointsBalance / 1000).toFixed(1)}k`
-                            : believePointsBalance.toLocaleString()}
-                        </p>
-                        <p className="text-[10px] text-gray-500 dark:text-gray-500">Believer Points</p>
-                        <div className="mt-1 space-y-0.5">
-                          <p className="text-[9px] text-green-400">+{believePointsEarned.toLocaleString()} earned</p>
-                          {believePointsSpent > 0 && (
-                            <p className="text-[9px] text-red-400">-{believePointsSpent.toLocaleString()} spent</p>
-                          )}
+                      {organization.is_own_organization && (
+                        <div className="text-center">
+                          <p className="text-lg font-bold text-gray-900 dark:text-white">
+                            {believePointsBalance >= 1000
+                              ? `${(believePointsBalance / 1000).toFixed(1)}k`
+                              : believePointsBalance.toLocaleString()}
+                          </p>
+                          <p className="text-[10px] text-gray-500 dark:text-gray-500">Believer Points</p>
+                          <div className="mt-1 space-y-0.5">
+                            <p className="text-[9px] text-green-400">+{believePointsEarned.toLocaleString()} earned</p>
+                            {believePointsSpent > 0 && (
+                              <p className="text-[9px] text-red-400">-{believePointsSpent.toLocaleString()} spent</p>
+                            )}
+                          </div>
                         </div>
-                      </div>
+                      )}
                       <div className="text-center">
                         <p className="text-lg font-bold text-gray-900 dark:text-white">{supportersCount || 0}</p>
                         <p className="text-[10px] text-gray-500 dark:text-gray-500">Supporters</p>

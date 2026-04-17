@@ -72,6 +72,7 @@ interface Course {
   meeting_link: string | null
   topic: Topic | null
   organization: Organization
+  organization_name?: string | null
   creator: Creator
   image_url: string | null
   formatted_price: string
@@ -432,8 +433,7 @@ export default function AdminCoursesShow({ course, enrollmentStats, status }: Ad
               </CardHeader>
               <CardContent>
                 <div className="space-y-2">
-                  <div className="font-medium">{course.organization.name}</div>
-                  <div className="text-sm text-muted-foreground">{course.organization.email}</div>
+                  <div className="font-medium">{course.organization_name ?? course.organization.name}</div>
                 </div>
               </CardContent>
             </Card>

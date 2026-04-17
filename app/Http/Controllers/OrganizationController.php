@@ -539,25 +539,12 @@ class OrganizationController extends BaseController
         $jobsCount = 0;
         $posts = [];
         $supporters = [];
-        $believePointsEarned = 0;
-        $believePointsSpent = 0;
-        $believePointsBalance = 0;
+        $bp = $this->believePointsForOrganizationViewer($registeredOrg, $isOwnOrganization);
+        $believePointsEarned = $bp['believePointsEarned'];
+        $believePointsSpent = $bp['believePointsSpent'];
+        $believePointsBalance = $bp['believePointsBalance'];
 
         if ($registeredOrg) {
-            // Calculate believe points earned from donations
-            $believePointsEarned = \App\Models\Donation::where('organization_id', $registeredOrg->id)
-                ->where('payment_method', 'believe_points')
-                ->where('status', 'completed')
-                ->sum('amount');
-
-            // Calculate believe points spent (if organization user has transactions)
-            // For now, we'll track this through the organization's user balance changes
-            // Points spent would be tracked through transactions if organizations can spend points
-            // This is a placeholder - adjust based on your business logic
-            $believePointsSpent = 0; // TODO: Calculate from transactions if organizations can spend points
-
-            // Net balance (earned - spent)
-            $believePointsBalance = $believePointsEarned - $believePointsSpent;
             // Get posts count - use single query with union for faster counting
             $postsCount = \App\Models\Post::where('user_id', $registeredOrg->user_id)->count()
                 + \App\Models\FacebookPost::where('organization_id', $registeredOrg->id)
@@ -1929,11 +1916,10 @@ class OrganizationController extends BaseController
             $supportersCount = \App\Models\UserFavoriteOrganization::where('excel_data_id', $excelDataId)->count();
         }
 
-        $believePoints = $registeredOrg ? $this->calculateBelievePoints($registeredOrg->id) : [
-            'believePointsEarned' => 0,
-            'believePointsSpent' => 0,
-            'believePointsBalance' => 0,
-        ];
+        $believePoints = $this->believePointsForOrganizationViewer(
+            $registeredOrg,
+            (bool) ($organizationData['is_own_organization'] ?? false)
+        );
         $sidebarData = $this->getSidebarData($registeredOrg);
 
         return Inertia::render('frontend/organization/organization-show', [
@@ -2067,11 +2053,10 @@ class OrganizationController extends BaseController
             $supportersCount = \App\Models\UserFavoriteOrganization::where('excel_data_id', $excelDataId)->count();
         }
 
-        $believePoints = $registeredOrg ? $this->calculateBelievePoints($registeredOrg->id) : [
-            'believePointsEarned' => 0,
-            'believePointsSpent' => 0,
-            'believePointsBalance' => 0,
-        ];
+        $believePoints = $this->believePointsForOrganizationViewer(
+            $registeredOrg,
+            (bool) ($organizationData['is_own_organization'] ?? false)
+        );
         $sidebarData = $this->getSidebarData($registeredOrg);
 
         return Inertia::render('frontend/organization/organization-show', [
@@ -2261,11 +2246,10 @@ class OrganizationController extends BaseController
             })->filter()->values()->toArray();
         }
 
-        $believePoints = $registeredOrg ? $this->calculateBelievePoints($registeredOrg->id) : [
-            'believePointsEarned' => 0,
-            'believePointsSpent' => 0,
-            'believePointsBalance' => 0,
-        ];
+        $believePoints = $this->believePointsForOrganizationViewer(
+            $registeredOrg,
+            (bool) ($organizationData['is_own_organization'] ?? false)
+        );
         $sidebarData = $this->getSidebarData($registeredOrg);
 
         return Inertia::render('frontend/organization/organization-show', [
@@ -2312,6 +2296,24 @@ class OrganizationController extends BaseController
             ->sortBy(fn (array $row) => strtolower($row['name']))
             ->values()
             ->all();
+    }
+
+    /**
+     * Believe points for the public org profile: only the org account holder gets real values.
+     *
+     * @return array{believePointsEarned: float|int, believePointsSpent: int, believePointsBalance: float|int}
+     */
+    private function believePointsForOrganizationViewer(?Organization $registeredOrg, bool $isOwnOrganization): array
+    {
+        if (! $registeredOrg || ! $isOwnOrganization) {
+            return [
+                'believePointsEarned' => 0,
+                'believePointsSpent' => 0,
+                'believePointsBalance' => 0,
+            ];
+        }
+
+        return $this->calculateBelievePoints($registeredOrg->id);
     }
 
     /**

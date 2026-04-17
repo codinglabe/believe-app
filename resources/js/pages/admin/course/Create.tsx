@@ -18,6 +18,7 @@ import {
   OrganizationPrimaryActionCategoriesField,
   type PrimaryActionCategoryOption,
 } from "@/components/organization-primary-action-categories-field"
+import BiuCourseTaxIntake from "@/components/biu-course-tax-intake"
 
 interface EventType {
   id: number
@@ -28,10 +29,12 @@ interface EventType {
 interface AdminCoursesCreateProps {
   eventTypes: EventType[]
   organizationPrimaryActionCategories: PrimaryActionCategoryOption[]
+  organizationName?: string | null
 }
 
 export default function NonprofitCoursesCreate() {
-  const { eventTypes, organizationPrimaryActionCategories } = usePage<AdminCoursesCreateProps>().props
+  const { eventTypes, organizationPrimaryActionCategories, organizationName } =
+    usePage<AdminCoursesCreateProps>().props
   const { auth } = usePage().props as { auth: { user: User } }
 
   const [currentTab, setCurrentTab] = useState("basics")
@@ -72,15 +75,64 @@ export default function NonprofitCoursesCreate() {
     certificate_provided: false,
     image: null as File | null,
     primary_action_category_ids: [] as string[],
+    course_delivery_type: "online" as "online" | "live" | "hybrid" | "",
+    course_content_type: "general" as "written_material" | "video_streamed" | "video_streamed_downloadable" | "general" | "",
+    has_physical_materials: false,
+    pricing_structure: "" as "bundled" | "separate" | "",
+    requires_shipping: false,
+    digital_course_fee: "",
+    materials_fee: "",
+    shipping_fee_amount: "",
+    tax_ack_outside_ca: false,
+    tax_ack_auto_calculate: false,
   })
 
   const validateTab = (tab: string): boolean => {
     switch (tab) {
-      case "basics":
+      case "basics": {
         const hasType = !!data.type
         const hasTopicOrEventType = !!data.event_type_id
-        const hasPricing = !!data.pricing_type && (data.pricing_type === "free" || (data.pricing_type === "paid" && !!data.course_fee))
-        return !!(data.name && data.description && hasType && hasTopicOrEventType && data.target_audience && hasPricing)
+        const feeSplit =
+          data.type === "course" &&
+          data.pricing_type === "paid" &&
+          data.has_physical_materials &&
+          data.pricing_structure === "separate"
+        const hasPricing =
+          !!data.pricing_type &&
+          (data.pricing_type === "free" ||
+            (data.pricing_type === "paid" &&
+              (feeSplit
+                ? !!(data.digital_course_fee && data.materials_fee)
+                : !!data.course_fee)))
+        const basicsOk = !!(
+          data.name &&
+          data.description &&
+          hasType &&
+          hasTopicOrEventType &&
+          data.target_audience &&
+          hasPricing
+        )
+        const needsBiuTax = data.type === "course" && data.pricing_type === "paid"
+        if (!basicsOk) {
+          return false
+        }
+        if (!needsBiuTax) {
+          return true
+        }
+        if (!data.course_delivery_type) {
+          return false
+        }
+        if (data.course_delivery_type === "online" && !data.course_content_type) {
+          return false
+        }
+        if (data.has_physical_materials && !data.pricing_structure) {
+          return false
+        }
+        if (!data.tax_ack_outside_ca || !data.tax_ack_auto_calculate) {
+          return false
+        }
+        return true
+      }
       case "schedule":
         return !!(
           data.meeting_link &&
@@ -111,7 +163,21 @@ export default function NonprofitCoursesCreate() {
       const errorFields = Object.keys(errors)
       if (
         errorFields.some((field) =>
-          ["name", "description", "event_type_id", "type", "target_audience", "pricing_type", "course_fee"].includes(field),
+          [
+            "name",
+            "description",
+            "event_type_id",
+            "type",
+            "target_audience",
+            "pricing_type",
+            "course_fee",
+            "course_delivery_type",
+            "has_physical_materials",
+            "pricing_structure",
+            "requires_shipping",
+            "tax_ack_outside_ca",
+            "tax_ack_auto_calculate",
+          ].includes(field),
         )
       ) {
         setCurrentTab("basics")
@@ -306,20 +372,54 @@ export default function NonprofitCoursesCreate() {
                             <SelectItem value="paid">Paid</SelectItem>
                           </SelectContent>
                         </Select>
-                        {data.pricing_type === "paid" && (
-                          <Input
-                            type="number"
-                            min="0"
-                            step="5"
-                            value={data.course_fee}
-                            onChange={(e) => setData("course_fee", e.target.value)}
-                            placeholder="Price ($)"
-                            className="flex-1"
-                          />
-                        )}
+                        {data.pricing_type === "paid" &&
+                          !(
+                            data.type === "course" &&
+                            data.has_physical_materials &&
+                            data.pricing_structure === "separate"
+                          ) && (
+                            <Input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={data.course_fee}
+                              onChange={(e) => setData("course_fee", e.target.value)}
+                              placeholder="Price ($)"
+                              className="flex-1"
+                            />
+                          )}
+                        {data.pricing_type === "paid" &&
+                          data.type === "course" &&
+                          data.has_physical_materials &&
+                          data.pricing_structure === "separate" && (
+                            <p className="text-sm text-muted-foreground flex-1">
+                              Set digital, materials, and optional shipping in the BIU section — total updates the price.
+                            </p>
+                          )}
                       </div>
                     </div>
                   </div>
+
+                  <BiuCourseTaxIntake
+                    show={data.type === "course" && data.pricing_type === "paid"}
+                    data={{
+                      course_delivery_type: data.course_delivery_type,
+                      course_content_type: data.course_content_type,
+                      has_physical_materials: data.has_physical_materials,
+                      pricing_structure: data.pricing_structure,
+                      requires_shipping: data.requires_shipping,
+                      digital_course_fee: data.digital_course_fee,
+                      materials_fee: data.materials_fee,
+                      shipping_fee_amount: data.shipping_fee_amount,
+                      tax_ack_outside_ca: data.tax_ack_outside_ca,
+                      tax_ack_auto_calculate: data.tax_ack_auto_calculate,
+                    }}
+                    setData={setData}
+                    errors={errors}
+                    organizationName={organizationName}
+                    courseType={data.type}
+                    pricingType={data.pricing_type}
+                  />
 
                   <OrganizationPrimaryActionCategoriesField
                     categories={organizationPrimaryActionCategories}

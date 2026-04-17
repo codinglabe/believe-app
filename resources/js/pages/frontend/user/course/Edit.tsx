@@ -15,6 +15,7 @@ import type { User } from "@/types"
 import { toast } from "sonner"
 import ProfileLayout from "@/components/frontend/layout/user-profile-layout"
 import { useState, useEffect } from "react"
+import BiuCourseTaxIntake from "@/components/biu-course-tax-intake"
 
 interface Topic {
   id: number
@@ -73,15 +74,27 @@ interface Course {
   formatted_duration: string
   formatted_format: string
   meeting_link?: string | null
+  course_delivery_type?: "online" | "live" | "hybrid" | null
+  has_physical_materials?: boolean | null
+  pricing_structure?: "bundled" | "separate" | null
+  requires_shipping?: boolean | null
+  tax_ack_outside_ca?: boolean | null
+  tax_ack_auto_calculate?: boolean | null
+  tax_classification?: string | null
+  course_content_type?: string | null
+  digital_course_fee?: number | null
+  materials_fee?: number | null
+  shipping_fee_amount?: number | null
 }
 
 interface AdminCoursesEditProps {
   course: Course
   topics: Topic[]
+  organizationName?: string | null
 }
 
 export default function AdminCoursesEdit() {
-  const { course, topics } = usePage<AdminCoursesEditProps>().props
+  const { course, topics, organizationName } = usePage<AdminCoursesEditProps>().props
   const { auth } = usePage().props as { auth: { user: User } }
 
   const [currentTab, setCurrentTab] = useState("basics")
@@ -130,12 +143,56 @@ export default function AdminCoursesEdit() {
 
     // Laravel method spoofing for updates
     _method: "PUT",
+    course_delivery_type:
+      (course.course_delivery_type as "online" | "live" | "hybrid" | undefined) || "online",
+    course_content_type:
+      (course.course_content_type as
+        | "written_material"
+        | "video_streamed"
+        | "video_streamed_downloadable"
+        | "general"
+        | undefined) || "general",
+    has_physical_materials: Boolean(course.has_physical_materials),
+    pricing_structure: (course.pricing_structure as "bundled" | "separate" | undefined) || "",
+    requires_shipping: Boolean(course.requires_shipping),
+    digital_course_fee: course.digital_course_fee != null ? String(course.digital_course_fee) : "",
+    materials_fee: course.materials_fee != null ? String(course.materials_fee) : "",
+    shipping_fee_amount: course.shipping_fee_amount != null ? String(course.shipping_fee_amount) : "",
+    tax_ack_outside_ca: Boolean(course.tax_ack_outside_ca),
+    tax_ack_auto_calculate: Boolean(course.tax_ack_auto_calculate),
   })
 
   const validateTab = (tab: string): boolean => {
     switch (tab) {
-      case "basics":
-        return !!(data.name && data.description && data.topic_id)
+      case "basics": {
+        const feeSplit =
+          data.pricing_type === "paid" && data.has_physical_materials && data.pricing_structure === "separate"
+        const hasPricing =
+          !!data.pricing_type &&
+          (data.pricing_type === "free" ||
+            (data.pricing_type === "paid" &&
+              (feeSplit ? !!(data.digital_course_fee && data.materials_fee) : !!data.course_fee)))
+        const basicsOk = !!(data.name && data.description && data.topic_id && hasPricing)
+        if (!basicsOk) {
+          return false
+        }
+        if (data.pricing_type !== "paid") {
+          return true
+        }
+        if (!data.course_delivery_type) {
+          return false
+        }
+        if (data.course_delivery_type === "online" && !data.course_content_type) {
+          return false
+        }
+        if (data.has_physical_materials && !data.pricing_structure) {
+          return false
+        }
+        if (!data.tax_ack_outside_ca || !data.tax_ack_auto_calculate) {
+          return false
+        }
+        return true
+      }
       case "schedule":
         return !!(
           data.meeting_link &&
@@ -168,7 +225,21 @@ export default function AdminCoursesEdit() {
     if (Object.keys(errors).length > 0) {
       const errorFields = Object.keys(errors)
       if (
-        errorFields.some((field) => ["name", "description", "topic_id", "pricing_type", "course_fee"].includes(field))
+        errorFields.some((field) =>
+          [
+            "name",
+            "description",
+            "topic_id",
+            "pricing_type",
+            "course_fee",
+            "course_delivery_type",
+            "has_physical_materials",
+            "pricing_structure",
+            "requires_shipping",
+            "tax_ack_outside_ca",
+            "tax_ack_auto_calculate",
+          ].includes(field),
+        )
       ) {
         setCurrentTab("basics")
       } else if (
@@ -342,20 +413,49 @@ export default function AdminCoursesEdit() {
                             <SelectItem value="paid">Paid</SelectItem>
                           </SelectContent>
                         </Select>
-                        {data.pricing_type === "paid" && (
-                          <Input
-                            type="number"
-                            min="0"
-                            step="5"
-                            value={data.course_fee}
-                            onChange={(e) => setData("course_fee", e.target.value)}
-                            placeholder="Price ($)"
-                            className="flex-1"
-                          />
-                        )}
+                        {data.pricing_type === "paid" &&
+                          !(data.has_physical_materials && data.pricing_structure === "separate") && (
+                            <Input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={data.course_fee}
+                              onChange={(e) => setData("course_fee", e.target.value)}
+                              placeholder="Price ($)"
+                              className="flex-1"
+                            />
+                          )}
+                        {data.pricing_type === "paid" &&
+                          data.has_physical_materials &&
+                          data.pricing_structure === "separate" && (
+                            <p className="text-sm text-muted-foreground flex-1">
+                              Set digital, materials, and optional shipping below — total updates the price.
+                            </p>
+                          )}
                       </div>
                     </div>
                   </div>
+
+                  <BiuCourseTaxIntake
+                    show={data.pricing_type === "paid"}
+                    data={{
+                      course_delivery_type: data.course_delivery_type,
+                      course_content_type: data.course_content_type,
+                      has_physical_materials: data.has_physical_materials,
+                      pricing_structure: data.pricing_structure,
+                      requires_shipping: data.requires_shipping,
+                      digital_course_fee: data.digital_course_fee,
+                      materials_fee: data.materials_fee,
+                      shipping_fee_amount: data.shipping_fee_amount,
+                      tax_ack_outside_ca: data.tax_ack_outside_ca,
+                      tax_ack_auto_calculate: data.tax_ack_auto_calculate,
+                    }}
+                    setData={setData}
+                    errors={errors}
+                    organizationName={organizationName}
+                    courseType="course"
+                    pricingType={data.pricing_type}
+                  />
 
                   <div className="space-y-2">
                     <label htmlFor="description" className="text-sm font-medium">

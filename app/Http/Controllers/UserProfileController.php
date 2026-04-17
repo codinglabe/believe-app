@@ -1392,19 +1392,14 @@ class UserProfileController extends Controller
                 ];
             });
 
-        // Get believe points
-        $believePointsBalance = (float) ($user->believe_points ?? 0);
-        $believePointsEarned = (float) ($totalDonated ?? 0);
-        $believePointsSpent = 0; // TODO: Calculate if needed
-
-        // Get reward points earned and spent from ledger
-        $rewardPointsEarned = (int) RewardPointLedger::where('user_id', $user->id)
-            ->where('type', 'credit')
-            ->sum('points');
-        $rewardPointsSpent = (int) RewardPointLedger::where('user_id', $user->id)
-            ->where('type', 'debit')
-            ->sum('points');
-        $rewardPointsBalance = (float) ($user->reward_points ?? 0);
+        [
+            'believePointsEarned' => $believePointsEarned,
+            'believePointsSpent' => $believePointsSpent,
+            'believePointsBalance' => $believePointsBalance,
+            'rewardPointsEarned' => $rewardPointsEarned,
+            'rewardPointsSpent' => $rewardPointsSpent,
+            'rewardPointsBalance' => $rewardPointsBalance,
+        ] = $this->publicProfilePointStats($user, $isOwnProfile, (float) ($totalDonated ?? 0));
 
         // Get recent posts (limit to 5 for initial load)
         $authUserId = $authUser ? $authUser->id : null;
@@ -1725,6 +1720,54 @@ class UserProfileController extends Controller
     }
 
     /**
+     * Believer / reward point stats for the public profile. Only the profile owner sees real values;
+     * others get zeros so balances are not exposed in props or network responses.
+     *
+     * @return array{
+     *     believePointsEarned: float,
+     *     believePointsSpent: int,
+     *     believePointsBalance: float,
+     *     rewardPointsEarned: int,
+     *     rewardPointsSpent: int,
+     *     rewardPointsBalance: float
+     * }
+     */
+    private function publicProfilePointStats(User $user, bool $isOwnProfile, float $totalDonated): array
+    {
+        if (! $isOwnProfile) {
+            return [
+                'believePointsEarned' => 0.0,
+                'believePointsSpent' => 0,
+                'believePointsBalance' => 0.0,
+                'rewardPointsEarned' => 0,
+                'rewardPointsSpent' => 0,
+                'rewardPointsBalance' => 0.0,
+            ];
+        }
+
+        $believePointsBalance = (float) ($user->believe_points ?? 0);
+        $believePointsEarned = $totalDonated;
+        $believePointsSpent = 0;
+
+        $rewardPointsEarned = (int) RewardPointLedger::where('user_id', $user->id)
+            ->where('type', 'credit')
+            ->sum('points');
+        $rewardPointsSpent = (int) RewardPointLedger::where('user_id', $user->id)
+            ->where('type', 'debit')
+            ->sum('points');
+        $rewardPointsBalance = (float) ($user->reward_points ?? 0);
+
+        return [
+            'believePointsEarned' => $believePointsEarned,
+            'believePointsSpent' => $believePointsSpent,
+            'believePointsBalance' => $believePointsBalance,
+            'rewardPointsEarned' => $rewardPointsEarned,
+            'rewardPointsSpent' => $rewardPointsSpent,
+            'rewardPointsBalance' => $rewardPointsBalance,
+        ];
+    }
+
+    /**
      * Get user data for tab pages
      */
     private function getUserData(string $slug): array
@@ -1761,19 +1804,14 @@ class UserProfileController extends Controller
         $followersCount = UserFollow::where('following_id', $user->id)->count();
         $followingCount = UserFavoriteOrganization::where('user_id', $user->id)->count();
 
-        // Get believe points
-        $believePointsBalance = (float) ($user->believe_points ?? 0);
-        $believePointsEarned = (float) ($totalDonated ?? 0);
-        $believePointsSpent = 0;
-
-        // Get reward points earned and spent from ledger
-        $rewardPointsEarned = (int) \App\Models\RewardPointLedger::where('user_id', $user->id)
-            ->where('type', 'credit')
-            ->sum('points');
-        $rewardPointsSpent = (int) \App\Models\RewardPointLedger::where('user_id', $user->id)
-            ->where('type', 'debit')
-            ->sum('points');
-        $rewardPointsBalance = (float) ($user->reward_points ?? 0);
+        [
+            'believePointsEarned' => $believePointsEarned,
+            'believePointsSpent' => $believePointsSpent,
+            'believePointsBalance' => $believePointsBalance,
+            'rewardPointsEarned' => $rewardPointsEarned,
+            'rewardPointsSpent' => $rewardPointsSpent,
+            'rewardPointsBalance' => $rewardPointsBalance,
+        ] = $this->publicProfilePointStats($user, $isOwnProfile, (float) ($totalDonated ?? 0));
 
         // Get user's public chat groups count (only public groups they're a member of)
         $groupsCount = \App\Models\ChatRoom::where('type', 'public')
@@ -1878,7 +1916,7 @@ class UserProfileController extends Controller
             'created_at' => $user->created_at,
             'positions' => $user->supporterPositions->pluck('name')->toArray(),
             'is_own_profile' => $isOwnProfile,
-            'reward_points' => (float) ($user->reward_points ?? 0),
+            'reward_points' => $isOwnProfile ? (float) ($user->reward_points ?? 0) : 0,
         ];
 
         $seoDescription = $user->bio
@@ -2159,18 +2197,18 @@ class UserProfileController extends Controller
             });
 
         $enrollments = \App\Models\Enrollment::where('user_id', $user->id)
-            ->with('course:id,title')
+            ->with('course:id,name')
             ->get()
             ->map(function ($enrollment) {
                 return [
                     'id' => 'enrollment_'.$enrollment->id,
                     'type' => 'enrollment',
-                    'title' => 'Enrolled in '.($enrollment->course->title ?? 'Unknown Course'),
+                    'title' => 'Enrolled in '.($enrollment->course->name ?? 'Unknown Course'),
                     'description' => 'Status: '.ucfirst($enrollment->status),
                     'date' => $enrollment->enrolled_at ?? $enrollment->created_at,
                     'data' => [
                         'id' => $enrollment->id,
-                        'course_title' => $enrollment->course->title ?? 'Unknown Course',
+                        'course_title' => $enrollment->course->name ?? 'Unknown Course',
                         'status' => $enrollment->status,
                     ],
                 ];

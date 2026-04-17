@@ -3,17 +3,18 @@
 namespace App\Http\Controllers;
 
 use App\Models\Course;
-use App\Models\Topic;
 use App\Models\Enrollment;
 use App\Models\Organization;
+use App\Models\Topic;
+use App\Services\CourseTaxClassificationService;
 use Illuminate\Http\Request;
-use Inertia\Inertia;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Validation\Rule;
-use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
+use Inertia\Inertia;
 
 class FrontendCourseController extends Controller
 {
@@ -28,9 +29,9 @@ class FrontendCourseController extends Controller
             ->with(['topic', 'organization.organization', 'creator'])
             ->when($filters['search'] ?? null, function ($query, $search) {
                 $query->where(function ($q) use ($search) {
-                    $q->where('name', 'like', '%' . $search . '%')
-                        ->orWhere('target_audience', 'like', '%' . $search . '%')
-                        ->orWhere('description', 'like', '%' . $search . '%');
+                    $q->where('name', 'like', '%'.$search.'%')
+                        ->orWhere('target_audience', 'like', '%'.$search.'%')
+                        ->orWhere('description', 'like', '%'.$search.'%');
                 });
             })
             ->when($filters['topic_id'] ?? null, function ($query, $topicId) {
@@ -62,6 +63,7 @@ class FrontendCourseController extends Controller
         // Add 'organization_name' attribute to each course for frontend
         $courses->getCollection()->transform(function ($course) {
             $course->organization_name = optional($course->organization->organization)->name;
+
             return $course;
         });
 
@@ -96,7 +98,7 @@ class FrontendCourseController extends Controller
             'courses_status',
             'courses_type',
             'courses_format',
-            'courses_topic'
+            'courses_topic',
         ]);
 
         $query = Course::query()
@@ -105,36 +107,36 @@ class FrontendCourseController extends Controller
             ->where('organization_id', Auth::id());
 
         // Search functionality
-        if (!empty($filters['courses_search'])) {
+        if (! empty($filters['courses_search'])) {
             $search = $filters['courses_search'];
             $query->where(function ($q) use ($search) {
-                $q->where('name', 'like', '%' . $search . '%')
-                    ->orWhere('description', 'like', '%' . $search . '%')
-                    ->orWhere('target_audience', 'like', '%' . $search . '%')
-                    ->orWhere('community_impact', 'like', '%' . $search . '%')
+                $q->where('name', 'like', '%'.$search.'%')
+                    ->orWhere('description', 'like', '%'.$search.'%')
+                    ->orWhere('target_audience', 'like', '%'.$search.'%')
+                    ->orWhere('community_impact', 'like', '%'.$search.'%')
                     ->orWhereHas('organization', function ($orgQuery) use ($search) {
-                        $orgQuery->where('name', 'like', '%' . $search . '%');
+                        $orgQuery->where('name', 'like', '%'.$search.'%');
                     });
             });
         }
 
         // Topic filter
-        if (!empty($filters['courses_topic'])) {
+        if (! empty($filters['courses_topic'])) {
             $query->where('topic_id', $filters['courses_topic']);
         }
 
         // Pricing type filter
-        if (!empty($filters['courses_type'])) {
+        if (! empty($filters['courses_type'])) {
             $query->where('pricing_type', $filters['courses_type']);
         }
 
         // Format filter
-        if (!empty($filters['courses_format'])) {
+        if (! empty($filters['courses_format'])) {
             $query->where('format', $filters['courses_format']);
         }
 
         // Status filter (based on enrollment and start date)
-        if (!empty($filters['courses_status'])) {
+        if (! empty($filters['courses_status'])) {
             $status = $filters['courses_status'];
             $now = now();
 
@@ -210,6 +212,7 @@ class FrontendCourseController extends Controller
 
         return Inertia::render('frontend/user/course/Create', [
             'topics' => $topics,
+            'organizationName' => Organization::query()->where('user_id', Auth::id())->value('name'),
         ]);
     }
 
@@ -218,7 +221,7 @@ class FrontendCourseController extends Controller
      */
     public function store(Request $request)
     {
-        $validated = $request->validate([
+        $validated = $request->validate(array_merge([
             // Basic Information
             'name' => 'required|string|max:255|unique:courses,name',
             'description' => 'required|string',
@@ -260,7 +263,9 @@ class FrontendCourseController extends Controller
 
             // Media
             'image' => 'nullable|image|mimes:jpeg,png,jpg,gif,svg|max:2048',
-        ]);
+        ], CourseTaxClassificationService::validationRules()));
+
+        CourseTaxClassificationService::validateFeeBreakdown($request);
 
         // Handle image upload
         $imagePath = null;
@@ -273,7 +278,8 @@ class FrontendCourseController extends Controller
                     'exists' => \Illuminate\Support\Facades\Storage::disk('public')->exists($imagePath),
                 ]);
             } catch (\Exception $e) {
-                \Illuminate\Support\Facades\Log::error('Failed to upload course image (Frontend): ' . $e->getMessage());
+                \Illuminate\Support\Facades\Log::error('Failed to upload course image (Frontend): '.$e->getMessage());
+
                 return redirect()->back()
                     ->withInput()
                     ->withErrors(['image' => 'Failed to upload image. Please try again.']);
@@ -287,14 +293,14 @@ class FrontendCourseController extends Controller
 
         // Ensure unique slug
         while (Course::where('slug', $slug)->exists()) {
-            $slug = $originalSlug . '-' . $counter;
+            $slug = $originalSlug.'-'.$counter;
             $counter++;
         }
 
         try {
             DB::beginTransaction();
 
-            $course = Course::create([
+            $course = Course::create(array_merge([
                 // Auto-populated fields
                 'organization_id' => Auth::id(),
                 'user_id' => Auth::id(),
@@ -343,8 +349,7 @@ class FrontendCourseController extends Controller
                 'rating' => 0.0,
                 'total_reviews' => 0,
                 'last_updated' => now(),
-            ]);
-
+            ], CourseTaxClassificationService::persistenceFromRequest($request)));
 
             DB::commit();
 
@@ -352,7 +357,7 @@ class FrontendCourseController extends Controller
 
         } catch (\Exception $e) {
             DB::rollBack();
-            Log::error('Failed to create course: ' . $e->getMessage());
+            Log::error('Failed to create course: '.$e->getMessage());
 
             return redirect()->back()
                 ->withInput()
@@ -365,13 +370,18 @@ class FrontendCourseController extends Controller
      */
     public function publicShow(Course $course)
     {
-        $course->load(['topic', 'organization', 'creator']);
+        $course->load(['topic', 'organization.organization', 'creator']);
 
-        // Check if current user is enrolled (if authenticated)
+        $course->organization_name = optional($course->organization?->organization)->name
+            ?? Organization::where('user_id', $course->organization_id)->value('name');
+
+        // Only treat active / pending / completed as “enrolled” so cancelled users can enroll again
         $userEnrollment = null;
         if (Auth::check()) {
             $userEnrollment = Enrollment::where('user_id', Auth::id())
                 ->where('course_id', $course->id)
+                ->whereIn('status', ['active', 'completed', 'pending'])
+                ->orderByDesc('id')
                 ->first();
         }
 
@@ -404,7 +414,7 @@ class FrontendCourseController extends Controller
             'userEnrollment' => $userEnrollment,
             'enrollmentStats' => $enrollmentStats,
             'status' => $status,
-            'canEnroll' => !$userEnrollment && $status !== 'full' && $status !== 'started',
+            'canEnroll' => $userEnrollment === null && $status !== 'full' && $status !== 'started',
             'meetingLink' => $course->meeting_link, // Added meeting_link field
         ]);
     }
@@ -493,6 +503,7 @@ class FrontendCourseController extends Controller
         return Inertia::render('frontend/user/course/Edit', [
             'course' => $courseData,
             'topics' => $topics,
+            'organizationName' => Organization::query()->where('user_id', Auth::id())->value('name'),
         ]);
     }
 
@@ -506,7 +517,7 @@ class FrontendCourseController extends Controller
             abort(403, 'Unauthorized access to this course.');
         }
 
-        $validated = $request->validate([
+        $validated = $request->validate(array_merge([
             // Basic Information
             'name' => [
                 'required',
@@ -553,7 +564,9 @@ class FrontendCourseController extends Controller
 
             // Media
             'image' => 'nullable|image|mimes:jpeg,png,jpg,gif,svg|max:2048',
-        ]);
+        ], CourseTaxClassificationService::validationRules()));
+
+        CourseTaxClassificationService::validateFeeBreakdown($request);
 
         // Handle image upload
         $imagePath = $course->image;
@@ -571,7 +584,8 @@ class FrontendCourseController extends Controller
                     'exists' => Storage::disk('public')->exists($imagePath),
                 ]);
             } catch (\Exception $e) {
-                \Illuminate\Support\Facades\Log::error('Failed to update course image (Frontend): ' . $e->getMessage());
+                \Illuminate\Support\Facades\Log::error('Failed to update course image (Frontend): '.$e->getMessage());
+
                 return redirect()->back()
                     ->withInput()
                     ->withErrors(['image' => 'Failed to upload image. Please try again.']);
@@ -586,7 +600,7 @@ class FrontendCourseController extends Controller
             $counter = 1;
 
             while (Course::where('slug', $slug)->where('id', '!=', $course->id)->exists()) {
-                $slug = $originalSlug . '-' . $counter;
+                $slug = $originalSlug.'-'.$counter;
                 $counter++;
             }
         }
@@ -594,7 +608,7 @@ class FrontendCourseController extends Controller
         try {
             DB::beginTransaction();
 
-            $course->update([
+            $course->update(array_merge([
                 'topic_id' => $validated['topic_id'],
                 'name' => $validated['name'],
                 'slug' => $slug,
@@ -635,8 +649,7 @@ class FrontendCourseController extends Controller
 
                 // Update timestamp
                 'last_updated' => now(),
-            ]);
-
+            ], CourseTaxClassificationService::persistenceFromRequest($request)));
 
             DB::commit();
 
@@ -644,7 +657,7 @@ class FrontendCourseController extends Controller
 
         } catch (\Exception $e) {
             DB::rollBack();
-            Log::error('Failed to update course: ' . $e->getMessage());
+            Log::error('Failed to update course: '.$e->getMessage());
 
             return redirect()->back()
                 ->withInput()
@@ -677,7 +690,8 @@ class FrontendCourseController extends Controller
             return redirect()->route('profile.course.index')->with('success', 'Course deleted successfully!');
         } catch (\Exception $e) {
             DB::rollBack();
-            Log::error("Error deleting course: " . $e->getMessage());
+            Log::error('Error deleting course: '.$e->getMessage());
+
             return redirect()->back()->with('error', 'Failed to delete course. An unexpected error occurred.');
         }
     }
