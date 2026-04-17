@@ -19,6 +19,7 @@ import {
   type PrimaryActionCategoryOption,
 } from "@/components/organization-primary-action-categories-field"
 import BiuCourseTaxIntake from "@/components/biu-course-tax-intake"
+import { connectionHubTypeLabel, isEventsHubType, type ConnectionHubType } from "@/lib/connection-hub-type"
 
 interface EventType {
   id: number
@@ -51,7 +52,7 @@ export default function NonprofitCoursesCreate() {
   }, {} as Record<string, EventType[]>)
 
   const { data, setData, post, processing, errors, reset } = useForm({
-    type: "course" as "course" | "event",
+    type: "companion" as ConnectionHubType,
     name: "",
     description: "",
     event_type_id: eventTypes.length > 0 ? eventTypes[0].id.toString() : "",
@@ -93,7 +94,6 @@ export default function NonprofitCoursesCreate() {
         const hasType = !!data.type
         const hasTopicOrEventType = !!data.event_type_id
         const feeSplit =
-          data.type === "course" &&
           data.pricing_type === "paid" &&
           data.has_physical_materials &&
           data.pricing_structure === "separate"
@@ -112,7 +112,7 @@ export default function NonprofitCoursesCreate() {
           data.target_audience &&
           hasPricing
         )
-        const needsBiuTax = data.type === "course" && data.pricing_type === "paid"
+        const needsBiuTax = data.pricing_type === "paid"
         if (!basicsOk) {
           return false
         }
@@ -223,13 +223,13 @@ export default function NonprofitCoursesCreate() {
       forceFormData: true,
       onSuccess: () => {
         reset()
-        toast.success(`${data.type === "course" ? "Course" : "Event"} created successfully!`, {
-          description: `Your ${data.type === "course" ? "community course" : "event"} is now available.`,
+        toast.success(`${connectionHubTypeLabel(data.type)} listing created successfully!`, {
+          description: `Your ${connectionHubTypeLabel(data.type)} listing is now available.`,
         })
       },
       onError: (err) => {
         console.error("Form submission error:", err)
-        toast.error(`Failed to create ${data.type === "course" ? "course" : "event"}.`, {
+        toast.error(`Failed to create ${connectionHubTypeLabel(data.type)} listing.`, {
           description: "Please check the form for errors and try again.",
         })
       },
@@ -238,7 +238,7 @@ export default function NonprofitCoursesCreate() {
 
   return (
     <AppLayout>
-      <Head title={`Create ${data.type === "course" ? "Course" : "Event"} - Courses & Events`} />
+      <Head title={`Create ${connectionHubTypeLabel(data.type)} - Connection Hub`} />
 
       <div className="space-y-6 m-6">
         <div className="flex items-center gap-4">
@@ -253,11 +253,11 @@ export default function NonprofitCoursesCreate() {
               <Heart className="h-6 w-6 text-primary" />
             </div>
             <div>
-            <h1 className="text-2xl font-bold">Create {data.type === "course" ? "Course" : "Event"}</h1>
+            <h1 className="text-2xl font-bold">Create {connectionHubTypeLabel(data.type)}</h1>
             <p className="text-sm text-muted-foreground">
-              {data.type === "course" 
-                ? "Share knowledge and empower your community" 
-                : "Create an event for your community"}
+              {isEventsHubType(data.type)
+                ? "Create an event for your community"
+                : "Share knowledge and empower your community"}
             </p>
             </div>
           </div>
@@ -285,7 +285,7 @@ export default function NonprofitCoursesCreate() {
             <TabsContent value="basics">
               <Card>
                 <CardHeader>
-                  <CardTitle>{data.type === "course" ? "Course" : "Event"} Basics</CardTitle>
+                  <CardTitle>{connectionHubTypeLabel(data.type)} basics</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-6">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -294,14 +294,16 @@ export default function NonprofitCoursesCreate() {
                         Type *
                       </label>
                       <Select value={data.type} onValueChange={(value) => {
-                        setData("type", value as "course" | "event")
+                        setData("type", value as ConnectionHubType)
                       }}>
                         <SelectTrigger className={errors.type ? "border-destructive" : ""}>
                           <SelectValue placeholder="Select type" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="course">Course</SelectItem>
-                          <SelectItem value="event">Event</SelectItem>
+                          <SelectItem value="companion">Companion</SelectItem>
+                          <SelectItem value="learning">Learning</SelectItem>
+                          <SelectItem value="events">Events</SelectItem>
+                          <SelectItem value="earning">Earning</SelectItem>
                         </SelectContent>
                       </Select>
                       {errors.type && <p className="text-sm text-destructive">{errors.type}</p>}
@@ -309,13 +311,17 @@ export default function NonprofitCoursesCreate() {
 
                     <div className="space-y-2">
                       <label htmlFor="name" className="text-sm font-medium">
-                        {data.type === "course" ? "Course" : "Event"} Name *
+                        {connectionHubTypeLabel(data.type)} name *
                       </label>
                       <Input
                         id="name"
                         value={data.name}
                         onChange={(e) => setData("name", e.target.value)}
-                        placeholder={data.type === "course" ? "e.g., Digital Literacy for Seniors" : "e.g., Community Health Fair"}
+                        placeholder={
+                          isEventsHubType(data.type)
+                            ? "e.g., Community Health Fair"
+                            : "e.g., Digital Literacy for Seniors"
+                        }
                         className={errors.name ? "border-destructive" : ""}
                       />
                       {errors.name && <p className="text-sm text-destructive">{errors.name}</p>}
@@ -323,7 +329,7 @@ export default function NonprofitCoursesCreate() {
 
                     <div className="space-y-2">
                       <label htmlFor="event_type_id" className="text-sm font-medium">
-                        {data.type === "course" ? "Course Topic *" : "Event Topic *"}
+                        Topic *
                       </label>
                       <Select value={data.event_type_id || ""} onValueChange={(value) => setData("event_type_id", value)}>
                         <SelectTrigger className={errors.event_type_id ? "border-destructive" : ""}>
@@ -373,11 +379,7 @@ export default function NonprofitCoursesCreate() {
                           </SelectContent>
                         </Select>
                         {data.pricing_type === "paid" &&
-                          !(
-                            data.type === "course" &&
-                            data.has_physical_materials &&
-                            data.pricing_structure === "separate"
-                          ) && (
+                          !(data.has_physical_materials && data.pricing_structure === "separate") && (
                             <Input
                               type="number"
                               min="0"
@@ -389,7 +391,6 @@ export default function NonprofitCoursesCreate() {
                             />
                           )}
                         {data.pricing_type === "paid" &&
-                          data.type === "course" &&
                           data.has_physical_materials &&
                           data.pricing_structure === "separate" && (
                             <p className="text-sm text-muted-foreground flex-1">
@@ -401,7 +402,7 @@ export default function NonprofitCoursesCreate() {
                   </div>
 
                   <BiuCourseTaxIntake
-                    show={data.type === "course" && data.pricing_type === "paid"}
+                    show={data.pricing_type === "paid"}
                     data={{
                       course_delivery_type: data.course_delivery_type,
                       course_content_type: data.course_content_type,
@@ -417,7 +418,7 @@ export default function NonprofitCoursesCreate() {
                     setData={setData}
                     errors={errors}
                     organizationName={organizationName}
-                    courseType={data.type}
+                    hubType={data.type}
                     pricingType={data.pricing_type}
                   />
 
@@ -434,7 +435,7 @@ export default function NonprofitCoursesCreate() {
 
                   <div className="space-y-2">
                     <label htmlFor="description" className="text-sm font-medium">
-                      {data.type === "course" ? "Course" : "Event"} Description *
+                      Description *
                     </label>
                     <RichTextEditor
                       label=""
@@ -446,7 +447,7 @@ export default function NonprofitCoursesCreate() {
                   </div>
 
                   <div className="space-y-2">
-                    <label className="text-sm font-medium">{data.type === "course" ? "Course" : "Event"} Image</label>
+                    <label className="text-sm font-medium">Image</label>
                     <ImageUpload label="" value={null} onChange={(file) => setData("image", file)} />
                   </div>
                 </CardContent>
@@ -473,7 +474,7 @@ export default function NonprofitCoursesCreate() {
                     />
                     {errors.meeting_link && <p className="text-sm text-destructive">{errors.meeting_link}</p>}
                     <p className="text-xs text-muted-foreground">
-                      Provide the meeting link where participants will join the {data.type === "course" ? "course" : "event"}
+                      Provide the meeting link where participants will join this {connectionHubTypeLabel(data.type)} listing
                     </p>
                   </div>
 
@@ -520,7 +521,7 @@ export default function NonprofitCoursesCreate() {
                       />
                       {errors.end_date && <p className="text-sm text-destructive">{errors.end_date}</p>}
                       <p className="text-xs text-muted-foreground">
-                        Optional: Leave blank for single session {data.type === "course" ? "courses" : "events"}
+                        Optional: Leave blank for single-session listings
                       </p>
                     </div>
 
@@ -619,7 +620,7 @@ export default function NonprofitCoursesCreate() {
                           Volunteer Opportunities
                         </label>
                         <p className="text-xs text-muted-foreground">
-                          Allow participants to volunteer for future {data.type === "course" ? "courses" : "events"}
+                          Allow participants to volunteer for future Connection Hub listings
                         </p>
                       </div>
                       <Switch
@@ -658,12 +659,12 @@ export default function NonprofitCoursesCreate() {
               {processing ? (
                 <>
                   <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-current mr-2"></div>
-                  {currentTab === "settings" ? (data.type === "course" ? "Creating Course..." : "Creating Event...") : "Processing..."}
+                  {currentTab === "settings" ? `Creating ${connectionHubTypeLabel(data.type)}...` : "Processing..."}
                 </>
               ) : currentTab === "settings" ? (
                 <>
                   <Save className="mr-2 h-4 w-4" />
-                  Create {data.type === "course" ? "Course" : "Event"}
+                  Create {connectionHubTypeLabel(data.type)}
                 </>
               ) : (
                 <>

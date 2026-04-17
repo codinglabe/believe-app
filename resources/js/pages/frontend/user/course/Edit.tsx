@@ -16,6 +16,7 @@ import { toast } from "sonner"
 import ProfileLayout from "@/components/frontend/layout/user-profile-layout"
 import { useState, useEffect } from "react"
 import BiuCourseTaxIntake from "@/components/biu-course-tax-intake"
+import { connectionHubTypeLabel, type ConnectionHubType } from "@/lib/connection-hub-type"
 
 interface Topic {
   id: number
@@ -36,6 +37,7 @@ interface Creator {
 
 interface Course {
   id: number
+  type: ConnectionHubType
   topic_id: number | null
   organization_id: number
   user_id: number
@@ -104,6 +106,7 @@ export default function AdminCoursesEdit() {
 
   const { data, setData, post, processing, errors, reset } = useForm({
     // Basic Information (pre-populated with existing data)
+    type: course.type || "companion",
     name: course.name,
     description: course.description,
     topic_id: course.topic_id?.toString() || "",
@@ -172,7 +175,7 @@ export default function AdminCoursesEdit() {
           (data.pricing_type === "free" ||
             (data.pricing_type === "paid" &&
               (feeSplit ? !!(data.digital_course_fee && data.materials_fee) : !!data.course_fee)))
-        const basicsOk = !!(data.name && data.description && data.topic_id && hasPricing)
+        const basicsOk = !!(data.type && data.name && data.description && data.topic_id && hasPricing)
         if (!basicsOk) {
           return false
         }
@@ -229,6 +232,7 @@ export default function AdminCoursesEdit() {
           [
             "name",
             "description",
+            "type",
             "topic_id",
             "pricing_type",
             "course_fee",
@@ -352,13 +356,31 @@ export default function AdminCoursesEdit() {
             <TabsContent value="basics">
               <Card>
                 <CardHeader>
-                  <CardTitle>Course Basics</CardTitle>
+                  <CardTitle>{connectionHubTypeLabel(data.type)} basics</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-6">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="space-y-2">
+                      <label htmlFor="type" className="text-sm font-medium">
+                        Type *
+                      </label>
+                      <Select value={data.type} onValueChange={(value) => setData("type", value as ConnectionHubType)}>
+                        <SelectTrigger className={errors.type ? "border-destructive" : ""}>
+                          <SelectValue placeholder="Select type" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="companion">Companion</SelectItem>
+                          <SelectItem value="learning">Learning</SelectItem>
+                          <SelectItem value="events">Events</SelectItem>
+                          <SelectItem value="earning">Earning</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      {errors.type && <p className="text-sm text-destructive">{errors.type}</p>}
+                    </div>
+
+                    <div className="space-y-2">
                       <label htmlFor="name" className="text-sm font-medium">
-                        Course Name *
+                        Name *
                       </label>
                       <Input
                         id="name"
@@ -453,7 +475,7 @@ export default function AdminCoursesEdit() {
                     setData={setData}
                     errors={errors}
                     organizationName={organizationName}
-                    courseType="course"
+                    hubType={data.type}
                     pricingType={data.pricing_type}
                   />
 

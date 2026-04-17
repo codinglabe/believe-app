@@ -133,7 +133,16 @@ class EventTypesTableSeeder extends Seeder
         ];
 
         foreach ($eventTypes as $eventType) {
-            EventType::create($eventType);
+            EventType::updateOrCreate(
+                [
+                    'name' => $eventType['name'],
+                    'category' => $eventType['category'],
+                ],
+                [
+                    'description' => $eventType['description'],
+                    'is_active' => true,
+                ]
+            );
         }
     }
 }

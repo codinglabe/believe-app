@@ -9,6 +9,7 @@ use App\Models\Organization;
 use App\Models\Topic;
 use App\Services\CourseTaxClassificationService;
 use App\Services\SeoService;
+use App\Support\ConnectionHubType;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -104,7 +105,7 @@ class CourseController extends BaseController
         $seoTitle = $baseSeo['title'];
         $seoParts = [];
         if (! empty($filters['type']) && $filters['type'] !== 'all') {
-            $seoParts[] = $filters['type'] === 'event' ? 'Events' : 'Courses';
+            $seoParts[] = ConnectionHubType::label($filters['type']);
         }
         if (! empty($filters['pricing_type']) && $filters['pricing_type'] !== 'all') {
             $seoParts[] = $filters['pricing_type'] === 'free' ? 'Free' : 'Paid';
@@ -177,11 +178,8 @@ class CourseController extends BaseController
         }
 
         // 🔎 Topic/Event Type filter - depends on course_course_type (both use event_types)
-        if (! empty($filters['courses_topic'])) {
-            $courseType = $filters['courses_course_type'] ?? '';
-            if ($courseType === 'event' || $courseType === 'course') {
-                $query->where('event_type_id', $filters['courses_topic']);
-            }
+        if (! empty($filters['courses_topic']) && ! empty($filters['courses_course_type'])) {
+            $query->where('event_type_id', $filters['courses_topic']);
         }
 
         // 🔎 Pricing type filter
@@ -302,20 +300,19 @@ class CourseController extends BaseController
     {
         $this->authorizePermission($request, 'course.create');
 
-        $type = $request->input('type', 'course');
-        $typeLabel = $type === 'course' ? 'course' : 'event';
-        $typeLabelCapital = $type === 'course' ? 'Course' : 'Event';
+        $type = $request->input('type', ConnectionHubType::COMPANION);
+        $typeLabelCapital = ConnectionHubType::label($type);
+        $typeLabel = strtolower($typeLabelCapital);
+        $outcomesNoun = ConnectionHubType::usesEventSemantics($type) ? 'event' : 'learning';
 
         $validated = $request->validate(array_merge([
             // Basic Information
             'name' => 'required|string|max:255|unique:courses,name',
             'description' => 'required|string',
-            'type' => ['required', Rule::in(['course', 'event'])],
+            'type' => ['required', Rule::in(ConnectionHubType::VALUES)],
             'topic_id' => ['nullable', 'exists:topics,id'],
             'event_type_id' => [
-                'required_if:type,course',
-                'required_if:type,event',
-                'nullable',
+                'required',
                 'exists:event_types,id',
             ],
             'meeting_link' => 'nullable|url|max:500', // Added meeting_link validation
@@ -361,18 +358,18 @@ class CourseController extends BaseController
             'name.unique' => "A {$typeLabel} with this name already exists.",
             'name.max' => "The {$typeLabelCapital} name may not be greater than 255 characters.",
             'description.required' => "The {$typeLabelCapital} description is required.",
-            'type.required' => 'Please select a type (Course or Event).',
-            'type.in' => 'Type must be either Course or Event.',
+            'type.required' => 'Please select a Connection Hub type.',
+            'type.in' => 'Type must be Companion, Learning, Events, or Earning.',
             'topic_id.exists' => 'The selected topic is invalid.',
-            'event_type_id.required_if' => 'Please select a topic.',
+            'event_type_id.required' => 'Please select a topic.',
             'event_type_id.exists' => 'The selected topic is invalid.',
             'meeting_link.url' => 'The meeting link must be a valid URL.',
             'meeting_link.max' => 'The meeting link may not be greater than 500 characters.',
             'pricing_type.required' => 'Please select a pricing type.',
             'pricing_type.in' => 'Pricing type must be either Free or Paid.',
-            'course_fee.required_if' => $type === 'course' ? 'Course fee is required when pricing type is Paid.' : 'Event fee is required when pricing type is Paid.',
-            'course_fee.numeric' => $type === 'course' ? 'Course fee must be a number.' : 'Event fee must be a number.',
-            'course_fee.min' => $type === 'course' ? 'Course fee must be at least 0.' : 'Event fee must be at least 0.',
+            'course_fee.required_if' => 'A fee is required when pricing type is Paid.',
+            'course_fee.numeric' => 'The fee must be a number.',
+            'course_fee.min' => 'The fee must be at least 0.',
             'start_date.required' => 'Start date is required.',
             'start_date.date' => 'Start date must be a valid date.',
             'start_date.after_or_equal' => 'Start date must be today or a future date.',
@@ -392,10 +389,10 @@ class CourseController extends BaseController
             'language.in' => 'Please select a valid language.',
             'target_audience.required' => 'Target audience is required.',
             'target_audience.max' => 'Target audience may not be greater than 255 characters.',
-            'learning_outcomes.required' => $type === 'course' ? 'Learning outcomes are required.' : 'Event outcomes are required.',
-            'learning_outcomes.array' => $type === 'course' ? 'Learning outcomes must be an array.' : 'Event outcomes must be an array.',
-            'learning_outcomes.min' => $type === 'course' ? 'At least one learning outcome is required.' : 'At least one event outcome is required.',
-            'learning_outcomes.*.max' => $type === 'course' ? 'Each learning outcome may not be greater than 255 characters.' : 'Each event outcome may not be greater than 255 characters.',
+            'learning_outcomes.required' => $outcomesNoun === 'learning' ? 'Learning outcomes are required.' : 'Event outcomes are required.',
+            'learning_outcomes.array' => $outcomesNoun === 'learning' ? 'Learning outcomes must be an array.' : 'Event outcomes must be an array.',
+            'learning_outcomes.min' => $outcomesNoun === 'learning' ? 'At least one learning outcome is required.' : 'At least one event outcome is required.',
+            'learning_outcomes.*.max' => $outcomesNoun === 'learning' ? 'Each learning outcome may not be greater than 255 characters.' : 'Each event outcome may not be greater than 255 characters.',
             'prerequisites.*.max' => 'Each prerequisite may not be greater than 255 characters.',
             'materials_needed.*.max' => 'Each material needed may not be greater than 255 characters.',
             'accessibility_features.*.max' => 'Each accessibility feature may not be greater than 255 characters.',
@@ -782,9 +779,10 @@ class CourseController extends BaseController
             abort(403, 'Unauthorized access to this course.');
         }
 
-        $type = $request->input('type', $course->type ?? 'course');
-        $typeLabel = $type === 'course' ? 'course' : 'event';
-        $typeLabelCapital = $type === 'course' ? 'Course' : 'Event';
+        $type = $request->input('type', $course->type ?? ConnectionHubType::COMPANION);
+        $typeLabelCapital = ConnectionHubType::label($type);
+        $typeLabel = strtolower($typeLabelCapital);
+        $outcomesNoun = ConnectionHubType::usesEventSemantics($type) ? 'event' : 'learning';
 
         $validated = $request->validate(array_merge([
             // Basic Information
@@ -795,12 +793,10 @@ class CourseController extends BaseController
                 Rule::unique('courses')->ignore($course->id),
             ],
             'description' => 'required|string',
-            'type' => ['required', Rule::in(['course', 'event'])],
+            'type' => ['required', Rule::in(ConnectionHubType::VALUES)],
             'topic_id' => ['nullable', 'exists:topics,id'],
             'event_type_id' => [
-                'required_if:type,course',
-                'required_if:type,event',
-                'nullable',
+                'required',
                 'exists:event_types,id',
             ],
             'meeting_link' => 'nullable|url|max:500', // Added meeting_link validation
@@ -846,18 +842,18 @@ class CourseController extends BaseController
             'name.unique' => "A {$typeLabel} with this name already exists.",
             'name.max' => "The {$typeLabelCapital} name may not be greater than 255 characters.",
             'description.required' => "The {$typeLabelCapital} description is required.",
-            'type.required' => 'Please select a type (Course or Event).',
-            'type.in' => 'Type must be either Course or Event.',
+            'type.required' => 'Please select a Connection Hub type.',
+            'type.in' => 'Type must be Companion, Learning, Events, or Earning.',
             'topic_id.exists' => 'The selected topic is invalid.',
-            'event_type_id.required_if' => 'Please select a topic.',
+            'event_type_id.required' => 'Please select a topic.',
             'event_type_id.exists' => 'The selected topic is invalid.',
             'meeting_link.url' => 'The meeting link must be a valid URL.',
             'meeting_link.max' => 'The meeting link may not be greater than 500 characters.',
             'pricing_type.required' => 'Please select a pricing type.',
             'pricing_type.in' => 'Pricing type must be either Free or Paid.',
-            'course_fee.required_if' => $type === 'course' ? 'Course fee is required when pricing type is Paid.' : 'Event fee is required when pricing type is Paid.',
-            'course_fee.numeric' => $type === 'course' ? 'Course fee must be a number.' : 'Event fee must be a number.',
-            'course_fee.min' => $type === 'course' ? 'Course fee must be at least 0.' : 'Event fee must be at least 0.',
+            'course_fee.required_if' => 'A fee is required when pricing type is Paid.',
+            'course_fee.numeric' => 'The fee must be a number.',
+            'course_fee.min' => 'The fee must be at least 0.',
             'start_date.required' => 'Start date is required.',
             'start_date.date' => 'Start date must be a valid date.',
             'start_time.required' => 'Start time is required.',
@@ -876,10 +872,10 @@ class CourseController extends BaseController
             'language.in' => 'Please select a valid language.',
             'target_audience.required' => 'Target audience is required.',
             'target_audience.max' => 'Target audience may not be greater than 255 characters.',
-            'learning_outcomes.required' => $type === 'course' ? 'Learning outcomes are required.' : 'Event outcomes are required.',
-            'learning_outcomes.array' => $type === 'course' ? 'Learning outcomes must be an array.' : 'Event outcomes must be an array.',
-            'learning_outcomes.min' => $type === 'course' ? 'At least one learning outcome is required.' : 'At least one event outcome is required.',
-            'learning_outcomes.*.max' => $type === 'course' ? 'Each learning outcome may not be greater than 255 characters.' : 'Each event outcome may not be greater than 255 characters.',
+            'learning_outcomes.required' => $outcomesNoun === 'learning' ? 'Learning outcomes are required.' : 'Event outcomes are required.',
+            'learning_outcomes.array' => $outcomesNoun === 'learning' ? 'Learning outcomes must be an array.' : 'Event outcomes must be an array.',
+            'learning_outcomes.min' => $outcomesNoun === 'learning' ? 'At least one learning outcome is required.' : 'At least one event outcome is required.',
+            'learning_outcomes.*.max' => $outcomesNoun === 'learning' ? 'Each learning outcome may not be greater than 255 characters.' : 'Each event outcome may not be greater than 255 characters.',
             'prerequisites.*.max' => 'Each prerequisite may not be greater than 255 characters.',
             'materials_needed.*.max' => 'Each material needed may not be greater than 255 characters.',
             'accessibility_features.*.max' => 'Each accessibility feature may not be greater than 255 characters.',

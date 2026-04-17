@@ -199,7 +199,7 @@ class ComprehensivePermissionsSeeder extends Seeder
             'course.read', 'course.create', 'course.edit', 'course.update', 'course.delete', 'course.manage',
             // Topics: view only (shared catalog; admins manage via admin role)
             'topic.read',
-            // Event types: view only (shared catalog for courses & events)
+            // Event types: view only (shared catalog for Connection Hub)
             'event_type.read',
 
             // Job Management - Full access

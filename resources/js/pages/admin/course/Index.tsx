@@ -13,6 +13,8 @@ import { showSuccessToast } from "@/lib/toast"
 import type { Auth } from "@/types"
 import DeleteConfirmModal from "@/components/admin/DeleteConfirmModal"
 import { PermissionButton } from '@/components/ui/permission-guard';
+import type { ConnectionHubType } from "@/lib/connection-hub-type"
+import { connectionHubTypeLabel, isEventsHubType } from "@/lib/connection-hub-type"
 
 interface Topic {
   id: number
@@ -46,7 +48,7 @@ interface Course {
   name: string
   slug: string
   description: string
-  type: "course" | "event"
+  type: ConnectionHubType
   pricing_type: "free" | "paid"
   course_fee: number | null
   start_date: string
@@ -322,21 +324,13 @@ export default function CoursesIndex({ courses, eventTypes, filters, statistics 
   }
 
   const getTypeBadge = (type: string) => {
-    if (type === "event") {
-      return (
-        <Badge className="bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200 max-w-max">
-          <Calendar className="h-3 w-3 mr-1" />
-          Event
-        </Badge>
-      )
-    } else {
-      return (
-        <Badge className="bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 max-w-max">
-          <BookOpen className="h-3 w-3 mr-1" />
-          Course
-          </Badge>
-        )
-    }
+    const Icon = isEventsHubType(type) ? Calendar : BookOpen
+    return (
+      <Badge className="bg-indigo-100 text-indigo-900 dark:bg-indigo-950 dark:text-indigo-200 max-w-max">
+        <Icon className="h-3 w-3 mr-1" />
+        {connectionHubTypeLabel(type)}
+      </Badge>
+    )
   }
 
   const getPricingBadge = (pricingType: string, courseFee: number | null) => {
@@ -369,16 +363,16 @@ export default function CoursesIndex({ courses, eventTypes, filters, statistics 
 
   return (
     <AppLayout>
-      <Head title="Courses & Events Management" />
+      <Head title="Connection Hub Management" />
       <div className="space-y-6 sm:space-y-8 animate-in fade-in duration-500 m-10">
         {/* Header */}
         <div className="flex flex-col space-y-4 sm:space-y-0 sm:flex-row sm:items-center sm:justify-between">
           <div className="space-y-2 animate-in slide-in-from-left duration-700">
             <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-gray-900 dark:text-white">
-              Courses & Events Management
+              Connection Hub Management
             </h1>
             <p className="text-sm sm:text-base lg:text-lg text-gray-600 dark:text-gray-400">
-              Manage community courses and events and track enrollment
+              Manage Connection Hub content and track enrollment
             </p>
           </div>
           <div className="animate-in slide-in-from-right duration-700">
@@ -389,7 +383,7 @@ export default function CoursesIndex({ courses, eventTypes, filters, statistics 
                   className="w-full sm:w-auto shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105 cursor-pointer"
                 >
                   <Plus className="mr-2 h-4 w-4 sm:h-5 sm:w-5" />
-                  <span className="hidden sm:inline">Create Course/Event</span>
+                  <span className="hidden sm:inline">Create listing</span>
                   <span className="sm:hidden">Create</span>
                 </Button>
               </Link>
@@ -403,7 +397,7 @@ export default function CoursesIndex({ courses, eventTypes, filters, statistics 
             <CardContent className="p-4 sm:p-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Total Courses & Events</p>
+                  <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Total listings</p>
                   <p className="text-2xl font-bold text-gray-900 dark:text-white">{statistics?.total_courses}</p>
                 </div>
                 <div className="p-3 bg-blue-100 dark:bg-blue-900/50 rounded-full">
@@ -417,7 +411,7 @@ export default function CoursesIndex({ courses, eventTypes, filters, statistics 
             <CardContent className="p-4 sm:p-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Free Courses & Events</p>
+                  <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Free listings</p>
                   <p className="text-2xl font-bold text-green-600 dark:text-green-400">{statistics?.free_courses}</p>
                 </div>
                 <div className="p-3 bg-green-100 dark:bg-green-900/50 rounded-full">
@@ -431,7 +425,7 @@ export default function CoursesIndex({ courses, eventTypes, filters, statistics 
             <CardContent className="p-4 sm:p-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Paid Courses & Events</p>
+                  <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Paid listings</p>
                   <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">{statistics?.paid_courses}</p>
                 </div>
                 <div className="p-3 bg-blue-100 dark:bg-blue-900/50 rounded-full">
@@ -445,7 +439,7 @@ export default function CoursesIndex({ courses, eventTypes, filters, statistics 
             <CardContent className="p-4 sm:p-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Active Courses & Events</p>
+                  <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Active listings</p>
                   <p className="text-2xl font-bold text-purple-600 dark:text-purple-400">{statistics?.active_courses}</p>
                 </div>
                 <div className="p-3 bg-purple-100 dark:bg-purple-900/50 rounded-full">
@@ -493,7 +487,7 @@ export default function CoursesIndex({ courses, eventTypes, filters, statistics 
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
               <CardTitle className="flex items-center gap-2 text-lg sm:text-xl text-gray-900 dark:text-white">
                 <Heart className="h-5 w-5 text-red-500" />
-                Courses & Events ({courses.total})
+                Connection Hub ({courses.total})
               </CardTitle>
             </div>
 
@@ -515,11 +509,13 @@ export default function CoursesIndex({ courses, eventTypes, filters, statistics 
                   className="px-3 py-2 border border-border rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
                 >
                   <option value="">All Types</option>
-                  <option value="course">Course</option>
-                  <option value="event">Event</option>
+                  <option value="companion">Companion</option>
+                  <option value="learning">Learning</option>
+                  <option value="events">Events</option>
+                  <option value="earning">Earning</option>
                 </select>
                 {/* Topic filter — courses and events both use event types */}
-                {coursesCourseType === "event" || coursesCourseType === "course" ? (
+                {coursesCourseType ? (
                   <Select
                     value={coursesTopic || "all"}
                     onValueChange={(value) => setCoursesTopic(value === "all" ? "" : value)}
@@ -530,7 +526,7 @@ export default function CoursesIndex({ courses, eventTypes, filters, statistics 
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">
-                        {coursesCourseType === "event" ? "All Event Topics" : "All Course Topics"}
+                        All topics
                       </SelectItem>
                       {Object.entries(groupedEventTypes).map(([category, types]) => (
                         <div key={category}>
@@ -625,7 +621,7 @@ export default function CoursesIndex({ courses, eventTypes, filters, statistics 
                             <Badge variant="outline" className="max-w-max">
                               {course.event_type.name}
                             </Badge>
-                          ) : course.type === "course" && course.topic ? (
+                          ) : !isEventsHubType(course.type) && course.topic ? (
                             <Badge variant="outline" className="max-w-max">
                               {course.topic.name}
                             </Badge>

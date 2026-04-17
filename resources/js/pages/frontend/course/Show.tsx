@@ -32,6 +32,8 @@ import { Progress } from "@/components/ui/progress"
 import { Separator } from "@/components/ui/separator"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { usePage, Link, router } from "@inertiajs/react"
+import { connectionHubTypeLabel, isEventsHubType } from "@/lib/connection-hub-type"
+import type { ConnectionHubType } from "@/lib/connection-hub-type"
 
 interface Topic {
   id: number
@@ -65,7 +67,7 @@ interface Course {
   name: string
   slug: string
   description: string
-  type: "course" | "event"
+  type: ConnectionHubType
   pricing_type: "free" | "paid"
   course_fee: number | null
   start_date: string
@@ -161,7 +163,7 @@ export default function FrontendCourseShow({
     if (!userEnrollment) return
     if (
       confirm(
-        `Are you sure you want to cancel your ${course.type === "course" ? "enrollment" : "registration"}? This action cannot be undone.`,
+        `Are you sure you want to cancel your ${!isEventsHubType(course.type) ? "enrollment" : "registration"}? This action cannot be undone.`,
       )
     ) {
       router.post(`/courses/${course.slug}/cancel`, {
@@ -174,7 +176,7 @@ export default function FrontendCourseShow({
     if (!userEnrollment) return
     if (
       confirm(
-        `Are you sure you want to request a refund? This will cancel your ${course.type === "course" ? "enrollment" : "registration"} and process a refund to your original payment method.`,
+        `Are you sure you want to request a refund? This will cancel your ${!isEventsHubType(course.type) ? "enrollment" : "registration"} and process a refund to your original payment method.`,
       )
     ) {
       router.post(`/courses/${course.slug}/refund`)
@@ -239,7 +241,7 @@ export default function FrontendCourseShow({
               className="inline-flex items-center gap-2 text-sm font-medium text-slate-600 hover:text-purple-700 dark:text-slate-400 dark:hover:text-purple-400 transition-colors"
             >
               <ArrowLeft className="h-4 w-4" />
-              All courses & events
+              Back to Connection Hub
             </Link>
           </div>
         </div>
@@ -275,10 +277,10 @@ export default function FrontendCourseShow({
                     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                       <div>
                         <p className="font-semibold">
-                          {course.type === "course" ? "Enrollment" : "Registration"}: {userEnrollment.status_label}
+                          {!isEventsHubType(course.type) ? "Enrollment" : "Registration"}: {userEnrollment.status_label}
                         </p>
                         <p className="text-sm text-white/80 mt-1">
-                          {course.type === "course" ? "Enrolled" : "Registered"}{" "}
+                          {!isEventsHubType(course.type) ? "Enrolled" : "Registered"}{" "}
                           {new Date(userEnrollment.enrolled_at).toLocaleDateString()}
                           {userEnrollment.amount_paid > 0 && ` · Paid $${userEnrollment.amount_paid}`}
                         </p>
@@ -328,12 +330,12 @@ export default function FrontendCourseShow({
               <div className="lg:col-span-7 space-y-5">
                 <div className="flex flex-wrap gap-2">
                   <Badge className="rounded-md bg-white/15 text-white hover:bg-white/20 border border-white/20">
-                    {course.type === "course" ? "Course" : "Event"}
+                    {connectionHubTypeLabel(course.type)}
                   </Badge>
-                  {course.type === "course" && course.topic && (
+                  {!isEventsHubType(course.type) && course.topic && (
                     <Badge className="rounded-md bg-white/10 text-white/95 border border-white/20">{course.topic.name}</Badge>
                   )}
-                  {course.type === "event" && course.event_type && (
+                  {isEventsHubType(course.type) && course.event_type && (
                     <Badge className="rounded-md bg-white/10 text-white/95 border border-white/20">{course.event_type.name}</Badge>
                   )}
                   <Badge className="rounded-md bg-white/10 text-white/95 border border-white/20">{course.language}</Badge>
@@ -400,10 +402,10 @@ export default function FrontendCourseShow({
                         <User className="h-5 w-5 text-purple-600 dark:text-purple-400" />
                       )}
                       {course.organization
-                        ? course.type === "course"
+                        ? !isEventsHubType(course.type)
                           ? "Organization"
                           : "Host organization"
-                        : course.type === "course"
+                        : !isEventsHubType(course.type)
                           ? "Instructor"
                           : "Organizer"}
                     </CardTitle>
@@ -420,7 +422,7 @@ export default function FrontendCourseShow({
                       <p className="text-sm font-medium text-purple-700 dark:text-purple-300 mt-0.5">
                         {course.organization
                           ? "Official organization listing"
-                          : course.type === "course"
+                          : !isEventsHubType(course.type)
                             ? "Course instructor"
                             : "Event organizer"}
                       </p>
@@ -434,7 +436,7 @@ export default function FrontendCourseShow({
                   <div className="border-b border-slate-100 px-6 py-4 dark:border-gray-800">
                     <CardTitle className="flex items-center gap-2 text-lg font-semibold text-slate-900 dark:text-white">
                       <BookOpen className="h-5 w-5 text-purple-600 dark:text-purple-400" />
-                      {course.type === "course" ? "About this course" : "About this event"}
+                      {isEventsHubType(course.type) ? "About this event" : "About this listing"}
                     </CardTitle>
                   </div>
                   <CardContent className="p-6">
@@ -468,7 +470,7 @@ export default function FrontendCourseShow({
                   <div className="border-b border-slate-100 px-6 py-4 dark:border-gray-800">
                     <CardTitle className="flex items-center gap-2 text-lg font-semibold text-slate-900 dark:text-white">
                       <CheckCircle className="h-5 w-5 text-emerald-600" />
-                      {course.type === "course" ? "What you'll learn" : "Highlights"}
+                      {!isEventsHubType(course.type) ? "What you'll learn" : "Highlights"}
                     </CardTitle>
                   </div>
                   <CardContent className="p-6">
@@ -535,7 +537,7 @@ export default function FrontendCourseShow({
                     </p>
                     <p className="mt-1 text-sm text-white/85">
                       {course.pricing_type === "free"
-                        ? course.type === "course"
+                        ? !isEventsHubType(course.type)
                           ? "No cost to enroll"
                           : "No cost to register"
                         : "One-time payment"}
@@ -545,7 +547,7 @@ export default function FrontendCourseShow({
                     <div>
                       <div className="mb-2 flex justify-between text-sm">
                         <span className="font-medium text-slate-700 dark:text-slate-300">
-                          {course.type === "course" ? "Enrollment" : "Registration"}
+                          {!isEventsHubType(course.type) ? "Enrollment" : "Registration"}
                         </span>
                         <span className="tabular-nums text-slate-600 dark:text-slate-400">
                           {enrollmentStats.total_enrolled}/{enrollmentStats.max_participants}
@@ -560,19 +562,21 @@ export default function FrontendCourseShow({
                     {hasCurrentEnrollment && userEnrollment ? (
                       <div className="text-center space-y-2">
                         <Badge className={`px-4 py-1.5 ${getEnrollmentStatusColor(userEnrollment.status)}`}>
-                          {userEnrollment.status === "active" && (course.type === "course" ? "Enrolled" : "Registered")}
+                          {userEnrollment.status === "active" && (!isEventsHubType(course.type) ? "Enrolled" : "Registered")}
                           {userEnrollment.status === "pending" && "Pending"}
                           {userEnrollment.status === "completed" && "Completed"}
                         </Badge>
                         <p className="text-sm text-slate-600 dark:text-slate-400">
                           {userEnrollment.status === "active" &&
-                            (course.type === "course" ? "You're in this course." : "You're registered for this event.")}
+                            (!isEventsHubType(course.type)
+                              ? "You're enrolled in this listing."
+                              : "You're registered for this event.")}
                           {userEnrollment.status === "pending" &&
-                            (course.type === "course"
+                            (!isEventsHubType(course.type)
                               ? "Complete payment to confirm your spot."
                               : "Complete payment to confirm your registration.")}
                           {userEnrollment.status === "completed" &&
-                            (course.type === "course" ? "You've completed this course." : "Event completed.")}
+                            (!isEventsHubType(course.type) ? "You've completed this listing." : "Event completed.")}
                         </p>
                       </div>
                     ) : canEnroll ? (
@@ -582,7 +586,7 @@ export default function FrontendCourseShow({
                             onClick={handleEnroll}
                             className="h-12 w-full bg-gradient-to-r from-purple-600 to-blue-600 text-base font-semibold shadow-md hover:from-purple-700 hover:to-blue-700"
                           >
-                            Sign in to {course.type === "course" ? "enroll" : "register"}
+                            Sign in to {!isEventsHubType(course.type) ? "enroll" : "register"}
                             <ChevronRight className="ml-2 h-4 w-4" />
                           </Button>
                           <p className="text-center text-xs text-slate-500 dark:text-slate-400">
@@ -594,7 +598,7 @@ export default function FrontendCourseShow({
                           onClick={handleEnroll}
                           className="h-12 w-full bg-gradient-to-r from-purple-600 to-blue-600 text-base font-semibold shadow-md hover:from-purple-700 hover:to-blue-700"
                         >
-                          {course.type === "course" ? "Enroll" : "Register"} now
+                          {!isEventsHubType(course.type) ? "Enroll" : "Register"} now
                           <span className="ml-2 opacity-95">
                             {course.pricing_type === "paid" ? ` · ${course.formatted_price}` : " · Free"}
                           </span>
@@ -603,26 +607,26 @@ export default function FrontendCourseShow({
                     ) : (
                       <div className="text-center space-y-2">
                         <Button disabled className="h-11 w-full" size="lg" variant="secondary">
-                          {status === "full" && (course.type === "course" ? "Course full" : "Event full")}
-                          {status === "started" && (course.type === "course" ? "Already started" : "Already started")}
+                          {status === "full" && (!isEventsHubType(course.type) ? "Listing full" : "Event full")}
+                          {status === "started" && (!isEventsHubType(course.type) ? "Already started" : "Already started")}
                           {status === "unavailable" &&
-                            (course.type === "course" ? "Enrollment unavailable" : "Registration unavailable")}
+                            (!isEventsHubType(course.type) ? "Enrollment unavailable" : "Registration unavailable")}
                           {status !== "full" &&
                             status !== "started" &&
                             status !== "unavailable" &&
-                            (course.type === "course" ? "Enrollment closed" : "Registration closed")}
+                            (!isEventsHubType(course.type) ? "Enrollment closed" : "Registration closed")}
                         </Button>
                         <p className="text-sm text-slate-500 dark:text-slate-400">
                           {status === "full" && "No spots available."}
-                          {status === "started" && (course.type === "course" ? "This course has already started." : "This event has already started.")}
+                          {status === "started" && (!isEventsHubType(course.type) ? "This listing has already started." : "This event has already started.")}
                           {status === "unavailable" &&
-                            (course.type === "course"
-                              ? "You can't enroll in your own course from this view."
+                            (!isEventsHubType(course.type)
+                              ? "You can't enroll in your own listing from this view."
                               : "You can't register for your own event from this view.")}
                           {status !== "full" &&
                             status !== "started" &&
                             status !== "unavailable" &&
-                            (course.type === "course" ? "Enrollment is no longer open." : "Registration is no longer open.")}
+                            (!isEventsHubType(course.type) ? "Enrollment is no longer open." : "Registration is no longer open.")}
                         </p>
                       </div>
                     )}

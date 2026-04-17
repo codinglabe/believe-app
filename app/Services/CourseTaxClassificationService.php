@@ -16,8 +16,7 @@ class CourseTaxClassificationService
 
     public static function needsIntake(Request $request): bool
     {
-        return $request->input('type', 'course') === 'course'
-            && $request->input('pricing_type') === 'paid';
+        return $request->input('pricing_type') === 'paid';
     }
 
     /**

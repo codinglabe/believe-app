@@ -49,11 +49,10 @@ export interface BiuTaxFormSlice {
 
 function computeClassification(
   pricingType: string,
-  courseType: string,
   hasPhysical: boolean,
   pricingStructure: string,
 ): TaxClassification {
-  if (pricingType !== "paid" || courseType !== "course") {
+  if (pricingType !== "paid") {
     return "non_taxable"
   }
   if (!hasPhysical) {
@@ -86,7 +85,8 @@ interface BiuCourseTaxIntakeProps {
   setData: (key: string, value: unknown) => void
   errors: Partial<Record<keyof BiuTaxFormSlice | string, string>>
   organizationName?: string | null
-  courseType: "course" | "event"
+  /** Connection Hub type (companion, learning, events, earning) — reserved for future rules */
+  hubType?: string
   pricingType: "free" | "paid"
 }
 
@@ -161,27 +161,23 @@ export default function BiuCourseTaxIntake({
   setData,
   errors,
   organizationName,
-  courseType,
+  hubType: _hubType = undefined,
   pricingType,
 }: BiuCourseTaxIntakeProps) {
+  void _hubType
   const taxClassification = useMemo(
-    () =>
-      computeClassification(pricingType, courseType, data.has_physical_materials, data.pricing_structure),
-    [pricingType, courseType, data.has_physical_materials, data.pricing_structure],
+    () => computeClassification(pricingType, data.has_physical_materials, data.pricing_structure),
+    [pricingType, data.has_physical_materials, data.pricing_structure],
   )
 
   const showBundledWarning =
-    pricingType === "paid" &&
-    courseType === "course" &&
-    data.has_physical_materials &&
-    data.pricing_structure === "bundled"
+    pricingType === "paid" && data.has_physical_materials && data.pricing_structure === "bundled"
 
   const isSeparate =
-    pricingType === "paid" && courseType === "course" && data.has_physical_materials && data.pricing_structure === "separate"
+    pricingType === "paid" && data.has_physical_materials && data.pricing_structure === "separate"
 
   const isBundledWithShip =
     pricingType === "paid" &&
-    courseType === "course" &&
     data.has_physical_materials &&
     data.pricing_structure === "bundled" &&
     data.requires_shipping
@@ -225,10 +221,10 @@ export default function BiuCourseTaxIntake({
           <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-purple-600 to-blue-600 text-white shadow-sm">
             <Receipt className="h-5 w-5" strokeWidth={2} />
           </span>
-          BIU course tax classification
+          BIU tax classification
         </CardTitle>
         <p className="text-sm text-muted-foreground">
-          Simple intake for sales tax handling. Required for paid community courses.
+          Simple intake for sales tax handling. Required for paid Connection Hub listings.
         </p>
       </CardHeader>
       <CardContent className="space-y-6">

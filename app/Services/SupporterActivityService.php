@@ -161,7 +161,7 @@ class SupporterActivityService
             return;
         }
 
-        $eventType = $course->type === 'event'
+        $eventType = $course->type === 'events'
             ? SupporterActivity::EVENT_EVENTS_COMPLETED
             : SupporterActivity::EVENT_COURSES_COMPLETED;
 

@@ -163,7 +163,7 @@ export default function Navbar() {
     { name: "Gift Cards", href: route("gift-cards.index"), icon: Gift },
     { name: "Volunteer Opportunity", href: "/volunteer-opportunities", icon: HeartHandshake },
     { name: "Jobs", href: "/jobs", icon: Briefcase },
-    { name: "Courses & Events", href: route("course.index"), icon: GraduationCap },
+    { name: "Connection Hub", href: route("course.index"), icon: GraduationCap },
     { name: "Event Calendar", href: "/all-events", icon: Calendar },
     { name: "Explore Causes", href: "/explore-by-cause", icon: Compass },
   ]

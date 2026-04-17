@@ -7,6 +7,7 @@ use App\Models\Enrollment;
 use App\Models\Organization;
 use App\Models\Topic;
 use App\Services\CourseTaxClassificationService;
+use App\Support\ConnectionHubType;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -225,6 +226,7 @@ class FrontendCourseController extends Controller
             // Basic Information
             'name' => 'required|string|max:255|unique:courses,name',
             'description' => 'required|string',
+            'type' => ['required', Rule::in(ConnectionHubType::VALUES)],
             'topic_id' => ['required', 'exists:topics,id'],
             'meeting_link' => 'nullable|url|max:500', // Added meeting_link validation
 
@@ -306,6 +308,7 @@ class FrontendCourseController extends Controller
                 'user_id' => Auth::id(),
 
                 // Form data
+                'type' => $validated['type'],
                 'topic_id' => $validated['topic_id'],
                 'name' => $validated['name'],
                 'slug' => $slug,
@@ -526,6 +529,7 @@ class FrontendCourseController extends Controller
                 Rule::unique('courses')->ignore($course->id),
             ],
             'description' => 'required|string',
+            'type' => ['required', Rule::in(ConnectionHubType::VALUES)],
             'topic_id' => ['required', 'exists:topics,id'],
             'meeting_link' => 'nullable|url|max:500', // Added meeting_link validation
 
@@ -609,6 +613,7 @@ class FrontendCourseController extends Controller
             DB::beginTransaction();
 
             $course->update(array_merge([
+                'type' => $validated['type'],
                 'topic_id' => $validated['topic_id'],
                 'name' => $validated['name'],
                 'slug' => $slug,
