@@ -5,6 +5,7 @@ import { motion } from "framer-motion"
 import {
   ArrowLeft,
   Calendar,
+  CalendarRange,
   Clock,
   Users,
   MapPin,
@@ -73,7 +74,7 @@ interface Course {
   start_date: string
   start_time: string
   end_date: string | null
-  duration: "1_session" | "1_week" | "2_weeks" | "1_month" | "6_weeks" | "3_months"
+  session_duration_minutes: number
   format: "online" | "in_person" | "hybrid"
   max_participants: number
   language: string
@@ -101,6 +102,7 @@ interface Course {
   image_url: string | null
   formatted_price: string
   formatted_duration: string
+  formatted_program_length?: string | null
   formatted_format: string
 }
 
@@ -183,18 +185,6 @@ export default function FrontendCourseShow({
     }
   }
 
-  const getDurationLabel = (duration: string) => {
-    const labels: Record<string, string> = {
-      "1_session": "Single session (2–3 hours)",
-      "1_week": "1 week",
-      "2_weeks": "2 weeks",
-      "1_month": "1 month",
-      "6_weeks": "6 weeks",
-      "3_months": "3 months",
-    }
-    return labels[duration] ?? duration
-  }
-
   const getEnrollmentStatusColor = (s: string) => {
     switch (s) {
       case "active":
@@ -213,7 +203,14 @@ export default function FrontendCourseShow({
   const FormatIcon = formatIconForFormat(course.format)
   const orgName = course.organization_name ?? course.organization?.name ?? "Organization"
 
-  /** Listing host: org account + profile name, not the individual user who created the draft. */
+  /**
+   * Registered nonprofit/org profile name from the backend — not merely the presence of `organization`
+   * (that relation is the listing owner user and is usually set). Avoids showing “Organization” /
+   * “Official organization listing” for individual hosts without an org profile.
+   */
+  const isOfficialOrganizationListing = Boolean((course.organization_name ?? "").trim())
+
+  /** Listing host: org profile name when present, else the owner account or creator display name. */
   const hostName = course.organization
     ? (course.organization_name ?? course.organization.name)
     : course.creator.name
@@ -371,8 +368,11 @@ export default function FrontendCourseShow({
                   <div className="flex items-center gap-2 rounded-xl bg-white/10 px-4 py-2.5 backdrop-blur-sm">
                     <Clock className="h-5 w-5 text-white/90" />
                     <div>
-                      <p className="text-xs uppercase tracking-wide text-white/60">Length</p>
-                      <p className="text-sm font-semibold">{getDurationLabel(course.duration)}</p>
+                      <p className="text-xs uppercase tracking-wide text-white/60">Session</p>
+                      <p className="text-sm font-semibold">{course.formatted_duration}</p>
+                      {course.formatted_program_length ? (
+                        <p className="text-xs text-white/75 mt-0.5">Program · {course.formatted_program_length}</p>
+                      ) : null}
                     </div>
                   </div>
                   <div className="flex items-center gap-2 rounded-xl bg-white/10 px-4 py-2.5 backdrop-blur-sm">
@@ -396,12 +396,12 @@ export default function FrontendCourseShow({
                 <Card className="overflow-hidden border-slate-200/90 shadow-xl shadow-slate-200/30 dark:border-gray-800 dark:shadow-none">
                   <div className="border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white px-6 py-4 dark:from-gray-900 dark:to-gray-900/80 dark:border-gray-800">
                     <CardTitle className="flex items-center gap-2 text-lg font-semibold text-slate-900 dark:text-white">
-                      {course.organization ? (
+                      {isOfficialOrganizationListing ? (
                         <Building2 className="h-5 w-5 text-purple-600 dark:text-purple-400" />
                       ) : (
                         <User className="h-5 w-5 text-purple-600 dark:text-purple-400" />
                       )}
-                      {course.organization
+                      {isOfficialOrganizationListing
                         ? !isEventsHubType(course.type)
                           ? "Organization"
                           : "Host organization"
@@ -420,7 +420,7 @@ export default function FrontendCourseShow({
                     <div className="min-w-0 flex-1">
                       <h3 className="text-xl font-bold text-slate-900 dark:text-white">{hostName}</h3>
                       <p className="text-sm font-medium text-purple-700 dark:text-purple-300 mt-0.5">
-                        {course.organization
+                        {isOfficialOrganizationListing
                           ? "Official organization listing"
                           : !isEventsHubType(course.type)
                             ? "Course instructor"
@@ -652,10 +652,19 @@ export default function FrontendCourseShow({
                       <div className="flex gap-3">
                         <Clock className="h-5 w-5 shrink-0 text-purple-600 dark:text-purple-400" />
                         <div>
-                          <p className="font-medium text-slate-900 dark:text-white">Duration</p>
-                          <p className="text-slate-600 dark:text-slate-400">{getDurationLabel(course.duration)}</p>
+                          <p className="font-medium text-slate-900 dark:text-white">Session duration</p>
+                          <p className="text-slate-600 dark:text-slate-400">{course.formatted_duration}</p>
                         </div>
                       </div>
+                      {course.formatted_program_length ? (
+                        <div className="flex gap-3">
+                          <CalendarRange className="h-5 w-5 shrink-0 text-purple-600 dark:text-purple-400" />
+                          <div>
+                            <p className="font-medium text-slate-900 dark:text-white">Program length</p>
+                            <p className="text-slate-600 dark:text-slate-400">{course.formatted_program_length}</p>
+                          </div>
+                        </div>
+                      ) : null}
                       <div className="flex gap-3">
                         <FormatIcon className="h-5 w-5 shrink-0 text-purple-600 dark:text-purple-400" />
                         <div>

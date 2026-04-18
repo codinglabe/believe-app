@@ -101,8 +101,8 @@ export default function NewsletterRecipients({ organizations, manualRecipients, 
     })
     const { data: testEmailData, setData: setTestEmailData, post: postTestEmail, processing: testEmailProcessing, reset: resetTestEmail } = useForm({
         email: '',
-        subject: 'Test Newsletter Email',
-        content: 'This is a test email from the newsletter system.'
+        subject: 'Test Engagement email',
+        content: 'This is a test email from Engagement.'
     })
 
     const { data, setData, post, processing, errors, reset } = useForm({
@@ -153,8 +153,8 @@ export default function NewsletterRecipients({ organizations, manualRecipients, 
     const handleSendTest = (email: string) => {
         setTestEmailData({
             email: email,
-            subject: 'Test Newsletter Email',
-            content: 'This is a test email from the newsletter system.'
+            subject: 'Test Engagement email',
+            content: 'This is a test email from Engagement.'
         })
         setTestEmailModal({ isOpen: true, email })
     }
@@ -172,8 +172,8 @@ export default function NewsletterRecipients({ organizations, manualRecipients, 
     const handleSubscribe = (orgId: number, email: string) => {
         setConfirmationModal({
             isOpen: true,
-            title: 'Subscribe to Newsletter',
-            description: `Are you sure you want to subscribe ${email} to the newsletter?`,
+            title: 'Subscribe to Engagement',
+            description: `Are you sure you want to subscribe ${email} to Engagement?`,
             onConfirm: () => {
                 post(route('newsletter.recipients.subscribe', orgId));
             }
@@ -183,8 +183,8 @@ export default function NewsletterRecipients({ organizations, manualRecipients, 
     const handleUnsubscribe = (orgId: number, email: string) => {
         setConfirmationModal({
             isOpen: true,
-            title: 'Unsubscribe from Newsletter',
-            description: `Are you sure you want to unsubscribe ${email} from the newsletter?`,
+            title: 'Unsubscribe from Engagement',
+            description: `Are you sure you want to unsubscribe ${email} from Engagement?`,
             onConfirm: () => {
                 post(route('newsletter.recipients.unsubscribe', orgId));
             }
@@ -194,8 +194,8 @@ export default function NewsletterRecipients({ organizations, manualRecipients, 
     const handleManualSubscribe = (recipientId: number, email: string) => {
         setConfirmationModal({
             isOpen: true,
-            title: 'Subscribe to Newsletter',
-            description: `Are you sure you want to subscribe ${email} to the newsletter?`,
+            title: 'Subscribe to Engagement',
+            description: `Are you sure you want to subscribe ${email} to Engagement?`,
             onConfirm: () => {
                 post(route('newsletter.recipients.manual.subscribe', recipientId));
             }
@@ -205,8 +205,8 @@ export default function NewsletterRecipients({ organizations, manualRecipients, 
     const handleManualUnsubscribe = (recipientId: number, email: string) => {
         setConfirmationModal({
             isOpen: true,
-            title: 'Unsubscribe from Newsletter',
-            description: `Are you sure you want to unsubscribe ${email} from the newsletter?`,
+            title: 'Unsubscribe from Engagement',
+            description: `Are you sure you want to unsubscribe ${email} from Engagement?`,
             onConfirm: () => {
                 post(route('newsletter.recipients.manual.unsubscribe', recipientId));
             }
@@ -333,17 +333,20 @@ export default function NewsletterRecipients({ organizations, manualRecipients, 
 
     return (
         <AppSidebarLayout>
-            <Head title="Newsletter Recipients" />
+            <Head title="Engagement · Recipients" />
             
             <div className="space-y-6 sm:space-y-8 animate-in fade-in duration-500 m-10">
                 {/* Header */}
                 <div className="flex flex-col space-y-4 sm:space-y-0 sm:flex-row sm:items-center sm:justify-between">
                     <div className="space-y-2 animate-in slide-in-from-left duration-700">
+                        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">
+                            Engagement
+                        </p>
                         <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-gray-900 dark:text-white">
-                            Organization Recipients
+                            Organization recipients
                         </h1>
                         <p className="text-sm sm:text-base lg:text-lg text-gray-600 dark:text-gray-400">
-                            View all organizations and their newsletter subscription status
+                            View all organizations and their Engagement subscription status
                         </p>
                     </div>
                     <div className="animate-in slide-in-from-right duration-700">
@@ -370,7 +373,7 @@ export default function NewsletterRecipients({ organizations, manualRecipients, 
                                 className="shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105 cursor-pointer"
                             >
                                 <Mail className="h-4 w-4 mr-2" />
-                                Create Newsletter
+                                New Engagement
                             </Button>
                         </div>
                     </div>
@@ -471,7 +474,7 @@ export default function NewsletterRecipients({ organizations, manualRecipients, 
                             <CardHeader>
                                 <CardTitle>Add New Recipient</CardTitle>
                                 <CardDescription>
-                                    Add a new email subscriber to your newsletter
+                                    Add a new email subscriber to Engagement
                                 </CardDescription>
                             </CardHeader>
                             <CardContent>
@@ -597,7 +600,7 @@ export default function NewsletterRecipients({ organizations, manualRecipients, 
                                 <CardHeader>
                                     <CardTitle>Organizations ({organizations.data.length})</CardTitle>
                                     <CardDescription>
-                                        Approved nonprofits on the platform (pending or rejected registrations are hidden). Newsletter subscription status per organization.
+                                        Approved nonprofits on the platform (pending or rejected registrations are hidden). Engagement subscription status per organization.
                                     </CardDescription>
                                 </CardHeader>
                         <CardContent>
@@ -646,7 +649,7 @@ export default function NewsletterRecipients({ organizations, manualRecipients, 
                                                             className="flex-1 sm:flex-none text-xs"
                                                         >
                                                             <Mail className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
-                                                            <span className="hidden sm:inline">Send Test</span>
+                                                            <span className="hidden sm:inline">Test email</span>
                                                             <span className="sm:hidden">Test</span>
                                                         </Button>
                                                         {subscriptionStatus === 'not_subscribed' && (
@@ -725,7 +728,7 @@ export default function NewsletterRecipients({ organizations, manualRecipients, 
                                 <CardHeader>
                                     <CardTitle>Add New Recipient</CardTitle>
                                     <CardDescription>
-                                        Add a new manual recipient to the newsletter
+                                        Add a new manual recipient to Engagement
                                     </CardDescription>
                                 </CardHeader>
                                 <CardContent>
@@ -890,9 +893,9 @@ export default function NewsletterRecipients({ organizations, manualRecipients, 
             <Dialog open={testEmailModal.isOpen} onOpenChange={(open) => setTestEmailModal(prev => ({ ...prev, isOpen: open }))}>
                 <DialogContent className="max-w-2xl">
                     <DialogHeader>
-                        <DialogTitle>Send Test Email</DialogTitle>
+                        <DialogTitle>Test email</DialogTitle>
                         <DialogDescription>
-                            Send a test email to {testEmailModal.email} to preview how your newsletter will look
+                            Email a preview to {testEmailModal.email} to see how your message will look
                         </DialogDescription>
                     </DialogHeader>
                     <form onSubmit={handleTestEmailSubmit} className="space-y-4">
@@ -943,7 +946,7 @@ export default function NewsletterRecipients({ organizations, manualRecipients, 
                                 type="submit"
                                 disabled={testEmailProcessing}
                             >
-                                {testEmailProcessing ? 'Sending...' : 'Send Test Email'}
+                                {testEmailProcessing ? 'Working…' : 'Email preview'}
                             </Button>
                         </DialogFooter>
                     </form>

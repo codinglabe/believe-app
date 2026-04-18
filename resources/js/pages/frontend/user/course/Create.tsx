@@ -1,7 +1,17 @@
 "use client"
 import type React from "react"
 import { Head, useForm, usePage, Link } from "@inertiajs/react"
-import { Save, Heart, Calendar, BookOpen, Settings, AlertCircle, ChevronRight } from "lucide-react"
+import {
+  Save,
+  Heart,
+  Calendar,
+  BookOpen,
+  Settings,
+  AlertCircle,
+  ChevronRight,
+  ArrowLeft,
+  Sparkles,
+} from "lucide-react"
 import { Button } from "@/components/admin/ui/button"
 import { Input } from "@/components/admin/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -20,6 +30,7 @@ import {
   type PrimaryActionCategoryOption,
 } from "@/components/organization-primary-action-categories-field"
 import { connectionHubTypeLabel, isEventsHubType, type ConnectionHubType } from "@/lib/connection-hub-type"
+import { SESSION_DURATION_MINUTES_OPTIONS, sessionDurationLabel } from "@/lib/session-duration-options"
 
 interface EventType {
   id: number
@@ -74,7 +85,7 @@ export default function NonprofitCoursesCreate() {
     start_date: "",
     start_time: "",
     end_date: "",
-    duration: "",
+    session_duration_minutes: "60",
     format: "online",
     max_participants: "",
     language: "English",
@@ -97,6 +108,18 @@ export default function NonprofitCoursesCreate() {
     tax_ack_outside_ca: false,
     tax_ack_auto_calculate: false,
   })
+
+  const formattedProgramLengthPreview = useMemo(() => {
+    if (!data.start_date || !data.end_date) return null
+    const start = new Date(`${data.start_date}T12:00:00`)
+    const end = new Date(`${data.end_date}T12:00:00`)
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end < start) return null
+    const days = Math.floor((end.getTime() - start.getTime()) / 86400000) + 1
+    const weeks = days / 7
+    if (weeks <= 1) return "About 1 week"
+    const rounded = Math.round(weeks * 10) / 10
+    return `${rounded} weeks`
+  }, [data.start_date, data.end_date])
 
   const validateTab = (tab: string): boolean => {
     switch (tab) {
@@ -142,7 +165,7 @@ export default function NonprofitCoursesCreate() {
           data.format &&
           data.start_date &&
           data.start_time &&
-          data.duration &&
+          data.session_duration_minutes &&
           data.max_participants
         )
       case "settings":
@@ -187,7 +210,9 @@ export default function NonprofitCoursesCreate() {
         setCurrentTab("basics")
       } else if (
         errorFields.some((field) =>
-          ["meeting_link", "format", "start_date", "start_time", "duration", "max_participants"].includes(field),
+          ["meeting_link", "format", "start_date", "start_time", "session_duration_minutes", "max_participants"].includes(
+            field,
+          ),
         )
       ) {
         setCurrentTab("schedule")
@@ -238,7 +263,35 @@ export default function NonprofitCoursesCreate() {
     >
       <Head title="Create listing · Connection Hub" />
 
-      <div className="space-y-6 m-6">
+      <div className="mx-auto max-w-7xl animate-in fade-in duration-500 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+        <div className="relative mb-8 overflow-hidden rounded-2xl border border-slate-200/90 bg-gradient-to-br from-white via-slate-50/80 to-purple-50/40 p-6 shadow-sm dark:border-gray-800 dark:from-gray-900 dark:via-gray-900 dark:to-purple-950/30 sm:p-8">
+          <div
+            className="pointer-events-none absolute -right-16 -top-16 h-48 w-48 rounded-full bg-purple-500/15 blur-3xl dark:bg-purple-500/10"
+            aria-hidden
+          />
+          <Link
+            href={route("profile.course.index")}
+            className="mb-4 inline-flex items-center gap-2 text-sm font-medium text-gray-600 transition hover:text-purple-700 dark:text-gray-400 dark:hover:text-purple-400"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Back to Connection Hub
+          </Link>
+          <div className="relative flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <div className="flex max-w-2xl gap-4">
+              <div className="hidden h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-purple-600 to-blue-600 text-white shadow-lg shadow-purple-500/25 sm:flex">
+                <Sparkles className="h-7 w-7" aria-hidden />
+              </div>
+              <div className="space-y-1">
+                <h1 className="text-2xl font-bold tracking-tight text-gray-900 dark:text-white sm:text-3xl">
+                  Create listing
+                </h1>
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  Work through Basics → Schedule → Settings. You can save on the last step.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
 
         <form
           onSubmit={(e) => {
@@ -246,28 +299,43 @@ export default function NonprofitCoursesCreate() {
           }}
         >
           <Tabs value={currentTab} onValueChange={handleTabChange} className="space-y-6">
-            <TabsList className="grid w-full grid-cols-3">
-              <TabsTrigger value="basics" className="flex items-center gap-2">
-                <BookOpen className="h-4 w-4" />
-                Basics
-                {tabErrors.basics && <AlertCircle className="h-3 w-3 text-destructive" />}
+            <TabsList className="grid h-auto w-full grid-cols-3 gap-2 rounded-2xl border border-gray-200/90 bg-gray-50/90 p-2 dark:border-gray-800 dark:bg-gray-900/50">
+              <TabsTrigger
+                value="basics"
+                className="flex items-center justify-center gap-2 rounded-xl data-[state=active]:bg-white data-[state=active]:text-purple-700 data-[state=active]:shadow-md dark:data-[state=active]:bg-gray-800 dark:data-[state=active]:text-purple-300"
+              >
+                <BookOpen className="h-4 w-4 shrink-0" />
+                <span className="hidden sm:inline">Basics</span>
+                <span className="sm:hidden">1</span>
+                {tabErrors.basics && <AlertCircle className="h-3 w-3 shrink-0 text-destructive" />}
               </TabsTrigger>
-              <TabsTrigger value="schedule" className="flex items-center gap-2">
-                <Calendar className="h-4 w-4" />
-                Schedule
-                {tabErrors.schedule && <AlertCircle className="h-3 w-3 text-destructive" />}
+              <TabsTrigger
+                value="schedule"
+                className="flex items-center justify-center gap-2 rounded-xl data-[state=active]:bg-white data-[state=active]:text-purple-700 data-[state=active]:shadow-md dark:data-[state=active]:bg-gray-800 dark:data-[state=active]:text-purple-300"
+              >
+                <Calendar className="h-4 w-4 shrink-0" />
+                <span className="hidden sm:inline">Schedule</span>
+                <span className="sm:hidden">2</span>
+                {tabErrors.schedule && <AlertCircle className="h-3 w-3 shrink-0 text-destructive" />}
               </TabsTrigger>
-              <TabsTrigger value="settings" className="flex items-center gap-2">
-                <Settings className="h-4 w-4" />
-                Settings
-                {tabErrors.settings && <AlertCircle className="h-3 w-3 text-destructive" />}
+              <TabsTrigger
+                value="settings"
+                className="flex items-center justify-center gap-2 rounded-xl data-[state=active]:bg-white data-[state=active]:text-purple-700 data-[state=active]:shadow-md dark:data-[state=active]:bg-gray-800 dark:data-[state=active]:text-purple-300"
+              >
+                <Settings className="h-4 w-4 shrink-0" />
+                <span className="hidden sm:inline">Settings</span>
+                <span className="sm:hidden">3</span>
+                {tabErrors.settings && <AlertCircle className="h-3 w-3 shrink-0 text-destructive" />}
               </TabsTrigger>
             </TabsList>
 
             <TabsContent value="basics">
-              <Card>
-                <CardHeader>
-                  <CardTitle>{connectionHubTypeLabel(data.type)} basics</CardTitle>
+              <Card className="overflow-hidden rounded-2xl border border-gray-200/90 shadow-lg dark:border-gray-800">
+                <CardHeader className="border-b border-gray-100 bg-gray-50/50 dark:border-gray-800 dark:bg-gray-900/30">
+                  <CardTitle className="text-lg font-semibold">{connectionHubTypeLabel(data.type)} basics</CardTitle>
+                  <p className="text-sm font-normal text-gray-500 dark:text-gray-400">
+                    Name, topic, pricing, causes, and description
+                  </p>
                 </CardHeader>
                 <CardContent className="space-y-6">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -438,10 +506,10 @@ export default function NonprofitCoursesCreate() {
                     <ImageUpload label="" value={null} onChange={(file) => setData("image", file)} />
                   </div>
 
-                  <div className="flex justify-end border-t pt-6 mt-6">
+                  <div className="flex justify-end border-t border-gray-100 pt-6 dark:border-gray-800">
                     <Button
                       type="button"
-                      className="min-w-[160px]"
+                      className="min-w-[160px] bg-gradient-to-r from-purple-600 to-blue-600 shadow-md shadow-purple-500/15 hover:from-purple-700 hover:to-blue-700"
                       onClick={() => {
                         if (validateTab("basics")) {
                           setCurrentTab("schedule")
@@ -459,9 +527,12 @@ export default function NonprofitCoursesCreate() {
             </TabsContent>
 
             <TabsContent value="schedule">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Schedule & Meeting Details</CardTitle>
+              <Card className="overflow-hidden rounded-2xl border border-gray-200/90 shadow-lg dark:border-gray-800">
+                <CardHeader className="border-b border-gray-100 bg-gray-50/50 dark:border-gray-800 dark:bg-gray-900/30">
+                  <CardTitle className="text-lg font-semibold">Schedule & meeting details</CardTitle>
+                  <p className="text-sm font-normal text-gray-500 dark:text-gray-400">
+                    When participants meet, duration, and capacity
+                  </p>
                 </CardHeader>
                 <CardContent className="space-y-6">
                   <div className="space-y-2">
@@ -524,7 +595,14 @@ export default function NonprofitCoursesCreate() {
                         className={errors.end_date ? "border-destructive" : ""}
                       />
                       {errors.end_date && <p className="text-sm text-destructive">{errors.end_date}</p>}
-                      <p className="text-xs text-muted-foreground">Optional: Leave blank for single session courses</p>
+                      <p className="text-xs text-muted-foreground">
+                        Optional. When set with a start date, program length is calculated for display (weeks).
+                      </p>
+                      {formattedProgramLengthPreview ? (
+                        <p className="text-xs font-medium text-purple-700 dark:text-purple-300">
+                          Program length: ~{formattedProgramLengthPreview}
+                        </p>
+                      ) : null}
                     </div>
 
                     <div className="space-y-2">
@@ -541,22 +619,27 @@ export default function NonprofitCoursesCreate() {
                     </div>
 
                     <div className="space-y-2">
-                      <label htmlFor="duration" className="text-sm font-medium">
-                        Duration *
+                      <label htmlFor="session_duration_minutes" className="text-sm font-medium">
+                        Session duration *
                       </label>
-                      <Select value={data.duration} onValueChange={(value) => setData("duration", value)}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select duration" />
+                      <Select
+                        value={data.session_duration_minutes}
+                        onValueChange={(value) => setData("session_duration_minutes", value)}
+                      >
+                        <SelectTrigger id="session_duration_minutes" className={errors.session_duration_minutes ? "border-destructive" : ""}>
+                          <SelectValue placeholder="Minutes per session" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="1_session">Single Session</SelectItem>
-                          <SelectItem value="1_week">1 Week</SelectItem>
-                          <SelectItem value="2_weeks">2 Weeks</SelectItem>
-                          <SelectItem value="1_month">1 Month</SelectItem>
-                          <SelectItem value="6_weeks">6 Weeks</SelectItem>
-                          <SelectItem value="3_months">3 Months</SelectItem>
+                          {SESSION_DURATION_MINUTES_OPTIONS.map((m) => (
+                            <SelectItem key={m} value={String(m)}>
+                              {sessionDurationLabel(m)}
+                            </SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
+                      {errors.session_duration_minutes && (
+                        <p className="text-sm text-destructive">{errors.session_duration_minutes}</p>
+                      )}
                     </div>
 
                     <div className="space-y-2">
@@ -592,13 +675,13 @@ export default function NonprofitCoursesCreate() {
                     </div>
                   </div>
 
-                  <div className="flex flex-wrap items-center justify-between gap-4 border-t pt-6 mt-6">
+                  <div className="flex flex-wrap items-center justify-between gap-4 border-t border-gray-100 pt-6 dark:border-gray-800">
                     <Button type="button" variant="outline" onClick={() => setCurrentTab("basics")}>
                       Back
                     </Button>
                     <Button
                       type="button"
-                      className="min-w-[160px] sm:ml-auto"
+                      className="min-w-[160px] bg-gradient-to-r from-purple-600 to-blue-600 shadow-md shadow-purple-500/15 hover:from-purple-700 hover:to-blue-700 sm:ml-auto"
                       onClick={() => {
                         if (validateTab("schedule")) {
                           setCurrentTab("settings")
@@ -616,13 +699,16 @@ export default function NonprofitCoursesCreate() {
             </TabsContent>
 
             <TabsContent value="settings">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Additional Settings</CardTitle>
+              <Card className="overflow-hidden rounded-2xl border border-gray-200/90 shadow-lg dark:border-gray-800">
+                <CardHeader className="border-b border-gray-100 bg-gray-50/50 dark:border-gray-800 dark:bg-gray-900/30">
+                  <CardTitle className="text-lg font-semibold">Additional settings</CardTitle>
+                  <p className="text-sm font-normal text-gray-500 dark:text-gray-400">
+                    Certificates, volunteering, then publish
+                  </p>
                 </CardHeader>
                 <CardContent className="space-y-6">
                   <div className="space-y-4">
-                    <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
+                    <div className="flex items-center justify-between rounded-xl border border-gray-200/80 bg-white p-4 dark:border-gray-700 dark:bg-gray-900/40">
                       <div>
                         <label htmlFor="certificate_provided" className="text-sm font-medium">
                           Provide Certificate
@@ -636,7 +722,7 @@ export default function NonprofitCoursesCreate() {
                       />
                     </div>
 
-                    <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
+                    <div className="flex items-center justify-between rounded-xl border border-gray-200/80 bg-white p-4 dark:border-gray-700 dark:bg-gray-900/40">
                       <div>
                         <label htmlFor="volunteer_opportunities" className="text-sm font-medium">
                           Volunteer Opportunities
@@ -653,17 +739,22 @@ export default function NonprofitCoursesCreate() {
                     </div>
                   </div>
 
-                  <div className="flex flex-wrap items-center justify-between gap-4 border-t pt-6 mt-6">
+                  <div className="flex flex-wrap items-center justify-between gap-4 border-t border-gray-100 pt-6 dark:border-gray-800">
                     <Button type="button" variant="outline" onClick={() => setCurrentTab("schedule")}>
                       Back
                     </Button>
-                    <div className="flex flex-wrap justify-end gap-4">
+                    <div className="flex flex-wrap justify-end gap-3">
                     <Link href={route("profile.course.index")}>
                       <Button type="button" variant="outline">
                         Cancel
                       </Button>
                     </Link>
-                    <Button type="button" disabled={processing} onClick={handleSave} className="min-w-[140px]">
+                    <Button
+                      type="button"
+                      disabled={processing}
+                      onClick={handleSave}
+                      className="min-w-[160px] bg-gradient-to-r from-purple-600 to-blue-600 shadow-md shadow-purple-500/15 hover:from-purple-700 hover:to-blue-700"
+                    >
                       {processing ? (
                         <>
                           <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-current mr-2"></div>

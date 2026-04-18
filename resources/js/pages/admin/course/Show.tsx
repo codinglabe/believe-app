@@ -67,7 +67,7 @@ interface Course {
   start_date: string
   start_time: string
   end_date: string | null
-  duration: "1_session" | "1_week" | "2_weeks" | "1_month" | "6_weeks" | "3_months"
+  session_duration_minutes: number
   format: "online" | "in_person" | "hybrid"
   max_participants: number
   language: string
@@ -94,6 +94,7 @@ interface Course {
   image_url: string | null
   formatted_price: string
   formatted_duration: string
+  formatted_program_length?: string | null
   formatted_format: string
 }
 

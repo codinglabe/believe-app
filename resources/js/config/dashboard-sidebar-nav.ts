@@ -162,7 +162,7 @@ export const dashboardSidebarNavItems: (NavItem | NavGroup)[] = [
                 ],
             },
             {
-                title: 'Messaging Hb',
+                title: 'Engagement',
                 href: '/newsletter',
                 icon: Mail,
                 permission: 'newsletter.read',

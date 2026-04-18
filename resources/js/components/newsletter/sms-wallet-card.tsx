@@ -89,9 +89,9 @@ interface NewsletterSmsWalletCardProps {
     /** When set with the matching `on*Change`, Buy SMS dialog is controlled by the parent. */
     buySmsDialogOpen?: boolean
     onBuySmsDialogOpenChange?: (open: boolean) => void
-    /** Render only purchase dialogs (no card UI) — e.g. Newsletter Dashboard toolbar. */
+    /** Render only purchase dialogs (no card UI) — e.g. Engagement toolbar. */
     variant?: "full" | "dialogsOnly"
-    /** When true, Stripe success/cancel return to the Newsletter dashboard instead of create / Email Invite. */
+    /** When true, Stripe success/cancel return to Engagement (`/newsletter`) instead of create / Email Invite. */
     checkoutReturnToNewsletter?: boolean
 }
 
@@ -395,13 +395,13 @@ export function NewsletterSmsWalletCard({
                         <Link href={route("newsletter.create")}>
                             <Button type="button" className={cn("w-full sm:w-auto", brandButtonClass)}>
                                 <Plus className="mr-2 h-4 w-4" />
-                                Create newsletter
+                                New Engagement
                             </Button>
                         </Link>
                     ) : null}
                 </div>
 
-                {/* Tabs — link to filtered newsletter list */}
+                {/* Tabs — link to filtered Engagement list */}
                 <div className="flex border-b border-white/10 px-4 sm:px-6">
                     <Link
                         href={indexUrl()}
@@ -444,7 +444,7 @@ export function NewsletterSmsWalletCard({
                 {/* Blurb + Buy SMS */}
                 <div className="flex flex-col gap-3 border-b border-white/5 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
                     <p className="max-w-3xl text-sm leading-relaxed text-zinc-400">
-                        Newsletter sends use your email quota; SMS and Email + SMS use prepaid SMS credits ($25 = 1,200 SMS). Same
+                        Engagement uses your email quota; SMS and Email + SMS use prepaid SMS credits ($25 = 1,200 SMS). Same
                         balances as <span className="font-medium text-zinc-300">Email Invites</span> for email.
                     </p>
                     {smsStats ? (
@@ -465,7 +465,7 @@ export function NewsletterSmsWalletCard({
                                             <Mail className="h-4 w-4 text-sky-400" />
                                             Email usage
                                         </h3>
-                                        <p className="mt-0.5 text-xs text-zinc-500">Quota for email, newsletters and invites</p>
+                                        <p className="mt-0.5 text-xs text-zinc-500">Quota for email, Engagement, and invites</p>
                                     </div>
                                     <Button
                                         type="button"
@@ -609,7 +609,7 @@ export function NewsletterSmsWalletCard({
                                               : "text-emerald-400"
                                     )}
                                 >
-                                    <span className="text-zinc-500">Available to send: </span>
+                                    <span className="text-zinc-500">Available: </span>
                                     <span className="font-semibold tabular-nums text-white">{smsStats.sms_left.toLocaleString()}</span>
                                 </p>
 
@@ -640,7 +640,7 @@ export function NewsletterSmsWalletCard({
                     <DialogHeader>
                         <DialogTitle>Buy email credits</DialogTitle>
                         <DialogDescription className="text-zinc-500">
-                            Same packages as Email Invites. Each successful send uses one email from your balance.
+                            Same packages as Email Invites. Each delivered Engagement uses one email from your balance.
                         </DialogDescription>
                     </DialogHeader>
                     <div className="max-h-[50vh] space-y-2 overflow-y-auto py-2">

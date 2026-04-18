@@ -9,6 +9,7 @@ use App\Models\Organization;
 use App\Models\Topic;
 use App\Services\CourseTaxClassificationService;
 use App\Support\ConnectionHubType;
+use App\Support\SessionDurationMinutes;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -260,7 +261,7 @@ class FrontendCourseController extends BaseController
             'start_date' => 'required|date|after_or_equal:today',
             'start_time' => 'required|date_format:H:i',
             'end_date' => 'nullable|date|after_or_equal:start_date',
-            'duration' => ['required', Rule::in(['1_session', '1_week', '2_weeks', '1_month', '6_weeks', '3_months'])],
+            'session_duration_minutes' => ['required', 'integer', Rule::in(SessionDurationMinutes::VALUES)],
             'format' => ['required', Rule::in(['online', 'in_person', 'hybrid'])],
 
             'max_participants' => 'required|integer|min:1|max:100',
@@ -306,8 +307,8 @@ class FrontendCourseController extends BaseController
             'start_time.date_format' => 'Start time must be in HH:MM format.',
             'end_date.date' => 'End date must be a valid date.',
             'end_date.after_or_equal' => 'End date must be on or after the start date.',
-            'duration.required' => 'Duration is required.',
-            'duration.in' => 'Please select a valid duration.',
+            'session_duration_minutes.required' => 'Session duration is required.',
+            'session_duration_minutes.in' => 'Please select a session duration between 30 and 120 minutes.',
             'format.required' => 'Format is required.',
             'format.in' => 'Format must be Online, In-Person, or Hybrid.',
             'max_participants.required' => 'Maximum participants is required.',
@@ -379,7 +380,7 @@ class FrontendCourseController extends BaseController
                 'start_date' => $validated['start_date'],
                 'start_time' => $validated['start_time'],
                 'end_date' => $validated['end_date'] ?? null,
-                'duration' => $validated['duration'],
+                'session_duration_minutes' => $validated['session_duration_minutes'],
                 'format' => $validated['format'],
 
                 'max_participants' => $validated['max_participants'],
@@ -606,7 +607,7 @@ class FrontendCourseController extends BaseController
             'start_date' => 'required|date',
             'start_time' => 'required|date_format:H:i',
             'end_date' => 'nullable|date|after_or_equal:start_date',
-            'duration' => ['required', Rule::in(['1_session', '1_week', '2_weeks', '1_month', '6_weeks', '3_months'])],
+            'session_duration_minutes' => ['required', 'integer', Rule::in(SessionDurationMinutes::VALUES)],
             'format' => ['required', Rule::in(['online', 'in_person', 'hybrid'])],
 
             'max_participants' => 'required|integer|min:1|max:100',
@@ -651,8 +652,8 @@ class FrontendCourseController extends BaseController
             'start_time.date_format' => 'Start time must be in HH:MM format.',
             'end_date.date' => 'End date must be a valid date.',
             'end_date.after_or_equal' => 'End date must be on or after the start date.',
-            'duration.required' => 'Duration is required.',
-            'duration.in' => 'Please select a valid duration.',
+            'session_duration_minutes.required' => 'Session duration is required.',
+            'session_duration_minutes.in' => 'Please select a session duration between 30 and 120 minutes.',
             'format.required' => 'Format is required.',
             'format.in' => 'Format must be Online, In-Person, or Hybrid.',
             'max_participants.required' => 'Maximum participants is required.',
@@ -728,7 +729,7 @@ class FrontendCourseController extends BaseController
                 'start_date' => $validated['start_date'],
                 'start_time' => $validated['start_time'],
                 'end_date' => $validated['end_date'],
-                'duration' => $validated['duration'],
+                'session_duration_minutes' => $validated['session_duration_minutes'],
                 'format' => $validated['format'],
 
                 'max_participants' => $validated['max_participants'],
