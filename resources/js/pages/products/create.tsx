@@ -83,6 +83,18 @@ interface Props {
     blueprints: Blueprint[];
     printify_enabled: boolean;
     defaultMarkupPercentage?: number;
+    /** Logged-in nonprofit org (organization / organization_pending users only). */
+    default_organization?: { id: number; name: string } | null;
+}
+
+function collectInertiaErrorMessages(err: Record<string, unknown>): string[] {
+    const out: string[] = [];
+    for (const v of Object.values(err)) {
+        if (v == null) continue;
+        if (Array.isArray(v)) out.push(...v.map((x) => String(x)));
+        else if (typeof v === 'string') out.push(v);
+    }
+    return out.filter(Boolean);
 }
 
 export default function Create({
@@ -92,6 +104,7 @@ export default function Create({
     blueprints,
     printify_enabled,
     defaultMarkupPercentage = 25,
+    default_organization = null,
 }: Props) {
     const { auth, flash } = usePage<SharedData>().props
 
@@ -205,6 +218,13 @@ useEffect(() => {
             setData('ship_from_mode', 'custom');
         }
     }, [merchants_for_ship_from.length, data.ship_from_mode, setData]);
+
+    /** Org users sell under their nonprofit; default the form so validation and ownership stay consistent. */
+    useEffect(() => {
+        if (!isOrgUser || !default_organization) return;
+        setData('owned_by', 'organization');
+        setData('organization_id', String(default_organization.id));
+    }, [isOrgUser, default_organization?.id, setData]);
 
     /** At cost: sync unit_price from source_cost. */
     useEffect(() => {
@@ -458,6 +478,18 @@ const handleCategoryChange = (categoryId: number) => {
         } else {
             // Validate manual product required fields (fixed price) or bidding fields
             const pricingModel = data.pricing_model || 'fixed';
+            if (pricingModel === 'fixed' || pricingModel === 'offer') {
+                const scRaw = String(data.source_cost ?? '').trim();
+                const scNum = parseFloat(scRaw);
+                if (scRaw === '' || !Number.isFinite(scNum) || scNum < 0) {
+                    setErrors({
+                        source_cost: 'Enter your cost (what buyers pay) for this own-source product.',
+                    });
+                    setProcessing(false);
+                    showErrorToast('Enter your cost under “Your cost ($)”. That amount is what buyers pay for own-source products.');
+                    return;
+                }
+            }
             if (pricingModel === 'fixed') {
                 if (!data.unit_price || parseFloat(data.unit_price) <= 0) {
                     setErrors({ unit_price: 'Please enter a valid unit price.' });
@@ -544,7 +576,10 @@ const handleCategoryChange = (categoryId: number) => {
         formData.append('name', data.name);
         formData.append('description', data.description);
         formData.append('quantity', data.quantity);
-        formData.append('owned_by', data.owned_by);
+        formData.append(
+            'owned_by',
+            isOrgUser && default_organization ? 'organization' : data.owned_by
+        );
         formData.append('status', data.status);
         formData.append('sku', data.sku);
         formData.append('type', data.type);
@@ -586,7 +621,11 @@ const handleCategoryChange = (categoryId: number) => {
         }
 
         if (data.tags) formData.append('tags', data.tags);
-        if (data.organization_id) formData.append('organization_id', data.organization_id);
+        if (isOrgUser && default_organization) {
+            formData.append('organization_id', String(default_organization.id));
+        } else if (data.organization_id) {
+            formData.append('organization_id', String(data.organization_id));
+        }
         formData.append('is_printify_product', data.is_printify_product ? '1' : '0');
         // Categories
         data.categories.forEach(id => formData.append('categories[]', id.toString()));
@@ -624,9 +663,7 @@ const handleCategoryChange = (categoryId: number) => {
             }
             const pmFixed = data.pricing_model || 'fixed';
             if (pmFixed === 'fixed' || pmFixed === 'offer') {
-                if (String(data.source_cost ?? '').trim() !== '') {
-                    formData.append('source_cost', String(data.source_cost));
-                }
+                formData.append('source_cost', String(data.source_cost ?? '').trim());
             }
         }
 
@@ -679,6 +716,10 @@ const handleCategoryChange = (categoryId: number) => {
                     showErrorToast(
                         'File size too large. Please ensure each design image is under 1MB (Printify requirement). If you\'re uploading multiple images, try uploading them one at a time or compress your images before uploading.'
                     );
+                } else if (err.printify_error) {
+                    const pe = err.printify_error;
+                    const printifyMsg = Array.isArray(pe) ? pe.join(', ') : String(pe);
+                    showErrorToast(printifyMsg);
                 } else if (err.printify_images) {
                     // Show specific error for printify_images
                     const imageError = Array.isArray(err.printify_images)
@@ -686,7 +727,8 @@ const handleCategoryChange = (categoryId: number) => {
                         : err.printify_images;
                     showErrorToast(`Design image error: ${imageError}`);
                 } else {
-                    showErrorToast('Please fix the errors');
+                    const parts = collectInertiaErrorMessages(err as Record<string, unknown>);
+                    showErrorToast(parts.length ? parts.join(' ') : 'Please fix the errors');
                 }
                 console.log('Errors:', err);
             },
@@ -944,6 +986,16 @@ const handleCategoryChange = (categoryId: number) => {
                                         </div>
                                     </CardHeader>
                                     <CardContent className="space-y-6 pt-6">
+                                        {errors.printify_error && (
+                                            <div
+                                                role="alert"
+                                                className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-800 dark:border-red-800 dark:bg-red-950/40 dark:text-red-200"
+                                            >
+                                                {Array.isArray(errors.printify_error)
+                                                    ? errors.printify_error.join(' ')
+                                                    : errors.printify_error}
+                                            </div>
+                                        )}
                                         {/* Product Type Selection */}
                                         <div className="space-y-3">
                                             <Label htmlFor="blueprint" className="flex items-center gap-2 text-base font-semibold">

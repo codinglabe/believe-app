@@ -10,8 +10,11 @@ use Illuminate\Support\Facades\Log;
 class PrintifyService
 {
     protected $client;
+
     protected $apiKey;
+
     protected $shopId;
+
     protected $baseUrl;
 
     public function __construct()
@@ -23,13 +26,53 @@ class PrintifyService
         $this->client = new Client([
             'base_uri' => $this->baseUrl,
             'headers' => [
-                'Authorization' => 'Bearer ' . $this->apiKey,
+                'Authorization' => 'Bearer '.$this->apiKey,
                 'Content-Type' => 'application/json',
-                'User-Agent' => 'BelieveInUnity/'  . env('APP_VERSION', '1.0')
+                'User-Agent' => 'BelieveInUnity/'.env('APP_VERSION', '1.0'),
             ],
             'timeout' => 30,
             'connect_timeout' => 10,
         ]);
+    }
+
+    /**
+     * List shops available for this API token (use the "id" as PRINTIFY_SHOP_ID).
+     *
+     * @return list<array<string, mixed>>
+     */
+    public function listShops(): array
+    {
+        try {
+            $response = $this->client->get('v1/shops.json', [
+                'http_errors' => false,
+            ]);
+            $statusCode = $response->getStatusCode();
+            $data = json_decode($response->getBody()->getContents(), true);
+
+            if ($statusCode >= 400) {
+                Log::warning('Printify list shops failed', [
+                    'status' => $statusCode,
+                    'body' => $data,
+                ]);
+
+                return [];
+            }
+
+            if (! is_array($data)) {
+                return [];
+            }
+
+            // API may return a bare list or a wrapped payload
+            if (isset($data['data']) && is_array($data['data'])) {
+                return $data['data'];
+            }
+
+            return $data;
+        } catch (RequestException $e) {
+            $this->handleException($e, 'List shops');
+
+            return [];
+        }
     }
 
     /**
@@ -39,9 +82,11 @@ class PrintifyService
     {
         try {
             $response = $this->client->get('v1/catalog/blueprints.json');
+
             return json_decode($response->getBody(), true) ?: [];
         } catch (RequestException $e) {
             $this->handleException($e, 'Blueprints');
+
             return [];
         }
     }
@@ -53,9 +98,11 @@ class PrintifyService
     {
         try {
             $response = $this->client->get("v1/catalog/blueprints/{$blueprintId}/print_providers.json");
+
             return json_decode($response->getBody(), true) ?: [];
         } catch (RequestException $e) {
             $this->handleException($e, 'Providers', ['blueprint_id' => $blueprintId]);
+
             return [];
         }
     }
@@ -67,9 +114,11 @@ class PrintifyService
     {
         try {
             $response = $this->client->get("v1/catalog/print_providers/{$printProviderId}.json");
+
             return json_decode($response->getBody(), true) ?: [];
         } catch (RequestException $e) {
             $this->handleException($e, 'Provider id', ['printProviderId' => $printProviderId]);
+
             return [];
         }
     }
@@ -81,12 +130,14 @@ class PrintifyService
     {
         try {
             $response = $this->client->get("v1/catalog/blueprints/{$blueprintId}/print_providers/{$printProviderId}/variants.json");
+
             return json_decode($response->getBody(), true) ?: [];
         } catch (RequestException $e) {
             $this->handleException($e, 'Variants', [
                 'blueprint_id' => $blueprintId,
-                'print_provider_id' => $printProviderId
+                'print_provider_id' => $printProviderId,
             ]);
+
             return [];
         }
     }
@@ -98,12 +149,14 @@ class PrintifyService
     {
         try {
             $response = $this->client->get("v2/catalog/blueprints/{$blueprintId}/print_providers/{$printProviderId}/shipping/standard.json");
+
             return json_decode($response->getBody(), true) ?: [];
         } catch (RequestException $e) {
             $this->handleException($e, 'Shipping', [
                 'blueprint_id' => $blueprintId,
-                'print_provider_id' => $printProviderId
+                'print_provider_id' => $printProviderId,
             ]);
+
             return [];
         }
     }
@@ -116,12 +169,12 @@ class PrintifyService
         try {
             Log::info('Sending Printify API request', [
                 'shop_id' => $this->shopId,
-                'product_data' => $productData
+                'product_data' => $productData,
             ]);
 
             $response = $this->client->post("v1/shops/{$this->shopId}/products.json", [
                 'json' => $productData,
-                'http_errors' => false // Don't throw exceptions for HTTP errors
+                'http_errors' => false, // Don't throw exceptions for HTTP errors
             ]);
 
             $statusCode = $response->getStatusCode();
@@ -130,11 +183,11 @@ class PrintifyService
 
             Log::info('Printify API response', [
                 'status_code' => $statusCode,
-                'response' => $responseData
+                'response' => $responseData,
             ]);
 
             if ($statusCode >= 400) {
-                throw new \Exception('Printify API error: ' . ($responseData['message'] ?? 'Unknown error') . ' (Status: ' . $statusCode . ')');
+                throw new \Exception('Printify API error: '.($responseData['message'] ?? 'Unknown error').' (Status: '.$statusCode.')');
             }
 
             return $responseData;
@@ -143,19 +196,19 @@ class PrintifyService
             Log::error('Printify API request failed', [
                 'error' => $e->getMessage(),
                 'url' => $e->getRequest()->getUri(),
-                'method' => $e->getRequest()->getMethod()
+                'method' => $e->getRequest()->getMethod(),
             ]);
 
             if ($e->hasResponse()) {
                 $responseBody = $e->getResponse()->getBody()->getContents();
                 $errorData = json_decode($responseBody, true);
-                throw new \Exception('Printify API error: ' . ($errorData['message'] ?? $e->getMessage()));
+                throw new \Exception('Printify API error: '.($errorData['message'] ?? $e->getMessage()));
             }
 
-            throw new \Exception('Printify API connection failed: ' . $e->getMessage());
+            throw new \Exception('Printify API connection failed: '.$e->getMessage());
         } catch (\Exception $e) {
             Log::error('Printify service error', [
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
             throw $e;
         }
@@ -168,7 +221,7 @@ class PrintifyService
     {
         try {
             $response = $this->client->put("v1/shops/{$this->shopId}/products/{$productId}.json", [
-                'json' => $productData
+                'json' => $productData,
             ]);
 
             return json_decode($response->getBody(), true);
@@ -185,6 +238,7 @@ class PrintifyService
     {
         try {
             $response = $this->client->get("v1/shops/{$this->shopId}/products/{$productId}.json");
+
             return json_decode($response->getBody(), true);
         } catch (RequestException $e) {
             $this->handleException($e, 'Get Product', ['product_id' => $productId]);
@@ -201,9 +255,10 @@ class PrintifyService
             $response = $this->client->get("v1/shops/{$this->shopId}/products.json", [
                 'query' => [
                     'page' => $page,
-                    'limit' => $limit
-                ]
+                    'limit' => $limit,
+                ],
             ]);
+
             return json_decode($response->getBody(), true);
         } catch (RequestException $e) {
             $this->handleException($e, 'Get Products');
@@ -218,6 +273,7 @@ class PrintifyService
     {
         try {
             $response = $this->client->delete("v1/shops/{$this->shopId}/products/{$productId}.json");
+
             return $response->getStatusCode() === 200;
         } catch (RequestException $e) {
             $this->handleException($e, 'Delete Product', ['product_id' => $productId]);
@@ -238,7 +294,7 @@ class PrintifyService
             'variants' => true,
             'tags' => true,
             'keyFeatures' => true,
-            'shipping_template' => true
+            'shipping_template' => true,
         ];
 
         $publishData = array_merge($defaultData, $publishData);
@@ -246,7 +302,7 @@ class PrintifyService
         try {
             $response = $this->client->post("v1/shops/{$this->shopId}/products/{$productId}/publish.json", [
                 'json' => $publishData,
-                'http_errors' => false
+                'http_errors' => false,
             ]);
 
             $statusCode = $response->getStatusCode();
@@ -255,18 +311,18 @@ class PrintifyService
             return [
                 'success' => $statusCode === 200,
                 'status_code' => $statusCode,
-                'data' => json_decode($responseBody, true)
+                'data' => json_decode($responseBody, true),
             ];
 
         } catch (\Exception $e) {
             \Log::error('Failed to publish Printify product', [
                 'product_id' => $productId,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
 
             return [
                 'success' => false,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ];
         }
     }
@@ -279,10 +335,10 @@ class PrintifyService
                 'json' => [
                     'external' => [
                         'id' => $externalId,
-                        'handle' => $handle
-                    ]
+                        'handle' => $handle,
+                    ],
                 ],
-                'http_errors' => false
+                'http_errors' => false,
             ]);
 
             $statusCode = $response->getStatusCode();
@@ -291,18 +347,18 @@ class PrintifyService
             return [
                 'success' => $statusCode === 200,
                 'status_code' => $statusCode,
-                'data' => json_decode($responseBody, true)
+                'data' => json_decode($responseBody, true),
             ];
 
         } catch (\Exception $e) {
             \Log::error('Failed to mark publishing succeeded', [
                 'product_id' => $productId,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
 
             return [
                 'success' => false,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ];
         }
     }
@@ -314,7 +370,7 @@ class PrintifyService
     {
         try {
             $response = $this->client->post("v1/shops/{$this->shopId}/products/{$productId}/unpublish.json", [
-                'http_errors' => false
+                'http_errors' => false,
             ]);
 
             $statusCode = $response->getStatusCode();
@@ -323,18 +379,18 @@ class PrintifyService
             return [
                 'success' => $statusCode === 200,
                 'status_code' => $statusCode,
-                'data' => json_decode($responseBody, true)
+                'data' => json_decode($responseBody, true),
             ];
 
         } catch (\Exception $e) {
             \Log::error('Failed to unpublish Printify product', [
                 'product_id' => $productId,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
 
             return [
                 'success' => false,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ];
         }
     }
@@ -345,12 +401,13 @@ class PrintifyService
     public function uploadImage(string $imageUrl): array
     {
         try {
-            $response = $this->client->post("v1/uploads/images.json", [
+            $response = $this->client->post('v1/uploads/images.json', [
                 'json' => [
                     'file_name' => basename($imageUrl),
-                    'url' => $imageUrl
-                ]
+                    'url' => $imageUrl,
+                ],
             ]);
+
             return json_decode($response->getBody(), true);
         } catch (RequestException $e) {
             $this->handleException($e, 'Upload Image');
@@ -358,14 +415,13 @@ class PrintifyService
         }
     }
 
-
     public function createOrder(array $orderData): array
     {
         try {
             // Prepare request data
             $requestData = [
-                'external_id' => $orderData['external_id'] ?? 'order-' . uniqid(),
-                'label' => $orderData['label'] ?? 'ORDER-' . substr(uniqid(), -6),
+                'external_id' => $orderData['external_id'] ?? 'order-'.uniqid(),
+                'label' => $orderData['label'] ?? 'ORDER-'.substr(uniqid(), -6),
                 'line_items' => $orderData['line_items'],
                 'shipping_method' => $orderData['shipping_method'] ?? 1,
                 'send_shipping_notification' => $orderData['send_shipping_notification'] ?? false,
@@ -380,23 +436,20 @@ class PrintifyService
                 $requestData['is_economy_shipping'] = $orderData['is_economy_shipping'];
             }
 
-
-
             // Make API request using Guzzle
             $response = $this->client->post("v1/shops/{$this->shopId}/orders.json", [
                 'json' => $requestData,
-                'http_errors' => false // Don't throw exceptions for HTTP errors
+                'http_errors' => false, // Don't throw exceptions for HTTP errors
             ]);
 
             $statusCode = $response->getStatusCode();
             $responseBody = $response->getBody()->getContents();
             $responseData = json_decode($responseBody, true) ?? $responseBody;
 
-
-
             // Check if request was successful
             if ($statusCode >= 200 && $statusCode < 300) {
                 Log::info('Printify order created successfully');
+
                 return $responseData;
             }
 
@@ -404,15 +457,13 @@ class PrintifyService
             $errorMessage = $this->handleErrorResponse($statusCode, $responseData);
 
             throw new \Exception($errorMessage);
-
         } catch (RequestException $e) {
             // Handle Guzzle request exceptions
             $errorMessage = $this->handleGuzzleException($e);
-            Log::error('Printify Guzzle Error: ' . $errorMessage);
+            Log::error('Printify Guzzle Error: '.$errorMessage);
             throw new \Exception($errorMessage);
-
         } catch (\Exception $e) {
-            Log::error('Printify Service Error: ' . $e->getMessage());
+            Log::error('Printify Service Error: '.$e->getMessage());
             throw $e;
         }
     }
@@ -424,16 +475,17 @@ class PrintifyService
     {
         try {
             $response = $this->client->get("v1/shops/{$this->shopId}/orders/{$orderId}.json");
+
             return json_decode($response->getBody(), true) ?? [];
         } catch (RequestException $e) {
             Log::error('Failed to fetch Printify order', [
                 'order_id' => $orderId,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
+
             return [];
         }
     }
-
 
     /**
      * Cancel order in Printify
@@ -443,7 +495,7 @@ class PrintifyService
         try {
             $response = $this->client->post("v1/shops/{$this->shopId}/orders/{$orderId}/cancel.json", [
                 'http_errors' => false,
-                'json' => [] // Empty payload as per Printify API
+                'json' => [], // Empty payload as per Printify API
             ]);
 
             $statusCode = $response->getStatusCode();
@@ -453,17 +505,17 @@ class PrintifyService
             if ($statusCode === 200) {
                 Log::info('Printify order cancelled successfully', [
                     'order_id' => $orderId,
-                    'response' => $responseData
+                    'response' => $responseData,
                 ]);
+
                 return $responseData;
             }
 
             $errorMessage = "Failed to cancel order. Status: {$statusCode}, Response: {$responseBody}";
             Log::error($errorMessage);
             throw new \Exception($errorMessage);
-
         } catch (\Exception $e) {
-            Log::error('Printify cancelOrder error: ' . $e->getMessage());
+            Log::error('Printify cancelOrder error: '.$e->getMessage());
             throw $e;
         }
     }
@@ -476,14 +528,14 @@ class PrintifyService
         try {
             $payload = [
                 'line_items' => $lineItems,
-                'address_to' => $shippingAddress
+                'address_to' => $shippingAddress,
             ];
 
             Log::info('Calculating Printify shipping', ['payload' => $payload]);
 
             $response = $this->client->post("v1/shops/{$this->shopId}/orders/shipping.json", [
                 'json' => $payload,
-                'http_errors' => false
+                'http_errors' => false,
             ]);
 
             $statusCode = $response->getStatusCode();
@@ -492,34 +544,36 @@ class PrintifyService
 
             Log::info('Printify shipping calculation response', [
                 'status_code' => $statusCode,
-                'response' => $responseData
+                'response' => $responseData,
             ]);
 
             if ($statusCode >= 400) {
-                throw new \Exception('Shipping calculation failed: ' . ($responseData['message'] ?? 'Unknown error'));
+                throw new \Exception('Shipping calculation failed: '.($responseData['message'] ?? 'Unknown error'));
             }
 
             return $responseData ?? [];
 
         } catch (\Exception $e) {
             Log::error('Printify shipping calculation error', [
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
+
             return [];
         }
     }
 
-
-    public function getProductShippingCosts(int $blueprintId ,int $providerId)
+    public function getProductShippingCosts(int $blueprintId, int $providerId)
     {
         try {
             $response = $this->client->get("v1/catalog/blueprints/{$blueprintId}/print_providers/{$providerId}/shipping.json");
+
             return json_decode($response->getBody(), true) ?? [];
         } catch (RequestException $e) {
             Log::error('Failed to fetch Printify order', [
                 'order_id' => $orderId,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
+
             return [];
         }
     }
@@ -536,14 +590,15 @@ class PrintifyService
             return [
                 'blueprint_id' => $blueprintId,
                 'print_provider_id' => $printProviderId,
-                'variants' => $variants['data'] ?? $variants ?? []
+                'variants' => $variants['data'] ?? $variants ?? [],
             ];
         } catch (RequestException $e) {
             Log::error('Failed to fetch product variants from Printify', [
                 'blueprint_id' => $blueprintId,
                 'print_provider_id' => $printProviderId,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
+
             return [];
         }
     }
@@ -565,7 +620,7 @@ class PrintifyService
         }
 
         return [
-            'external_order_id' => (string) time() . '-' . uniqid(),
+            'external_order_id' => (string) time().'-'.uniqid(),
             'line_items' => $lineItems,
             'shipping_method' => $shippingOption['id'] ?? null,
             'address_to' => [
@@ -577,23 +632,24 @@ class PrintifyService
                 'city' => $shippingInfo['city'],
                 'region' => $shippingInfo['state'] ?? '',
                 'country' => $shippingInfo['country'] ?? 'BD',
-                'zip' => $shippingInfo['zip']
-            ]
+                'zip' => $shippingInfo['zip'],
+            ],
         ];
     }
 
     /**
      * Create webhook in Printify
-     * @param string $url Webhook URL
-     * @param string $event Event topic (e.g., 'order:created')
-     * @param string|null $secret Optional secret for webhook signature verification
+     *
+     * @param  string  $url  Webhook URL
+     * @param  string  $event  Event topic (e.g., 'order:created')
+     * @param  string|null  $secret  Optional secret for webhook signature verification
      */
     public function createWebhook(string $url, string $event, ?string $secret = null): array
     {
         try {
             $webhookData = [
                 'url' => $url,
-                'topic' => $event
+                'topic' => $event,
             ];
 
             // Add secret if provided (optional according to Printify docs)
@@ -602,7 +658,7 @@ class PrintifyService
             }
 
             $response = $this->client->post("v1/shops/{$this->shopId}/webhooks.json", [
-                'json' => $webhookData
+                'json' => $webhookData,
             ]);
 
             $data = json_decode($response->getBody(), true) ?? [];
@@ -611,44 +667,45 @@ class PrintifyService
                 'url' => $url,
                 'event' => $event,
                 'webhook_id' => $data['id'] ?? null,
-                'has_secret' => !empty($secret)
+                'has_secret' => ! empty($secret),
             ]);
 
             return [
                 'success' => true,
-                'data' => $data
+                'data' => $data,
             ];
 
         } catch (RequestException $e) {
             Log::error('Error creating Printify webhook', [
                 'url' => $url,
                 'event' => $event,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
 
             return [
                 'success' => false,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ];
         } catch (\Exception $e) {
             Log::error('Unexpected error creating Printify webhook', [
                 'url' => $url,
                 'event' => $event,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
 
             return [
                 'success' => false,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ];
         }
     }
 
     /**
      * Create multiple webhooks in Printify
-     * @param string $url Webhook URL
-     * @param array $events Array of event topics
-     * @param string|null $secret Optional secret for webhook signature verification
+     *
+     * @param  string  $url  Webhook URL
+     * @param  array  $events  Array of event topics
+     * @param  string|null  $secret  Optional secret for webhook signature verification
      */
     public function createWebhooks(string $url, array $events, ?string $secret = null): array
     {
@@ -671,7 +728,7 @@ class PrintifyService
             'success' => $errorCount === 0, // Overall success if no errors
             'success_count' => $successCount,
             'error_count' => $errorCount,
-            'results' => $results
+            'results' => $results,
         ];
     }
 
@@ -686,26 +743,26 @@ class PrintifyService
 
             return [
                 'success' => true,
-                'data' => $data
+                'data' => $data,
             ];
 
         } catch (RequestException $e) {
             Log::error('Failed to fetch Printify webhooks', [
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
 
             return [
                 'success' => false,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ];
         } catch (\Exception $e) {
             Log::error('Unexpected error fetching Printify webhooks', [
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
 
             return [
                 'success' => false,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ];
         }
     }
@@ -721,7 +778,7 @@ class PrintifyService
             $response = $this->client->delete("v1/shops/{$this->shopId}/webhooks/{$webhookId}.json?host={$encodedHost}");
 
             return [
-                'success' => true
+                'success' => true,
             ];
 
         } catch (RequestException $e) {
@@ -751,7 +808,7 @@ class PrintifyService
 
             return [
                 'success' => false,
-                'error' => $errorMessage
+                'error' => $errorMessage,
             ];
         } catch (\Exception $e) {
             Log::error('Unexpected error deleting Printify webhook', [
@@ -763,11 +820,10 @@ class PrintifyService
 
             return [
                 'success' => false,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ];
         }
     }
-
 
     /**
      * Handle API exceptions
@@ -789,7 +845,6 @@ class PrintifyService
             Log::error("Printify API Error - {$operation}: No response", $context);
         }
     }
-
 
     /**
      * Handle error responses from Printify API
@@ -823,9 +878,9 @@ class PrintifyService
             $statusCode = $response->getStatusCode();
             $body = $response->getBody()->getContents();
 
-            return "Guzzle HTTP {$statusCode}: " . $body;
+            return "Guzzle HTTP {$statusCode}: ".$body;
         }
 
-        return "Guzzle Error: " . $e->getMessage();
+        return 'Guzzle Error: '.$e->getMessage();
     }
 }

@@ -107,12 +107,17 @@ class ProductController extends BaseController
 
         // Get Printify blueprints for product types
         $blueprints = [];
-        if (Auth::user()->role === 'admin' || Auth::user()->role === 'organization') {
+        if (in_array(Auth::user()->role, ['admin', 'organization', 'organization_pending'], true)) {
             try {
                 $blueprints = $this->printifyService->getBlueprints();
             } catch (\Exception $e) {
                 // Silently fail - user can still create regular products
             }
+        }
+
+        $defaultOrganization = null;
+        if (in_array(Auth::user()->role, ['organization', 'organization_pending'], true)) {
+            $defaultOrganization = Organization::where('user_id', Auth::id())->first(['id', 'name']);
         }
 
         return Inertia::render('products/create', [
@@ -122,6 +127,9 @@ class ProductController extends BaseController
             'blueprints' => $blueprints,
             'printify_enabled' => ! empty($blueprints),
             'defaultMarkupPercentage' => (float) config('app.printify_profit_margin', 25),
+            'default_organization' => $defaultOrganization
+                ? ['id' => $defaultOrganization->id, 'name' => $defaultOrganization->name]
+                : null,
         ]);
     }
 
@@ -872,6 +880,9 @@ class ProductController extends BaseController
             'ship_from_mode.required' => 'Choose how Shippo ship-from is set: custom address or merchant warehouse.',
             'product_source_type.in' => 'To sell a merchant pool product, add it from Commerce → Marketplace → Merchant product pool instead of this form.',
             'marketplace_product_id.prohibited' => 'Merchant pool listings are created from the Merchant product pool, not via marketplace_product_id on manual products.',
+            'source_cost.required' => 'Enter your cost (what buyers pay) for this own-source product.',
+            'source_cost.numeric' => 'Your cost must be a valid number.',
+            'source_cost.min' => 'Your cost cannot be negative.',
         ];
 
         // Printify-specific error messages
@@ -984,7 +995,9 @@ class ProductController extends BaseController
                             'placeholders' => [
                                 [
                                     'position' => 'front',
-                                    'images' => $this->preparePrintifyImages($request->file('printify_images') ?? []),
+                                    'images' => $this->preparePrintifyImages(
+                                        $this->normalizePrintifyImageUploads($request->file('printify_images'))
+                                    ),
                                 ],
                             ],
                         ],
@@ -1021,12 +1034,13 @@ class ProductController extends BaseController
                 $productData['printify_product_id'] = $printifyProductId;
                 $productData['printify_blueprint_id'] = $request->printify_blueprint_id;
                 $productData['printify_provider_id'] = $request->printify_provider_id;
-                $productData['profit_margin_percentage'] = null;
+                // DB column is non-nullable; at-cost listings use 0 (no stored markup on the row).
+                $productData['profit_margin_percentage'] = 0;
             } else {
                 // For manual products: unit price only; shipping comes from Shippo when the customer checks out
                 $productData['unit_price'] = $validated['unit_price'] ?? 0;
                 $productData['shipping_charge'] = null;
-                $productData['profit_margin_percentage'] = null;
+                $productData['profit_margin_percentage'] = 0;
 
                 if ($request->filled('source_cost')) {
                     $productData['source_cost'] = (float) $request->input('source_cost');
@@ -1122,11 +1136,13 @@ class ProductController extends BaseController
             }, $selectedVariantIds),
             'print_areas' => [
                 [
-                    'variant_ids' => $selectedVariantIds,
+                    'variant_ids' => array_map('intval', $selectedVariantIds),
                     'placeholders' => [
                         [
                             'position' => 'front',
-                            'images' => $this->preparePrintifyImages($request->printify_images ?? []),
+                            'images' => $this->preparePrintifyImages(
+                                $this->normalizePrintifyImageUploads($request->file('printify_images'))
+                            ),
                         ],
                     ],
                 ],
@@ -1188,32 +1204,55 @@ class ProductController extends BaseController
     }
 
     /**
+     * @return list<\Illuminate\Http\UploadedFile>
+     */
+    private function normalizePrintifyImageUploads(mixed $files): array
+    {
+        if ($files instanceof \Illuminate\Http\UploadedFile) {
+            return [$files];
+        }
+
+        if (! is_array($files)) {
+            return [];
+        }
+
+        return array_values(array_filter(
+            $files,
+            fn ($f) => $f instanceof \Illuminate\Http\UploadedFile
+        ));
+    }
+
+    /**
      * Prepare images for Printify API with upload
      */
     private function preparePrintifyImages(array $images): array
     {
         $preparedImages = [];
 
-        foreach ($images as $imageUrl) {
-            if (empty($imageUrl)) {
+        foreach ($images as $uploadedFile) {
+            if (! $uploadedFile instanceof \Illuminate\Http\UploadedFile) {
                 continue;
             }
 
-            $filename = time().'_'.uniqid().'.'.$imageUrl->getClientOriginalExtension();
-            $path = $imageUrl->storeAs('designs', $filename, 'public');
+            if (! $uploadedFile->isValid()) {
+                throw new \Exception('Invalid design image upload: '.$uploadedFile->getClientOriginalName());
+            }
+
+            $filename = time().'_'.uniqid().'.'.$uploadedFile->getClientOriginalExtension();
+            $path = $uploadedFile->storeAs('designs', $filename, 'public');
             $fullUrl = asset('storage/'.$path);
 
             try {
 
                 if (env('APP_ENV') === 'local') {
                     // ফাইলকে base64 করুন
-                    $base64 = base64_encode(file_get_contents($imageUrl->getRealPath()));
-                    $filename = pathinfo($imageUrl->getClientOriginalName(), PATHINFO_FILENAME);
-                    $extension = strtolower($imageUrl->getClientOriginalExtension());
+                    $base64 = base64_encode(file_get_contents($uploadedFile->getRealPath()));
+                    $baseName = pathinfo($uploadedFile->getClientOriginalName(), PATHINFO_FILENAME);
+                    $extension = strtolower($uploadedFile->getClientOriginalExtension());
 
                     // গুরুত্বপূর্ণ: field name হবে "contents" (content না)
                     $payload = [
-                        'file_name' => $filename.'.'.$extension,
+                        'file_name' => $baseName.'.'.$extension,
                         'contents' => $base64,  // এখানে contents হবে, content না
                     ];
 
@@ -1235,20 +1274,19 @@ class ProductController extends BaseController
                 }
 
                 $preparedImages[] = [
-                    'id' => $uploadResult['id'], // Use the Printify image ID
+                    'id' => $uploadResult['id'],
                     'x' => 0.5,
                     'y' => 0.5,
                     'scale' => 1,
                     'angle' => 0,
-                    'url' => $imageUrl,
                 ];
 
             } catch (\Exception $e) {
                 Log::error('Failed to prepare Printify image', [
-                    'image_url' => $imageUrl,
+                    'file' => $uploadedFile->getClientOriginalName(),
                     'error' => $e->getMessage(),
                 ]);
-                throw new \Exception("Failed to process image: {$imageUrl}. ".$e->getMessage());
+                throw new \Exception('Failed to process design image "'.$uploadedFile->getClientOriginalName().'": '.$e->getMessage());
             }
         }
 
