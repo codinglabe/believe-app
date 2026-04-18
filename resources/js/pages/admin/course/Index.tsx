@@ -363,16 +363,16 @@ export default function CoursesIndex({ courses, eventTypes, filters, statistics 
 
   return (
     <AppLayout>
-      <Head title="Connection Hub Management" />
+      <Head title="Connections" />
       <div className="space-y-6 sm:space-y-8 animate-in fade-in duration-500 m-10">
         {/* Header */}
         <div className="flex flex-col space-y-4 sm:space-y-0 sm:flex-row sm:items-center sm:justify-between">
           <div className="space-y-2 animate-in slide-in-from-left duration-700">
             <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-gray-900 dark:text-white">
-              Connection Hub Management
+              Connections
             </h1>
             <p className="text-sm sm:text-base lg:text-lg text-gray-600 dark:text-gray-400">
-              Manage Connection Hub content and track enrollment
+              Manage Connection Hub listings and track enrollment
             </p>
           </div>
           <div className="animate-in slide-in-from-right duration-700">
@@ -487,7 +487,7 @@ export default function CoursesIndex({ courses, eventTypes, filters, statistics 
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
               <CardTitle className="flex items-center gap-2 text-lg sm:text-xl text-gray-900 dark:text-white">
                 <Heart className="h-5 w-5 text-red-500" />
-                Connection Hub ({courses.total})
+                Connections ({courses.total})
               </CardTitle>
             </div>
 

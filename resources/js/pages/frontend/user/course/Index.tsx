@@ -7,14 +7,44 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/admin/ui/
 import { Badge } from "@/components/admin/ui/badge"
 import { Input } from "@/components/admin/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/admin/ui/table"
-import { Plus, Eye, Edit, Trash2, Users, DollarSign, TrendingUp, Heart, Star, ChevronLeft, ChevronRight, CheckCircle, XCircle, Clock, Ban, Globe, MapPin, Calendar, Award, Copy, ExternalLink, BookOpen, GraduationCap } from 'lucide-react'
+import {
+  Plus,
+  Eye,
+  Edit,
+  Trash2,
+  Users,
+  DollarSign,
+  TrendingUp,
+  Heart,
+  Star,
+  ChevronLeft,
+  ChevronRight,
+  CheckCircle,
+  XCircle,
+  Clock,
+  Ban,
+  Globe,
+  MapPin,
+  Calendar,
+  Award,
+  Copy,
+  ExternalLink,
+  BookOpen,
+  GraduationCap,
+  Filter,
+} from "lucide-react"
 import { showSuccessToast } from "@/lib/toast"
 import type { Auth } from "@/types"
 import DeleteConfirmModal from "@/components/admin/DeleteConfirmModal"
+import { connectionHubTypeLabel, CONNECTION_HUB_TYPES, type ConnectionHubType } from "@/lib/connection-hub-type"
 
-interface Topic {
+const filterSelectClass =
+  "flex h-10 w-full min-w-0 max-w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/50 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
+
+interface EventTypeOption {
   id: number
   name: string
+  category: string
 }
 
 interface Organization {
@@ -32,6 +62,7 @@ interface Creator {
 interface Course {
   id: number
   topic_id: number | null
+  event_type_id: number | null
   organization_id: number
   user_id: number
   name: string
@@ -61,7 +92,10 @@ interface Course {
   last_updated: string | null
   created_at: string
   updated_at: string
-  topic: Topic | null
+  /** Connection Hub type: companion | learning | events | earning */
+  type?: ConnectionHubType | string | null
+  topic: { id: number; name: string } | null
+  event_type: { id: number; name: string; category?: string } | null
   organization: Organization
   creator: Creator
   image_url: string | null
@@ -103,18 +137,19 @@ interface Statistics {
 interface Props {
   auth: Auth
   courses: LaravelPagination<Course>
-  topics: Topic[]
+  eventTypes: EventTypeOption[]
   filters: {
     courses_search: string
     courses_status: string
     courses_type: string
     courses_format: string
-    courses_topic: string
+    courses_event_type: string
+    courses_hub_type?: string
   }
   statistics: Statistics
 }
 
-export default function CoursesIndex({ courses, topics, filters, statistics }: Props) {
+export default function CoursesIndex({ courses, eventTypes, filters, statistics }: Props) {
   const [isLoading, setIsLoading] = useState(false)
   const [copiedLink, setCopiedLink] = useState<string | null>(null)
 
@@ -123,7 +158,8 @@ export default function CoursesIndex({ courses, topics, filters, statistics }: P
   const [coursesStatus, setCoursesStatus] = useState(filters.courses_status || "")
   const [coursesType, setCoursesType] = useState(filters.courses_type || "")
   const [coursesFormat, setCoursesFormat] = useState(filters.courses_format || "")
-  const [coursesTopic, setCoursesTopic] = useState(filters.courses_topic || "")
+  const [coursesEventType, setCoursesEventType] = useState(filters.courses_event_type || "")
+  const [coursesHubType, setCoursesHubType] = useState(filters.courses_hub_type || "")
 
   // Modal states
   const [deleteModal, setDeleteModal] = useState<{
@@ -141,7 +177,7 @@ export default function CoursesIndex({ courses, topics, filters, statistics }: P
 
   // Auto-filter with debounce
   useEffect(() => {
-    if (!coursesSearch && !coursesStatus && !coursesType && !coursesFormat && !coursesTopic) {
+    if (!coursesSearch && !coursesStatus && !coursesType && !coursesFormat && !coursesEventType && !coursesHubType) {
       return
     }
 
@@ -151,7 +187,8 @@ export default function CoursesIndex({ courses, topics, filters, statistics }: P
       if (coursesStatus) params.courses_status = coursesStatus
       if (coursesType) params.courses_type = coursesType
       if (coursesFormat) params.courses_format = coursesFormat
-      if (coursesTopic) params.courses_topic = coursesTopic
+      if (coursesEventType) params.courses_event_type = coursesEventType
+      if (coursesHubType) params.courses_hub_type = coursesHubType
 
       router.get(route("profile.course.index"), params, {
         preserveState: true,
@@ -161,14 +198,15 @@ export default function CoursesIndex({ courses, topics, filters, statistics }: P
     }, 500)
 
     return () => clearTimeout(timeoutId)
-  }, [coursesSearch, coursesStatus, coursesType, coursesFormat, coursesTopic])
+  }, [coursesSearch, coursesStatus, coursesType, coursesFormat, coursesEventType, coursesHubType])
 
   const clearAllFilters = () => {
     setCoursesSearch("")
     setCoursesStatus("")
     setCoursesType("")
     setCoursesFormat("")
-    setCoursesTopic("")
+    setCoursesEventType("")
+    setCoursesHubType("")
     router.get(
       route("profile.course.index"),
       {},
@@ -188,7 +226,7 @@ export default function CoursesIndex({ courses, topics, filters, statistics }: P
       preserveScroll: true,
       onSuccess: () => {
         setDeleteModal({ isOpen: false, id: null, title: "", message: "" })
-        showSuccessToast("Course deleted successfully.")
+        showSuccessToast("Listing deleted successfully.")
       },
       onFinish: () => {
         setIsDeleting(false)
@@ -200,8 +238,8 @@ export default function CoursesIndex({ courses, topics, filters, statistics }: P
     setDeleteModal({
       isOpen: true,
       id: slug,
-      title: "Delete Course",
-      message: `Are you sure you want to delete the course "${courseName}"? This action cannot be undone and will affect all enrolled students.`,
+      title: "Delete listing",
+      message: `Are you sure you want to delete "${courseName}"? This action cannot be undone and will affect all enrolled participants.`,
     })
   }
 
@@ -210,7 +248,7 @@ export default function CoursesIndex({ courses, topics, filters, statistics }: P
       const url = `${window.location.origin}/courses/${slug}`
       await navigator.clipboard.writeText(url)
       setCopiedLink(slug)
-      showSuccessToast(`Course link for "${courseName}" copied to clipboard!`)
+      showSuccessToast(`Connection Hub link for "${courseName}" copied to clipboard!`)
       setTimeout(() => setCopiedLink(null), 2000)
     } catch (err) {
       console.error("Failed to copy: ", err)
@@ -323,12 +361,16 @@ export default function CoursesIndex({ courses, topics, filters, statistics }: P
     })
   }
 
-  const hasActiveFilters = coursesSearch || coursesStatus || coursesType || coursesFormat || coursesTopic
+  const hasActiveFilters =
+    coursesSearch || coursesStatus || coursesType || coursesFormat || coursesEventType || coursesHubType
 
   return (
-    <ProfileLayout title="Course Management" description="Track all your courses and their impact">
-      <Head title="Course Management" />
-      <div className="space-y-6 sm:space-y-8 animate-in fade-in duration-500 m-10">
+    <ProfileLayout
+      title="Connection Hub"
+      description="Manage your Connection Hub listings, enrollments, and impact"
+    >
+      <Head title="Connection Hub" />
+      <div className="space-y-6 sm:space-y-8 animate-in fade-in duration-500 mx-4 my-6 sm:mx-6 lg:mx-10">
         {/* Header */}
         <div className="flex flex-col space-y-4 sm:space-y-0 sm:flex-row sm:items-center sm:justify-end">
           <div className="animate-in slide-in-from-right duration-700">
@@ -338,7 +380,7 @@ export default function CoursesIndex({ courses, topics, filters, statistics }: P
                 className="w-full sm:w-auto shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105 cursor-pointer"
               >
                 <Plus className="mr-2 h-4 w-4 sm:h-5 sm:w-5" />
-                <span className="hidden sm:inline">Create Course</span>
+                <span className="hidden sm:inline">Create listing</span>
                 <span className="sm:hidden">Create</span>
               </Button>
             </Link>
@@ -351,7 +393,7 @@ export default function CoursesIndex({ courses, topics, filters, statistics }: P
             <CardContent className="p-4 sm:p-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Total Courses</p>
+                  <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Total listings</p>
                   <p className="text-2xl font-bold text-gray-900 dark:text-white">{statistics?.total_courses}</p>
                 </div>
                 <div className="p-3 bg-blue-100 dark:bg-blue-900/50 rounded-full">
@@ -365,7 +407,7 @@ export default function CoursesIndex({ courses, topics, filters, statistics }: P
             <CardContent className="p-4 sm:p-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Free Courses</p>
+                  <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Free listings</p>
                   <p className="text-2xl font-bold text-green-600 dark:text-green-400">{statistics?.free_courses}</p>
                 </div>
                 <div className="p-3 bg-green-100 dark:bg-green-900/50 rounded-full">
@@ -379,7 +421,7 @@ export default function CoursesIndex({ courses, topics, filters, statistics }: P
             <CardContent className="p-4 sm:p-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Paid Courses</p>
+                  <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Paid listings</p>
                   <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">{statistics?.paid_courses}</p>
                 </div>
                 <div className="p-3 bg-blue-100 dark:bg-blue-900/50 rounded-full">
@@ -393,7 +435,7 @@ export default function CoursesIndex({ courses, topics, filters, statistics }: P
             <CardContent className="p-4 sm:p-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Active Courses</p>
+                  <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Active listings</p>
                   <p className="text-2xl font-bold text-purple-600 dark:text-purple-400">{statistics?.active_courses}</p>
                 </div>
                 <div className="p-3 bg-purple-100 dark:bg-purple-900/50 rounded-full">
@@ -450,13 +492,13 @@ export default function CoursesIndex({ courses, topics, filters, statistics }: P
           </Card>
         </div>
 
-        {/* Courses Table */}
+        {/* Listings table */}
         <Card className="shadow-lg hover:shadow-xl transition-all duration-300">
           <CardHeader>
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
               <CardTitle className="flex items-center gap-2 text-lg sm:text-xl text-gray-900 dark:text-white">
                 <Heart className="h-5 w-5 text-red-500" />
-                Community Courses ({courses.total})
+                Connection Hub ({courses.total})
               </CardTitle>
               {hasActiveFilters && (
                 <Button
@@ -471,59 +513,112 @@ export default function CoursesIndex({ courses, topics, filters, statistics }: P
               )}
             </div>
 
-            {/* Search and Filter Controls */}
-            <div className="flex flex-col lg:flex-row gap-3 mt-4">
-              <div className="flex-1">
+            {/* Search + filters — grid so many filters don’t break layout */}
+            <div className="mt-4 space-y-4">
+              <div className="space-y-1.5">
+                <label htmlFor="course-list-search" className="text-xs font-medium text-muted-foreground">
+                  Search
+                </label>
                 <Input
-                  placeholder="Search by course name, description, target audience, or instructor..."
+                  id="course-list-search"
+                  placeholder="Name, description, audience, instructor…"
                   value={coursesSearch}
                   onChange={(e) => setCoursesSearch(e.target.value)}
                   className="w-full"
                 />
               </div>
-              <div className="flex flex-wrap gap-3">
-                <select
-                  value={coursesTopic}
-                  onChange={(e) => setCoursesTopic(e.target.value)}
-                  className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
-                >
-                  <option value="">All Topics</option>
-                  {topics.map((topic) => (
-                    <option key={topic.id} value={topic.id.toString()}>
-                      {topic.name}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  value={coursesType}
-                  onChange={(e) => setCoursesType(e.target.value)}
-                  className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
-                >
-                  <option value="">All Pricing</option>
-                  <option value="free">Free</option>
-                  <option value="paid">Paid</option>
-                </select>
-                <select
-                  value={coursesFormat}
-                  onChange={(e) => setCoursesFormat(e.target.value)}
-                  className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
-                >
-                  <option value="">All Formats</option>
-                  <option value="online">Online</option>
-                  <option value="in_person">In-Person</option>
-                  <option value="hybrid">Hybrid</option>
-                </select>
-                <select
-                  value={coursesStatus}
-                  onChange={(e) => setCoursesStatus(e.target.value)}
-                  className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
-                >
-                  <option value="">All Status</option>
-                  <option value="available">Available</option>
-                  <option value="almost_full">Almost Full</option>
-                  <option value="full">Full</option>
-                  <option value="started">Started</option>
-                </select>
+
+              <div className="rounded-xl border border-gray-200/80 bg-gray-50/80 p-3 dark:border-gray-700 dark:bg-gray-900/40 sm:p-4">
+                <div className="mb-3 flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-200">
+                  <Filter className="h-4 w-4 shrink-0 opacity-70" aria-hidden />
+                  Filters
+                </div>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-5">
+                  <div className="min-w-0 space-y-1.5">
+                    <label htmlFor="filter-hub-type" className="text-xs font-medium text-muted-foreground">
+                      Hub type
+                    </label>
+                    <select
+                      id="filter-hub-type"
+                      value={coursesHubType}
+                      onChange={(e) => setCoursesHubType(e.target.value)}
+                      className={filterSelectClass}
+                    >
+                      <option value="">All</option>
+                      {CONNECTION_HUB_TYPES.map((t) => (
+                        <option key={t} value={t}>
+                          {connectionHubTypeLabel(t)}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="min-w-0 space-y-1.5">
+                    <label htmlFor="filter-topic" className="text-xs font-medium text-muted-foreground">
+                      Topic
+                    </label>
+                    <select
+                      id="filter-topic"
+                      value={coursesEventType}
+                      onChange={(e) => setCoursesEventType(e.target.value)}
+                      className={filterSelectClass}
+                    >
+                      <option value="">All topics</option>
+                      {eventTypes.map((et) => (
+                        <option key={et.id} value={et.id.toString()}>
+                          {et.category ? `${et.category} — ${et.name}` : et.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="min-w-0 space-y-1.5">
+                    <label htmlFor="filter-pricing" className="text-xs font-medium text-muted-foreground">
+                      Pricing
+                    </label>
+                    <select
+                      id="filter-pricing"
+                      value={coursesType}
+                      onChange={(e) => setCoursesType(e.target.value)}
+                      className={filterSelectClass}
+                    >
+                      <option value="">All</option>
+                      <option value="free">Free</option>
+                      <option value="paid">Paid</option>
+                    </select>
+                  </div>
+                  <div className="min-w-0 space-y-1.5">
+                    <label htmlFor="filter-format" className="text-xs font-medium text-muted-foreground">
+                      Format
+                    </label>
+                    <select
+                      id="filter-format"
+                      value={coursesFormat}
+                      onChange={(e) => setCoursesFormat(e.target.value)}
+                      className={filterSelectClass}
+                    >
+                      <option value="">All</option>
+                      <option value="online">Online</option>
+                      <option value="in_person">In-Person</option>
+                      <option value="hybrid">Hybrid</option>
+                    </select>
+                  </div>
+                  <div className="min-w-0 space-y-1.5">
+                    <label htmlFor="filter-status" className="text-xs font-medium text-muted-foreground">
+                      Status
+                    </label>
+                    <select
+                      id="filter-status"
+                      value={coursesStatus}
+                      onChange={(e) => setCoursesStatus(e.target.value)}
+                      className={filterSelectClass}
+                    >
+                      <option value="">All</option>
+                      <option value="available">Available</option>
+                      <option value="almost_full">Almost Full</option>
+                      <option value="full">Full</option>
+                      <option value="started">Started</option>
+                    </select>
+                  </div>
+                </div>
               </div>
             </div>
           </CardHeader>
@@ -533,7 +628,8 @@ export default function CoursesIndex({ courses, topics, filters, statistics }: P
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="font-semibold">Course</TableHead>
+                    <TableHead className="font-semibold">Listing</TableHead>
+                    <TableHead className="font-semibold">Hub type</TableHead>
                     <TableHead className="font-semibold">Topic</TableHead>
                     <TableHead className="font-semibold">Format</TableHead>
                     <TableHead className="font-semibold">Pricing</TableHead>
@@ -568,7 +664,17 @@ export default function CoursesIndex({ courses, topics, filters, statistics }: P
                         </TableCell>
 
                         <TableCell>
-                          {course.topic ? (
+                          <Badge variant="secondary" className="max-w-max font-normal">
+                            {connectionHubTypeLabel(course.type || "companion")}
+                          </Badge>
+                        </TableCell>
+
+                        <TableCell>
+                          {course.event_type ? (
+                            <Badge variant="outline" className="max-w-max">
+                              {course.event_type.name}
+                            </Badge>
+                          ) : course.topic ? (
                             <Badge variant="outline" className="max-w-max">
                               {course.topic.name}
                             </Badge>
@@ -718,8 +824,8 @@ export default function CoursesIndex({ courses, topics, filters, statistics }: P
                     ))
                   ) : (
                     <TableRow>
-                      <TableCell colSpan={11} className="text-center py-8 text-gray-500 dark:text-gray-400">
-                        No courses found
+                      <TableCell colSpan={12} className="text-center py-8 text-gray-500 dark:text-gray-400">
+                        No listings found
                       </TableCell>
                     </TableRow>
                   )}
@@ -733,7 +839,7 @@ export default function CoursesIndex({ courses, topics, filters, statistics }: P
                 <div className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 text-center sm:text-left">
                   Showing <span className="font-medium text-gray-900 dark:text-white">{courses.from || 0}</span> to{" "}
                   <span className="font-medium text-gray-900 dark:text-white">{courses.to || 0}</span> of{" "}
-                  <span className="font-medium text-gray-900 dark:text-white">{courses.total}</span> courses
+                  <span className="font-medium text-gray-900 dark:text-white">{courses.total}</span> listings
                 </div>
                 <div className="flex items-center justify-center space-x-1 sm:space-x-2">
                   {/* Previous Button */}

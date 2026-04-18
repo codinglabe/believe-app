@@ -153,7 +153,7 @@ export default function AdminCoursesShow({ course, enrollmentStats, status }: Ad
 
   return (
     <AppLayout>
-      <Head title={`${connectionHubTypeLabel(course.type)} details - ${course.name} - Connection Hub`} />
+      <Head title={`${connectionHubTypeLabel(course.type)} details - ${course.name} - Connections`} />
 
       <div className="space-y-6 m-10">
         {/* Header */}
@@ -161,7 +161,7 @@ export default function AdminCoursesShow({ course, enrollmentStats, status }: Ad
           <Link href={route("admin.courses.index")}>
             <Button variant="outline" size="sm">
               <ArrowLeft className="mr-2 h-4 w-4" />
-              Back to Connection Hub
+              Back to Connections
             </Button>
           </Link>
           <div className="flex items-center gap-3">

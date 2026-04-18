@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Jobs\SendCourseNotification;
 use App\Models\Course;
 use App\Models\Enrollment;
 use App\Models\Organization;
@@ -17,7 +18,7 @@ use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 
-class FrontendCourseController extends Controller
+class FrontendCourseController extends BaseController
 {
     /**
      * Display a listing of courses for the public view.
@@ -99,11 +100,12 @@ class FrontendCourseController extends Controller
             'courses_status',
             'courses_type',
             'courses_format',
-            'courses_topic',
+            'courses_event_type',
+            'courses_hub_type',
         ]);
 
         $query = Course::query()
-            ->with(['topic', 'organization', 'creator'])
+            ->with(['topic', 'eventType', 'organization', 'creator'])
             // Only show courses for the current user's organization
             ->where('organization_id', Auth::id());
 
@@ -121,9 +123,14 @@ class FrontendCourseController extends Controller
             });
         }
 
-        // Topic filter
-        if (! empty($filters['courses_topic'])) {
-            $query->where('topic_id', $filters['courses_topic']);
+        // Topic (event type catalog) filter — same as admin Connection Hub
+        if (! empty($filters['courses_event_type'])) {
+            $query->where('event_type_id', $filters['courses_event_type']);
+        }
+
+        // Connection Hub type (companion, learning, events, earning)
+        if (! empty($filters['courses_hub_type']) && in_array($filters['courses_hub_type'], ConnectionHubType::VALUES, true)) {
+            $query->where('type', $filters['courses_hub_type']);
         }
 
         // Pricing type filter
@@ -166,14 +173,17 @@ class FrontendCourseController extends Controller
             ->paginate(15)
             ->withQueryString();
 
-        $topics = Topic::orderBy('name')->get(['id', 'name']);
+        $eventTypes = \App\Models\EventType::where('is_active', true)
+            ->orderBy('category')
+            ->orderBy('name')
+            ->get(['id', 'name', 'category']);
 
         // Calculate statistics for the current user's organization
         $statistics = $this->calculateCourseStatistics(Auth::id());
 
         return Inertia::render('frontend/user/course/Index', [
             'courses' => $courses,
-            'topics' => $topics,
+            'eventTypes' => $eventTypes,
             'filters' => $filters,
             'statistics' => $statistics,
         ]);
@@ -207,14 +217,20 @@ class FrontendCourseController extends Controller
     /**
      * Show the form for creating a new course.
      */
-    public function create()
+    public function create(Request $request)
     {
-        $topics = Topic::orderBy('name')->get(['id', 'name']);
+        $eventTypes = \App\Models\EventType::where('is_active', true)
+            ->orderBy('category')
+            ->orderBy('name')
+            ->get(['id', 'name', 'category']);
 
-        return Inertia::render('frontend/user/course/Create', [
-            'topics' => $topics,
-            'organizationName' => Organization::query()->where('user_id', Auth::id())->value('name'),
-        ]);
+        $seller = Organization::biuSellerDisplayForUser($request->user());
+
+        return Inertia::render('frontend/user/course/Create', array_merge([
+            'eventTypes' => $eventTypes,
+            'organizationName' => $seller['name'],
+            'sellerNameLabel' => $seller['label'],
+        ], $this->connectionHubProfilePrimaryCategoriesPageProps($request)));
     }
 
     /**
@@ -222,35 +238,38 @@ class FrontendCourseController extends Controller
      */
     public function store(Request $request)
     {
+        $type = $request->input('type', ConnectionHubType::COMPANION);
+        $typeLabelCapital = ConnectionHubType::label($type);
+        $typeLabel = strtolower($typeLabelCapital);
+        $outcomesNoun = ConnectionHubType::usesEventSemantics($type) ? 'event' : 'learning';
+
         $validated = $request->validate(array_merge([
-            // Basic Information
             'name' => 'required|string|max:255|unique:courses,name',
             'description' => 'required|string',
             'type' => ['required', Rule::in(ConnectionHubType::VALUES)],
-            'topic_id' => ['required', 'exists:topics,id'],
-            'meeting_link' => 'nullable|url|max:500', // Added meeting_link validation
+            'topic_id' => ['nullable', 'exists:topics,id'],
+            'event_type_id' => [
+                'required',
+                'exists:event_types,id',
+            ],
+            'meeting_link' => 'nullable|url|max:500',
 
-            // Pricing
             'pricing_type' => ['required', Rule::in(['free', 'paid'])],
             'course_fee' => 'nullable|numeric|min:0|required_if:pricing_type,paid',
 
-            // Schedule & Format
             'start_date' => 'required|date|after_or_equal:today',
             'start_time' => 'required|date_format:H:i',
             'end_date' => 'nullable|date|after_or_equal:start_date',
             'duration' => ['required', Rule::in(['1_session', '1_week', '2_weeks', '1_month', '6_weeks', '3_months'])],
             'format' => ['required', Rule::in(['online', 'in_person', 'hybrid'])],
 
-            // Configuration
             'max_participants' => 'required|integer|min:1|max:100',
             'language' => ['required', Rule::in(['English', 'Spanish', 'French', 'Other'])],
 
-            // Target Audience & Impact
             'target_audience' => 'required|string|max:255',
             'community_impact' => 'nullable|string',
 
-            // Course Content
-            'learning_outcomes' => 'required|array|min:1',
+            'learning_outcomes' => ['nullable', 'array'],
             'learning_outcomes.*' => 'string|max:255',
             'prerequisites' => 'nullable|array',
             'prerequisites.*' => 'string|max:255',
@@ -259,28 +278,70 @@ class FrontendCourseController extends Controller
             'accessibility_features' => 'nullable|array',
             'accessibility_features.*' => 'string|max:255',
 
-            // Settings
             'certificate_provided' => 'boolean',
             'volunteer_opportunities' => 'boolean',
 
-            // Media
             'image' => 'nullable|image|mimes:jpeg,png,jpg,gif,svg|max:2048',
-        ], CourseTaxClassificationService::validationRules()));
+        ], CourseTaxClassificationService::validationRules(), $this->connectionHubProfilePrimaryActionCategoryValidation($request)), [
+            'name.required' => "The {$typeLabelCapital} name is required.",
+            'name.unique' => "A {$typeLabel} with this name already exists.",
+            'name.max' => "The {$typeLabelCapital} name may not be greater than 255 characters.",
+            'description.required' => "The {$typeLabelCapital} description is required.",
+            'type.required' => 'Please select a Connection Hub type.',
+            'type.in' => 'Type must be Companion, Learning, Events, or Earning.',
+            'topic_id.exists' => 'The selected topic is invalid.',
+            'event_type_id.required' => 'Please select a topic.',
+            'event_type_id.exists' => 'The selected topic is invalid.',
+            'meeting_link.url' => 'The meeting link must be a valid URL.',
+            'meeting_link.max' => 'The meeting link may not be greater than 500 characters.',
+            'pricing_type.required' => 'Please select a pricing type.',
+            'pricing_type.in' => 'Pricing type must be either Free or Paid.',
+            'course_fee.required_if' => 'A fee is required when pricing type is Paid.',
+            'course_fee.numeric' => 'The fee must be a number.',
+            'course_fee.min' => 'The fee must be at least 0.',
+            'start_date.required' => 'Start date is required.',
+            'start_date.date' => 'Start date must be a valid date.',
+            'start_date.after_or_equal' => 'Start date must be today or a future date.',
+            'start_time.required' => 'Start time is required.',
+            'start_time.date_format' => 'Start time must be in HH:MM format.',
+            'end_date.date' => 'End date must be a valid date.',
+            'end_date.after_or_equal' => 'End date must be on or after the start date.',
+            'duration.required' => 'Duration is required.',
+            'duration.in' => 'Please select a valid duration.',
+            'format.required' => 'Format is required.',
+            'format.in' => 'Format must be Online, In-Person, or Hybrid.',
+            'max_participants.required' => 'Maximum participants is required.',
+            'max_participants.integer' => 'Maximum participants must be a number.',
+            'max_participants.min' => 'Maximum participants must be at least 1.',
+            'max_participants.max' => 'Maximum participants may not be greater than 100.',
+            'language.required' => 'Language is required.',
+            'language.in' => 'Please select a valid language.',
+            'target_audience.required' => 'Target audience is required.',
+            'target_audience.max' => 'Target audience may not be greater than 255 characters.',
+            'learning_outcomes.required' => $outcomesNoun === 'learning' ? 'Learning outcomes are required.' : 'Event outcomes are required.',
+            'learning_outcomes.array' => $outcomesNoun === 'learning' ? 'Learning outcomes must be an array.' : 'Event outcomes must be an array.',
+            'learning_outcomes.min' => $outcomesNoun === 'learning' ? 'At least one learning outcome is required.' : 'At least one event outcome is required.',
+            'learning_outcomes.*.max' => $outcomesNoun === 'learning' ? 'Each learning outcome may not be greater than 255 characters.' : 'Each event outcome may not be greater than 255 characters.',
+            'prerequisites.*.max' => 'Each prerequisite may not be greater than 255 characters.',
+            'materials_needed.*.max' => 'Each material needed may not be greater than 255 characters.',
+            'accessibility_features.*.max' => 'Each accessibility feature may not be greater than 255 characters.',
+            'image.image' => 'The image must be an image file.',
+            'image.mimes' => 'The image must be a file of type: jpeg, png, jpg, gif, svg.',
+            'image.max' => 'The image must be an image file no greater than 2MB.',
+        ]);
 
         CourseTaxClassificationService::validateFeeBreakdown($request);
 
-        // Handle image upload
         $imagePath = null;
         if ($request->hasFile('image')) {
             try {
                 $imagePath = $request->file('image')->store('course_images', 'public');
-                // Log for debugging
-                \Illuminate\Support\Facades\Log::info('Course image uploaded (Frontend)', [
+                Log::info('Course image uploaded (Frontend)', [
                     'path' => $imagePath,
-                    'exists' => \Illuminate\Support\Facades\Storage::disk('public')->exists($imagePath),
+                    'exists' => Storage::disk('public')->exists($imagePath),
                 ]);
             } catch (\Exception $e) {
-                \Illuminate\Support\Facades\Log::error('Failed to upload course image (Frontend): '.$e->getMessage());
+                Log::error('Failed to upload course image (Frontend): '.$e->getMessage());
 
                 return redirect()->back()
                     ->withInput()
@@ -288,12 +349,10 @@ class FrontendCourseController extends Controller
             }
         }
 
-        // Generate slug from name
         $slug = Str::slug($validated['name']);
         $originalSlug = $slug;
         $counter = 1;
 
-        // Ensure unique slug
         while (Course::where('slug', $slug)->exists()) {
             $slug = $originalSlug.'-'.$counter;
             $counter++;
@@ -303,68 +362,62 @@ class FrontendCourseController extends Controller
             DB::beginTransaction();
 
             $course = Course::create(array_merge([
-                // Auto-populated fields
                 'organization_id' => Auth::id(),
                 'user_id' => Auth::id(),
 
-                // Form data
                 'type' => $validated['type'],
-                'topic_id' => $validated['topic_id'],
+                'topic_id' => null,
+                'event_type_id' => $validated['event_type_id'] ?? null,
                 'name' => $validated['name'],
                 'slug' => $slug,
                 'description' => $validated['description'],
-                'meeting_link' => $validated['meeting_link'], // Added meeting_link field
+                'meeting_link' => $validated['meeting_link'],
 
-                // Pricing
                 'pricing_type' => $validated['pricing_type'],
                 'course_fee' => $validated['pricing_type'] === 'paid' ? $validated['course_fee'] : null,
 
-                // Schedule & Format
                 'start_date' => $validated['start_date'],
                 'start_time' => $validated['start_time'],
                 'end_date' => $validated['end_date'] ?? null,
                 'duration' => $validated['duration'],
                 'format' => $validated['format'],
 
-                // Configuration
                 'max_participants' => $validated['max_participants'],
                 'language' => $validated['language'],
 
-                // Target Audience & Impact
                 'target_audience' => $validated['target_audience'],
                 'community_impact' => $validated['community_impact'],
 
-                // Course Content
-                'learning_outcomes' => $validated['learning_outcomes'],
+                'learning_outcomes' => $validated['learning_outcomes'] ?? [],
                 'prerequisites' => $validated['prerequisites'] ?? [],
                 'materials_needed' => $validated['materials_needed'] ?? [],
                 'accessibility_features' => $validated['accessibility_features'] ?? [],
 
-                // Settings
                 'certificate_provided' => $validated['certificate_provided'] ?? false,
                 'volunteer_opportunities' => $validated['volunteer_opportunities'] ?? false,
 
-                // Media
                 'image' => $imagePath,
 
-                // Defaults
                 'enrolled' => 0,
                 'rating' => 0.0,
                 'total_reviews' => 0,
                 'last_updated' => now(),
             ], CourseTaxClassificationService::persistenceFromRequest($request)));
 
+            $this->syncConnectionHubListingPrimaryActionCategories($request, $course);
+
             DB::commit();
 
-            return redirect()->route('profile.course.index')->with('success', 'Community course created successfully!');
+            SendCourseNotification::dispatch($course);
 
+            return redirect()->route('profile.course.index')->with('success', 'Connection Hub listing created successfully!');
         } catch (\Exception $e) {
             DB::rollBack();
             Log::error('Failed to create course: '.$e->getMessage());
 
             return redirect()->back()
                 ->withInput()
-                ->withErrors(['error' => 'Failed to create course. Please try again.']);
+                ->withErrors(['error' => 'Failed to create listing. Please try again.']);
         }
     }
 
@@ -432,7 +485,7 @@ class FrontendCourseController extends Controller
             abort(403, 'Unauthorized access to this course.');
         }
 
-        $course->load(['topic', 'organization', 'creator']);
+        $course->load(['topic', 'eventType', 'organization', 'creator']);
 
         // Get enrollment statistics
         $enrollmentStats = [
@@ -476,19 +529,20 @@ class FrontendCourseController extends Controller
     /**
      * Show the form for editing the specified course.
      */
-    public function edit(Course $course)
+    public function edit(Request $request, Course $course)
     {
         // Ensure user can only edit their own organization's courses
         if ($course->organization_id !== Auth::id()) {
             abort(403, 'Unauthorized access to this course.');
         }
 
-        $topics = Topic::orderBy('name')->get(['id', 'name']);
+        $eventTypes = \App\Models\EventType::where('is_active', true)
+            ->orderBy('category')
+            ->orderBy('name')
+            ->get(['id', 'name', 'category']);
 
-        // Format the course data properly for the form
-        $courseData = $course->load(['topic', 'organization', 'creator']);
+        $courseData = $course->load(['topic', 'eventType', 'organization', 'creator', 'primaryActionCategories']);
 
-        // Ensure dates are in proper format
         $courseData->start_date = $course->start_date instanceof \Carbon\Carbon
             ? $course->start_date->format('Y-m-d')
             : $course->start_date;
@@ -503,11 +557,16 @@ class FrontendCourseController extends Controller
             ? $course->start_time->format('H:i')
             : (is_string($course->start_time) ? substr($course->start_time, 0, 5) : $course->start_time);
 
-        return Inertia::render('frontend/user/course/Edit', [
+        $courseData->primary_action_category_ids = $course->primaryActionCategories->pluck('id')->map(fn ($id) => (int) $id)->values()->all();
+
+        $seller = Organization::biuSellerDisplayForUser($request->user());
+
+        return Inertia::render('frontend/user/course/Edit', array_merge([
             'course' => $courseData,
-            'topics' => $topics,
-            'organizationName' => Organization::query()->where('user_id', Auth::id())->value('name'),
-        ]);
+            'eventTypes' => $eventTypes,
+            'organizationName' => $seller['name'],
+            'sellerNameLabel' => $seller['label'],
+        ], $this->connectionHubProfilePrimaryCategoriesPageProps($request)));
     }
 
     /**
@@ -520,8 +579,12 @@ class FrontendCourseController extends Controller
             abort(403, 'Unauthorized access to this course.');
         }
 
+        $type = $request->input('type', $course->type ?? ConnectionHubType::COMPANION);
+        $typeLabelCapital = ConnectionHubType::label($type);
+        $typeLabel = strtolower($typeLabelCapital);
+        $outcomesNoun = ConnectionHubType::usesEventSemantics($type) ? 'event' : 'learning';
+
         $validated = $request->validate(array_merge([
-            // Basic Information
             'name' => [
                 'required',
                 'string',
@@ -530,30 +593,29 @@ class FrontendCourseController extends Controller
             ],
             'description' => 'required|string',
             'type' => ['required', Rule::in(ConnectionHubType::VALUES)],
-            'topic_id' => ['required', 'exists:topics,id'],
-            'meeting_link' => 'nullable|url|max:500', // Added meeting_link validation
+            'topic_id' => ['nullable', 'exists:topics,id'],
+            'event_type_id' => [
+                'required',
+                'exists:event_types,id',
+            ],
+            'meeting_link' => 'nullable|url|max:500',
 
-            // Pricing
             'pricing_type' => ['required', Rule::in(['free', 'paid'])],
             'course_fee' => 'nullable|numeric|min:0|required_if:pricing_type,paid',
 
-            // Schedule & Format
             'start_date' => 'required|date',
             'start_time' => 'required|date_format:H:i',
             'end_date' => 'nullable|date|after_or_equal:start_date',
             'duration' => ['required', Rule::in(['1_session', '1_week', '2_weeks', '1_month', '6_weeks', '3_months'])],
             'format' => ['required', Rule::in(['online', 'in_person', 'hybrid'])],
 
-            // Configuration
             'max_participants' => 'required|integer|min:1|max:100',
             'language' => ['required', Rule::in(['English', 'Spanish', 'French', 'Other'])],
 
-            // Target Audience & Impact
             'target_audience' => 'required|string|max:255',
             'community_impact' => 'nullable|string',
 
-            // Course Content
-            'learning_outcomes' => 'required|array|min:1',
+            'learning_outcomes' => ['nullable', 'array'],
             'learning_outcomes.*' => 'string|max:255',
             'prerequisites' => 'nullable|array',
             'prerequisites.*' => 'string|max:255',
@@ -562,33 +624,73 @@ class FrontendCourseController extends Controller
             'accessibility_features' => 'nullable|array',
             'accessibility_features.*' => 'string|max:255',
 
-            // Settings
             'certificate_provided' => 'boolean',
             'volunteer_opportunities' => 'boolean',
 
-            // Media
             'image' => 'nullable|image|mimes:jpeg,png,jpg,gif,svg|max:2048',
-        ], CourseTaxClassificationService::validationRules()));
+        ], CourseTaxClassificationService::validationRules(), $this->connectionHubProfilePrimaryActionCategoryValidation($request)), [
+            'name.required' => "The {$typeLabelCapital} name is required.",
+            'name.unique' => "A {$typeLabel} with this name already exists.",
+            'name.max' => "The {$typeLabelCapital} name may not be greater than 255 characters.",
+            'description.required' => "The {$typeLabelCapital} description is required.",
+            'type.required' => 'Please select a Connection Hub type.',
+            'type.in' => 'Type must be Companion, Learning, Events, or Earning.',
+            'topic_id.exists' => 'The selected topic is invalid.',
+            'event_type_id.required' => 'Please select a topic.',
+            'event_type_id.exists' => 'The selected topic is invalid.',
+            'meeting_link.url' => 'The meeting link must be a valid URL.',
+            'meeting_link.max' => 'The meeting link may not be greater than 500 characters.',
+            'pricing_type.required' => 'Please select a pricing type.',
+            'pricing_type.in' => 'Pricing type must be either Free or Paid.',
+            'course_fee.required_if' => 'A fee is required when pricing type is Paid.',
+            'course_fee.numeric' => 'The fee must be a number.',
+            'course_fee.min' => 'The fee must be at least 0.',
+            'start_date.required' => 'Start date is required.',
+            'start_date.date' => 'Start date must be a valid date.',
+            'start_time.required' => 'Start time is required.',
+            'start_time.date_format' => 'Start time must be in HH:MM format.',
+            'end_date.date' => 'End date must be a valid date.',
+            'end_date.after_or_equal' => 'End date must be on or after the start date.',
+            'duration.required' => 'Duration is required.',
+            'duration.in' => 'Please select a valid duration.',
+            'format.required' => 'Format is required.',
+            'format.in' => 'Format must be Online, In-Person, or Hybrid.',
+            'max_participants.required' => 'Maximum participants is required.',
+            'max_participants.integer' => 'Maximum participants must be a number.',
+            'max_participants.min' => 'Maximum participants must be at least 1.',
+            'max_participants.max' => 'Maximum participants may not be greater than 100.',
+            'language.required' => 'Language is required.',
+            'language.in' => 'Please select a valid language.',
+            'target_audience.required' => 'Target audience is required.',
+            'target_audience.max' => 'Target audience may not be greater than 255 characters.',
+            'learning_outcomes.required' => $outcomesNoun === 'learning' ? 'Learning outcomes are required.' : 'Event outcomes are required.',
+            'learning_outcomes.array' => $outcomesNoun === 'learning' ? 'Learning outcomes must be an array.' : 'Event outcomes must be an array.',
+            'learning_outcomes.min' => $outcomesNoun === 'learning' ? 'At least one learning outcome is required.' : 'At least one event outcome is required.',
+            'learning_outcomes.*.max' => $outcomesNoun === 'learning' ? 'Each learning outcome may not be greater than 255 characters.' : 'Each event outcome may not be greater than 255 characters.',
+            'prerequisites.*.max' => 'Each prerequisite may not be greater than 255 characters.',
+            'materials_needed.*.max' => 'Each material needed may not be greater than 255 characters.',
+            'accessibility_features.*.max' => 'Each accessibility feature may not be greater than 255 characters.',
+            'image.image' => 'The image must be an image file.',
+            'image.mimes' => 'The image must be a file of type: jpeg, png, jpg, gif, svg.',
+            'image.max' => 'The image may not be greater than 2MB.',
+        ]);
 
         CourseTaxClassificationService::validateFeeBreakdown($request);
 
-        // Handle image upload
         $imagePath = $course->image;
         if ($request->hasFile('image')) {
             try {
-                // Delete old image if exists
                 if ($course->image && Storage::disk('public')->exists($course->image)) {
                     Storage::disk('public')->delete($course->image);
                 }
                 $imagePath = $request->file('image')->store('course_images', 'public');
-                // Log for debugging
-                \Illuminate\Support\Facades\Log::info('Course image updated (Frontend)', [
+                Log::info('Course image updated (Frontend)', [
                     'course_id' => $course->id,
                     'path' => $imagePath,
                     'exists' => Storage::disk('public')->exists($imagePath),
                 ]);
             } catch (\Exception $e) {
-                \Illuminate\Support\Facades\Log::error('Failed to update course image (Frontend): '.$e->getMessage());
+                Log::error('Failed to update course image (Frontend): '.$e->getMessage());
 
                 return redirect()->back()
                     ->withInput()
@@ -596,7 +698,6 @@ class FrontendCourseController extends Controller
             }
         }
 
-        // Update slug if name changed
         $slug = $course->slug;
         if ($course->name !== $validated['name']) {
             $slug = Str::slug($validated['name']);
@@ -614,60 +715,132 @@ class FrontendCourseController extends Controller
 
             $course->update(array_merge([
                 'type' => $validated['type'],
-                'topic_id' => $validated['topic_id'],
+                'topic_id' => null,
+                'event_type_id' => ! empty($validated['event_type_id']) ? $validated['event_type_id'] : null,
                 'name' => $validated['name'],
                 'slug' => $slug,
                 'description' => $validated['description'],
-                'meeting_link' => $validated['meeting_link'], // Added meeting_link field
+                'meeting_link' => $validated['meeting_link'],
 
-                // Pricing
                 'pricing_type' => $validated['pricing_type'],
                 'course_fee' => $validated['pricing_type'] === 'paid' ? $validated['course_fee'] : null,
 
-                // Schedule & Format
                 'start_date' => $validated['start_date'],
                 'start_time' => $validated['start_time'],
                 'end_date' => $validated['end_date'],
                 'duration' => $validated['duration'],
                 'format' => $validated['format'],
 
-                // Configuration
                 'max_participants' => $validated['max_participants'],
                 'language' => $validated['language'],
 
-                // Target Audience & Impact
                 'target_audience' => $validated['target_audience'],
                 'community_impact' => $validated['community_impact'],
 
-                // Course Content
-                'learning_outcomes' => $validated['learning_outcomes'],
+                'learning_outcomes' => $validated['learning_outcomes'] ?? [],
                 'prerequisites' => $validated['prerequisites'] ?? [],
                 'materials_needed' => $validated['materials_needed'] ?? [],
                 'accessibility_features' => $validated['accessibility_features'] ?? [],
 
-                // Settings
                 'certificate_provided' => $validated['certificate_provided'] ?? false,
                 'volunteer_opportunities' => $validated['volunteer_opportunities'] ?? false,
 
-                // Media
                 'image' => $imagePath,
 
-                // Update timestamp
                 'last_updated' => now(),
             ], CourseTaxClassificationService::persistenceFromRequest($request)));
 
+            $this->syncConnectionHubListingPrimaryActionCategories($request, $course);
+
             DB::commit();
 
-            return redirect()->route('profile.course.index')->with('success', 'Community course updated successfully!');
-
+            return redirect()->route('profile.course.index')->with('success', 'Connection Hub listing updated successfully!');
         } catch (\Exception $e) {
             DB::rollBack();
             Log::error('Failed to update course: '.$e->getMessage());
 
             return redirect()->back()
                 ->withInput()
-                ->withErrors(['error' => 'Failed to update course. Please try again.']);
+                ->withErrors(['error' => 'Failed to update listing. Please try again.']);
         }
+    }
+
+    /**
+     * Org Category Grid when the linked org has selections; otherwise the supporter's
+     * profile interests (same primary_action_categories catalog via primary_action_category_user).
+     *
+     * @return array{organizationPrimaryActionCategories: list<array{id: int, name: string}>, causesCatalogSource: 'organization'|'supporter'}
+     */
+    private function connectionHubProfilePrimaryCategoriesPageProps(Request $request): array
+    {
+        $org = Organization::forAuthUser($request->user());
+        if ($org !== null && $this->organizationHasPrimaryActionCategorySelections($org)) {
+            $rows = $org->primaryActionCategories()
+                ->where('primary_action_categories.is_active', true)
+                ->orderBy('primary_action_categories.sort_order')
+                ->orderBy('primary_action_categories.name')
+                ->get(['primary_action_categories.id', 'primary_action_categories.name']);
+
+            return [
+                'organizationPrimaryActionCategories' => $rows->values()->all(),
+                'causesCatalogSource' => 'organization',
+            ];
+        }
+
+        $user = $request->user();
+        $rows = $user->supporterInterestCategories()
+            ->where('primary_action_categories.is_active', true)
+            ->orderBy('primary_action_categories.sort_order')
+            ->orderBy('primary_action_categories.name')
+            ->get(['primary_action_categories.id', 'primary_action_categories.name']);
+
+        return [
+            'organizationPrimaryActionCategories' => $rows->values()->all(),
+            'causesCatalogSource' => 'supporter',
+        ];
+    }
+
+    private function organizationHasPrimaryActionCategorySelections(Organization $org): bool
+    {
+        return $org->primaryActionCategories()
+            ->where('primary_action_categories.is_active', true)
+            ->exists();
+    }
+
+    /**
+     * PAC validation: org grid when org has categories; otherwise user's supporter-interest pivot.
+     */
+    private function connectionHubProfilePrimaryActionCategoryValidation(Request $request): array
+    {
+        $org = Organization::forAuthUser($request->user());
+        if ($org !== null && $this->organizationHasPrimaryActionCategorySelections($org)) {
+            return $this->primaryActionCategoryIdsValidation($request);
+        }
+
+        $userId = (int) $request->user()->id;
+
+        return [
+            'primary_action_category_ids' => ['nullable', 'array'],
+            'primary_action_category_ids.*' => [
+                'integer',
+                Rule::exists('primary_action_categories', 'id')->where('is_active', true),
+                Rule::exists('primary_action_category_user', 'primary_action_category_id')->where(
+                    fn ($q) => $q->where('user_id', $userId)
+                ),
+            ],
+        ];
+    }
+
+    private function syncConnectionHubListingPrimaryActionCategories(Request $request, Course $course): void
+    {
+        $ids = $request->input('primary_action_category_ids', []);
+        if (! is_array($ids)) {
+            return;
+        }
+
+        $course->primaryActionCategories()->sync(
+            array_values(array_unique(array_filter(array_map('intval', $ids))))
+        );
     }
 
     /**
@@ -692,12 +865,12 @@ class FrontendCourseController extends Controller
 
             DB::commit();
 
-            return redirect()->route('profile.course.index')->with('success', 'Course deleted successfully!');
+            return redirect()->route('profile.course.index')->with('success', 'Listing deleted successfully!');
         } catch (\Exception $e) {
             DB::rollBack();
             Log::error('Error deleting course: '.$e->getMessage());
 
-            return redirect()->back()->with('error', 'Failed to delete course. An unexpected error occurred.');
+            return redirect()->back()->with('error', 'Failed to delete listing. An unexpected error occurred.');
         }
     }
 }

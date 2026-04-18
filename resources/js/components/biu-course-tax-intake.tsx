@@ -85,6 +85,8 @@ interface BiuCourseTaxIntakeProps {
   setData: (key: string, value: unknown) => void
   errors: Partial<Record<keyof BiuTaxFormSlice | string, string>>
   organizationName?: string | null
+  /** "Organization name" when the account has a nonprofit org profile; "Your name" for individual sellers */
+  sellerNameLabel?: string
   /** Connection Hub type (companion, learning, events, earning) — reserved for future rules */
   hubType?: string
   pricingType: "free" | "paid"
@@ -161,6 +163,7 @@ export default function BiuCourseTaxIntake({
   setData,
   errors,
   organizationName,
+  sellerNameLabel = "Organization name",
   hubType: _hubType = undefined,
   pricingType,
 }: BiuCourseTaxIntakeProps) {
@@ -229,7 +232,7 @@ export default function BiuCourseTaxIntake({
       </CardHeader>
       <CardContent className="space-y-6">
         <div className="grid gap-1 rounded-md border bg-background/80 p-3 text-sm">
-          <span className="text-muted-foreground">Organization name</span>
+          <span className="text-muted-foreground">{sellerNameLabel}</span>
           <span className="font-medium">{organizationName?.trim() || "—"}</span>
         </div>
 

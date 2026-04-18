@@ -66,10 +66,10 @@ const navigationItems: NavigationItem[] = [
     color: "from-orange-500 to-amber-600",
   },
   {
-    name: "Course",
+    name: "Connection Hub",
     href: "/profile/course",
     icon: GraduationCap,
-    description: "Courses",
+    description: "Your listings",
     color: "from-purple-500 to-indigo-600",
   },
   {

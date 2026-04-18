@@ -287,9 +287,12 @@ class CourseController extends BaseController
             ->orderBy('name')
             ->get(['id', 'name', 'category']);
 
+        $seller = Organization::biuSellerDisplayForUser($request->user());
+
         return Inertia::render('admin/course/Create', array_merge([
             'eventTypes' => $eventTypes,
-            'organizationName' => Organization::query()->where('user_id', Auth::id())->value('name'),
+            'organizationName' => $seller['name'],
+            'sellerNameLabel' => $seller['label'],
         ], $this->organizationPrimaryActionCategoriesPageProps($request)));
     }
 
@@ -761,10 +764,13 @@ class CourseController extends BaseController
 
         $courseData->primary_action_category_ids = $course->primaryActionCategories->pluck('id')->map(fn ($id) => (int) $id)->values()->all();
 
+        $seller = Organization::biuSellerDisplayForUser($request->user());
+
         return Inertia::render('admin/course/Edit', array_merge([
             'course' => $courseData,
             'eventTypes' => $eventTypes,
-            'organizationName' => Organization::query()->where('user_id', Auth::id())->value('name'),
+            'organizationName' => $seller['name'],
+            'sellerNameLabel' => $seller['label'],
         ], $this->organizationPrimaryActionCategoriesPageProps($request)));
     }
 

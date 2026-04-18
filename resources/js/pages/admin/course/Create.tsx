@@ -31,10 +31,11 @@ interface AdminCoursesCreateProps {
   eventTypes: EventType[]
   organizationPrimaryActionCategories: PrimaryActionCategoryOption[]
   organizationName?: string | null
+  sellerNameLabel?: string
 }
 
 export default function NonprofitCoursesCreate() {
-  const { eventTypes, organizationPrimaryActionCategories, organizationName } =
+  const { eventTypes, organizationPrimaryActionCategories, organizationName, sellerNameLabel } =
     usePage<AdminCoursesCreateProps>().props
   const { auth } = usePage().props as { auth: { user: User } }
 
@@ -238,7 +239,7 @@ export default function NonprofitCoursesCreate() {
 
   return (
     <AppLayout>
-      <Head title={`Create ${connectionHubTypeLabel(data.type)} - Connection Hub`} />
+      <Head title={`Create ${connectionHubTypeLabel(data.type)} - Connections`} />
 
       <div className="space-y-6 m-6">
         <div className="flex items-center gap-4">
@@ -418,6 +419,7 @@ export default function NonprofitCoursesCreate() {
                     setData={setData}
                     errors={errors}
                     organizationName={organizationName}
+                    sellerNameLabel={sellerNameLabel}
                     hubType={data.type}
                     pricingType={data.pricing_type}
                   />
@@ -620,7 +622,7 @@ export default function NonprofitCoursesCreate() {
                           Volunteer Opportunities
                         </label>
                         <p className="text-xs text-muted-foreground">
-                          Allow participants to volunteer for future Connection Hub listings
+                          Allow participants to volunteer for future listings
                         </p>
                       </div>
                       <Switch

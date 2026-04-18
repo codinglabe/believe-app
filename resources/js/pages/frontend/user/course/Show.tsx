@@ -40,6 +40,7 @@ interface Creator {
 interface Course {
   id: number
   topic_id: number | null
+  event_type_id: number | null
   organization_id: number
   user_id: number
   name: string
@@ -71,6 +72,7 @@ interface Course {
   updated_at: string
   meeting_link: string | null
   topic: Topic | null
+  event_type: { id: number; name: string; category?: string } | null
   organization: Organization
   organization_name?: string | null
   creator: Creator
@@ -135,16 +137,16 @@ export default function AdminCoursesShow({ course, enrollmentStats, status }: Ad
   }
 
   return (
-    <ProfileLayout title="Course Details" description={course.name}>
-      <Head title={`Course Details - ${course.name}`} />
+    <ProfileLayout title="Connection Hub" description={course.name}>
+      <Head title={`Connection Hub · ${course.name}`} />
 
       <div className="space-y-6 m-10">
         {/* Header */}
         <div className="flex items-center gap-4">
 
           <div className="ml-auto flex gap-2">
-            <Link href={route("admin.courses.edit", course.slug)}>
-              <Button>Edit Course</Button>
+            <Link href={route("profile.course.edit", course.slug)}>
+              <Button>Edit listing</Button>
             </Link>
             <Link href={`/courses/${course.slug}`} target="_blank">
               <Button variant="outline">View Public</Button>
@@ -152,9 +154,9 @@ export default function AdminCoursesShow({ course, enrollmentStats, status }: Ad
           </div>
         </div>
 
-        {/* Course Overview */}
+        {/* Listing overview */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Main Course Info */}
+          {/* Main info */}
           <div className="lg:col-span-2">
             <Card>
               <CardHeader>
@@ -163,7 +165,10 @@ export default function AdminCoursesShow({ course, enrollmentStats, status }: Ad
                     <CardTitle className="text-2xl mb-2">{course.name}</CardTitle>
                     <div className="flex items-center gap-2 mb-4">
                       <Badge className={getStatusColor(status)}>{status.replace("_", " ")}</Badge>
-                      {course.topic && <Badge variant="outline">{course.topic.name}</Badge>}
+                      {course.event_type && <Badge variant="outline">{course.event_type.name}</Badge>}
+                      {!course.event_type && course.topic && (
+                        <Badge variant="outline">{course.topic.name}</Badge>
+                      )}
                       <Badge variant={course.pricing_type === "free" ? "secondary" : "default"}>
                         {course.formatted_price}
                       </Badge>
@@ -318,12 +323,12 @@ export default function AdminCoursesShow({ course, enrollmentStats, status }: Ad
               </CardContent>
             </Card>
 
-            {/* Course Details */}
+            {/* Schedule & format */}
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <BookOpen className="h-5 w-5" />
-                  Course Details
+                  Schedule & format
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">

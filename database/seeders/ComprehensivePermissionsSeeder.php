@@ -286,8 +286,8 @@ class ComprehensivePermissionsSeeder extends Seeder
             'rating.read', 'rating.create', 'rating.edit', 'rating.update', 'rating.delete',
             'review.read', 'review.create', 'review.edit', 'review.update', 'review.delete',
 
-            // Educational modules
-            'course.read', 'course.enroll',
+            // Educational modules — full Connection Hub CRUD on profile (same permission keys as org admin routes)
+            'course.read', 'course.create', 'course.edit', 'course.update', 'course.delete', 'course.enroll',
             'node.boss.read',
 
             // NTEE and Classification Codes (view only)

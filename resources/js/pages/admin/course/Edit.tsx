@@ -106,10 +106,11 @@ interface AdminCoursesEditProps {
   eventTypes: EventType[]
   organizationPrimaryActionCategories: PrimaryActionCategoryOption[]
   organizationName?: string | null
+  sellerNameLabel?: string
 }
 
 export default function AdminCoursesEdit() {
-  const { course, eventTypes, organizationPrimaryActionCategories, organizationName } =
+  const { course, eventTypes, organizationPrimaryActionCategories, organizationName, sellerNameLabel } =
     usePage<AdminCoursesEditProps>().props
   const { auth } = usePage().props as { auth: { user: User } }
 
@@ -337,7 +338,7 @@ export default function AdminCoursesEdit() {
 
   return (
     <AppLayout>
-      <Head title={`Edit ${connectionHubTypeLabel(data.type)} - ${course.name} - Connection Hub`} />
+      <Head title={`Edit ${connectionHubTypeLabel(data.type)} - ${course.name} - Connections`} />
 
       <div className="space-y-6 m-6">
         <div className="flex items-center gap-4">
@@ -542,6 +543,7 @@ export default function AdminCoursesEdit() {
                     setData={setData}
                     errors={errors}
                     organizationName={organizationName}
+                    sellerNameLabel={sellerNameLabel}
                     hubType={data.type}
                     pricingType={data.pricing_type}
                   />
@@ -744,7 +746,7 @@ export default function AdminCoursesEdit() {
                           Volunteer Opportunities
                         </label>
                         <p className="text-xs text-muted-foreground">
-                          Allow participants to volunteer for future Connection Hub listings
+                          Allow participants to volunteer for future listings
                         </p>
                       </div>
                       <Switch
