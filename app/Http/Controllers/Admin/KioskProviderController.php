@@ -92,6 +92,7 @@ class KioskProviderController extends Controller
         );
 
         KioskProvider::query()->create([
+            'organization_id' => null,
             'state_abbr' => $data['state_abbr'],
             'normalized_city' => $data['normalized_city'],
             'zip_normalized' => $data['zip_normalized'],
@@ -132,6 +133,7 @@ class KioskProviderController extends Controller
         );
 
         $kioskProvider->update([
+            'organization_id' => null,
             'state_abbr' => $data['state_abbr'],
             'normalized_city' => $data['normalized_city'],
             'zip_normalized' => $data['zip_normalized'],
@@ -293,6 +295,7 @@ class KioskProviderController extends Controller
         $slug = $base;
         $n = 0;
         while (KioskProvider::query()
+            ->whereNull('organization_id')
             ->where('state_abbr', $stateAbbr)
             ->where('normalized_city', $normalizedCity)
             ->where('zip_normalized', $zipNormalized)

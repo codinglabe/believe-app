@@ -505,6 +505,11 @@ class Organization extends Model
             ->withTimestamps();
     }
 
+    public function kioskProviders(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(KioskProvider::class, 'organization_id');
+    }
+
     /**
      * Verified users with the Supporters role ({@see User} `user` role) — newsletter “supporters” audience (not donation/follow-based).
      *

@@ -411,6 +411,13 @@ export const dashboardSidebarNavItems: (NavItem | NavGroup)[] = [
                 role: 'organization',
             },
             {
+                title: 'Kiosk listings',
+                href: route('organization.kiosk-providers.index'),
+                icon: Monitor,
+                permission: 'organization.followers.read',
+                role: 'organization',
+            },
+            {
                 title: 'Chat',
                 icon: MessageCircle,
                 items: [
