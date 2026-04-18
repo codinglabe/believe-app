@@ -6,7 +6,8 @@ use App\Models\Course;
 use App\Models\Enrollment;
 use App\Models\Transaction;
 use App\Services\BiuPlatformFeeService;
-use App\Support\StripeCustomerChargeAmount;
+use App\Support\CourseEnrollmentCheckoutItems;
+use App\Support\StripeAutomaticTax;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -232,29 +233,26 @@ class EnrollmentController extends Controller
                         'course_name' => $course->name,
                         'enrollment_id' => $enrollment->enrollment_id,
                         'pricing_type' => 'paid',
-                    ], BiuPlatformFeeService::ledgerMetaSlice((float) $course->course_fee)),
+                    ], CourseEnrollmentCheckoutItems::stripeMetadataSlice($course), BiuPlatformFeeService::ledgerMetaSlice((float) $course->course_fee)),
                     'processed_at' => null,
                 ]);
 
-                // For paid courses, proceed to Stripe checkout
-                $totalAmountInCents = StripeCustomerChargeAmount::chargeCentsFromNetUsd((float) $course->course_fee, 'card');
+                $lineItems = CourseEnrollmentCheckoutItems::lineItems($course, $user);
 
-                $checkout = $user->checkoutCharge(
-                    $totalAmountInCents,
-                    "Enrollment for {$course->name}",
-                    1,
-                    [
+                $checkout = $user->checkout(
+                    $lineItems,
+                    StripeAutomaticTax::mergeCheckoutOptions([
                         'success_url' => route('courses.enrollment.success').'?session_id={CHECKOUT_SESSION_ID}',
                         'cancel_url' => route('courses.enrollment.cancel', $enrollment->id),
-                        'metadata' => [
-                            'enrollment_id' => $enrollment->id,
-                            'transaction_id' => $transaction->id,
-                            'course_id' => $course->id,
-                            'user_id' => $user->id,
-                            'course_fee' => $course->course_fee,
-                        ],
+                        'metadata' => array_merge([
+                            'enrollment_id' => (string) $enrollment->id,
+                            'transaction_id' => (string) $transaction->id,
+                            'course_id' => (string) $course->id,
+                            'user_id' => (string) $user->id,
+                            'course_fee' => (string) $course->course_fee,
+                        ], CourseEnrollmentCheckoutItems::stripeMetadataSlice($course)),
                         'payment_method_types' => ['card'],
-                    ]
+                    ])
                 );
 
                 DB::commit();
@@ -359,6 +357,11 @@ class EnrollmentController extends Controller
             if (isset($session->metadata->transaction_id)) {
                 $transaction = Transaction::find($session->metadata->transaction_id);
                 if ($transaction) {
+                    $amountTotalUsd = isset($session->amount_total) ? round(((int) $session->amount_total) / 100, 2) : null;
+                    $amountTaxUsd = isset($session->total_details->amount_tax)
+                        ? round(((int) $session->total_details->amount_tax) / 100, 2)
+                        : null;
+
                     $transaction->update([
                         'status' => Transaction::STATUS_COMPLETED,
                         'meta' => array_merge(
@@ -367,6 +370,8 @@ class EnrollmentController extends Controller
                                 'stripe_session_id' => $session->id,
                                 'stripe_payment_intent' => $session->payment_intent,
                                 'payment_status' => $session->payment_status,
+                                'stripe_checkout_amount_total_usd' => $amountTotalUsd,
+                                'stripe_checkout_amount_tax_usd' => $amountTaxUsd,
                             ],
                             BiuPlatformFeeService::ledgerMetaSlice((float) $enrollment->course->course_fee)
                         ),
@@ -401,7 +406,10 @@ class EnrollmentController extends Controller
      */
     public function cancel($enrollmentId)
     {
-        $enrollment = Enrollment::with(['course'])->findOrFail($enrollmentId);
+        $enrollment = Enrollment::with([
+            'course.organization',
+            'course.topic',
+        ])->findOrFail($enrollmentId);
 
         // Update enrollment status to cancelled
         $enrollment->update(['status' => 'cancelled']);
@@ -419,7 +427,7 @@ class EnrollmentController extends Controller
             ]);
         }
 
-        return Inertia::render('frontend/enrollment/Cancel', [
+        return Inertia::render('frontend/course/enrollment/Cancel', [
             'enrollment' => $enrollment,
             'course' => $enrollment->course,
         ]);

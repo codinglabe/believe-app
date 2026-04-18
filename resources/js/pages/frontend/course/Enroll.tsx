@@ -12,8 +12,6 @@ import {
   Clock,
   Users,
   MapPin,
-  LinkIcon,
-  Copy,
   Coins,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -60,7 +58,6 @@ interface Props {
 
 export default function FrontendCourseEnroll({ course }: Props) {
   const [paymentMethod, setPaymentMethod] = useState<'stripe' | 'believe_points'>('stripe')
-  const [copied, setCopied] = useState(false)
   const page = usePage()
   const auth = (page.props as any).auth
   const currentBalance = parseFloat(auth?.user?.believe_points) || 0
@@ -89,21 +86,13 @@ export default function FrontendCourseEnroll({ course }: Props) {
   const pointsRequired = course.pricing_type === "paid" && course.course_fee ? parseFloat(course.course_fee.toString()) || 0 : 0
   const hasEnoughPoints = currentBalance >= pointsRequired
 
-  const copyMeetingLink = () => {
-    if (course.meeting_link) {
-      navigator.clipboard.writeText(course.meeting_link)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-    }
-  }
-
   const availableSpots = course.max_participants - course.enrolled
 
   return (
     <FrontendLayout>
       <div className="min-h-screen bg-gray-50 dark:bg-gray-900 py-8">
         <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="max-w-4xl mx-auto">
+          <div className="max-w-6xl mx-auto">
             {/* Header */}
             <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="mb-8">
               <Link href={`/courses/${course.slug}`}>
@@ -388,41 +377,15 @@ export default function FrontendCourseEnroll({ course }: Props) {
                     </Card>
                   )}
 
-                  {/* Meeting Link Card */}
-                  {course.meeting_link && (
-                    <Card className="shadow-lg">
-                      <CardContent className="p-6">
-                        <div className="flex items-start gap-3">
-                          <LinkIcon className="h-5 w-5 text-blue-600 mt-0.5" />
-                          <div className="flex-1">
-                            <h4 className="font-semibold text-gray-900 dark:text-white mb-2">Meeting Link</h4>
-                            <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
-                              Join the course using this meeting link after enrollment.
-                            </p>
-                            <div className="flex gap-2">
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={copyMeetingLink}
-                                className="flex-1 bg-transparent"
-                              >
-                                <Copy className="mr-2 h-4 w-4" />
-                                {copied ? "Copied!" : "Copy Link"}
-                              </Button>
-                              <Button
-                                variant="default"
-                                size="sm"
-                                onClick={() => window.open(course.meeting_link, "_blank")}
-                                className="flex-1 bg-blue-600 hover:bg-blue-700"
-                              >
-                                Open Meeting
-                              </Button>
-                            </div>
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  )}
+                  <Card className="shadow-lg border-dashed">
+                    <CardContent className="p-6">
+                      <h4 className="font-semibold text-gray-900 dark:text-white mb-2">Meeting access</h4>
+                      <p className="text-sm text-gray-600 dark:text-gray-400">
+                        After you complete enrollment, your confirmation page and enrollment email will include how to join
+                        (Zoom, Google Meet, etc.).
+                      </p>
+                    </CardContent>
+                  </Card>
                 </motion.div>
               </div>
             </div>

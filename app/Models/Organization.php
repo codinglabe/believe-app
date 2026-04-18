@@ -28,6 +28,25 @@ class Organization extends Model
         return $user->organization;
     }
 
+    /**
+     * Display name + label for BIU tax intake (Connection Hub / admin course forms).
+     * Nonprofit org profile name when the user has an org (owner or board-linked); otherwise the account name.
+     *
+     * @return array{name: string, label: 'Organization name'|'Your name'}
+     */
+    public static function biuSellerDisplayForUser(User $user): array
+    {
+        $org = static::forAuthUser($user);
+        if ($org !== null) {
+            $n = trim((string) ($org->name ?? ''));
+            if ($n !== '') {
+                return ['name' => $n, 'label' => 'Organization name'];
+            }
+        }
+
+        return ['name' => (string) ($user->name ?? ''), 'label' => 'Your name'];
+    }
+
     protected $fillable = [
         'user_id',
         'balance',

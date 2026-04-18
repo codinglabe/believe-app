@@ -344,11 +344,11 @@ export const dashboardSidebarNavItems: (NavItem | NavGroup)[] = [
         icon: GraduationCap,
         items: [
             {
-                title: 'Courses',
+                title: 'Connection Hub',
                 icon: GraduationCap,
                 items: [
                     {
-                        title: 'Courses & events',
+                        title: 'Connections',
                         href: '/admin/courses-events',
                         icon: GraduationCap,
                         permission: 'course.read',

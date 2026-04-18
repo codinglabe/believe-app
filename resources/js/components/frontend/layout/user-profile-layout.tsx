@@ -139,17 +139,17 @@ const navigationItems = [
     color: "from-amber-500 to-yellow-600",
   },
   {
-    name: "Course",
+    name: "Connection Hub",
     href: "/profile/course",
     icon: GraduationCap,
-    description: "Course management",
+    description: "Manage listings",
     color: "from-purple-500 to-indigo-600",
   },
   {
     name: "Enrollments",
     href: "/profile/my-enrollments",
     icon: BookOpen,
-    description: "Course enrollments",
+    description: "Your enrollments",
     color: "from-purple-500 to-violet-600",
   },
   {

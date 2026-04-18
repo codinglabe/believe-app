@@ -18,6 +18,8 @@ import {
   OrganizationPrimaryActionCategoriesField,
   type PrimaryActionCategoryOption,
 } from "@/components/organization-primary-action-categories-field"
+import BiuCourseTaxIntake from "@/components/biu-course-tax-intake"
+import { connectionHubTypeLabel, isEventsHubType, type ConnectionHubType } from "@/lib/connection-hub-type"
 
 interface EventType {
   id: number
@@ -28,10 +30,13 @@ interface EventType {
 interface AdminCoursesCreateProps {
   eventTypes: EventType[]
   organizationPrimaryActionCategories: PrimaryActionCategoryOption[]
+  organizationName?: string | null
+  sellerNameLabel?: string
 }
 
 export default function NonprofitCoursesCreate() {
-  const { eventTypes, organizationPrimaryActionCategories } = usePage<AdminCoursesCreateProps>().props
+  const { eventTypes, organizationPrimaryActionCategories, organizationName, sellerNameLabel } =
+    usePage<AdminCoursesCreateProps>().props
   const { auth } = usePage().props as { auth: { user: User } }
 
   const [currentTab, setCurrentTab] = useState("basics")
@@ -48,7 +53,7 @@ export default function NonprofitCoursesCreate() {
   }, {} as Record<string, EventType[]>)
 
   const { data, setData, post, processing, errors, reset } = useForm({
-    type: "course" as "course" | "event",
+    type: "companion" as ConnectionHubType,
     name: "",
     description: "",
     event_type_id: eventTypes.length > 0 ? eventTypes[0].id.toString() : "",
@@ -72,15 +77,63 @@ export default function NonprofitCoursesCreate() {
     certificate_provided: false,
     image: null as File | null,
     primary_action_category_ids: [] as string[],
+    course_delivery_type: "online" as "online" | "live" | "hybrid" | "",
+    course_content_type: "general" as "written_material" | "video_streamed" | "video_streamed_downloadable" | "general" | "",
+    has_physical_materials: false,
+    pricing_structure: "" as "bundled" | "separate" | "",
+    requires_shipping: false,
+    digital_course_fee: "",
+    materials_fee: "",
+    shipping_fee_amount: "",
+    tax_ack_outside_ca: false,
+    tax_ack_auto_calculate: false,
   })
 
   const validateTab = (tab: string): boolean => {
     switch (tab) {
-      case "basics":
+      case "basics": {
         const hasType = !!data.type
         const hasTopicOrEventType = !!data.event_type_id
-        const hasPricing = !!data.pricing_type && (data.pricing_type === "free" || (data.pricing_type === "paid" && !!data.course_fee))
-        return !!(data.name && data.description && hasType && hasTopicOrEventType && data.target_audience && hasPricing)
+        const feeSplit =
+          data.pricing_type === "paid" &&
+          data.has_physical_materials &&
+          data.pricing_structure === "separate"
+        const hasPricing =
+          !!data.pricing_type &&
+          (data.pricing_type === "free" ||
+            (data.pricing_type === "paid" &&
+              (feeSplit
+                ? !!(data.digital_course_fee && data.materials_fee)
+                : !!data.course_fee)))
+        const basicsOk = !!(
+          data.name &&
+          data.description &&
+          hasType &&
+          hasTopicOrEventType &&
+          data.target_audience &&
+          hasPricing
+        )
+        const needsBiuTax = data.pricing_type === "paid"
+        if (!basicsOk) {
+          return false
+        }
+        if (!needsBiuTax) {
+          return true
+        }
+        if (!data.course_delivery_type) {
+          return false
+        }
+        if (data.course_delivery_type === "online" && !data.course_content_type) {
+          return false
+        }
+        if (data.has_physical_materials && !data.pricing_structure) {
+          return false
+        }
+        if (!data.tax_ack_outside_ca || !data.tax_ack_auto_calculate) {
+          return false
+        }
+        return true
+      }
       case "schedule":
         return !!(
           data.meeting_link &&
@@ -111,7 +164,21 @@ export default function NonprofitCoursesCreate() {
       const errorFields = Object.keys(errors)
       if (
         errorFields.some((field) =>
-          ["name", "description", "event_type_id", "type", "target_audience", "pricing_type", "course_fee"].includes(field),
+          [
+            "name",
+            "description",
+            "event_type_id",
+            "type",
+            "target_audience",
+            "pricing_type",
+            "course_fee",
+            "course_delivery_type",
+            "has_physical_materials",
+            "pricing_structure",
+            "requires_shipping",
+            "tax_ack_outside_ca",
+            "tax_ack_auto_calculate",
+          ].includes(field),
         )
       ) {
         setCurrentTab("basics")
@@ -157,13 +224,13 @@ export default function NonprofitCoursesCreate() {
       forceFormData: true,
       onSuccess: () => {
         reset()
-        toast.success(`${data.type === "course" ? "Course" : "Event"} created successfully!`, {
-          description: `Your ${data.type === "course" ? "community course" : "event"} is now available.`,
+        toast.success(`${connectionHubTypeLabel(data.type)} listing created successfully!`, {
+          description: `Your ${connectionHubTypeLabel(data.type)} listing is now available.`,
         })
       },
       onError: (err) => {
         console.error("Form submission error:", err)
-        toast.error(`Failed to create ${data.type === "course" ? "course" : "event"}.`, {
+        toast.error(`Failed to create ${connectionHubTypeLabel(data.type)} listing.`, {
           description: "Please check the form for errors and try again.",
         })
       },
@@ -172,7 +239,7 @@ export default function NonprofitCoursesCreate() {
 
   return (
     <AppLayout>
-      <Head title={`Create ${data.type === "course" ? "Course" : "Event"} - Courses & Events`} />
+      <Head title={`Create ${connectionHubTypeLabel(data.type)} - Connections`} />
 
       <div className="space-y-6 m-6">
         <div className="flex items-center gap-4">
@@ -187,11 +254,11 @@ export default function NonprofitCoursesCreate() {
               <Heart className="h-6 w-6 text-primary" />
             </div>
             <div>
-            <h1 className="text-2xl font-bold">Create {data.type === "course" ? "Course" : "Event"}</h1>
+            <h1 className="text-2xl font-bold">Create {connectionHubTypeLabel(data.type)}</h1>
             <p className="text-sm text-muted-foreground">
-              {data.type === "course" 
-                ? "Share knowledge and empower your community" 
-                : "Create an event for your community"}
+              {isEventsHubType(data.type)
+                ? "Create an event for your community"
+                : "Share knowledge and empower your community"}
             </p>
             </div>
           </div>
@@ -219,7 +286,7 @@ export default function NonprofitCoursesCreate() {
             <TabsContent value="basics">
               <Card>
                 <CardHeader>
-                  <CardTitle>{data.type === "course" ? "Course" : "Event"} Basics</CardTitle>
+                  <CardTitle>{connectionHubTypeLabel(data.type)} basics</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-6">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -228,14 +295,16 @@ export default function NonprofitCoursesCreate() {
                         Type *
                       </label>
                       <Select value={data.type} onValueChange={(value) => {
-                        setData("type", value as "course" | "event")
+                        setData("type", value as ConnectionHubType)
                       }}>
                         <SelectTrigger className={errors.type ? "border-destructive" : ""}>
                           <SelectValue placeholder="Select type" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="course">Course</SelectItem>
-                          <SelectItem value="event">Event</SelectItem>
+                          <SelectItem value="companion">Companion</SelectItem>
+                          <SelectItem value="learning">Learning</SelectItem>
+                          <SelectItem value="events">Events</SelectItem>
+                          <SelectItem value="earning">Earning</SelectItem>
                         </SelectContent>
                       </Select>
                       {errors.type && <p className="text-sm text-destructive">{errors.type}</p>}
@@ -243,13 +312,17 @@ export default function NonprofitCoursesCreate() {
 
                     <div className="space-y-2">
                       <label htmlFor="name" className="text-sm font-medium">
-                        {data.type === "course" ? "Course" : "Event"} Name *
+                        {connectionHubTypeLabel(data.type)} name *
                       </label>
                       <Input
                         id="name"
                         value={data.name}
                         onChange={(e) => setData("name", e.target.value)}
-                        placeholder={data.type === "course" ? "e.g., Digital Literacy for Seniors" : "e.g., Community Health Fair"}
+                        placeholder={
+                          isEventsHubType(data.type)
+                            ? "e.g., Community Health Fair"
+                            : "e.g., Digital Literacy for Seniors"
+                        }
                         className={errors.name ? "border-destructive" : ""}
                       />
                       {errors.name && <p className="text-sm text-destructive">{errors.name}</p>}
@@ -257,7 +330,7 @@ export default function NonprofitCoursesCreate() {
 
                     <div className="space-y-2">
                       <label htmlFor="event_type_id" className="text-sm font-medium">
-                        {data.type === "course" ? "Course Topic *" : "Event Topic *"}
+                        Topic *
                       </label>
                       <Select value={data.event_type_id || ""} onValueChange={(value) => setData("event_type_id", value)}>
                         <SelectTrigger className={errors.event_type_id ? "border-destructive" : ""}>
@@ -306,20 +379,50 @@ export default function NonprofitCoursesCreate() {
                             <SelectItem value="paid">Paid</SelectItem>
                           </SelectContent>
                         </Select>
-                        {data.pricing_type === "paid" && (
-                          <Input
-                            type="number"
-                            min="0"
-                            step="5"
-                            value={data.course_fee}
-                            onChange={(e) => setData("course_fee", e.target.value)}
-                            placeholder="Price ($)"
-                            className="flex-1"
-                          />
-                        )}
+                        {data.pricing_type === "paid" &&
+                          !(data.has_physical_materials && data.pricing_structure === "separate") && (
+                            <Input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={data.course_fee}
+                              onChange={(e) => setData("course_fee", e.target.value)}
+                              placeholder="Price ($)"
+                              className="flex-1"
+                            />
+                          )}
+                        {data.pricing_type === "paid" &&
+                          data.has_physical_materials &&
+                          data.pricing_structure === "separate" && (
+                            <p className="text-sm text-muted-foreground flex-1">
+                              Set digital, materials, and optional shipping in the BIU section — total updates the price.
+                            </p>
+                          )}
                       </div>
                     </div>
                   </div>
+
+                  <BiuCourseTaxIntake
+                    show={data.pricing_type === "paid"}
+                    data={{
+                      course_delivery_type: data.course_delivery_type,
+                      course_content_type: data.course_content_type,
+                      has_physical_materials: data.has_physical_materials,
+                      pricing_structure: data.pricing_structure,
+                      requires_shipping: data.requires_shipping,
+                      digital_course_fee: data.digital_course_fee,
+                      materials_fee: data.materials_fee,
+                      shipping_fee_amount: data.shipping_fee_amount,
+                      tax_ack_outside_ca: data.tax_ack_outside_ca,
+                      tax_ack_auto_calculate: data.tax_ack_auto_calculate,
+                    }}
+                    setData={setData}
+                    errors={errors}
+                    organizationName={organizationName}
+                    sellerNameLabel={sellerNameLabel}
+                    hubType={data.type}
+                    pricingType={data.pricing_type}
+                  />
 
                   <OrganizationPrimaryActionCategoriesField
                     categories={organizationPrimaryActionCategories}
@@ -334,7 +437,7 @@ export default function NonprofitCoursesCreate() {
 
                   <div className="space-y-2">
                     <label htmlFor="description" className="text-sm font-medium">
-                      {data.type === "course" ? "Course" : "Event"} Description *
+                      Description *
                     </label>
                     <RichTextEditor
                       label=""
@@ -346,7 +449,7 @@ export default function NonprofitCoursesCreate() {
                   </div>
 
                   <div className="space-y-2">
-                    <label className="text-sm font-medium">{data.type === "course" ? "Course" : "Event"} Image</label>
+                    <label className="text-sm font-medium">Image</label>
                     <ImageUpload label="" value={null} onChange={(file) => setData("image", file)} />
                   </div>
                 </CardContent>
@@ -373,7 +476,7 @@ export default function NonprofitCoursesCreate() {
                     />
                     {errors.meeting_link && <p className="text-sm text-destructive">{errors.meeting_link}</p>}
                     <p className="text-xs text-muted-foreground">
-                      Provide the meeting link where participants will join the {data.type === "course" ? "course" : "event"}
+                      Provide the meeting link where participants will join this {connectionHubTypeLabel(data.type)} listing
                     </p>
                   </div>
 
@@ -420,7 +523,7 @@ export default function NonprofitCoursesCreate() {
                       />
                       {errors.end_date && <p className="text-sm text-destructive">{errors.end_date}</p>}
                       <p className="text-xs text-muted-foreground">
-                        Optional: Leave blank for single session {data.type === "course" ? "courses" : "events"}
+                        Optional: Leave blank for single-session listings
                       </p>
                     </div>
 
@@ -519,7 +622,7 @@ export default function NonprofitCoursesCreate() {
                           Volunteer Opportunities
                         </label>
                         <p className="text-xs text-muted-foreground">
-                          Allow participants to volunteer for future {data.type === "course" ? "courses" : "events"}
+                          Allow participants to volunteer for future listings
                         </p>
                       </div>
                       <Switch
@@ -558,12 +661,12 @@ export default function NonprofitCoursesCreate() {
               {processing ? (
                 <>
                   <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-current mr-2"></div>
-                  {currentTab === "settings" ? (data.type === "course" ? "Creating Course..." : "Creating Event...") : "Processing..."}
+                  {currentTab === "settings" ? `Creating ${connectionHubTypeLabel(data.type)}...` : "Processing..."}
                 </>
               ) : currentTab === "settings" ? (
                 <>
                   <Save className="mr-2 h-4 w-4" />
-                  Create {data.type === "course" ? "Course" : "Event"}
+                  Create {connectionHubTypeLabel(data.type)}
                 </>
               ) : (
                 <>

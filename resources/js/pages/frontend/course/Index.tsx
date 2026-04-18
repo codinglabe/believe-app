@@ -13,6 +13,8 @@ import { Progress } from "@/components/ui/progress"
 import { router, usePage, Link } from "@inertiajs/react"
 import { useNotification } from "@/components/frontend/notification-provider"
 import { PageHead } from "@/components/frontend/PageHead"
+import { connectionHubTypeLabel, isEventsHubType } from "@/lib/connection-hub-type"
+import type { ConnectionHubType } from "@/lib/connection-hub-type"
 import parse from 'html-react-parser';
 interface Topic {
   id: number
@@ -47,7 +49,7 @@ interface Course {
   name: string
   slug: string
   description: string
-  type: "course" | "event"
+  type: ConnectionHubType
   pricing_type: "free" | "paid"
   course_fee: number | null
   start_date: string
@@ -59,10 +61,10 @@ interface Course {
   language: string
   target_audience: string
   community_impact: string | null
-  learning_outcomes: string[]
-  prerequisites: string[]
-  materials_needed: string[]
-  accessibility_features: string[]
+  learning_outcomes: string[] | null
+  prerequisites: string[] | null
+  materials_needed: string[] | null
+  accessibility_features: string[] | null
   certificate_provided: boolean
   volunteer_opportunities: boolean
   image: string | null
@@ -282,7 +284,7 @@ export default function FrontendCoursesListPage({
 
   return (
     <FrontendLayout>
-      <PageHead title={seo?.title ?? "Courses & Events"} description={seo?.description} />
+      <PageHead title={seo?.title ?? "Connection Hub"} description={seo?.description} />
       <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
         {/* Hero Section */}
         <section className="bg-gradient-to-br from-purple-600 via-blue-600 to-purple-700 dark:from-gray-900 dark:via-gray-800 dark:to-purple-900 py-12 sm:py-16 md:py-20">
@@ -299,7 +301,7 @@ export default function FrontendCoursesListPage({
                 </div>
               </div>
               <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold text-white mb-4">
-                Courses & Events
+                Connection Hub
               </h1>
               <p className="text-base sm:text-lg md:text-xl text-white/90 max-w-2xl mx-auto">
                 Discover courses and events that make a difference. Learn new skills while contributing to your community's growth
@@ -397,13 +399,15 @@ export default function FrontendCoursesListPage({
                           className="w-full px-3 py-2.5 h-12 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 transition-all duration-200"
                         >
                           <option value="all">All Types</option>
-                          <option value="course">Course</option>
-                          <option value="event">Event</option>
+                          <option value="companion">Companion</option>
+                          <option value="learning">Learning</option>
+                          <option value="events">Events</option>
+                          <option value="earning">Earning</option>
                         </select>
                       </div>
 
                       {/* Topic/Event Type Filter - Dynamic */}
-                      {selectedType === "event" ? (
+                      {selectedType === "events" ? (
                         <div>
                           <Label className="text-sm font-semibold text-gray-900 dark:text-white mb-2 block">Event Topic</Label>
                           <select
@@ -496,7 +500,7 @@ export default function FrontendCoursesListPage({
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-6 pb-4 border-b border-gray-200 dark:border-gray-700">
             <div>
               <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white">
-                Courses & Events {initialCourses.total > 0 && <span className="text-purple-600 dark:text-purple-400">({initialCourses.total})</span>}
+                Connection Hub {initialCourses.total > 0 && <span className="text-purple-600 dark:text-purple-400">({initialCourses.total})</span>}
               </h2>
               {hasActiveFilters && (
                 <p className="text-sm text-gray-600 dark:text-gray-400 mt-2">
@@ -544,8 +548,8 @@ export default function FrontendCoursesListPage({
                       </Badge>
                     </div>
                     <div className="absolute bottom-3 right-3">
-                      <Badge className={course.type === "course" ? "bg-blue-600 text-white shadow-md" : "bg-purple-600 text-white shadow-md"}>
-                        {course.type === "course" ? "Course" : "Event"}
+                      <Badge className="bg-indigo-600 text-white shadow-md">
+                        {connectionHubTypeLabel(course.type)}
                       </Badge>
                     </div>
                   </div>
@@ -559,12 +563,12 @@ export default function FrontendCoursesListPage({
                     </div>
 
                     <div className="flex justify-between items-start mb-2">
-                      {course.type === "course" && course.topic && (
+                      {!isEventsHubType(course.type) && course.topic && (
                         <Badge variant="outline" className="text-xs">
                           {course.topic.name}
                         </Badge>
                       )}
-                      {course.type === "event" && course.event_type && (
+                      {isEventsHubType(course.type) && course.event_type && (
                         <Badge variant="outline" className="text-xs">
                           {course.event_type.name}
                         </Badge>
@@ -647,12 +651,12 @@ export default function FrontendCoursesListPage({
                           Volunteer Ops
                         </Badge>
                       )}
-                      {course.learning_outcomes.length > 0 && (
+                      {(course.learning_outcomes?.length ?? 0) > 0 && (
                         <Badge variant="secondary" className="text-xs px-2 py-1">
-                          {course.learning_outcomes.length} Outcomes
+                          {course.learning_outcomes?.length ?? 0} Outcomes
                         </Badge>
                       )}
-                      {course.accessibility_features.length > 0 && (
+                      {(course.accessibility_features?.length ?? 0) > 0 && (
                         <Badge variant="secondary" className="text-xs px-2 py-1">
                           Accessible
                         </Badge>

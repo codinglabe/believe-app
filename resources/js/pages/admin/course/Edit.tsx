@@ -18,6 +18,8 @@ import {
   OrganizationPrimaryActionCategoriesField,
   type PrimaryActionCategoryOption,
 } from "@/components/organization-primary-action-categories-field"
+import BiuCourseTaxIntake from "@/components/biu-course-tax-intake"
+import { connectionHubTypeLabel, isEventsHubType, type ConnectionHubType } from "@/lib/connection-hub-type"
 
 interface Topic {
   id: number
@@ -38,7 +40,7 @@ interface Creator {
 
 interface Course {
   id: number
-  type: "course" | "event"
+  type: ConnectionHubType
   topic_id: number | null
   event_type_id: number | null
   organization_id: number
@@ -80,6 +82,17 @@ interface Course {
   formatted_format: string
   meeting_link?: string | null
   primary_action_category_ids?: number[]
+  course_delivery_type?: "online" | "live" | "hybrid" | null
+  has_physical_materials?: boolean | null
+  pricing_structure?: "bundled" | "separate" | null
+  requires_shipping?: boolean | null
+  tax_ack_outside_ca?: boolean | null
+  tax_ack_auto_calculate?: boolean | null
+  tax_classification?: string | null
+  course_content_type?: string | null
+  digital_course_fee?: number | null
+  materials_fee?: number | null
+  shipping_fee_amount?: number | null
 }
 
 interface EventType {
@@ -92,10 +105,12 @@ interface AdminCoursesEditProps {
   course: Course
   eventTypes: EventType[]
   organizationPrimaryActionCategories: PrimaryActionCategoryOption[]
+  organizationName?: string | null
+  sellerNameLabel?: string
 }
 
 export default function AdminCoursesEdit() {
-  const { course, eventTypes, organizationPrimaryActionCategories } =
+  const { course, eventTypes, organizationPrimaryActionCategories, organizationName, sellerNameLabel } =
     usePage<AdminCoursesEditProps>().props
   const { auth } = usePage().props as { auth: { user: User } }
 
@@ -116,7 +131,7 @@ export default function AdminCoursesEdit() {
 
   const { data, setData, post, processing, errors, reset } = useForm({
     // Basic Information (pre-populated with existing data)
-    type: course.type || "course",
+    type: (course.type as ConnectionHubType) || "companion",
     name: course.name,
     description: course.description,
     event_type_id: course.event_type_id?.toString() || "",
@@ -158,14 +173,69 @@ export default function AdminCoursesEdit() {
     _method: "PUT",
 
     primary_action_category_ids: (course.primary_action_category_ids ?? []).map(String),
+    course_delivery_type:
+      (course.course_delivery_type as "online" | "live" | "hybrid" | undefined) || "online",
+    course_content_type:
+      (course.course_content_type as
+        | "written_material"
+        | "video_streamed"
+        | "video_streamed_downloadable"
+        | "general"
+        | undefined) || "general",
+    has_physical_materials: Boolean(course.has_physical_materials),
+    pricing_structure: (course.pricing_structure ?? "") as "" | "bundled" | "separate",
+    requires_shipping: Boolean(course.requires_shipping),
+    digital_course_fee: course.digital_course_fee != null ? String(course.digital_course_fee) : "",
+    materials_fee: course.materials_fee != null ? String(course.materials_fee) : "",
+    shipping_fee_amount: course.shipping_fee_amount != null ? String(course.shipping_fee_amount) : "",
+    tax_ack_outside_ca: Boolean(course.tax_ack_outside_ca),
+    tax_ack_auto_calculate: Boolean(course.tax_ack_auto_calculate),
   })
 
   const validateTab = (tab: string): boolean => {
     switch (tab) {
-      case "basics":
+      case "basics": {
         const hasType = !!data.type
         const hasTopicOrEventType = !!data.event_type_id
-        return !!(data.name && data.description && hasType && hasTopicOrEventType)
+        const feeSplit =
+          data.pricing_type === "paid" &&
+          data.has_physical_materials &&
+          data.pricing_structure === "separate"
+        const hasPricing =
+          !!data.pricing_type &&
+          (data.pricing_type === "free" ||
+            (data.pricing_type === "paid" &&
+              (feeSplit
+                ? !!(data.digital_course_fee && data.materials_fee)
+                : !!data.course_fee)))
+        const basicsOk = !!(
+          data.name &&
+          data.description &&
+          hasType &&
+          hasTopicOrEventType &&
+          hasPricing
+        )
+        const needsBiuTax = data.pricing_type === "paid"
+        if (!basicsOk) {
+          return false
+        }
+        if (!needsBiuTax) {
+          return true
+        }
+        if (!data.course_delivery_type) {
+          return false
+        }
+        if (data.course_delivery_type === "online" && !data.course_content_type) {
+          return false
+        }
+        if (data.has_physical_materials && !data.pricing_structure) {
+          return false
+        }
+        if (!data.tax_ack_outside_ca || !data.tax_ack_auto_calculate) {
+          return false
+        }
+        return true
+      }
       case "schedule":
         return !!(
           data.meeting_link &&
@@ -195,7 +265,22 @@ export default function AdminCoursesEdit() {
     if (Object.keys(errors).length > 0) {
       const errorFields = Object.keys(errors)
       if (
-        errorFields.some((field) => ["name", "description", "event_type_id", "type", "pricing_type", "course_fee"].includes(field))
+        errorFields.some((field) =>
+          [
+            "name",
+            "description",
+            "event_type_id",
+            "type",
+            "pricing_type",
+            "course_fee",
+            "course_delivery_type",
+            "has_physical_materials",
+            "pricing_structure",
+            "requires_shipping",
+            "tax_ack_outside_ca",
+            "tax_ack_auto_calculate",
+          ].includes(field),
+        )
       ) {
         setCurrentTab("basics")
       } else if (
@@ -221,8 +306,8 @@ export default function AdminCoursesEdit() {
     post(route("admin.courses.update", course.slug), {
       forceFormData: true,
       onSuccess: () => {
-        toast.success(`${data.type === "course" ? "Course" : "Event"} updated successfully!`, {
-          description: `Your ${data.type === "course" ? "community course" : "event"} has been updated.`,
+        toast.success(`${connectionHubTypeLabel(data.type)} listing updated successfully!`, {
+          description: `Your ${connectionHubTypeLabel(data.type)} listing has been updated.`,
         })
       },
       onError: (err) => {
@@ -253,7 +338,7 @@ export default function AdminCoursesEdit() {
 
   return (
     <AppLayout>
-      <Head title={`Edit ${data.type === "course" ? "Course" : "Event"} - ${course.name} - Courses & Events`} />
+      <Head title={`Edit ${connectionHubTypeLabel(data.type)} - ${course.name} - Connections`} />
 
       <div className="space-y-6 m-6">
         <div className="flex items-center gap-4">
@@ -268,8 +353,10 @@ export default function AdminCoursesEdit() {
               <Heart className="h-6 w-6 text-primary" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold">Edit {data.type === "course" ? "Course" : "Event"}</h1>
-              <p className="text-sm text-muted-foreground">Update your {data.type === "course" ? "course" : "event"} details and settings</p>
+              <h1 className="text-2xl font-bold">Edit {connectionHubTypeLabel(data.type)}</h1>
+              <p className="text-sm text-muted-foreground">
+                Update your {connectionHubTypeLabel(data.type)} listing details and settings
+              </p>
             </div>
           </div>
         </div>
@@ -320,7 +407,7 @@ export default function AdminCoursesEdit() {
             <TabsContent value="basics">
               <Card>
                 <CardHeader>
-                  <CardTitle>{data.type === "course" ? "Course" : "Event"} Basics</CardTitle>
+                  <CardTitle>{connectionHubTypeLabel(data.type)} basics</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-6">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -329,14 +416,16 @@ export default function AdminCoursesEdit() {
                         Type *
                       </label>
                       <Select value={data.type} onValueChange={(value) => {
-                        setData("type", value as "course" | "event")
+                        setData("type", value as ConnectionHubType)
                       }}>
                         <SelectTrigger className={errors.type ? "border-destructive" : ""}>
                           <SelectValue placeholder="Select type" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="course">Course</SelectItem>
-                          <SelectItem value="event">Event</SelectItem>
+                          <SelectItem value="companion">Companion</SelectItem>
+                          <SelectItem value="learning">Learning</SelectItem>
+                          <SelectItem value="events">Events</SelectItem>
+                          <SelectItem value="earning">Earning</SelectItem>
                         </SelectContent>
                       </Select>
                       {errors.type && <p className="text-sm text-destructive">{errors.type}</p>}
@@ -344,13 +433,17 @@ export default function AdminCoursesEdit() {
 
                     <div className="space-y-2">
                       <label htmlFor="name" className="text-sm font-medium">
-                        {data.type === "course" ? "Course" : "Event"} Name *
+                        {connectionHubTypeLabel(data.type)} name *
                       </label>
                       <Input
                         id="name"
                         value={data.name}
                         onChange={(e) => setData("name", e.target.value)}
-                        placeholder={data.type === "course" ? "e.g., Digital Literacy for Seniors" : "e.g., Community Health Fair"}
+                        placeholder={
+                          isEventsHubType(data.type)
+                            ? "e.g., Community Health Fair"
+                            : "e.g., Digital Literacy for Seniors"
+                        }
                         className={errors.name ? "border-destructive" : ""}
                       />
                       {errors.name && <p className="text-sm text-destructive">{errors.name}</p>}
@@ -358,7 +451,7 @@ export default function AdminCoursesEdit() {
 
                     <div className="space-y-2">
                       <label htmlFor="event_type_id" className="text-sm font-medium">
-                        {data.type === "course" ? "Course Topic *" : "Event Topic *"}
+                        Topic *
                       </label>
                       <Select value={data.event_type_id || ""} onValueChange={(value) => setData("event_type_id", value)}>
                         <SelectTrigger className={errors.event_type_id ? "border-destructive" : ""}>
@@ -407,20 +500,53 @@ export default function AdminCoursesEdit() {
                             <SelectItem value="paid">Paid</SelectItem>
                           </SelectContent>
                         </Select>
-                        {data.pricing_type === "paid" && (
-                          <Input
-                            type="number"
-                            min="0"
-                            step="5"
-                            value={data.course_fee}
-                            onChange={(e) => setData("course_fee", e.target.value)}
-                            placeholder="Price ($)"
-                            className="flex-1"
-                          />
-                        )}
+                        {data.pricing_type === "paid" &&
+                          !(
+                            data.has_physical_materials &&
+                            data.pricing_structure === "separate"
+                          ) && (
+                            <Input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={data.course_fee}
+                              onChange={(e) => setData("course_fee", e.target.value)}
+                              placeholder="Price ($)"
+                              className="flex-1"
+                            />
+                          )}
+                        {data.pricing_type === "paid" &&
+                          data.has_physical_materials &&
+                          data.pricing_structure === "separate" && (
+                            <p className="text-sm text-muted-foreground flex-1">
+                              Set digital, materials, and optional shipping in the BIU section — total updates the price.
+                            </p>
+                          )}
                       </div>
                     </div>
                   </div>
+
+                  <BiuCourseTaxIntake
+                    show={data.pricing_type === "paid"}
+                    data={{
+                      course_delivery_type: data.course_delivery_type,
+                      course_content_type: data.course_content_type,
+                      has_physical_materials: data.has_physical_materials,
+                      pricing_structure: data.pricing_structure,
+                      requires_shipping: data.requires_shipping,
+                      digital_course_fee: data.digital_course_fee,
+                      materials_fee: data.materials_fee,
+                      shipping_fee_amount: data.shipping_fee_amount,
+                      tax_ack_outside_ca: data.tax_ack_outside_ca,
+                      tax_ack_auto_calculate: data.tax_ack_auto_calculate,
+                    }}
+                    setData={setData}
+                    errors={errors}
+                    organizationName={organizationName}
+                    sellerNameLabel={sellerNameLabel}
+                    hubType={data.type}
+                    pricingType={data.pricing_type}
+                  />
 
                   <OrganizationPrimaryActionCategoriesField
                     categories={organizationPrimaryActionCategories}
@@ -435,7 +561,7 @@ export default function AdminCoursesEdit() {
 
                   <div className="space-y-2">
                     <label htmlFor="description" className="text-sm font-medium">
-                      {data.type === "course" ? "Course" : "Event"} Description *
+                      Description *
                     </label>
                     <RichTextEditor
                       label=""
@@ -447,7 +573,7 @@ export default function AdminCoursesEdit() {
                   </div>
 
                   <div className="space-y-2">
-                    <label className="text-sm font-medium">{data.type === "course" ? "Course" : "Event"} Image</label>
+                    <label className="text-sm font-medium">Image</label>
                     <ImageUpload label="" value={course.image_url || null} onChange={(file) => setData("image", file)} />
                   </div>
                 </CardContent>
@@ -474,7 +600,7 @@ export default function AdminCoursesEdit() {
                     />
                     {errors.meeting_link && <p className="text-sm text-destructive">{errors.meeting_link}</p>}
                     <p className="text-xs text-muted-foreground">
-                      Provide the meeting link where participants will join the {data.type === "course" ? "course" : "event"}
+                      Provide the meeting link where participants will join this {connectionHubTypeLabel(data.type)} listing
                     </p>
                   </div>
 
@@ -521,7 +647,7 @@ export default function AdminCoursesEdit() {
                       />
                       {errors.end_date && <p className="text-sm text-destructive">{errors.end_date}</p>}
                       <p className="text-xs text-muted-foreground">
-                        Optional: Leave blank for single session {data.type === "course" ? "courses" : "events"}
+                        Optional: Leave blank for single-session listings
                       </p>
                     </div>
 
@@ -620,7 +746,7 @@ export default function AdminCoursesEdit() {
                           Volunteer Opportunities
                         </label>
                         <p className="text-xs text-muted-foreground">
-                          Allow participants to volunteer for future {data.type === "course" ? "courses" : "events"}
+                          Allow participants to volunteer for future listings
                         </p>
                       </div>
                       <Switch
@@ -645,12 +771,12 @@ export default function AdminCoursesEdit() {
               {processing ? (
                 <>
                   <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-current mr-2"></div>
-                  {data.type === "course" ? "Updating Course..." : "Updating Event..."}
+                  {`Updating ${connectionHubTypeLabel(data.type)}...`}
                 </>
               ) : (
                 <>
                   <Save className="mr-2 h-4 w-4" />
-                  Update {data.type === "course" ? "Course" : "Event"}
+                  Update {connectionHubTypeLabel(data.type)}
                 </>
               )}
             </Button>

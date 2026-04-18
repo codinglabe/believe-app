@@ -15,11 +15,15 @@ type Props = {
   label?: string
   /** Set to 1 for single-select (e.g. events). */
   maxSelections?: number
+  /**
+   * Where options are sourced from: org Category Grid vs profile Supporters Interest.
+   * Defaults to organization (non–Connection Hub flows).
+   */
+  causesCatalogSource?: "organization" | "supporter"
 }
 
 /**
- * "Causes" = Primary Action categories the organization selected (Category Grid: Housing, Food, etc.).
- * Options come from org settings / registration, not from this form.
+ * "Causes" options come from the org Category Grid or (for supporters) profile Supporters Interest — not from this form.
  */
 export function OrganizationPrimaryActionCategoriesField({
   categories,
@@ -29,22 +33,44 @@ export function OrganizationPrimaryActionCategoriesField({
   error,
   label = "Causes",
   maxSelections,
+  causesCatalogSource = "organization",
 }: Props) {
   const options = categories.map((c) => ({ label: c.name, value: String(c.id) }))
   const single = maxSelections === 1
 
+  const helper =
+    causesCatalogSource === "supporter" ? (
+      <>
+        Same catalog as your profile{" "}
+        <span className="font-medium">Supporters Interest</span> (e.g. Housing, Food). Update your selections in profile
+        settings if you need more options here.
+      </>
+    ) : (
+      <>
+        Same as your organization&apos;s <span className="font-medium">Category Grid (Primary Action)</span> — e.g.
+        Housing, Food. Update your selections in profile settings if you need more options here.
+      </>
+    )
+
+  const emptyMessage =
+    causesCatalogSource === "supporter" ? (
+      <>
+        You have no Supporters Interest categories selected yet. Add them under Settings → Profile (Supporters
+        Interest).
+      </>
+    ) : (
+      <>
+        Your organization has no primary action categories selected yet. Add them under Settings → Profile (Category
+        Grid).
+      </>
+    )
+
   return (
     <div className="space-y-2 md:col-span-2">
       <label className="text-sm font-medium">{label}</label>
-      <p className="text-xs text-muted-foreground">
-        Same as your organization&apos;s <span className="font-medium">Category Grid (Primary Action)</span> — e.g.
-        Housing, Food. Update your selections in profile settings if you need more options here.
-      </p>
+      <p className="text-xs text-muted-foreground">{helper}</p>
       {categories.length === 0 ? (
-        <p className="text-sm text-muted-foreground">
-          Your organization has no primary action categories selected yet. Add them under Settings → Profile (Category
-          Grid).
-        </p>
+        <p className="text-sm text-muted-foreground">{emptyMessage}</p>
       ) : (
         <div className={disabled ? "pointer-events-none opacity-60" : undefined}>
           <MultiSelect

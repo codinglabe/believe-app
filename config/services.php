@@ -50,6 +50,22 @@ return [
         /** Default Stripe product tax codes (see Stripe Tax settings). */
         'tax_code_physical' => env('STRIPE_TAX_CODE_PHYSICAL', 'txcd_99999999'),
         'tax_code_digital' => env('STRIPE_TAX_CODE_DIGITAL', 'txcd_10000000'),
+        /** Course enrollment Checkout line items (Stripe Tax product tax codes). */
+        'tax_code_course_digital' => env('STRIPE_TAX_CODE_COURSE_DIGITAL', env('STRIPE_TAX_CODE_DIGITAL', 'txcd_10000000')),
+        'tax_code_course_physical' => env('STRIPE_TAX_CODE_COURSE_PHYSICAL', env('STRIPE_TAX_CODE_PHYSICAL', 'txcd_99999999')),
+        /** BIU: delivery + content mapping (Stripe Tax product tax codes). */
+        'tax_code_live_virtual_training' => env('STRIPE_TAX_CODE_LIVE_VIRTUAL_TRAINING', 'txcd_20060045'),
+        'tax_code_self_study_web' => env('STRIPE_TAX_CODE_SELF_STUDY_WEB', 'txcd_20060058'),
+        'tax_code_on_demand_written' => env('STRIPE_TAX_CODE_ON_DEMAND_WRITTEN', 'txcd_20060358'),
+        'tax_code_streamed_prerecorded' => env('STRIPE_TAX_CODE_STREAMED_PRERECORDED', 'txcd_20060158'),
+        'tax_code_streamed_downloadable' => env('STRIPE_TAX_CODE_STREAMED_DOWNLOADABLE', 'txcd_20060258'),
+        'tax_code_tangible_goods' => env('STRIPE_TAX_CODE_TANGIBLE_GOODS', 'txcd_99999999'),
+        /**
+         * When course tax_classification is partial_taxable, split the gross charge (after processing-fee gross-up)
+         * across two line items (digital instruction vs materials) for Stripe Tax. Replace with explicit
+         * materials/course fee fields on the course when you want exact amounts from course managers.
+         */
+        'course_partial_materials_ratio' => (float) env('STRIPE_COURSE_PARTIAL_MATERIALS_RATIO', 0.35),
         'tax_code_shipping' => env('STRIPE_TAX_CODE_SHIPPING', 'txcd_92010001'),
         /**
          * When true, card/ACH checkout amounts are grossed up so estimated net after Stripe
