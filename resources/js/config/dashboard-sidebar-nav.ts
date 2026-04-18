@@ -162,7 +162,7 @@ export const dashboardSidebarNavItems: (NavItem | NavGroup)[] = [
                 ],
             },
             {
-                title: 'Messaging Hb',
+                title: 'Engagement',
                 href: '/newsletter',
                 icon: Mail,
                 permission: 'newsletter.read',
@@ -407,6 +407,13 @@ export const dashboardSidebarNavItems: (NavItem | NavGroup)[] = [
                 title: 'Followers',
                 href: route('organization.followers.index'),
                 icon: UserCheck,
+                permission: 'organization.followers.read',
+                role: 'organization',
+            },
+            {
+                title: 'Kiosk listings',
+                href: route('organization.kiosk-providers.index'),
+                icon: Monitor,
                 permission: 'organization.followers.read',
                 role: 'organization',
             },

@@ -17,10 +17,11 @@ interface Course {
   course_fee: number | null
   start_date: string
   start_time: string | null
-  duration: string
+  session_duration_minutes: number
   format: string
   formatted_price: string
   formatted_duration: string
+  formatted_program_length?: string | null
   formatted_format: string
   image_url?: string
   meeting_link?: string | null
@@ -163,7 +164,13 @@ export default function EnrollmentSuccess({ enrollment, course, type, paymentMet
                           <div className="flex items-center gap-2">
                             <Clock className="h-4 w-4 text-blue-600" />
                             <span>
-                              <strong>Duration:</strong> {course.formatted_duration}
+                              <strong>Session:</strong> {course.formatted_duration}
+                              {course.formatted_program_length ? (
+                                <>
+                                  {" "}
+                                  · <strong>Program:</strong> {course.formatted_program_length}
+                                </>
+                              ) : null}
                             </span>
                           </div>
                           <div className="flex items-center gap-2">

@@ -623,7 +623,7 @@ export default function CreateAdvancedNewsletter({
 
     return (
         <AppSidebarLayout>
-            <Head title="Create Advanced Newsletter" />
+            <Head title="Engagement · Advanced composer" />
 
             <form onSubmit={handleSubmit} className="space-y-6 animate-in fade-in duration-500 m-10">
                 {/* Header */}
@@ -633,11 +633,14 @@ export default function CreateAdvancedNewsletter({
                         Back
                     </Button>
                     <div>
+                        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">
+                            Engagement
+                        </p>
                         <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
-                            Create Advanced Newsletter
+                            Advanced composer
                         </h1>
                         <p className="text-gray-600 dark:text-gray-400">
-                            Schedule and target your newsletter with precision
+                            Schedule and target Engagement with precision
                         </p>
                     </div>
                 </div>
@@ -652,7 +655,7 @@ export default function CreateAdvancedNewsletter({
                                     Template
                                 </CardTitle>
                                 <CardDescription>
-                                    Choose a template for your newsletter
+                                    Choose a template for this Engagement
                                 </CardDescription>
                             </CardHeader>
                             <CardContent className="space-y-4">
@@ -688,7 +691,7 @@ export default function CreateAdvancedNewsletter({
                                 )}
 
                                 <div className="space-y-2">
-                                    <Label>Send via</Label>
+                                    <Label>Channel</Label>
                                     <Select
                                         value={data.send_via}
                                         onValueChange={(v) => {
@@ -750,7 +753,7 @@ export default function CreateAdvancedNewsletter({
                                     Scheduling
                                 </CardTitle>
                                 <CardDescription>
-                                    When should this newsletter be sent?
+                                    When should this Engagement go out?
                                 </CardDescription>
                             </CardHeader>
                             <CardContent className="space-y-4">
@@ -786,7 +789,7 @@ export default function CreateAdvancedNewsletter({
 
                                 {data.schedule_type === 'scheduled' && (
                                     <div className="space-y-2">
-                                        <Label htmlFor="sendDate">Send Date & Time</Label>
+                                        <Label htmlFor="sendDate">Go-live date &amp; time</Label>
                                         <Input
                                             id="sendDate"
                                             type="datetime-local"
@@ -808,7 +811,7 @@ export default function CreateAdvancedNewsletter({
                                                 required={data.schedule_type === 'recurring'}
                                             />
                                             <p className="text-xs text-gray-500">
-                                                The newsletter will start sending from this date and time, then repeat based on the settings below.
+                                                This Engagement will start from this date and time, then repeat based on the settings below.
                                             </p>
                                         </div>
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -929,7 +932,7 @@ export default function CreateAdvancedNewsletter({
                                                 onCheckedChange={(checked) => setData('is_public', checked as boolean)}
                                             />
                                             <Label htmlFor="isPublic" className="text-sm">
-                                                Public Newsletter
+                                                Public Engagement
                                             </Label>
                                         </div>
                                     </div>
@@ -942,8 +945,8 @@ export default function CreateAdvancedNewsletter({
                                             className="rounded-lg border border-dashed border-border/80 bg-muted/20 px-4 py-3 text-sm text-muted-foreground"
                                         >
                                             {audience_scope === 'organization'
-                                                ? 'Sends to every verified account with the Supporters role.'
-                                                : 'Sends to all verified users (and platform org emails where applicable for non–org-specific sends).'}
+                                                ? 'Targets every verified account with the Supporters role.'
+                                                : 'Targets all verified users (and platform org emails where applicable for non–org-specific Engagement).'}
                                         </motion.div>
                                     </TabsContent>
 
@@ -1013,7 +1016,7 @@ export default function CreateAdvancedNewsletter({
                                         >
                                             <Label className="flex items-center gap-2 text-base">
                                                 <Shield className="h-4 w-4 text-muted-foreground" aria-hidden />
-                                                Send to users with these roles
+                                                Target users with these roles
                                             </Label>
                                             <p className="text-xs text-muted-foreground">
                                                 Email and SMS go to every verified user who has any of these roles (e.g.
@@ -1196,11 +1199,11 @@ export default function CreateAdvancedNewsletter({
                             </CardContent>
                         </Card>
 
-                        {/* Newsletter Summary */}
+                        {/* Summary */}
                         {(data.subject || data.content) && (
                             <Card>
                                 <CardHeader>
-                                    <CardTitle>Newsletter Summary</CardTitle>
+                                    <CardTitle>Summary</CardTitle>
                                 </CardHeader>
                                 <CardContent className="space-y-3">
                                     <div className="grid grid-cols-2 gap-4">
@@ -1230,7 +1233,7 @@ export default function CreateAdvancedNewsletter({
                                     {(data.schedule_type === 'scheduled' || data.schedule_type === 'recurring') && data.send_date && (
                                         <div>
                                             <Label className="text-xs text-gray-500">
-                                                {data.schedule_type === 'recurring' ? 'Start Date' : 'Send Date'}
+                                                {data.schedule_type === 'recurring' ? 'Start date' : 'Go-live date'}
                                             </Label>
                                             <p className="text-sm font-medium">
                                                 {new Date(data.send_date).toLocaleString()}
@@ -1264,7 +1267,7 @@ export default function CreateAdvancedNewsletter({
                                 className="flex items-center gap-2"
                             >
                                 <Send className="h-4 w-4" />
-                                {processing ? 'Creating...' : 'Create Newsletter'}
+                                {processing ? "Creating…" : "Create Engagement"}
                             </Button>
                         </div>
                     </div>

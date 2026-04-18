@@ -357,14 +357,20 @@ export default function NewsletterTemplateForm({
     const briefValidationMessage = firstFieldError(pageErrors?.brief)
 
     const templateTypes = [
-        { value: 'newsletter', label: 'Newsletter' },
+        { value: 'newsletter', label: 'Email' },
         { value: 'announcement', label: 'Announcement' },
         { value: 'event', label: 'Event' }
     ]
 
     return (
         <AppSidebarLayout>
-            <Head title={isEditing ? `Edit Template: ${template.name}` : "Create Template"} />
+            <Head
+                title={
+                    isEditing
+                        ? `Engagement · Edit template · ${template.name}`
+                        : "Engagement · Create template"
+                }
+            />
 
             <div className="space-y-6 sm:space-y-8 animate-in fade-in duration-500 m-10">
                 {/* Header */}
@@ -376,8 +382,11 @@ export default function NewsletterTemplateForm({
                                 Back
                             </Button>
                             <div>
+                                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">
+                                    Engagement
+                                </p>
                                 <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-gray-900 dark:text-white">
-                                    {isEditing ? 'Edit Template' : 'Create Template'}
+                                    {isEditing ? "Edit template" : "Create template"}
                                 </h1>
                                 <p className="text-sm sm:text-base lg:text-lg text-gray-600 dark:text-gray-400">
                                     {isEditing ? 'Update your email template' : 'Create a reusable email template'}
@@ -412,7 +421,7 @@ export default function NewsletterTemplateForm({
                                                         id="name"
                                                         value={data.name}
                                                         onChange={(e) => setData('name', e.target.value)}
-                                                        placeholder="e.g., Weekly Newsletter"
+                                                        placeholder="e.g., Weekly update"
                                                         className="mt-1"
                                                     />
                                                     {errors.name && (
@@ -674,7 +683,7 @@ export default function NewsletterTemplateForm({
                                         </CardHeader>
                                         <CardContent className="space-y-4">
                                             <div className="space-y-2">
-                                                <Label>Send via</Label>
+                                                <Label>Channel</Label>
                                                 <div className={`flex gap-1 ${gradientTabTrack}`}>
                                                     {(
                                                         [
@@ -904,7 +913,7 @@ export default function NewsletterTemplateForm({
                                         </DialogTitle>
                                         <DialogDescription className="text-left text-sm leading-relaxed text-muted-foreground">
                                             Pick a <strong className="text-foreground">tone</strong> — each one changes both copy and HTML
-                                            styling (layout, colors, CTA). Uses your <strong className="text-foreground">Send via</strong>{" "}
+                                            styling (layout, colors, CTA). Uses your <strong className="text-foreground">Channel</strong>{" "}
                                             choice: SMS = short plain text; Email = rich HTML + plain twin when HTML is on; Both = SMS +
                                             email. Merge fields must match <strong className="text-foreground">Available Variables</strong>.
                                         </DialogDescription>

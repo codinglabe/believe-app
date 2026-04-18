@@ -62,7 +62,7 @@ const SMS_PLAIN_MAX_CHARS = 160
 const QUICK_BRIEF_CHIPS: { label: string; text: string }[] = [
     { label: "Fundraiser", text: "Write a compelling fundraising appeal for our nonprofit, with impact story and a clear donate CTA." },
     { label: "Volunteer call", text: "Recruit volunteers for our upcoming event — include date, time, location, and how to sign up." },
-    { label: "Weekly update", text: "A warm weekly newsletter update for supporters: highlights, thank-you, and one clear next step." },
+    { label: "Weekly update", text: "A warm weekly update for supporters: highlights, thank-you, and one clear next step." },
 ]
 
 interface Template {
@@ -124,7 +124,7 @@ type NewsletterAudienceRow =
           email: string
           /** e.g. "Manual recipient" — matches Recipients / manual adds + CSV import */
           badge: string
-          /** active = included in sends; unsubscribed = excluded until re-selected */
+          /** active = included in Engagement; unsubscribed = excluded until re-selected */
           status?: string
       }
 
@@ -334,7 +334,7 @@ function ManualRecipientAudienceRow({
                                 onCheckedChange={(v) => onToggleIncluded(v === true)}
                                 className="border-white/30"
                             />
-                            <span>Include in sends</span>
+                            <span>Include in Engagement</span>
                         </label>
                     </div>
                 </div>
@@ -772,7 +772,7 @@ export default function NewsletterCreate({
             delete submitData.send_date
         } else {
             if (!data.send_date) {
-                alert("Please select a date and time for scheduled or recurring sends.")
+                alert("Please select a date and time for scheduled or recurring Engagement.")
                 return
             }
             const utcDate = convertUserTimezoneToUTC(data.send_date, getBrowserTimezone())
@@ -804,7 +804,7 @@ export default function NewsletterCreate({
 
     return (
         <AppSidebarLayout>
-            <Head title="Create Newsletter" />
+            <Head title="Engagement · New" />
 
             <div className="w-full max-w-none px-5 py-6 sm:px-8 lg:px-10 xl:px-12">
                 <div className="mx-auto w-full max-w-none">
@@ -821,11 +821,12 @@ export default function NewsletterCreate({
                                 Back
                             </Button>
                         </div>
+                        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-zinc-500">Engagement</p>
                         <h1 className="text-2xl font-bold tracking-tight text-white sm:text-3xl">
-                            Create newsletter
+                            New Engagement
                                 </h1>
                         <p className="text-sm text-zinc-400">
-                            Recipients → schedule → send (with templates &amp; history)
+                            Recipients → schedule → Engagement (with templates &amp; history)
                         </p>
 
                         {openAiConfigured && (
@@ -956,7 +957,7 @@ export default function NewsletterCreate({
                                         Step 1 of 3
                                     </p>
                                     <h2 className="text-lg font-bold text-white">Create communication</h2>
-                                    <p className="text-xs text-zinc-500">What do you want to send?</p>
+                                    <p className="text-xs text-zinc-500">What is this Engagement?</p>
                                 </div>
                             )}
                             {wizardStep === 2 && (
@@ -973,8 +974,8 @@ export default function NewsletterCreate({
                                     <p className="text-xs font-semibold uppercase tracking-[0.2em] text-violet-300/90">
                                         Step 3 of 3
                                     </p>
-                                    <h2 className="text-lg font-bold text-white">Schedule &amp; send</h2>
-                                    <p className="text-xs text-zinc-500">When do you want to send it?</p>
+                                    <h2 className="text-lg font-bold text-white">Schedule Engagement</h2>
+                                    <p className="text-xs text-zinc-500">When should it go out?</p>
                                 </div>
                             )}
 
@@ -987,7 +988,7 @@ export default function NewsletterCreate({
                                     <div className="grid grid-cols-2 gap-2">
                                         {(
                                             [
-                                                { kind: "newsletter" as const, label: "Newsletter", Icon: Mail, color: "text-pink-400" },
+                                                { kind: "newsletter" as const, label: "Email", Icon: Mail, color: "text-pink-400" },
                                                 { kind: "letter" as const, label: "Letter", Icon: FileText, color: "text-amber-400" },
                                                 { kind: "message" as const, label: "Message", Icon: MessageSquare, color: "text-sky-400" },
                                                 { kind: "push" as const, label: "Push", Icon: Bell, color: "text-emerald-400" },
@@ -1113,7 +1114,7 @@ export default function NewsletterCreate({
                                                     </button>
                                                 ))}
                                             </div>
-                                            <Label className="text-zinc-400">Or describe what you want to send…</Label>
+                                            <Label className="text-zinc-400">Or describe your Engagement…</Label>
                                             <TextArea
                                                 value={aiBrief}
                                                 onChange={(e) => setAiBrief(e.target.value)}
@@ -1339,7 +1340,7 @@ export default function NewsletterCreate({
                                             ) : null}
                                             <p className="text-xs leading-relaxed text-zinc-300">
                                                 <span className="font-semibold text-white">Add a manual recipient</span> here — same
-                                                list as Newsletter → Recipients. After saving, the list below updates in place (no page reload).
+                                                list as Engagement → Recipients. After saving, the list below updates in place (no page reload).
                                             </p>
                                             {/* Must not nest <form> inside the wizard <form> — browsers close the outer form and can full-page POST the wrong action. */}
                                             <div className="grid w-full min-w-0 grid-cols-1 gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-end sm:gap-3">
@@ -1701,7 +1702,7 @@ export default function NewsletterCreate({
                                                 [
                                                     {
                                                         v: "immediate" as const,
-                                                        label: "Send now",
+                                                        label: "Start now",
                                                         desc: "As soon as you confirm",
                                                         Icon: Zap,
                                                         color: "text-amber-300",
@@ -1801,10 +1802,10 @@ export default function NewsletterCreate({
                                             </span>
                                         </p>
                                         <p className="mt-1">
-                                            <span className="text-zinc-500">Send time:</span>{" "}
+                                            <span className="text-zinc-500">Go-live:</span>{" "}
                                             <span className="text-zinc-100">
                                                 {scheduleType === "immediate"
-                                                    ? "As soon as campaign runs"
+                                                    ? "As soon as Engagement runs"
                                                     : data.send_date
                                                       ? new Date(data.send_date).toLocaleString()
                                                       : "Pick a date above"}
@@ -1834,7 +1835,7 @@ export default function NewsletterCreate({
                                             className="flex-1 bg-gradient-to-r from-violet-600 to-fuchsia-600 py-6 text-base font-semibold text-white shadow-lg sm:py-6"
                                         >
                                             <Plane className="mr-2 h-5 w-5" />
-                                            {processing ? "Saving…" : "Send newsletter"}
+                                            {processing ? "Saving…" : "Start Engagement"}
                                         </Button>
                                             </div>
                                 </div>
@@ -1884,7 +1885,7 @@ export default function NewsletterCreate({
                         <div className="grid gap-4 sm:grid-cols-5">
                             {[
                                 { Icon: Users, t: "User-first flow", d: "Matches natural planning." },
-                                { Icon: ShieldCheck, t: "Fewer errors", d: "Audience before send time." },
+                                { Icon: ShieldCheck, t: "Fewer errors", d: "Audience before go-live." },
                                 { Icon: Zap, t: "Clearer decisions", d: "One focus per column." },
                                 { Icon: Sparkles, t: "Faster execution", d: "AI + templates together." },
                                 { Icon: Mail, t: "One workspace", d: "No tab hopping." },
@@ -1901,7 +1902,7 @@ export default function NewsletterCreate({
                         <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-white/10 pt-4">
                             <p className="flex items-start gap-2 text-xs text-zinc-500">
                                 <Lightbulb className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
-                                This flow stays simpler for non-technical teammates — fewer surprises at send time.
+                                This flow stays simpler for non-technical teammates — fewer surprises at go-live.
                             </p>
                             <Button
                                 type="button"
@@ -1925,7 +1926,7 @@ export default function NewsletterCreate({
                             <DialogHeader>
                                 <DialogTitle>Edit manual recipient</DialogTitle>
                                 <DialogDescription className="text-zinc-500">
-                                    Changes apply to this newsletter audience list and Newsletter → Recipients.
+                                    Changes apply to this Engagement audience list and Engagement → Recipients.
                                 </DialogDescription>
                             </DialogHeader>
                             {editManualContact ? (

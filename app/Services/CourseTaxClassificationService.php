@@ -68,16 +68,21 @@ class CourseTaxClassificationService
                 'numeric',
                 'min:0',
             ],
-            'tax_ack_outside_ca' => [
-                Rule::requiredIf(fn () => self::needsIntake(request())),
-                'nullable',
-                'accepted',
-            ],
-            'tax_ack_auto_calculate' => [
-                Rule::requiredIf(fn () => self::needsIntake(request())),
-                'nullable',
-                'accepted',
-            ],
+            // `accepted` must not run for free listings: the form still sends false and validation would fail.
+            'tax_ack_outside_ca' => array_merge(
+                [
+                    Rule::requiredIf(fn () => self::needsIntake(request())),
+                    'nullable',
+                ],
+                self::needsIntake(request()) ? ['accepted'] : [],
+            ),
+            'tax_ack_auto_calculate' => array_merge(
+                [
+                    Rule::requiredIf(fn () => self::needsIntake(request())),
+                    'nullable',
+                ],
+                self::needsIntake(request()) ? ['accepted'] : [],
+            ),
         ];
     }
 

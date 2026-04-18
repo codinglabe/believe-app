@@ -1,8 +1,8 @@
 "use client"
 import FrontendLayout from "@/layouts/frontend/frontend-layout"
-import { useState, useRef, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import { Heart, Search, X, Loader2, BookOpen, Users, Clock, Calendar, Globe, MapPin, Star, Award, Filter, ChevronLeft, ChevronRight } from "lucide-react"
+import { Heart, Search, X, Loader2, BookOpen, Users, Clock, Calendar, Globe, MapPin, Star, Award, Filter, ChevronDown, ChevronLeft, ChevronRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter } from "@/components/frontend/ui/card"
 import { Input } from "@/components/ui/input"
@@ -55,7 +55,7 @@ interface Course {
   start_date: string
   start_time: string
   end_date: string | null
-  duration: "1_session" | "1_week" | "2_weeks" | "1_month" | "6_weeks" | "3_months"
+  session_duration_minutes: number
   format: "online" | "in_person" | "hybrid"
   max_participants: number
   language: string
@@ -82,6 +82,7 @@ interface Course {
   image_url: string | null
   formatted_price: string
   formatted_duration: string
+  formatted_program_length?: string | null
   formatted_format: string
 }
 
@@ -112,6 +113,7 @@ interface FrontendCoursesListPageProps {
     pricing_type?: string
     type?: string
     event_type_id?: string
+    organization?: string
   }
 }
 
@@ -139,10 +141,9 @@ export default function FrontendCoursesListPage({
   )
   const [selectedFormat, setSelectedFormat] = useState(filters.format || "all")
   const [selectedPricing, setSelectedPricing] = useState(filters.pricing_type || "all")
-  const [isSearchFocused, setIsSearchFocused] = useState(false)
   const [isSearching, setIsSearching] = useState(false)
-  const [showFilters, setShowFilters] = useState(false)
-  const searchContainerRef = useRef<HTMLDivElement>(null)
+  /** Filter panel expanded by default; user can collapse with the Filters toggle only. */
+  const [showFilters, setShowFilters] = useState(true)
 
   // Perform search with debouncing
   const performSearch = useCallback(async (query: string, type: string, topicId: number | null, eventTypeId: number | null, format: string, pricing: string, organization: string) => {
@@ -183,20 +184,6 @@ export default function FrontendCoursesListPage({
     return () => clearTimeout(timer)
   }, [searchQuery, selectedType, selectedTopicId, selectedEventTypeId, selectedFormat, selectedPricing, selectedOrganization, performSearch])
 
-  // Close search/filters when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (searchContainerRef.current && !searchContainerRef.current.contains(event.target as Node)) {
-        setIsSearchFocused(false)
-        setShowFilters(false)
-      }
-    }
-    document.addEventListener("mousedown", handleClickOutside)
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside)
-    }
-  }, [])
-
   // Show flash notifications
   useEffect(() => {
     if (flash?.success) {
@@ -233,6 +220,7 @@ export default function FrontendCoursesListPage({
     setSelectedType("all")
     setSelectedTopicId(null)
     setSelectedEventTypeId(null)
+    setSelectedOrganization(null)
     setSelectedFormat("all")
     setSelectedPricing("all")
   }
@@ -263,24 +251,14 @@ export default function FrontendCoursesListPage({
     }
   }
 
-  const getDurationColor = (duration: string) => {
-    switch (duration) {
-      case "1_session":
-        return "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200"
-      case "1_week":
-      case "2_weeks":
-        return "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200"
-      case "1_month":
-      case "6_weeks":
-        return "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200"
-      case "3_months":
-        return "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200"
-      default:
-        return "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200"
-    }
-  }
-
-  const hasActiveFilters = searchQuery || selectedType !== "all" || selectedTopicId || selectedEventTypeId || selectedFormat !== "all" || selectedPricing !== "all"
+  const hasActiveFilters =
+    Boolean(searchQuery) ||
+    selectedType !== "all" ||
+    selectedTopicId != null ||
+    selectedEventTypeId != null ||
+    Boolean(selectedOrganization) ||
+    selectedFormat !== "all" ||
+    selectedPricing !== "all"
 
   return (
     <FrontendLayout>
@@ -334,7 +312,7 @@ export default function FrontendCoursesListPage({
                   </Button>
                 )}
               </div>
-              <div className="space-y-4" ref={searchContainerRef}>
+              <div className="space-y-4">
                 {/* Search Bar */}
                 <div className="relative">
                   <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 h-5 w-5" />
@@ -343,7 +321,6 @@ export default function FrontendCoursesListPage({
                     placeholder="Search courses, events, topics, organizations..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    onFocus={() => setIsSearchFocused(true)}
                     className="w-full pl-12 pr-12 h-12 sm:h-14 rounded-lg border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 transition-all duration-200 shadow-sm"
                   />
                   {searchQuery && (
@@ -366,17 +343,25 @@ export default function FrontendCoursesListPage({
                 {/* Filter Toggle */}
                 <div className="flex items-center gap-3">
                   <Button
+                    type="button"
                     variant="outline"
-                    onClick={() => setShowFilters(!showFilters)}
-                    className="flex items-center gap-2 h-12 border-gray-300 dark:border-gray-600"
+                    aria-expanded={showFilters}
+                    aria-controls="courses-filter-panel"
+                    id="courses-filters-toggle"
+                    onClick={() => setShowFilters((open) => !open)}
+                    className="flex h-12 items-center gap-2 border-gray-300 dark:border-gray-600"
                   >
-                    <Filter className="h-4 w-4" />
-                    Filters
+                    <Filter className="h-4 w-4 shrink-0" aria-hidden />
+                    <span>Filters</span>
                     {hasActiveFilters && (
-                      <Badge variant="secondary" className="ml-1 bg-purple-600 text-white">
+                      <Badge variant="secondary" className="ml-0.5 bg-purple-600 text-white">
                         Active
                       </Badge>
                     )}
+                    <ChevronDown
+                      className={`h-4 w-4 shrink-0 transition-transform duration-200 ${showFilters ? "rotate-180" : ""}`}
+                      aria-hidden
+                    />
                   </Button>
                 </div>
 
@@ -384,11 +369,14 @@ export default function FrontendCoursesListPage({
                 <AnimatePresence>
                   {showFilters && (
                     <motion.div
+                      id="courses-filter-panel"
+                      role="region"
+                      aria-labelledby="courses-filters-toggle"
                       initial={{ opacity: 0, height: 0 }}
                       animate={{ opacity: 1, height: "auto" }}
                       exit={{ opacity: 0, height: 0 }}
                       transition={{ duration: 0.3 }}
-                      className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 pt-4 border-t border-gray-200 dark:border-gray-600"
+                      className="grid grid-cols-1 gap-4 border-t border-gray-200 pt-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 dark:border-gray-600"
                     >
                       {/* Type Filter */}
                       <div>
@@ -609,9 +597,19 @@ export default function FrontendCoursesListPage({
                         <Calendar className="w-4 h-4 text-purple-600 dark:text-purple-400 flex-shrink-0" />
                         <span>{new Date(course.start_date).toLocaleDateString()}</span>
                       </div>
-                      <div className="flex items-center gap-2 text-gray-700 dark:text-gray-300">
-                        <Clock className="w-4 h-4 text-purple-600 dark:text-purple-400 flex-shrink-0" />
-                        <span>{course.start_time}</span>
+                      <div className="flex items-start gap-2 text-gray-700 dark:text-gray-300">
+                        <Clock className="w-4 h-4 text-purple-600 dark:text-purple-400 flex-shrink-0 mt-0.5" />
+                        <div className="min-w-0 flex flex-col gap-0.5">
+                          <span>
+                            {course.start_time}
+                            {course.formatted_duration ? ` · ${course.formatted_duration}` : ""}
+                          </span>
+                          {course.formatted_program_length ? (
+                            <span className="text-xs text-gray-500 dark:text-gray-400">
+                              Program: {course.formatted_program_length}
+                            </span>
+                          ) : null}
+                        </div>
                       </div>
                       <div className="flex items-center gap-2 text-gray-700 dark:text-gray-300">
                         <Globe className="w-4 h-4 text-purple-600 dark:text-purple-400 flex-shrink-0" />

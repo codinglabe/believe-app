@@ -990,6 +990,22 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|care_alli
             [FollowerController::class, 'bulkDestroy']
         )
             ->name('organization.followers.bulk-destroy');
+
+        // Kiosk directory listings (org-scoped rows in `kiosk_providers`)
+        Route::get('/kiosk-providers', [\App\Http\Controllers\Organization\OrganizationKioskProviderController::class, 'index'])
+            ->name('organization.kiosk-providers.index');
+        Route::get('/kiosk-providers/create', [\App\Http\Controllers\Organization\OrganizationKioskProviderController::class, 'create'])
+            ->name('organization.kiosk-providers.create');
+        Route::post('/kiosk-providers', [\App\Http\Controllers\Organization\OrganizationKioskProviderController::class, 'store'])
+            ->name('organization.kiosk-providers.store');
+        Route::get('/kiosk-providers/{kioskProvider}/edit', [\App\Http\Controllers\Organization\OrganizationKioskProviderController::class, 'edit'])
+            ->name('organization.kiosk-providers.edit');
+        Route::put('/kiosk-providers/{kioskProvider}', [\App\Http\Controllers\Organization\OrganizationKioskProviderController::class, 'update'])
+            ->name('organization.kiosk-providers.update');
+        Route::get('/kiosk-providers/{kioskProvider}', [\App\Http\Controllers\Organization\OrganizationKioskProviderController::class, 'show'])
+            ->name('organization.kiosk-providers.show');
+        Route::delete('/kiosk-providers/{kioskProvider}', [\App\Http\Controllers\Organization\OrganizationKioskProviderController::class, 'destroy'])
+            ->name('organization.kiosk-providers.destroy');
     });
 
     Route::prefix('marketplace/product-pool')->name('marketplace.product-pool.')->group(function () {

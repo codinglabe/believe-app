@@ -13,13 +13,14 @@ import { ImageUpload } from "@/components/admin/ImageUpload"
 import type { User } from "@/types"
 import { toast } from "sonner"
 import AppLayout from "@/layouts/app-layout"
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import {
   OrganizationPrimaryActionCategoriesField,
   type PrimaryActionCategoryOption,
 } from "@/components/organization-primary-action-categories-field"
 import BiuCourseTaxIntake from "@/components/biu-course-tax-intake"
 import { connectionHubTypeLabel, isEventsHubType, type ConnectionHubType } from "@/lib/connection-hub-type"
+import { SESSION_DURATION_MINUTES_OPTIONS, sessionDurationLabel } from "@/lib/session-duration-options"
 
 interface EventType {
   id: number
@@ -64,7 +65,7 @@ export default function NonprofitCoursesCreate() {
     start_date: "",
     start_time: "",
     end_date: "",
-    duration: "",
+    session_duration_minutes: "60",
     format: "online",
     max_participants: "",
     language: "English",
@@ -88,6 +89,18 @@ export default function NonprofitCoursesCreate() {
     tax_ack_outside_ca: false,
     tax_ack_auto_calculate: false,
   })
+
+  const formattedProgramLengthPreview = useMemo(() => {
+    if (!data.start_date || !data.end_date) return null
+    const start = new Date(`${data.start_date}T12:00:00`)
+    const end = new Date(`${data.end_date}T12:00:00`)
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end < start) return null
+    const days = Math.floor((end.getTime() - start.getTime()) / 86400000) + 1
+    const weeks = days / 7
+    if (weeks <= 1) return "About 1 week"
+    const rounded = Math.round(weeks * 10) / 10
+    return `${rounded} weeks`
+  }, [data.start_date, data.end_date])
 
   const validateTab = (tab: string): boolean => {
     switch (tab) {
@@ -140,7 +153,7 @@ export default function NonprofitCoursesCreate() {
           data.format &&
           data.start_date &&
           data.start_time &&
-          data.duration &&
+          data.session_duration_minutes &&
           data.max_participants
         )
       case "settings":
@@ -184,7 +197,9 @@ export default function NonprofitCoursesCreate() {
         setCurrentTab("basics")
       } else if (
         errorFields.some((field) =>
-          ["meeting_link", "format", "start_date", "start_time", "duration", "max_participants"].includes(field),
+          ["meeting_link", "format", "start_date", "start_time", "session_duration_minutes", "max_participants"].includes(
+            field,
+          ),
         )
       ) {
         setCurrentTab("schedule")
@@ -523,8 +538,13 @@ export default function NonprofitCoursesCreate() {
                       />
                       {errors.end_date && <p className="text-sm text-destructive">{errors.end_date}</p>}
                       <p className="text-xs text-muted-foreground">
-                        Optional: Leave blank for single-session listings
+                        Optional. When set with a start date, program length is calculated for display (weeks).
                       </p>
+                      {formattedProgramLengthPreview ? (
+                        <p className="text-xs font-medium text-purple-700 dark:text-purple-300">
+                          Program length: ~{formattedProgramLengthPreview}
+                        </p>
+                      ) : null}
                     </div>
 
                     <div className="space-y-2">
@@ -541,22 +561,27 @@ export default function NonprofitCoursesCreate() {
                     </div>
 
                     <div className="space-y-2">
-                      <label htmlFor="duration" className="text-sm font-medium">
-                        Duration *
+                      <label htmlFor="session_duration_minutes" className="text-sm font-medium">
+                        Session duration *
                       </label>
-                      <Select value={data.duration} onValueChange={(value) => setData("duration", value)}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select duration" />
+                      <Select
+                        value={data.session_duration_minutes}
+                        onValueChange={(value) => setData("session_duration_minutes", value)}
+                      >
+                        <SelectTrigger id="session_duration_minutes" className={errors.session_duration_minutes ? "border-destructive" : ""}>
+                          <SelectValue placeholder="Minutes per session" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="1_session">Single Session</SelectItem>
-                          <SelectItem value="1_week">1 Week</SelectItem>
-                          <SelectItem value="2_weeks">2 Weeks</SelectItem>
-                          <SelectItem value="1_month">1 Month</SelectItem>
-                          <SelectItem value="6_weeks">6 Weeks</SelectItem>
-                          <SelectItem value="3_months">3 Months</SelectItem>
+                          {SESSION_DURATION_MINUTES_OPTIONS.map((m) => (
+                            <SelectItem key={m} value={String(m)}>
+                              {sessionDurationLabel(m)}
+                            </SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
+                      {errors.session_duration_minutes && (
+                        <p className="text-sm text-destructive">{errors.session_duration_minutes}</p>
+                      )}
                     </div>
 
                     <div className="space-y-2">

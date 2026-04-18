@@ -47,6 +47,7 @@ import {
   TrendingUp,
   Monitor,
   Compass,
+  Ticket,
 } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 import { ThemeToggle } from "@/components/frontend/theme-toggle"
@@ -163,6 +164,7 @@ export default function Navbar() {
     { name: "Merchant Hub", href: "/merchant-hub", icon: ShoppingBag },
     { name: "Marketplace", href: "/marketplace", icon: Store },
     { name: "Gift Cards", href: route("gift-cards.index"), icon: Gift },
+    { name: "Raffles", href: route("frontend.raffles.index"), icon: Ticket },
     { name: "Volunteer Opportunity", href: "/volunteer-opportunities", icon: HeartHandshake },
     { name: "Jobs", href: "/jobs", icon: Briefcase },
     { name: "Connection Hub", href: route("course.index"), icon: GraduationCap },

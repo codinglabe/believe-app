@@ -35,7 +35,7 @@ interface Course {
   start_date: string
   end_date?: string
   start_time: string
-  duration: string
+  session_duration_minutes: number
   format: string
   max_participants: number
   enrolled: number
