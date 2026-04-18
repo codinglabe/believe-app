@@ -37,6 +37,7 @@ interface MerchantHubOffer {
     starts_at: string | null
     ends_at: string | null
     status: 'draft' | 'active' | 'paused' | 'expired'
+    pickup_available?: boolean
 }
 
 interface OffersEditProps {
@@ -60,6 +61,7 @@ export default function MerchantOffersEdit({ offer, categories }: OffersEditProp
         starts_at: offer.starts_at ? new Date(offer.starts_at).toISOString().slice(0, 16) : '',
         ends_at: offer.ends_at ? new Date(offer.ends_at).toISOString().slice(0, 16) : '',
         status: offer.status,
+        pickup_available: !!(offer.pickup_available ?? false),
     })
 
     const price = Number(data.reference_price) || 0
@@ -382,6 +384,19 @@ export default function MerchantOffersEdit({ offer, categories }: OffersEditProp
                                                 <p className="mt-1 text-sm text-red-400">{errors.ends_at}</p>
                                             )}
                                         </div>
+                                    </div>
+
+                                    <div className="flex items-center gap-2 pt-1">
+                                        <input
+                                            id="pickup_available"
+                                            type="checkbox"
+                                            checked={!!data.pickup_available}
+                                            onChange={(e) => setData('pickup_available', e.target.checked)}
+                                            className="rounded border-gray-600"
+                                        />
+                                        <label htmlFor="pickup_available" className="text-sm text-gray-300">
+                                            Allow local pickup (no shipping; your business address is shown at checkout)
+                                        </label>
                                     </div>
 
                                     {/* Status */}

@@ -49,6 +49,7 @@ interface Product {
     publish_status: string;
     sku: string;
     type: string;
+    pickup_available?: boolean;
     tags: string | null;
     image?: string | null;
     printify_product_id?: string | null;
@@ -138,6 +139,9 @@ export default function Edit({
 }: Props) {
     const isPrintify = Boolean(is_printify_product || product.printify_product_id);
     const isManualPhysical = !isPrintify && product.type === 'physical';
+    /** Nonprofit “My Source” catalog rows are scoped by organization_id (edit list is org-filtered). */
+    const isOrganizationSourceProduct =
+        isManualPhysical && product.organization_id != null && Number(product.organization_id) > 0;
     const printifyProviderResolved = isPrintifyProvider(printify_provider) ? printify_provider : null;
 
     const [formData, setFormData] = useState({
@@ -156,6 +160,7 @@ export default function Edit({
         parcel_width_in: '',
         parcel_height_in: '',
         parcel_weight_oz: '',
+        pickup_available: false,
     });
 
     const [errors, setErrors] = useState<Record<string, string>>({});
@@ -185,6 +190,7 @@ export default function Edit({
             parcel_width_in: numStr(product.parcel_width_in),
             parcel_height_in: numStr(product.parcel_height_in),
             parcel_weight_oz: numStr(product.parcel_weight_oz),
+            pickup_available: !!product.pickup_available,
         });
     }, [product, selectedCategories]);
 
@@ -215,7 +221,7 @@ export default function Edit({
                 ? 'Offers'
                 : 'Fixed price';
 
-    const handleChange = (field: string, value: string | number) => {
+    const handleChange = (field: string, value: string | number | boolean) => {
         setFormData((prev) => ({ ...prev, [field]: value }));
         if (errors[field]) {
             setErrors((prev) => {
@@ -309,6 +315,10 @@ export default function Edit({
             if (formData.parcel_width_in) fd.append('parcel_width_in', formData.parcel_width_in);
             if (formData.parcel_height_in) fd.append('parcel_height_in', formData.parcel_height_in);
             if (formData.parcel_weight_oz) fd.append('parcel_weight_oz', formData.parcel_weight_oz);
+        }
+
+        if (isOrganizationSourceProduct) {
+            fd.append('pickup_available', formData.pickup_available ? '1' : '0');
         }
 
         fd.append('_method', 'PUT');
@@ -666,6 +676,31 @@ export default function Edit({
                                                 />
                                             </div>
                                         </div>
+                                        {isOrganizationSourceProduct && (
+                                            <div className="mt-6 border-t border-sky-200 pt-6 dark:border-sky-800">
+                                                <p className="text-muted-foreground mb-3 text-xs font-medium uppercase tracking-wide">
+                                                    Pickup at your location
+                                                </p>
+                                                <div className="flex items-start gap-3 rounded-lg border border-emerald-200 bg-emerald-50/80 p-3 dark:border-emerald-900/50 dark:bg-emerald-950/30">
+                                                    <input
+                                                        id="edit_pickup_available"
+                                                        type="checkbox"
+                                                        checked={!!formData.pickup_available}
+                                                        onChange={(e) => handleChange('pickup_available', e.target.checked)}
+                                                        className="mt-0.5 h-4 w-4 shrink-0"
+                                                    />
+                                                    <label
+                                                        htmlFor="edit_pickup_available"
+                                                        className="cursor-pointer text-sm leading-snug text-gray-800 dark:text-gray-100"
+                                                    >
+                                                        <span className="font-medium">Allow local pickup</span> at our
+                                                        organization address. Buyers who choose pickup at checkout pay no
+                                                        shipping; they see your nonprofit location (keep your org profile
+                                                        address complete).
+                                                    </label>
+                                                </div>
+                                            </div>
+                                        )}
                                     </CardContent>
                                 </Card>
                             )}

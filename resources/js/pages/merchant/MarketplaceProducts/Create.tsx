@@ -32,6 +32,7 @@ interface ProductRow {
   suggested_retail_price: string | number | null
   nonprofit_approval_type: string
   status: string
+  pickup_available?: boolean
 }
 
 interface CategoryOption {
@@ -66,6 +67,7 @@ export default function MerchantMarketplaceProductForm({ product, categories = [
     suggested_retail_price: product?.suggested_retail_price != null ? String(product.suggested_retail_price) : "",
     nonprofit_approval_type: product?.nonprofit_approval_type ?? "auto",
     status: product?.status ?? "active",
+    pickup_available: !!(product?.pickup_available ?? false),
   })
 
   const [imageFiles, setImageFiles] = useState<File[]>([])
@@ -117,6 +119,7 @@ export default function MerchantMarketplaceProductForm({ product, categories = [
       nonprofit_approval_type: data.nonprofit_approval_type,
       status: data.status,
       unlimited_inventory: data.unlimited_inventory,
+      pickup_available: data.pickup_available,
     }
     if (!data.unlimited_inventory && data.inventory_quantity !== "") {
       entries.inventory_quantity = data.inventory_quantity
@@ -414,6 +417,20 @@ export default function MerchantMarketplaceProductForm({ product, categories = [
                   <option value="biu">BIU (future)</option>
                 </select>
               </div>
+              {["physical", "service", "media"].includes(data.product_type) && (
+                <div className="flex items-start gap-2">
+                  <input
+                    id="pickup_available"
+                    type="checkbox"
+                    checked={!!data.pickup_available}
+                    onChange={(e) => setData("pickup_available", e.target.checked)}
+                    className="mt-1 rounded border-gray-600"
+                  />
+                  <label htmlFor="pickup_available" className="text-sm text-gray-300 leading-snug">
+                    Allow local pickup on Merchant Hub &amp; org listings (buyer pays no shipping when they choose pickup; your saved ship-from / business address is shown).
+                  </label>
+                </div>
+              )}
               <div>
                 <MerchantLabel>Digital delivery notes</MerchantLabel>
                 <MerchantTextarea

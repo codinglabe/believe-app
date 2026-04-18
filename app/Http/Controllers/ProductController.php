@@ -21,6 +21,7 @@ use App\Services\BiuPlatformFeeService;
 use App\Services\PrintifyService;
 use App\Services\ShippoService;
 use App\Services\SupporterActivityService;
+use App\Support\MarketplacePickup;
 use App\Support\StripeCustomerChargeAmount;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -238,6 +239,27 @@ class ProductController extends BaseController
         return $validated;
     }
 
+    /**
+     * @return array{catalog_pickup_offered: bool, catalog_pickup_address_preview: string|null}
+     */
+    private function catalogPickupPropsForProduct(Product $product): array
+    {
+        if (! MarketplacePickup::organizationOwnedManualProductAllowsPickup($product)) {
+            return [
+                'catalog_pickup_offered' => false,
+                'catalog_pickup_address_preview' => null,
+            ];
+        }
+        $product->loadMissing('organization');
+
+        return [
+            'catalog_pickup_offered' => true,
+            'catalog_pickup_address_preview' => $product->organization
+                ? MarketplacePickup::formatOrganizationAddress($product->organization)
+                : null,
+        ];
+    }
+
     public function show(Request $request, $id): Response
     {
         $user = $request->user();
@@ -271,14 +293,14 @@ class ProductController extends BaseController
                 abort(404, 'Product not found');
             }
 
-            return Inertia::render('frontend/product-view', [
+            return Inertia::render('frontend/product-view', array_merge([
                 'product' => $product,
                 'printifyProduct' => null,
                 'variants' => [],
                 'firstVariant' => null,
                 'isOrganizationUser' => true,
                 'message' => 'Only supporters can purchase products. Please log in with a supporter account to buy this product.',
-            ]);
+            ], $this->catalogPickupPropsForProduct($product)));
         }
 
         // Public marketplace view - supports both manual and Printify products
@@ -385,7 +407,7 @@ class ProductController extends BaseController
             }
         }
 
-        return Inertia::render('frontend/product-view', [
+        return Inertia::render('frontend/product-view', array_merge([
             'product' => $product,
             'printifyProduct' => $printifyProduct,
             'variants' => $variantsWithImages,
@@ -401,7 +423,7 @@ class ProductController extends BaseController
             //     ->where('quantity_available', '>', 0)
             //     ->limit(4)
             //     ->get(),
-        ]);
+        ], $this->catalogPickupPropsForProduct($product)));
     }
 
     /**
@@ -877,6 +899,14 @@ class ProductController extends BaseController
 
         $validated = $this->normalizeValidatedManualPhysicalShipFrom($validated, $isPrintifyProduct);
 
+        $pickupEligible = ! $isPrintifyProduct
+            && ($validated['type'] ?? '') === 'physical'
+            && (
+                in_array($user->role, ['organization', 'organization_pending'], true)
+                || (($validated['owned_by'] ?? '') === 'organization' && ! empty($validated['organization_id']))
+            );
+        unset($validated['pickup_available']);
+
         try {
             $imagePath = null;
             if ($request->hasFile('image')) {
@@ -1026,6 +1056,7 @@ class ProductController extends BaseController
 
             // Merge with validated data
             $productData = array_merge($validated, $productData);
+            $productData['pickup_available'] = $pickupEligible && $request->boolean('pickup_available', false);
 
             $product = Product::create($productData);
             $product->categories()->sync($categories);
@@ -1338,6 +1369,10 @@ class ProductController extends BaseController
             $rules['parcel_weight_oz'] = ['nullable', 'numeric', 'min:0.01', 'max:99999'];
         }
 
+        if (! $isPrintifyProduct && $product->type === 'physical' && ! empty($product->organization_id)) {
+            $rules['pickup_available'] = ['nullable', 'boolean'];
+        }
+
         $validated = $request->validate($rules, array_merge($sharedMessages, [
             'ship_from_mode.required' => 'Choose how Shippo ship-from is set: custom address or merchant warehouse.',
         ]));
@@ -1393,6 +1428,10 @@ class ProductController extends BaseController
                         $data[$key] = $validated[$key];
                     }
                 }
+            }
+
+            if (! $isPrintifyProduct && $product->type === 'physical' && ! empty($product->organization_id)) {
+                $data['pickup_available'] = $request->boolean('pickup_available');
             }
 
             $product->update($data);

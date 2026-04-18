@@ -20,6 +20,7 @@ use App\Services\ShippoService;
 use App\Services\StripeConfigService;
 use App\Services\StripeProcessingFeeEstimator;
 use App\Services\SupporterActivityService;
+use App\Support\MarketplacePickup;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -50,7 +51,7 @@ class CheckoutController extends Controller
     {
         $user = auth()->user();
         $cart = $user->cart()->with([
-            'items.product',
+            'items.product.organization',
             'items.variant',
             'items.marketplaceProduct.merchant.shippingAddresses',
             'items.organizationProduct.marketplaceProduct.merchant.shippingAddresses',
@@ -60,6 +61,13 @@ class CheckoutController extends Controller
         if (! $cart || $cart->items->isEmpty()) {
             return Inertia::render('Checkout/Empty');
         }
+
+        $cart->loadMissing([
+            'items.product.organization',
+            'items.marketplaceProduct.merchant.shippingAddresses',
+            'items.organizationProduct.marketplaceProduct.merchant.shippingAddresses',
+            'items.organizationProduct.organization',
+        ]);
 
         $subtotal = $cart->getTotal();
         $platformFeePct = BiuPlatformFeeService::getSalesPlatformFeePercentage();
@@ -138,6 +146,7 @@ class CheckoutController extends Controller
             'stripePublishableKey' => StripeConfigService::getPublishableKey() ?? config('services.stripe.key') ?? '',
             // Stripe processing fee is always passed through to the buyer on card checkout.
             'customerPaysProcessingFee' => true,
+            'pickup_available_at_checkout' => MarketplacePickup::cartAllowsUnifiedPickup($cart),
         ]);
     }
 
@@ -161,7 +170,7 @@ class CheckoutController extends Controller
 
         $user = auth()->user();
         $cart = $user->cart()->with([
-            'items.product',
+            'items.product.organization',
             'items.variant',
             'items.marketplaceProduct.merchant.shippingAddresses',
             'items.organizationProduct.marketplaceProduct.merchant.shippingAddresses',
@@ -171,6 +180,13 @@ class CheckoutController extends Controller
         if (! $cart || $cart->items->isEmpty()) {
             return response()->json(['error' => 'Cart is empty'], 400);
         }
+
+        $cart->loadMissing([
+            'items.product.organization',
+            'items.marketplaceProduct.merchant.shippingAddresses',
+            'items.organizationProduct.marketplaceProduct.merchant.shippingAddresses',
+            'items.organizationProduct.organization',
+        ]);
 
         DB::beginTransaction();
         try {
@@ -425,6 +441,22 @@ class CheckoutController extends Controller
                     ];
                 }
 
+                if (MarketplacePickup::cartAllowsUnifiedPickup($cart)) {
+                    $pickupLines = MarketplacePickup::pickupAddressLinesForCart($cart);
+                    array_unshift($shippingMethods, [
+                        'id' => MarketplacePickup::RATE_ID,
+                        'name' => 'Pick up at seller location',
+                        'cost' => 0.0,
+                        'estimated_days' => '—',
+                        'pickup_address' => $pickupLines,
+                    ]);
+                    $shippingCost = 0.0;
+                    $shippoRateObjectId = null;
+                    $shippoCarrier = null;
+                    $shippoRateAmount = null;
+                    $shippoShipmentId = null;
+                }
+
                 $nonPrintifyShipping = $shippingCost;
                 $nonPrintifyShippingMethods = $shippingMethods;
             }
@@ -663,7 +695,7 @@ class CheckoutController extends Controller
                     $newShippingCost = round($printifyShippingCost + $nonPrintifyShippingCost, 2);
 
                     $shippoPatch = [
-                        'shippo_rate_object_id' => $selectedId !== 'standard' && $selectedId !== 'digital' ? $selectedId : null,
+                        'shippo_rate_object_id' => MarketplacePickup::isShippoPurchasableRateId($selectedId) ? $selectedId : null,
                         'shippo_rate_amount' => $nonPrintifyShippingCost > 0 ? $nonPrintifyShippingCost : null,
                         'shippo_carrier' => $picked['provider'] ?? null,
                     ];
@@ -708,7 +740,7 @@ class CheckoutController extends Controller
             $additionalSalesTaxAdjustment = (float) ($tempOrder->additional_sales_tax_adjustment ?? 0);
             $newShippingCost = round((float) ($picked['cost'] ?? 0), 2);
 
-            if ($selectedId !== 'standard' && $selectedId !== '') {
+            if (MarketplacePickup::isShippoPurchasableRateId($selectedId)) {
                 $shippoPatch = [
                     'shippo_rate_object_id' => $selectedId,
                     'shippo_rate_amount' => $newShippingCost,
@@ -1265,7 +1297,7 @@ class CheckoutController extends Controller
             // Post-commit: for manual-only orders, auto-create Shippo label/tracking
             // (Printify orders are handled via Printify webhooks + OrderController UI.)
             try {
-                if ($this->shippoService->isConfigured() && empty($order->printify_order_id) && ! empty($tempOrder->shippo_rate_object_id)) {
+                if ($this->shippoService->isConfigured() && empty($order->printify_order_id) && MarketplacePickup::isShippoPurchasableRateId($tempOrder->shippo_rate_object_id)) {
                     $purchase = $this->shippoService->purchaseLabel((string) $tempOrder->shippo_rate_object_id);
 
                     if (($purchase['success'] ?? false) === true) {

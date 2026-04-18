@@ -7,7 +7,6 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Laravel\Cashier\Cashier;
 use Symfony\Component\HttpFoundation\Response;
-use Inertia\Inertia;
 
 class RequireMerchantSubscription
 {
@@ -20,7 +19,7 @@ class RequireMerchantSubscription
     {
         $merchant = $request->user('merchant');
 
-        if (!$merchant) {
+        if (! $merchant) {
             return redirect()->route('merchant.login');
         }
 
@@ -31,30 +30,30 @@ class RequireMerchantSubscription
             ->first();
 
         $hasActiveSubscription = false;
-        
+
         if ($subscription) {
             // Real-time check: Refresh subscription status from Stripe
             try {
                 if ($subscription->stripe_id) {
                     $stripe = Cashier::stripe();
                     $stripeSubscription = $stripe->subscriptions->retrieve($subscription->stripe_id);
-                    
+
                     // Update local subscription with latest data from Stripe
                     $subscription->stripe_status = $stripeSubscription->status;
-                    $subscription->ends_at = $stripeSubscription->cancel_at ? 
+                    $subscription->ends_at = $stripeSubscription->cancel_at ?
                         \Carbon\Carbon::createFromTimestamp($stripeSubscription->cancel_at) : null;
-                    $subscription->trial_ends_at = $stripeSubscription->trial_end ? 
+                    $subscription->trial_ends_at = $stripeSubscription->trial_end ?
                         \Carbon\Carbon::createFromTimestamp($stripeSubscription->trial_end) : null;
-                    
+
                     // If cancel_at is set, mark as canceled even if status is still 'active'
                     if ($stripeSubscription->cancel_at) {
                         $subscription->stripe_status = 'canceled';
                     }
-                    
+
                     $subscription->save();
-                    
+
                     // Check if subscription is truly active (not canceled)
-                    $hasActiveSubscription = in_array($stripeSubscription->status, ['active', 'trialing']) 
+                    $hasActiveSubscription = in_array($stripeSubscription->status, ['active', 'trialing'])
                         && $stripeSubscription->cancel_at === null;
                 }
             } catch (\Exception $e) {
@@ -63,15 +62,15 @@ class RequireMerchantSubscription
                     'subscription_id' => $subscription->id,
                     'error' => $e->getMessage(),
                 ]);
-                
+
                 // Fallback: check local status
-                $hasActiveSubscription = in_array($subscription->stripe_status, ['active', 'trialing']) 
+                $hasActiveSubscription = in_array($subscription->stripe_status, ['active', 'trialing'])
                     && $subscription->ends_at === null;
             }
         }
 
         // If no active subscription, allow only dashboard and subscription routes
-        if (!$hasActiveSubscription) {
+        if (! $hasActiveSubscription) {
             // If trying to access dashboard or subscription routes, allow it
             if ($request->routeIs('merchant.dashboard') || $request->routeIs('merchant.subscription.*')) {
                 return $next($request);

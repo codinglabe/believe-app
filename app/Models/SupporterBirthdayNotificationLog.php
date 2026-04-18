@@ -9,6 +9,7 @@ class SupporterBirthdayNotificationLog extends Model
 {
     protected $fillable = [
         'follower_id',
+        'organization_id',
         'celebrant_id',
         'year',
     ];
@@ -20,6 +21,11 @@ class SupporterBirthdayNotificationLog extends Model
     public function follower(): BelongsTo
     {
         return $this->belongsTo(User::class, 'follower_id');
+    }
+
+    public function organization(): BelongsTo
+    {
+        return $this->belongsTo(Organization::class);
     }
 
     public function celebrant(): BelongsTo

@@ -20,7 +20,7 @@ Route::get('/', function () {
 // Auth Routes (Login/Register) - Merchant branded pages
 Route::middleware('guest:merchant')->group(function () {
     Route::get('/login', [MerchantAuthController::class, 'showLoginForm'])->name('merchant.login');
-    Route::post('login', [MerchantAuthController::class, 'login']);
+    Route::post('login', [MerchantAuthController::class, 'login'])->name('merchant.login.store');
 
     Route::get('/register', [MerchantAuthController::class, 'create'])->name('merchant.register');
     Route::post('register', [MerchantAuthController::class, 'store']);

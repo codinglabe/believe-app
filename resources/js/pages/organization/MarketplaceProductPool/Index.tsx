@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/dialog"
 import { Info, Package, Search } from "lucide-react"
 import { toast } from "sonner"
+import { route } from "ziggy-js"
 
 const breadcrumbs: BreadcrumbItem[] = [
   { title: "Dashboard", href: "/dashboard" },
@@ -39,10 +40,15 @@ interface PoolRow {
   product_type: string
   images?: string[] | null
   nonprofit_approval_type: string
+  pickup_available?: boolean
   already_adopted: boolean
   /** When already_adopted: active = live on marketplace; pending_merchant_approval = not public yet */
   adoption_status?: string | null
   merchant?: MerchantMini | null
+  organization_product_id?: number | null
+  listing_pickup_available?: boolean
+  listing_supporter_message?: string | null
+  listing_is_featured?: boolean
 }
 
 interface Paginated {
@@ -73,7 +79,14 @@ export default function MarketplaceProductPoolIndex({ products, categories, filt
   const [customPrice, setCustomPrice] = useState("")
   const [message, setMessage] = useState("")
   const [featured, setFeatured] = useState(false)
+  const [pickupAtOrg, setPickupAtOrg] = useState(true)
   const [submitting, setSubmitting] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [settingsRow, setSettingsRow] = useState<PoolRow | null>(null)
+  const [settingsPickup, setSettingsPickup] = useState(false)
+  const [settingsMessage, setSettingsMessage] = useState("")
+  const [settingsFeatured, setSettingsFeatured] = useState(false)
+  const [settingsSubmitting, setSettingsSubmitting] = useState(false)
 
   const { success, flash, errors, merchantDomain } = usePage().props as {
     success?: string
@@ -92,6 +105,11 @@ export default function MarketplaceProductPoolIndex({ products, categories, filt
     if (msg) toast.success(msg)
   }, [success, flash?.success])
 
+  useEffect(() => {
+    if (errors?.pickup_available) toast.error(errors.pickup_available)
+    if (errors?.error) toast.error(errors.error)
+  }, [errors])
+
   const applyFilters = () => {
     router.get(
       "/marketplace/product-pool",
@@ -106,7 +124,40 @@ export default function MarketplaceProductPoolIndex({ products, categories, filt
     setCustomPrice(String(Number(suggested)))
     setMessage("")
     setFeatured(false)
+    const merchantAllowsPickup =
+      !!p.pickup_available && ["physical", "service", "media"].includes(String(p.product_type))
+    setPickupAtOrg(merchantAllowsPickup)
     setDialogOpen(true)
+  }
+
+  const openListingSettings = (p: PoolRow) => {
+    if (!p.organization_product_id) return
+    setSettingsRow(p)
+    setSettingsPickup(!!p.listing_pickup_available)
+    setSettingsMessage(p.listing_supporter_message ?? "")
+    setSettingsFeatured(!!p.listing_is_featured)
+    setSettingsOpen(true)
+  }
+
+  const submitListingSettings = () => {
+    if (!settingsRow?.organization_product_id) return
+    setSettingsSubmitting(true)
+    router.patch(
+      route("marketplace.product-pool.listing.update", settingsRow.organization_product_id),
+      {
+        pickup_available: settingsPickup,
+        supporter_message: settingsMessage || null,
+        is_featured: settingsFeatured,
+      },
+      {
+        preserveScroll: true,
+        onFinish: () => setSettingsSubmitting(false),
+        onSuccess: () => {
+          setSettingsOpen(false)
+          setSettingsRow(null)
+        },
+      },
+    )
   }
 
   const submitAdopt = () => {
@@ -119,6 +170,7 @@ export default function MarketplaceProductPoolIndex({ products, categories, filt
         custom_price: customPrice,
         supporter_message: message || null,
         is_featured: featured,
+        pickup_available: pickupAtOrg,
       },
       {
         preserveScroll: true,
@@ -236,11 +288,18 @@ export default function MarketplaceProductPoolIndex({ products, categories, filt
                 </p>
                 <p className="text-sm font-medium">Base ${Number(p.base_price).toFixed(2)}</p>
                 {p.already_adopted ? (
-                  <Button variant="outline" size="sm" disabled className="w-full">
-                    {p.adoption_status === "pending_merchant_approval"
-                      ? "Pending merchant approval"
-                      : "Already selling"}
-                  </Button>
+                  <div className="space-y-2">
+                    <p className="text-xs text-muted-foreground text-center">
+                      {p.adoption_status === "pending_merchant_approval"
+                        ? "Pending merchant approval"
+                        : "You are selling this product"}
+                    </p>
+                    {p.organization_product_id ? (
+                      <Button variant="outline" size="sm" className="w-full" type="button" onClick={() => openListingSettings(p)}>
+                        Listing settings (pickup, message)
+                      </Button>
+                    ) : null}
+                  </div>
                 ) : (
                   <Button size="sm" className="w-full" onClick={() => openSell(p)}>
                     Sell this product
@@ -311,6 +370,20 @@ export default function MarketplaceProductPoolIndex({ products, categories, filt
                 Feature on our profile (optional)
               </label>
             </div>
+            {selected?.pickup_available && ["physical", "service", "media"].includes(String(selected.product_type)) && (
+              <div className="flex items-start gap-2 rounded-md border border-border/80 bg-muted/30 p-3">
+                <input
+                  id="pickup_org"
+                  type="checkbox"
+                  checked={pickupAtOrg}
+                  onChange={(e) => setPickupAtOrg(e.target.checked)}
+                  className="mt-0.5"
+                />
+                <label htmlFor="pickup_org" className="text-sm leading-snug">
+                  Offer local pickup at our organization address (no shipping when buyers choose pickup). Requires the merchant to allow pickup on this SKU. Uncheck to disable for this listing only.
+                </label>
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => setDialogOpen(false)}>
@@ -318,6 +391,61 @@ export default function MarketplaceProductPoolIndex({ products, categories, filt
             </Button>
             <Button type="button" onClick={submitAdopt} disabled={submitting}>
               {submitting ? "Saving…" : "Confirm"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={settingsOpen} onOpenChange={setSettingsOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Listing settings — {settingsRow?.name}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            {settingsRow?.pickup_available &&
+              ["physical", "service", "media"].includes(String(settingsRow.product_type)) && (
+                <div className="flex items-start gap-2 rounded-md border border-border/80 bg-muted/30 p-3">
+                  <input
+                    id="settings_pickup"
+                    type="checkbox"
+                    checked={settingsPickup}
+                    onChange={(e) => setSettingsPickup(e.target.checked)}
+                    className="mt-0.5"
+                  />
+                  <label htmlFor="settings_pickup" className="text-sm leading-snug">
+                    Offer local pickup at our organization (checkout shows our address; $0 shipping when selected). Only if the merchant allows pickup on this product.
+                  </label>
+                </div>
+              )}
+            <div>
+              <Label htmlFor="settings_msg">Message to supporters</Label>
+              <Textarea
+                id="settings_msg"
+                rows={3}
+                value={settingsMessage}
+                onChange={(e) => setSettingsMessage(e.target.value)}
+                placeholder="Shown on the public listing"
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                id="settings_feat"
+                type="checkbox"
+                checked={settingsFeatured}
+                onChange={(e) => setSettingsFeatured(e.target.checked)}
+              />
+              <label htmlFor="settings_feat" className="text-sm">
+                Feature on our profile
+              </label>
+            </div>
+            {errors?.pickup_available && <p className="text-sm text-destructive">{errors.pickup_available}</p>}
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setSettingsOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="button" onClick={submitListingSettings} disabled={settingsSubmitting}>
+              {settingsSubmitting ? "Saving…" : "Save"}
             </Button>
           </DialogFooter>
         </DialogContent>

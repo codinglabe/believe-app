@@ -152,6 +152,8 @@ export default function Create({
 
         /** At cost: this is what the buyer pays (before platform fee). */
         source_cost: '',
+        /** Local pickup at nonprofit address (manual physical org-owned catalog only). */
+        pickup_available: false,
     });
 
     const selectedMerchantShipFrom = useMemo(() => {
@@ -167,6 +169,17 @@ export default function Create({
         const role = Array.isArray(r) ? r[0] : r;
         return role === 'organization' || role === 'organization_pending';
     }, [auth?.user?.role]);
+
+    const canOfferCatalogPickup = useMemo(() => {
+        const r = auth?.user?.role;
+        const role = Array.isArray(r) ? r[0] : r;
+        const isAdmin = role === 'admin';
+        return (
+            !data.is_printify_product &&
+            data.type === 'physical' &&
+            (isOrgUser || (isAdmin && data.owned_by === 'organization' && String(data.organization_id || '').trim() !== ''))
+        );
+    }, [auth?.user?.role, data.is_printify_product, data.type, data.owned_by, data.organization_id, isOrgUser]);
 
      const [processing, setProcessing] = useState(false);
     const [errors, setErrors] = useState<any>({});
@@ -566,6 +579,9 @@ const handleCategoryChange = (categoryId: number) => {
             }
             if (data.parcel_weight_oz) {
                 formData.append('parcel_weight_oz', String(data.parcel_weight_oz));
+            }
+            if (canOfferCatalogPickup) {
+                formData.append('pickup_available', data.pickup_available ? '1' : '0');
             }
         }
 
@@ -2101,6 +2117,20 @@ const handleCategoryChange = (categoryId: number) => {
                                                     <p className="text-xs leading-relaxed text-blue-700 sm:text-sm dark:text-blue-300">
                                                         Shipping cost is not set here. At checkout, buyers see live rates from Shippo based on your ship-from address and parcel details.
                                                     </p>
+                                                </div>
+                                            )}
+                                            {canOfferCatalogPickup && (
+                                                <div className="flex items-start gap-2.5 rounded-lg border border-emerald-200 bg-emerald-50/80 p-3 dark:border-emerald-900/50 dark:bg-emerald-950/30">
+                                                    <input
+                                                        id="pickup_available_catalog"
+                                                        type="checkbox"
+                                                        checked={!!data.pickup_available}
+                                                        onChange={(e) => setData('pickup_available', e.target.checked)}
+                                                        className="mt-0.5"
+                                                    />
+                                                    <label htmlFor="pickup_available_catalog" className="text-xs leading-relaxed text-emerald-900 sm:text-sm dark:text-emerald-100">
+                                                        <span className="font-semibold">Offer local pickup</span> at our organization address. Buyers who choose pickup pay no shipping; they see your nonprofit location at checkout (same rules as merchant pool listings).
+                                                    </label>
                                                 </div>
                                             )}
                                         </>

@@ -4,8 +4,10 @@ namespace App\Http\Controllers;
 
 use App\Models\Category;
 use App\Models\MarketplaceProduct;
+use App\Models\Merchant;
 use App\Models\MerchantHubCategory;
 use App\Models\MerchantHubOffer;
+use App\Support\MarketplacePickup;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 use Inertia\Inertia;
@@ -281,12 +283,15 @@ class MerchantHubOfferController extends Controller
 
         // Find the Merchant model by matching name to get website
         $merchantWebsite = null;
-        $merchantModel = \App\Models\Merchant::where('business_name', $offer->merchant->name)
+        $merchantModel = Merchant::where('business_name', $offer->merchant->name)
             ->orWhere('name', $offer->merchant->name)
             ->first();
         if ($merchantModel && $merchantModel->website) {
             $merchantWebsite = $merchantModel->website;
         }
+        $pickupAddress = ($offer->pickup_available ?? false) && $merchantModel
+            ? MarketplacePickup::pickupAddressForMerchantHubOffer($offer, $merchantModel)
+            : null;
 
         // Convert image_url to same-origin URL (works locally and on live)
         $imageUrl = $offer->image_url;
@@ -429,6 +434,8 @@ class MerchantHubOfferController extends Controller
             'discountCap' => $offer->discount_cap ? (float) $offer->discount_cap : null,
             'eligibleItems' => $eligibleItems,
             'pricingBreakdown' => $pricingBreakdown,
+            'pickupAvailable' => (bool) ($offer->pickup_available ?? false),
+            'pickupAddress' => $pickupAddress,
         ];
 
         // Get redemption success data from session if exists

@@ -2,10 +2,11 @@
 
 namespace App\Http\Middleware;
 
+use App\Models\User;
 use Closure;
 use Illuminate\Http\Request;
-use Symfony\Component\HttpFoundation\Response;
 use Illuminate\Support\Facades\Auth;
+use Symfony\Component\HttpFoundation\Response;
 
 class DetectTimezone
 {
@@ -19,44 +20,46 @@ class DetectTimezone
     public function handle(Request $request, Closure $next): Response
     {
         $timezone = 'UTC'; // Default
-        
-        if (Auth::check()) {
-            $user = Auth::user();
-            $browserTimezone = $request->header('X-Timezone');
-            
-            // Priority: Browser timezone > User's stored timezone
+
+        $browserTimezone = $request->header('X-Timezone');
+
+        // Only the web guard uses App\Models\User and the users.timezone column.
+        // Default Auth::user() can be a Merchant (e.g. AUTH_GUARD=merchant), which would make
+        // User::find($id) return null and crash SessionGuard::setUser(null).
+        $webUser = Auth::guard('web')->user();
+        if ($webUser instanceof User) {
             if ($browserTimezone && $this->isValidTimezone($browserTimezone)) {
                 $timezone = $browserTimezone;
-                // Update user's timezone in database if different
-                if (!$user->timezone || $user->timezone !== $browserTimezone) {
-                    \App\Models\User::where('id', $user->id)->update(['timezone' => $browserTimezone]);
-                    // Reload user
-                    $user = \App\Models\User::find($user->id);
-                    Auth::setUser($user);
+                if (! $webUser->timezone || $webUser->timezone !== $browserTimezone) {
+                    User::query()->whereKey($webUser->getKey())->update(['timezone' => $browserTimezone]);
+                    $reloaded = User::query()->find($webUser->getKey());
+                    if ($reloaded instanceof User) {
+                        Auth::guard('web')->setUser($reloaded);
+                    }
                 }
-            } elseif ($user->timezone) {
-                // Use stored timezone from database
-                $timezone = $user->timezone;
+            } elseif ($webUser->timezone) {
+                $timezone = $webUser->timezone;
             }
-        } else {
-            // For guests, try browser timezone
-            $browserTimezone = $request->header('X-Timezone');
+        } elseif (Auth::guard('merchant')->check() || Auth::guard('livestock')->check()) {
+            // Merchant / livestock accounts do not use users.timezone; prefer browser when valid.
             if ($browserTimezone && $this->isValidTimezone($browserTimezone)) {
                 $timezone = $browserTimezone;
             }
+        } elseif ($browserTimezone && $this->isValidTimezone($browserTimezone)) {
+            $timezone = $browserTimezone;
         }
-        
+
         // Set timezone for the entire application
         // 1. Laravel config (used by Carbon and Laravel's date helpers like now(), today())
         config(['app.timezone' => $timezone]);
-        
+
         // 2. PHP's default timezone (used by date(), DateTime, Carbon::now(), etc.)
         // Carbon automatically uses PHP's default timezone, so this covers everything
         date_default_timezone_set($timezone);
 
         return $next($request);
     }
-    
+
     /**
      * Validate timezone
      */
@@ -65,6 +68,7 @@ class DetectTimezone
         if (empty($timezone)) {
             return false;
         }
+
         return in_array($timezone, timezone_identifiers_list());
     }
 }

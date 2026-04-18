@@ -24,7 +24,7 @@ export default function MerchantLogin({ status, canResetPassword }: LoginProps) 
 
   const submit: FormEventHandler = (e) => {
     e.preventDefault()
-    post(route('merchant.login'), {
+    post(route('merchant.login.store'), {
       onFinish: () => reset('password'),
     })
   }
@@ -45,9 +45,9 @@ export default function MerchantLogin({ status, canResetPassword }: LoginProps) 
           {/* Logo */}
           <div className="text-center mb-8">
             <Link href="/" className="inline-flex items-center gap-2 mb-4">
-              <img 
-                src="/merchant/merchant.png" 
-                alt={`${import.meta.env.VITE_APP_NAME || 'Believe'} Merchant`} 
+              <img
+                src="/merchant/merchant.png"
+                alt={`${import.meta.env.VITE_APP_NAME || 'Believe'} Merchant`}
                 className="w-12 h-12 object-contain"
               />
               <span className="text-2xl font-bold text-white">

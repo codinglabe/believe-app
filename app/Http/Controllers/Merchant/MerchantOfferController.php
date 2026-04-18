@@ -3,14 +3,14 @@
 namespace App\Http\Controllers\Merchant;
 
 use App\Http\Controllers\Controller;
-use App\Models\MerchantHubOffer;
+use App\Models\Merchant;
 use App\Models\MerchantHubCategory;
 use App\Models\MerchantHubMerchant;
-use App\Models\Merchant;
+use App\Models\MerchantHubOffer;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Inertia\Inertia;
 
@@ -50,10 +50,11 @@ class MerchantOfferController extends Controller
         // Convert image_url to same-origin URL (works on merchant subdomain)
         $offers->getCollection()->transform(function ($offer) {
             if ($offer->image_url) {
-                if (!filter_var($offer->image_url, FILTER_VALIDATE_URL)) {
-                    $offer->image_url = asset('storage/' . ltrim($offer->image_url, '/'));
+                if (! filter_var($offer->image_url, FILTER_VALIDATE_URL)) {
+                    $offer->image_url = asset('storage/'.ltrim($offer->image_url, '/'));
                 }
             }
+
             return $offer;
         });
 
@@ -103,6 +104,7 @@ class MerchantOfferController extends Controller
             'starts_at' => 'nullable|date',
             'ends_at' => 'nullable|date|after_or_equal:starts_at',
             'status' => 'required|in:draft,active,paused,expired',
+            'pickup_available' => 'sometimes|boolean',
         ], [
             'merchant_hub_category_id.required' => 'Please select a category.',
             'merchant_hub_category_id.exists' => 'The selected category does not exist.',
@@ -132,6 +134,8 @@ class MerchantOfferController extends Controller
             'status.in' => 'The selected status is invalid.',
         ]);
 
+        $validated['pickup_available'] = $request->boolean('pickup_available');
+
         // Set merchant_hub_merchant_id
         $validated['merchant_hub_merchant_id'] = $merchantHubMerchant->id;
 
@@ -154,10 +158,11 @@ class MerchantOfferController extends Controller
             return redirect()->route('offers.index')
                 ->with('success', 'Offer created successfully.');
         } catch (\Exception $e) {
-            Log::error('Merchant offer creation error: ' . $e->getMessage());
+            Log::error('Merchant offer creation error: '.$e->getMessage());
+
             return redirect()->back()
                 ->withInput()
-                ->withErrors(['error' => 'Failed to create offer: ' . $e->getMessage()])
+                ->withErrors(['error' => 'Failed to create offer: '.$e->getMessage()])
                 ->with('error', 'Failed to create offer. Please check the form for errors.');
         }
     }
@@ -179,8 +184,8 @@ class MerchantOfferController extends Controller
 
         // Convert image_url to same-origin URL
         $offerData = $offer->toArray();
-        if (!empty($offerData['image_url']) && !filter_var($offerData['image_url'], FILTER_VALIDATE_URL)) {
-            $offerData['image_url'] = asset('storage/' . ltrim($offerData['image_url'], '/'));
+        if (! empty($offerData['image_url']) && ! filter_var($offerData['image_url'], FILTER_VALIDATE_URL)) {
+            $offerData['image_url'] = asset('storage/'.ltrim($offerData['image_url'], '/'));
         }
 
         return Inertia::render('merchant/Offers/Show', [
@@ -206,8 +211,8 @@ class MerchantOfferController extends Controller
 
         // Convert image_url to same-origin URL
         $offerData = $offer->toArray();
-        if (!empty($offerData['image_url']) && !filter_var($offerData['image_url'], FILTER_VALIDATE_URL)) {
-            $offerData['image_url'] = asset('storage/' . ltrim($offerData['image_url'], '/'));
+        if (! empty($offerData['image_url']) && ! filter_var($offerData['image_url'], FILTER_VALIDATE_URL)) {
+            $offerData['image_url'] = asset('storage/'.ltrim($offerData['image_url'], '/'));
         }
 
         return Inertia::render('merchant/Offers/Edit', [
@@ -244,6 +249,7 @@ class MerchantOfferController extends Controller
             'starts_at' => 'nullable|date',
             'ends_at' => 'nullable|date|after_or_equal:starts_at',
             'status' => 'required|in:draft,active,paused,expired',
+            'pickup_available' => 'sometimes|boolean',
         ], [
             'merchant_hub_category_id.required' => 'Please select a category.',
             'merchant_hub_category_id.exists' => 'The selected category does not exist.',
@@ -272,6 +278,8 @@ class MerchantOfferController extends Controller
             'status.required' => 'The status field is required.',
             'status.in' => 'The selected status is invalid.',
         ]);
+
+        $validated['pickup_available'] = $request->boolean('pickup_available');
 
         // BIU: Points auto-calculated; merchants cannot edit.
         $validated['points_required'] = MerchantHubOffer::calculatePointsRequired(
@@ -308,10 +316,11 @@ class MerchantOfferController extends Controller
             return redirect()->route('offers.index')
                 ->with('success', 'Offer updated successfully.');
         } catch (\Exception $e) {
-            Log::error('Merchant offer update error: ' . $e->getMessage());
+            Log::error('Merchant offer update error: '.$e->getMessage());
+
             return redirect()->back()
                 ->withInput()
-                ->withErrors(['error' => 'Failed to update offer: ' . $e->getMessage()])
+                ->withErrors(['error' => 'Failed to update offer: '.$e->getMessage()])
                 ->with('error', 'Failed to update offer. Please check the form for errors.');
         }
     }
@@ -356,9 +365,10 @@ class MerchantOfferController extends Controller
             return redirect()->route('offers.index')
                 ->with('success', 'Offer deleted successfully.');
         } catch (\Exception $e) {
-            Log::error('Merchant offer deletion error: ' . $e->getMessage());
+            Log::error('Merchant offer deletion error: '.$e->getMessage());
+
             return redirect()->back()
-                ->with('error', 'Failed to delete offer: ' . $e->getMessage());
+                ->with('error', 'Failed to delete offer: '.$e->getMessage());
         }
     }
 
@@ -375,12 +385,12 @@ class MerchantOfferController extends Controller
             ->orWhere('slug', $slug)
             ->first();
 
-        if (!$merchantHubMerchant) {
+        if (! $merchantHubMerchant) {
             // Ensure slug is unique
             $originalSlug = $slug;
             $counter = 1;
             while (MerchantHubMerchant::where('slug', $slug)->exists()) {
-                $slug = $originalSlug . '-' . $counter;
+                $slug = $originalSlug.'-'.$counter;
                 $counter++;
             }
 
@@ -395,4 +405,3 @@ class MerchantOfferController extends Controller
         return $merchantHubMerchant;
     }
 }
-

@@ -904,7 +904,8 @@ Route::prefix('admin/fractional')
     });
 
 Route::middleware(['auth', 'EnsureEmailIsVerified'])->group(function () {
-    Route::get('/notifications', [NotificationController::class, 'index']);
+    Route::get('/notifications/api', [NotificationController::class, 'apiIndex'])->name('notifications.api');
+    Route::get('/notifications', [NotificationController::class, 'inbox'])->name('notifications.index');
     Route::post('/notifications/{notification}/read', [NotificationController::class, 'markAsRead']);
     Route::post('/notifications/mark-all-read', [NotificationController::class, 'markAllAsRead']);
     Route::post('/notifications/clear-all', [NotificationController::class, 'clearAll']);
@@ -994,6 +995,7 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|care_alli
     Route::prefix('marketplace/product-pool')->name('marketplace.product-pool.')->group(function () {
         Route::get('/', [\App\Http\Controllers\Organization\MarketplaceProductPoolController::class, 'index'])->name('index');
         Route::post('/adopt', [\App\Http\Controllers\Organization\MarketplaceProductPoolController::class, 'store'])->name('adopt');
+        Route::patch('/listing/{organization_product}', [\App\Http\Controllers\Organization\MarketplaceProductPoolController::class, 'updateListing'])->name('listing.update');
     });
 
     // old Facebook Integration Routes

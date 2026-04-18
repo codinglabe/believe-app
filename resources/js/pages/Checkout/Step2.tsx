@@ -574,7 +574,13 @@ function Step2Form({ items, subtotal, platform_fee_percentage, platform_fee, don
                 Choose how your order ships. Totals update when you change selection; click calculate / pay again if you already started card payment.
               </p>
               <div className="space-y-2">
-                {step2Data.shippingMethods.map((m: { id: string | number; name?: string; cost: number; estimated_days?: string }) => (
+                {step2Data.shippingMethods.map((m: {
+                  id: string | number
+                  name?: string
+                  cost: number
+                  estimated_days?: string
+                  pickup_address?: string
+                }) => (
                   <label
                     key={String(m.id)}
                     className={`flex cursor-pointer items-start gap-3 rounded-lg border-2 p-4 transition-all ${
@@ -592,12 +598,22 @@ function Step2Form({ items, subtotal, platform_fee_percentage, platform_fee, don
                     />
                     <div className="flex-1 min-w-0">
                       <div className="font-medium text-gray-900 dark:text-white">{m.name || "Shipping"}</div>
-                      {m.estimated_days != null && m.estimated_days !== "—" && (
-                        <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                          Est.{" "}
-                          {String(m.estimated_days).toLowerCase().includes("business day")
-                            ? m.estimated_days
-                            : `${m.estimated_days} business days`}
+                      {String(m.id) === "pickup" ? (
+                        <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">No shipping charge</div>
+                      ) : (
+                        m.estimated_days != null &&
+                        m.estimated_days !== "—" && (
+                          <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                            Est.{" "}
+                            {String(m.estimated_days).toLowerCase().includes("business day")
+                              ? m.estimated_days
+                              : `${m.estimated_days} business days`}
+                          </div>
+                        )
+                      )}
+                      {m.pickup_address && String(selectedShippingMethod) === String(m.id) && (
+                        <div className="mt-2 text-xs text-gray-600 dark:text-gray-300 whitespace-pre-line rounded-md border border-emerald-500/30 bg-emerald-500/5 p-2">
+                          {m.pickup_address}
                         </div>
                       )}
                     </div>

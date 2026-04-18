@@ -18,7 +18,7 @@ class MerchantSubscriptionController extends Controller
     {
         $merchant = $request->user('merchant');
 
-        if (!$merchant) {
+        if (! $merchant) {
             return redirect()->route('merchant.login');
         }
 
@@ -31,22 +31,22 @@ class MerchantSubscriptionController extends Controller
         $currentPlan = null;
         $isCanceled = false;
         $endsAt = null;
-        
+
         if ($currentSubscription) {
             // Refresh subscription from Stripe to get latest status (dynamic)
             try {
                 if ($currentSubscription->stripe_id) {
                     $stripe = Cashier::stripe();
                     $stripeSubscription = $stripe->subscriptions->retrieve($currentSubscription->stripe_id);
-                    
+
                     // Update local subscription with latest data from Stripe
                     $currentSubscription->stripe_status = $stripeSubscription->status;
-                    $currentSubscription->ends_at = $stripeSubscription->cancel_at ? 
+                    $currentSubscription->ends_at = $stripeSubscription->cancel_at ?
                         \Carbon\Carbon::createFromTimestamp($stripeSubscription->cancel_at) : null;
                     $currentSubscription->save();
-                    
+
                     // Check if subscription is canceled
-                    $isCanceled = $stripeSubscription->status === 'canceled' || 
+                    $isCanceled = $stripeSubscription->status === 'canceled' ||
                                  ($stripeSubscription->cancel_at !== null);
                     $endsAt = $currentSubscription->ends_at?->toIso8601String();
                 }
@@ -56,15 +56,15 @@ class MerchantSubscriptionController extends Controller
                     'subscription_id' => $currentSubscription->id,
                     'error' => $e->getMessage(),
                 ]);
-                
+
                 // Fallback: check local status
-                $isCanceled = $currentSubscription->stripe_status === 'canceled' || 
+                $isCanceled = $currentSubscription->stripe_status === 'canceled' ||
                              ($currentSubscription->ends_at && $currentSubscription->ends_at->isPast());
                 $endsAt = $currentSubscription->ends_at?->toIso8601String();
             }
 
             // Only set current plan if subscription is not canceled
-            if (!$isCanceled) {
+            if (! $isCanceled) {
                 $currentPlan = MerchantSubscriptionPlan::where('stripe_price_id', $currentSubscription->stripe_price)->first();
             } else {
                 // If canceled, don't show as current plan
@@ -101,7 +101,7 @@ class MerchantSubscriptionController extends Controller
         return Inertia::render('merchant/Subscription/Index', [
             'plans' => $plans,
             'currentPlan' => $currentPlanData,
-            'hasActiveSubscription' => $currentSubscription !== null && !$isCanceled,
+            'hasActiveSubscription' => $currentSubscription !== null && ! $isCanceled,
             'subscriptionEndsAt' => $endsAt,
             'isCanceled' => $isCanceled,
         ]);
@@ -114,7 +114,7 @@ class MerchantSubscriptionController extends Controller
     {
         $merchant = $request->user('merchant');
 
-        if (!$merchant) {
+        if (! $merchant) {
             return redirect()->route('merchant.login');
         }
 
@@ -122,11 +122,11 @@ class MerchantSubscriptionController extends Controller
 
         try {
             // Ensure Stripe price exists, create if not
-            if (!$plan->stripe_price_id) {
+            if (! $plan->stripe_price_id) {
                 // Create Stripe product and price using Cashier
                 $stripe = Cashier::stripe();
-                
-                if (!$plan->stripe_product_id) {
+
+                if (! $plan->stripe_product_id) {
                     $product = $stripe->products->create([
                         'name' => "Merchant: {$plan->name}",
                         'description' => $plan->description ?? '',
@@ -137,13 +137,13 @@ class MerchantSubscriptionController extends Controller
                 $interval = $plan->frequency === 'yearly' ? 'year' : 'month';
                 $price = $stripe->prices->create([
                     'product' => $plan->stripe_product_id,
-                    'unit_amount' => (int)($plan->price * 100),
+                    'unit_amount' => (int) ($plan->price * 100),
                     'currency' => 'usd',
                     'recurring' => [
                         'interval' => $interval,
                     ],
                 ]);
-                
+
                 $plan->stripe_price_id = $price->id;
                 $plan->save();
             }
@@ -158,7 +158,7 @@ class MerchantSubscriptionController extends Controller
                     [
                         'price' => $plan->stripe_price_id,
                         'quantity' => 1,
-                    ]
+                    ],
                 ],
                 'subscription_data' => [
                     'metadata' => [
@@ -166,7 +166,7 @@ class MerchantSubscriptionController extends Controller
                         'merchant_id' => $merchant->id,
                     ],
                 ],
-                'success_url' => route('merchant.subscription.success') . '?session_id={CHECKOUT_SESSION_ID}&plan_id=' . $plan->id,
+                'success_url' => route('merchant.subscription.success').'?session_id={CHECKOUT_SESSION_ID}&plan_id='.$plan->id,
                 'cancel_url' => route('merchant.subscription.index'),
                 'metadata' => [
                     'merchant_id' => $merchant->id,
@@ -182,7 +182,7 @@ class MerchantSubscriptionController extends Controller
                 ->whereNotNull('trial_ends_at')
                 ->whereNotNull('stripe_id')
                 ->exists();
-            
+
             // Check for truly active subscriptions (not canceled, not ended)
             // A subscription is considered active if:
             // 1. Status is 'active' or 'trialing' (not 'canceled', 'past_due', or 'incomplete')
@@ -194,19 +194,19 @@ class MerchantSubscriptionController extends Controller
                 ->whereNull('ends_at') // Not scheduled to cancel
                 ->whereNotNull('stripe_id')
                 ->exists();
-            
+
             // Apply trial if:
             // 1. Plan has trial days configured
             // 2. Merchant doesn't currently have an active subscription (not canceled, not ended)
             // Note: We allow trial even if merchant had a canceled subscription before
             // Stripe will handle preventing duplicate trials if the customer already used one
-            $shouldApplyTrial = $plan->trial_days && 
-                               $plan->trial_days > 0 && 
-                               !$hasActiveSubscription;
-            
+            $shouldApplyTrial = $plan->trial_days &&
+                               $plan->trial_days > 0 &&
+                               ! $hasActiveSubscription;
+
             if ($shouldApplyTrial) {
                 $checkoutSessionData['subscription_data']['trial_period_days'] = $plan->trial_days;
-                
+
                 // Configure trial settings to ensure proper behavior
                 $checkoutSessionData['subscription_data']['trial_settings'] = [
                     'end_behavior' => [
@@ -221,7 +221,7 @@ class MerchantSubscriptionController extends Controller
             } else {
                 $checkoutSessionData['customer_email'] = $merchant->email;
             }
-            
+
             // Log the checkout session data for debugging
             Log::info('Merchant subscription checkout session created', [
                 'merchant_id' => $merchant->id,
@@ -259,7 +259,7 @@ class MerchantSubscriptionController extends Controller
     {
         $merchant = $request->user('merchant');
 
-        if (!$merchant) {
+        if (! $merchant) {
             return redirect()->route('merchant.login');
         }
 
@@ -276,7 +276,7 @@ class MerchantSubscriptionController extends Controller
                 if ($session->subscription) {
                     try {
                         // Ensure merchant has stripe_id (required for Cashier)
-                        if (!$merchant->stripe_id && $session->customer) {
+                        if (! $merchant->stripe_id && $session->customer) {
                             $merchant->stripe_id = $session->customer;
                             $merchant->save();
                         }
@@ -287,7 +287,7 @@ class MerchantSubscriptionController extends Controller
                         ]);
 
                         // If subscription doesn't exist, retrieve from Stripe using Cashier and sync
-                        if (!$subscription->exists) {
+                        if (! $subscription->exists) {
                             $stripeSubscription = Cashier::stripe()->subscriptions->retrieve($session->subscription);
 
                             // Use Cashier's subscription model properties
@@ -332,9 +332,9 @@ class MerchantSubscriptionController extends Controller
     {
         $merchant = $request->user('merchant');
 
-        if (!$merchant) {
+        if (! $merchant) {
             return redirect()->route('merchant.settings')->with('flash', [
-                'error' => 'Unauthorized'
+                'error' => 'Unauthorized',
             ]);
         }
 
@@ -345,9 +345,9 @@ class MerchantSubscriptionController extends Controller
                 ->orderBy('created_at', 'desc')
                 ->first();
 
-            if (!$subscription) {
+            if (! $subscription) {
                 return redirect()->route('merchant.settings')->with('flash', [
-                    'error' => 'No active subscription found'
+                    'error' => 'No active subscription found',
                 ]);
             }
 
@@ -360,12 +360,12 @@ class MerchantSubscriptionController extends Controller
                 if ($subscription->stripe_id) {
                     $stripe = Cashier::stripe();
                     $stripeSubscription = $stripe->subscriptions->retrieve($subscription->stripe_id);
-                    
+
                     // Update with latest data from Stripe
                     $subscription->stripe_status = $stripeSubscription->status;
-                    $subscription->ends_at = $stripeSubscription->cancel_at ? 
+                    $subscription->ends_at = $stripeSubscription->cancel_at ?
                         \Carbon\Carbon::createFromTimestamp($stripeSubscription->cancel_at) : null;
-                    
+
                     // If cancel_at is set, the subscription is scheduled to cancel
                     // Update status to reflect this (status might still be 'active' but with cancel_at set)
                     if ($stripeSubscription->cancel_at) {
@@ -373,7 +373,7 @@ class MerchantSubscriptionController extends Controller
                         // But we mark it as 'canceled' in our system since it's scheduled to cancel
                         $subscription->stripe_status = 'canceled';
                     }
-                    
+
                     $subscription->save();
                 }
             } catch (\Exception $e) {
@@ -390,7 +390,7 @@ class MerchantSubscriptionController extends Controller
             ]);
 
             return redirect()->route('merchant.settings')->with('flash', [
-                'success' => 'Subscription cancelled successfully. It will remain active until the end of the billing period.'
+                'success' => 'Subscription cancelled successfully. It will remain active until the end of the billing period.',
             ]);
         } catch (\Exception $e) {
             Log::error('Failed to cancel merchant subscription', [
@@ -399,7 +399,7 @@ class MerchantSubscriptionController extends Controller
             ]);
 
             return redirect()->route('merchant.settings')->with('flash', [
-                'error' => 'Failed to cancel subscription. Please try again or contact support.'
+                'error' => 'Failed to cancel subscription. Please try again or contact support.',
             ]);
         }
     }

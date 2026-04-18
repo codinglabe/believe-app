@@ -37,6 +37,7 @@ export default function CreateOffer({ categories }: CreateOfferProps) {
     starts_at: '',
     ends_at: '',
     status: 'draft' as 'draft' | 'active' | 'paused' | 'expired',
+    pickup_available: false,
   })
 
   // Live calculator: BIU rules — $1 discount = 1,000 points
@@ -309,6 +310,18 @@ export default function CreateOffer({ categories }: CreateOfferProps) {
                         <p className="mt-1 text-sm text-red-400">{errors.ends_at}</p>
                       )}
                     </div>
+                  </div>
+                  <div className="flex items-center gap-2 pt-2">
+                    <input
+                      id="pickup_available"
+                      type="checkbox"
+                      checked={data.pickup_available}
+                      onChange={(e) => setData('pickup_available', e.target.checked)}
+                      className="rounded border-gray-600"
+                    />
+                    <label htmlFor="pickup_available" className="text-sm text-gray-300">
+                      Allow local pickup (buyer pays no shipping; your business address is shown at checkout)
+                    </label>
                   </div>
                   <div className="max-w-xs">
                     <MerchantLabel htmlFor="status">Status *</MerchantLabel>

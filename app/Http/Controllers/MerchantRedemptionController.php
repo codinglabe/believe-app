@@ -12,6 +12,7 @@ use App\Models\Transaction;
 use App\Services\BiuPlatformFeeService;
 use App\Services\ShippoService;
 use App\Services\StripeProcessingFeeEstimator;
+use App\Support\MarketplacePickup;
 use App\Support\StripeCustomerChargeAmount;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -282,6 +283,10 @@ class MerchantRedemptionController extends Controller
         if (! $offer->isAvailable()) {
             return redirect()->route('merchant-hub.offer.show', $id)->with('error', 'This offer is no longer available.');
         }
+        $merchantModel = $this->resolveMerchantAddressOwner($offer);
+        $pickupAddress = ($offer->pickup_available ?? false) && $merchantModel
+            ? MarketplacePickup::pickupAddressForMerchantHubOffer($offer, $merchantModel)
+            : null;
         $referencePrice = (float) ($offer->reference_price ?? 0);
         if ($referencePrice <= 0 && $offer->points_required > 0 && $offer->discount_percentage > 0) {
             $referencePrice = ($offer->points_required / 1000) * 100 / (float) $offer->discount_percentage;
@@ -304,6 +309,8 @@ class MerchantRedemptionController extends Controller
                 'pointsRequired' => (int) ($offer->points_required ?? 0),
                 'userPoints' => (int) ($user->reward_points ?? 0),
                 'currency' => $offer->currency ?? 'USD',
+                'pickupAvailable' => (bool) ($offer->pickup_available ?? false),
+                'pickupAddress' => $pickupAddress,
             ],
             'defaultPaymentMethod' => in_array($request->string('payment_method')->toString(), ['points', 'cash'], true)
                 ? $request->string('payment_method')->toString()
@@ -391,7 +398,7 @@ class MerchantRedemptionController extends Controller
         );
 
         $paymentMethod = (string) $request->payment_method;
-        $methods = array_map(function (array $m) use ($subtotalAmount, $platformFeeAmount, $taxAmount, $paymentMethod) {
+        $enrichMethod = function (array $m) use ($subtotalAmount, $platformFeeAmount, $taxAmount, $paymentMethod) {
             $shipping = round((float) ($m['cost'] ?? 0), 2);
             $m['cost'] = $shipping;
             $basket = round($subtotalAmount + $platformFeeAmount + $taxAmount + $shipping, 2);
@@ -406,7 +413,22 @@ class MerchantRedemptionController extends Controller
             }
 
             return $m;
-        }, $methods);
+        };
+        $methods = array_map($enrichMethod, $methods);
+
+        if (($offer->pickup_available ?? false) && $merchantModel) {
+            $pickupLines = MarketplacePickup::pickupAddressForMerchantHubOffer($offer, $merchantModel);
+            if ($pickupLines) {
+                array_unshift($methods, $enrichMethod([
+                    'id' => MarketplacePickup::RATE_ID,
+                    'name' => 'Pick up at merchant (no shipping)',
+                    'cost' => 0.0,
+                    'estimated_days' => '—',
+                    'provider' => 'pickup',
+                    'pickup_address' => $pickupLines,
+                ]));
+            }
+        }
 
         return response()->json([
             'success' => true,
@@ -437,7 +459,7 @@ class MerchantRedemptionController extends Controller
             'shipping_state' => 'nullable|string|max:100',
             'shipping_postal_code' => 'required|string|max:20',
             'shipping_country' => 'required|string|size:2',
-            'shippo_shipment_id' => 'required|string|max:120',
+            'shippo_shipment_id' => 'nullable|string|max:120',
             'shippo_rate_object_id' => 'required|string|max:120',
         ]);
         $user = Auth::user();
@@ -450,20 +472,36 @@ class MerchantRedemptionController extends Controller
             return back()->withErrors(['error' => 'This offer is no longer available.']);
         }
 
-        if (! $this->shippoService->isConfigured()) {
-            return back()->withErrors(['error' => 'Shipping is not configured.']);
-        }
+        $isPickup = (string) $request->shippo_rate_object_id === MarketplacePickup::RATE_ID;
 
-        $rates = $this->shippoService->retrieveShipmentRates((string) $request->shippo_shipment_id);
-        if (empty($rates['success']) || empty($rates['rates'])) {
-            return back()->withErrors(['error' => $rates['error'] ?? 'Could not refresh shipping rates. Please try again.']);
-        }
-        $methods = $this->shippoService->ratesToCheckoutMethods($rates['rates']);
-        $selectedRate = collect($methods)->first(function ($m) use ($request) {
-            return (string) ($m['id'] ?? '') === (string) $request->shippo_rate_object_id;
-        });
-        if (! $selectedRate) {
-            return back()->withErrors(['error' => 'Selected shipping method is no longer available. Please refresh rates.']);
+        if ($isPickup) {
+            if (! ($offer->pickup_available ?? false)) {
+                return back()->withErrors(['error' => 'Pickup is not available for this offer.']);
+            }
+            $selectedRate = [
+                'id' => MarketplacePickup::RATE_ID,
+                'cost' => 0.0,
+                'provider' => 'pickup',
+            ];
+        } else {
+            if (! $this->shippoService->isConfigured()) {
+                return back()->withErrors(['error' => 'Shipping is not configured.']);
+            }
+            if (empty($request->shippo_shipment_id)) {
+                return back()->withErrors(['error' => 'Please get shipping options first.']);
+            }
+
+            $rates = $this->shippoService->retrieveShipmentRates((string) $request->shippo_shipment_id);
+            if (empty($rates['success']) || empty($rates['rates'])) {
+                return back()->withErrors(['error' => $rates['error'] ?? 'Could not refresh shipping rates. Please try again.']);
+            }
+            $methods = $this->shippoService->ratesToCheckoutMethods($rates['rates']);
+            $selectedRate = collect($methods)->first(function ($m) use ($request) {
+                return (string) ($m['id'] ?? '') === (string) $request->shippo_rate_object_id;
+            });
+            if (! $selectedRate) {
+                return back()->withErrors(['error' => 'Selected shipping method is no longer available. Please refresh rates.']);
+            }
         }
 
         $referencePrice = (float) ($offer->reference_price ?? 0);
@@ -517,9 +555,9 @@ class MerchantRedemptionController extends Controller
                 'stripe_processing_fee_addon' => $paymentMethod === 'cash' && $stripeProcessingFeeAddon > 0
                     ? $stripeProcessingFeeAddon
                     : null,
-                'shippo_shipment_id' => (string) $request->shippo_shipment_id,
-                'shippo_rate_object_id' => (string) $request->shippo_rate_object_id,
-                'carrier' => $selectedRate['provider'] ?? null,
+                'shippo_shipment_id' => $isPickup ? null : ($request->filled('shippo_shipment_id') ? (string) $request->shippo_shipment_id : null),
+                'shippo_rate_object_id' => $isPickup ? null : (string) $request->shippo_rate_object_id,
+                'carrier' => $isPickup ? 'local_pickup' : ($selectedRate['provider'] ?? null),
                 'status' => 'pending',
                 'receipt_code' => $receiptCode,
                 'shipping_name' => $request->shipping_name,
@@ -1066,7 +1104,7 @@ class MerchantRedemptionController extends Controller
         try {
             if (
                 ! $this->shippoService->isConfigured()
-                || empty($redemption->shippo_rate_object_id)
+                || ! MarketplacePickup::isShippoPurchasableRateId($redemption->shippo_rate_object_id)
                 || ! empty($redemption->tracking_number)
             ) {
                 return;

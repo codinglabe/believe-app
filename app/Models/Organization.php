@@ -221,6 +221,27 @@ class Organization extends Model
     }
 
     /**
+     * User IDs to notify when a supporter who favorites this nonprofit has a birthday (primary owner + board).
+     *
+     * @return Collection<int, int>
+     */
+    public function supporterBirthdayNotifyUserIds(): Collection
+    {
+        $ids = collect();
+
+        if ($this->user_id) {
+            $ids->push((int) $this->user_id);
+        }
+
+        $this->boardMembers()
+            ->whereNotNull('user_id')
+            ->pluck('user_id')
+            ->each(fn ($uid) => $ids->push((int) $uid));
+
+        return $ids->unique()->filter()->values();
+    }
+
+    /**
      * Get IRS board members for this organization (by EIN)
      */
     public function irsBoardMembers()

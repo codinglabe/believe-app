@@ -54,9 +54,9 @@ export default function MerchantDashboard({ stats, weeklyRedemptions, recentRede
   return (
     <>
       <Head title="Merchant Dashboard" />
-      <SubscriptionRequiredModal 
-        isOpen={showSubscriptionModal} 
-        onClose={() => setShowSubscriptionModal(false)} 
+      <SubscriptionRequiredModal
+        isOpen={showSubscriptionModal}
+        onClose={() => setShowSubscriptionModal(false)}
       />
       <MerchantDashboardLayout>
         <motion.div

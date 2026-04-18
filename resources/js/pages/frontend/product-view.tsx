@@ -30,6 +30,9 @@ interface Product {
   unit_price: number;
   source_cost?: number | null;
   organization_id?: number | null;
+  type?: string;
+  owned_by?: string;
+  pickup_available?: boolean;
   image: string;
   quantity_available: number;
   organization: {
@@ -85,6 +88,8 @@ interface ProductViewProps {
   winnerStatus?: string | null;
   isCurrentUserWinner?: boolean;
   platformFeePercentage?: number;
+  catalog_pickup_offered?: boolean;
+  catalog_pickup_address_preview?: string | null;
 }
 
 interface CartItem {
@@ -115,6 +120,8 @@ export default function ProductView({
   winnerStatus = null,
   isCurrentUserWinner = false,
   platformFeePercentage = 10,
+  catalog_pickup_offered = false,
+  catalog_pickup_address_preview = null,
 }: ProductViewProps) {
   const [selectedVariant, setSelectedVariant] = useState<PrintifyVariant | null>(firstVariant || null);
   const [quantity, setQuantity] = useState(1);
@@ -852,6 +859,15 @@ export default function ProductView({
                     <p className="text-sm text-slate-300">
                       Final product price before shipping and tax.
                     </p>
+                  )}
+                  {catalog_pickup_offered && catalog_pickup_address_preview && (
+                    <div className="mt-4 rounded-lg border border-emerald-400/40 bg-emerald-950/40 px-4 py-3 text-sm text-emerald-50">
+                      <p className="font-semibold text-emerald-200 mb-1">Local pickup available</p>
+                      <p className="whitespace-pre-line text-emerald-50/95">{catalog_pickup_address_preview}</p>
+                      <p className="mt-2 text-xs text-emerald-200/80">
+                        Choose pickup at checkout for no shipping charge (nonprofit location above).
+                      </p>
+                    </div>
                   )}
                 </div>
               )}

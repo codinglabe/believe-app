@@ -77,6 +77,8 @@ interface SharedData extends Record<string, unknown> {
       balance?: string // Added wallet_balance
       reward_points?: number // Added reward_points
       believe_points?: number // Added believe_points
+      /** Gifted bucket (retail gift cards, etc.); purchased balance is `believe_points`. */
+      gifted_believe_points?: number
       role?: string // Ensure role is also present
       email_verified_at?: string | null // Email verification status
       care_alliance?: { slug: string; name: string } | null
@@ -539,7 +541,18 @@ export default function Navbar() {
                                                           <div className="min-w-0">
                                                               <p className="text-xs text-muted-foreground">Believe Points</p>
                                                               <p className="text-sm font-semibold text-purple-700 dark:text-purple-300">
-                                                                  {(auth.user.believe_points || 0).toLocaleString()}
+                                                                  {(auth.user.believe_points || 0).toLocaleString(undefined, {
+                                                                      minimumFractionDigits: 2,
+                                                                      maximumFractionDigits: 2,
+                                                                  })}
+                                                              </p>
+                                                              <p className="mt-0.5 flex items-center gap-1 text-[11px] font-semibold text-amber-600 dark:text-amber-400">
+                                                                  <Gift className="h-3 w-3 shrink-0" aria-hidden />
+                                                                  {(Number(auth.user.gifted_believe_points) || 0).toLocaleString(undefined, {
+                                                                      minimumFractionDigits: 2,
+                                                                      maximumFractionDigits: 2,
+                                                                  })}{" "}
+                                                                  Gifted
                                                               </p>
                                                           </div>
                                                       </div>
@@ -830,7 +843,18 @@ export default function Navbar() {
                                                               <div className="min-w-0">
                                                                   <p className="text-xs text-muted-foreground">Believe Points</p>
                                                                   <p className="text-sm font-semibold text-purple-700 dark:text-purple-300">
-                                                                      {(auth.user.believe_points || 0).toLocaleString()}
+                                                                      {(auth.user.believe_points || 0).toLocaleString(undefined, {
+                                                                          minimumFractionDigits: 2,
+                                                                          maximumFractionDigits: 2,
+                                                                      })}
+                                                                  </p>
+                                                                  <p className="mt-0.5 flex items-center gap-1 text-[11px] font-semibold text-amber-600 dark:text-amber-400">
+                                                                      <Gift className="h-3 w-3 shrink-0" aria-hidden />
+                                                                      {(Number(auth.user.gifted_believe_points) || 0).toLocaleString(undefined, {
+                                                                          minimumFractionDigits: 2,
+                                                                          maximumFractionDigits: 2,
+                                                                      })}{" "}
+                                                                      Gifted
                                                                   </p>
                                                               </div>
                                                           </div>

@@ -19,6 +19,8 @@ interface OfferSummary {
   pointsRequired: number
   userPoints: number
   currency: string
+  pickupAvailable?: boolean
+  pickupAddress?: string | null
 }
 
 interface Props {
@@ -53,6 +55,7 @@ interface ShippingMethod {
   total_amount: number
   stripe_processing_fee_addon?: number
   charged_total?: number
+  pickup_address?: string
 }
 
 export default function CheckoutShipping({ offer, defaultPaymentMethod = 'cash' }: Props) {
@@ -122,9 +125,11 @@ export default function CheckoutShipping({ offer, defaultPaymentMethod = 'cash' 
     }
   }
 
+  const isPickupRate = selectedRateId === 'pickup'
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    if (!selectedRateId || !shipmentId) {
+    if (!selectedRateId || (!shipmentId && !isPickupRate)) {
       setQuoteError('Please get shipping options and select a shipping method.')
       return
     }
@@ -139,7 +144,7 @@ export default function CheckoutShipping({ offer, defaultPaymentMethod = 'cash' 
       payment_method: paymentMethod,
       ...form,
       shipping_country: country,
-      shippo_shipment_id: shipmentId,
+      shippo_shipment_id: isPickupRate ? '' : shipmentId,
       shippo_rate_object_id: selectedRateId,
     }, {
       preserveScroll: true,
@@ -371,20 +376,33 @@ export default function CheckoutShipping({ offer, defaultPaymentMethod = 'cash' 
                           <input
                             type="radio"
                             checked={selectedRateId === method.id}
-                            onChange={() => setSelectedRateId(method.id)}
+                            onChange={() => {
+                              setSelectedRateId(method.id)
+                              if (method.id === 'pickup') {
+                                setShipmentId('')
+                              }
+                            }}
                           />
                           <div>
                             <p className="text-sm font-medium">{method.name}</p>
                             <p className="text-xs text-muted-foreground">
-                              {method.estimated_days && method.estimated_days !== '—'
-                                ? `${method.estimated_days} business days`
-                                : 'Estimated time unavailable'}
+                              {method.id === 'pickup'
+                                ? 'No shipping charge'
+                                : method.estimated_days && method.estimated_days !== '—'
+                                  ? `${method.estimated_days} business days`
+                                  : 'Estimated time unavailable'}
                             </p>
                           </div>
                         </div>
                         <p className="text-sm font-semibold">{offer.currency} {method.cost.toFixed(2)}</p>
                       </label>
                     ))}
+                    {selectedMethod?.id === 'pickup' && selectedMethod.pickup_address && (
+                      <div className="rounded-md border border-emerald-500/40 bg-emerald-500/5 p-3 text-sm">
+                        <p className="font-medium text-foreground mb-1">Pickup location</p>
+                        <p className="text-muted-foreground whitespace-pre-line">{selectedMethod.pickup_address}</p>
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -425,7 +443,12 @@ export default function CheckoutShipping({ offer, defaultPaymentMethod = 'cash' 
 
                 <Button
                   type="submit"
-                  disabled={submitting || !selectedRateId || !shipmentId || (paymentMethod === 'points' && !hasEnoughPoints)}
+                  disabled={
+                    submitting ||
+                    !selectedRateId ||
+                    (!shipmentId && !isPickupRate) ||
+                    (paymentMethod === 'points' && !hasEnoughPoints)
+                  }
                   className="w-full h-12 text-base"
                   size="lg"
                 >

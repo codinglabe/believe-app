@@ -64,6 +64,8 @@ interface Offer {
   discountPercentage?: number | null
   discountCap?: number | null
   pricingBreakdown?: PricingBreakdown | null
+  pickupAvailable?: boolean
+  pickupAddress?: string | null
 }
 
 interface RedemptionEligibility {
@@ -400,6 +402,11 @@ export default function OfferDetail({ offerId, offer: initialOffer, redemptionEl
                   {/* Redeem: points and/or pay with cash (amounts shown in calculation card above) */}
                   {((offer.referencePrice != null && offer.referencePrice > 0) || (offer.communityCashPrice != null && offer.communityCashPrice > 0)) ? (
                     <div className="space-y-3">
+                      {offer.pickupAvailable && (
+                        <p className="text-sm text-muted-foreground rounded-md border border-dashed border-border/80 bg-muted/30 px-3 py-2">
+                          Local pickup may be available at checkout (no shipping). The address shown there is the merchant&apos;s pickup location.
+                        </p>
+                      )}
                       {redemptionEligibility.userPoints < offer.pointsRequired && (offer.communityCashPrice ?? 0) > 0 && (
                         <p className="text-sm text-amber-600 dark:text-amber-400">
                           You have {redemptionEligibility.userPoints.toLocaleString()} points (need {offer.pointsRequired.toLocaleString()}). You can pay the full amount with cash.

@@ -1,91 +1,27 @@
 "use client"
 
 import { useState, useEffect, useRef, type MouseEvent } from "react"
-import { Bell } from "lucide-react"
+import { Bell, CheckCheck, Gift, RefreshCw, Sparkles, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/chat/ui/popover"
-import { ScrollArea } from "@/components/chat/ui/scroll-area"
 import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
+import {
+  CARE_ALLIANCE_INVITATION_TYPE,
+  SUPPORTER_BIRTHDAY_TYPE,
+  mapDatabaseNotification,
+  parseNotificationPayload,
+  type DatabaseNotification,
+  type Notification,
+} from "@/lib/notification-map"
 import { router } from "@inertiajs/react"
 import axios from "axios"
 import toast from "react-hot-toast"
-
-interface Notification {
-  id: string
-  title: string
-  body: string
-  content_item_id: number
-  type: string
-  channel: string
-  meta?: Record<string, any>
-  timestamp: string
-  read?: boolean
-}
-
-interface DatabaseNotification {
-  id: string
-  type: string
-  notifiable_type: string
-  notifiable_id: number
-  /** Laravel JSON-encodes this; axios gives an object. Legacy rows may be a JSON string. */
-  data: string | Record<string, unknown>
-  read_at: string | null
-  created_at: string
-  updated_at: string
-}
 
 interface NotificationBellProps {
   userId: number
   emailVerified?: boolean
   onNotificationClick?: (notification: Notification) => void
-}
-
-const CARE_ALLIANCE_INVITATION_TYPE = "care_alliance_invitation"
-const SUPPORTER_BIRTHDAY_TYPE = "supporter_birthday"
-
-function parseNotificationPayload(data: unknown): Record<string, any> {
-  if (data == null) {
-    return {}
-  }
-  if (typeof data === "string") {
-    try {
-      return JSON.parse(data) as Record<string, any>
-    } catch {
-      return {}
-    }
-  }
-  if (typeof data === "object") {
-    return data as Record<string, any>
-  }
-  return {}
-}
-
-/** Maps API / DB notification row to UI shape. Laravel casts `data` to array — JSON response is an object, not always a string. */
-function mapDatabaseNotification(dbNotif: DatabaseNotification): Notification {
-  const notificationData = parseNotificationPayload(dbNotif.data)
-  const type = notificationData.type || dbNotif.type || "notification"
-  const title =
-    notificationData.title ||
-    (type === CARE_ALLIANCE_INVITATION_TYPE ? "Care Alliance invitation" : "Notification")
-  const body = notificationData.body || notificationData.message || ""
-  const invitationId = notificationData.invitation_id ?? notificationData.meta?.invitation_id
-  const meta: Record<string, any> = {
-    ...(notificationData.meta || {}),
-    ...(invitationId != null ? { invitation_id: invitationId } : {}),
-  }
-
-  return {
-    id: String(dbNotif.id),
-    title,
-    body,
-    content_item_id: Number(notificationData.content_item_id) || 0,
-    type,
-    channel: notificationData.channel || "app",
-    meta,
-    timestamp: dbNotif.created_at,
-    read: !!dbNotif.read_at,
-  }
 }
 
 export function NotificationBell({ userId, emailVerified = true, onNotificationClick }: NotificationBellProps) {
@@ -119,10 +55,18 @@ export function NotificationBell({ userId, emailVerified = true, onNotificationC
     setIsLoading(true)
 
     try {
-      const response = await axios.get("/notifications")
-      const data = response.data.notifications || []
+      const response = await axios.get("/notifications/api")
+      const payload = response.data as Record<string, unknown>
+      const raw = payload.notifications
+      const data: unknown[] = Array.isArray(raw)
+        ? raw
+        : raw && typeof raw === "object" && Array.isArray((raw as { data?: unknown[] }).data)
+          ? ((raw as { data: unknown[] }).data ?? [])
+          : []
 
-      const formattedNotifications = data.map((dbNotif: DatabaseNotification) => mapDatabaseNotification(dbNotif))
+      const formattedNotifications = data.map((dbNotif: unknown) =>
+        mapDatabaseNotification(dbNotif as DatabaseNotification),
+      )
 
       setNotifications(formattedNotifications)
       setUnreadCount(formattedNotifications.filter((n: Notification) => !n.read).length)
@@ -130,6 +74,16 @@ export function NotificationBell({ userId, emailVerified = true, onNotificationC
       console.error("Error fetching notifications:", error)
     } finally {
       setIsLoading(false)
+    }
+  }
+
+  const markAsReadSilent = async (notification: Notification) => {
+    try {
+      await axios.post(`/notifications/${notification.id}/read`)
+      setNotifications((prev) => prev.map((n) => (n.id === notification.id ? { ...n, read: true } : n)))
+      setUnreadCount((prev) => Math.max(0, prev - (notification.read ? 0 : 1)))
+    } catch (error) {
+      console.error("Error marking notification as read:", error)
     }
   }
 
@@ -267,7 +221,7 @@ export function NotificationBell({ userId, emailVerified = true, onNotificationC
         echo.leave(`user.${userId}`)
       }
     }
-  }, [userId])
+  }, [userId, emailVerified])
 
   const handleNotificationClick = async (notification: Notification) => {
     const success = await markAsRead(notification)
@@ -285,7 +239,7 @@ export function NotificationBell({ userId, emailVerified = true, onNotificationC
   const handleMarkAllRead = async () => {
     const success = await markAllAsRead()
     if (!success) {
-      alert("Failed to mark all notifications as read. Please try again.")
+      toast.error("Could not mark all as read. Try again.")
     }
   }
 
@@ -294,7 +248,7 @@ export function NotificationBell({ userId, emailVerified = true, onNotificationC
     if (confirmed) {
       const success = await clearAllNotifications()
       if (!success) {
-        alert("Failed to clear all notifications. Please try again.")
+        toast.error("Could not clear notifications. Try again.")
       }
     }
   }
@@ -350,153 +304,317 @@ export function NotificationBell({ userId, emailVerified = true, onNotificationC
     }
   }
 
+  const celebrantInitials = (name?: string) => {
+    if (!name?.trim()) return "?"
+    const parts = name.trim().split(/\s+/)
+    if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase()
+    return name.slice(0, 2).toUpperCase()
+  }
+
   return (
     <Popover open={isOpen} onOpenChange={setIsOpen}>
       <PopoverTrigger asChild>
-        <Button variant="ghost" size="icon" className="relative">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="relative shrink-0 rounded-full hover:bg-muted/80 focus-visible:ring-2 focus-visible:ring-primary/40"
+          aria-label="Open notifications"
+        >
           <Bell className="h-5 w-5" />
           {unreadCount > 0 && (
             <Badge
               variant="destructive"
-              className="absolute -top-1 -right-1 h-5 w-5 flex items-center justify-center p-0 text-xs"
+              className="absolute -right-0.5 -top-0.5 flex h-5 min-w-5 items-center justify-center rounded-full px-1 text-[10px] font-semibold shadow-sm"
             >
               {unreadCount > 9 ? "9+" : unreadCount}
             </Badge>
           )}
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-80 p-0" align="end">
-        <div className="flex items-center justify-between p-4 border-b">
-          <div className="flex gap-2 flex-wrap">
-            <Button variant="ghost" size="sm" onClick={handleRefresh} className="text-xs" disabled={isLoading}>
-              {isLoading ? "Loading..." : "Refresh"}
-            </Button>
-            {notifications.length > 0 && (
-              <>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleMarkAllRead}
-                  className="text-xs"
-                  disabled={unreadCount === 0}
-                >
-                  Mark all read
-                </Button>
-                <Button variant="ghost" size="sm" onClick={handleClearAll} className="text-xs">
-                  Clear all
-                </Button>
-              </>
+      <PopoverContent
+        align="end"
+        sideOffset={8}
+        collisionPadding={12}
+        className={cn(
+          "z-50 flex max-h-[min(85dvh,32rem)] min-h-0 w-[min(calc(100vw-1rem),22rem)] flex-col overflow-hidden p-0 sm:w-[min(calc(100vw-2rem),26rem)]",
+          "rounded-2xl border border-border/60 bg-popover/95 text-popover-foreground shadow-2xl backdrop-blur-md",
+          "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
+          "data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2",
+        )}
+      >
+        {/* Header */}
+        <div className="relative shrink-0 border-b border-border/50 bg-gradient-to-br from-primary/10 via-violet-500/5 to-transparent px-4 py-3 dark:from-primary/15 dark:via-violet-500/10">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <h2 className="text-sm font-semibold tracking-tight text-foreground sm:text-base">Notifications</h2>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                {unreadCount > 0 ? (
+                  <span className="font-medium text-primary">{unreadCount} unread</span>
+                ) : (
+                  "You're all caught up"
+                )}
+              </p>
+            </div>
+            <div className="flex shrink-0 items-center gap-0.5">
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 rounded-full text-muted-foreground hover:text-foreground"
+                onClick={handleRefresh}
+                disabled={isLoading}
+                aria-label="Refresh notifications"
+              >
+                <RefreshCw className={cn("h-4 w-4", isLoading && "animate-spin")} />
+              </Button>
+              {notifications.length > 0 && (
+                <>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 rounded-full text-muted-foreground hover:text-foreground disabled:opacity-40"
+                    onClick={handleMarkAllRead}
+                    disabled={unreadCount === 0}
+                    aria-label="Mark all as read"
+                  >
+                    <CheckCheck className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 rounded-full text-muted-foreground hover:text-destructive"
+                    onClick={handleClearAll}
+                    aria-label="Clear all notifications"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* List: explicit max-height (not flex-1) so the panel never collapses to 0 when the popover only has max-h */}
+        <div
+          className={cn(
+            "notification-bell-popover-scroll max-h-[calc(min(85dvh,32rem)-7.5rem)] overflow-y-auto overflow-x-hidden overscroll-y-contain",
+            "px-0.5",
+          )}
+        >
+          <div>
+            {isLoading ? (
+              <div className="flex flex-col items-center justify-center gap-3 py-14">
+                <div className="h-9 w-9 animate-spin rounded-full border-2 border-primary/30 border-t-primary" />
+                <p className="text-xs text-muted-foreground">Loading…</p>
+              </div>
+            ) : notifications.length === 0 ? (
+              <div className="flex flex-col items-center justify-center px-6 py-12 text-center">
+                <div className="mb-3 flex h-16 w-16 items-center justify-center rounded-2xl bg-muted/60 ring-1 ring-border/60 dark:bg-muted/30">
+                  <Bell className="h-7 w-7 text-muted-foreground/70" strokeWidth={1.25} />
+                </div>
+                <p className="text-sm font-medium text-foreground">No notifications yet</p>
+                <p className="mt-1 max-w-[16rem] text-xs leading-relaxed text-muted-foreground">
+                  Birthday alerts and updates from nonprofits you follow will show up here.
+                </p>
+              </div>
+            ) : (
+              <ul className="divide-y divide-border/50">
+                {notifications.map((notification) => {
+                  const isBirthday = showSupporterBirthdayActions(notification)
+                  const avatarUrl =
+                    typeof notification.meta?.celebrant_avatar === "string"
+                      ? notification.meta.celebrant_avatar
+                      : null
+                  const celebrantName =
+                    typeof notification.meta?.celebrant_name === "string"
+                      ? notification.meta.celebrant_name
+                      : undefined
+
+                  if (isBirthday) {
+                    return (
+                      <li key={notification.id} className="p-3 sm:p-3.5">
+                        <div
+                          className={cn(
+                            "overflow-hidden rounded-xl border transition-shadow",
+                            "border-violet-500/25 bg-gradient-to-br from-violet-500/10 via-blue-500/5 to-transparent",
+                            "dark:border-violet-400/20 dark:from-violet-500/15 dark:via-blue-500/10",
+                            !notification.read && "ring-1 ring-primary/25 shadow-md dark:ring-primary/20",
+                          )}
+                        >
+                          <div className="flex gap-3 p-3">
+                            <div className="relative shrink-0">
+                              {avatarUrl ? (
+                                <img
+                                  src={avatarUrl}
+                                  alt=""
+                                  className="h-11 w-11 rounded-full border-2 border-white/20 object-cover shadow-sm dark:border-white/10 sm:h-12 sm:w-12"
+                                  onError={(e) => {
+                                    const el = e.currentTarget
+                                    el.classList.add("hidden")
+                                    el.nextElementSibling?.classList.remove("hidden")
+                                  }}
+                                />
+                              ) : null}
+                              <div
+                                className={cn(
+                                  "flex h-11 w-11 items-center justify-center rounded-full bg-gradient-to-br from-violet-600 to-blue-600 text-xs font-bold text-white shadow-inner sm:h-12 sm:w-12 sm:text-sm",
+                                  avatarUrl ? "hidden" : "",
+                                )}
+                                aria-hidden
+                              >
+                                {celebrantInitials(celebrantName)}
+                              </div>
+                              <span className="absolute -bottom-0.5 -right-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-amber-500 text-[10px] shadow dark:bg-amber-400">
+                                <Gift className="h-2.5 w-2.5 text-white" strokeWidth={2.5} />
+                              </span>
+                            </div>
+                            <div className="min-w-0 flex-1 space-y-1">
+                              <p className="text-sm font-semibold leading-snug text-foreground">{notification.title}</p>
+                              <p className="text-xs leading-relaxed text-muted-foreground line-clamp-3">
+                                {notification.body}
+                              </p>
+                              <p className="text-[10px] font-medium uppercase tracking-wide text-violet-600/90 dark:text-violet-300/90">
+                                Believe Points gift
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex flex-col gap-2 border-t border-border/40 bg-black/[0.02] px-3 py-2.5 dark:bg-white/[0.02] sm:flex-row sm:items-center">
+                            <Button
+                              type="button"
+                              size="sm"
+                              className="h-9 w-full rounded-lg bg-gradient-to-r from-blue-600 to-violet-600 text-xs font-semibold text-white shadow-sm hover:from-blue-500 hover:to-violet-500 sm:flex-1"
+                              onClick={async (e) => {
+                                e.preventDefault()
+                                e.stopPropagation()
+                                const id = notification.meta?.celebrant_id
+                                if (id == null) return
+                                await markAsRead(notification)
+                                router.visit(`/supporters/birthday-gift/${id}`)
+                              }}
+                            >
+                              <Gift className="mr-1.5 h-3.5 w-3.5" />
+                              Send Believe Points
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="h-9 w-full rounded-lg text-xs sm:w-auto sm:shrink-0"
+                              onClick={(e) => {
+                                e.preventDefault()
+                                e.stopPropagation()
+                                const slug = notification.meta?.celebrant_slug
+                                if (slug) {
+                                  router.visit(`/users/${slug}`)
+                                } else if (notification.meta?.celebrant_id != null) {
+                                  router.visit(`/users/${notification.meta.celebrant_id}`)
+                                }
+                              }}
+                            >
+                              Profile
+                            </Button>
+                          </div>
+                          <button
+                            type="button"
+                            className="flex w-full items-center justify-center gap-1 border-t border-border/30 py-2 text-[10px] text-muted-foreground transition hover:bg-muted/40 hover:text-foreground"
+                            onClick={() => markAsReadSilent(notification)}
+                          >
+                            <Sparkles className="h-3 w-3" />
+                            Mark as read
+                          </button>
+                        </div>
+                      </li>
+                    )
+                  }
+
+                  return (
+                    <li key={notification.id}>
+                      <button
+                        type="button"
+                        className={cn(
+                          "flex w-full gap-3 px-4 py-3.5 text-left transition-colors hover:bg-muted/50 sm:px-4",
+                          !notification.read && "border-l-[3px] border-l-primary bg-primary/[0.04] dark:bg-primary/10",
+                        )}
+                        onClick={() => handleNotificationClick(notification)}
+                      >
+                        <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-muted/80 text-muted-foreground dark:bg-muted/50">
+                          <Bell className="h-4 w-4" />
+                        </div>
+                        <div className="min-w-0 flex-1 space-y-1">
+                          <p className="text-sm font-medium leading-snug text-foreground">{notification.title}</p>
+                          <p
+                            className={cn(
+                              "text-xs leading-relaxed text-muted-foreground",
+                              notification.type === CARE_ALLIANCE_INVITATION_TYPE ? "line-clamp-6" : "line-clamp-2",
+                            )}
+                          >
+                            {notification.body}
+                          </p>
+                          {showCareAllianceActions(notification) && (
+                            <div className="flex flex-wrap gap-2 pt-2" onClick={(e) => e.stopPropagation()}>
+                              <Button
+                                type="button"
+                                size="sm"
+                                className="h-8 rounded-lg text-xs"
+                                disabled={careAllianceActionLoadingId === notification.id}
+                                onClick={(e) => handleCareAllianceInvitationAction(e, notification, "accept")}
+                              >
+                                {careAllianceActionLoadingId === notification.id ? "…" : "Accept"}
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="h-8 rounded-lg text-xs"
+                                disabled={careAllianceActionLoadingId === notification.id}
+                                onClick={(e) => handleCareAllianceInvitationAction(e, notification, "decline")}
+                              >
+                                Decline
+                              </Button>
+                            </div>
+                          )}
+                          <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 pt-0.5">
+                            <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground/90">
+                              {String(notification.type).replace(/_/g, " ")}
+                            </span>
+                            <span className="text-[10px] text-muted-foreground">
+                              {new Date(notification.timestamp).toLocaleString(undefined, {
+                                month: "short",
+                                day: "numeric",
+                                hour: "numeric",
+                                minute: "2-digit",
+                              })}
+                            </span>
+                          </div>
+                        </div>
+                        {!notification.read && (
+                          <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-primary shadow-sm shadow-primary/40" />
+                        )}
+                      </button>
+                    </li>
+                  )
+                })}
+              </ul>
             )}
           </div>
         </div>
-        <ScrollArea className="h-[400px]">
-          {isLoading ? (
-            <div className="flex items-center justify-center py-8">
-              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
-            </div>
-          ) : notifications.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
-              <Bell className="h-12 w-12 mb-2 opacity-20" />
-              <p className="text-sm">No notifications yet</p>
-            </div>
-          ) : (
-            <div className="divide-y">
-              {notifications.map((notification) => (
-                <div
-                  key={notification.id}
-                  className={cn(
-                    "p-4 hover:bg-accent cursor-pointer transition-colors",
-                    !notification.read && "bg-blue-50 dark:bg-blue-950/20",
-                  )}
-                  onClick={() => handleNotificationClick(notification)}
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex-1 space-y-1 min-w-0">
-                      <p className="font-medium text-sm leading-tight">{notification.title}</p>
-                      <p
-                        className={cn(
-                          "text-sm text-muted-foreground",
-                          notification.type === CARE_ALLIANCE_INVITATION_TYPE ? "line-clamp-6" : "line-clamp-2",
-                        )}
-                      >
-                        {notification.body}
-                      </p>
-                      {showCareAllianceActions(notification) && (
-                        <div className="flex flex-wrap gap-2 pt-2">
-                          <Button
-                            type="button"
-                            size="sm"
-                            className="h-8"
-                            disabled={careAllianceActionLoadingId === notification.id}
-                            onClick={(e) => handleCareAllianceInvitationAction(e, notification, "accept")}
-                          >
-                            {careAllianceActionLoadingId === notification.id ? "…" : "Accept"}
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            className="h-8"
-                            disabled={careAllianceActionLoadingId === notification.id}
-                            onClick={(e) => handleCareAllianceInvitationAction(e, notification, "decline")}
-                          >
-                            Decline
-                          </Button>
-                        </div>
-                      )}
-                      {showSupporterBirthdayActions(notification) && (
-                        <div className="flex flex-wrap gap-2 pt-2">
-                          <Button
-                            type="button"
-                            size="sm"
-                            className="h-8 bg-gradient-to-r from-blue-600 to-violet-600 text-white border-0"
-                            onClick={async (e) => {
-                              e.preventDefault()
-                              e.stopPropagation()
-                              const id = notification.meta?.celebrant_id
-                              if (id == null) return
-                              await markAsRead(notification)
-                              router.visit(`/supporters/birthday-gift/${id}`)
-                            }}
-                          >
-                            Send Gift
-                          </Button>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            className="h-8"
-                            onClick={(e) => {
-                              e.preventDefault()
-                              e.stopPropagation()
-                              const slug = notification.meta?.celebrant_slug
-                              if (slug) {
-                                router.visit(`/users/${slug}`)
-                              } else if (notification.meta?.celebrant_id != null) {
-                                router.visit(`/users/${notification.meta.celebrant_id}`)
-                              }
-                            }}
-                          >
-                            View profile
-                          </Button>
-                        </div>
-                      )}
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-xs text-muted-foreground capitalize">
-                          {String(notification.type).replace(/_/g, " ")}
-                        </span>
-                        <span className="text-xs text-muted-foreground">
-                          {new Date(notification.timestamp).toLocaleString()}
-                        </span>
-                      </div>
-                    </div>
-                    {!notification.read && <div className="h-2 w-2 rounded-full bg-blue-500 flex-shrink-0 mt-1" />}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </ScrollArea>
+
+        {/* Footer */}
+        <div className="shrink-0 border-t border-border/50 bg-muted/20 p-2 dark:bg-muted/10">
+          <Button
+            type="button"
+            variant="secondary"
+            className="h-9 w-full rounded-xl text-xs font-medium shadow-none sm:text-sm"
+            onClick={() => {
+              setIsOpen(false)
+              router.visit(route("notifications.index"))
+            }}
+          >
+            View all in inbox
+          </Button>
+        </div>
       </PopoverContent>
     </Popover>
   )

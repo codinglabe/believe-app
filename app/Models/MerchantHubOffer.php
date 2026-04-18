@@ -2,10 +2,10 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Str;
 
 class MerchantHubOffer extends Model
@@ -31,6 +31,7 @@ class MerchantHubOffer extends Model
         'is_standard_discount',
         'discount_percentage',
         'discount_cap',
+        'pickup_available',
     ];
 
     protected $casts = [
@@ -43,6 +44,7 @@ class MerchantHubOffer extends Model
         'is_standard_discount' => 'boolean',
         'discount_percentage' => 'decimal:2',
         'discount_cap' => 'decimal:2',
+        'pickup_available' => 'boolean',
     ];
 
     /**
@@ -69,7 +71,6 @@ class MerchantHubOffer extends Model
         return $this->hasMany(MerchantHubOfferRedemption::class, 'merchant_hub_offer_id');
     }
 
-
     /**
      * Boot the model.
      */
@@ -78,7 +79,7 @@ class MerchantHubOffer extends Model
         parent::boot();
 
         static::creating(function ($offer) {
-            if (empty($offer->slug) && !empty($offer->title)) {
+            if (empty($offer->slug) && ! empty($offer->title)) {
                 $offer->slug = static::generateUniqueSlug($offer->title);
             }
         });
@@ -103,7 +104,7 @@ class MerchantHubOffer extends Model
         $slug = Str::slug($title);
         if (empty($slug)) {
             // Fallback if slug is empty (e.g., title has only special characters)
-            $slug = 'offer-' . ($excludeId ?? time());
+            $slug = 'offer-'.($excludeId ?? time());
         }
 
         $originalSlug = $slug;
@@ -115,16 +116,16 @@ class MerchantHubOffer extends Model
                 $query->where('id', '!=', $excludeId);
             }
 
-            if (!$query->exists()) {
+            if (! $query->exists()) {
                 break;
             }
 
-            $slug = $originalSlug . '-' . $counter;
+            $slug = $originalSlug.'-'.$counter;
             $counter++;
 
             // Safety check to prevent infinite loops
             if ($counter > 1000) {
-                $slug = $originalSlug . '-' . time();
+                $slug = $originalSlug.'-'.time();
                 break;
             }
         }
@@ -214,6 +215,7 @@ class MerchantHubOffer extends Model
         if ($this->discount_cap !== null && (float) $this->discount_cap > 0 && $amount > (float) $this->discount_cap) {
             return (float) $this->discount_cap;
         }
+
         return round($amount, 2);
     }
 
@@ -223,6 +225,7 @@ class MerchantHubOffer extends Model
     public function getCustomerPriceWithPoints(): float
     {
         $price = (float) ($this->reference_price ?? 0);
+
         return round($price - $this->getDiscountAmount(), 2);
     }
 
@@ -232,6 +235,7 @@ class MerchantHubOffer extends Model
     public function getCommunityCashPrice(): float
     {
         $price = (float) ($this->reference_price ?? 0);
+
         return round($price, 2);
     }
 
@@ -248,6 +252,7 @@ class MerchantHubOffer extends Model
         if ($discountCap !== null && $discountCap > 0 && $discountAmount > $discountCap) {
             $discountAmount = $discountCap;
         }
+
         return (int) round($discountAmount * 1000);
     }
 }

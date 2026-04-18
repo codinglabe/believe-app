@@ -6,10 +6,14 @@ use App\Models\ContentItem;
 use App\Models\ScheduledDrop;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
+use Inertia\Response;
 
 class NotificationController extends Controller
 {
-    public function index(Request $request)
+    /**
+     * JSON list for the header notification bell (axios).
+     */
+    public function apiIndex(Request $request)
     {
         $notifications = $request->user()
             ->notifications()
@@ -18,6 +22,20 @@ class NotificationController extends Controller
 
         return response()->json([
             'notifications' => $notifications,
+        ]);
+    }
+
+    /**
+     * Full-page notification inbox (Inertia).
+     */
+    public function inbox(Request $request): Response
+    {
+        return Inertia::render('Notifications/Inbox', [
+            'notifications' => $request->user()
+                ->notifications()
+                ->orderBy('created_at', 'desc')
+                ->paginate(25)
+                ->withQueryString(),
         ]);
     }
 

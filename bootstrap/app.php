@@ -15,6 +15,7 @@ use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets;
+use Illuminate\Support\Facades\Route;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -24,6 +25,17 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware) {
+        // Default Laravel sends unauthenticated users to route('login') (main app). On the
+        // merchant host, auth:merchant must redirect to merchant.login; guest routes must send
+        // authenticated merchants to merchant.dashboard to avoid login↔dashboard loops.
+        $middleware->redirectGuestsTo(fn () => request_is_merchant_portal()
+            ? route('merchant.login')
+            : route('login'));
+
+        $middleware->redirectUsersTo(fn () => request_is_merchant_portal()
+            ? route('merchant.dashboard')
+            : (Route::has('dashboard') ? route('dashboard') : '/'));
+
         // Webhooks are called by external services and cannot include Laravel CSRF tokens.
         // Security is handled in the webhook controller via signature verification.
         $middleware->validateCsrfTokens(except: [

@@ -223,6 +223,52 @@
   scrollbar-color: hsl(var(--primary) / 0.4) hsl(var(--muted) / 0.3);
 }
 
+/* Header notification bell — list scrolls between header + footer */
+.notification-bell-popover-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: hsl(var(--muted-foreground) / 0.45) hsl(var(--muted) / 0.35);
+}
+
+.notification-bell-popover-scroll::-webkit-scrollbar {
+  width: 7px;
+}
+
+.notification-bell-popover-scroll::-webkit-scrollbar-track {
+  margin: 6px 0;
+  border-radius: 9999px;
+  background: hsl(var(--muted) / 0.35);
+}
+
+.notification-bell-popover-scroll::-webkit-scrollbar-thumb {
+  border-radius: 9999px;
+  background: hsl(var(--muted-foreground) / 0.32);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+.notification-bell-popover-scroll::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--primary) / 0.45);
+  background-clip: padding-box;
+}
+
+.dark .notification-bell-popover-scroll {
+  scrollbar-color: hsl(var(--muted-foreground) / 0.5) hsl(var(--background) / 0.55);
+}
+
+.dark .notification-bell-popover-scroll::-webkit-scrollbar-track {
+  background: hsl(var(--background) / 0.55);
+}
+
+.dark .notification-bell-popover-scroll::-webkit-scrollbar-thumb {
+  background: hsl(var(--muted-foreground) / 0.38);
+  background-clip: padding-box;
+}
+
+.dark .notification-bell-popover-scroll::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--primary) / 0.55);
+  background-clip: padding-box;
+}
+
 /* Sidebar Custom Scrollbar - Professional Design */
 /* Target the sidebar content element specifically */
 div[data-sidebar="content"]::-webkit-scrollbar,
