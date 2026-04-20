@@ -420,7 +420,7 @@ class ProductController extends BaseController
             'printifyProduct' => $printifyProduct,
             'variants' => $variantsWithImages,
             'firstVariant' => $firstVariant,
-            'platformFeePercentage' => BiuPlatformFeeService::getSalesPlatformFeePercentage(),
+            'platformFeePercentage' => BiuPlatformFeeService::getMarketplaceFeePercentageForProduct($product),
             'biddingInfo' => $biddingInfo,
             'biddingClosed' => $biddingClosed,
             'winnerStatus' => $winnerStatus,
@@ -2175,7 +2175,7 @@ class ProductController extends BaseController
             $amount = (float) $winningBid->bid_amount;
             $shippingCost = (float) ($winningBid->shippo_shipping_cost ?? 0);
             $taxAmount = (float) ($winningBid->shippo_tax_amount ?? 0);
-            $platformFee = BiuPlatformFeeService::platformFeeFromAmount($amount);
+            $platformFee = BiuPlatformFeeService::marketplaceBuyerPlatformFeeForProductAmount($amount, $product);
             $totalAmount = $amount + $platformFee + $shippingCost + $taxAmount;
 
             if (empty($winningBid->address_line1) || empty($winningBid->zip) || empty($winningBid->country)) {

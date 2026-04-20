@@ -16,6 +16,8 @@ class BiuFeeSettingsController extends Controller
     {
         return Inertia::render('admin/biu-fee/Index', [
             'sales_platform_fee_percentage' => BiuPlatformFeeService::getSalesPlatformFeePercentage(),
+            'marketplace_printify_organization_fee_percentage' => BiuPlatformFeeService::getMarketplacePrintifyOrganizationFeePercentage(),
+            'marketplace_merchant_pool_fee_percentage' => BiuPlatformFeeService::getMarketplaceMerchantPoolFeePercentage(),
         ]);
     }
 
@@ -23,6 +25,8 @@ class BiuFeeSettingsController extends Controller
     {
         $validated = $request->validate([
             'sales_platform_fee_percentage' => ['required', 'numeric', 'min:0', 'max:100'],
+            'marketplace_printify_organization_fee_percentage' => ['required', 'numeric', 'min:0', 'max:100'],
+            'marketplace_merchant_pool_fee_percentage' => ['required', 'numeric', 'min:0', 'max:100'],
         ]);
 
         AdminSetting::set(
@@ -30,12 +34,22 @@ class BiuFeeSettingsController extends Controller
             (float) $validated['sales_platform_fee_percentage'],
             'float'
         );
+        AdminSetting::set(
+            BiuPlatformFeeService::SETTING_KEY_MARKETPLACE_PRINTIFY_ORG,
+            (float) $validated['marketplace_printify_organization_fee_percentage'],
+            'float'
+        );
+        AdminSetting::set(
+            BiuPlatformFeeService::SETTING_KEY_MARKETPLACE_MERCHANT_POOL,
+            (float) $validated['marketplace_merchant_pool_fee_percentage'],
+            'float'
+        );
 
         return redirect()
             ->route('admin.biu-fee.index')
             ->with(
                 'success',
-                'BIU platform fee saved. Marketplace, Service Hub, courses, raffles, gift cards, and merchant hub sales use this percentage on the sale base (buyer total unchanged; fee is ledger/seller-side).'
+                'BIU fee settings saved. Marketplace checkout charges buyers using the Printify/organization rate and the merchant/pool rate on matching line subtotals. Service Hub, courses, raffles, gift cards, and merchant hub cash redemptions still use the global sales platform fee percentage.'
             );
     }
 }

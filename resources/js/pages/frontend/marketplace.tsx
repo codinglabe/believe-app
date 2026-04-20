@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/frontend/
 import { Input } from "@/components/frontend/ui/input"
 import { Link, router, usePage } from "@inertiajs/react"
 import { PageHead } from "@/components/frontend/PageHead"
+import MarketplaceSavingsHighlight from "@/components/frontend/MarketplaceSavingsHighlight"
 import { useState, useEffect, useCallback, useMemo } from "react"
 import debounce from "lodash.debounce"
 import pickBy from "lodash.pickby"
@@ -38,6 +39,10 @@ interface Product {
     is_at_cost_pricing?: boolean;
     typical_retail_display?: string;
     at_cost_display?: string;
+    typical_retail_savings_usd?: number | null;
+    typical_retail_savings_percent?: number | null;
+    typical_retail_is_estimated?: boolean;
+    is_printify_listing?: boolean;
     platform_fee_percentage?: number;
     platform_fee_display?: string;
     category: {
@@ -244,13 +249,16 @@ export default function Marketplace({
                                 Marketplace
                             </h1>
                             <p className="text-base sm:text-lg md:text-xl text-white/90 max-w-2xl mx-auto">
-                                Shop catalog products from verified nonprofit organizations
+                                Shop verified nonprofits—<span className="font-semibold text-white">Printify</span> and{" "}
+                                <span className="font-semibold text-white">organization-made</span> items often show{" "}
+                                <span className="font-semibold text-white">typical retail</span> next to a lower nonprofit price so savings stand out.
                             </p>
                         </motion.div>
                     </div>
                 </section>
 
                 <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12">
+                    <MarketplaceSavingsHighlight variant="marketplace_page" className="mb-8" />
                     {/* Header with Search and Cart */}
                     <div className="mb-8">
                         <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4 mb-6">
@@ -474,7 +482,11 @@ export default function Marketplace({
                                                                     variant="secondary"
                                                                     className="bg-black/50 text-white text-xs font-medium border border-white/10 shadow-md backdrop-blur-sm"
                                                                 >
-                                                                    {product.is_merchant_pool_listing ? "Merchant pool" : "Organization"}
+                                                                    {product.is_merchant_pool_listing
+                                                                        ? "Merchant pool"
+                                                                        : product.is_printify_listing
+                                                                          ? "Printify"
+                                                                          : "Organization"}
                                                                 </Badge>
                                                                 <Badge
                                                                     variant="secondary"
@@ -491,6 +503,35 @@ export default function Marketplace({
                                                                     {product.organization.name}
                                                                 </Badge>
                                                             )}
+                                                            {(() => {
+                                                                const su = product.typical_retail_savings_usd
+                                                                const pct = product.typical_retail_savings_percent
+                                                                const showRibbon =
+                                                                    !product.is_merchant_pool_listing &&
+                                                                    product.is_at_cost_pricing &&
+                                                                    typeof su === "number" &&
+                                                                    su > 0.001
+                                                                if (!showRibbon) {
+                                                                    return null
+                                                                }
+                                                                return (
+                                                                    <div className="pointer-events-none absolute right-2 top-14 z-20 max-w-[min(12rem,calc(100%-1rem))] sm:right-3 sm:top-16">
+                                                                        <div className="rounded-lg border border-amber-400/90 bg-gradient-to-br from-amber-400 via-amber-500 to-orange-600 px-2.5 py-1.5 text-center shadow-lg ring-2 ring-amber-200/60 dark:ring-amber-900/40">
+                                                                            <p className="text-[10px] font-bold uppercase leading-tight tracking-wide text-amber-950">
+                                                                                Save
+                                                                            </p>
+                                                                            <p className="text-sm font-extrabold leading-tight text-white drop-shadow-sm">
+                                                                                ${su.toFixed(2)}
+                                                                            </p>
+                                                                            {typeof pct === "number" && pct >= 1 ? (
+                                                                                <p className="text-[10px] font-semibold leading-tight text-amber-950/90">
+                                                                                    {pct}% vs retail
+                                                                                </p>
+                                                                            ) : null}
+                                                                        </div>
+                                                                    </div>
+                                                                )
+                                                            })()}
                                                         </div>
                                                         <CardContent className="p-5 sm:p-6">
                                                             <div className="mb-3">
@@ -528,6 +569,15 @@ export default function Marketplace({
                                                                     const save = Math.max(0, retail - at)
                                                                     return (
                                                                         <div className="mb-4 rounded-2xl border border-emerald-500/20 bg-gradient-to-br from-emerald-500/10 via-white to-indigo-500/10 p-4 shadow-[0_10px_30px_rgba(15,23,42,0.08)] dark:border-emerald-400/20 dark:bg-gradient-to-br dark:from-emerald-400/10 dark:via-white/5 dark:to-purple-500/10 dark:shadow-[0_10px_30px_rgba(0,0,0,0.35)]">
+                                                                            <p className="mb-3 text-center text-xs font-bold uppercase tracking-[0.2em] text-emerald-800/90 dark:text-emerald-200/90">
+                                                                                {product.is_printify_listing ? "Printify" : "Organization"} · typical
+                                                                                retail vs your price
+                                                                                {product.typical_retail_is_estimated ? (
+                                                                                    <span className="mt-1 block text-[10px] font-semibold normal-case tracking-normal text-amber-800/90 dark:text-amber-200/90">
+                                                                                        Typical retail estimated (+25% reference when MSRP not set)
+                                                                                    </span>
+                                                                                ) : null}
+                                                                            </p>
                                                                             <div className="flex items-start justify-between gap-4">
                                                                                 <div>
                                                                                     <p className="text-[11px] uppercase tracking-[0.22em] text-emerald-700/80 dark:text-emerald-200/80">
@@ -545,6 +595,11 @@ export default function Marketplace({
                                                                                 <div className="text-right">
                                                                                     <p className="text-[11px] uppercase tracking-[0.18em] text-slate-500 dark:text-white/60">
                                                                                         Typical Retail
+                                                                                        {product.typical_retail_is_estimated ? (
+                                                                                            <span className="block normal-case tracking-normal text-[10px] text-amber-700/90 dark:text-amber-200/90">
+                                                                                                (est. +25% reference)
+                                                                                            </span>
+                                                                                        ) : null}
                                                                                     </p>
                                                                                     <p className="text-sm text-slate-600 line-through tabular-nums dark:text-white/80">
                                                                                         {product.typical_retail_display}

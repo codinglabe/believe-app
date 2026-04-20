@@ -30,11 +30,20 @@ interface Step2Data {
   donationAmount: number
 }
 
+interface PlatformFeeLine {
+  key: string
+  label: string
+  percent: number
+  base_usd: number
+  fee_usd: number
+}
+
 interface Step2Props {
   items: CartItem[]
   subtotal: number
   platform_fee_percentage: number
   platform_fee: number
+  platform_fee_lines?: PlatformFeeLine[]
   donation_amount: number
   step2Data: Step2Data
   stripePublishableKey: string
@@ -64,7 +73,16 @@ const cardElementOptions = {
   hidePostalCode: true,
 }
 
-function Step2Form({ items, subtotal, platform_fee_percentage, platform_fee, donation_amount, step2Data, onBack }: Omit<Step2Props, "stripePublishableKey">) {
+function Step2Form({
+  items,
+  subtotal,
+  platform_fee_percentage,
+  platform_fee,
+  platform_fee_lines = [],
+  donation_amount,
+  step2Data,
+  onBack,
+}: Omit<Step2Props, "stripePublishableKey">) {
   const stripe = useStripe()
   const elements = useElements()
   const [stripeLoaded, setStripeLoaded] = useState(false)
@@ -834,10 +852,32 @@ function Step2Form({ items, subtotal, platform_fee_percentage, platform_fee, don
               <span>Subtotal</span>
               <span>${subtotal.toFixed(2)}</span>
             </div>
-            <div className="flex justify-between text-sm text-gray-600 dark:text-gray-400">
-              <span>Platform fee ({platform_fee_percentage.toFixed(0)}%)</span>
-              <span>${platform_fee.toFixed(2)}</span>
-            </div>
+            {platform_fee_lines.length > 1 ? (
+              <>
+                {platform_fee_lines.map((row) => (
+                  <div key={row.key} className="flex justify-between text-sm text-gray-600 dark:text-gray-400">
+                    <span className="pr-2">
+                      {row.label} ({Number(row.percent).toFixed(2)}% on ${row.base_usd.toFixed(2)})
+                    </span>
+                    <span>${row.fee_usd.toFixed(2)}</span>
+                  </div>
+                ))}
+                <div className="flex justify-between text-sm text-gray-600 dark:text-gray-400 font-medium">
+                  <span>Platform fee total</span>
+                  <span>${platform_fee.toFixed(2)}</span>
+                </div>
+              </>
+            ) : platform_fee_lines.length === 1 ? (
+              <div className="flex justify-between text-sm text-gray-600 dark:text-gray-400">
+                <span>Platform fee ({platform_fee_lines[0].percent.toFixed(2)}%)</span>
+                <span>${platform_fee.toFixed(2)}</span>
+              </div>
+            ) : (
+              <div className="flex justify-between text-sm text-gray-600 dark:text-gray-400">
+                <span>Platform fee ({platform_fee_percentage.toFixed(2)}% blended)</span>
+                <span>${platform_fee.toFixed(2)}</span>
+              </div>
+            )}
             {/* Donation Amount - Removed for Printify products */}
 
             <div className="flex justify-between text-sm text-gray-600 dark:text-gray-400">

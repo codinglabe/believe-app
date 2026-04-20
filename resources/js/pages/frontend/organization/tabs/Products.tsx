@@ -16,6 +16,8 @@ interface Product {
   description: string
   unit_price: number
   source_cost?: number | null
+  profit_margin_percentage?: number | null
+  pricing_model?: string | null
   organization_id?: number | null
   image: string | null
   slug: string
@@ -23,6 +25,23 @@ interface Product {
   publish_status: string
   categories?: Array<{ id: number; name: string }>
   variants?: Array<any>
+}
+
+/** Aligns with marketplace: cost from source_cost, else implied from margin (retail = cost × (1 + p/100)). */
+function manualCatalogUnitCostUsd(product: Product): number | null {
+  const retail = Number(product.unit_price) || 0
+  if (retail <= 0.0001) {
+    return null
+  }
+  const sc = product.source_cost
+  if (sc != null && sc !== "" && Number(sc) > 0.0001) {
+    return Math.round(Math.min(Number(sc), retail) * 100) / 100
+  }
+  const p = Number(product.profit_margin_percentage) || 0
+  if (p > 0.0001) {
+    return Math.round((retail * 100) / (100 + p) * 100) / 100
+  }
+  return null
 }
 
 interface Props {
@@ -57,12 +76,6 @@ export default function OrganizationProducts({ organization, auth, products }: P
   const productsList = products?.data || (Array.isArray(products) ? products : [])
   const isEmpty = !productsList || productsList.length === 0
 
-  // Debug: Log products data structure
-  if (process.env.NODE_ENV === 'development') {
-    console.log('Products data:', products)
-    console.log('Products list:', productsList)
-  }
-
   return (
     <FrontendLayout>
       <Head title={`${organization.name} - Products`} />
@@ -95,8 +108,14 @@ export default function OrganizationProducts({ organization, auth, products }: P
               >
                 {productsList.map((product) => (
                   (() => {
-                    const isAtCostPricing = Boolean(product.organization_id)
-                    const atCost = product.source_cost ?? product.unit_price
+                    const retail = Number(product.unit_price) || 0
+                    const unitCost = manualCatalogUnitCostUsd(product)
+                    const isAtCostPricing =
+                      Boolean(product.organization_id) &&
+                      product.pricing_model === "fixed" &&
+                      unitCost != null &&
+                      unitCost < retail - 0.001
+                    const atCost = isAtCostPricing && unitCost != null ? unitCost : retail
                     const platformFee = Number((atCost * 0.1).toFixed(2))
 
                     return (

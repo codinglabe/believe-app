@@ -26,11 +26,20 @@ interface Step1CompleteData {
   donationAmount: number
 }
 
+interface PlatformFeeLine {
+  key: string
+  label: string
+  percent: number
+  base_usd: number
+  fee_usd: number
+}
+
 interface Step1Props {
   items: CartItem[]
   subtotal: number
   platform_fee_percentage: number
   platform_fee: number
+  platform_fee_lines?: PlatformFeeLine[]
   donation_percentage: number
   pickupAvailableAtCheckout?: boolean
   onComplete: (data: Step1CompleteData) => void
@@ -43,6 +52,7 @@ export default function Step1({
   subtotal,
   platform_fee_percentage,
   platform_fee,
+  platform_fee_lines = [],
   donation_percentage,
   pickupAvailableAtCheckout = false,
   onComplete,
@@ -387,10 +397,32 @@ export default function Step1({
                 <span>Subtotal</span>
                 <span>${subtotal.toFixed(2)}</span>
               </div>
-              <div className="flex justify-between text-gray-600 dark:text-gray-400">
-                <span>Platform fee ({platform_fee_percentage.toFixed(0)}%)</span>
-                <span>${platform_fee.toFixed(2)}</span>
-              </div>
+              {platform_fee_lines.length > 1 ? (
+                <>
+                  {platform_fee_lines.map((row) => (
+                    <div key={row.key} className="flex justify-between text-gray-600 dark:text-gray-400 text-sm">
+                      <span className="pr-2">
+                        {row.label} ({Number(row.percent).toFixed(2)}% on ${row.base_usd.toFixed(2)})
+                      </span>
+                      <span>${row.fee_usd.toFixed(2)}</span>
+                    </div>
+                  ))}
+                  <div className="flex justify-between text-gray-600 dark:text-gray-400 font-medium">
+                    <span>Platform fee total</span>
+                    <span>${platform_fee.toFixed(2)}</span>
+                  </div>
+                </>
+              ) : platform_fee_lines.length === 1 ? (
+                <div className="flex justify-between text-gray-600 dark:text-gray-400">
+                  <span>Platform fee ({platform_fee_lines[0].percent.toFixed(2)}%)</span>
+                  <span>${platform_fee.toFixed(2)}</span>
+                </div>
+              ) : (
+                <div className="flex justify-between text-gray-600 dark:text-gray-400">
+                  <span>Platform fee ({platform_fee_percentage.toFixed(2)}% blended)</span>
+                  <span>${platform_fee.toFixed(2)}</span>
+                </div>
+              )}
               <div className="flex justify-between font-bold text-gray-900 dark:text-white border-t border-gray-200 dark:border-gray-700 pt-3">
                 <span>Before Shipping & Tax</span>
                 <span>${orderTotal.toFixed(2)}</span>

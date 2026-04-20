@@ -440,7 +440,7 @@ class HubController extends Controller
                             'points_spent' => $redemption->points_spent,
                             'offer_id' => $redemption->offer->id,
                             'receipt_code' => $redemption->receipt_code,
-                        ], BiuPlatformFeeService::ledgerMetaSlice((float) $redemption->cash_spent)),
+                        ], BiuPlatformFeeService::merchantHubCatalogLedgerMetaSlice((float) ($redemption->subtotal_amount ?? $redemption->cash_spent))),
                         'processed_at' => now(),
                     ]);
                 } else {
@@ -478,7 +478,7 @@ class HubController extends Controller
                             'points_spent' => 0,
                             'offer_id' => $redemption->offer->id,
                             'receipt_code' => $redemption->receipt_code,
-                        ], BiuPlatformFeeService::ledgerMetaSlice((float) $redemption->cash_spent)),
+                        ], BiuPlatformFeeService::merchantHubCatalogLedgerMetaSlice((float) ($redemption->subtotal_amount ?? $redemption->cash_spent))),
                         'processed_at' => now(),
                     ]);
                 }

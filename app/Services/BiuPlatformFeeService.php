@@ -3,6 +3,9 @@
 namespace App\Services;
 
 use App\Models\AdminSetting;
+use App\Models\Cart;
+use App\Models\CartItem;
+use App\Models\Product;
 
 /**
  * BIU platform fee % for all sales modules (marketplace, service hub, courses, raffles, gift cards, merchant hub).
@@ -14,8 +17,18 @@ final class BiuPlatformFeeService
 {
     public const DEFAULT_SALES_PLATFORM_FEE_PERCENTAGE = 10.0;
 
+    public const DEFAULT_MARKETPLACE_PRINTIFY_ORGANIZATION_FEE_PERCENTAGE = 10.0;
+
+    public const DEFAULT_MARKETPLACE_MERCHANT_POOL_FEE_PERCENTAGE = 3.0;
+
     /** Canonical admin setting (single knob on /admin/biu-fee). */
     public const SETTING_KEY_SALES = 'biu_sales_platform_fee_percentage';
+
+    /** Marketplace: Printify + organization catalog goods (buyer-paid line subtotals). */
+    public const SETTING_KEY_MARKETPLACE_PRINTIFY_ORG = 'biu_marketplace_platform_fee_printify_organization_percentage';
+
+    /** Marketplace: merchant SKUs + org-adopted merchant pool listings (buyer-paid line subtotals). */
+    public const SETTING_KEY_MARKETPLACE_MERCHANT_POOL = 'biu_marketplace_platform_fee_merchant_pool_percentage';
 
     /** @deprecated Fallback only */
     public const SETTING_KEY_MARKETPLACE_LEGACY = 'biu_marketplace_platform_fee_percentage';
@@ -41,9 +54,158 @@ final class BiuPlatformFeeService
         return self::DEFAULT_SALES_PLATFORM_FEE_PERCENTAGE;
     }
 
+    public static function getMarketplacePrintifyOrganizationFeePercentage(): float
+    {
+        $v = AdminSetting::get(self::SETTING_KEY_MARKETPLACE_PRINTIFY_ORG);
+        if ($v !== null && $v !== '') {
+            return max(0.0, min(100.0, (float) $v));
+        }
+
+        return self::DEFAULT_MARKETPLACE_PRINTIFY_ORGANIZATION_FEE_PERCENTAGE;
+    }
+
+    public static function getMarketplaceMerchantPoolFeePercentage(): float
+    {
+        $v = AdminSetting::get(self::SETTING_KEY_MARKETPLACE_MERCHANT_POOL);
+        if ($v !== null && $v !== '') {
+            return max(0.0, min(100.0, (float) $v));
+        }
+
+        return self::DEFAULT_MARKETPLACE_MERCHANT_POOL_FEE_PERCENTAGE;
+    }
+
+    /**
+     * Cart line uses the lower merchant / pool rate (merchant marketplace SKU, org pool listing, or org catalog row tied to a pool product).
+     */
+    public static function cartItemUsesMerchantPoolLineRate(CartItem $item): bool
+    {
+        $item->loadMissing(['product', 'marketplaceProduct', 'organizationProduct']);
+
+        if ($item->marketplace_product_id) {
+            return true;
+        }
+        if ($item->organization_product_id) {
+            return true;
+        }
+        if ($item->product_id && $item->product) {
+            return (int) ($item->product->marketplace_product_id ?? 0) > 0;
+        }
+
+        return false;
+    }
+
+    public static function productUsesMerchantPoolLineRate(?Product $product): bool
+    {
+        if ($product === null) {
+            return false;
+        }
+
+        return (int) ($product->marketplace_product_id ?? 0) > 0;
+    }
+
+    public static function getMarketplaceFeePercentageForProduct(?Product $product): float
+    {
+        return self::productUsesMerchantPoolLineRate($product)
+            ? self::getMarketplaceMerchantPoolFeePercentage()
+            : self::getMarketplacePrintifyOrganizationFeePercentage();
+    }
+
+    /**
+     * Buyer-facing marketplace platform fee: per-line rate, summed.
+     *
+     * @return array{
+     *   fee_usd: float,
+     *   lines: list<array{key: string, label: string, percent: float, base_usd: float, fee_usd: float}>,
+     *   effective_percent: float,
+     *   printify_org_percent: float,
+     *   merchant_pool_percent: float
+     * }
+     */
+    public static function marketplaceCartBuyerPlatformFeeDetail(Cart $cart): array
+    {
+        $cart->loadMissing([
+            'items.product',
+            'items.marketplaceProduct',
+            'items.organizationProduct',
+        ]);
+
+        $printifyOrgBase = 0.0;
+        $merchantPoolBase = 0.0;
+        foreach ($cart->items as $row) {
+            $line = max(0.0, (float) $row->unit_price * (int) $row->quantity);
+            if (self::cartItemUsesMerchantPoolLineRate($row)) {
+                $merchantPoolBase += $line;
+            } else {
+                $printifyOrgBase += $line;
+            }
+        }
+
+        $pctPo = self::getMarketplacePrintifyOrganizationFeePercentage();
+        $pctM = self::getMarketplaceMerchantPoolFeePercentage();
+        $feePo = round($printifyOrgBase * ($pctPo / 100), 2);
+        $feeM = round($merchantPoolBase * ($pctM / 100), 2);
+        $total = round($feePo + $feeM, 2);
+        $sub = round($printifyOrgBase + $merchantPoolBase, 2);
+
+        $lines = [];
+        if ($printifyOrgBase > 0.0001) {
+            $lines[] = [
+                'key' => 'printify_organization',
+                'label' => 'Printify & organization goods',
+                'percent' => $pctPo,
+                'base_usd' => round($printifyOrgBase, 2),
+                'fee_usd' => $feePo,
+            ];
+        }
+        if ($merchantPoolBase > 0.0001) {
+            $lines[] = [
+                'key' => 'merchant_pool',
+                'label' => 'Merchant & pool goods',
+                'percent' => $pctM,
+                'base_usd' => round($merchantPoolBase, 2),
+                'fee_usd' => $feeM,
+            ];
+        }
+
+        $effective = $sub > 0.0001 ? round($total / $sub * 100, 2) : 0.0;
+
+        return [
+            'fee_usd' => $total,
+            'lines' => $lines,
+            'effective_percent' => $effective,
+            'printify_org_percent' => $pctPo,
+            'merchant_pool_percent' => $pctM,
+        ];
+    }
+
+    public static function marketplaceCartBuyerPlatformFeeUsd(Cart $cart): float
+    {
+        return self::marketplaceCartBuyerPlatformFeeDetail($cart)['fee_usd'];
+    }
+
+    /**
+     * Single product line (e.g. auction win) using marketplace tier rules.
+     */
+    public static function marketplaceBuyerPlatformFeeForProductAmount(float $saleBaseUsd, ?Product $product): float
+    {
+        $pct = self::getMarketplaceFeePercentageForProduct($product);
+
+        return round(max(0.0, $saleBaseUsd) * ($pct / 100), 2);
+    }
+
     public static function platformFeeFromAmount(float $saleBaseUsd): float
     {
         $pct = self::getSalesPlatformFeePercentage();
+
+        return round(max(0.0, $saleBaseUsd) * ($pct / 100), 2);
+    }
+
+    /**
+     * Merchant Hub offer cash purchases (and related catalog flows): same % as marketplace merchant SKUs & pool lines.
+     */
+    public static function merchantHubCatalogPlatformFeeFromAmount(float $saleBaseUsd): float
+    {
+        $pct = self::getMarketplaceMerchantPoolFeePercentage();
 
         return round(max(0.0, $saleBaseUsd) * ($pct / 100), 2);
     }
@@ -57,6 +219,26 @@ final class BiuPlatformFeeService
     {
         $pf = self::platformFeeFromAmount($saleBaseUsd);
         $g = round(max(0.0, $saleBaseUsd), 2);
+
+        return [
+            'gross_amount' => $g,
+            'subtotal' => $g,
+            'amount_gross' => $g,
+            'biu_fee' => $pf,
+            'believe_biu_fee' => $pf,
+            'platform_fee' => $pf,
+        ];
+    }
+
+    /**
+     * Ledger slice for Merchant Hub offer redemptions — BIU fee % matches marketplace merchant/pool tier.
+     *
+     * @return array<string, float>
+     */
+    public static function merchantHubCatalogLedgerMetaSlice(float $merchandiseSubtotalUsd): array
+    {
+        $pf = self::merchantHubCatalogPlatformFeeFromAmount($merchandiseSubtotalUsd);
+        $g = round(max(0.0, $merchandiseSubtotalUsd), 2);
 
         return [
             'gross_amount' => $g,

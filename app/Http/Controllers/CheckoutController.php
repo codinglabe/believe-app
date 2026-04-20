@@ -70,9 +70,10 @@ class CheckoutController extends Controller
         ]);
 
         $subtotal = $cart->getTotal();
-        $platformFeePct = BiuPlatformFeeService::getSalesPlatformFeePercentage();
+        $feeDetail = BiuPlatformFeeService::marketplaceCartBuyerPlatformFeeDetail($cart);
+        $platformFee = (float) $feeDetail['fee_usd'];
+        $platformFeePct = (float) $feeDetail['effective_percent'];
         $markupBasis = MarketplaceOrganizationMarkupService::basisFromCart($cart, $this->printifyService);
-        $platformFee = BiuPlatformFeeService::platformFeeFromAmount((float) $subtotal);
 
         return Inertia::render('Checkout/index', [
             'items' => $cart->items->map(function ($item) {
@@ -140,6 +141,7 @@ class CheckoutController extends Controller
             'subtotal' => (float) $subtotal,
             'platform_fee_percentage' => $platformFeePct,
             'platform_fee' => $platformFee,
+            'platform_fee_lines' => $feeDetail['lines'],
             // 'donation_percentage' => config('printify.optional_donation_percentage', 10), // Commented out - removed donation for Printify products
             'donation_percentage' => 0, // Set to 0 to disable donation
             // Prefer Stripe publishable key from database (payment_methods), fall back to .env
@@ -192,7 +194,7 @@ class CheckoutController extends Controller
         try {
             $subtotal = $cart->getTotal();
             $markupBasis = MarketplaceOrganizationMarkupService::basisFromCart($cart, $this->printifyService);
-            $platformFee = BiuPlatformFeeService::platformFeeFromAmount((float) $subtotal);
+            $platformFee = BiuPlatformFeeService::marketplaceCartBuyerPlatformFeeUsd($cart);
 
             // Split full name
             $nameParts = explode(' ', $validated['name']);
@@ -965,7 +967,7 @@ class CheckoutController extends Controller
             ]);
 
             $markupBasis = MarketplaceOrganizationMarkupService::basisFromCart($tempOrder->cart, $this->printifyService);
-            $platformFee = BiuPlatformFeeService::platformFeeFromAmount((float) $tempOrder->subtotal);
+            $platformFee = BiuPlatformFeeService::marketplaceCartBuyerPlatformFeeUsd($tempOrder->cart);
             $tempOrder->update([
                 'platform_fee' => $platformFee,
                 'organization_markup_basis' => $markupBasis,

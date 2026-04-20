@@ -292,7 +292,7 @@ class MerchantRedemptionController extends Controller
             $referencePrice = ($offer->points_required / 1000) * 100 / (float) $offer->discount_percentage;
         }
         $communityCashPrice = $referencePrice > 0 ? round($referencePrice, 2) : 0; // Full amount when paying with cash (no points)
-        $platformFee = BiuPlatformFeeService::platformFeeFromAmount((float) $communityCashPrice);
+        $platformFee = BiuPlatformFeeService::merchantHubCatalogPlatformFeeFromAmount((float) $communityCashPrice);
         $imageUrl = $offer->image_url;
         if ($imageUrl && ! filter_var($imageUrl, FILTER_VALIDATE_URL)) {
             $imageUrl = asset('storage/'.ltrim($imageUrl, '/'));
@@ -351,7 +351,7 @@ class MerchantRedemptionController extends Controller
         }
 
         $subtotalAmount = round($referencePrice, 2); // Full amount when paying with cash (no points)
-        $platformFeeAmount = BiuPlatformFeeService::platformFeeFromAmount((float) $subtotalAmount);
+        $platformFeeAmount = BiuPlatformFeeService::merchantHubCatalogPlatformFeeFromAmount((float) $subtotalAmount);
 
         if (! $this->shippoService->isConfigured()) {
             return response()->json(['error' => 'Shippo is not configured.'], 503);
@@ -513,7 +513,7 @@ class MerchantRedemptionController extends Controller
         }
 
         $subtotalAmount = round($referencePrice, 2);
-        $platformFeeAmount = BiuPlatformFeeService::platformFeeFromAmount((float) $subtotalAmount);
+        $platformFeeAmount = BiuPlatformFeeService::merchantHubCatalogPlatformFeeFromAmount((float) $subtotalAmount);
         $shippingCost = round((float) ($selectedRate['cost'] ?? 0), 2);
         $taxAmount = $this->calculateStateSalesTaxForAmount(
             (float) $subtotalAmount,
@@ -895,7 +895,7 @@ class MerchantRedemptionController extends Controller
                         'points_spent' => 0,
                         'offer_id' => $redemption->offer->id,
                         'receipt_code' => $redemption->receipt_code,
-                    ], BiuPlatformFeeService::ledgerMetaSlice((float) ($redemption->subtotal_amount ?? $redemption->cash_spent))),
+                    ], BiuPlatformFeeService::merchantHubCatalogLedgerMetaSlice((float) ($redemption->subtotal_amount ?? $redemption->cash_spent))),
                     'processed_at' => now(),
                 ]);
             } else {
@@ -934,7 +934,7 @@ class MerchantRedemptionController extends Controller
                         'points_spent' => 0,
                         'offer_id' => $redemption->offer->id,
                         'receipt_code' => $redemption->receipt_code,
-                    ], BiuPlatformFeeService::ledgerMetaSlice((float) ($redemption->subtotal_amount ?? $redemption->cash_spent))),
+                    ], BiuPlatformFeeService::merchantHubCatalogLedgerMetaSlice((float) ($redemption->subtotal_amount ?? $redemption->cash_spent))),
                     'processed_at' => now(),
                 ]);
             }

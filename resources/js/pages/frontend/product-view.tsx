@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import FrontendLayout from "@/layouts/frontend/frontend-layout";
 import axios from 'axios';
 import { showSuccessToast, showErrorToast } from '@/lib/toast';
-import { Star, ShoppingCart, Heart, Share2, ChevronLeft, ChevronRight, Check, Gavel, Clock, Trophy, Ban } from 'lucide-react';
+import { Star, ShoppingCart, Heart, Share2, ChevronLeft, ChevronRight, Check, Gavel, Clock, Trophy, Ban, TrendingDown } from 'lucide-react';
 
 interface PrintifyVariant {
   id: number;
@@ -325,6 +325,27 @@ export default function ProductView({
   const currentCheckoutPrice = isAtCostPricing ? currentCost : currentRetailPrice
   const platformFeeAmount = Number(((currentCheckoutPrice * platformFeePercentage) / 100).toFixed(2))
 
+  const orgEligibleTypicalHint =
+    Boolean(product.organization_id) &&
+    product.pricing_model !== "auction" &&
+    product.pricing_model !== "blind_bid" &&
+    currentCheckoutPrice > 0.0001 &&
+    currentRetailPrice <= currentCheckoutPrice + 0.001
+
+  const typicalRetailForDisplay = orgEligibleTypicalHint
+    ? Number((currentCheckoutPrice * 1.25).toFixed(2))
+    : currentRetailPrice
+  const typicalRetailIsEstimated = orgEligibleTypicalHint
+
+  const savingsVsTypicalUsd =
+    isAtCostPricing && typicalRetailForDisplay > currentCheckoutPrice + 0.001
+      ? Number((typicalRetailForDisplay - currentCheckoutPrice).toFixed(2))
+      : 0
+  const savingsVsTypicalPct =
+    savingsVsTypicalUsd > 0 && typicalRetailForDisplay > 0
+      ? Math.round((100 * savingsVsTypicalUsd) / typicalRetailForDisplay * 10) / 10
+      : 0
+
   // Get images for selected variant or all product images
   const currentVariantImages = selectedVariant?.images && selectedVariant.images.length > 0
     ? selectedVariant.images.map(img => img.src)
@@ -480,7 +501,6 @@ export default function ProductView({
   const cartItem = getCartItem();
   const productInCart = isProductInCart();
 
-    console.log('product in cart:', productInCart);
   const metaDescription = product.description ? String(product.description).slice(0, 160) : undefined;
 
   return (
@@ -497,6 +517,32 @@ export default function ProductView({
             <span className="text-gray-400 dark:text-gray-600">/</span>
             <span className="text-gray-600 dark:text-gray-400">{product.name}</span>
           </div>
+
+          {savingsVsTypicalUsd > 0 && isAtCostPricing && (
+            <div className="mb-6 flex flex-col gap-1 rounded-xl border border-amber-400/50 bg-gradient-to-r from-amber-50 to-orange-50 px-4 py-3 shadow-sm dark:border-amber-500/30 dark:from-amber-950/50 dark:to-orange-950/40 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-2 text-amber-950 dark:text-amber-100">
+                <TrendingDown className="h-5 w-5 shrink-0" aria-hidden />
+                <div>
+                  <p className="text-sm font-bold uppercase tracking-wide text-amber-900 dark:text-amber-200">
+                    {product.printify_product_id ? "Printify" : "Organization"} · savings vs typical retail
+                  </p>
+                  <p className="text-base font-semibold text-amber-950 dark:text-amber-50">
+                    You save{" "}
+                    <span className="tabular-nums">${savingsVsTypicalUsd.toFixed(2)}</span>
+                    {savingsVsTypicalPct >= 1 ? (
+                      <span className="text-amber-900/90 dark:text-amber-200/90"> ({savingsVsTypicalPct}% below typical retail)</span>
+                    ) : null}{" "}
+                    before checkout fees.
+                  </p>
+                  {typicalRetailIsEstimated ? (
+                    <p className="mt-1 text-sm font-medium text-amber-900/85 dark:text-amber-100/85">
+                      Typical retail shown uses a +25% reference when no separate MSRP is available.
+                    </p>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Main Content */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
@@ -837,9 +883,19 @@ export default function ProductView({
                   </div>
                   {isAtCostPricing ? (
                     <div className="space-y-3">
+                      <p className="text-center text-xs font-bold uppercase tracking-[0.18em] text-emerald-200/90">
+                        {product.printify_product_id ? "Printify" : "Organization"} · compare to typical retail
+                      </p>
                       <div className="flex items-center justify-between rounded-xl bg-white/5 px-4 py-3 text-sm">
-                        <span className="text-slate-300 line-through">Typical Retail</span>
-                        <span className="font-semibold text-slate-100">${currentRetailPrice.toFixed(2)}</span>
+                        <span className="text-slate-300 line-through">
+                          Typical Retail
+                          {typicalRetailIsEstimated ? (
+                            <span className="mt-0.5 block text-[10px] font-normal normal-case text-amber-200/90">
+                              (est. +25%)
+                            </span>
+                          ) : null}
+                        </span>
+                        <span className="font-semibold text-slate-100">${typicalRetailForDisplay.toFixed(2)}</span>
                       </div>
                       <div className="grid gap-3 sm:grid-cols-2">
                         <div className="rounded-xl bg-emerald-400/10 px-4 py-3 border border-emerald-300/20">

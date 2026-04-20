@@ -9,6 +9,7 @@ use App\Models\OrganizationProduct;
 use App\Models\Product;
 use App\Services\BiuPlatformFeeService;
 use App\Services\PrintifyService;
+use App\Support\OrganizationCatalogRetail;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
@@ -189,11 +190,8 @@ class MarketplaceController extends Controller
      */
     private function processProductsWithImagesNDVariantsPrice($products)
     {
-        $platformFeePercentage = BiuPlatformFeeService::getSalesPlatformFeePercentage();
-
-        return $products->map(function ($product) use ($platformFeePercentage) {
+        return $products->map(function ($product) {
             $productData = $product->toArray();
-            $isAtCostPricing = ! empty($product->organization_id) && $product->pricing_model === 'fixed';
 
             // Handle Printify products
             if ($product->printify_product_id) {
@@ -274,15 +272,12 @@ class MarketplaceController extends Controller
                     // Fallback to basic product data
                 }
             } else {
-                // Handle manual products
+                // Handle manual products (unit cost resolved below — not defaulted to retail)
                 $unitPrice = $product->unit_price ?? 0;
-                $atCost = $product->source_cost !== null ? (float) $product->source_cost : (float) $unitPrice;
                 $productData['price'] = $unitPrice;
                 $productData['min_price'] = $unitPrice;
                 $productData['max_price'] = $unitPrice;
                 $productData['price_display'] = '$'.number_format($unitPrice, 2);
-                $productData['at_cost_price'] = $atCost;
-                $productData['at_cost_display'] = '$'.number_format($atCost, 2);
 
                 // Use product image if available
                 if ($product->image) {
@@ -291,20 +286,69 @@ class MarketplaceController extends Controller
                 }
             }
 
-            $retailAmount = (float) ($productData['price'] ?? $product->unit_price ?? 0);
-            $atCostAmount = (float) ($productData['at_cost_price'] ?? $retailAmount);
-            $effectiveAmount = $isAtCostPricing ? $atCostAmount : $retailAmount;
+            $originalRetail = (float) ($productData['price'] ?? $product->unit_price ?? 0);
+
+            $atCostAmount = isset($productData['at_cost_price']) ? (float) $productData['at_cost_price'] : null;
+            if ($atCostAmount === null && ! $product->printify_product_id) {
+                $resolved = OrganizationCatalogRetail::manualCatalogUnitCostUsd($product, $originalRetail);
+                if ($resolved !== null) {
+                    $atCostAmount = $resolved;
+                    $productData['at_cost_price'] = $resolved;
+                    $productData['at_cost_display'] = '$'.number_format($resolved, 2);
+                }
+            }
+
+            $wantsAtCostCard = ! empty($product->organization_id) && $product->pricing_model === 'fixed';
+            $isAtCostPricing = $wantsAtCostCard
+                && $atCostAmount !== null
+                && $atCostAmount < $originalRetail - 0.001;
+
+            $checkoutBase = $isAtCostPricing && $atCostAmount !== null ? (float) $atCostAmount : $originalRetail;
+            $hasNaturalSavings = $isAtCostPricing && $atCostAmount !== null && $originalRetail > $atCostAmount + 0.001;
+
+            $typicalRetailForCard = $originalRetail;
+            $estimatedTypicalRetail = false;
+
+            $orgCanUseRetailHint = ! empty($product->organization_id)
+                && ! in_array((string) ($product->pricing_model ?? ''), ['auction', 'blind_bid'], true)
+                && $checkoutBase > 0.0001
+                && ! $hasNaturalSavings;
+
+            if ($orgCanUseRetailHint) {
+                $syntheticTypical = OrganizationCatalogRetail::syntheticTypicalRetailFromCheckoutBase($checkoutBase);
+                if ($syntheticTypical > $checkoutBase + 0.001) {
+                    $typicalRetailForCard = $syntheticTypical;
+                    $estimatedTypicalRetail = true;
+                    $isAtCostPricing = true;
+                    $atCostAmount = $checkoutBase;
+                    $productData['at_cost_price'] = $checkoutBase;
+                    $productData['at_cost_display'] = '$'.number_format($checkoutBase, 2);
+                }
+            }
+
+            $effectiveAmount = $isAtCostPricing && $atCostAmount !== null ? (float) $atCostAmount : $originalRetail;
 
             $productData['is_at_cost_pricing'] = $isAtCostPricing;
-            $productData['typical_retail_price'] = $retailAmount;
-            $productData['typical_retail_display'] = (string) ($productData['price_display'] ?? '$'.number_format($retailAmount, 2));
+            $productData['typical_retail_price'] = $typicalRetailForCard;
+            $productData['typical_retail_display'] = '$'.number_format($typicalRetailForCard, 2);
+            $productData['typical_retail_is_estimated'] = $estimatedTypicalRetail;
+            $platformFeePercentage = BiuPlatformFeeService::getMarketplaceFeePercentageForProduct($product);
             $productData['platform_fee_percentage'] = $platformFeePercentage;
             $productData['platform_fee_amount'] = round($effectiveAmount * ($platformFeePercentage / 100), 2);
             $productData['platform_fee_display'] = '$'.number_format($productData['platform_fee_amount'], 2);
 
             if ($isAtCostPricing) {
                 $productData['price'] = $atCostAmount;
-                $productData['price_display'] = (string) ($productData['at_cost_display'] ?? '$'.number_format($atCostAmount, 2));
+                $productData['price_display'] = (string) ($productData['at_cost_display'] ?? '$'.number_format((float) $atCostAmount, 2));
+            }
+
+            $productData['is_printify_listing'] = ! empty($product->printify_product_id);
+            $productData['typical_retail_savings_usd'] = null;
+            $productData['typical_retail_savings_percent'] = null;
+            if ($isAtCostPricing && $atCostAmount !== null && $typicalRetailForCard > $atCostAmount + 0.001) {
+                $sv = round($typicalRetailForCard - $atCostAmount, 2);
+                $productData['typical_retail_savings_usd'] = $sv;
+                $productData['typical_retail_savings_percent'] = round(100 * $sv / $typicalRetailForCard, 1);
             }
 
             return $productData;
