@@ -18,7 +18,7 @@ export default function RootLayout({
   children,
 }: {
   children: React.ReactNode
-    }) {
+}) {
     const { auth } = usePage().props;
 
     function getDeviceInfo() {
@@ -124,9 +124,9 @@ export default function RootLayout({
             />
       <div>
         <Navbar />
-              <main>
-                  {/* <PWAInstallPrompt /> */}
-                          {/* <PWAUpdatePrompt /> */}
+        <main>
+          {/* <PWAInstallPrompt /> */}
+          {/* <PWAUpdatePrompt /> */}
           {children}
         </main>
         <Footer />

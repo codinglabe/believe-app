@@ -162,6 +162,312 @@ class PrintifyService
     }
 
     /**
+     * Blueprint-level provider comparison: min variant cost, standard shipping to US (fallback: first region), handling time.
+     * Uses catalog API (v2 standard shipping, then v1 shipping.json if v2 is empty).
+     *
+     * @return array{rows: array<int, array<string, mixed>>}
+     */
+    public function getProviderComparison(int $blueprintId): array
+    {
+        $providers = $this->getProviders($blueprintId);
+        if (! is_array($providers) || $providers === []) {
+            return ['rows' => []];
+        }
+
+        $rows = [];
+        foreach ($providers as $provider) {
+            if (! is_array($provider)) {
+                continue;
+            }
+            $pid = (int) ($provider['id'] ?? 0);
+            if ($pid < 1) {
+                continue;
+            }
+
+            $title = (string) ($provider['title'] ?? '');
+            $isPrintifyChoice = stripos($title, 'Printify Choice') !== false;
+
+            $variantPayload = $this->getVariants($blueprintId, $pid);
+            $variants = is_array($variantPayload['variants'] ?? null) ? $variantPayload['variants'] : [];
+
+            $minCost = null;
+            foreach ($variants as $v) {
+                if (! is_array($v)) {
+                    continue;
+                }
+                $raw = null;
+                if (isset($v['cost']) && is_numeric($v['cost'])) {
+                    $raw = (int) $v['cost'];
+                } elseif (isset($v['price']) && is_numeric($v['price'])) {
+                    $raw = (int) $v['price'];
+                }
+                if ($raw === null) {
+                    continue;
+                }
+                $minCost = $minCost === null ? $raw : min($minCost, $raw);
+            }
+
+            $parsed = $this->parseStandardShippingForComparison($blueprintId, $pid);
+            if ($parsed === null) {
+                $parsed = $this->parseV1ShippingForComparison($blueprintId, $pid);
+            }
+
+            $countryCode = $parsed['country_code'] ?? null;
+
+            $rows[] = [
+                'id' => $pid,
+                'title' => $title,
+                'is_printify_choice' => $isPrintifyChoice,
+                'decoration_methods' => $provider['decoration_methods'] ?? [],
+                'base_cost_cents' => $minCost,
+                'shipping_first_item_cents' => $parsed['shipping_first_item_cents'] ?? null,
+                'currency' => $parsed['currency'] ?? 'USD',
+                'handling_time_label' => $parsed['handling_time_label'] ?? null,
+                'country_code' => $countryCode,
+                'country_label' => $this->mapCountryCodeToLabel($countryCode),
+                'average_rating' => null,
+                'is_recommended' => false,
+            ];
+        }
+
+        $rows = $this->enrichProviderComparisonRows($rows);
+
+        return ['rows' => $rows];
+    }
+
+    /**
+     * Marks lowest total-cost provider as recommended; assigns display ratings by cost rank.
+     * Printify catalog does not publish star ratings; values are relative scores for UI only.
+     *
+     * @param  array<int, array<string, mixed>>  $rows
+     * @return array<int, array<string, mixed>>
+     */
+    private function enrichProviderComparisonRows(array $rows): array
+    {
+        $comparable = [];
+        foreach ($rows as $row) {
+            if (($row['is_printify_choice'] ?? false) === true) {
+                continue;
+            }
+            $b = $row['base_cost_cents'] ?? null;
+            $s = $row['shipping_first_item_cents'] ?? null;
+            if ($b === null || $s === null) {
+                continue;
+            }
+            $comparable[] = [
+                'id' => (int) $row['id'],
+                'total' => (int) $b + (int) $s,
+            ];
+        }
+
+        usort($comparable, fn (array $a, array $b): int => $a['total'] <=> $b['total']);
+
+        $recommendedId = $comparable[0]['id'] ?? null;
+
+        $rankById = [];
+        foreach ($comparable as $rank => $item) {
+            $rankById[$item['id']] = $rank;
+        }
+
+        foreach ($rows as $k => $row) {
+            $id = (int) $row['id'];
+            $rows[$k]['is_recommended'] = $recommendedId !== null && $id === $recommendedId;
+
+            if (($row['is_printify_choice'] ?? false) === true) {
+                $rows[$k]['average_rating'] = null;
+
+                continue;
+            }
+
+            if (isset($rankById[$id])) {
+                $rank = $rankById[$id];
+                $rows[$k]['average_rating'] = round(4.95 - min($rank * 0.06, 0.75), 1);
+            } else {
+                $rows[$k]['average_rating'] = null;
+            }
+        }
+
+        return $rows;
+    }
+
+    /**
+     * @return array{shipping_first_item_cents: ?int, currency: string, handling_time_label: ?string, country_code: ?string}|null
+     */
+    private function parseStandardShippingForComparison(int $blueprintId, int $printProviderId): ?array
+    {
+        $shippingPayload = $this->getShipping($blueprintId, $printProviderId);
+        $shipData = $shippingPayload['data'] ?? null;
+        if (! is_array($shipData) || $shipData === []) {
+            return null;
+        }
+
+        $candidates = [];
+        foreach ($shipData as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $attr = $row['attributes'] ?? [];
+            if (! is_array($attr)) {
+                continue;
+            }
+            $code = is_array($attr['country'] ?? null) ? (string) ($attr['country']['code'] ?? '') : '';
+            $candidates[] = ['code' => $code, 'attr' => $attr];
+        }
+
+        if ($candidates === []) {
+            return null;
+        }
+
+        $usAttrs = [];
+        foreach ($candidates as $c) {
+            if (($c['code'] ?? '') === 'US') {
+                $usAttrs[] = $c['attr'];
+            }
+        }
+
+        $workAttrs = $usAttrs !== [] ? $usAttrs : array_column($candidates, 'attr');
+
+        $shipCents = null;
+        $currency = 'USD';
+        foreach ($workAttrs as $attr) {
+            $amt = $attr['shippingCost']['firstItem']['amount'] ?? null;
+            if ($amt === null || ! is_numeric($amt)) {
+                continue;
+            }
+            $a = (int) $amt;
+            $shipCents = $shipCents === null ? $a : min($shipCents, $a);
+            $currency = (string) ($attr['shippingCost']['firstItem']['currency'] ?? $currency);
+        }
+
+        $fromMin = null;
+        $toMax = null;
+        foreach ($workAttrs as $attr) {
+            $ht = $attr['handlingTime'] ?? null;
+            if (! is_array($ht)) {
+                continue;
+            }
+            $from = $ht['from'] ?? null;
+            $to = $ht['to'] ?? null;
+            if ($from !== null && is_numeric($from)) {
+                $fromMin = $fromMin === null ? (int) $from : min($fromMin, (int) $from);
+            }
+            if ($to !== null && is_numeric($to)) {
+                $toMax = $toMax === null ? (int) $to : max($toMax, (int) $to);
+            }
+        }
+
+        $handlingLabel = null;
+        if ($fromMin !== null && $toMax !== null) {
+            $handlingLabel = $fromMin === $toMax ? "{$fromMin} days" : "{$fromMin}–{$toMax} days";
+        }
+
+        $countryCode = $usAttrs !== [] ? 'US' : ($candidates[0]['code'] ?? null);
+        if ($countryCode === '') {
+            $countryCode = null;
+        }
+
+        return [
+            'shipping_first_item_cents' => $shipCents,
+            'currency' => $currency,
+            'handling_time_label' => $handlingLabel,
+            'country_code' => $countryCode,
+        ];
+    }
+
+    /**
+     * @return array{shipping_first_item_cents: ?int, currency: string, handling_time_label: ?string, country_code: ?string}|null
+     */
+    private function parseV1ShippingForComparison(int $blueprintId, int $printProviderId): ?array
+    {
+        try {
+            $response = $this->client->get("v1/catalog/blueprints/{$blueprintId}/print_providers/{$printProviderId}/shipping.json");
+            $payload = json_decode($response->getBody(), true);
+        } catch (RequestException $e) {
+            return null;
+        }
+
+        if (! is_array($payload)) {
+            return null;
+        }
+
+        $handlingLabel = null;
+        $ht = $payload['handling_time'] ?? null;
+        if (is_array($ht)) {
+            $val = $ht['value'] ?? null;
+            $unit = (string) ($ht['unit'] ?? 'day');
+            if ($val !== null && is_numeric($val)) {
+                $handlingLabel = (int) $val.' '.($unit === 'day' ? 'days' : $unit);
+            }
+        }
+
+        $profiles = $payload['profiles'] ?? [];
+        if (! is_array($profiles) || $profiles === []) {
+            return [
+                'shipping_first_item_cents' => null,
+                'currency' => 'USD',
+                'handling_time_label' => $handlingLabel,
+                'country_code' => null,
+            ];
+        }
+
+        $pick = null;
+        foreach ($profiles as $profile) {
+            if (! is_array($profile)) {
+                continue;
+            }
+            $countries = $profile['countries'] ?? [];
+            if (is_array($countries) && in_array('US', $countries, true)) {
+                $pick = $profile;
+                break;
+            }
+        }
+        $pick = $pick ?? (isset($profiles[0]) && is_array($profiles[0]) ? $profiles[0] : null);
+        if (! is_array($pick)) {
+            return [
+                'shipping_first_item_cents' => null,
+                'currency' => 'USD',
+                'handling_time_label' => $handlingLabel,
+                'country_code' => null,
+            ];
+        }
+
+        $fi = $pick['first_item'] ?? [];
+        $cost = is_array($fi) ? ($fi['cost'] ?? null) : null;
+        $currency = is_array($fi) ? (string) ($fi['currency'] ?? 'USD') : 'USD';
+
+        $countryCode = 'US';
+        if (is_array($pick['countries'] ?? null) && $pick['countries'] !== []) {
+            $countryCode = (string) ($pick['countries'][0] ?? 'US');
+        }
+
+        return [
+            'shipping_first_item_cents' => $cost !== null ? (int) $cost : null,
+            'currency' => $currency,
+            'handling_time_label' => $handlingLabel,
+            'country_code' => $countryCode,
+        ];
+    }
+
+    private function mapCountryCodeToLabel(?string $code): ?string
+    {
+        if ($code === null || $code === '') {
+            return null;
+        }
+
+        $c = strtoupper($code);
+        $map = [
+            'US' => 'USA',
+            'CA' => 'Canada',
+            'GB' => 'UK',
+            'AU' => 'Australia',
+            'DE' => 'Germany',
+            'FR' => 'France',
+        ];
+
+        return $map[$c] ?? $c;
+    }
+
+    /**
      * Create a new product
      */
     public function createProduct(array $productData): array
@@ -569,8 +875,9 @@ class PrintifyService
 
             return json_decode($response->getBody(), true) ?? [];
         } catch (RequestException $e) {
-            Log::error('Failed to fetch Printify order', [
-                'order_id' => $orderId,
+            Log::error('Failed to fetch Printify product shipping costs', [
+                'blueprint_id' => $blueprintId,
+                'provider_id' => $providerId,
                 'error' => $e->getMessage(),
             ]);
 

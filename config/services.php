@@ -146,6 +146,33 @@ return [
         'monthly_refresh_enabled' => env('KIOSK_PROVIDER_MONTHLY_REFRESH_ENABLED', true),
     ],
 
+    /*
+    | Level Up / Challenge Hub quiz: OpenAI generation and points.
+    */
+    'challenge_quiz' => [
+        'model' => env('CHALLENGE_QUIZ_AI_MODEL', 'gpt-4o-mini'),
+        'max_output_tokens' => (int) env('CHALLENGE_QUIZ_AI_MAX_TOKENS', 4096),
+        /** Reward points per correct answer */
+        'points_per_correct' => (float) env('CHALLENGE_QUIZ_POINTS_PER_CORRECT', 10),
+        /** Deducted on wrong / timeout (defaults to same as correct when env omitted) */
+        'points_per_incorrect' => (float) env('CHALLENGE_QUIZ_POINTS_PER_INCORRECT', env('CHALLENGE_QUIZ_POINTS_PER_CORRECT', 10)),
+        /** Max OpenAI-generated question batches per user per category per 24h */
+        'max_openai_batches_per_user_category_per_day' => (int) env('CHALLENGE_QUIZ_MAX_AI_BATCHES_PER_DAY', 20),
+        /** Questions per OpenAI batch when pool is empty */
+        'openai_batch_size' => (int) env('CHALLENGE_QUIZ_AI_BATCH_SIZE', 8),
+    ],
+
+    /*
+    | Challenge Hub: admin-generated cover art (OpenAI Images API, stored on public disk).
+    | Default dall-e-2 + 512x512 keeps cost low; resized to image_max_width for smaller files.
+    */
+    'challenge_hub' => [
+        'image_model' => env('CHALLENGE_HUB_IMAGE_MODEL', 'dall-e-2'),
+        'image_size' => env('CHALLENGE_HUB_IMAGE_SIZE', '512x512'),
+        'image_max_width' => (int) env('CHALLENGE_HUB_IMAGE_MAX_WIDTH', 384),
+        'image_prompt_suffix' => env('CHALLENGE_HUB_IMAGE_PROMPT_SUFFIX', 'Isolated subject, centered, simple illustration, generous empty space around the subject, no text, no border, crisp edges, dark purple / gold palette, suitable for overlay on a dark UI (not a full scene).'),
+    ],
+
     'gmail' => [
         'client_id' => env('GMAIL_CLIENT_ID'),
         'client_secret' => env('GMAIL_CLIENT_SECRET'),

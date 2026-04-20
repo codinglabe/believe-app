@@ -69,6 +69,7 @@ import {
     Activity,
     MessageCircle,
     Sparkles,
+    Trophy,
 } from 'lucide-react';
 
 /**
@@ -665,6 +666,31 @@ export const dashboardSidebarNavItems: (NavItem | NavGroup)[] = [
                         href: '/admin/seo',
                         icon: Search,
                         role: 'admin',
+                    },
+                    {
+                        title: 'Challenge Hub',
+                        icon: Trophy,
+                        role: 'admin',
+                        items: [
+                            {
+                                title: 'Categories',
+                                href: route('admin.challenge-hub.categories.index'),
+                                icon: Layers,
+                                role: 'admin',
+                            },
+                            {
+                                title: 'Tracks',
+                                href: route('admin.challenge-hub.tracks.index'),
+                                icon: LayoutGrid,
+                                role: 'admin',
+                            },
+                            {
+                                title: 'Questions bank',
+                                href: route('admin.challenge-hub.questions.index'),
+                                icon: BookOpen,
+                                role: 'admin',
+                            },
+                        ],
                     },
                     {
                         title: 'Stripe processing fees',

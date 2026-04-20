@@ -1,0 +1,395 @@
+<?php
+
+namespace App\Services;
+
+use App\Models\ChallengeQuestion;
+use App\Models\LevelUpQuizSession;
+use App\Models\LevelUpTrack;
+use App\Models\User;
+use App\Models\UserChallengeQuestionEvent;
+use App\Support\ChallengeLevelUp;
+use Illuminate\Support\Collection;
+use InvalidArgumentException;
+
+class ChallengeQuestionService
+{
+    public function __construct(
+        protected ChallengeQuestionGeneratorService $generator,
+    ) {}
+
+    protected function questionTimeLimitMs(): int
+    {
+        $sec = (int) config('challenge_hub.question_time_limit_seconds', 10);
+
+        return max(1000, $sec * 1000);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function next(User $user, LevelUpTrack $track): array
+    {
+        if (! $track->isActive()) {
+            throw new InvalidArgumentException('Track is not active.');
+        }
+
+        /** @var array<int, string> $categories */
+        $categories = $track->subject_categories ?? [];
+        $categories = array_values(array_filter($categories, fn ($c) => is_string($c) && $c !== ''));
+
+        if ($categories === []) {
+            return [
+                'status' => 'complete',
+                'message' => 'No categories configured for this track yet.',
+            ];
+        }
+
+        $pending = UserChallengeQuestionEvent::query()
+            ->where('user_id', $user->id)
+            ->where('level_up_track_id', $track->id)
+            ->where('status', UserChallengeQuestionEvent::STATUS_PENDING)
+            ->with('challengeQuestion')
+            ->first();
+
+        if ($pending && $pending->challengeQuestion) {
+            return $this->withQuestionMeta($this->questionPayloadFromEvent($pending), false);
+        }
+
+        $usedIds = $this->usedQuestionIds($user->id);
+
+        $subcategory = $track->quiz_subcategory;
+        $question = $this->pickRandomUnseen($categories, $usedIds, $subcategory);
+
+        $generatedNewCount = 0;
+        if (! $question) {
+            $generatedNewCount = $this->generator->generateBatchIfAllowed($user->id, $categories[0]);
+            $usedIds = $this->usedQuestionIds($user->id);
+            $question = $this->pickRandomUnseen($categories, $usedIds, $subcategory);
+        }
+
+        if (! $question) {
+            return [
+                'status' => 'exhausted',
+                'message' => 'You have completed every available question for now. Check back later!',
+            ];
+        }
+
+        $session = $this->getOrCreateOpenSession($user, $track);
+
+        $event = UserChallengeQuestionEvent::create([
+            'user_id' => $user->id,
+            'level_up_track_id' => $track->id,
+            'level_up_quiz_session_id' => $session->id,
+            'challenge_question_id' => $question->id,
+            'status' => UserChallengeQuestionEvent::STATUS_PENDING,
+        ]);
+
+        $event->load('challengeQuestion');
+
+        return $this->withQuestionMeta(
+            $this->questionPayloadFromEvent($event),
+            $generatedNewCount > 0
+        );
+    }
+
+    public function getOrCreateOpenSession(User $user, LevelUpTrack $track): LevelUpQuizSession
+    {
+        $existing = LevelUpQuizSession::query()
+            ->where('user_id', $user->id)
+            ->where('level_up_track_id', $track->id)
+            ->whereNull('ended_at')
+            ->latest('id')
+            ->first();
+
+        if ($existing) {
+            return $existing;
+        }
+
+        return LevelUpQuizSession::create([
+            'user_id' => $user->id,
+            'level_up_track_id' => $track->id,
+            'started_at' => now(),
+        ]);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function answer(User $user, LevelUpTrack $track, int $eventId, ?string $selectedOption, bool $timedOut = false): array
+    {
+        if (! $track->isActive()) {
+            throw new InvalidArgumentException('Track is not active.');
+        }
+
+        $event = UserChallengeQuestionEvent::query()
+            ->where('id', $eventId)
+            ->where('user_id', $user->id)
+            ->where('level_up_track_id', $track->id)
+            ->where('status', UserChallengeQuestionEvent::STATUS_PENDING)
+            ->with('challengeQuestion')
+            ->firstOrFail();
+
+        $q = $event->challengeQuestion;
+        if (! $q) {
+            throw new InvalidArgumentException('Question missing.');
+        }
+
+        $limitMs = $this->questionTimeLimitMs();
+        $rawElapsed = (int) max(0, $event->created_at->diffInMilliseconds(now()));
+        $effectiveTimedOut = $timedOut || $rawElapsed >= $limitMs;
+        $responseTimeMs = (int) min($rawElapsed, $limitMs);
+
+        $selectedOptionNorm = null;
+        if (! $effectiveTimedOut) {
+            if (! is_string($selectedOption)) {
+                throw new InvalidArgumentException('Invalid option.');
+            }
+            $selectedOptionNorm = strtoupper(trim($selectedOption));
+            if (! in_array($selectedOptionNorm, ['A', 'B', 'C', 'D'], true)) {
+                throw new InvalidArgumentException('Invalid option.');
+            }
+        }
+
+        $correct = ! $effectiveTimedOut && strtoupper((string) $q->correct_option) === $selectedOptionNorm;
+
+        $pointsPerCorrect = (float) config('services.challenge_quiz.points_per_correct', 10);
+        $pointsPerIncorrect = (float) config('services.challenge_quiz.points_per_incorrect', $pointsPerCorrect);
+
+        $points = 0.0;
+        if ($correct) {
+            $points = $pointsPerCorrect;
+            $user->addRewardPoints(
+                $points,
+                ChallengeLevelUp::LEDGER_SOURCE,
+                $event->id,
+                $track->name.' — correct answer',
+                [
+                    'level_up_track_slug' => $track->slug,
+                    'challenge_question_id' => $q->id,
+                ]
+            );
+        } else {
+            $balance = $user->currentRewardPoints();
+            $deduct = min($pointsPerIncorrect, max(0.0, $balance));
+            if ($deduct > 0.00001) {
+                $user->deductRewardPoints(
+                    $deduct,
+                    ChallengeLevelUp::LEDGER_SOURCE,
+                    $event->id,
+                    $track->name.' — incorrect answer',
+                    [
+                        'level_up_track_slug' => $track->slug,
+                        'challenge_question_id' => $q->id,
+                        'timed_out' => $effectiveTimedOut,
+                    ]
+                );
+                $points = -1 * $deduct;
+            }
+        }
+
+        $event->update([
+            'status' => UserChallengeQuestionEvent::STATUS_ANSWERED,
+            'selected_option' => $effectiveTimedOut ? null : $selectedOptionNorm,
+            'is_correct' => $correct,
+            'points_awarded' => $points,
+            'answered_at' => now(),
+            'response_time_ms' => $responseTimeMs,
+            'timed_out' => $effectiveTimedOut,
+        ]);
+
+        if ($event->level_up_quiz_session_id) {
+            $session = LevelUpQuizSession::query()->find($event->level_up_quiz_session_id);
+            $this->updateSessionAfterAnswer($session, $correct);
+        }
+
+        return [
+            'is_correct' => $correct,
+            'correct_option' => strtoupper((string) $q->correct_option),
+            'explanation' => $q->explanation,
+            'points_awarded' => $points,
+            'reward_points_balance' => $user->fresh()->currentRewardPoints(),
+            'response_time_ms' => $responseTimeMs,
+            'timed_out' => $effectiveTimedOut,
+        ];
+    }
+
+    protected function updateSessionAfterAnswer(?LevelUpQuizSession $session, bool $correct): void
+    {
+        if (! $session || ! $session->isOpen()) {
+            return;
+        }
+
+        if ($correct) {
+            $running = $session->running_answer_streak + 1;
+            $session->correct_count = $session->correct_count + 1;
+        } else {
+            $running = 0;
+            $session->incorrect_count = $session->incorrect_count + 1;
+        }
+
+        $session->running_answer_streak = $running;
+        $session->max_answer_streak = max((int) $session->max_answer_streak, $running);
+        $session->save();
+    }
+
+    /**
+     * Close the open session for this track and return a payload for the results screen.
+     *
+     * @return array<string, mixed>|null
+     */
+    public function finalizeOpenSessionForTrack(User $user, LevelUpTrack $track): ?array
+    {
+        $session = LevelUpQuizSession::query()
+            ->where('user_id', $user->id)
+            ->where('level_up_track_id', $track->id)
+            ->whereNull('ended_at')
+            ->latest('id')
+            ->first();
+
+        if (! $session) {
+            return null;
+        }
+
+        $ended = now();
+        $totalMs = (int) min(PHP_INT_MAX, max(0, $session->started_at->diffInMilliseconds($ended)));
+
+        $events = UserChallengeQuestionEvent::query()
+            ->where('level_up_quiz_session_id', $session->id)
+            ->where('status', UserChallengeQuestionEvent::STATUS_ANSWERED)
+            ->get();
+
+        $correct = $events->where('is_correct', true)->count();
+        $total = $events->count();
+        $pointsFromAnswers = (float) $events->sum(fn (UserChallengeQuestionEvent $e) => (float) $e->points_awarded);
+
+        $bonus = $this->streakBonusPoints((int) $session->max_answer_streak);
+
+        if ($bonus > 0.00001) {
+            $user->addRewardPoints(
+                $bonus,
+                ChallengeLevelUp::LEDGER_SOURCE,
+                $session->id,
+                $track->name.' — streak bonus',
+                [
+                    'level_up_track_slug' => $track->slug,
+                    'level_up_quiz_session_id' => $session->id,
+                ]
+            );
+        }
+
+        $session->update([
+            'ended_at' => $ended,
+            'total_elapsed_ms' => $totalMs,
+            'streak_bonus_awarded' => $bonus,
+        ]);
+
+        return [
+            'headline' => 'Quiz Results',
+            'summary' => $total === 0
+                ? 'No questions were answered in this run.'
+                : sprintf('You scored %d out of %d questions correctly.', $correct, $total),
+            'congratulations' => $total > 0 && $correct >= (int) ceil($total / 2),
+            'score_correct' => $correct,
+            'score_total' => $total,
+            'points_from_answers' => round($pointsFromAnswers, 2),
+            'streak_bonus' => round($bonus, 2),
+            'points_total' => round($pointsFromAnswers + $bonus, 2),
+            'max_streak' => (int) $session->max_answer_streak,
+            'total_time_ms' => $totalMs,
+            'reward_points_balance' => $user->fresh()->currentRewardPoints(),
+        ];
+    }
+
+    protected function streakBonusPoints(int $maxStreak): float
+    {
+        if ($maxStreak < 2) {
+            return 0.0;
+        }
+
+        $tier = (float) config('challenge_hub.streak_bonus_per_streak_tier', 10);
+        $cap = (float) config('challenge_hub.streak_bonus_cap', 30);
+
+        return min($cap, max(0.0, ($maxStreak - 1) * $tier));
+    }
+
+    /**
+     * @param  array<int, string>  $categories
+     * @param  Collection<int, int>  $usedIds
+     */
+    protected function pickRandomUnseen(array $categories, Collection $usedIds, ?string $subcategory = null): ?ChallengeQuestion
+    {
+        $sub = is_string($subcategory) ? trim($subcategory) : '';
+
+        return ChallengeQuestion::query()
+            ->whereIn('category', $categories)
+            ->when($sub !== '', fn ($q) => $q->where('subcategory', $sub))
+            ->when($usedIds->isNotEmpty(), fn ($q) => $q->whereNotIn('id', $usedIds))
+            ->inRandomOrder()
+            ->first();
+    }
+
+    /**
+     * @return Collection<int, int>
+     */
+    protected function usedQuestionIds(int $userId): Collection
+    {
+        return UserChallengeQuestionEvent::query()
+            ->where('user_id', $userId)
+            ->pluck('challenge_question_id');
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    protected function questionPayloadFromEvent(UserChallengeQuestionEvent $event): array
+    {
+        $q = $event->challengeQuestion;
+        if (! $q) {
+            return [
+                'status' => 'error',
+                'message' => 'Question not found.',
+            ];
+        }
+
+        /** @var list<array{0: 'A'|'B'|'C'|'D', 1: string}> $pairs */
+        $pairs = [
+            ['A', (string) $q->option_a],
+            ['B', (string) $q->option_b],
+            ['C', (string) $q->option_c],
+            ['D', (string) $q->option_d],
+        ];
+        shuffle($pairs);
+
+        $optionRows = [];
+        foreach ($pairs as [$answerKey, $text]) {
+            $optionRows[] = [
+                'answer_key' => $answerKey,
+                'text' => $text,
+            ];
+        }
+
+        return [
+            'status' => 'question',
+            'event_id' => $event->id,
+            'category' => $q->category,
+            'subcategory' => $q->subcategory,
+            'question' => $q->question,
+            'option_rows' => $optionRows,
+            'difficulty' => $q->difficulty,
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     * @return array<string, mixed>
+     */
+    protected function withQuestionMeta(array $payload, bool $generatedNewQuestions): array
+    {
+        if (($payload['status'] ?? null) !== 'question') {
+            return $payload;
+        }
+        $payload['generated_new_questions'] = $generatedNewQuestions;
+
+        return $payload;
+    }
+}

@@ -15,6 +15,8 @@ import AppLayout from "@/layouts/app-layout"
 import type { BreadcrumbItem } from "@/types"
 import axios from 'axios';
 import { ProductSourceSelector } from '@/components/product-source-selector';
+import { PrintifyProviderComparisonList } from '@/components/printify-provider-comparison-list';
+import type { PrintifyProviderComparisonRow } from '@/types/printify';
 
 const breadcrumbs: BreadcrumbItem[] = [
     {
@@ -39,16 +41,6 @@ interface Blueprint {
     brand: string;
     model: string;
     images: string[];
-}
-
-interface PrintProvider {
-    id: number;
-    title: string;
-    location: {
-        address1: string;
-        city: string;
-        country: string;
-    };
 }
 
 interface Variant {
@@ -198,13 +190,12 @@ export default function Create({
     const [errors, setErrors] = useState<any>({});
 
 
-    const [providers, setProviders] = useState<PrintProvider[]>([]);
+    const [providerComparisonRows, setProviderComparisonRows] = useState<PrintifyProviderComparisonRow[]>([]);
     const [variants, setVariants] = useState<Variant[]>([]);
     const [selectedVariants, setSelectedVariants] = useState<number[]>([]);
     const [loadingProviders, setLoadingProviders] = useState(false);
     const [loadingVariants, setLoadingVariants] = useState(false);
     const [selectedBlueprint, setSelectedBlueprint] = useState<Blueprint | null>(null);
-    const [selectedProvider, setSelectedProvider] = useState<PrintProvider | null>(null);
 
     const [selectedCategories, setSelectedCategories] = useState<number[]>([]);
 
@@ -268,8 +259,7 @@ const handleCategoryChange = (categoryId: number) => {
         if (data.printify_blueprint_id) {
             loadProviders(data.printify_blueprint_id);
         } else {
-            setProviders([]);
-            setSelectedProvider(null);
+            setProviderComparisonRows([]);
         }
     }, [data.printify_blueprint_id]);
 
@@ -286,20 +276,20 @@ const handleCategoryChange = (categoryId: number) => {
     const loadProviders = async (blueprintId: string) => {
         setLoadingProviders(true);
         try {
-            const response = await axios.get(route('printify.providers'), {
-                params: { blueprint_id: blueprintId }
+            const response = await axios.get(route('printify.provider-comparison'), {
+                params: { blueprint_id: blueprintId },
             });
 
             if (response.data.error) {
                 showErrorToast(response.data.error);
-                setProviders([]);
+                setProviderComparisonRows([]);
             } else {
-                setProviders(response.data);
+                setProviderComparisonRows(response.data.rows ?? []);
             }
         } catch (error: any) {
             console.error('Providers load error:', error);
             showErrorToast('Failed to load providers: ' + (error.response?.data?.message || error.message));
-            setProviders([]);
+            setProviderComparisonRows([]);
         } finally {
             setLoadingProviders(false);
         }
@@ -336,15 +326,12 @@ const handleCategoryChange = (categoryId: number) => {
         setData('printify_blueprint_id', blueprintId);
         setData('printify_provider_id', '');
         setData('printify_variants', []);
-        setProviders([]);
+        setProviderComparisonRows([]);
         setVariants([]);
         setSelectedVariants([]);
-        setSelectedProvider(null);
     };
 
     const handleProviderSelect = (providerId: string) => {
-        const provider = providers.find(p => p.id.toString() === providerId);
-        setSelectedProvider(provider || null);
         setData('printify_provider_id', providerId);
     };
 
@@ -928,8 +915,7 @@ const handleCategoryChange = (categoryId: number) => {
                                                     setData('printify_variants', []);
                                                     setData('printify_images', []);
                                                     setSelectedBlueprint(null);
-                                                    setSelectedProvider(null);
-                                                    setProviders([]);
+                                                    setProviderComparisonRows([]);
                                                     setVariants([]);
                                                     setSelectedVariants([]);
                                                 } else {
@@ -1053,70 +1039,21 @@ const handleCategoryChange = (categoryId: number) => {
                                             )}
                                         </div>
 
-                                        {/* Print Provider Selection */}
+                                        {/* Print Provider Comparison (Printify catalog) */}
                                         {data.printify_blueprint_id && (
                                             <div className="space-y-3">
-                                                <Label htmlFor="provider" className="flex items-center gap-2 text-base font-semibold">
+                                                <Label className="flex items-center gap-2 text-base font-semibold">
                                                     <Package className="h-4 w-4" />
                                                     Print Provider *
                                                 </Label>
-                                                <Select
-                                                    value={data.printify_provider_id}
-                                                    onValueChange={handleProviderSelect}
-                                                    disabled={loadingProviders}
-                                                >
-                                                    <SelectTrigger
-                                                        className={`h-11 w-full border-gray-300 bg-white text-base text-gray-900 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 ${loadingProviders ? 'opacity-50' : ''}`}
-                                                    >
-                                                        {loadingProviders ? (
-                                                            <div className="flex items-center gap-2">
-                                                                <Loader2 className="h-4 w-4 animate-spin text-blue-600 dark:text-blue-400" />
-                                                                <span className="text-gray-600 dark:text-gray-400">Loading providers...</span>
-                                                            </div>
-                                                        ) : (
-                                                            <SelectValue placeholder="Select print provider" />
-                                                        )}
-                                                    </SelectTrigger>
-                                                    <SelectContent className="border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
-                                                        {providers.map((provider) => (
-                                                            <SelectItem
-                                                                key={provider.id}
-                                                                value={provider.id.toString()}
-                                                                className="text-gray-900 hover:bg-gray-100 dark:text-gray-100 dark:hover:bg-gray-700"
-                                                            >
-                                                                <div className="flex flex-col">
-                                                                    <span className="font-medium">{provider.title}</span>
-                                                                </div>
-                                                            </SelectItem>
-                                                        ))}
-                                                    </SelectContent>
-                                                </Select>
-                                                {errors.printify_provider_id && <p className="text-sm text-red-500">{errors.printify_provider_id}</p>}
-
-                                                {selectedProvider && (
-                                                    <div className="mt-3 rounded-xl border-2 border-blue-200 bg-gradient-to-r from-blue-50 to-indigo-50 p-4 shadow-sm dark:border-blue-800 dark:from-blue-950/30 dark:to-indigo-950/30">
-                                                        <div className="flex items-center justify-between">
-                                                            <div>
-                                                                <h5 className="text-sm font-semibold text-blue-900 sm:text-base dark:text-blue-100">
-                                                                    {selectedProvider.title}
-                                                                </h5>
-                                                                {selectedProvider.location && (
-                                                                    <p className="mt-1 text-xs text-blue-700 sm:text-sm dark:text-blue-300">
-                                                                        {selectedProvider.location.city}, {selectedProvider.location.country}
-                                                                    </p>
-                                                                )}
-                                                            </div>
-                                                            <div className="flex items-center gap-2">
-                                                                <div
-                                                                    className="h-2.5 w-2.5 animate-pulse rounded-full bg-green-500 shadow-sm dark:bg-green-400"
-                                                                    title="Available"
-                                                                />
-                                                                <span className="text-xs font-medium text-green-700 dark:text-green-400">
-                                                                    Available
-                                                                </span>
-                                                            </div>
-                                                        </div>
-                                                    </div>
+                                                <PrintifyProviderComparisonList
+                                                    rows={providerComparisonRows}
+                                                    selectedId={data.printify_provider_id}
+                                                    loading={loadingProviders}
+                                                    onSelect={handleProviderSelect}
+                                                />
+                                                {errors.printify_provider_id && (
+                                                    <p className="text-sm text-red-500">{errors.printify_provider_id}</p>
                                                 )}
                                             </div>
                                         )}

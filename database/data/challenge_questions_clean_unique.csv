@@ -1,0 +1,451 @@
+category,subcategory,question,option_a,option_b,option_c,option_d,correct_answer,explanation,difficulty
+Faith,Old Testament,Who built the ark?,Moses,Noah,David,Abraham,B,Noah built the ark as recorded in Genesis 6.,Easy
+Faith,Old Testament,Who led the Israelites out of Egypt?,Joseph,Moses,Aaron,Joshua,B,Moses led the Israelites out of Egypt in the Exodus story.,Easy
+Faith,Old Testament,Who was thrown into the lions' den?,Daniel,Elijah,Isaiah,Samuel,A,Daniel was thrown into the lions' den but God protected him.,Easy
+Faith,Old Testament,Who defeated Goliath?,Saul,Jonathan,David,Solomon,C,David defeated Goliath with a sling and stone.,Easy
+Faith,Old Testament,What is the first book of the Bible?,Genesis,Exodus,Psalms,Matthew,A,Genesis is the first book of the Bible.,Easy
+Faith,Old Testament,Who was sold by his brothers and later rose to power in Egypt?,Joseph,Benjamin,Isaac,Jacob,A,Joseph was sold by his brothers and became a leader in Egypt.,Easy
+Faith,Old Testament,Who built a very large temple in Jerusalem?,David,Solomon,Samuel,Ezra,B,Solomon built the first temple in Jerusalem.,Easy
+Faith,Old Testament,Who was swallowed by a great fish?,Jonah,Micah,Joel,Amos,A,Jonah was swallowed by a great fish after fleeing God's call.,Easy
+Faith,Old Testament,Who interpreted dreams for Pharaoh?,Moses,Joseph,Aaron,Elijah,B,Joseph interpreted Pharaoh's dreams in Genesis 41.,Easy
+Faith,Old Testament,What sea parted for the Israelites?,Dead Sea,Sea of Galilee,Red Sea,Mediterranean Sea,C,God parted the Red Sea for the Israelites to cross.,Easy
+Faith,Old Testament,Who was Abraham's wife?,Rachel,Sarah,Rebekah,Miriam,B,Sarah was Abraham's wife.,Easy
+Faith,Old Testament,Who was Isaac's father?,Jacob,Moses,Abraham,Joseph,C,Abraham was the father of Isaac.,Easy
+Faith,Old Testament,What did God create on the first day?,Animals,Sun and moon,Light,Humans,C,"According to Genesis 1, God created light on the first day.",Easy
+Faith,Old Testament,Who received the Ten Commandments?,Joshua,Aaron,Moses,David,C,Moses received the Ten Commandments on Mount Sinai.,Easy
+Faith,Old Testament,Which young woman became queen and saved her people?,Ruth,Esther,Deborah,Hannah,B,Esther became queen and courageously saved her people.,Easy
+Faith,Old Testament,Who was known for great strength and long hair?,Samson,Saul,Isaac,Job,A,"Samson was known for his strength, which was tied to his hair.",Easy
+Faith,Old Testament,Who stayed faithful during great suffering in the book named after him?,Ezra,Job,Jeremiah,Nehemiah,B,Job remained faithful during intense suffering.,Easy
+Faith,Old Testament,"Who followed Naomi and said, 'Your people shall be my people'?",Esther,Leah,Ruth,Miriam,C,Ruth showed loyalty to Naomi with those words.,Easy
+Faith,Old Testament,Who was Jacob's twin brother?,Esau,Isaac,Joseph,Benjamin,A,Esau and Jacob were twins.,Easy
+Faith,Old Testament,Who marched around Jericho before its walls fell?,David,Joshua,Solomon,Samuel,B,Joshua led Israel around Jericho before the walls fell.,Easy
+Faith,New Testament,Who was the mother of Jesus?,Mary,Martha,Elizabeth,Lydia,A,Mary was chosen to be the mother of Jesus.,Easy
+Faith,New Testament,In what town was Jesus born?,Nazareth,Bethlehem,Jerusalem,Capernaum,B,Jesus was born in Bethlehem.,Easy
+Faith,New Testament,How many disciples did Jesus have?,10,11,12,13,C,Jesus chose 12 disciples.,Easy
+Faith,New Testament,Who baptized Jesus?,Peter,John the Baptist,Paul,Andrew,B,John the Baptist baptized Jesus.,Easy
+Faith,New Testament,Who denied Jesus three times?,John,James,Peter,Thomas,C,Peter denied Jesus three times before the rooster crowed.,Easy
+Faith,New Testament,Who doubted Jesus' resurrection until he saw Him?,Matthew,Thomas,Philip,Bartholomew,B,Thomas doubted until he saw the risen Jesus.,Easy
+Faith,New Testament,Who wrote many letters that became books of the New Testament?,Paul,Luke,John the Baptist,Timothy,A,Paul wrote many New Testament letters.,Easy
+Faith,New Testament,What is the first book of the New Testament?,Mark,Matthew,Luke,John,B,Matthew is the first book of the New Testament.,Easy
+Faith,New Testament,Who was the tax collector that became a disciple?,Matthew,Philip,James,Jude,A,Matthew worked as a tax collector before following Jesus.,Easy
+Faith,New Testament,Who climbed a tree to see Jesus?,Nicodemus,Zacchaeus,Barnabas,Silas,B,Zacchaeus climbed a sycamore tree to see Jesus.,Easy
+Faith,New Testament,Who preached at Pentecost?,Peter,Thomas,Mark,Luke,A,Peter preached boldly on the day of Pentecost.,Medium
+Faith,New Testament,Which disciple was a fisherman and brother of Peter?,Andrew,Matthew,Judas,Simon the Zealot,A,Andrew was Peter's brother and also a fisherman.,Easy
+Faith,New Testament,Who was stoned and became the first Christian martyr mentioned in Acts?,Stephen,Barnabas,Titus,Timothy,A,Stephen is known as the first Christian martyr.,Medium
+Faith,New Testament,Who traveled with Paul and wrote the book of Acts?,Mark,Luke,James,John,B,Luke wrote both Luke and Acts.,Medium
+Faith,New Testament,Who was raised from the dead by Jesus after four days?,Jairus,Lazarus,Stephen,Bartimaeus,B,Jesus raised Lazarus from the dead in John 11.,Easy
+Faith,New Testament,What meal did Jesus share with His disciples before His arrest?,Passover meal,Wedding feast,Sabbath meal,Harvest meal,A,The Last Supper took place during Passover.,Easy
+Faith,New Testament,On what day did Jesus rise from the dead?,Friday,Saturday,Sunday,Monday,C,Christians celebrate Jesus' resurrection on Sunday.,Easy
+Faith,New Testament,"Who said, 'Here am I; send me'?",Isaiah,Paul,Peter,John,A,Isaiah said this in response to God's call.,Medium
+Faith,Prayer,What is prayer?,Talking to God,Reading only,Singing only,Working harder,A,Prayer is communication with God.,Easy
+Faith,Prayer,Jesus taught His followers to pray using what well-known prayer?,Prayer of Jabez,Lord's Prayer,Psalm 23,Shema,B,Jesus taught the Lord's Prayer in the Gospels.,Easy
+Faith,Prayer,Where did Jesus often go to pray?,Marketplace,Mountains or lonely places,Synagogue office,Palace,B,Jesus often withdrew to lonely places to pray.,Medium
+Faith,Prayer,What did Jesus pray in the Garden of Gethsemane?,For more money,For God's will to be done,For a new house,For a bigger crowd,B,"Jesus prayed, 'Not my will, but yours be done.'",Medium
+Faith,Prayer,What posture is sometimes associated with prayer in the Bible?,Only standing,Only sitting,Many postures including kneeling,Only lying down,C,"People in Scripture prayed standing, kneeling, and in other ways.",Easy
+Faith,Christian Living,"According to the fruit of the Spirit, which of these is listed?",Jealousy,Kindness,Pride,Anger,B,Kindness is one of the fruit of the Spirit in Galatians 5.,Medium
+Faith,Christian Living,What did Jesus say was the greatest commandment?,Build large houses,Love God,Avoid work,Never travel,B,Jesus said the greatest commandment is to love God.,Medium
+Faith,Christian Living,What did Jesus say was like the first great commandment?,Love your neighbor as yourself,Count your money daily,Rule over others,Keep all things secret,A,Jesus taught love of neighbor alongside love of God.,Medium
+Faith,Christian Living,What is faith according to Hebrews 11:1 often described as?,A lucky feeling,Confidence in what we hope for,Fear of failure,A public speech,B,Hebrews 11:1 describes faith as confidence in what we hope for.,Medium
+Faith,Christian Living,What does Jesus call His followers to be in the world?,Salt and light,Kings and queens,Sellers and buyers,Judges and rulers,A,Jesus says believers are the salt of the earth and light of the world.,Medium
+Faith,Christian Living,What book contains the Beatitudes?,Genesis,Matthew,Revelation,Romans,B,The Beatitudes appear in Matthew 5.,Medium
+The World,Continents,How many continents are there?,5,6,7,8,C,There are 7 continents.,Easy
+The World,Continents,Which continent is Nigeria in?,Asia,Africa,Europe,South America,B,Nigeria is in Africa.,Easy
+The World,Continents,Which continent is Brazil in?,Africa,Europe,South America,Asia,C,Brazil is in South America.,Easy
+The World,Continents,Which continent is India in?,Asia,Europe,Africa,Australia,A,India is in Asia.,Easy
+The World,Continents,Which continent is Canada in?,Europe,North America,Asia,Africa,B,Canada is in North America.,Easy
+The World,Continents,Which continent is Australia in?,Europe,South America,Australia,Asia,C,Australia is both a country and a continent.,Easy
+The World,Continents,Which continent is Germany in?,Europe,Asia,Africa,North America,A,Germany is in Europe.,Easy
+The World,Continents,Which continent is Antarctica known for?,Warm jungles,Permanent ice and snow,Large deserts only,Tropical farming,B,Antarctica is known for extreme cold and ice.,Easy
+The World,Capitals,What is the capital of France?,Berlin,Paris,Madrid,Rome,B,Paris is the capital of France.,Easy
+The World,Capitals,What is the capital of Japan?,Seoul,Tokyo,Beijing,Bangkok,B,Tokyo is the capital of Japan.,Easy
+The World,Capitals,What is the capital of Kenya?,Nairobi,Lagos,Cairo,Accra,A,Nairobi is Kenya's capital.,Easy
+The World,Capitals,What is the capital of Brazil?,Rio de Janeiro,Brasilia,Sao Paulo,Salvador,B,Brasilia is the capital city of Brazil.,Medium
+The World,Capitals,What is the capital of Australia?,Sydney,Melbourne,Canberra,Perth,C,Canberra is Australia's capital.,Medium
+The World,Capitals,What is the capital of Egypt?,Alexandria,Cairo,Giza,Luxor,B,Cairo is the capital of Egypt.,Easy
+The World,Capitals,What is the capital of Canada?,Toronto,Ottawa,Vancouver,Montreal,B,Ottawa is the capital of Canada.,Medium
+The World,Capitals,What is the capital of South Africa's administrative government?,Cape Town,Pretoria,Johannesburg,Durban,B,Pretoria is the administrative capital.,Hard
+The World,Oceans,Which is the largest ocean?,Atlantic,Indian,Pacific,Arctic,C,The Pacific Ocean is the largest.,Easy
+The World,Oceans,Which ocean lies between Africa and Australia?,Atlantic,Indian,Arctic,Southern,B,The Indian Ocean lies between Africa and Australia.,Medium
+The World,Oceans,Which ocean is between North America and Europe?,Pacific,Indian,Atlantic,Southern,C,The Atlantic Ocean separates North America and Europe.,Easy
+The World,Oceans,Which ocean surrounds the North Pole region?,Arctic,Atlantic,Pacific,Indian,A,The Arctic Ocean is around the North Pole.,Easy
+The World,Landforms,Mount Everest is in which mountain range?,Andes,Himalayas,Alps,Rockies,B,Mount Everest is part of the Himalayas.,Easy
+The World,Landforms,What is the largest hot desert in the world?,Gobi,Sahara,Kalahari,Arabian,B,The Sahara is the largest hot desert.,Easy
+The World,Landforms,The Amazon River is mainly in which continent?,Africa,Asia,South America,Europe,C,The Amazon River is in South America.,Easy
+The World,Landforms,Which river is traditionally taught as the longest in the world?,Nile,Yangtze,Mississippi,Danube,A,The Nile is traditionally taught as the longest.,Medium
+The World,Landforms,Which mountain is the tallest in Africa?,Kilimanjaro,Everest,Elbrus,Denali,A,Mount Kilimanjaro is Africa's tallest mountain.,Medium
+The World,Countries,Which country has the largest population in the world?,United States,India,Brazil,Russia,B,India is currently the most populous country.,Medium
+The World,Countries,Which country is known as the Land of the Rising Sun?,China,South Korea,Japan,Thailand,C,Japan is often called the Land of the Rising Sun.,Medium
+The World,Countries,Which country is famous for the maple leaf on its flag?,United Kingdom,Canada,New Zealand,Ireland,B,Canada's flag features a maple leaf.,Easy
+The World,Countries,Which country is both in Europe and Asia?,Spain,Turkey,Kenya,Mexico,B,Turkey spans both Europe and Asia.,Medium
+The World,Countries,Which country is home to the city of Rome?,Greece,Italy,France,Portugal,B,Rome is in Italy.,Easy
+The World,Flags,What color is central on the flag of Japan?,Blue circle,Red circle,Green square,Black star,B,Japan's flag has a red circle on white.,Easy
+The World,Flags,Which country's flag features stars and stripes?,United States,Australia,Liberia,Both A and C,D,Both the U.S. and Liberia use stars and stripes designs.,Hard
+The World,Culture,Diwali is widely celebrated in which country?,India,Brazil,Canada,Kenya,A,Diwali is a major festival in India and elsewhere.,Medium
+The World,Culture,Carnival in Rio is associated with which country?,Spain,Brazil,Mexico,Italy,B,Rio de Janeiro is in Brazil.,Easy
+The World,Culture,The Maasai are associated with which region?,East Africa,South America,Eastern Europe,Central Asia,A,The Maasai are associated with Kenya and Tanzania.,Medium
+The World,Culture,Sushi is most associated with which country?,Japan,Italy,India,Egypt,A,Sushi is strongly associated with Japan.,Easy
+The World,Geography,What imaginary line divides Earth into Northern and Southern Hemispheres?,Prime Meridian,Equator,Tropic of Cancer,International Date Line,B,The Equator divides Earth into north and south halves.,Easy
+The World,Geography,What imaginary line divides East and West Hemispheres at 0 degrees longitude?,Equator,Prime Meridian,Tropic of Capricorn,Arctic Circle,B,The Prime Meridian is 0 degrees longitude.,Medium
+The World,Geography,Which hemisphere is most of Africa in?,Northern,Southern,Eastern,Western,C,Most of Africa lies in the Eastern Hemisphere.,Hard
+The World,Geography,Which continent has the most countries?,Europe,Africa,Asia,South America,B,Africa has the most internationally recognized countries.,Medium
+The World,Geography,Which country contains the city of Lagos?,Ghana,South Africa,Nigeria,Morocco,C,Lagos is one of Nigeria's major cities.,Easy
+The World,Geography,Which country contains the city of Nairobi?,Kenya,Uganda,Tanzania,Ethiopia,A,Nairobi is the capital of Kenya.,Easy
+The World,Geography,Which country contains the city of Cairo?,Egypt,Jordan,Lebanon,Turkey,A,Cairo is Egypt's capital.,Easy
+The World,Geography,Which country contains the city of Mexico City?,Spain,Mexico,Argentina,Peru,B,Mexico City is the capital of Mexico.,Easy
+The World,Geography,What is an island?,Land surrounded by water,Water surrounded by land,A mountain range,A desert plain,A,An island is land surrounded by water.,Easy
+The World,Geography,What is a peninsula?,Land completely underwater,Land surrounded by water on three sides,A frozen ocean,A large river delta,B,A peninsula is surrounded by water on most sides.,Medium
+The World,Geography,What is the name of the line between two countries or regions?,Bridge,Border,Harbor,Valley,B,A border marks the boundary between places.,Easy
+The World,Geography,What do we call the weather pattern of a place over a long time?,Season,Climate,Storm,Forecast,B,Climate describes long-term weather patterns.,Easy
+The World,Geography,Which map feature explains what symbols on a map mean?,Scale,Legend,Compass,Grid,B,A map legend explains symbols and colors.,Easy
+The World,Geography,Which direction is opposite of east?,North,South,West,Up,C,West is opposite of east.,Easy
+History,Ancient History,Who built the pyramids of Giza?,Romans,Egyptians,Greeks,Persians,B,The pyramids were built by ancient Egyptians.,Easy
+History,Ancient History,Which civilization is associated with the city of Athens?,Roman,Greek,Egyptian,Mayan,B,Athens is one of the most famous cities of ancient Greece.,Easy
+History,Ancient History,Who was Julius Caesar?,Greek philosopher,Roman general and statesman,Egyptian king,Medieval monk,B,Julius Caesar was a Roman leader.,Easy
+History,Ancient History,The Colosseum is located in which city?,Athens,Rome,Cairo,Jerusalem,B,The Colosseum is in Rome.,Easy
+History,Ancient History,Which ancient writing system used picture-like symbols?,Latin,Hieroglyphics,Cuneiform only,Braille,B,Egyptian hieroglyphics used picture-like symbols.,Easy
+History,Ancient History,Which ancient civilization is known for philosophers like Socrates and Plato?,Egyptians,Greeks,Mongols,Vikings,B,Socrates and Plato were Greek philosophers.,Easy
+History,Ancient History,Which wall was built in China over many centuries?,Berlin Wall,Great Wall,Hadrian's Wall,Western Wall,B,The Great Wall was built in China.,Easy
+History,Ancient History,What was the main language of the Roman Empire?,Greek only,Latin,Hebrew,Arabic,B,Latin was the main language of Rome.,Medium
+History,Ancient History,Which ancient civilization built Machu Picchu?,Aztec,Inca,Maya,Roman,B,Machu Picchu is associated with the Inca civilization.,Medium
+History,Ancient History,Who was Cleopatra?,Roman senator,Queen of Egypt,Greek goddess,Mayan ruler,B,Cleopatra was a queen of Egypt.,Easy
+History,World History,Who is often credited with reaching the Americas in 1492?,Marco Polo,Christopher Columbus,Ferdinand Magellan,James Cook,B,Columbus reached the Americas in 1492.,Easy
+History,World History,What invention is Johannes Gutenberg famous for improving?,Compass,Printing press,Steam engine,Telephone,B,Gutenberg is known for the printing press.,Medium
+History,World History,The Renaissance began in which country?,France,Italy,Germany,England,B,The Renaissance began in Italy.,Medium
+History,World History,Who was the first emperor of a unified Rome?,Julius Caesar,Augustus,Nero,Trajan,B,Augustus became the first Roman emperor.,Hard
+History,World History,What was the name of the trade route linking Asia and Europe?,Spice Road,Silk Road,Gold Path,Royal Trail,B,The Silk Road linked Asia and Europe.,Medium
+History,World History,What ship famously sank in 1912?,Mayflower,Titanic,Santa Maria,Bismarck,B,The Titanic sank in 1912.,Easy
+History,World History,Who was known as the Maid of Orleans?,Joan of Arc,Marie Curie,Queen Victoria,Catherine the Great,A,Joan of Arc is known as the Maid of Orleans.,Medium
+History,World History,Which explorer completed the first circumnavigation expedition?,Columbus,Magellan's expedition,Cook,Drake,B,Magellan's expedition completed the first circumnavigation.,Hard
+History,World History,Which empire was ruled from Istanbul after 1453?,Roman Empire,Ottoman Empire,Persian Empire,Mughal Empire,B,Istanbul became the Ottoman capital.,Hard
+History,World History,Which pandemic struck Europe in the 14th century?,Spanish Flu,Black Death,COVID-19,Smallpox only,B,The Black Death devastated Europe in the 1300s.,Medium
+History,United States History,Who was the first president of the United States?,Thomas Jefferson,George Washington,John Adams,Abraham Lincoln,B,George Washington was the first U.S. president.,Easy
+History,United States History,In what year was the Declaration of Independence adopted?,1776,1789,1812,1865,A,The Declaration of Independence was adopted in 1776.,Easy
+History,United States History,Which war was fought between the North and South in the United States?,Revolutionary War,Civil War,War of 1812,World War I,B,The Civil War was fought between the Union and Confederacy.,Easy
+History,United States History,Who issued the Emancipation Proclamation?,George Washington,Abraham Lincoln,Andrew Jackson,Ulysses S. Grant,B,Lincoln issued the Emancipation Proclamation.,Easy
+History,United States History,What document begins with 'We the People'?,Bill of Rights,Constitution,Declaration of Independence,Gettysburg Address,B,The U.S. Constitution begins with 'We the People.',Easy
+History,United States History,Who purchased Louisiana Territory for the United States?,Washington,Jefferson,Lincoln,Monroe,B,Thomas Jefferson oversaw the Louisiana Purchase.,Medium
+History,United States History,What movement fought to end segregation and secure equal rights for Black Americans?,Temperance Movement,Civil Rights Movement,Progressive Movement,Populist Movement,B,The Civil Rights Movement challenged segregation and inequality.,Easy
+History,United States History,Who gave the 'I Have a Dream' speech?,Malcolm X,Martin Luther King Jr.,Frederick Douglass,John Lewis,B,Dr. King delivered the speech in 1963.,Easy
+History,United States History,What event led to the U.S. entering World War II?,Battle of Gettysburg,Pearl Harbor attack,Boston Tea Party,Apollo 11,B,The attack on Pearl Harbor led to U.S. entry into WWII.,Easy
+History,United States History,Who was the first woman to fly solo across the Atlantic Ocean?,Amelia Earhart,Sally Ride,Harriet Tubman,Susan B. Anthony,A,Amelia Earhart achieved this historic flight.,Medium
+History,Modern History,World War II ended in what year?,1939,1942,1945,1950,C,World War II ended in 1945.,Easy
+History,Modern History,Which conflict is often called the Great War?,World War I,World War II,Korean War,Vietnam War,A,World War I was often called the Great War.,Medium
+History,Modern History,Who was imprisoned for fighting apartheid and later became South Africa's president?,Desmond Tutu,Nelson Mandela,Kofi Annan,Patrice Lumumba,B,Nelson Mandela later became president of South Africa.,Easy
+History,Modern History,"What wall fell in 1989, symbolizing the end of the Cold War in Europe?",Great Wall,Berlin Wall,Hadrian's Wall,Western Wall,B,The Berlin Wall fell in 1989.,Easy
+History,Modern History,Which woman became the first prime minister of the United Kingdom?,Angela Merkel,Margaret Thatcher,Indira Gandhi,Theresa May,B,Margaret Thatcher was the first woman to hold the office.,Medium
+History,Modern History,What spacecraft landed the first humans on the Moon?,Apollo 11,Voyager 1,Sputnik 1,Challenger,A,Apollo 11 carried the first humans to the Moon.,Easy
+History,Modern History,Who was the first person to step on the Moon?,Buzz Aldrin,Yuri Gagarin,Neil Armstrong,John Glenn,C,Neil Armstrong was the first to step on the Moon.,Easy
+History,Modern History,The Cold War was primarily a rivalry between the United States and which other superpower?,China,Soviet Union,Germany,Japan,B,The Cold War centered on the U.S. and Soviet Union.,Easy
+History,Modern History,Which famous ship carried English settlers to Plymouth in 1620?,Titanic,Mayflower,Endeavour,Beagle,B,The Mayflower carried settlers to Plymouth.,Medium
+History,Modern History,What was the name of the economic crisis that began in 1929?,Industrial Boom,Great Depression,Dot-com crash,Oil Crisis,B,The Great Depression began after the 1929 stock market crash.,Medium
+History,Social Justice History,Who is known for leading the Underground Railroad?,Rosa Parks,Harriet Tubman,Sojourner Truth,Ida B. Wells,B,Harriet Tubman led many enslaved people to freedom.,Easy
+History,Social Justice History,"Who refused to give up her seat on a bus in Montgomery, Alabama?",Maya Angelou,Rosa Parks,Coretta Scott King,Ella Baker,B,Rosa Parks' act became a key civil rights moment.,Easy
+History,Social Justice History,Who was a former enslaved man who became a famous abolitionist speaker and writer?,Booker T. Washington,Frederick Douglass,W.E.B. Du Bois,Langston Hughes,B,Frederick Douglass became a leading abolitionist voice.,Medium
+History,Social Justice History,Who founded Hull House and worked for social reform in Chicago?,Susan B. Anthony,Jane Addams,Clara Barton,Dorothea Dix,B,Jane Addams co-founded Hull House.,Hard
+History,Social Justice History,Who was the first woman to win the Nobel Peace Prize?,Marie Curie,Jane Addams,Mother Teresa,Wangari Maathai,B,Jane Addams won the Nobel Peace Prize in 1931.,Hard
+History,Social Justice History,Who co-founded the Student Nonviolent Coordinating Committee (SNCC) and later represented Georgia in Congress?,John Lewis,Bayard Rustin,Andrew Young,Medgar Evers,A,John Lewis was a civil rights leader and congressman.,Medium
+History,Social Justice History,What was the 19th Amendment to the U.S. Constitution about?,Ending slavery,Women's right to vote,Freedom of speech,Lowering taxes,B,The 19th Amendment gave women the right to vote.,Medium
+History,Social Justice History,Who was known for saying 'Ain't I a Woman?',Harriet Tubman,Sojourner Truth,Ida B. Wells,Shirley Chisholm,B,Sojourner Truth delivered this famous speech.,Medium
+History,Social Justice History,Which South African system enforced racial segregation before the 1990s?,Colonialism,Apartheid,Feudalism,Mercantilism,B,Apartheid enforced racial segregation in South Africa.,Easy
+History,Social Justice History,Who became the first Black woman elected to the U.S. Congress?,Barbara Jordan,Shirley Chisholm,Oprah Winfrey,Kamala Harris,B,Shirley Chisholm achieved this historic first.,Medium
+Civics,Government Basics,What is a democracy?,Rule by one person,Rule by the people,Rule by the military,Rule by judges only,B,"In a democracy, people participate in choosing leaders.",Easy
+Civics,Government Basics,How many branches does the U.S. federal government have?,2,3,4,5,B,"The branches are legislative, executive, and judicial.",Easy
+Civics,Government Basics,Which branch makes laws in the United States?,Executive,Judicial,Legislative,Military,C,The legislative branch makes laws.,Easy
+Civics,Government Basics,Which branch enforces laws?,Legislative,Executive,Judicial,Media,B,The executive branch enforces laws.,Easy
+Civics,Government Basics,Which branch interprets laws?,Executive,Legislative,Judicial,Cabinet,C,Courts in the judicial branch interpret laws.,Easy
+Civics,Government Basics,What is the U.S. Constitution?,A newspaper,The supreme law of the land,A campaign speech,A state map,B,The Constitution is the highest law in the United States.,Easy
+Civics,Government Basics,What do we call a change added to the Constitution?,Revision,Amendment,Campaign,Petition,B,Changes to the Constitution are called amendments.,Easy
+Civics,Government Basics,What is the Bill of Rights?,The first 10 amendments,A list of taxes,A campaign platform,A Supreme Court case,A,The Bill of Rights is the first 10 amendments.,Easy
+Civics,Government Basics,Who signs a bill into law at the federal level?,Chief Justice,President,Governor,Senator,B,The President signs federal bills into law.,Easy
+Civics,Government Basics,Who can veto a bill passed by Congress?,Speaker of the House,President,Secretary of State,Chief Justice,B,The President can veto bills.,Easy
+Civics,Elections,What is a ballot?,A speech,A vote paper or voting record,A campaign donation,A court order,B,A ballot is used to cast votes.,Easy
+Civics,Elections,Why do citizens vote?,To choose leaders and decide issues,To write laws alone,To serve on juries,To avoid taxes,A,Voting allows citizens to participate in government.,Easy
+Civics,Elections,What is an election?,A court hearing,A process for choosing leaders,A tax law,A police report,B,An election is used to choose leaders or decide issues.,Easy
+Civics,Elections,What is voter registration?,A sports signup,Signing up to be eligible to vote,A court sentence,A census count,B,People often must register before voting.,Easy
+Civics,Elections,Who is eligible to vote in most U.S. elections?,All tourists,Citizens who meet legal requirements,Only elected officials,Only military officers,B,Citizens meeting age and legal requirements may vote.,Easy
+Civics,Elections,What is a campaign?,A legal trial,An effort to win support in an election,A law book,A police patrol,B,Candidates campaign to persuade voters.,Easy
+Civics,Elections,What does 'majority' usually mean?,Less than half,More than half,Exactly half,No votes at all,B,A majority is more than half.,Easy
+Civics,Elections,What is a term of office?,The salary of a leader,The length of time a leader serves,A campaign slogan,A law passed by Congress,B,A term is the period a person serves in office.,Easy
+Civics,Rights and Freedoms,What does freedom of speech protect?,Only popular opinions,The right to express ideas,The right to break laws,The right to ignore elections,B,Freedom of speech protects expression within legal limits.,Easy
+Civics,Rights and Freedoms,What does freedom of religion mean?,Only one religion is allowed,People may follow or not follow a religion,Churches run the government,No one may pray in private,B,Freedom of religion protects belief and practice choices.,Easy
+Civics,Rights and Freedoms,What does freedom of the press protect?,Only newspapers owned by government,Media's right to report and publish,The right to print money,The right to avoid criticism,B,Freedom of the press protects reporting and publishing.,Easy
+Civics,Rights and Freedoms,What is due process?,Skipping court procedures,Fair legal procedures,Only paying taxes,Voting twice,B,Due process means fair treatment under the law.,Medium
+Civics,Rights and Freedoms,What does the right to assemble protect?,The right to own a factory,The right to gather peacefully,The right to avoid laws,The right to arrest others,B,People may gather peacefully to express ideas.,Easy
+Civics,Rights and Freedoms,What does equality before the law mean?,Only leaders get rights,Everyone is treated the same under the law,Only judges matter,People choose their own laws,B,Equality before the law means the law applies fairly to everyone.,Easy
+Civics,Rights and Freedoms,What is discrimination?,Fair treatment for all,Unfair treatment based on identity,Voting in elections,Serving on a jury,B,Discrimination is unfair treatment based on traits like race or sex.,Easy
+Civics,Community,What is a community?,Only a national government,A group of people living or working together,A single voter,A television network,B,A community is a group connected by place or common ties.,Easy
+Civics,Community,What is a volunteer?,A paid official,Someone who gives time to help without pay,A judge,A campaign donor,B,Volunteers help by offering their time and effort.,Easy
+Civics,Community,What is a nonprofit organization?,A group run only for profit,An organization serving a mission rather than distributing profits to owners,A court office,A military base,B,Nonprofits focus on mission and service.,Medium
+Civics,Community,What is civic engagement?,Ignoring public issues,Participating in community and public life,Only running for president,Avoiding meetings,B,"Civic engagement includes voting, volunteering, and community action.",Medium
+Civics,Community,What is public service?,Work that serves the community or government,A private hobby,A family vacation,A sports competition,A,Public service benefits the public.,Easy
+Civics,Community,What is advocacy?,Sleeping through meetings,Speaking up to support a cause or policy,Closing all debate,Refusing to vote,B,Advocacy means supporting a cause or change.,Easy
+Civics,Community,What is a petition?,A type of election,A formal written request signed by people,A criminal trial,A budget report,B,A petition asks leaders to consider an issue.,Easy
+Civics,Community,What is a town hall meeting?,A sports event,A public meeting for discussion with leaders,A school exam,A military drill,B,Town halls let residents hear from and speak to leaders.,Easy
+Civics,Laws and Justice,Who enforces laws in local communities?,Teachers,Police and other law enforcement officers,Only governors,Only journalists,B,Law enforcement officers help enforce laws.,Easy
+Civics,Laws and Justice,What is a jury?,A campaign team,A group of citizens who hear evidence in court,A police unit,A city council,B,Juries help decide facts in some court cases.,Medium
+Civics,Laws and Justice,Who decides cases in court when there is no jury?,A mayor,A judge,A senator,A teacher,B,Judges decide cases when juries are not used.,Easy
+Civics,Laws and Justice,What is a law?,A suggestion only,A rule set by authority that people are expected to follow,A campaign poster,A weather report,B,Laws are official rules.,Easy
+Civics,Laws and Justice,What is justice?,Ignoring fairness,Fair treatment under the law,Winning every argument,Only punishment,B,Justice involves fairness and accountability.,Easy
+Civics,Laws and Justice,What is a crime?,A legal holiday,An act that breaks the law,A campaign speech,A community service project,B,A crime is an offense against the law.,Easy
+Civics,Laws and Justice,What does innocent until proven guilty mean?,Everyone is guilty at arrest,A person is considered innocent until evidence proves guilt,Courts do not matter,Only lawyers decide everything,B,This principle protects fairness in legal proceedings.,Medium
+Civics,Laws and Justice,What is an appeal?,A campaign rally,A request for a higher court to review a decision,A tax bill,A police badge,B,An appeal asks a higher court to review a lower court's decision.,Hard
+Civics,Levels of Government,Who is the chief executive of a U.S. state?,Mayor,Governor,Senator,Judge,B,The governor leads a state government.,Easy
+Civics,Levels of Government,Who leads a city government in many places?,President,Mayor,Speaker,Sheriff,B,Mayors often lead city governments.,Easy
+Civics,Levels of Government,What is federalism?,One city rules all,Power shared between national and state governments,Only judges make laws,No elections are allowed,B,Federalism divides power between national and state governments.,Hard
+Civics,Levels of Government,What is Congress made up of?,Courts and police,Senate and House of Representatives,Governors and mayors,President and cabinet,B,Congress has two chambers: Senate and House.,Medium
+Civics,Levels of Government,How many U.S. senators does each state have?,1,2,3,Varies by population,B,Each state elects 2 senators.,Easy
+Civics,Levels of Government,What does local government often handle?,Foreign treaties,City services like roads and sanitation,National defense only,Space missions,B,Local governments handle many nearby services.,Easy
+Civics,Levels of Government,Which level of government prints U.S. currency?,City,State,Federal,County,C,The federal government issues U.S. currency.,Medium
+Civics,Levels of Government,Which document begins with 'We the People' in the United States?,Declaration of Independence,Constitution,Federalist Papers,Bill of Rights only,B,The U.S. Constitution begins with 'We the People.',Easy
+Money,Budgeting,What is a budget?,A savings account,A plan for spending and saving money,A type of tax,A credit score,B,A budget helps track income and expenses.,Easy
+Money,Budgeting,What is income?,Money you spend,Money you earn,Money you owe,A bank fee,B,"Income is money you receive, such as from work.",Easy
+Money,Budgeting,What is an expense?,Money earned,Money spent,Money invested,A reward point,B,An expense is money that goes out.,Easy
+Money,Budgeting,What does it mean to live within your means?,Spend more than you earn,Spend less than or equal to what you earn,Avoid all bills,Never use cash,B,Living within your means helps avoid debt.,Easy
+Money,Budgeting,Which is usually a need rather than a want?,Designer shoes,Rent,Movie tickets,Video game,B,Housing is generally a need.,Easy
+Money,Budgeting,What is a fixed expense?,A bill that changes every month,A regular expense that stays about the same,A random gift,A bonus payment,B,Fixed expenses include things like rent.,Easy
+Money,Budgeting,What is a variable expense?,A bill that changes from month to month,A tax refund,A permanent salary,A one-time investment only,A,"Variable expenses can change, such as groceries or gas.",Easy
+Money,Budgeting,Why is tracking spending helpful?,It wastes time,It helps you understand where your money goes,It lowers your age,It guarantees wealth overnight,B,Tracking spending helps improve financial decisions.,Easy
+Money,Budgeting,What is a financial goal?,A random guess,"A target for your money, like saving for a car",A store coupon,A type of loan,B,Financial goals help you plan ahead.,Easy
+Money,Budgeting,What is an emergency fund?,Money for shopping,Savings for unexpected costs,A vacation account,A retirement tax,B,Emergency funds help cover surprise expenses.,Easy
+Money,Saving,What does saving mean?,Spending now,Keeping money for future use,Borrowing money,Ignoring bills,B,Saving means setting money aside.,Easy
+Money,Saving,Where do many people keep savings?,Under a random street sign,In a bank or credit union account,Only in cash at home,On a bus,B,Banks and credit unions are common places for savings.,Easy
+Money,Saving,Why is it smart to save regularly?,It usually helps build financial security,It guarantees instant riches,It removes all taxes,It stops bills from coming,A,Regular saving builds a cushion over time.,Easy
+Money,Saving,What is interest on savings?,Money the bank may add to your balance,A penalty for voting,The cost of groceries,A type of insurance,A,Interest is money earned on deposited funds.,Medium
+Money,Saving,Which habit can help increase savings?,Buying without a plan,Setting aside a portion of each paycheck,Ignoring your bank account,Only spending on wants,B,Automatic or regular saving helps balances grow.,Easy
+Money,Saving,What is a savings goal?,A limit on voting,A target amount you want to save,A monthly fine,A credit score category,B,A savings goal gives direction to your plan.,Easy
+Money,Saving,Why compare prices before buying?,To spend more,To find the best value,To avoid stores forever,To skip budgeting,B,Comparing prices can reduce spending.,Easy
+Money,Saving,What is delayed gratification?,Spending immediately,Waiting to buy something so you can save first,Borrowing from everyone,Avoiding all shopping forever,B,Delayed gratification helps prioritize long-term goals.,Medium
+Money,Saving,What is a piggy bank an example of?,A checking account,A simple way to save money,A type of loan,A tax form,B,It is a basic saving tool.,Easy
+Money,Saving,What is a rainy-day fund?,Money used only on sunny days,Savings for smaller unexpected costs,An entertainment fund,A sports account,B,A rainy-day fund helps with minor surprises.,Medium
+Money,Banking,What is a bank account?,A place to store and manage money,A type of movie ticket,A sports score,A tax bill,A,Bank accounts help people store and manage money.,Easy
+Money,Banking,What is a checking account commonly used for?,Daily spending and bill payments,Long-term retirement only,Buying houses only,Avoiding deposits,A,Checking accounts are often used for everyday transactions.,Easy
+Money,Banking,What is a debit card linked to?,A random gift card,Your bank account balance,Only your credit score,A library account,B,Debit cards pull money from your account.,Easy
+Money,Banking,What is an ATM used for?,Flying planes,Accessing cash and some bank services,Paying taxes only,Sending letters,B,ATMs let users withdraw cash and do other simple tasks.,Easy
+Money,Banking,What is a direct deposit?,Cash hidden at home,Money electronically sent into your account,A store refund only,A paper check torn in half,B,Employers often use direct deposit to pay workers.,Easy
+Money,Banking,What is a routing number used for?,Identifying a bank in transactions,Measuring credit score,Calculating taxes,Tracking sports teams,A,Routing numbers identify financial institutions.,Hard
+Money,Banking,Why should you review your bank statement?,To see account activity and catch mistakes,To change your age,To improve weather,To raise taxes,A,Statements help you check for errors or fraud.,Medium
+Money,Banking,What is overdraft?,Spending more than is in your account,A type of savings interest,A tax deduction,A school grade,A,Overdraft happens when withdrawals exceed available funds.,Medium
+Money,Banking,What is a credit union?,A for-profit movie company,A member-owned financial institution,A type of tax office,A payday lender,B,Credit unions are member-owned financial institutions.,Medium
+Money,Banking,Why keep your PIN private?,To make friends,To protect your account from unauthorized use,To increase shopping options,To lower grocery prices,B,A PIN helps secure your account.,Easy
+Money,Credit and Debt,What is credit?,The ability to borrow money and repay later,Cash in your pocket,A tax bill,A lottery ticket,A,Credit allows purchases or loans to be repaid over time.,Easy
+Money,Credit and Debt,What is debt?,Money owed,Money saved,Money donated,Money invested,A,Debt is an obligation to repay borrowed money.,Easy
+Money,Credit and Debt,What is a credit score?,A number that reflects credit history,A sports ranking,A school exam score only,A tax form,A,Credit scores summarize credit risk based on history.,Medium
+Money,Credit and Debt,Paying a credit card bill on time usually helps your what?,Credit history,Age,Job title,Driver license,A,On-time payments generally help your credit profile.,Easy
+Money,Credit and Debt,What is a loan?,Money borrowed that must be repaid,A free gift,A tax refund,A utility bill,A,"Loans must be repaid, often with interest.",Easy
+Money,Credit and Debt,What is interest on a loan?,Extra money paid to borrow,A charity donation,A food discount,A voting fee,A,Interest is the cost of borrowing money.,Easy
+Money,Credit and Debt,What can happen if you miss loan payments?,Your debt may grow and your credit can be harmed,Nothing at all,Your age changes,Your rent disappears,A,Missed payments can lead to fees and credit damage.,Easy
+Money,Credit and Debt,What is a credit card minimum payment?,The smallest amount you can pay to stay current,The maximum amount you may owe,A free reward,A tax charge,A,Paying only the minimum can keep debt around longer.,Medium
+Money,Credit and Debt,What is collateral?,Property pledged to secure a loan,A grocery list,A bank holiday,A gift receipt,A,Collateral can be taken if a secured loan is not repaid.,Hard
+Money,Credit and Debt,Why is high-interest debt risky?,It can become expensive quickly,It always helps your budget,It lowers all bills,It counts as savings,A,High interest makes debt more costly over time.,Easy
+Money,Investing,What is investing?,Using money with the goal of growing it over time,Hiding cash,Only spending on fun,Avoiding banks,A,"Investing seeks future growth, though it can involve risk.",Easy
+Money,Investing,What is a stock?,A small ownership share in a company,A savings account,A car loan,A tax statement,A,Stocks represent ownership shares.,Medium
+Money,Investing,What is diversification?,Putting all money in one place,Spreading investments across different assets,Spending without a plan,Borrowing from many banks,B,Diversification can help manage risk.,Medium
+Money,Investing,What is risk in investing?,The chance of losing money or not earning as expected,A guaranteed profit,A free reward,A tax refund,A,Risk is the possibility of poor outcomes.,Easy
+Money,Investing,What is a bond?,A type of debt investment,A checking account,A grocery coupon,A video game,A,Bonds are loans made to governments or companies.,Hard
+Money,Investing,Why might long-term investing be helpful?,It gives investments more time to grow,It removes all risk,It stops taxes forever,It guarantees wealth,A,Longer timelines can help manage market ups and downs.,Medium
+Money,Investing,What is compound growth?,Growth on both the original amount and earlier gains,A one-time payment only,A bank fee,A type of tax law,A,Compound growth builds on prior earnings.,Hard
+Money,Investing,What is retirement saving?,Setting money aside for later life after working years,A store discount,A short-term bill,A sports fund,A,Retirement saving helps prepare for the future.,Easy
+Money,Investing,Which is generally safer for emergency money?,A highly volatile stock,An accessible savings account,A random collectible,A risky startup only,B,Emergency funds should usually stay accessible and stable.,Medium
+Money,Investing,"Before investing, what is wise to understand?","The risks, fees, and goals involved",Only the logo color,Nothing at all,Only your favorite celebrity's opinion,A,Informed investing includes understanding risks and costs.,Easy
+Health,Body Basics,Which organ pumps blood through the body?,Brain,Heart,Lungs,Liver,B,The heart pumps blood throughout the body.,Easy
+Health,Body Basics,Which organ helps you breathe?,Stomach,Lungs,Kidneys,Skin,B,The lungs help the body take in oxygen.,Easy
+Health,Body Basics,Which body part helps you think and control actions?,Knee,Brain,Elbow,Tooth,B,The brain helps control the body and process thoughts.,Easy
+Health,Body Basics,Bones are part of which body system?,Circulatory system,Skeletal system,Digestive system,Respiratory system,B,Bones make up the skeletal system.,Easy
+Health,Body Basics,Which sense organ is used for hearing?,Eye,Ear,Nose,Tongue,B,Ears are used for hearing.,Easy
+Health,Body Basics,Which body part helps you chew food?,Feet,Hands,Teeth,Hair,C,Teeth help break down food.,Easy
+Health,Body Basics,What carries oxygen in your blood?,Red blood cells,Hair cells,Skin cells,Bone cells,A,Red blood cells carry oxygen.,Hard
+Health,Body Basics,What do muscles help you do?,Sleep only,Move,Grow plants,Read maps,B,Muscles help the body move.,Easy
+Health,Body Basics,Which system includes the brain and nerves?,Digestive system,Nervous system,Skeletal system,Endocrine system,B,The nervous system includes the brain and nerves.,Medium
+Health,Body Basics,What protects your body from outside germs and injury?,Skin,Shoes,Books,Hairbrush,A,Skin is the body's protective outer covering.,Easy
+Health,Nutrition,Which is generally the healthiest snack option?,Candy bar,Apple slices,Soda,Potato chips,B,Fruit like apples is generally a healthier snack choice.,Easy
+Health,Nutrition,Why is drinking water important?,It helps the body function properly,It replaces sleep,It removes the need for food,It makes exercise unnecessary,A,Water supports many body functions.,Easy
+Health,Nutrition,Which food group is a major source of protein?,Beans,Candy,Soda,Cookies,A,Beans are a healthy source of protein.,Easy
+Health,Nutrition,Vegetables are important because they often provide what?,Only sugar,Vitamins and minerals,Only caffeine,Only fat,B,Vegetables often provide essential nutrients.,Easy
+Health,Nutrition,What is a balanced meal?,A meal with different nutrient types,A meal with only dessert,A meal with no water,A meal eaten standing up,A,Balanced meals include a mix of foods and nutrients.,Medium
+Health,Nutrition,Which drink often has the most added sugar?,Water,Unsweetened tea,Regular soda,Milk,C,Regular soda often contains a lot of added sugar.,Easy
+Health,Nutrition,What does it mean to eat in moderation?,Never eat,Eat reasonable amounts,Only eat one food forever,Eat as fast as possible,B,Moderation means not overdoing it.,Easy
+Health,Nutrition,Which food is usually whole grain?,Brown rice,Candy,Butter,Ice cream,A,Brown rice is a whole grain.,Easy
+Health,Nutrition,Why is breakfast helpful for many people?,It can provide energy to start the day,It removes the need for dinner,It makes sleep impossible,It cures all illness,A,Breakfast can help with energy and focus.,Medium
+Health,Nutrition,What is a vitamin?,A nutrient the body needs in small amounts,A type of shoe,A bank fee,A sports score,A,Vitamins support health and body function.,Medium
+Health,Exercise,Why is regular exercise beneficial?,"It supports heart, muscles, and overall health",It replaces food,It stops all disease,It removes the need for sleep,A,Exercise helps many body systems function better.,Easy
+Health,Exercise,What is a warm-up?,Movement before exercise to prepare the body,A nap after exercise,Only lifting heavy weights,Skipping activity,A,Warm-ups help prepare muscles and joints.,Easy
+Health,Exercise,Which activity is aerobic exercise?,Walking briskly,Sleeping,Reading quietly,Watching television,A,Brisk walking can improve heart and lung fitness.,Easy
+Health,Exercise,Why is stretching helpful?,It may improve flexibility,It replaces hydration,It guarantees winning games,It makes bones disappear,A,Stretching can help flexibility and comfort.,Easy
+Health,Exercise,What is strength training?,Exercise that builds muscle strength,Only running long distances,Avoiding movement,Reading health articles,A,Strength training helps build muscle and support bones.,Medium
+Health,Exercise,What is a common sign you should rest during exercise?,Severe pain or dizziness,Feeling alive,A normal heartbeat,Mild warmth,A,Severe pain or dizziness can signal you should stop and rest.,Medium
+Health,Exercise,How often should children and teens usually be physically active?,Rarely,"Regularly, often daily",Only on holidays,Only once a month,B,Regular activity is encouraged for growing bodies.,Medium
+Health,Exercise,What helps prevent injury during sports?,Proper form and safety gear,Ignoring pain,Skipping warm-up,Wearing sandals,A,Form and gear reduce risk of injury.,Easy
+Health,Exercise,What is endurance?,The ability to keep going over time,A type of snack,The number of shoes you own,A school grade,A,Endurance is the ability to sustain effort.,Medium
+Health,Exercise,Why is rest important after hard exercise?,The body needs time to recover,Rest is never helpful,It instantly builds muscles without work,It replaces water,A,Recovery helps the body repair and adapt.,Medium
+Health,Mental Health,What is mental health?,"Health of thoughts, feelings, and coping",Only physical strength,Only sleep habits,Only test scores,A,Mental health includes emotional and psychological well-being.,Easy
+Health,Mental Health,Which action can support mental wellness?,Talking to a trusted person,Ignoring every feeling,Never sleeping,Avoiding all water,A,Supportive conversations can help mental wellness.,Easy
+Health,Mental Health,What is stress?,A type of fruit,Pressure or strain on the mind or body,A government office,A sports trophy,B,Stress is a common response to demands or challenges.,Easy
+Health,Mental Health,What is one healthy way to handle stress?,Deep breathing,Breaking belongings,Yelling at everyone,Skipping all meals,A,Deep breathing can help calm the body.,Easy
+Health,Mental Health,Why is sleep important for mental health?,"It supports mood, memory, and focus",It is not important,It only matters for athletes,It replaces food,A,Sleep strongly affects mental well-being.,Easy
+Health,Mental Health,What is anxiety?,A possible feeling of worry or fear,A bone disease only,A type of shoe,A kind of vegetable,A,Anxiety often involves excessive worry or fear.,Medium
+Health,Mental Health,What is depression?,Always being lazy,A serious mental health condition affecting mood and interest,A sports injury,A traffic sign,B,Depression is more than ordinary sadness and can require support.,Medium
+Health,Mental Health,"If someone is in crisis, what is important?",Reach out for immediate help from trusted adults or professionals,Hide it forever,Pretend nothing matters,Skip all support,A,Urgent safety concerns call for immediate support.,Medium
+Health,Mental Health,What is a coping skill?,A healthy way to manage difficult feelings,A type of medication only,A law,A savings plan,A,Coping skills help handle stress and emotions.,Medium
+Health,Mental Health,What does self-care mean?,Healthy actions that support your well-being,Only buying expensive items,Ignoring others forever,Never working,A,"Self-care includes rest, nourishment, and other healthy practices.",Easy
+Health,Preventive Health,Why is handwashing important?,It helps remove germs,It changes eye color,It replaces sleep,It increases height,A,Handwashing can reduce the spread of germs.,Easy
+Health,Preventive Health,When should you wash your hands?,Before eating and after using the restroom,Only on weekends,Only after sports,Only when someone reminds you,A,These are important times to wash hands.,Easy
+Health,Preventive Health,What does a vaccine help the body do?,Practice defending against certain diseases,Grow taller overnight,Never need sleep,Digest all foods,A,Vaccines help train the immune system.,Medium
+Health,Preventive Health,Why are routine checkups helpful?,They can catch health issues early,They are only for emergencies,They always replace exercise,They are only for adults,A,Checkups can identify concerns early.,Easy
+Health,Preventive Health,What is hygiene?,Habits that help keep the body clean and healthy,A type of food,A tax system,A weather pattern,A,Hygiene includes practices like washing hands and brushing teeth.,Easy
+Health,Preventive Health,Why wear a helmet when biking?,To protect your head,To ride faster automatically,To make the bike lighter,To avoid drinking water,A,Helmets help protect against head injuries.,Easy
+Health,Preventive Health,What is sunscreen used for?,Protecting skin from too much sun exposure,Helping you hear better,Cleaning shoes,Improving eyesight instantly,A,Sunscreen helps protect skin from UV rays.,Easy
+Health,Preventive Health,Why is brushing teeth important?,It helps prevent tooth decay and gum problems,It makes you run faster,It replaces dental visits forever,It lowers rent,A,Brushing supports oral health.,Easy
+Health,Preventive Health,What should you do with prescription medicine?,Use it only as directed by a qualified provider,Share it with friends,Take extra for faster results,Ignore instructions,A,Medicines should be used only as directed.,Medium
+Health,Preventive Health,What is first aid?,Basic care given before professional help if needed,A type of sport,A school subject only,A TV show,A,First aid is initial help for injury or illness.,Medium
+Sports,Basketball,How many players from one team are on the court in basketball at one time?,4,5,6,7,B,Basketball teams have 5 players on the court.,Easy
+Sports,Basketball,How many points is a free throw worth in basketball?,1,2,3,4,A,A free throw is worth 1 point.,Easy
+Sports,Basketball,How many points is a shot worth from behind the three-point line?,1,2,3,4,C,A successful shot from beyond the arc is worth 3 points.,Easy
+Sports,Basketball,What is it called when a player bounces the ball while moving?,Serving,Dribbling,Tackling,Passing offside,B,Dribbling is moving while bouncing the ball.,Easy
+Sports,Basketball,What is the standard goal equipment called in basketball?,Net only,Hoop,Goalpost,Racket,B,Players shoot at the hoop.,Easy
+Sports,Basketball,Which league is the top men's professional basketball league in the United States?,NFL,MLB,NBA,NHL,C,The NBA is the major men's professional basketball league.,Easy
+Sports,Basketball,What is a rebound in basketball?,A jump ball,Getting the ball after a missed shot,A foul shot,A timeout,B,A rebound is collected after a missed basket attempt.,Medium
+Sports,Basketball,What is an assist in basketball?,A missed shot,A pass that leads directly to a score,A foul,A turnover,B,An assist is credited for a pass leading to a basket.,Medium
+Sports,Basketball,What does WNBA stand for?,World National Basketball Association,Women's National Basketball Association,Western National Basketball Alliance,Women's National Ball Athletics,B,WNBA stands for Women's National Basketball Association.,Medium
+Sports,Basketball,What is overtime in basketball?,Extra playing time to break a tie,A lunch break,A halftime show,A penalty shot,A,Overtime is used if the score is tied at the end of regulation.,Easy
+Sports,Football,How many points is a touchdown worth in American football?,3,6,7,8,B,A touchdown is worth 6 points before the extra try.,Easy
+Sports,Football,What shape is an American football?,Round,Oval-like,Square,Triangle,B,An American football is oval-like in shape.,Easy
+Sports,Football,What is the top professional American football league in the U.S.?,NBA,NFL,MLS,PGA,B,The NFL is the top American football league.,Easy
+Sports,Football,What is it called when the quarterback throws the ball forward to a teammate?,Dribble,Forward pass,Header,Serve,B,A legal forward pass travels from passer to eligible receiver.,Easy
+Sports,Football,How many points is a field goal worth in American football?,2,3,4,6,B,A field goal is worth 3 points.,Easy
+Sports,Football,What is a fumble?,A kickoff,Dropping or losing control of the ball during play,A timeout,A fair catch,B,A fumble occurs when the ball carrier loses possession.,Medium
+Sports,Football,Who leads the offense and often throws passes?,Center,Quarterback,Kicker,Linebacker,B,The quarterback commonly leads the offense.,Easy
+Sports,Football,What is the championship game of the NFL called?,World Series,Super Bowl,Stanley Cup,Final Four,B,The NFL championship is the Super Bowl.,Easy
+Sports,Football,What do referees use to signal penalties in football?,Red card,Yellow flag,White towel,Blue coin,B,Officials throw a yellow flag to signal penalties.,Easy
+Sports,Football,What is an interception?,A successful kick,Catching the other team's pass,A time-out,Running out of bounds,B,An interception happens when a defender catches a pass intended for the offense.,Medium
+Sports,Soccer,What is soccer called in most parts of the world?,Gridiron,Football,Netball,Cricket,B,Most of the world calls soccer 'football.',Easy
+Sports,Soccer,How many players from one team are usually on the field in soccer?,9,10,11,12,C,A soccer team normally has 11 players on the field.,Easy
+Sports,Soccer,What body part may a goalkeeper use inside the penalty area that field players generally may not?,Elbows,Hands,Knees,Shoulders,B,Goalkeepers may use their hands in the penalty area.,Easy
+Sports,Soccer,What is it called when the ball crosses the goal line between the posts and under the crossbar?,Touchdown,Goal,Home run,Ace,B,That scores a goal.,Easy
+Sports,Soccer,What major international tournament is played every four years for national teams?,UEFA only,FIFA World Cup,Super Bowl,Wimbledon,B,The FIFA World Cup is held every four years.,Easy
+Sports,Soccer,What card is shown for a serious send-off offense in soccer?,Green,Blue,Red,Orange,C,A red card sends a player off.,Easy
+Sports,Soccer,What card is usually shown as a warning in soccer?,Yellow,Purple,Black,Silver,A,A yellow card is a caution.,Easy
+Sports,Soccer,What is offside in soccer related to?,Too many substitutions,Player positioning during attacking play,Ball color,Shoe size,B,Offside concerns an attacking player's position when the ball is played.,Hard
+Sports,Soccer,What competition determines the champion of European club soccer?,Copa America,UEFA Champions League,Gold Cup,Africa Cup of Nations,B,The UEFA Champions League crowns Europe's top club.,Medium
+Sports,Soccer,What is a penalty kick awarded for in soccer?,Winning halftime,Certain fouls in the penalty area,Substituting too often,Taking too long to celebrate,B,Penalty kicks are awarded for specific fouls in the box.,Medium
+Sports,Baseball,How many outs end a half-inning in baseball?,2,3,4,5,B,Three outs end a half-inning.,Easy
+Sports,Baseball,How many bases are there in a standard baseball diamond?,3,4,5,6,B,There are four bases including home plate.,Easy
+Sports,Baseball,What is a home run?,A walk,A hit that allows the batter to circle all bases and score,A strikeout,A stolen base only,B,A home run lets the batter score by circling the bases.,Easy
+Sports,Baseball,What is the top professional baseball league in the U.S. called?,NHL,MLB,NBA,NFL,B,MLB stands for Major League Baseball.,Easy
+Sports,Baseball,Who throws the ball to the batter?,Catcher,Pitcher,Shortstop,First baseman,B,The pitcher throws to the batter.,Easy
+Sports,Baseball,What is it called when a batter swings and misses three times?,Goal,Strikeout,Touchback,Set point,B,Three strikes usually result in a strikeout.,Easy
+Sports,Baseball,What does RBI stand for?,Run Batted In,Right Base Indicator,Runner Beyond Infield,Rapid Bat Impact,A,RBI stands for Run Batted In.,Medium
+Sports,Baseball,What is the event called when the fielder catches a hit ball before it touches the ground?,Grounder,Fly out,Walk,Steal,B,A caught fly ball often results in a fly out.,Medium
+Sports,Baseball,What is a double play?,Two runs scored,Two outs on one continuous play,Two pitchers at once,Two innings completed,B,A double play records two outs in one play.,Medium
+Sports,Baseball,What championship series decides the MLB champion?,World Series,Super Bowl,Stanley Cup Final,Masters,A,The World Series decides the MLB champion.,Easy
+Sports,General Sports,What event brings athletes from many countries together every four years?,Olympic Games,World Series,Tour de France,Masters Tournament,A,The Olympics bring together athletes from around the world.,Easy
+Sports,General Sports,Which sport uses a racket and a net?,Golf,Tennis,Soccer,Rugby,B,Tennis uses rackets and a net.,Easy
+Sports,General Sports,Which sport is associated with Wimbledon?,Basketball,Cricket,Tennis,Cycling,C,Wimbledon is a famous tennis tournament.,Easy
+Sports,General Sports,Which sport is associated with the Tour de France?,Swimming,Cycling,Boxing,Gymnastics,B,The Tour de France is a cycling race.,Easy
+Sports,General Sports,What is a referee's main job?,Sell tickets,Enforce rules during the game,Coach both teams,Write news stories,B,Referees and officials enforce the rules.,Easy
+Sports,General Sports,What is sportsmanship?,Cheating to win,Respectful behavior toward others in sports,Only winning championships,Ignoring teammates,B,Sportsmanship includes fairness and respect.,Easy
+Sports,General Sports,What does a coach usually do?,Play every position,Teach strategy and guide players,Sell food,Repair stadium lights,B,Coaches train and guide teams or athletes.,Easy
+Sports,General Sports,What is a tie game?,A game with no score kept,A game in which the score is equal,A game that ends early,A game with extra players,B,A tie means both sides have the same score.,Easy
+Sports,General Sports,What is a season in sports?,A weather forecast,The scheduled period in which teams play games,A halftime show,A single practice,B,A season is the portion of the year devoted to competition.,Easy
+Sports,General Sports,Why do athletes train?,"To improve skill, fitness, and performance",To avoid learning rules,To stop practicing forever,Only to buy uniforms,A,Training helps athletes improve and compete.,Easy
+Entertainment,Movies,Who performs a character in a movie?,Actor,Director,Editor,Producer,A,Actors perform characters on screen.,Easy
+Entertainment,Movies,Who is mainly responsible for guiding the creative vision of a film?,Director,Cashier,Coach,Referee,A,The director guides the film's creative direction.,Easy
+Entertainment,Movies,What is a screenplay?,A movie ticket,The written script for a film,A camera lens,A stage light,B,A screenplay is the script used to make a movie.,Easy
+Entertainment,Movies,What is a sequel?,The first movie in a series,A follow-up movie,A movie trailer,A soundtrack only,B,A sequel continues or follows an earlier film.,Easy
+Entertainment,Movies,What is animation?,Live sports commentary,Creating moving images from drawings or digital frames,Only acting on stage,A radio format,B,Animation creates motion from still images.,Easy
+Entertainment,Movies,What is a documentary?,A fictional fantasy only,A nonfiction film about real subjects,A silent cartoon,A weather report,B,"Documentaries focus on real people, events, or topics.",Easy
+Entertainment,Movies,What is a movie trailer?,The ending credits,A preview used to promote a film,A soundtrack album,A type of ticket,B,Trailers are previews shown before release.,Easy
+Entertainment,Movies,What is a genre in film?,A type or category of movie,A movie theater seat,A camera brand,A ticket color,A,Genres classify films by style or subject.,Easy
+Entertainment,Movies,Which genre focuses on humor?,Horror,Comedy,Documentary,Western,B,Comedies are designed to be funny.,Easy
+Entertainment,Movies,What are subtitles?,Extra sound effects,Text showing spoken dialogue on screen,Only movie posters,Credits at the start only,B,Subtitles display dialogue as text.,Easy
+Entertainment,Television,What is a TV series?,A single advertisement,A show with multiple episodes,A theater seat,A movie soundtrack,B,TV series are told across episodes.,Easy
+Entertainment,Television,What is a season of a TV show?,A weather event,A group of episodes released as a unit,A channel number,A single commercial,B,Episodes are often grouped into seasons.,Easy
+Entertainment,Television,What is a channel?,A TV station or source of programming,A movie villain,A ticket line,A dance move,A,A channel is a station or source of programs.,Easy
+Entertainment,Television,What is a rerun?,A live concert,A repeated airing of an earlier episode,A canceled show,A sports penalty,B,A rerun is a repeat broadcast.,Easy
+Entertainment,Television,What is a sitcom?,A type of game show,A situation comedy,A news broadcast,A sports documentary,B,Sitcom stands for situation comedy.,Medium
+Entertainment,Television,What is a reality show?,A program featuring real people in unscripted or semi-scripted situations,An animated cartoon only,A history textbook,A radio ad,A,Reality shows focus on real participants rather than fictional characters.,Medium
+Entertainment,Television,What is a pilot episode?,A travel show,The first episode used to launch a series,A final episode,A halftime special,B,A pilot introduces a new TV series.,Medium
+Entertainment,Television,What does 'binge-watch' mean?,Watch many episodes in one stretch,Repair a television,Buy a movie ticket,Skip every episode,A,Binge-watching means watching multiple episodes back-to-back.,Easy
+Entertainment,Television,What is a streaming series?,A show watched only in theaters,A TV or web series delivered online,A radio-only story,A paper magazine,B,Streaming series are viewed through internet services.,Easy
+Entertainment,Television,What is a season finale?,The first episode of a season,The last episode of a season,A random commercial break,A TV remote,B,A finale closes a season's story arc.,Easy
+Entertainment,Music,Who performs songs vocally?,Singer,Director,Referee,Painter,A,Singers perform songs with their voices.,Easy
+Entertainment,Music,What is an album?,A collection of songs,A type of speaker cable,A movie ticket,A dance contest only,A,An album is a collection of recorded songs.,Easy
+Entertainment,Music,What is a genre in music?,A type or style of music,A guitar string,A concert seat,A dance step,A,Genres classify music by style.,Easy
+Entertainment,Music,What is a chorus in a song?,The repeated section often containing the main hook,The price of a ticket,A concert parking pass,A broken speaker,A,The chorus commonly repeats and is memorable.,Medium
+Entertainment,Music,What is a beat in music?,A repeated rhythm pulse,A concert poster,A microphone stand,A stage curtain,A,The beat is the regular rhythmic pulse.,Easy
+Entertainment,Music,What is a playlist?,A list or collection of songs to play,A movie script,A concert hall,A kind of instrument,A,Playlists organize songs for listening.,Easy
+Entertainment,Music,What is a duet?,A song performed by two people,A long instrumental solo only,A one-minute commercial,A music award,A,A duet features two performers.,Easy
+Entertainment,Music,What is a live concert?,A performance in front of an audience,A studio microphone,A music note,A silent film,A,Concerts are live performances.,Easy
+Entertainment,Music,What is a music producer?,A person who helps shape the recording and sound of music,Only a ticket seller,A stadium owner,A dancer in the audience,A,Producers help create and refine recordings.,Medium
+Entertainment,Music,What is a single in music?,A song released separately to promote an artist or album,A one-person dance only,A type of drumstick,A concert cancellation,A,Singles are often released individually.,Medium
+Entertainment,Pop Culture,What is a celebrity?,A well-known public figure,A courtroom judge only,A type of camera,A sports stadium,A,Celebrities are widely recognized public figures.,Easy
+Entertainment,Pop Culture,What is a viral video?,A video that spreads quickly online,A movie shown only in theaters,A weather forecast,A security camera clip only,A,Viral videos spread widely across the internet.,Easy
+Entertainment,Pop Culture,What is a meme?,"A shared image, phrase, or joke that spreads online",A type of guitar,A TV station,A concert ticket,A,Memes spread quickly online and are often humorous.,Easy
+Entertainment,Pop Culture,What is a fan base?,"A group of supporters of an artist, team, or creator",A machine for cooling air,A theater stage,A bank account type,A,A fan base is the group that supports a public figure or work.,Easy
+Entertainment,Pop Culture,What is a franchise in entertainment?,A series of related works under one brand,A single lunch coupon,A tax document,A weather chart,A,"Franchises include multiple related films, shows, or games.",Medium
+Entertainment,Pop Culture,What is cosplay?,Dressing up as a fictional character,A type of drum music,A movie rating system,A radio interview,A,Cosplay involves costumes based on characters.,Medium
+Entertainment,Pop Culture,What is a spoiler?,Information that reveals key plot details before someone sees the story,A concert warm-up,A camera lens,A ticket refund,A,Spoilers reveal important story information in advance.,Easy
+Entertainment,Pop Culture,What is a fandom?,A community of enthusiastic fans,A type of TV antenna,A music chord,A legal contract,A,A fandom is a community of devoted fans.,Easy
+Entertainment,Pop Culture,What is box office success?,Strong movie ticket sales,A television repair,A free streaming coupon,A microphone brand,A,Box office refers to theatrical ticket revenue.,Medium
+Entertainment,Pop Culture,What is a red carpet event?,A formal celebrity arrival event for premieres or awards,A sports injury clinic,A classroom activity,A bank ceremony,A,Red carpet events are associated with premieres and awards.,Easy
+Entertainment,Games and Media,What is a video game console?,A device used to play video games,A TV commercial,A concert stage,A film projector,A,Consoles are dedicated gaming devices.,Easy
+Entertainment,Games and Media,What is a podcast?,A digital audio program people can stream or download,A type of painting,A movie subtitle,A sports trophy,A,Podcasts are spoken-word or audio programs online.,Easy
+Entertainment,Games and Media,What is streaming in entertainment?,Watching or listening online without fully downloading first,Only reading scripts,Buying CDs only,A kind of theater seat,A,Streaming delivers media over the internet.,Easy
+Entertainment,Games and Media,What is a content creator?,"Someone who produces videos, posts, music, or other media for an audience",Only a TV repair person,A police officer,A chef only,A,Content creators make media for viewers or listeners.,Easy
+Entertainment,Games and Media,What is a livestream?,A real-time online broadcast,A printed magazine,A delayed radio ad,A type of ticket,A,Livestreams happen live over the internet.,Easy
+Entertainment,Games and Media,What is a user review?,"An audience member's opinion about a movie, game, or show",A legal verdict,A sports timeout,A camera angle,A,User reviews reflect audience reactions.,Easy
+Entertainment,Games and Media,What is a rating system in entertainment used for?,Helping people know age or content suitability,Choosing sports scores,Creating taxes,Printing money,A,Ratings help audiences understand content suitability.,Medium
+Entertainment,Games and Media,What is a soundtrack?,"The music associated with a movie, show, or game",A football playbook,A movie ticket refund,A theater curtain,A,A soundtrack is the music for a media project.,Easy
+Entertainment,Games and Media,What is dubbing?,Replacing original dialogue with voices in another language,Painting a movie poster,Releasing a soundtrack,Adding subtitles only,A,Dubbing replaces spoken dialogue with another language track.,Hard
+Entertainment,Games and Media,What is an adaptation?,A new version of a story based on an existing work,A canceled concert,A broken speaker,A live sports trade,A,"Adaptations bring books, comics, or other works into new formats.",Medium
+Science,Physics,What is gravity?,A force that pulls objects toward each other,A type of weather,A form of music,A color of light only,A,Gravity pulls masses toward each other.,Easy
+Science,Physics,What is speed?,How fast something moves,How loud something is,How hot something is,How bright something is,A,Speed measures how fast something moves.,Easy
+Science,Physics,What is friction?,A force that resists motion between surfaces,A light source,A type of gas,A unit of sound only,A,Friction resists motion when surfaces rub.,Medium
+Science,Physics,What is energy?,The ability to do work or cause change,A type of rock only,A weather season,A brand of shoes,A,Energy allows work and change to happen.,Medium
+Science,Physics,Which force helps keep planets in orbit around the Sun?,Magnetism,Gravity,Friction,Sound,B,Gravity holds planets in orbit.,Easy
+Science,Physics,What is electricity?,The flow of electric charge,A kind of plant,A type of mountain,A moon phase,A,Electricity involves moving electric charge.,Medium
+Science,Physics,What unit is commonly used to measure temperature?,Meter,Degree,Liter,Second,B,Temperature is commonly measured in degrees.,Easy
+Science,Physics,What travels faster in a vacuum: sound or light?,Sound,Light,They are equal,Neither can travel,B,Light travels through a vacuum; sound cannot.,Medium
+Science,Physics,What simple machine is a seesaw an example of?,Pulley,Lever,Wheel and axle,Screw,B,A seesaw is a lever.,Medium
+Science,Physics,What happens to water when it freezes?,It becomes steam,It becomes ice,It becomes metal,It disappears,B,Freezing turns liquid water into ice.,Easy
+Science,Chemistry,What is the chemical formula for water?,CO2,H2O,O2,NaCl,B,Water is H2O.,Easy
+Science,Chemistry,What gas do people breathe in to stay alive?,Carbon dioxide,Oxygen,Helium,Nitrogen only,B,Humans breathe in oxygen.,Easy
+Science,Chemistry,What gas do plants take in during photosynthesis?,Oxygen,Carbon dioxide,Hydrogen,Argon,B,Plants take in carbon dioxide.,Medium
+Science,Chemistry,What do we call the smallest unit of an element?,Molecule,Atom,Cell,Planet,B,Atoms are the basic units of elements.,Medium
+Science,Chemistry,What is a mixture?,Two or more substances combined without chemical bonding,A single pure element,A solid metal only,A living cell,A,Mixtures combine substances without changing them chemically.,Medium
+Science,Chemistry,What is evaporation?,Liquid changing into gas,Gas changing into liquid,Solid changing into gas only,Water turning into stone,A,Evaporation is when liquid becomes gas.,Easy
+Science,Chemistry,What is condensation?,Gas changing to liquid,Liquid changing to gas,Solid changing to liquid,A chemical explosion,A,Condensation turns gas into liquid.,Medium
+Science,Chemistry,What is the pH scale used to measure?,Speed,Acidity and basicity,Weight,Sound volume,B,The pH scale measures how acidic or basic something is.,Hard
+Science,Chemistry,Which of these is a metal?,Oxygen,Iron,Helium,Carbon dioxide,B,Iron is a metal.,Easy
+Science,Chemistry,What happens in a chemical reaction?,Substances change into new substances,Nothing changes at all,Only color matters,Gravity stops working,A,Chemical reactions create new substances.,Medium
+Science,Biology,Which organ pumps blood?,Lungs,Heart,Stomach,Kidneys,B,The heart pumps blood through the body.,Easy
+Science,Biology,What are plants that make their own food using sunlight called?,Consumers,Producers,Predators,Decomposers only,B,Plants are producers because they make their own food.,Medium
+Science,Biology,What is photosynthesis?,How plants make food using sunlight,How animals sleep,How rocks form,How stars shine,A,"Photosynthesis lets plants use sunlight, water, and carbon dioxide to make food.",Medium
+Science,Biology,What part of the cell contains genetic material in many organisms?,Cell wall,Nucleus,Chlorophyll,Membrane pump,B,The nucleus contains DNA in many cells.,Hard
+Science,Biology,What do animals need in order to survive?,"Air, water, food, and habitat",Only toys,Only sunlight,Only music,A,Animals need basic resources to survive.,Easy
+Science,Biology,What is a mammal?,An animal that is warm-blooded and feeds milk to its young,A cold-blooded fish,A type of tree,A weather pattern,A,Mammals share key traits such as feeding milk to their young.,Medium
+Science,Biology,What do roots help a plant do?,Hear sounds,Absorb water and anchor the plant,Fly,Make thunder,B,Roots help plants take in water and stay anchored.,Easy
+Science,Biology,Which blood cells help fight infection?,Red blood cells,White blood cells,Platelets only,Bone cells,B,White blood cells help defend the body against infection.,Hard
+Science,Biology,What is an ecosystem?,Only a forest,A community of living things interacting with their environment,A type of machine,A city bus route,B,Ecosystems include organisms and the places where they live.,Medium
+Science,Biology,What is biodiversity?,Variety of living things in an area,One species only,A single weather event,A rock collection,A,Biodiversity means many kinds of life.,Medium
+Science,Earth Science,Earth is classified as what kind of object?,Star,Planet,Comet,Galaxy,B,Earth is a planet.,Easy
+Science,Earth Science,What causes day and night on Earth?,Earth's rotation,Earth's color,Clouds,Ocean tides only,A,"Earth rotates, causing day and night.",Easy
+Science,Earth Science,What causes the seasons on Earth?,Distance from the Sun only,Earth's tilt as it orbits the Sun,Moonlight,Wind speed,B,Earth's tilt and orbit create the seasons.,Medium
+Science,Earth Science,What is the outer layer of Earth called?,Core,Crust,Mantle,Inner shell,B,The crust is Earth's outermost layer.,Medium
+Science,Earth Science,What is molten rock below Earth's surface called?,Lava,Magma,Ash,Basalt only,B,Molten rock underground is called magma.,Medium
+Science,Earth Science,What is the water cycle?,"The movement of water through evaporation, condensation, and precipitation",A bike race,Only a river path,A weather warning,A,The water cycle moves water through the environment.,Easy
+Science,Earth Science,What is a fossil?,Ancient preserved remains or traces of life,A weather map,A new cell phone,A cloud type,A,Fossils preserve evidence of past life.,Easy
+Science,Earth Science,What do we call shaking of the ground caused by movement in Earth's crust?,Tornado,Earthquake,Flood,Drought,B,Earthquakes happen when energy is released in the crust.,Easy
+Science,Earth Science,What is weather?,Short-term atmospheric conditions,Long-term climate patterns only,Only rainfall,Only heat waves,A,Weather describes short-term atmospheric conditions.,Easy
+Science,Earth Science,What is climate?,Long-term average weather patterns,The same as today's forecast only,Only humidity,Only wind direction,A,Climate refers to long-term patterns.,Medium
+Science,Space Science,What is the Sun?,A planet,A star,A moon,An asteroid,B,The Sun is a star.,Easy
+Science,Space Science,Which planet is known as the Red Planet?,Venus,Mars,Jupiter,Mercury,B,Mars is often called the Red Planet.,Easy
+Science,Space Science,Which planet is the largest in our solar system?,Earth,Jupiter,Mars,Saturn,B,Jupiter is the largest planet in the solar system.,Easy
+Science,Space Science,What object orbits Earth and affects tides?,Sun,Moon,Mars,Venus,B,The Moon orbits Earth and affects tides.,Easy
+Science,Space Science,What is a galaxy?,A planet with rings,"A huge collection of stars, gas, and dust",A single comet,A kind of microscope,B,Galaxies contain vast numbers of stars and other matter.,Medium
+Science,Space Science,What do astronauts wear in space for protection?,Raincoats,Space suits,School uniforms,Lab aprons,B,Space suits protect astronauts in space conditions.,Easy
+Science,Space Science,What is a telescope used for?,"Looking at distant objects, especially in space",Measuring weight,Cooking food,Digging soil,A,Telescopes help us observe distant objects.,Easy
+Science,Space Science,What is the Milky Way?,A candy bar only,The galaxy that contains our solar system,A moon crater,A single star,B,Our solar system is in the Milky Way galaxy.,Medium
+Science,Space Science,What causes a lunar eclipse?,Earth blocks sunlight from reaching the Moon,The Moon blocks sunlight from reaching Earth,Clouds cover the Moon,The Sun turns off briefly,A,A lunar eclipse occurs when Earth casts its shadow on the Moon.,Hard
+Science,Space Science,Why do we see different phases of the Moon?,The Moon changes shape,We see varying portions of the Moon lit by the Sun,Earth's oceans cover the Moon,The Moon rotates backward each week,B,Moon phases come from how much of the lit half we can see from Earth.,Hard
+Faith,New Testament,Who wrote the book of Revelation?,Peter,John,Paul,Luke,B,The book of Revelation is traditionally attributed to John.,Medium
+Civics,Community,What is public policy?,A personal diary,A plan or set of actions adopted by government to address issues,A sports schedule,A private family rule,B,Public policy refers to government decisions and actions on public issues.,Hard

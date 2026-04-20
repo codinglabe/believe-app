@@ -1,9 +1,10 @@
 <?php
+
 namespace App\Http\Controllers;
 
 use App\Services\PrintifyService;
-use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 
 class PrintifyProductController extends Controller
 {
@@ -20,7 +21,7 @@ class PrintifyProductController extends Controller
     public function getProviders(Request $request): JsonResponse
     {
         $request->validate([
-            'blueprint_id' => 'required|integer'
+            'blueprint_id' => 'required|integer',
         ]);
 
         try {
@@ -29,7 +30,7 @@ class PrintifyProductController extends Controller
             return response()->json($providers);
         } catch (\Exception $e) {
             return response()->json([
-                'error' => 'Failed to fetch providers: ' . $e->getMessage()
+                'error' => 'Failed to fetch providers: '.$e->getMessage(),
             ], 500);
         }
     }
@@ -41,7 +42,7 @@ class PrintifyProductController extends Controller
     {
         $request->validate([
             'blueprint_id' => 'required|integer',
-            'print_provider_id' => 'required|integer'
+            'print_provider_id' => 'required|integer',
         ]);
 
         try {
@@ -53,7 +54,7 @@ class PrintifyProductController extends Controller
             return response()->json($variants);
         } catch (\Exception $e) {
             return response()->json([
-                'error' => 'Failed to fetch variants: ' . $e->getMessage()
+                'error' => 'Failed to fetch variants: '.$e->getMessage(),
             ], 500);
         }
     }
@@ -65,7 +66,7 @@ class PrintifyProductController extends Controller
     {
         $request->validate([
             'blueprint_id' => 'required|integer',
-            'print_provider_id' => 'required|integer'
+            'print_provider_id' => 'required|integer',
         ]);
 
         try {
@@ -77,7 +78,27 @@ class PrintifyProductController extends Controller
             return response()->json($shipping);
         } catch (\Exception $e) {
             return response()->json([
-                'error' => 'Failed to fetch shipping information: ' . $e->getMessage()
+                'error' => 'Failed to fetch shipping information: '.$e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Provider comparison for product create (costs, shipping, handling from Printify catalog).
+     */
+    public function getProviderComparison(Request $request): JsonResponse
+    {
+        $request->validate([
+            'blueprint_id' => 'required|integer',
+        ]);
+
+        try {
+            $data = $this->printifyService->getProviderComparison((int) $request->blueprint_id);
+
+            return response()->json($data);
+        } catch (\Exception $e) {
+            return response()->json([
+                'error' => 'Failed to build provider comparison: '.$e->getMessage(),
             ], 500);
         }
     }

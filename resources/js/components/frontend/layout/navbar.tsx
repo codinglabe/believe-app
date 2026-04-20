@@ -48,6 +48,7 @@ import {
   Monitor,
   Compass,
   Ticket,
+  Trophy,
 } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 import { ThemeToggle } from "@/components/frontend/theme-toggle"
@@ -168,6 +169,7 @@ export default function Navbar() {
     { name: "Volunteer Opportunity", href: "/volunteer-opportunities", icon: HeartHandshake },
     { name: "Jobs", href: "/jobs", icon: Briefcase },
     { name: "Connection Hub", href: route("course.index"), icon: GraduationCap },
+    ...(isLoggedIn ? [{ name: "Challenge Hub", href: route("challenge-hub.index"), icon: Trophy }] : []),
     { name: "Event Calendar", href: "/all-events", icon: Calendar },
     { name: "Explore Causes", href: "/explore-by-cause", icon: Compass },
   ]
