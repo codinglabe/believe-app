@@ -7,14 +7,29 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/frontend/
 import { Button } from "@/components/frontend/ui/button"
 import { Input } from "@/components/frontend/ui/input"
 import { Label } from "@/components/frontend/ui/label"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/frontend/ui/select"
+import { Textarea } from "@/components/frontend/ui/textarea"
 import { Gift, Loader2 } from "lucide-react"
 import toast from "react-hot-toast"
 
-interface Celebrant {
+interface Recipient {
   id: number
   name: string
   slug: string | null
   image: string | null
+}
+
+interface GiftOccasion {
+  id: number
+  occasion: string
+  icon: string | null
+  category: string | null
 }
 
 interface SenderBalances {
@@ -23,19 +38,22 @@ interface SenderBalances {
 }
 
 interface BirthdayGiftPageProps {
-  celebrant: Celebrant
+  recipient: Recipient
   senderBalances: SenderBalances
+  giftOccasions: GiftOccasion[]
 }
 
 const PRESETS = [10, 25, 50] as const
 
 export default function BirthdayGiftPage() {
-  const { celebrant, senderBalances } = usePage().props as unknown as BirthdayGiftPageProps
+  const { recipient, senderBalances, giftOccasions } = usePage().props as unknown as BirthdayGiftPageProps
   const [preset, setPreset] = useState<number | "custom">(10)
+  const defaultOccasionId = giftOccasions[0]?.id ?? 0
 
   const { data, setData, post, processing, errors, reset } = useForm({
     amount: 10,
-    message: `Happy Birthday ${(celebrant.name || "friend").split(" ")[0]}!`,
+    gift_occasion_id: defaultOccasionId,
+    message: "",
   })
 
   const applyPreset = (v: number | "custom") => {
@@ -47,11 +65,12 @@ export default function BirthdayGiftPage() {
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault()
-    post(route("supporters.birthday-gift.send", celebrant.id), {
+    post(`/supporters/gift/${recipient.id}`, {
       preserveScroll: true,
       onSuccess: () => {
         toast.success("Gift sent!")
-        reset()
+        reset("amount", "message")
+        setData("gift_occasion_id", defaultOccasionId)
       },
       onError: () => {
         toast.error("Could not send gift. Check your balance and try again.")
@@ -64,7 +83,7 @@ export default function BirthdayGiftPage() {
 
   return (
     <FrontendLayout>
-      <Head title="Send birthday gift" />
+      <Head title="Send gift" />
       <div className="max-w-lg mx-auto py-10 px-4">
         <Card className="border-2 border-violet-500/30 dark:border-violet-400/30 shadow-xl dark:bg-gray-900/80">
           <CardHeader>
@@ -75,24 +94,41 @@ export default function BirthdayGiftPage() {
           </CardHeader>
           <CardContent>
             <div className="flex items-center gap-3 mb-6">
-              {celebrant.image ? (
+              {recipient.image ? (
                 <img
-                  src={celebrant.image}
+                  src={recipient.image}
                   alt=""
                   className="h-14 w-14 rounded-full object-cover border-2 border-violet-500/40"
                 />
               ) : (
                 <div className="h-14 w-14 rounded-full bg-muted flex items-center justify-center text-lg font-semibold">
-                  {(celebrant.name || "?")[0]}
+                  {(recipient.name || "?")[0]}
                 </div>
               )}
               <div>
-                <p className="text-sm text-muted-foreground">Birthday</p>
-                <p className="font-semibold text-lg dark:text-white">{celebrant.name}</p>
+                <p className="text-sm text-muted-foreground">Recipient</p>
+                <p className="font-semibold text-lg dark:text-white">{recipient.name}</p>
               </div>
             </div>
 
             <form onSubmit={submit} className="space-y-5">
+              <div>
+                <Label className="dark:text-gray-200">Occasion</Label>
+                <Select value={String(data.gift_occasion_id)} onValueChange={(value) => setData("gift_occasion_id", Number(value))}>
+                  <SelectTrigger className="mt-2 dark:bg-gray-800">
+                    <SelectValue placeholder="Choose an occasion" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {giftOccasions.map((occasion) => (
+                      <SelectItem key={occasion.id} value={String(occasion.id)}>
+                        {occasion.icon ? `${occasion.icon} ` : ""}{occasion.occasion}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {errors.gift_occasion_id && <p className="text-sm text-destructive mt-1">{errors.gift_occasion_id}</p>}
+              </div>
+
               <div>
                 <Label className="dark:text-gray-200">Amount (Believe Points)</Label>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-2">
@@ -129,13 +165,15 @@ export default function BirthdayGiftPage() {
               </div>
 
               <div>
-                <Label className="dark:text-gray-200">Message</Label>
-                <Input
+                <Label className="dark:text-gray-200">Message (optional)</Label>
+                <Textarea
                   className="mt-2 dark:bg-gray-800"
+                  placeholder="Write a short note"
                   value={data.message}
                   onChange={(e) => setData("message", e.target.value)}
                   maxLength={500}
                 />
+                {errors.message && <p className="text-sm text-destructive mt-1">{errors.message}</p>}
               </div>
 
               <div className="flex items-center justify-between gap-3 text-sm border rounded-lg p-3 bg-amber-500/5 border-amber-500/30">
@@ -147,7 +185,7 @@ export default function BirthdayGiftPage() {
                 </div>
                 {gifted > 0 && (
                   <span className="text-xs text-muted-foreground text-right">
-                    Gifted {gifted.toFixed(2)} cannot be sent to others
+                    Recipient gets Gifted Balance. Your gifted balance cannot be re-sent.
                   </span>
                 )}
               </div>

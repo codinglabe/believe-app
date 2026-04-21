@@ -48,7 +48,7 @@ export default function NotificationsInbox() {
       } else if (notification.type === CARE_ALLIANCE_INVITATION_TYPE) {
         router.visit("/organization/alliance-membership?tab=invitations#care-alliance-invitations")
       } else if (notification.type === SUPPORTER_BIRTHDAY_TYPE && notification.meta?.celebrant_id != null) {
-        router.visit(`/supporters/birthday-gift/${notification.meta.celebrant_id}`)
+        router.visit(`/supporters/gift/${notification.meta.celebrant_id}`)
       } else {
         router.reload({ only: ["notifications"] })
       }
@@ -234,7 +234,7 @@ export default function NotificationsInbox() {
                               toast.error("Could not update notification.")
                               return
                             }
-                            router.visit(`/supporters/birthday-gift/${id}`)
+                            router.visit(`/supporters/gift/${id}`)
                           }}
                         >
                           Send Gift

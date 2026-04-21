@@ -21,6 +21,7 @@ import {
   User,
   Loader2,
   X,
+  Gift,
 } from "lucide-react"
 
 const SORT_OPTIONS = [
@@ -648,24 +649,35 @@ export default function FindSupportersPage() {
                               </span>
                             </div>
                             {currentUser && supporter.id !== currentUser.id && (
-                              <Button
-                                size="sm"
-                                className={`rounded-xl font-semibold flex-shrink-0 px-5 transition-all ${
-                                  followingStates[supporter.id]
-                                    ? "bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"
-                                    : "bg-gradient-to-r from-blue-600 to-blue-700 text-white hover:from-blue-700 hover:to-blue-800 shadow-md hover:shadow-lg"
-                                }`}
-                                onClick={() => handleFollow(supporter)}
-                                disabled={loadingFollow[supporter.id]}
-                              >
-                                {loadingFollow[supporter.id] ? (
-                                  <Loader2 className="w-4 h-4 animate-spin" />
-                                ) : followingStates[supporter.id] ? (
-                                  "Following"
-                                ) : (
-                                  "Follow"
-                                )}
-                              </Button>
+                              <div className="flex items-center gap-2">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="rounded-xl font-semibold flex-shrink-0 px-4 border-amber-300 text-amber-700 hover:bg-amber-50 hover:text-amber-800 dark:border-amber-800 dark:text-amber-300 dark:hover:bg-amber-950/30"
+                                  onClick={() => router.visit(`/supporters/gift/${supporter.id}`)}
+                                >
+                                  <Gift className="w-4 h-4 mr-1.5" />
+                                  Gift
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  className={`rounded-xl font-semibold flex-shrink-0 px-5 transition-all ${
+                                    followingStates[supporter.id]
+                                      ? "bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"
+                                      : "bg-gradient-to-r from-blue-600 to-blue-700 text-white hover:from-blue-700 hover:to-blue-800 shadow-md hover:shadow-lg"
+                                  }`}
+                                  onClick={() => handleFollow(supporter)}
+                                  disabled={loadingFollow[supporter.id]}
+                                >
+                                  {loadingFollow[supporter.id] ? (
+                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                  ) : followingStates[supporter.id] ? (
+                                    "Following"
+                                  ) : (
+                                    "Follow"
+                                  )}
+                                </Button>
+                              </div>
                             )}
                           </div>
                         </div>

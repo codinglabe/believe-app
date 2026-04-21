@@ -10,13 +10,16 @@ class SupporterBelievePointGift extends Model
     protected $fillable = [
         'sender_id',
         'recipient_id',
+        'gift_occasion_id',
         'amount',
         'occasion',
         'message',
+        'sent_at',
     ];
 
     protected $casts = [
         'amount' => 'decimal:2',
+        'sent_at' => 'datetime',
     ];
 
     public function sender(): BelongsTo
@@ -27,5 +30,10 @@ class SupporterBelievePointGift extends Model
     public function recipient(): BelongsTo
     {
         return $this->belongsTo(User::class, 'recipient_id');
+    }
+
+    public function giftOccasion(): BelongsTo
+    {
+        return $this->belongsTo(GiftOccasion::class, 'gift_occasion_id');
     }
 }

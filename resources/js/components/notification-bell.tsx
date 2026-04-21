@@ -100,7 +100,7 @@ export function NotificationBell({ userId, emailVerified = true, onNotificationC
       } else if (notification.type === CARE_ALLIANCE_INVITATION_TYPE) {
         router.visit("/organization/alliance-membership?tab=invitations#care-alliance-invitations")
       } else if (notification.type === SUPPORTER_BIRTHDAY_TYPE && notification.meta?.celebrant_id != null) {
-        router.visit(`/supporters/birthday-gift/${notification.meta.celebrant_id}`)
+        router.visit(`/supporters/gift/${notification.meta.celebrant_id}`)
       }
 
       return true
@@ -491,7 +491,7 @@ export function NotificationBell({ userId, emailVerified = true, onNotificationC
                                 const id = notification.meta?.celebrant_id
                                 if (id == null) return
                                 await markAsRead(notification)
-                                router.visit(`/supporters/birthday-gift/${id}`)
+                                router.visit(`/supporters/gift/${id}`)
                               }}
                             >
                               <Gift className="mr-1.5 h-3.5 w-3.5" />
