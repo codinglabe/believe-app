@@ -220,6 +220,8 @@ Route::get('/find-care-alliances', [FindCareAlliancesController::class, 'index']
 Route::middleware(['auth', 'EnsureEmailIsVerified'])->group(function () {
     Route::get('/social-feed', [App\Http\Controllers\PostController::class, 'index'])->name('social-feed.index');
     Route::get('/find-supporters', [FindSupportersController::class, 'index'])->name('find-supporters.index');
+    Route::get('/supporters/gift/{recipient}', [SupporterBelievePointGiftController::class, 'showGift'])->name('supporters.gift');
+    Route::post('/supporters/gift/{recipient}', [SupporterBelievePointGiftController::class, 'sendGift'])->name('supporters.gift.send');
     Route::get('/supporters/birthday-gift/{celebrant}', [SupporterBelievePointGiftController::class, 'showBirthdayGift'])->name('supporters.birthday-gift');
     Route::post('/supporters/birthday-gift/{celebrant}', [SupporterBelievePointGiftController::class, 'sendBirthdayGift'])->name('supporters.birthday-gift.send');
     Route::get('/search', [App\Http\Controllers\PostController::class, 'searchPage'])->name('search.index');

@@ -154,7 +154,7 @@ class NotifySupportersOfFollowedBirthdays extends Command
                     $first = explode(' ', trim($celebrant->name ?? 'Someone'))[0];
                     $title = "🎂 {$first}'s birthday today!";
                     $body = 'A supporter who follows your nonprofit has a birthday — send Believe Points as a gift.';
-                    $giftUrl = route('supporters.birthday-gift', ['celebrant' => $celebrant->id], true);
+                    $giftUrl = route('supporters.gift', ['recipient' => $celebrant->id], true);
 
                     $firebase->sendToUser($recipientId, $title, $body, [
                         'type' => 'supporter_birthday',

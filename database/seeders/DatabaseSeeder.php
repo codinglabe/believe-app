@@ -62,6 +62,7 @@ class DatabaseSeeder extends Seeder
         $this->callUnlessSeeded(FundMeCategorySeeder::class);
         $this->callUnlessSeeded(ChallengeHubCategoriesSeeder::class);
         $this->callUnlessSeeded(LevelUpChallengeEntriesSeeder::class);
+        $this->callUnlessSeeded(GiftOccasionSeeder::class);
 
         // Step 5: Seed organization-related data
         $this->callUnlessSeeded(PrimaryActionCategoriesSeeder::class);
