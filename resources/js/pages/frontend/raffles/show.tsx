@@ -1,29 +1,46 @@
-import { Link, useForm } from '@inertiajs/react';
+import { Link, router, useForm, usePage } from '@inertiajs/react';
 import { PageHead } from '@/components/frontend/PageHead';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { 
-    Calendar, 
-    Users, 
-    DollarSign, 
-    Gift, 
-    Clock, 
-    CheckCircle, 
+import { Switch } from '@/components/frontend/ui/switch';
+import {
+    Gift,
+    Clock,
+    CheckCircle,
     ArrowLeft,
     Ticket,
     Crown,
     Medal,
-    Award
+    Award,
+    Loader2,
 } from 'lucide-react';
-import { PageProps } from '@/types';
+import type { PageProps, ProcessingFeeRates } from '@/types';
 import FrontendLayout from '@/layouts/frontend/frontend-layout';
 import CountdownTimer from '@/components/ui/countdown-timer';
 import RaffleTicket from '@/components/ui/raffle-ticket';
+import { cn } from '@/lib/utils';
+
+/** Raffle preview is card-only; rail is always `card` from the server. */
+interface FeePreviewFromServer {
+    mode: 'donor_covers' | 'org_covers';
+    rail?: 'card';
+    base_gift_usd: number;
+    checkout_total_usd: number;
+    processing_fee_estimate: number;
+    estimated_net_to_org_usd: number;
+}
+
+/** Fallback if shared `processingFeeRates` is missing. */
+const DEFAULT_PROCESSING_FEE_RATES: ProcessingFeeRates = {
+    card_percent: 0.029,
+    card_fixed_usd: 0.3,
+    ach_percent: 0.008,
+    ach_fee_cap_usd: 5,
+};
 
 interface RaffleTicket {
     id: number;
@@ -67,7 +84,15 @@ interface Raffle {
     }>;
     winners_count: number;
     organization: {
+        id?: number;
         name: string;
+        /** User account role when host is nonprofit / alliance */
+        role?: string;
+        /** Linked nonprofit profile name (organizations table), when present */
+        organization?: {
+            name: string;
+            description?: string | null;
+        } | null;
         description?: string;
     };
     tickets: RaffleTicket[];
@@ -80,6 +105,7 @@ interface Raffle {
 
 interface RaffleShowProps extends PageProps {
     raffle: Raffle;
+    feePreview?: FeePreviewFromServer | null;
     auth: {
         user: {
             name: string;
@@ -89,20 +115,56 @@ interface RaffleShowProps extends PageProps {
 }
 
 export default function RaffleShow({ raffle, auth }: RaffleShowProps) {
-    const [quantity, setQuantity] = useState(1);
-    
+    const page = usePage<RaffleShowProps & { processingFeeRates?: ProcessingFeeRates }>();
+    const feePreview = page.props.feePreview ?? null;
+    const processingFeeRates = page.props.processingFeeRates ?? DEFAULT_PROCESSING_FEE_RATES;
+
     const { data, setData, post, processing, errors } = useForm({
         quantity: 1,
+        donor_covers_processing_fees: true,
     });
+
+    const [feePreviewLoading, setFeePreviewLoading] = useState(false);
+    const rafflePreviewPartialReloadSkipRef = useRef(true);
+
+    /** Inertia partial reload: feePreview (quantity + cover fees switch). Card-only — same estimator as checkout. */
+    useEffect(() => {
+        if (rafflePreviewPartialReloadSkipRef.current) {
+            rafflePreviewPartialReloadSkipRef.current = false;
+            return;
+        }
+        const baseUsd = Math.round(Number(raffle.ticket_price) * data.quantity * 100) / 100;
+        if (baseUsd <= 0) {
+            return;
+        }
+        const t = window.setTimeout(() => {
+            setFeePreviewLoading(true);
+            router.get(
+                route('frontend.raffles.show', raffle.id),
+                {
+                    fee_preview_amount: baseUsd,
+                    fee_preview_donor_covers: data.donor_covers_processing_fees ? 1 : 0,
+                },
+                {
+                    preserveScroll: true,
+                    preserveState: true,
+                    replace: true,
+                    only: ['feePreview'],
+                    onFinish: () => setFeePreviewLoading(false),
+                    onCancel: () => setFeePreviewLoading(false),
+                },
+            );
+        }, 300);
+        return () => clearTimeout(t);
+    }, [data.quantity, data.donor_covers_processing_fees, raffle.id, raffle.ticket_price]);
 
     const handlePurchase = (e: React.FormEvent) => {
         e.preventDefault();
-        setData('quantity', quantity);
         post(route('frontend.raffles.purchase', raffle.id), {
             onSuccess: () => {
-                // Reset form after successful purchase
-                setQuantity(1);
-            }
+                setData('quantity', 1);
+                setData('donor_covers_processing_fees', true);
+            },
         });
     };
 
@@ -144,6 +206,29 @@ export default function RaffleShow({ raffle, auth }: RaffleShowProps) {
 
     const metaDescription = raffle.description ? String(raffle.description).slice(0, 160) : undefined;
 
+    /** Nonprofit-facing name when the raffle host is an organization or care alliance (profile name preferred). */
+    const hostingOrganizationName = (() => {
+        const u = raffle.organization;
+        if (!u?.name) {
+            return null as string | null;
+        }
+        const profileName = u.organization?.name?.trim();
+        if (profileName) {
+            return profileName;
+        }
+        const role = u.role ?? '';
+        if (role === 'organization' || role === 'organization_pending' || role === 'care_alliance') {
+            return u.name.trim();
+        }
+        return null as string | null;
+    })();
+
+    const organizationCardName = hostingOrganizationName ?? raffle.organization.name;
+    const organizationCardDescription =
+        raffle.organization.organization?.description?.trim() ||
+        raffle.organization.description?.trim() ||
+        null;
+
     return (
         <FrontendLayout>
             <PageHead title={raffle.title} description={metaDescription} />
@@ -162,12 +247,25 @@ export default function RaffleShow({ raffle, auth }: RaffleShowProps) {
                         
                         <div className="flex items-start justify-between">
                             <div className="flex-1">
-                                <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
-                                    {raffle.title}
-                                </h1>
-                                <p className="text-gray-600 dark:text-gray-400 mb-4">
-                                    by {raffle.organization.name}
-                                </p>
+                                {hostingOrganizationName ? (
+                                    <>
+                                        <p className="text-lg sm:text-xl font-semibold text-purple-700 dark:text-purple-300 mb-2">
+                                            {hostingOrganizationName}
+                                        </p>
+                                        <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-4">
+                                            {raffle.title}
+                                        </h1>
+                                    </>
+                                ) : (
+                                    <>
+                                        <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
+                                            {raffle.title}
+                                        </h1>
+                                        <p className="text-gray-600 dark:text-gray-400 mb-4">
+                                            by {raffle.organization.name}
+                                        </p>
+                                    </>
+                                )}
                                 {getStatusBadge()}
                             </div>
                         </div>
@@ -308,9 +406,9 @@ export default function RaffleShow({ raffle, auth }: RaffleShowProps) {
                                                     max="10"
                                                     value={data.quantity}
                                                     onChange={(e) => {
-                                                        const value = parseInt(e.target.value) || 1;
-                                                        setQuantity(value);
-                                                        setData('quantity', value);
+                                                        const value = parseInt(e.target.value, 10) || 1;
+                                                        const clamped = Math.min(10, Math.max(1, value));
+                                                        setData('quantity', clamped);
                                                     }}
                                                     className="mt-1"
                                                 />
@@ -319,24 +417,109 @@ export default function RaffleShow({ raffle, auth }: RaffleShowProps) {
                                                 )}
                                             </div>
 
-                                            
-                                            <div className="space-y-2">
+                                            <div className="space-y-3">
                                                 <div className="flex justify-between text-sm">
                                                     <span className="text-gray-600 dark:text-gray-400">Price per ticket:</span>
-                                                    <span className="font-semibold">${raffle.ticket_price}</span>
+                                                    <span className="font-semibold">${Number(raffle.ticket_price).toFixed(2)}</span>
                                                 </div>
                                                 <div className="flex justify-between text-sm">
-                                                    <span className="text-gray-600 dark:text-gray-400">Subtotal:</span>
-                                                    <span className="font-semibold">${(raffle.ticket_price * data.quantity).toFixed(2)}</span>
+                                                    <span className="text-gray-600 dark:text-gray-400">
+                                                        Subtotal ({data.quantity} ticket{data.quantity !== 1 ? 's' : ''}):
+                                                    </span>
+                                                    <span className="font-semibold">
+                                                        ${(Number(raffle.ticket_price) * data.quantity).toFixed(2)}
+                                                    </span>
                                                 </div>
-                                                <div className="flex justify-between text-sm text-orange-600">
-                                                    <span>Processing fee (2.9% + $0.30):</span>
-                                                    <span>+${((raffle.ticket_price * data.quantity * 0.029) + 0.30).toFixed(2)}</span>
-                                                </div>
-                                                <div className="flex justify-between text-sm font-semibold text-lg border-t pt-2">
-                                                    <span>Total:</span>
-                                                    <span>${((raffle.ticket_price * data.quantity) + (raffle.ticket_price * data.quantity * 0.029) + 0.30).toFixed(2)}</span>
-                                                </div>
+
+                                                {Number(raffle.ticket_price) * data.quantity > 0 && (
+                                                    <>
+                                                        <div className="flex items-center justify-between gap-3 border-t border-slate-200/60 pt-3 dark:border-white/10">
+                                                            <div className="min-w-0">
+                                                                <div className="text-sm font-semibold text-gray-900 dark:text-white">
+                                                                    Cover processing fees
+                                                                </div>
+                                                                <p className="text-xs text-gray-600 dark:text-gray-400 mt-0.5 leading-snug">
+                                                                    When on, your total is adjusted so the nonprofit receives the full subtotal.
+                                                                </p>
+                                                            </div>
+                                                            <Switch
+                                                                checked={data.donor_covers_processing_fees}
+                                                                onCheckedChange={(v) =>
+                                                                    setData('donor_covers_processing_fees', v)
+                                                                }
+                                                            />
+                                                        </div>
+
+                                                        <div className="text-xs space-y-1.5 relative min-h-[4rem]">
+                                                            {feePreviewLoading && !feePreview ? (
+                                                                <div className="flex items-center gap-2 py-4 text-gray-600 dark:text-gray-400">
+                                                                    <Loader2 className="h-4 w-4 animate-spin shrink-0" aria-hidden />
+                                                                    <span>Updating estimate…</span>
+                                                                </div>
+                                                            ) : null}
+                                                            {feePreview ? (
+                                                                <div className={cn('relative space-y-1.5', feePreviewLoading && 'opacity-60')}>
+                                                                    {feePreview.mode === 'donor_covers' ? (
+                                                                        <>
+                                                                            <div className="flex justify-between text-gray-700 dark:text-gray-200">
+                                                                                <span>To nonprofit</span>
+                                                                                <span className="font-medium tabular-nums">
+                                                                                    ${feePreview.base_gift_usd.toFixed(2)}
+                                                                                </span>
+                                                                            </div>
+                                                                            <div className="flex justify-between text-gray-600 dark:text-gray-400">
+                                                                                <span>Est. processing</span>
+                                                                                <span className="tabular-nums">
+                                                                                    +${feePreview.processing_fee_estimate.toFixed(2)}
+                                                                                </span>
+                                                                            </div>
+                                                                            <div className="flex justify-between font-semibold text-gray-900 dark:text-white pt-1 border-t border-slate-200/50 dark:border-white/10">
+                                                                                <span>Est. total</span>
+                                                                                <span className="tabular-nums">
+                                                                                    ${feePreview.checkout_total_usd.toFixed(2)}
+                                                                                </span>
+                                                                            </div>
+                                                                        </>
+                                                                    ) : (
+                                                                        <>
+                                                                            <div className="flex justify-between text-gray-700 dark:text-gray-200">
+                                                                                <span>You pay</span>
+                                                                                <span className="font-medium tabular-nums">
+                                                                                    ${feePreview.base_gift_usd.toFixed(2)}
+                                                                                </span>
+                                                                            </div>
+                                                                            <div className="flex justify-between text-gray-600 dark:text-gray-400">
+                                                                                <span>Est. processing</span>
+                                                                                <span className="tabular-nums">
+                                                                                    −${feePreview.processing_fee_estimate.toFixed(2)}
+                                                                                </span>
+                                                                            </div>
+                                                                            <div className="flex justify-between text-gray-700 dark:text-gray-200 pt-1 border-t border-slate-200/50 dark:border-white/10">
+                                                                                <span>Est. to nonprofit</span>
+                                                                                <span className="font-medium tabular-nums">
+                                                                                    ${feePreview.estimated_net_to_org_usd.toFixed(2)}
+                                                                                </span>
+                                                                            </div>
+                                                                        </>
+                                                                    )}
+                                                                    {feePreviewLoading ? (
+                                                                        <div className="absolute inset-0 flex items-center justify-center rounded-md bg-white/60 dark:bg-gray-900/60">
+                                                                            <Loader2
+                                                                                className="h-5 w-5 animate-spin text-purple-600 dark:text-purple-300"
+                                                                                aria-hidden
+                                                                            />
+                                                                        </div>
+                                                                    ) : null}
+                                                                </div>
+                                                            ) : null}
+                                                            <p className="text-[11px] text-gray-500 dark:text-gray-500">
+                                                                Uses {(processingFeeRates.card_percent * 100).toFixed(1)}% + $
+                                                                {processingFeeRates.card_fixed_usd.toFixed(2)} estimate. Final amount in Stripe
+                                                                Checkout.
+                                                            </p>
+                                                        </div>
+                                                    </>
+                                                )}
                                             </div>
 
                                             <Button 
@@ -401,14 +584,14 @@ export default function RaffleShow({ raffle, auth }: RaffleShowProps) {
                                     <CardTitle>Organization</CardTitle>
                                 </CardHeader>
                                 <CardContent>
-                                    <h4 className="font-semibold text-gray-900 dark:text-white mb-2">
-                                        {raffle.organization.name}
-                                    </h4>
-                                    {raffle.organization.description && (
-                                        <p className="text-sm text-gray-600 dark:text-gray-400">
-                                            {raffle.organization.description}
+                                    <p className="text-lg font-semibold text-purple-700 dark:text-purple-300 mb-3">
+                                        {organizationCardName}
+                                    </p>
+                                    {organizationCardDescription ? (
+                                        <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">
+                                            {organizationCardDescription}
                                         </p>
-                                    )}
+                                    ) : null}
                                 </CardContent>
                             </Card>
 

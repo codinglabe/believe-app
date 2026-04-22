@@ -1,17 +1,27 @@
-import React from "react"
-import { Link, usePage } from "@inertiajs/react"
+import React, { useState } from "react"
+import { router, usePage } from "@inertiajs/react"
 import { motion } from "framer-motion"
 import { PageHead } from "@/components/frontend/PageHead"
 import FrontendLayout from "@/layouts/frontend/frontend-layout"
 import { Button } from "@/components/frontend/ui/button"
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/frontend/ui/dialog"
+import {
   Activity,
   BookOpen,
   Building2,
   DollarSign,
+  Flame,
+  Gauge,
   Globe2,
   Heart,
   Landmark,
+  Sparkles,
   Trophy,
 } from "lucide-react"
 import type { LucideIcon } from "lucide-react"
@@ -22,6 +32,7 @@ import {
   ChallengeHubBackdrop,
   challengeHeroTitle,
   challengePageShell,
+  challengePrimaryCta,
   challengePrimaryCtaSm,
 } from "./challenge-hub-brand"
 
@@ -77,6 +88,8 @@ interface Props {
   quiz_card_fallback_images: string[]
   challenges_empty_heading: string
   challenges_empty_hint: string
+  /** easy | medium | hard | practice — from session / ?quiz_mode= */
+  quiz_mode?: string
 }
 
 const CHALLENGE_HUB_ICON_MAP: Record<string, LucideIcon> = {
@@ -89,6 +102,33 @@ const CHALLENGE_HUB_ICON_MAP: Record<string, LucideIcon> = {
   trophy: Trophy,
 }
 
+const QUIZ_LEVEL_MODAL_OPTIONS = [
+  {
+    id: "easy" as const,
+    label: "Easy",
+    hint: "Gentle questions to build confidence.",
+    Icon: Sparkles,
+  },
+  {
+    id: "medium" as const,
+    label: "Medium",
+    hint: "Balanced challenge for most learners.",
+    Icon: Gauge,
+  },
+  {
+    id: "hard" as const,
+    label: "Hard",
+    hint: "Tougher questions — bring your A-game.",
+    Icon: Flame,
+  },
+  {
+    id: "practice" as const,
+    label: "Practice",
+    hint: "Mixed levels, no points — learn freely.",
+    Icon: BookOpen,
+  },
+]
+
 export default function LevelUpChallenges() {
   const {
     app_name,
@@ -100,7 +140,12 @@ export default function LevelUpChallenges() {
     quiz_card_fallback_images,
     challenges_empty_heading,
     challenges_empty_hint,
+    quiz_mode: quizModeFromServer = "medium",
   } = usePage<Props>().props
+
+  const [quizModalOpen, setQuizModalOpen] = useState(false)
+  const [pendingCard, setPendingCard] = useState<QuizCard | null>(null)
+  const [selectedMode, setSelectedMode] = useState(quizModeFromServer)
 
   const categories = challenge_categories ?? []
   const activeCat = categories.find((c) => c.slug === active_category_slug)
@@ -120,6 +165,25 @@ export default function LevelUpChallenges() {
   }
 
   const pageTitle = `${hero.title} — ${app_name}`
+
+  const openStartModal = (card: QuizCard) => {
+    setPendingCard(card)
+    setSelectedMode(quizModeFromServer)
+    setQuizModalOpen(true)
+  }
+
+  const playHrefForCard = (card: QuizCard, mode: string) =>
+    `${route("challenge-hub.play", {
+      track: track.slug,
+      challenge: card.slug ?? card.key,
+    })}?quiz_mode=${encodeURIComponent(mode)}`
+
+  const goToPlay = () => {
+    if (!pendingCard) return
+    router.visit(playHrefForCard(pendingCard, selectedMode))
+    setQuizModalOpen(false)
+    setPendingCard(null)
+  }
 
   return (
     <FrontendLayout>
@@ -186,6 +250,105 @@ export default function LevelUpChallenges() {
           </section>
 
           <div className="mx-auto max-w-6xl px-4 sm:px-8">
+            <Dialog
+              open={quizModalOpen}
+              onOpenChange={(open) => {
+                setQuizModalOpen(open)
+                if (!open) {
+                  setPendingCard(null)
+                }
+              }}
+            >
+              <DialogContent
+                className={cn(
+                  "max-h-[min(92dvh,640px)] max-w-[min(100vw-1.5rem,440px)] overflow-y-auto border border-purple-500/40 bg-[#070714]/95 p-0 text-white shadow-[0_24px_80px_-12px_rgba(0,0,0,0.9)] backdrop-blur-xl sm:rounded-2xl",
+                  "[&>button]:text-white/70 [&>button]:hover:text-white [&>button]:hover:bg-white/10"
+                )}
+              >
+                <div className="pointer-events-none absolute inset-0 rounded-2xl bg-[radial-gradient(ellipse_80%_50%_at_50%_-20%,rgba(147,51,234,0.25),transparent_55%)]" />
+                <div className="relative px-5 pb-5 pt-6 sm:px-6 sm:pb-6 sm:pt-7">
+                  <DialogHeader className="space-y-2 text-center sm:text-center">
+                    <DialogTitle
+                      className={cn(
+                        "font-serif text-2xl font-bold tracking-tight sm:text-[1.65rem]",
+                        brandLogoGradientText
+                      )}
+                    >
+                      Choose question level
+                    </DialogTitle>
+                    <DialogDescription className="text-[13px] leading-relaxed text-white/65">
+                      {pendingCard ? (
+                        <>
+                          Starting{" "}
+                          <span className="font-semibold text-purple-200/95">“{pendingCard.title}”</span>
+                          . Pick how challenging the questions should be.
+                        </>
+                      ) : (
+                        "Pick how challenging the questions should be."
+                      )}
+                    </DialogDescription>
+                  </DialogHeader>
+
+                  <div className="mt-5 grid grid-cols-2 gap-2.5 sm:gap-3">
+                    {QUIZ_LEVEL_MODAL_OPTIONS.map((level) => {
+                      const active = selectedMode === level.id
+                      const Icon = level.Icon
+                      return (
+                        <button
+                          key={level.id}
+                          type="button"
+                          onClick={() => setSelectedMode(level.id)}
+                          className={cn(
+                            "flex flex-col items-start gap-2 rounded-xl border p-3 text-left transition sm:p-3.5",
+                            active
+                              ? "border-purple-400/65 bg-gradient-to-br from-purple-600/35 to-blue-950/40 shadow-[0_0_28px_rgba(147,51,234,0.28)] ring-1 ring-purple-400/30"
+                              : "border-white/10 bg-white/[0.04] hover:border-purple-500/35 hover:bg-white/[0.06]"
+                          )}
+                        >
+                          <span
+                            className={cn(
+                              "flex h-9 w-9 items-center justify-center rounded-lg border",
+                              active
+                                ? "border-purple-400/40 bg-purple-500/20 text-purple-100"
+                                : "border-white/10 bg-black/20 text-purple-300/90"
+                            )}
+                          >
+                            <Icon className="h-4 w-4 sm:h-[1.1rem] sm:w-[1.1rem]" strokeWidth={2} aria-hidden />
+                          </span>
+                          <span>
+                            <span className="block text-sm font-bold text-white">{level.label}</span>
+                            <span className="mt-0.5 block text-[11px] leading-snug text-white/50">{level.hint}</span>
+                          </span>
+                        </button>
+                      )
+                    })}
+                  </div>
+
+                  <div className="mt-6 flex flex-col gap-2.5 sm:flex-row sm:justify-end">
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      className="w-full border border-white/15 bg-white/5 text-white hover:bg-white/10 sm:w-auto"
+                      onClick={() => {
+                        setQuizModalOpen(false)
+                        setPendingCard(null)
+                      }}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      type="button"
+                      className={cn("w-full sm:w-auto", challengePrimaryCta)}
+                      onClick={goToPlay}
+                      disabled={!pendingCard}
+                    >
+                      Start quiz
+                    </Button>
+                  </div>
+                </div>
+              </DialogContent>
+            </Dialog>
+
             <motion.div
               className="grid gap-4 sm:grid-cols-2 sm:gap-5"
               initial="initial"
@@ -250,19 +413,12 @@ export default function LevelUpChallenges() {
                             <BookOpen className="h-4 w-4 shrink-0 text-purple-400/95" aria-hidden />
                           </p>
                           <Button
-                            asChild
+                            type="button"
                             size="sm"
                             className={cn("shrink-0 shadow-inner hover:text-white", challengePrimaryCtaSm)}
+                            onClick={() => openStartModal(card)}
                           >
-                            <Link
-                              href={route("challenge-hub.play", {
-                                track: track.slug,
-                                challenge: card.slug ?? card.key,
-                              })}
-                              className="inline-flex items-center"
-                            >
-                              Start Quiz
-                            </Link>
+                            Start Quiz
                           </Button>
                         </div>
                       </div>

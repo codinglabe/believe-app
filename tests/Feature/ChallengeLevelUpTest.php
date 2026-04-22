@@ -37,7 +37,7 @@ function seedFaithQuestions(): void
             'option_d' => $r[4],
             'correct_option' => $r[5],
             'explanation' => 'Test explanation.',
-            'difficulty' => 'Easy',
+            'difficulty' => 'Medium',
             'source' => ChallengeQuestion::SOURCE_CSV,
             'content_hash' => $hash,
         ]);

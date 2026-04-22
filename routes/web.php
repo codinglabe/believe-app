@@ -259,6 +259,9 @@ Route::middleware(['auth', 'EnsureEmailIsVerified'])->prefix('challenge-hub')->n
     Route::post('/{track:slug}/answer', [ChallengeLevelUpController::class, 'answer'])
         ->middleware('throttle:90,1')
         ->name('answer');
+    /** GET refresh fallback for POST-only quiz routes (avoids Method Not Allowed on reload). */
+    Route::get('/{track:slug}/next', [ChallengeLevelUpController::class, 'restorePlayFromGet'])->name('next.get');
+    Route::get('/{track:slug}/answer', [ChallengeLevelUpController::class, 'restorePlayFromGet'])->name('answer.get');
 });
 
 Route::get('pwa-setup', function () {

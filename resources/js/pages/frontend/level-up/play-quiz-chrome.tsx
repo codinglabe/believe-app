@@ -1,4 +1,4 @@
-import React from "react"
+import React, { useMemo } from "react"
 import { motion } from "framer-motion"
 import { Coins, Flame, Star, Timer } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -80,6 +80,12 @@ export function PlayBookIllustration({ className }: { className?: string }) {
   )
 }
 
+const TIMER_RING_SIZE = 56
+const TIMER_RING_STROKE = 3
+const TIMER_R = (TIMER_RING_SIZE - TIMER_RING_STROKE) / 2
+const TIMER_C = TIMER_RING_SIZE / 2
+const TIMER_CIRC = 2 * Math.PI * TIMER_R
+
 export function PlayTimerPill({
   secondsLeft,
   limitSec,
@@ -87,20 +93,115 @@ export function PlayTimerPill({
   secondsLeft: number
   limitSec: number
 }) {
+  const safeLimit = Math.max(1, limitSec)
+  const pct = Math.min(1, Math.max(0, secondsLeft / safeLimit))
+  const displaySec = Math.max(0, Math.ceil(secondsLeft))
+  const phase = pct <= 0.18 ? "critical" : pct <= 0.42 ? "warn" : "ok"
+
+  const ringOffset = useMemo(() => TIMER_CIRC * (1 - pct), [pct])
+
+  const ringClass =
+    phase === "critical"
+      ? "text-red-400 drop-shadow-[0_0_10px_rgba(248,113,113,0.45)]"
+      : phase === "warn"
+        ? "text-amber-400 drop-shadow-[0_0_8px_rgba(251,191,36,0.35)]"
+        : "text-emerald-400/95 drop-shadow-[0_0_8px_rgba(52,211,153,0.3)]"
+
+  const labelTint = phase === "critical" ? "text-red-200/90" : phase === "warn" ? "text-amber-100/90" : "text-emerald-100/90"
+
   return (
-    <div className="flex items-center justify-center gap-2 pb-1">
+    <div className="mx-auto w-full max-w-md pb-0.5" role="timer" aria-live="polite" aria-atomic="true">
       <div
         className={cn(
-          "inline-flex items-center gap-2 rounded-full border px-3.5 py-1.5 text-xs font-bold tabular-nums shadow-md sm:text-sm",
-          secondsLeft <= 1.5
-            ? "border-red-500/50 bg-red-950/55 text-red-100"
-            : "border-purple-500/40 bg-black/40 text-purple-100 backdrop-blur-sm"
+          "relative overflow-hidden rounded-xl border px-3 py-2 shadow-[0_8px_32px_-10px_rgba(0,0,0,0.7)] backdrop-blur-xl sm:px-3.5 sm:py-2",
+          phase === "critical"
+            ? "border-red-500/35 bg-gradient-to-br from-red-950/50 via-[#0c0810]/88 to-[#06050c]/95 ring-1 ring-red-500/20"
+            : phase === "warn"
+              ? "border-amber-500/30 bg-gradient-to-br from-amber-950/35 via-[#0c0814]/90 to-[#06050c]/95 ring-1 ring-amber-500/15"
+              : "border-purple-500/35 bg-gradient-to-br from-purple-950/40 via-[#080614]/90 to-[#06050c]/95 ring-1 ring-purple-500/20"
         )}
       >
-        <Timer className="h-3.5 w-3.5 shrink-0 text-purple-400" />
-        {Math.ceil(secondsLeft)}s
+        <div
+          className="pointer-events-none absolute -right-6 -top-6 h-20 w-20 rounded-full bg-purple-500/10 blur-xl"
+          aria-hidden
+        />
+        <div className="relative flex items-center gap-2.5 sm:gap-3">
+          <div className="relative h-14 w-14 shrink-0">
+            <svg
+              width={TIMER_RING_SIZE}
+              height={TIMER_RING_SIZE}
+              className="-rotate-90 transform"
+              viewBox={`0 0 ${TIMER_RING_SIZE} ${TIMER_RING_SIZE}`}
+              aria-hidden
+            >
+              <circle
+                cx={TIMER_C}
+                cy={TIMER_C}
+                r={TIMER_R}
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={TIMER_RING_STROKE}
+                className="text-white/[0.08]"
+              />
+              <motion.circle
+                cx={TIMER_C}
+                cy={TIMER_C}
+                r={TIMER_R}
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={TIMER_RING_STROKE}
+                strokeLinecap="round"
+                strokeDasharray={TIMER_CIRC}
+                initial={false}
+                animate={{ strokeDashoffset: ringOffset }}
+                transition={{ type: "spring", stiffness: 220, damping: 28 }}
+                className={ringClass}
+              />
+            </svg>
+            <div className="absolute inset-0 flex items-center justify-center">
+              <span
+                className={cn(
+                  "font-semibold tabular-nums tracking-tight leading-none text-white",
+                  displaySec >= 10 ? "text-lg sm:text-xl" : "text-xl sm:text-[1.35rem]"
+                )}
+              >
+                {displaySec}
+              </span>
+            </div>
+          </div>
+
+          <div className="min-w-0 flex-1 space-y-1">
+            <div>
+              <p className="flex items-center gap-1.5 text-[9px] font-semibold uppercase tracking-[0.18em] text-white/40 sm:text-[10px]">
+                <span className="inline-flex h-4 w-4 items-center justify-center rounded border border-white/10 bg-white/[0.04] text-white/70">
+                  <Timer className="h-2.5 w-2.5" strokeWidth={2.25} aria-hidden />
+                </span>
+                Time remaining
+              </p>
+              <p className={cn("mt-0.5 text-xs font-medium tabular-nums sm:text-sm", labelTint)}>
+                <span className="text-white/90">{displaySec}</span>
+                <span className="text-white/45"> / {safeLimit}</span>
+                <span className="text-white/35"> sec</span>
+              </p>
+            </div>
+            <div className="h-1 w-full overflow-hidden rounded-full bg-white/[0.07] ring-1 ring-inset ring-white/[0.06]">
+              <motion.div
+                className={cn(
+                  "h-full rounded-full",
+                  phase === "critical"
+                    ? "bg-gradient-to-r from-red-600 to-rose-500"
+                    : phase === "warn"
+                      ? "bg-gradient-to-r from-amber-600 to-amber-400"
+                      : "bg-gradient-to-r from-emerald-600 via-teal-500 to-cyan-400"
+                )}
+                initial={false}
+                animate={{ width: `${pct * 100}%` }}
+                transition={{ type: "spring", stiffness: 180, damping: 22 }}
+              />
+            </div>
+          </div>
+        </div>
       </div>
-      <span className="text-[11px] text-white/35">/ {limitSec}s</span>
     </div>
   )
 }

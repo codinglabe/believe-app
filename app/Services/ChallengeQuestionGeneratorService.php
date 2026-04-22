@@ -4,8 +4,9 @@ namespace App\Services;
 
 use App\Models\ChallengeQuestion;
 use App\Support\ChallengeQuestionHasher;
+use App\Support\ProfileReligions;
 use Illuminate\Database\QueryException;
-use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Log;
 
 class ChallengeQuestionGeneratorService
@@ -15,26 +16,31 @@ class ChallengeQuestionGeneratorService
     ) {}
 
     /**
-     * Generate and persist new Faith (or other) questions when the pool is empty.
-     * Respects per-user per-category daily batch cap.
+     * Generate and persist new questions when the pool is empty (no app-level cache / daily cap).
      *
+     * @param  string|null  $forceDifficultyCanonical  Easy|Medium|Hard — all rows use this; null with practiceVariety mixes difficulties.
+     * @param  bool  $practiceVariety  When true, prompt asks for a mix of Easy/Medium/Hard (Practice mode).
+     * @param  string|null  $hubChallengeTitle  Hub card title (e.g. "Daily Quran") — scopes generation to that challenge.
+     * @param  string|null  $hubChallengeDescription  Hub card body text — same.
+     * @param  string|null  $userReligionRaw  {@see User::$religion} — tags rows and steers OpenAI away from other traditions.
      * @return int Number of new rows inserted
      */
-    public function generateBatchIfAllowed(int $userId, string $category, ?string $subcategory = null): int
-    {
+    public function generateBatchIfAllowed(
+        int $userId,
+        string $category,
+        ?string $subcategory = null,
+        ?string $forceDifficultyCanonical = null,
+        bool $practiceVariety = false,
+        ?string $hubChallengeTitle = null,
+        ?string $hubChallengeDescription = null,
+        ?string $userReligionRaw = null,
+    ): int {
         $category = trim($category);
         if ($category === '') {
             return 0;
         }
 
-        $maxBatches = (int) config('services.challenge_quiz.max_openai_batches_per_user_category_per_day', 20);
-        $cacheKey = sprintf('challenge_quiz_ai_batches:%d:%s:%s', $userId, $category, now()->toDateString());
-        $used = (int) Cache::get($cacheKey, 0);
-        if ($used >= $maxBatches) {
-            Log::info('Challenge quiz OpenAI batch cap reached', ['user_id' => $userId, 'category' => $category]);
-
-            return 0;
-        }
+        $religionStored = ProfileReligions::nullableAllowed($userReligionRaw);
 
         if (! config('services.openai.api_key')) {
             Log::warning('Challenge quiz OpenAI skipped: no API key');
@@ -43,10 +49,43 @@ class ChallengeQuestionGeneratorService
         }
 
         $batchSize = (int) config('services.challenge_quiz.openai_batch_size', 8);
-        $model = (string) config('services.challenge_quiz.model', 'gpt-4o-mini');
+        $model = (string) config('services.challenge_quiz.model', 'gpt-3.5-turbo');
         $maxTokens = (int) config('services.challenge_quiz.max_output_tokens', 4096);
 
-        $subHint = $subcategory ? " Prefer subcategory: {$subcategory}." : '';
+        $subTrim = is_string($subcategory) ? trim($subcategory) : '';
+        $subRules = $subTrim !== ''
+            ? <<<SUB
+
+Topic scope (required): every question must belong ONLY to this subcategory — use the exact subcategory string "{$subTrim}" on each question row. Do not write questions for other subtopics, other hub challenges, or generic {$category} trivia outside "{$subTrim}". The subcategory field in JSON must be exactly "{$subTrim}" for every item.
+SUB
+            : "\nVary subcategory strings if helpful; stay within the main category theme.";
+
+        $forcedDiff = is_string($forceDifficultyCanonical) ? trim($forceDifficultyCanonical) : '';
+        $difficultyRules = $forcedDiff !== ''
+            ? "\nDifficulty (required): every question must have difficulty exactly \"{$forcedDiff}\" (same spelling)."
+            : ($practiceVariety
+                ? "\nDifficulty: include a balanced mix of Easy, Medium, and Hard questions across the batch; set each row's difficulty field to Easy, Medium, or Hard accordingly."
+                : '');
+
+        $titleTrim = is_string($hubChallengeTitle) ? trim($hubChallengeTitle) : '';
+        $descTrim = is_string($hubChallengeDescription) ? trim(strip_tags((string) $hubChallengeDescription)) : '';
+        $descTrim = $descTrim !== '' ? Str::limit($descTrim, 600, '…') : '';
+        $titleTrim = str_replace('"', "'", $titleTrim);
+        $descTrim = str_replace('"', "'", $descTrim);
+        $challengeFocus = '';
+        if ($titleTrim !== '' || $descTrim !== '') {
+            $parts = [];
+            if ($titleTrim !== '') {
+                $parts[] = 'The learner started the hub challenge titled "'.$titleTrim.'".';
+            }
+            if ($descTrim !== '') {
+                $parts[] = 'Challenge description: '.$descTrim;
+            }
+            $challengeFocus = "\n\nHub challenge focus (required): ".implode(' ', $parts)
+                .' Every question and answer must stay on-theme for THIS challenge only — not unrelated '.$category.' trivia that could belong to a different hub card.';
+        }
+
+        $traditionAlignment = ProfileReligions::challengeQuizPromptAlignment($religionStored);
 
         $messages = [
             [
@@ -57,8 +96,8 @@ class ChallengeQuestionGeneratorService
                 'role' => 'user',
                 'content' => <<<PROMPT
 Create exactly {$batchSize} unique multiple-choice quiz questions for educational quizzes.
-Category (exact string): "{$category}".{$subHint}
-Each question must have four options (A–D), one correct answer, a short explanation, and difficulty Easy/Medium/Hard.
+Category (exact string for every row): "{$category}".{$traditionAlignment}{$challengeFocus}{$subRules}{$difficultyRules}
+Each question must have four options (A–D), one correct answer, a short explanation, and a difficulty field.
 Avoid duplicating famous questions verbatim from common trivia apps; vary wording.
 Return JSON object: {"questions":[{"category":"{$category}","subcategory":"string","question":"string","option_a":"string","option_b":"string","option_c":"string","option_d":"string","correct_option":"A|B|C|D","explanation":"string","difficulty":"Easy|Medium|Hard"}]}
 PROMPT,
@@ -81,8 +120,15 @@ PROMPT,
         }
 
         $inserted = 0;
+        $forcedSub = $subTrim !== '' ? $subTrim : null;
+
         foreach ($decoded['questions'] as $row) {
             if (! $this->isValidRow($row, $category)) {
+                continue;
+            }
+
+            $rowDiff = isset($row['difficulty']) && is_string($row['difficulty']) ? trim($row['difficulty']) : '';
+            if ($forcedDiff !== '' && strcasecmp($rowDiff, $forcedDiff) !== 0) {
                 continue;
             }
 
@@ -93,13 +139,15 @@ PROMPT,
                 $row['option_b'],
                 $row['option_c'],
                 $row['option_d'],
+                $religionStored,
             );
 
             $correct = strtoupper((string) $row['correct_option']);
             try {
                 ChallengeQuestion::create([
                     'category' => $row['category'],
-                    'subcategory' => $row['subcategory'] ?? null,
+                    'religion' => $religionStored,
+                    'subcategory' => $forcedSub ?? ($row['subcategory'] ?? null),
                     'question' => $row['question'],
                     'option_a' => $row['option_a'],
                     'option_b' => $row['option_b'],
@@ -107,7 +155,7 @@ PROMPT,
                     'option_d' => $row['option_d'],
                     'correct_option' => $correct,
                     'explanation' => $row['explanation'] ?? null,
-                    'difficulty' => $row['difficulty'] ?? null,
+                    'difficulty' => $forcedDiff !== '' ? $forcedDiff : ($row['difficulty'] ?? null),
                     'source' => ChallengeQuestion::SOURCE_OPENAI,
                     'content_hash' => $hash,
                 ]);
@@ -119,7 +167,11 @@ PROMPT,
         }
 
         if ($inserted > 0) {
-            Cache::put($cacheKey, $used + 1, now()->endOfDay());
+            Log::info('Challenge quiz OpenAI batch', [
+                'user_id' => $userId,
+                'inserted' => $inserted,
+                'category' => $category,
+            ]);
         }
 
         return $inserted;

@@ -372,7 +372,7 @@ class DonationController extends Controller
                 $base = round((float) $validator->validated()['fee_preview_amount'], 2);
                 $rail = $request->input('fee_preview_rail', 'card');
                 $rail = in_array($rail, ['card', 'bank'], true) ? $rail : 'card';
-                $feePreview = $this->feePreviewPayload($base, $request->boolean('fee_preview_donor_covers'), $rail);
+                $feePreview = StripeProcessingFeeEstimator::giftFeePreviewPayload($base, $request->boolean('fee_preview_donor_covers'), $rail);
             }
         }
 
@@ -391,50 +391,6 @@ class DonationController extends Controller
             'donatedCauses' => $donatedCauses,
             'feePreview' => $feePreview,
         ]);
-    }
-
-    /**
-     * @return array{mode: string, rail: string, base_gift_usd: float, checkout_total_usd: float, processing_fee_estimate: float, estimated_net_to_org_usd: float}
-     */
-    private function feePreviewPayload(float $base, bool $donorCovers, string $rail = 'card'): array
-    {
-        $rail = in_array($rail, ['card', 'bank'], true) ? $rail : 'card';
-
-        if ($donorCovers) {
-            if ($rail === 'bank') {
-                $checkoutTotal = DonationProcessingFeeEstimator::grossUpAchChargeUsdForNetGiftUsd($base);
-                $feeAddon = DonationProcessingFeeEstimator::feeAddonWhenDonorCoversAchUsd($base);
-            } else {
-                $checkoutTotal = DonationProcessingFeeEstimator::grossUpCardChargeUsdForNetGiftUsd($base);
-                $feeAddon = DonationProcessingFeeEstimator::feeAddonWhenDonorCoversUsd($base);
-            }
-
-            return [
-                'mode' => 'donor_covers',
-                'rail' => $rail,
-                'base_gift_usd' => $base,
-                'checkout_total_usd' => round($checkoutTotal, 2),
-                'processing_fee_estimate' => round($feeAddon, 2),
-                'estimated_net_to_org_usd' => $base,
-            ];
-        }
-
-        if ($rail === 'bank') {
-            $fee = DonationProcessingFeeEstimator::estimateAchFeeOnChargeUsd($base);
-            $net = DonationProcessingFeeEstimator::estimateNetAfterAchFeeWhenOrgAbsorbsUsd($base);
-        } else {
-            $fee = DonationProcessingFeeEstimator::estimateCardFeeOnChargeUsd($base);
-            $net = DonationProcessingFeeEstimator::estimateNetAfterCardFeeWhenOrgAbsorbsUsd($base);
-        }
-
-        return [
-            'mode' => 'org_covers',
-            'rail' => $rail,
-            'base_gift_usd' => $base,
-            'checkout_total_usd' => $base,
-            'processing_fee_estimate' => round($fee, 2),
-            'estimated_net_to_org_usd' => $net,
-        ];
     }
 
     /**

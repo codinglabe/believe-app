@@ -8,11 +8,13 @@ use App\Models\RaffleWinner;
 use App\Models\Transaction;
 use App\Models\User;
 use App\Services\BiuPlatformFeeService;
+use App\Services\StripeProcessingFeeEstimator;
 use App\Support\StripeCustomerChargeAmount;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Validator;
 use Inertia\Inertia;
 use Inertia\Response as InertiaResponse;
 use SimpleSoftwareIO\QrCode\Facades\QrCode;
@@ -96,7 +98,7 @@ class RaffleController extends BaseController
     {
         $this->authorizePermission($request, 'raffle.read');
 
-        $raffle->load(['organization', 'tickets.user', 'winners.user', 'winners.ticket']);
+        $raffle->load(['organization.organization', 'tickets.user', 'winners.user', 'winners.ticket']);
 
         $userTickets = $request->user()
             ? $raffle->tickets()->where('user_id', $request->user()->id)->get()
@@ -199,10 +201,14 @@ class RaffleController extends BaseController
 
         $validated = $request->validate([
             'quantity' => 'required|integer|min:1|max:10',
+            'donor_covers_processing_fees' => 'sometimes|boolean',
         ]);
 
         $quantity = $validated['quantity'];
-        $totalAmount = $raffle->ticket_price * $quantity;
+        /** Ticket line total (what nonprofit keeps toward tickets; fee preview base). */
+        $subtotalUsd = round((float) $raffle->ticket_price * $quantity, 2);
+        /** Matches /donate: when true, Stripe charge grosses up so estimated card fees are paid by buyer. */
+        $donorCovers = $request->boolean('donor_covers_processing_fees');
 
         // Check if raffle is active and has available tickets
         if (! $raffle->is_active) {
@@ -216,20 +222,31 @@ class RaffleController extends BaseController
         try {
             $user = $request->user();
 
-            // Stripe payment - create checkout session (optional gross-up so net after Stripe fees ≈ ticket subtotal)
-            $totalInCents = StripeCustomerChargeAmount::chargeCentsFromNetUsd((float) $totalAmount, 'card');
+            $checkoutTotalUsd = $subtotalUsd;
+            if ($donorCovers) {
+                $checkoutTotalUsd = StripeProcessingFeeEstimator::grossUpCardChargeUsdForNetGiftUsd($subtotalUsd);
+            }
+
+            // Same cents logic as DonationController Stripe checkout (global pass-through only when org does not cover).
+            if (! $donorCovers && StripeProcessingFeeEstimator::customerPaysProcessingFeeEnabled()) {
+                $totalInCents = StripeCustomerChargeAmount::chargeCentsFromNetUsd($subtotalUsd, 'card');
+            } else {
+                $totalInCents = (int) round($checkoutTotalUsd * 100);
+            }
 
             // Record pending transaction
             $transaction = $user->recordTransaction([
                 'type' => 'purchase',
-                'amount' => $totalAmount,
+                'amount' => $subtotalUsd,
                 'payment_method' => 'stripe',
                 'status' => 'pending',
                 'meta' => array_merge([
                     'raffle_id' => $raffle->id,
                     'ticket_quantity' => $quantity,
+                    'donor_covers_processing_fees' => $donorCovers,
+                    'checkout_total_usd' => round($checkoutTotalUsd, 2),
                     'description' => 'Purchased '.$quantity.' ticket(s) for raffle: '.$raffle->title,
-                ], BiuPlatformFeeService::ledgerMetaSlice((float) $totalAmount)),
+                ], BiuPlatformFeeService::ledgerMetaSlice((float) $subtotalUsd)),
                 'related_id' => $raffle->id,
                 'related_type' => 'raffle',
             ]);
@@ -247,6 +264,7 @@ class RaffleController extends BaseController
                         'user_id' => $user->id,
                         'transaction_id' => $transaction->id,
                         'type' => 'raffle_tickets',
+                        'donor_covers_processing_fees' => $donorCovers ? '1' : '0',
                     ],
                     'payment_method_types' => ['card', 'afterpay_clearpay', 'affirm'],
                 ]
@@ -408,13 +426,32 @@ class RaffleController extends BaseController
      */
     public function frontendShow(Request $request, Raffle $raffle): InertiaResponse
     {
-        $raffle->load(['organization', 'tickets.user', 'winners.user', 'winners.ticket']);
+        $raffle->load(['organization.organization', 'tickets.user', 'winners.user', 'winners.ticket']);
 
         // Append computed properties
         $raffle->append(['is_active', 'is_completed', 'is_draw_time', 'available_tickets']);
 
+        $ticketPrice = round((float) $raffle->ticket_price, 2);
+        $maxPreviewBase = round($ticketPrice * 10, 2);
+
+        $feePreview = null;
+        // Raffle checkout preview is card-only (matches Stripe Checkout payment_method_types on purchase).
+        if ($request->filled('fee_preview_amount')) {
+            $validator = Validator::make($request->only(['fee_preview_amount', 'fee_preview_donor_covers']), [
+                'fee_preview_amount' => 'required|numeric|min:0.01|max:'.$maxPreviewBase,
+                'fee_preview_donor_covers' => 'sometimes|boolean',
+            ]);
+            if (! $validator->fails()) {
+                $base = round((float) $validator->validated()['fee_preview_amount'], 2);
+                $feePreview = StripeProcessingFeeEstimator::giftFeePreviewPayload($base, $request->boolean('fee_preview_donor_covers'), 'card');
+            }
+        } else {
+            $feePreview = StripeProcessingFeeEstimator::giftFeePreviewPayload($ticketPrice, true, 'card');
+        }
+
         return Inertia::render('frontend/raffles/show', [
             'raffle' => $raffle,
+            'feePreview' => $feePreview,
         ]);
     }
 

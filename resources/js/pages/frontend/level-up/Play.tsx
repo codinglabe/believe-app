@@ -96,8 +96,13 @@ interface PageProps {
   lastResult: LastResult | null
   quiz_result: QuizResultPayload | null
   question_time_limit_seconds: number
+  /** easy | medium | hard | practice */
+  quiz_mode?: string
+  practice_mode?: boolean
   reward_points_balance?: number
   quiz_session_streak?: number
+  /** Same hub card as /play/{challenge} — sent on every quiz POST so subcategory + generation stay aligned. */
+  play_challenge_slug?: string | null
 }
 
 const CHALLENGE_HUB_ICON_MAP: Record<string, LucideIcon> = {
@@ -123,6 +128,9 @@ export default function LevelUpPlay() {
     lastResult,
     quiz_result,
     question_time_limit_seconds,
+    quiz_mode: quizMode = "medium",
+    practice_mode: practiceMode = false,
+    play_challenge_slug: playChallengeSlug = null,
   } = props
 
   const [selected, setSelected] = useState<string | null>(null)
@@ -143,11 +151,16 @@ export default function LevelUpPlay() {
     return () => window.clearTimeout(t)
   }, [loadingNextQuestion])
 
+  const challengePayload = {
+    quiz_mode: quizMode,
+    ...(playChallengeSlug ? { challenge: playChallengeSlug } : {}),
+  }
+
   const requestNext = () => {
     setSelected(null)
     router.post(
       route("challenge-hub.next", track.slug),
-      {},
+      challengePayload,
       {
         preserveScroll: true,
         onStart: () => setLoadingNextQuestion(true),
@@ -163,7 +176,7 @@ export default function LevelUpPlay() {
     setSubmitting(true)
     router.post(
       route("challenge-hub.answer", track.slug),
-      { event_id: activeQuestion.event_id, timed_out: true },
+      { event_id: activeQuestion.event_id, timed_out: true, ...challengePayload },
       {
         preserveScroll: true,
         onFinish: () => {
@@ -184,6 +197,7 @@ export default function LevelUpPlay() {
         event_id: activeQuestion.event_id,
         selected_option: selected,
         timed_out: false,
+        ...challengePayload,
       },
       {
         preserveScroll: true,
@@ -232,6 +246,15 @@ export default function LevelUpPlay() {
     : track.subject_categories?.[0]
       ? `${track.subject_categories[0]} Quiz`
       : "Daily Quiz"
+
+  const quizModeLabel =
+    quizMode === "easy"
+      ? "Easy"
+      : quizMode === "hard"
+        ? "Hard"
+        : quizMode === "practice"
+          ? "Practice"
+          : "Medium"
 
   const challengesHref = route("challenge-hub.challenges", track.slug)
 
@@ -312,7 +335,7 @@ export default function LevelUpPlay() {
               isStartScreen
                 ? "flex min-h-[100dvh] flex-col px-4 py-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))]"
                 : isFeedbackOnly
-                  ? "flex min-h-[100dvh] flex-col justify-center px-4 pt-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))]"
+                  ? "flex min-h-[100dvh] flex-col justify-start px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-[max(0.75rem,env(safe-area-inset-top))] sm:pt-12"
                   : "max-w-lg px-4 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-[max(1.25rem,env(safe-area-inset-top))]"
             )}
           >
@@ -372,7 +395,7 @@ export default function LevelUpPlay() {
               <div
                 className={cn(
                   "w-full",
-                  isFeedbackOnly && "flex min-h-0 w-full flex-1 flex-col items-center justify-center"
+                  isFeedbackOnly && "flex min-h-0 w-full flex-1 flex-col items-center justify-start"
                 )}
               >
               <AnimatePresence mode="wait">
@@ -414,6 +437,11 @@ export default function LevelUpPlay() {
                     >
                       <p className="text-center text-[11px] font-semibold uppercase tracking-[0.32em] text-purple-400">
                         {quizSubtitle}
+                      </p>
+                      <p className="text-center text-[10px] text-white/50">
+                        <span className="rounded-full border border-white/15 bg-white/[0.06] px-2.5 py-0.5 font-medium text-white/75">
+                          {practiceMode ? "Practice — learn without points" : `${quizModeLabel} questions`}
+                        </span>
                       </p>
                       {activeQuestion.generated_new_questions ? (
                         <motion.p
@@ -501,7 +529,7 @@ export default function LevelUpPlay() {
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0 }}
                       transition={springTransition}
-                      className="mx-auto w-full max-w-lg shrink-0 self-center"
+                      className="mx-auto w-full max-w-lg shrink-0 self-center -translate-y-1 sm:-translate-y-2"
                     >
                       <div
                         className={cn(
@@ -521,9 +549,15 @@ export default function LevelUpPlay() {
                             <>
                               <CheckCircle2 className="h-8 w-8 text-emerald-400" />
                               <span className="text-emerald-100">Correct!</span>
-                              <span className={cn("ml-auto text-xl font-bold tabular-nums", brandLogoGradientText)}>
-                                +{lastResult.points_awarded} Points
-                              </span>
+                              {!practiceMode ? (
+                                <span className={cn("ml-auto text-xl font-bold tabular-nums", brandLogoGradientText)}>
+                                  +{lastResult.points_awarded} Points
+                                </span>
+                              ) : (
+                                <span className="ml-auto text-xs font-medium uppercase tracking-wider text-white/45">
+                                  Practice
+                                </span>
+                              )}
                             </>
                           ) : (
                             <>
@@ -531,9 +565,15 @@ export default function LevelUpPlay() {
                               <span className="text-rose-100">
                                 {lastResult.timed_out ? "Time's up" : "Not quite"}
                               </span>
-                              {typeof lastResult.points_awarded === "number" && lastResult.points_awarded < 0 ? (
+                              {!practiceMode &&
+                              typeof lastResult.points_awarded === "number" &&
+                              lastResult.points_awarded < 0 ? (
                                 <span className="ml-auto text-lg font-bold tabular-nums text-rose-200">
                                   {lastResult.points_awarded.toLocaleString(undefined, { maximumFractionDigits: 2 })} pts
+                                </span>
+                              ) : practiceMode ? (
+                                <span className="ml-auto text-xs font-medium uppercase tracking-wider text-white/45">
+                                  Practice
                                 </span>
                               ) : null}
                             </>
@@ -546,10 +586,14 @@ export default function LevelUpPlay() {
                         {lastResult.explanation && (
                           <p className="mt-4 text-sm leading-relaxed text-white/80">{lastResult.explanation}</p>
                         )}
-                        <p className="mt-4 inline-flex items-center gap-2 text-xs text-white/50">
-                          <Coins className="h-4 w-4 text-purple-400/85" />
-                          Balance: {lastResult.reward_points_balance}
-                        </p>
+                        {!practiceMode ? (
+                          <p className="mt-4 inline-flex items-center gap-2 text-xs text-white/50">
+                            <Coins className="h-4 w-4 text-purple-400/85" />
+                            Balance: {lastResult.reward_points_balance}
+                          </p>
+                        ) : (
+                          <p className="mt-4 text-xs text-white/45">Practice mode — your balance is unchanged.</p>
+                        )}
 
                         <Button
                           type="button"

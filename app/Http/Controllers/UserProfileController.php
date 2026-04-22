@@ -27,6 +27,7 @@ use App\Models\VolunteerTimesheet;
 use App\Services\ExcelDataTransformer;
 use App\Services\ImpactScoreService;
 use App\Services\KioskProviderAiIngestService;
+use App\Support\ProfileReligions;
 use App\Services\PrintifyService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -157,9 +158,11 @@ class UserProfileController extends Controller
                 'city' => $user->city,
                 'state' => $user->state,
                 'zipcode' => $user->zipcode,
+                'religion' => $user->religion,
             ],
             'availablePositions' => $positions,
             'availableSupporterInterests' => $supporterInterests,
+            'religionOptions' => ProfileReligions::values(),
         ]);
     }
 
@@ -167,6 +170,10 @@ class UserProfileController extends Controller
     {
         $user = $request->user();
         $isSupporter = ($user->role ?? null) === 'user';
+
+        if ($request->has('religion') && $request->input('religion') === '') {
+            $request->merge(['religion' => null]);
+        }
 
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255'],
@@ -200,6 +207,7 @@ class UserProfileController extends Controller
             'city' => [Rule::requiredIf($isSupporter), 'nullable', 'string', 'max:255'],
             'state' => [Rule::requiredIf($isSupporter), 'nullable', 'string', 'max:2'],
             'zipcode' => ['nullable', 'string', 'max:10'],
+            'religion' => ['sometimes', 'nullable', 'string', Rule::in(ProfileReligions::values())],
         ]);
 
         // Email changed? Send verification
@@ -242,6 +250,10 @@ class UserProfileController extends Controller
             'state' => $geoAfterNorm['state'],
             'zipcode' => $geoAfterNorm['zip'] !== '' ? $geoAfterNorm['zip'] : null,
         ];
+
+        if (array_key_exists('religion', $validated)) {
+            $updateData['religion'] = $validated['religion'];
+        }
 
         // Update timezone if provided and valid
         if (isset($validated['timezone']) && ! empty($validated['timezone'])) {

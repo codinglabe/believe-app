@@ -15,6 +15,7 @@ class ChallengeQuestion extends Model
 
     protected $fillable = [
         'category',
+        'religion',
         'subcategory',
         'question',
         'option_a',

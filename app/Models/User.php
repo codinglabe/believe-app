@@ -106,6 +106,7 @@ class User extends Authenticatable implements MustVerifyEmail
         'city',
         'state',
         'zipcode',
+        'religion',
         'volunteer_interest_statement',
         'youtube_channel_url',
         'youtube_access_token',
