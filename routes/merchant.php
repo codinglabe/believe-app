@@ -1,8 +1,11 @@
 <?php
 
 use App\Http\Controllers\Merchant\Auth\MerchantAuthController;
+use App\Http\Controllers\Merchant\MerchantBrpWalletController;
+use App\Http\Controllers\Merchant\MerchantFeedbackRewardsController;
 use App\Http\Controllers\Merchant\MerchantMarketplacePoolApprovalController;
 use App\Http\Controllers\Merchant\MerchantMarketplaceProductController;
+use App\Http\Controllers\SupporterFeedbackController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
@@ -108,6 +111,24 @@ Route::middleware(['auth:merchant'])->group(function () {
         Route::get('/marketplace-orders', [App\Http\Controllers\Merchant\MerchantMarketplaceOrderController::class, 'index'])->name('merchant.marketplace-orders.index');
         Route::get('/marketplace-orders/{order}/shippo/rates', [App\Http\Controllers\Merchant\MerchantMarketplaceOrderController::class, 'getShippoRates'])->name('merchant.marketplace-orders.shippo.rates');
         Route::post('/marketplace-orders/{order}/shippo/purchase-label', [App\Http\Controllers\Merchant\MerchantMarketplaceOrderController::class, 'purchaseShippoLabel'])->name('merchant.marketplace-orders.shippo.purchase-label');
+
+        // Feedback & Rewards
+        Route::prefix('feedback-rewards')->name('feedback-rewards.')->group(function () {
+            Route::get('/', [MerchantFeedbackRewardsController::class, 'index'])->name('index');
+            Route::get('/create', [MerchantFeedbackRewardsController::class, 'create'])->name('create');
+            Route::post('/', [MerchantFeedbackRewardsController::class, 'store'])->name('store');
+            Route::get('/{campaign}', [MerchantFeedbackRewardsController::class, 'show'])->name('show');
+            Route::post('/{campaign}/launch', [MerchantFeedbackRewardsController::class, 'launch'])->name('launch');
+            Route::post('/{campaign}/end', [MerchantFeedbackRewardsController::class, 'end'])->name('end');
+        });
+
+        // BRP Wallet
+        Route::prefix('wallet/brp')->name('wallet.brp.')->group(function () {
+            Route::get('/', [MerchantBrpWalletController::class, 'index'])->name('index');
+            Route::get('/buy', [MerchantBrpWalletController::class, 'buyForm'])->name('buy');
+            Route::post('/purchase', [MerchantBrpWalletController::class, 'purchase'])->name('purchase');
+            Route::get('/purchase/success', [MerchantBrpWalletController::class, 'purchaseSuccess'])->name('purchase.success');
+        });
     });
 
     // Logout
@@ -129,4 +150,10 @@ Route::prefix('hub')->name('hub.')->group(function () {
 
     // Offer detail route (must be last to avoid matching "success" as slug)
     Route::get('/offers/{slug}', [App\Http\Controllers\Merchant\HubOfferController::class, 'show'])->name('offer.show');
+});
+
+// Supporter Feedback Routes (require auth)
+Route::middleware(['auth:web,merchant'])->group(function () {
+    Route::get('/feedback/{uuid}', [SupporterFeedbackController::class, 'show'])->name('feedback.show');
+    Route::post('/feedback/{uuid}', [SupporterFeedbackController::class, 'submit'])->name('feedback.submit');
 });

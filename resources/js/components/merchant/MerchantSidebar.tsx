@@ -13,6 +13,12 @@ import {
   Package,
   Receipt,
   ClipboardCheck,
+  MessageSquare,
+  Wallet,
+  ChevronDown,
+  ListChecks,
+  Inbox,
+  PieChart,
 } from 'lucide-react'
 import { MerchantButton } from '@/components/merchant-ui'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -21,13 +27,18 @@ interface MerchantSidebarProps {
   className?: string
 }
 
+interface SubNavItem {
+  name: string
+  href: string
+}
+
 interface NavItem {
   name: string
   href: string
   icon: React.ElementType
   badge?: number
-  /** Read from auth.user (merchant) when set, e.g. pending_pool_approval_count */
   badgeFromAuth?: string
+  children?: SubNavItem[]
 }
 
 const navigation: NavItem[] = [
@@ -43,6 +54,17 @@ const navigation: NavItem[] = [
   { name: 'Marketplace orders', href: '/marketplace-orders', icon: Receipt },
   { name: 'Create Offer', href: '/offers/create', icon: Plus },
   { name: 'Redemptions', href: '/redemptions', icon: ShoppingBag },
+  {
+    name: 'Feedback & Rewards',
+    href: '/feedback-rewards',
+    icon: MessageSquare,
+    children: [
+      { name: 'Campaigns', href: '/feedback-rewards' },
+      { name: 'Responses', href: '/feedback-rewards?status=active' },
+      { name: 'Rewards Wallet', href: '/wallet/brp' },
+      { name: 'Insights', href: '/feedback-rewards?view=insights' },
+    ],
+  },
   { name: 'Analytics', href: '/analytics', icon: BarChart3 },
   { name: 'Settings', href: '/settings', icon: Settings },
 ]
@@ -108,20 +130,33 @@ function SidebarContent({
   const { auth } = usePage().props as { auth?: { user?: Record<string, unknown> } }
   const hasActiveSubscription = (auth?.user?.has_active_subscription as boolean | undefined) ?? false
 
-  const isActive = (href: string) => {
-    if (currentPath === href) {
-      return true
-    }
+  // Track expanded groups
+  const isFeedbackSection = currentPath.startsWith('/feedback-rewards') || currentPath.startsWith('/wallet/brp')
+  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({
+    'Feedback & Rewards': isFeedbackSection,
+  })
 
+  const toggleGroup = (name: string) => {
+    setExpandedGroups((prev) => ({ ...prev, [name]: !prev[name] }))
+  }
+
+  const isActive = (href: string) => {
+    if (currentPath === href) return true
     if (currentPath.startsWith(href + '/')) {
-      const navHrefs = navigation.map((item) => item.href)
-      const hasMoreSpecificMatch = navHrefs.some(
-        (navHref) =>
-          navHref !== href && currentPath.startsWith(navHref) && navHref.length > href.length
+      const allHrefs = navigation.flatMap((item) =>
+        item.children ? item.children.map((c) => c.href) : [item.href]
+      )
+      const hasMoreSpecificMatch = allHrefs.some(
+        (navHref) => navHref !== href && currentPath.startsWith(navHref) && navHref.length > href.length
       )
       return !hasMoreSpecificMatch
     }
+    return false
+  }
 
+  const isGroupActive = (item: NavItem) => {
+    if (isActive(item.href)) return true
+    if (item.children) return item.children.some((c) => isActive(c.href) || currentPath.startsWith(c.href.split('?')[0]))
     return false
   }
 
@@ -137,14 +172,77 @@ function SidebarContent({
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 px-4 py-6 space-y-2 overflow-y-auto">
+      <nav className="flex-1 px-4 py-6 space-y-1 overflow-y-auto">
         {navigation.map((item) => {
-          const active = isActive(item.href)
+          const active = isGroupActive(item)
           const authBadge =
             item.badgeFromAuth && auth?.user
               ? Number((auth.user as Record<string, unknown>)[item.badgeFromAuth] ?? 0)
               : 0
           const showBadge = item.badge != null ? item.badge : item.badgeFromAuth ? authBadge : null
+          const hasChildren = item.children && item.children.length > 0
+          const isExpanded = expandedGroups[item.name] || false
+
+          if (hasChildren) {
+            return (
+              <div key={item.name}>
+                <button
+                  onClick={() => toggleGroup(item.name)}
+                  className={`
+                    w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200
+                    ${
+                      active
+                        ? 'bg-[#2563EB]/15 text-white font-semibold'
+                        : 'text-white/80 hover:bg-white/10 hover:text-white'
+                    }
+                  `}
+                >
+                  <item.icon className={`w-5 h-5 flex-shrink-0 ${active ? 'text-[#2563EB]' : ''}`} />
+                  <span className="font-medium flex-1 text-left">{item.name}</span>
+                  <ChevronDown
+                    className={`w-4 h-4 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}
+                  />
+                </button>
+                <AnimatePresence>
+                  {isExpanded && (
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: 'auto', opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      transition={{ duration: 0.2 }}
+                      className="overflow-hidden"
+                    >
+                      <div className="ml-5 pl-4 border-l border-white/10 mt-1 space-y-1">
+                        {item.children!.map((child) => {
+                          const childActive = currentPath === child.href ||
+                            currentPath.startsWith(child.href.split('?')[0] + '/')  ||
+                            currentPath === child.href.split('?')[0]
+                          return (
+                            <Link
+                              key={child.name}
+                              href={child.href}
+                              onClick={onNavigate}
+                              className={`
+                                block px-3 py-2 rounded-md text-sm transition-all duration-200
+                                ${
+                                  childActive
+                                    ? 'text-[#2563EB] font-semibold bg-[#2563EB]/10'
+                                    : 'text-white/60 hover:text-white hover:bg-white/5'
+                                }
+                              `}
+                            >
+                              {child.name}
+                            </Link>
+                          )
+                        })}
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            )
+          }
+
           return (
             <Link
               key={item.name}
