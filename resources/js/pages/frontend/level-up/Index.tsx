@@ -123,7 +123,7 @@ function TreasureChestGraphic({ className }: { className?: string }) {
       <div className="absolute h-48 w-48 rounded-full bg-purple-500/18 blur-2xl" />
       <svg
         viewBox="0 0 240 200"
-        className="relative z-[1] h-44 w-full max-w-[280px] drop-shadow-[0_8px_32px_rgba(0,0,0,0.55),0_0_40px_rgba(250,204,21,0.35)] sm:h-52 md:h-56 md:max-w-[320px]"
+        className="relative z-[1] h-44 w-full max-w-[280px] drop-shadow-[0_8px_32px_rgba(0,0,0,0.55),0_0_40px_rgba(250,204,21,0.35)] dark:drop-shadow-none sm:h-52 md:h-56 md:max-w-[320px]"
       >
         <defs>
           <linearGradient id="hub-ch-gold" x1="0%" y1="0%" x2="100%" y2="100%">
@@ -216,7 +216,7 @@ function RingProgress({
         <p className={cn("text-lg font-semibold tabular-nums", brandLogoGradientText)}>
           {Math.round(current).toLocaleString()}
         </p>
-        <p className="text-xs text-purple-200/75">/ {goal.toLocaleString()}</p>
+        <p className="text-xs text-purple-700/90 dark:text-purple-200/75">/ {goal.toLocaleString()}</p>
       </div>
     </div>
   )
@@ -241,10 +241,10 @@ function HubCategoryQuickButton({
     >
       <span
         className={cn(
-          "relative flex h-[52px] w-[52px] items-center justify-center overflow-hidden rounded-full border bg-black/40 transition",
+          "relative flex h-[52px] w-[52px] items-center justify-center overflow-hidden rounded-full border bg-slate-100 transition dark:bg-black/40",
           active
             ? challengeCategoryRingActive
-            : "border-slate-400/45 text-white hover:border-slate-300/60"
+            : "border-slate-300 text-slate-700 hover:border-purple-400/60 dark:border-slate-400/45 dark:text-white dark:hover:border-slate-300/60"
         )}
       >
         {category.cover_image_url ? (
@@ -254,7 +254,7 @@ function HubCategoryQuickButton({
               alt=""
               className="absolute inset-0 h-full w-full object-cover opacity-95"
             />
-            <span className="absolute inset-0 bg-black/45" aria-hidden />
+            <span className="absolute inset-0 bg-black/35 dark:bg-black/45" aria-hidden />
           </>
         ) : null}
         <IconComponent className="relative z-[1] h-[22px] w-[22px]" strokeWidth={1.15} />
@@ -262,7 +262,7 @@ function HubCategoryQuickButton({
       <span
         className={cn(
           "relative inline-block text-center text-[11px] font-medium tracking-wide",
-          active ? brandLogoGradientText : "text-white",
+          active ? brandLogoGradientText : "text-slate-700 dark:text-white",
           category.is_new && "pr-6"
         )}
       >
@@ -323,7 +323,7 @@ export default function LevelUpIndex({
 
         <div className="relative z-[1]">
           {/* Hero — left: copy + points / right: chest */}
-          <section className="border-b border-white/[0.06] px-4 pb-12 pt-10 sm:px-8 sm:pb-14 sm:pt-12 lg:px-10 lg:pb-16">
+          <section className="border-b border-slate-200/90 px-4 pb-12 pt-10 dark:border-white/[0.06] sm:px-8 sm:pb-14 sm:pt-12 lg:px-10 lg:pb-16">
             <div className="mx-auto max-w-6xl">
               <motion.div
                 initial={{ opacity: 0, y: 12 }}
@@ -341,13 +341,13 @@ export default function LevelUpIndex({
                     >
                       Challenge Hub
                     </h1>
-                    <p className="mt-5 max-w-lg text-[15px] leading-relaxed text-white/90 sm:text-base">
+                    <p className="mt-5 max-w-lg text-[15px] leading-relaxed text-slate-700 dark:text-white/90 sm:text-base">
                       Test your knowledge and earn rewards by taking fun and educational quizzes across different topics.
                     </p>
                   </div>
 
                   <div className="max-w-md space-y-2.5">
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-purple-400/90 sm:text-xs">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-purple-700 dark:text-purple-400/90 sm:text-xs">
                       Points{" "}
                       <span
                         className={cn(
@@ -357,18 +357,18 @@ export default function LevelUpIndex({
                       >
                         {Math.round(inChest).toLocaleString()}
                       </span>{" "}
-                      <span className="font-normal text-white/50">/</span>{" "}
-                      <span className="text-base font-semibold tabular-nums text-white/90 sm:text-lg">
+                      <span className="font-normal text-slate-500 dark:text-white/50">/</span>{" "}
+                      <span className="text-base font-semibold tabular-nums text-slate-800 dark:text-white/90 sm:text-lg">
                         {chestGoal.toLocaleString()}
                       </span>
                     </p>
-                    <div className="h-2 w-full overflow-hidden rounded-full bg-[#141210] shadow-[inset_0_1px_3px_rgba(0,0,0,0.85)]">
+                    <div className="h-2 w-full overflow-hidden rounded-full bg-violet-100 shadow-[inset_0_1px_2px_rgba(15,23,42,0.08)] dark:bg-[#141210] dark:shadow-none">
                       <div
                         className={cn("h-full transition-[width] duration-700 ease-out", challengePointsBarFill)}
                         style={{ width: `${barPct}%` }}
                       />
                     </div>
-                    <p className="text-sm text-white/80">
+                    <p className="text-sm text-slate-600 dark:text-white/80">
                       Earn{" "}
                       <span className={cn("font-semibold tabular-nums", brandLogoGradientText)}>
                         {Math.round(hub.points_to_next_chest).toLocaleString()}
@@ -394,7 +394,7 @@ export default function LevelUpIndex({
           {categories.length > 0 ? (
             <section
               aria-label="Challenge categories"
-              className="border-b border-white/[0.06] px-4 py-4 sm:px-8 sm:py-5 lg:px-10"
+              className="border-b border-slate-200/90 px-4 py-4 dark:border-white/[0.06] sm:px-8 sm:py-5 lg:px-10"
             >
               <div className="mx-auto max-w-6xl">
                 <div className="w-full pt-1 sm:pt-2">
@@ -448,8 +448,8 @@ export default function LevelUpIndex({
                 variants={staggerContainer}
               >
                 {tracks.length === 0 ? (
-                  <div className="col-span-full rounded-2xl border border-white/10 bg-white/[0.04] px-6 py-12 text-center backdrop-blur-md">
-                    <p className="text-slate-400">No challenges in this category yet.</p>
+                  <div className="col-span-full rounded-2xl border border-slate-200 bg-slate-50/90 px-6 py-12 text-center backdrop-blur-md dark:border-white/10 dark:bg-white/[0.04]">
+                    <p className="text-slate-600 dark:text-slate-400">No challenges in this category yet.</p>
                     <p className="mt-2 text-sm text-slate-500">Try another filter or check back soon.</p>
                   </div>
                 ) : (
@@ -469,7 +469,7 @@ export default function LevelUpIndex({
                       >
                         <div className="flex items-start gap-4">
                           {track.cover_image_url ? (
-                            <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-full border border-purple-500/35 shadow-[0_0_20px_rgba(147,51,234,0.22)]">
+                            <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-full border border-purple-500/35 shadow-[0_0_20px_rgba(147,51,234,0.22)] dark:shadow-none">
                               <img
                                 src={track.cover_image_url}
                                 alt=""
@@ -477,13 +477,13 @@ export default function LevelUpIndex({
                               />
                             </div>
                           ) : (
-                            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full border border-purple-500/35 bg-gradient-to-br from-purple-600/30 to-blue-900/45 text-purple-100 shadow-[0_0_20px_rgba(147,51,234,0.25)]">
+                            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full border border-purple-400/50 bg-gradient-to-br from-purple-100 to-blue-100 text-purple-700 shadow-md shadow-purple-200/50 dark:border-purple-500/35 dark:from-purple-600/30 dark:to-blue-900/45 dark:text-purple-100 dark:shadow-none">
                               <Icon className="h-7 w-7" strokeWidth={1.4} />
                             </div>
                           )}
                           <div className="min-w-0 flex-1">
                             <div className="flex flex-wrap items-center gap-2">
-                              <h3 className="text-lg font-semibold text-slate-50">{track.name}</h3>
+                              <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-50">{track.name}</h3>
                               {showNew ? (
                                 <span className="rounded bg-purple-600/90 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-white">
                                   New
@@ -491,9 +491,9 @@ export default function LevelUpIndex({
                               ) : null}
                             </div>
                             {track.hub_card_description ? (
-                              <p className="mt-1 text-sm leading-snug text-slate-300/95">{track.hub_card_description}</p>
+                              <p className="mt-1 text-sm leading-snug text-slate-600 dark:text-slate-300/95">{track.hub_card_description}</p>
                             ) : null}
-                            <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-slate-400">
+                            <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-slate-500 dark:text-slate-400">
                               <span className="inline-flex items-center gap-1.5">
                                 <BookOpen className="h-3.5 w-3.5 shrink-0" />
                                 {cc > 0
@@ -514,7 +514,7 @@ export default function LevelUpIndex({
                             <Button
                               asChild
                               variant="outline"
-                              className="group rounded-full border-purple-500/50 bg-transparent px-5 text-purple-100 hover:bg-gradient-to-r hover:from-purple-600/15 hover:to-blue-600/15 hover:text-white"
+                              className="group rounded-full border-purple-400/60 bg-transparent px-5 text-purple-700 hover:bg-gradient-to-r hover:from-purple-600/10 hover:to-blue-600/10 hover:text-purple-900 dark:border-purple-500/50 dark:text-purple-100 dark:hover:from-purple-600/15 dark:hover:to-blue-600/15 dark:hover:text-white"
                             >
                               <Link href={route("challenge-hub.challenges", track.slug)} className="inline-flex items-center gap-2">
                                 View Challenges
@@ -525,7 +525,7 @@ export default function LevelUpIndex({
                             <Button
                               disabled
                               variant="outline"
-                              className="rounded-full border-white/10 bg-black/20 text-slate-500"
+                              className="rounded-full border-slate-300 bg-slate-100 text-slate-500 dark:border-white/10 dark:bg-black/20"
                             >
                               <Lock className="mr-2 h-4 w-4" />
                               Coming soon
@@ -541,15 +541,15 @@ export default function LevelUpIndex({
 
             {/* Sidebar */}
             <aside className="mt-12 w-full shrink-0 lg:mt-0 lg:max-w-[320px]">
-              <div className="rounded-2xl border border-purple-500/15 bg-white/[0.05] p-6 backdrop-blur-md shadow-[0_16px_48px_-20px_rgba(0,0,0,0.85)]">
-                <h3 className="text-lg font-semibold text-slate-100">Your Progress</h3>
+              <div className="rounded-2xl border border-purple-200/90 bg-white/95 p-6 shadow-lg shadow-slate-200/50 backdrop-blur-md dark:border-purple-500/15 dark:bg-white/[0.05] dark:shadow-none">
+                <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Your Progress</h3>
                 <div className="mt-6 flex justify-center">
                   <RingProgress current={inChest} goal={chestGoal} />
                 </div>
                 <ul className="mt-6 space-y-4 text-sm">
                   <li className="flex items-start gap-3">
                     <Star className="mt-0.5 h-4 w-4 shrink-0 text-purple-400" />
-                    <span className="text-slate-300">
+                    <span className="text-slate-600 dark:text-slate-300">
                       <span className={cn("font-semibold", brandLogoGradientText)}>
                         {Math.round(hub.points_to_next_chest).toLocaleString()}
                       </span>{" "}
@@ -558,19 +558,19 @@ export default function LevelUpIndex({
                   </li>
                   <li className="flex items-start gap-3">
                     <Trophy className="mt-0.5 h-4 w-4 shrink-0 text-purple-400" />
-                    <span className="text-slate-300">
+                    <span className="text-slate-600 dark:text-slate-300">
                       <span className={cn("font-semibold", brandLogoGradientText)}>{hub.badges_earned}</span> Badges Earned
                     </span>
                   </li>
                   <li className="flex items-start gap-3">
                     <Flame className="mt-0.5 h-4 w-4 shrink-0 text-purple-400" />
-                    <span className="text-slate-300">
+                    <span className="text-slate-600 dark:text-slate-300">
                       <span className={cn("font-semibold", brandLogoGradientText)}>{hub.day_streak}</span> Day Streak
                     </span>
                   </li>
                   <li className="flex items-start gap-3">
                     <BookOpen className="mt-0.5 h-4 w-4 shrink-0 text-purple-400" />
-                    <span className="text-slate-300">
+                    <span className="text-slate-600 dark:text-slate-300">
                       <span className={cn("font-semibold", brandLogoGradientText)}>
                         {hub.quizzes_completed.toLocaleString()}
                       </span>{" "}
@@ -578,7 +578,7 @@ export default function LevelUpIndex({
                     </span>
                   </li>
                 </ul>
-                <p className="mt-6 border-t border-white/10 pt-4 text-center text-xs text-slate-500">
+                <p className="mt-6 border-t border-slate-200 pt-4 text-center text-xs text-slate-500 dark:border-white/10">
                   Total reward points:{" "}
                   <span className={cn("font-medium", brandLogoGradientText)}>
                     {hub.reward_points.toLocaleString(undefined, { maximumFractionDigits: 0 })}

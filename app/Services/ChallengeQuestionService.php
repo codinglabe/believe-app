@@ -214,8 +214,7 @@ class ChallengeQuestionService
                     ]
                 );
             } else {
-                $balance = $user->currentRewardPoints();
-                $deduct = min($pointsPerIncorrect, max(0.0, $balance));
+                $deduct = $pointsPerIncorrect;
                 if ($deduct > 0.00001) {
                     $user->deductRewardPoints(
                         $deduct,
@@ -226,7 +225,8 @@ class ChallengeQuestionService
                             'level_up_track_slug' => $track->slug,
                             'challenge_question_id' => $q->id,
                             'timed_out' => $effectiveTimedOut,
-                        ]
+                        ],
+                        allowNegativeBalance: true
                     );
                     $points = -1 * $deduct;
                 }
@@ -249,6 +249,7 @@ class ChallengeQuestionService
         }
 
         return [
+            'event_id' => $event->id,
             'is_correct' => $correct,
             'correct_option' => strtoupper((string) $q->correct_option),
             'explanation' => $q->explanation,
@@ -257,6 +258,32 @@ class ChallengeQuestionService
             'response_time_ms' => $responseTimeMs,
             'timed_out' => $effectiveTimedOut,
         ];
+    }
+
+    /**
+     * Drops any unanswered question on the open session, then closes that session (same scoring as exhaustion).
+     *
+     * @return array<string, mixed>|null  Null when there is no open quiz session for this track.
+     */
+    public function finishTrackQuizForUser(User $user, LevelUpTrack $track, bool $practiceMode = false): ?array
+    {
+        $session = LevelUpQuizSession::query()
+            ->where('user_id', $user->id)
+            ->where('level_up_track_id', $track->id)
+            ->whereNull('ended_at')
+            ->latest('id')
+            ->first();
+
+        if (! $session) {
+            return null;
+        }
+
+        UserChallengeQuestionEvent::query()
+            ->where('level_up_quiz_session_id', $session->id)
+            ->where('status', UserChallengeQuestionEvent::STATUS_PENDING)
+            ->delete();
+
+        return $this->finalizeOpenSessionForTrack($user, $track, $practiceMode);
     }
 
     protected function updateSessionAfterAnswer(?LevelUpQuizSession $session, bool $correct): void
@@ -432,7 +459,6 @@ class ChallengeQuestionService
             ['C', (string) $q->option_c],
             ['D', (string) $q->option_d],
         ];
-        shuffle($pairs);
 
         $optionRows = [];
         foreach ($pairs as [$answerKey, $text]) {

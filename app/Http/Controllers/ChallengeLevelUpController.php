@@ -360,6 +360,45 @@ class ChallengeLevelUpController extends Controller
         );
     }
 
+    public function finish(Request $request, LevelUpTrack $track): Response
+    {
+        if (! $track->isActive()) {
+            abort(404);
+        }
+
+        $user = Auth::user();
+        abort_if(! $user, 403);
+
+        /** @var ChallengeQuestionService $service */
+        $service = app(ChallengeQuestionService::class);
+
+        $quizResult = $service->finishTrackQuizForUser($user, $track, $this->practiceModeForPlay($request));
+
+        if ($quizResult === null) {
+            $user->refresh();
+            $quizResult = [
+                'headline' => 'Quiz Results',
+                'summary' => 'There was no active quiz session to end.',
+                'congratulations' => false,
+                'score_correct' => 0,
+                'score_total' => 0,
+                'points_from_answers' => 0.0,
+                'streak_bonus' => 0.0,
+                'points_total' => 0.0,
+                'max_streak' => 0,
+                'total_time_ms' => 0,
+                'reward_points_balance' => round((float) $user->currentRewardPoints(), 2),
+            ];
+        }
+
+        $answeredCount = $this->answeredCount($user->id, $track->id);
+
+        return Inertia::render(
+            'frontend/level-up/Play',
+            $this->playPageProps($request, $track, $answeredCount, null, null, null, null, $quizResult)
+        );
+    }
+
     /**
      * Hero block + enriched track for the track challenges page and the play pre-game screen.
      * `quiz_cards` are built only from active {@link LevelUpChallengeEntry} rows (not from grouping the question bank).

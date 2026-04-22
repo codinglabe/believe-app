@@ -208,7 +208,7 @@ export default function LevelUpChallenges() {
             >
               <div
                 className={cn(
-                  "relative flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-purple-500/45 shadow-[0_0_36px_rgba(147,51,234,0.35)]",
+                  "relative flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-purple-500/45 shadow-[0_0_36px_rgba(147,51,234,0.35)] dark:shadow-none",
                   !track.cover_image_url && "bg-gradient-to-br from-purple-600/35 to-blue-950/50"
                 )}
               >
@@ -220,12 +220,12 @@ export default function LevelUpChallenges() {
                       className="h-full w-full object-cover"
                     />
                     <div
-                      className="pointer-events-none absolute inset-0 rounded-full bg-gradient-to-br from-purple-600/18 to-blue-950/40 ring-1 ring-inset ring-white/10"
+                      className="pointer-events-none absolute inset-0 rounded-full bg-gradient-to-br from-purple-600/18 to-blue-950/40 ring-1 ring-inset ring-black/10 dark:ring-white/10"
                       aria-hidden
                     />
                   </>
                 ) : (
-                  <HeroIcon className="h-10 w-10 text-purple-300" strokeWidth={1.25} />
+                  <HeroIcon className="h-10 w-10 text-purple-600 dark:text-purple-300" strokeWidth={1.25} />
                 )}
               </div>
               <h1
@@ -234,17 +234,17 @@ export default function LevelUpChallenges() {
                 {hero.title}
               </h1>
               {challengesCount > 0 ? (
-                <p className="inline-flex items-center justify-center gap-2 text-base font-semibold tabular-nums text-purple-100/95 sm:text-lg">
-                  <BookOpen className="h-5 w-5 shrink-0 text-purple-400/90" aria-hidden />
+                <p className="inline-flex items-center justify-center gap-2 text-base font-semibold tabular-nums text-purple-800 dark:text-purple-100/95 sm:text-lg">
+                  <BookOpen className="h-5 w-5 shrink-0 text-purple-600 dark:text-purple-400/90" aria-hidden />
                   <span>
                     {challengesCount.toLocaleString()}{" "}
                     {challengesCount === 1 ? "Challenge" : "Challenges"}
                   </span>
                 </p>
               ) : null}
-              <p className="text-[15px] text-white/85 sm:text-base">{hero.subtitle}</p>
+              <p className="text-[15px] text-slate-700 dark:text-white/85 sm:text-base">{hero.subtitle}</p>
               {track.hub_card_description ? (
-                <p className="max-w-xl text-sm leading-relaxed text-white/75">{track.hub_card_description}</p>
+                <p className="max-w-xl text-sm leading-relaxed text-slate-600 dark:text-white/75">{track.hub_card_description}</p>
               ) : null}
             </motion.div>
           </section>
@@ -261,8 +261,8 @@ export default function LevelUpChallenges() {
             >
               <DialogContent
                 className={cn(
-                  "max-h-[min(92dvh,640px)] max-w-[min(100vw-1.5rem,440px)] overflow-y-auto border border-purple-500/40 bg-[#070714]/95 p-0 text-white shadow-[0_24px_80px_-12px_rgba(0,0,0,0.9)] backdrop-blur-xl sm:rounded-2xl",
-                  "[&>button]:text-white/70 [&>button]:hover:text-white [&>button]:hover:bg-white/10"
+                  "max-h-[min(92dvh,640px)] max-w-[min(100vw-1.5rem,440px)] overflow-y-auto border border-purple-300/90 bg-white/98 p-0 text-slate-900 shadow-xl shadow-slate-300/40 backdrop-blur-xl dark:border-purple-500/40 dark:bg-[#070714]/95 dark:text-white dark:shadow-none sm:rounded-2xl",
+                  "[&>button]:text-slate-500 [&>button]:hover:bg-slate-100 [&>button]:hover:text-slate-900 dark:[&>button]:text-white/70 dark:[&>button]:hover:bg-white/10 dark:[&>button]:hover:text-white"
                 )}
               >
                 <div className="pointer-events-none absolute inset-0 rounded-2xl bg-[radial-gradient(ellipse_80%_50%_at_50%_-20%,rgba(147,51,234,0.25),transparent_55%)]" />
@@ -276,11 +276,11 @@ export default function LevelUpChallenges() {
                     >
                       Choose question level
                     </DialogTitle>
-                    <DialogDescription className="text-[13px] leading-relaxed text-white/65">
+                    <DialogDescription className="text-[13px] leading-relaxed text-slate-600 dark:text-white/65">
                       {pendingCard ? (
                         <>
                           Starting{" "}
-                          <span className="font-semibold text-purple-200/95">“{pendingCard.title}”</span>
+                          <span className="font-semibold text-purple-700 dark:text-purple-200/95">“{pendingCard.title}”</span>
                           . Pick how challenging the questions should be.
                         </>
                       ) : (
@@ -301,23 +301,23 @@ export default function LevelUpChallenges() {
                           className={cn(
                             "flex flex-col items-start gap-2 rounded-xl border p-3 text-left transition sm:p-3.5",
                             active
-                              ? "border-purple-400/65 bg-gradient-to-br from-purple-600/35 to-blue-950/40 shadow-[0_0_28px_rgba(147,51,234,0.28)] ring-1 ring-purple-400/30"
-                              : "border-white/10 bg-white/[0.04] hover:border-purple-500/35 hover:bg-white/[0.06]"
+                              ? "border-purple-400/65 bg-gradient-to-br from-purple-100/95 to-blue-50/95 shadow-md shadow-purple-200/50 ring-1 ring-purple-300/50 dark:from-purple-600/35 dark:to-blue-950/40 dark:shadow-none dark:ring-purple-400/30"
+                              : "border-slate-200 bg-slate-50/90 hover:border-purple-400/40 hover:bg-white dark:border-white/10 dark:bg-white/[0.04] dark:hover:border-purple-500/35 dark:hover:bg-white/[0.06]"
                           )}
                         >
                           <span
                             className={cn(
                               "flex h-9 w-9 items-center justify-center rounded-lg border",
                               active
-                                ? "border-purple-400/40 bg-purple-500/20 text-purple-100"
-                                : "border-white/10 bg-black/20 text-purple-300/90"
+                                ? "border-purple-400/50 bg-purple-100 text-purple-900 dark:border-purple-400/40 dark:bg-purple-500/20 dark:text-purple-100"
+                                : "border-slate-200 bg-white text-purple-700 dark:border-white/10 dark:bg-black/20 dark:text-purple-300/90"
                             )}
                           >
                             <Icon className="h-4 w-4 sm:h-[1.1rem] sm:w-[1.1rem]" strokeWidth={2} aria-hidden />
                           </span>
                           <span>
-                            <span className="block text-sm font-bold text-white">{level.label}</span>
-                            <span className="mt-0.5 block text-[11px] leading-snug text-white/50">{level.hint}</span>
+                            <span className="block text-sm font-bold text-slate-900 dark:text-white">{level.label}</span>
+                            <span className="mt-0.5 block text-[11px] leading-snug text-slate-500 dark:text-white/50">{level.hint}</span>
                           </span>
                         </button>
                       )
@@ -328,7 +328,7 @@ export default function LevelUpChallenges() {
                     <Button
                       type="button"
                       variant="secondary"
-                      className="w-full border border-white/15 bg-white/5 text-white hover:bg-white/10 sm:w-auto"
+                      className="w-full border border-slate-300 bg-slate-100 text-slate-800 hover:bg-slate-200 sm:w-auto dark:border-white/15 dark:bg-white/5 dark:text-white dark:hover:bg-white/10"
                       onClick={() => {
                         setQuizModalOpen(false)
                         setPendingCard(null)
@@ -356,8 +356,8 @@ export default function LevelUpChallenges() {
               variants={staggerContainer}
             >
               {quiz_cards.length === 0 ? (
-                <div className="col-span-full rounded-xl border border-purple-500/20 bg-[rgba(20,25,55,0.5)] px-6 py-14 text-center shadow-[0_12px_40px_-12px_rgba(0,0,0,0.75)] backdrop-blur-md">
-                  <p className="text-slate-400">{challenges_empty_heading}</p>
+                <div className="col-span-full rounded-xl border border-purple-200/90 bg-slate-50/95 px-6 py-14 text-center shadow-lg shadow-slate-200/50 backdrop-blur-md dark:border-purple-500/20 dark:bg-[rgba(20,25,55,0.5)] dark:shadow-none">
+                  <p className="text-slate-600 dark:text-slate-400">{challenges_empty_heading}</p>
                   <p className="mt-2 text-sm text-slate-500">{challenges_empty_hint}</p>
                 </div>
               ) : (
@@ -369,10 +369,10 @@ export default function LevelUpChallenges() {
                       variants={cardItem}
                       transition={{ ...springTransition, delay: i * 0.04 }}
                       className={cn(
-                        "group flex flex-col gap-3 rounded-xl border border-purple-500/15 p-3 sm:flex-row sm:gap-4 sm:p-4",
-                        "bg-[rgba(28,32,72,0.45)] backdrop-blur-md",
-                        "shadow-[0_12px_40px_-12px_rgba(0,0,0,0.75)]",
-                        "transition hover:shadow-[0_16px_48px_-10px_rgba(0,0,0,0.85)]"
+                        "group flex flex-col gap-3 rounded-xl border border-purple-200/90 bg-white/95 p-3 shadow-lg shadow-slate-200/40 backdrop-blur-md sm:flex-row sm:gap-4 sm:p-4",
+                        "dark:border-purple-500/15 dark:bg-[rgba(28,32,72,0.45)]",
+                        "dark:shadow-none",
+                        "transition hover:shadow-xl dark:hover:shadow-none"
                       )}
                     >
                       <div className="relative mx-auto shrink-0 sm:mx-0">
@@ -380,7 +380,7 @@ export default function LevelUpChallenges() {
                           className="pointer-events-none absolute left-1/2 top-1/2 h-[85%] w-[85%] -translate-x-1/2 -translate-y-1/2 rounded-2xl bg-purple-500/18 blur-2xl"
                           aria-hidden
                         />
-                        <div className="relative flex h-[120px] w-[120px] items-center justify-center overflow-hidden rounded-lg bg-black/25 shadow-[0_0_28px_rgba(147,51,234,0.22)] sm:h-[124px] sm:w-[124px]">
+                        <div className="relative flex h-[120px] w-[120px] items-center justify-center overflow-hidden rounded-lg bg-slate-100 shadow-md shadow-purple-200/40 dark:bg-black/25 dark:shadow-none sm:h-[124px] sm:w-[124px]">
                           {img ? (
                             <img
                               src={img}
@@ -399,13 +399,13 @@ export default function LevelUpChallenges() {
 
                       <div className="flex min-w-0 flex-1 flex-col justify-between gap-3">
                         <div className="min-w-0 space-y-1.5 sm:space-y-2">
-                          <h2 className="text-base font-bold leading-snug text-white sm:text-lg">{card.title}</h2>
-                          <p className="line-clamp-2 text-[13px] leading-relaxed text-slate-200/85 sm:text-sm">
+                          <h2 className="text-base font-bold leading-snug text-slate-900 dark:text-white sm:text-lg">{card.title}</h2>
+                          <p className="line-clamp-2 text-[13px] leading-relaxed text-slate-600 dark:text-slate-200/85 sm:text-sm">
                             {card.description}
                           </p>
                         </div>
                         <div className="flex flex-wrap items-center justify-between gap-2 pt-0.5">
-                          <p className="flex flex-wrap items-center gap-1.5 text-sm text-white">
+                          <p className="flex flex-wrap items-center gap-1.5 text-sm text-slate-700 dark:text-white">
                             <span className={cn("font-bold tabular-nums", brandLogoGradientText)}>
                               {card.plays_today.toLocaleString()}
                             </span>
@@ -415,7 +415,7 @@ export default function LevelUpChallenges() {
                           <Button
                             type="button"
                             size="sm"
-                            className={cn("shrink-0 shadow-inner hover:text-white", challengePrimaryCtaSm)}
+                            className={cn("shrink-0 shadow-inner dark:hover:text-white", challengePrimaryCtaSm)}
                             onClick={() => openStartModal(card)}
                           >
                             Start Quiz

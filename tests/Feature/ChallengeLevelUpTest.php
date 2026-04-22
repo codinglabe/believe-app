@@ -19,6 +19,19 @@ beforeEach(function () {
     }
 });
 
+/** Any MC option letter that is not the correct answer (deterministic wrong guess). */
+function challengeWrongOptionLetter(?string $correctOption): string
+{
+    $c = strtoupper(trim((string) $correctOption));
+    foreach (['A', 'B', 'C', 'D'] as $opt) {
+        if ($opt !== $c) {
+            return $opt;
+        }
+    }
+
+    return 'B';
+}
+
 function seedFaithQuestions(): void
 {
     $rows = [
@@ -65,6 +78,31 @@ test('authenticated user can view challenges listing for active track', function
     $this->actingAs($user)
         ->get(route('challenge-hub.challenges', $track->slug))
         ->assertOk();
+});
+
+test('finish ends session and discards unanswered pending question', function () {
+    seedFaithQuestions();
+    $user = User::factory()->create();
+    $track = LevelUpTrack::query()->where('slug', 'faith_level_up')->firstOrFail();
+
+    $this->actingAs($user)->post(route('challenge-hub.next', $track->slug));
+
+    expect(UserChallengeQuestionEvent::query()
+        ->where('user_id', $user->id)
+        ->where('status', UserChallengeQuestionEvent::STATUS_PENDING)
+        ->count())->toBe(1);
+
+    $this->actingAs($user)->post(route('challenge-hub.finish', $track->slug))->assertOk();
+
+    expect(UserChallengeQuestionEvent::query()
+        ->where('user_id', $user->id)
+        ->where('status', UserChallengeQuestionEvent::STATUS_PENDING)
+        ->count())->toBe(0);
+
+    expect(\App\Models\LevelUpQuizSession::query()
+        ->where('user_id', $user->id)
+        ->whereNull('ended_at')
+        ->count())->toBe(0);
 });
 
 test('calling next twice without answering does not assign a second question', function () {
@@ -117,11 +155,32 @@ test('wrong answer deducts reward points when balance is available', function ()
 
     $this->actingAs($user)->post(route('challenge-hub.answer', $track->slug), [
         'event_id' => $event->id,
-        'selected_option' => 'B',
+        'selected_option' => challengeWrongOptionLetter((string) $event->fresh()->challengeQuestion->correct_option),
     ]);
 
     $user->refresh();
     expect((float) $user->reward_points)->toBe($start - $penalty);
+
+    $event->refresh();
+    expect((float) $event->points_awarded)->toBe(-1 * $penalty);
+});
+
+test('wrong answer applies full penalty when balance is zero resulting in negative balance', function () {
+    seedFaithQuestions();
+    $penalty = (float) config('services.challenge_quiz.points_per_incorrect', config('services.challenge_quiz.points_per_correct', 10));
+    $user = User::factory()->create(['reward_points' => 0]);
+    $track = LevelUpTrack::query()->where('slug', 'faith_level_up')->firstOrFail();
+
+    $this->actingAs($user)->post(route('challenge-hub.next', $track->slug));
+    $event = UserChallengeQuestionEvent::query()->where('user_id', $user->id)->firstOrFail();
+
+    $this->actingAs($user)->post(route('challenge-hub.answer', $track->slug), [
+        'event_id' => $event->id,
+        'selected_option' => challengeWrongOptionLetter((string) $event->fresh()->challengeQuestion->correct_option),
+    ]);
+
+    $user->refresh();
+    expect((float) $user->reward_points)->toBe(-1 * $penalty);
 
     $event->refresh();
     expect((float) $event->points_awarded)->toBe(-1 * $penalty);

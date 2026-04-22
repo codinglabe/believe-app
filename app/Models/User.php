@@ -4,12 +4,16 @@ namespace App\Models;
 
 use App\Jobs\ProcessBelievePointsAutoReplenishJob;
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
+use App\Notifications\VerifyEmailNotification;
+use Database\Factories\UserFactory;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
+use Illuminate\Notifications\DatabaseNotification;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
@@ -20,7 +24,7 @@ use Spatie\Permission\Traits\HasRoles;
 
 class User extends Authenticatable implements MustVerifyEmail
 {
-    /** @use HasFactory<\Database\Factories\UserFactory> */
+    /** @use HasFactory<UserFactory> */
     use Billable, HasApiTokens, HasFactory, HasRoles, Notifiable;
 
     /**
@@ -760,7 +764,7 @@ class User extends Authenticatable implements MustVerifyEmail
      */
     public function notifications()
     {
-        return $this->morphMany(\Illuminate\Notifications\DatabaseNotification::class, 'notifiable')
+        return $this->morphMany(DatabaseNotification::class, 'notifiable')
             ->orderBy('created_at', 'desc');
     }
 
@@ -790,7 +794,7 @@ class User extends Authenticatable implements MustVerifyEmail
     /**
      * Get the user's current plan
      */
-    public function currentPlan(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    public function currentPlan(): BelongsTo
     {
         return $this->belongsTo(Plan::class, 'current_plan_id');
     }
@@ -1016,25 +1020,27 @@ class User extends Authenticatable implements MustVerifyEmail
     /**
      * Deduct reward points from the user's balance and create a ledger entry.
      *
-     * @param  string  $source  (e.g., 'merchant_reward_redemption')
-     * @param  int|null  $referenceId  (e.g., redemption_id)
-     * @return bool Returns true if deduction was successful, false if insufficient points
+     * @param  bool  $allowNegativeBalance  When true (e.g. quiz wrong answers), deduct full amount even if balance goes below zero.
+     * @return bool Returns true if deduction succeeded; without {@see $allowNegativeBalance}, false means insufficient balance.
      */
     public function deductRewardPoints(
         int|float $points,
         string $source,
         ?int $referenceId = null,
         ?string $description = null,
-        ?array $metadata = null
+        ?array $metadata = null,
+        bool $allowNegativeBalance = false
     ): bool {
         $points = round((float) $points, 2);
         if ($points <= 0) {
             return true;
         }
 
-        $balance = round((float) ($this->reward_points ?? 0), 2);
-        if ($balance < $points) {
-            return false;
+        if (! $allowNegativeBalance) {
+            $balance = round((float) ($this->reward_points ?? 0), 2);
+            if ($balance < $points) {
+                return false;
+            }
         }
 
         $this->decrement('reward_points', $points);
@@ -1076,6 +1082,6 @@ class User extends Authenticatable implements MustVerifyEmail
             $domain = $scheme.'://'.$host.($port && $port != 80 && $port != 443 ? ':'.$port : '');
         }
 
-        $this->notify(new \App\Notifications\VerifyEmailNotification($domain));
+        $this->notify(new VerifyEmailNotification($domain));
     }
 }

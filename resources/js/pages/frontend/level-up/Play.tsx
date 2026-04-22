@@ -73,6 +73,7 @@ interface ActiveQuestion {
 }
 
 interface LastResult {
+  event_id?: number
   is_correct: boolean
   correct_option: string
   explanation: string | null
@@ -139,6 +140,7 @@ export default function LevelUpPlay() {
   const timeoutSubmittedRef = useRef(false)
   const [loadingNextQuestion, setLoadingNextQuestion] = useState(false)
   const [loadingNextPhase, setLoadingNextPhase] = useState<"quick" | "long">("quick")
+  const [finishingQuiz, setFinishingQuiz] = useState(false)
 
   const limitSec = Math.max(1, question_time_limit_seconds ?? 10)
 
@@ -163,10 +165,20 @@ export default function LevelUpPlay() {
       challengePayload,
       {
         preserveScroll: true,
+        preserveState: false,
         onStart: () => setLoadingNextQuestion(true),
         onFinish: () => setLoadingNextQuestion(false),
       }
     )
+  }
+
+  const requestFinish = () => {
+    router.post(route("challenge-hub.finish", track.slug), challengePayload, {
+      preserveScroll: true,
+      preserveState: false,
+      onStart: () => setFinishingQuiz(true),
+      onFinish: () => setFinishingQuiz(false),
+    })
   }
 
   const submitTimedOut = useCallback(() => {
@@ -179,6 +191,7 @@ export default function LevelUpPlay() {
       { event_id: activeQuestion.event_id, timed_out: true, ...challengePayload },
       {
         preserveScroll: true,
+        preserveState: false,
         onFinish: () => {
           setSubmitting(false)
           setSelected(null)
@@ -201,6 +214,7 @@ export default function LevelUpPlay() {
       },
       {
         preserveScroll: true,
+        preserveState: false,
         onFinish: () => {
           setSubmitting(false)
           setSelected(null)
@@ -282,26 +296,26 @@ export default function LevelUpPlay() {
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 transition={{ duration: 0.2 }}
-                className="fixed inset-0 z-[60] flex items-center justify-center bg-[#03030a]/78 px-6 backdrop-blur-md"
+                className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/40 px-6 backdrop-blur-md dark:bg-[#03030a]/78"
               >
                 <motion.div
                   initial={{ scale: 0.96, opacity: 0 }}
                   animate={{ scale: 1, opacity: 1 }}
                   transition={springTransition}
-                  className="flex max-w-sm flex-col items-center gap-5 rounded-3xl border border-purple-500/35 bg-[#070714]/90 px-8 py-10 text-center shadow-[0_24px_80px_-24px_rgba(0,0,0,0.85)]"
+                  className="flex max-w-sm flex-col items-center gap-5 rounded-3xl border border-purple-200/90 bg-white px-8 py-10 text-center shadow-xl shadow-slate-300/40 dark:border-purple-500/35 dark:bg-[#070714]/90 dark:shadow-none"
                 >
                   <div className="relative flex h-16 w-16 items-center justify-center">
                     <span className="absolute inset-0 animate-ping rounded-full bg-purple-500/25" aria-hidden />
                     <span className="absolute inset-2 rounded-full bg-gradient-to-br from-purple-600/40 to-blue-900/30 blur-sm" aria-hidden />
-                    <Loader2 className="relative h-9 w-9 animate-spin text-purple-300" strokeWidth={2} />
+                    <Loader2 className="relative h-9 w-9 animate-spin text-purple-600 dark:text-purple-300" strokeWidth={2} />
                   </div>
                   <div className="space-y-2">
-                    <p className="text-lg font-semibold text-white">
+                    <p className="text-lg font-semibold text-slate-900 dark:text-white">
                       {loadingNextPhase === "long"
                         ? "Crafting new questions for you"
                         : "Preparing your question"}
                     </p>
-                    <p className="text-sm leading-relaxed text-white/65">
+                    <p className="text-sm leading-relaxed text-slate-600 dark:text-white/65">
                       {loadingNextPhase === "long"
                         ? "Our question bank is being refreshed—this can take a few moments."
                         : "Hang tight while we load your next challenge."}
@@ -349,7 +363,7 @@ export default function LevelUpPlay() {
                 >
                   <div
                     className={cn(
-                      "relative flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-purple-500/45 shadow-[0_0_36px_rgba(147,51,234,0.35)]",
+                      "relative flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-purple-500/45 shadow-[0_0_36px_rgba(147,51,234,0.35)] dark:shadow-none",
                       !track.cover_image_url && "bg-gradient-to-br from-purple-600/35 to-blue-950/50"
                     )}
                   >
@@ -357,18 +371,18 @@ export default function LevelUpPlay() {
                       <>
                         <img src={track.cover_image_url} alt={track.name} className="h-full w-full object-cover" />
                         <div
-                          className="pointer-events-none absolute inset-0 rounded-full bg-gradient-to-br from-purple-600/18 to-blue-950/40 ring-1 ring-inset ring-white/10"
+                          className="pointer-events-none absolute inset-0 rounded-full bg-gradient-to-br from-purple-600/18 to-blue-950/40 ring-1 ring-inset ring-black/10 dark:ring-white/10"
                           aria-hidden
                         />
                       </>
                     ) : (
-                      <HeroIcon className="h-10 w-10 text-purple-300" strokeWidth={1.25} />
+                      <HeroIcon className="h-10 w-10 text-purple-600 dark:text-purple-300" strokeWidth={1.25} />
                     )}
                   </div>
                   <h1 className={cn(challengeHeroTitle, "text-3xl sm:text-4xl md:text-[2.65rem]")}>{hero.title}</h1>
-                  <p className="line-clamp-6 text-[15px] leading-relaxed text-white/85 sm:text-base">{hero.subtitle}</p>
+                  <p className="line-clamp-6 text-[15px] leading-relaxed text-slate-700 dark:text-white/85 sm:text-base">{hero.subtitle}</p>
                   {!playHeroFromCard && track.hub_card_description ? (
-                    <p className="max-w-xl text-sm leading-relaxed text-white/75">{track.hub_card_description}</p>
+                    <p className="max-w-xl text-sm leading-relaxed text-slate-600 dark:text-white/75">{track.hub_card_description}</p>
                   ) : null}
 
                   <motion.div
@@ -376,7 +390,7 @@ export default function LevelUpPlay() {
                     initial={{ opacity: 0, y: 12 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={springTransition}
-                    className="mt-6 w-full max-w-lg rounded-3xl border border-purple-500/35 bg-[#070714]/65 p-10 text-center shadow-[0_20px_60px_-20px_rgba(0,0,0,0.8)] backdrop-blur-md sm:mt-8 sm:p-12"
+                    className="mt-6 w-full max-w-lg rounded-3xl border border-purple-200/90 bg-white/95 p-10 text-center shadow-xl shadow-slate-300/35 backdrop-blur-md dark:border-purple-500/35 dark:bg-[#070714]/65 dark:shadow-none sm:mt-8 sm:p-12"
                   >
                     <h2 className={cn("mb-8 font-serif text-3xl font-bold tracking-tight sm:text-4xl", brandLogoGradientText)}>
                       Challenge
@@ -408,19 +422,19 @@ export default function LevelUpPlay() {
                       animate={{ opacity: 1, scale: 1 }}
                       exit={{ opacity: 0 }}
                       transition={springTransition}
-                      className="rounded-3xl border border-purple-500/30 bg-[#070714]/65 p-8 text-center backdrop-blur-md"
+                      className="rounded-3xl border border-purple-200/90 bg-white/95 p-8 text-center backdrop-blur-md dark:border-purple-500/30 dark:bg-[#070714]/65"
                     >
-                      <p className="mb-6 leading-relaxed text-white/75">{exhaustedMessage}</p>
+                      <p className="mb-6 leading-relaxed text-slate-700 dark:text-white/75">{exhaustedMessage}</p>
                       <div className="flex flex-wrap justify-center gap-3">
                         <Button
                           variant="secondary"
                           disabled={loadingNextQuestion}
                           onClick={requestNext}
-                          className="border border-white/15 bg-white/10 text-white hover:bg-white/15"
+                          className="border border-slate-300 bg-slate-100 text-slate-800 hover:bg-slate-200 dark:border-white/15 dark:bg-white/10 dark:text-white dark:hover:bg-white/15"
                         >
                           Try again
                         </Button>
-                        <Button asChild variant="outline" className="border-purple-500/35 text-purple-100 hover:bg-purple-500/10">
+                        <Button asChild variant="outline" className="border-purple-400/60 text-purple-700 hover:bg-purple-50 dark:border-purple-500/35 dark:text-purple-100 dark:hover:bg-purple-500/10">
                           <Link href={challengesHref}>Back to challenges</Link>
                         </Button>
                       </div>
@@ -435,11 +449,11 @@ export default function LevelUpPlay() {
                       exit={{ opacity: 0 }}
                       className="space-y-5"
                     >
-                      <p className="text-center text-[11px] font-semibold uppercase tracking-[0.32em] text-purple-400">
+                      <p className="text-center text-[11px] font-semibold uppercase tracking-[0.32em] text-purple-600 dark:text-purple-400">
                         {quizSubtitle}
                       </p>
-                      <p className="text-center text-[10px] text-white/50">
-                        <span className="rounded-full border border-white/15 bg-white/[0.06] px-2.5 py-0.5 font-medium text-white/75">
+                      <p className="text-center text-[10px] text-slate-500 dark:text-white/50">
+                        <span className="rounded-full border border-slate-300 bg-slate-100 px-2.5 py-0.5 font-medium text-slate-700 dark:border-white/15 dark:bg-white/[0.06] dark:text-white/75">
                           {practiceMode ? "Practice — learn without points" : `${quizModeLabel} questions`}
                         </span>
                       </p>
@@ -448,9 +462,9 @@ export default function LevelUpPlay() {
                           initial={{ opacity: 0, y: -4 }}
                           animate={{ opacity: 1, y: 0 }}
                           transition={{ ...springTransition, delay: 0.06 }}
-                          className="flex items-center justify-center gap-2 text-center text-xs text-emerald-200/90"
+                          className="flex items-center justify-center gap-2 text-center text-xs text-emerald-700 dark:text-emerald-200/90"
                         >
-                          <Sparkles className="h-3.5 w-3.5 shrink-0 text-emerald-400/90" strokeWidth={2} />
+                          <Sparkles className="h-3.5 w-3.5 shrink-0 text-emerald-600 dark:text-emerald-400/90" strokeWidth={2} />
                           Fresh questions were just added for you.
                         </motion.p>
                       ) : null}
@@ -466,7 +480,7 @@ export default function LevelUpPlay() {
                         <motion.p
                           variants={fadeUp}
                           transition={springTransition}
-                          className="text-[1.4rem] font-semibold leading-snug text-white drop-shadow-sm sm:text-2xl sm:leading-relaxed"
+                          className="text-[1.4rem] font-semibold leading-snug text-slate-900 dark:text-white sm:text-2xl sm:leading-relaxed"
                         >
                           {activeQuestion.question}
                         </motion.p>
@@ -474,7 +488,7 @@ export default function LevelUpPlay() {
                           <motion.p
                             variants={fadeUp}
                             transition={{ ...springTransition, delay: 0.05 }}
-                            className="mt-3 text-[11px] uppercase tracking-[0.18em] text-white/45"
+                            className="mt-3 text-[11px] uppercase tracking-[0.18em] text-slate-500 dark:text-white/45"
                           >
                             {activeQuestion.difficulty}
                           </motion.p>
@@ -483,7 +497,6 @@ export default function LevelUpPlay() {
 
                       <div className="grid gap-3">
                         {activeQuestion.option_rows.map((row, i) => {
-                          const displayLabel = OPTION_DISPLAY_LABELS[i]
                           const answerKey = row.answer_key
                           return (
                             <motion.button
@@ -498,16 +511,16 @@ export default function LevelUpPlay() {
                               className={cn(
                                 "flex w-full items-center justify-between gap-3 rounded-2xl border px-4 py-[1.1rem] text-left transition-all",
                                 selected === answerKey
-                                  ? "border-purple-500/70 bg-gradient-to-br from-emerald-900/55 via-emerald-950/75 to-[#052e1f]/90 shadow-[0_0_28px_rgba(34,197,94,0.28),0_0_0_1px_rgba(147,51,234,0.35)]"
-                                  : "border-purple-500/35 bg-[#0c0d18]/72 backdrop-blur-[2px] hover:border-purple-500/55 hover:bg-[#101125]/80"
+                                  ? "border-emerald-500/60 bg-gradient-to-br from-emerald-100 via-emerald-50 to-emerald-100/90 shadow-md shadow-emerald-200/50 dark:border-purple-500/70 dark:from-emerald-900/55 dark:via-emerald-950/75 dark:to-[#052e1f]/90 dark:shadow-none"
+                                  : "border-purple-300/80 bg-white/95 backdrop-blur-[2px] hover:border-purple-400 dark:border-purple-500/35 dark:bg-[#0c0d18]/72 dark:hover:border-purple-500/55 dark:hover:bg-[#101125]/80"
                               )}
                             >
-                              <span className="flex min-w-0 items-start gap-3">
-                                <span className="mt-0.5 font-semibold text-purple-400/90">{displayLabel}.</span>
-                                <span className="text-[15px] leading-snug text-white/95">{row.text}</span>
+                              <span className="flex min-w-0 items-baseline gap-3">
+                                <span className="shrink-0 font-semibold tabular-nums text-purple-600 dark:text-purple-400/90">{answerKey}.</span>
+                                <span className="min-w-0 flex-1 text-[15px] leading-snug text-slate-800 dark:text-white/95">{row.text}</span>
                               </span>
                               {selected === answerKey ? (
-                                <Check className="h-6 w-6 shrink-0 text-emerald-400" strokeWidth={2.5} />
+                                <Check className="h-6 w-6 shrink-0 text-emerald-600 dark:text-emerald-400" strokeWidth={2.5} />
                               ) : (
                                 <span className="h-6 w-6 shrink-0" aria-hidden />
                               )}
@@ -516,7 +529,11 @@ export default function LevelUpPlay() {
                         })}
                       </div>
 
-                      <Button disabled={!selected || submitting} onClick={submitAnswer} className={cn("w-full", challengePrimaryCta)}>
+                      <Button
+                        disabled={!selected || submitting || finishingQuiz}
+                        onClick={submitAnswer}
+                        className={cn("w-full", challengePrimaryCta)}
+                      >
                         Submit answer
                       </Button>
                     </motion.div>
@@ -524,7 +541,7 @@ export default function LevelUpPlay() {
 
                   {showFeedback && lastResult && (
                     <motion.div
-                      key="feedback"
+                      key={`feedback-${lastResult.event_id ?? "unknown"}`}
                       initial={{ opacity: 0, y: 20 }}
                       animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0 }}
@@ -533,10 +550,10 @@ export default function LevelUpPlay() {
                     >
                       <div
                         className={cn(
-                          "rounded-3xl border-2 p-6 shadow-[0_20px_50px_-20px_rgba(0,0,0,0.75)] backdrop-blur-xl",
+                          "rounded-3xl border-2 p-6 shadow-[0_20px_50px_-20px_rgba(0,0,0,0.75)] backdrop-blur-xl dark:shadow-none",
                           lastResult.is_correct
-                            ? "border-purple-500/55 bg-[#0a0812]/80 shadow-[inset_0_0_48px_rgba(34,197,94,0.1),0_0_40px_-12px_rgba(147,51,234,0.18)]"
-                            : "border-rose-500/40 bg-[#140a10]/85"
+                            ? "border-emerald-400/70 bg-emerald-50/95 shadow-[inset_0_1px_0_rgba(255,255,255,0.8)] dark:border-purple-500/55 dark:bg-[#0a0812]/80 dark:shadow-none"
+                            : "border-rose-300/80 bg-rose-50/95 dark:border-rose-500/40 dark:bg-[#140a10]/85"
                         )}
                       >
                         <motion.div
@@ -547,63 +564,87 @@ export default function LevelUpPlay() {
                         >
                           {lastResult.is_correct ? (
                             <>
-                              <CheckCircle2 className="h-8 w-8 text-emerald-400" />
-                              <span className="text-emerald-100">Correct!</span>
+                              <CheckCircle2 className="h-8 w-8 text-emerald-600 dark:text-emerald-400" />
+                              <span className="text-emerald-800 dark:text-emerald-100">Correct!</span>
                               {!practiceMode ? (
                                 <span className={cn("ml-auto text-xl font-bold tabular-nums", brandLogoGradientText)}>
                                   +{lastResult.points_awarded} Points
                                 </span>
                               ) : (
-                                <span className="ml-auto text-xs font-medium uppercase tracking-wider text-white/45">
+                                <span className="ml-auto text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-white/45">
                                   Practice
                                 </span>
                               )}
                             </>
                           ) : (
                             <>
-                              <XCircle className="h-8 w-8 text-rose-400" />
-                              <span className="text-rose-100">
+                              <XCircle className="h-8 w-8 text-rose-500 dark:text-rose-400" />
+                              <span className="text-rose-800 dark:text-rose-100">
                                 {lastResult.timed_out ? "Time's up" : "Not quite"}
                               </span>
                               {!practiceMode &&
                               typeof lastResult.points_awarded === "number" &&
                               lastResult.points_awarded < 0 ? (
-                                <span className="ml-auto text-lg font-bold tabular-nums text-rose-200">
+                                <span className="ml-auto text-lg font-bold tabular-nums text-rose-700 dark:text-rose-200">
                                   {lastResult.points_awarded.toLocaleString(undefined, { maximumFractionDigits: 2 })} pts
                                 </span>
                               ) : practiceMode ? (
-                                <span className="ml-auto text-xs font-medium uppercase tracking-wider text-white/45">
+                                <span className="ml-auto text-xs font-medium uppercase tracking-wider text-slate-500 dark:text-white/45">
                                   Practice
                                 </span>
                               ) : null}
                             </>
                           )}
                         </motion.div>
-                        <p className="text-sm text-white/70">
-                          Correct answer:{" "}
-                          <span className="font-semibold text-purple-200">{lastResult.correct_option}</span>
+                        <p className="text-sm leading-relaxed text-slate-600 dark:text-white/70">
+                          <span className="inline-flex items-baseline gap-x-1.5 whitespace-nowrap">
+                            <span>Correct answer:</span>
+                            <span className="font-semibold text-purple-700 dark:text-purple-200">{lastResult.correct_option}</span>
+                          </span>
                         </p>
                         {lastResult.explanation && (
-                          <p className="mt-4 text-sm leading-relaxed text-white/80">{lastResult.explanation}</p>
+                          <p className="mt-4 text-sm leading-relaxed text-slate-700 dark:text-white/80">{lastResult.explanation}</p>
                         )}
                         {!practiceMode ? (
-                          <p className="mt-4 inline-flex items-center gap-2 text-xs text-white/50">
-                            <Coins className="h-4 w-4 text-purple-400/85" />
+                          <p className="mt-4 inline-flex items-center gap-2 text-xs text-slate-500 dark:text-white/50">
+                            <Coins className="h-4 w-4 text-purple-600 dark:text-purple-400/85" />
                             Balance: {lastResult.reward_points_balance}
                           </p>
                         ) : (
-                          <p className="mt-4 text-xs text-white/45">Practice mode — your balance is unchanged.</p>
+                          <p className="mt-4 text-xs text-slate-500 dark:text-white/45">Practice mode — your balance is unchanged.</p>
                         )}
 
-                        <Button
-                          type="button"
-                          disabled={loadingNextQuestion}
-                          onClick={requestNext}
-                          className={cn("mt-8 w-full", challengePrimaryCta)}
-                          aria-label="Continue to next question"
-                        >
-                          Continue
-                        </Button>
+                        <div className="mt-8 flex w-full flex-row flex-nowrap items-stretch gap-3">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="default"
+                            disabled={loadingNextQuestion || finishingQuiz}
+                            onClick={requestFinish}
+                            className="h-12 min-w-0 flex-1 shrink rounded-2xl border-2 border-slate-300 bg-white/90 px-3 text-sm font-semibold text-slate-800 hover:bg-slate-100 dark:border-white/20 dark:bg-white/5 dark:text-white/90 dark:hover:bg-white/10"
+                          >
+                            {finishingQuiz ? (
+                              <span className="inline-flex min-h-0 w-full items-center justify-center gap-2">
+                                <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden />
+                                <span className="truncate">Ending…</span>
+                              </span>
+                            ) : (
+                              <span className="truncate">Stop — results</span>
+                            )}
+                          </Button>
+                          <Button
+                            type="button"
+                            disabled={loadingNextQuestion || finishingQuiz}
+                            onClick={requestNext}
+                            className={cn(
+                              challengePrimaryCta,
+                              "h-12 min-w-0 flex-1 shrink px-3 py-0 text-base font-bold leading-none"
+                            )}
+                            aria-label="Continue to next question"
+                          >
+                            <span className="truncate">Continue</span>
+                          </Button>
+                        </div>
                       </div>
                     </motion.div>
                   )}
@@ -623,7 +664,7 @@ export default function LevelUpPlay() {
               animate={{ opacity: 1 }}
               transition={springTransition}
             >
-              <Button asChild variant="ghost" className="text-white/80 hover:bg-white/10 hover:text-white">
+              <Button asChild variant="ghost" className="text-slate-700 hover:bg-slate-100 hover:text-slate-900 dark:text-white/80 dark:hover:bg-white/10 dark:hover:text-white">
                 <Link href={challengesHref}>
                   <ArrowLeft className="mr-2 h-4 w-4" />
                   Back to challenges
