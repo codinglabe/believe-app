@@ -1,4 +1,5 @@
 import '../css/app.css';
+import './lib/polyfills';
 import './bootstrap'; // sets window.axios — must run before timezone init
 import './lib/timezone-detection'; // X-Timezone on axios + fetch for every page
 
