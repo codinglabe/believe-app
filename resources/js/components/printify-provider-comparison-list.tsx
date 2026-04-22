@@ -21,6 +21,20 @@ function formatMoney(cents: number | null, currency: string): string {
     }
 }
 
+function deliveryLabel(row: PrintifyProviderComparisonRow): string | null {
+    return row.estimated_delivery_label ?? row.handling_time_label ?? null;
+}
+
+function totalCostCents(row: PrintifyProviderComparisonRow): number | null {
+    if (row.total_cost_cents != null && Number.isFinite(row.total_cost_cents)) {
+        return row.total_cost_cents;
+    }
+    if (row.base_cost_cents != null && row.shipping_first_item_cents != null) {
+        return row.base_cost_cents + row.shipping_first_item_cents;
+    }
+    return null;
+}
+
 type Props = {
     rows: PrintifyProviderComparisonRow[];
     selectedId: string;
@@ -33,7 +47,8 @@ function MetadataLine({ row }: { row: PrintifyProviderComparisonRow }) {
     const cur = row.currency || 'USD';
     const base = formatMoney(row.base_cost_cents, cur);
     const ship = formatMoney(row.shipping_first_item_cents, cur);
-    const time = row.handling_time_label ?? '—';
+    const totalCents = totalCostCents(row);
+    const delivery = deliveryLabel(row) ?? '—';
     const place = row.country_label ?? row.country_code ?? '—';
 
     if (row.is_printify_choice) {
@@ -45,25 +60,62 @@ function MetadataLine({ row }: { row: PrintifyProviderComparisonRow }) {
         );
     }
 
+    const printMissing = row.base_cost_cents == null;
+
     return (
-        <p className="text-muted-foreground mt-1 text-sm leading-relaxed">
-            <span className="text-gray-800 dark:text-gray-200">{base} base</span>
-            <span className="mx-1.5">•</span>
-            <span>{ship} shipping</span>
-            <span className="mx-1.5">•</span>
-            <span>{time}</span>
-            {row.average_rating != null && row.average_rating > 0 && (
-                <>
-                    <span className="mx-1.5">•</span>
-                    <span className="inline-flex items-center gap-0.5">
-                        {Number(row.average_rating).toFixed(1)}
-                        <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-500" aria-hidden />
-                    </span>
-                </>
-            )}
-            <span className="mx-1.5">•</span>
-            <span>{place}</span>
-        </p>
+        <div className="text-muted-foreground mt-2 space-y-1.5 text-sm leading-relaxed">
+            <dl className="grid grid-cols-1 gap-x-4 gap-y-1 sm:grid-cols-2">
+                <div className="flex flex-wrap gap-x-2 sm:col-span-2">
+                    <dt className="font-medium text-gray-700 dark:text-gray-300">Print fulfillment</dt>
+                    <dd className="text-gray-900 dark:text-gray-100">
+                        {printMissing ? (
+                            <span className="text-muted-foreground font-normal">
+                                Not in catalog API — set when the product is created in Printify
+                            </span>
+                        ) : (
+                            base
+                        )}
+                    </dd>
+                </div>
+                <div className="flex flex-wrap gap-x-2">
+                    <dt className="font-medium text-gray-700 dark:text-gray-300">Shipping (1st item)</dt>
+                    <dd>{ship}</dd>
+                </div>
+                {totalCents != null && (
+                    <div className="flex flex-wrap gap-x-2">
+                        <dt className="font-medium text-gray-700 dark:text-gray-300">Print + ship total</dt>
+                        <dd className="font-semibold text-emerald-700 dark:text-emerald-400">
+                            {formatMoney(totalCents, cur)}
+                        </dd>
+                    </div>
+                )}
+                <div className="flex flex-wrap gap-x-2 sm:col-span-2">
+                    <dt className="font-medium text-gray-700 dark:text-gray-300">Est. delivery</dt>
+                    <dd>{delivery}</dd>
+                </div>
+                {row.average_rating != null && row.average_rating > 0 && (
+                    <div className="flex flex-wrap items-center gap-x-2 sm:col-span-2">
+                        <dt className="font-medium text-gray-700 dark:text-gray-300">Value score</dt>
+                        <dd className="inline-flex items-center gap-0.5">
+                            {Number(row.average_rating).toFixed(1)}
+                            <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-500" aria-hidden />
+                            <span className="text-xs font-normal text-gray-500 dark:text-gray-400">
+                                (relative rank for this product — not a Printify star rating)
+                            </span>
+                        </dd>
+                    </div>
+                )}
+                <div className="flex flex-wrap gap-x-2 sm:col-span-2">
+                    <dt className="font-medium text-gray-700 dark:text-gray-300">Ship-to</dt>
+                    <dd>{place}</dd>
+                </div>
+            </dl>
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+                Standard shipping and delivery range come from Printify&apos;s v2 standard shipping catalog for the
+                selected region. Per-variant print pricing is returned on the shop product after creation, not on the
+                public catalog variants endpoint.
+            </p>
+        </div>
     );
 }
 
@@ -133,16 +185,20 @@ export function PrintifyProviderComparisonList({ rows, selectedId, loading, onSe
                             const cur = row.currency || 'USD';
                             const base = formatMoney(row.base_cost_cents, cur);
                             const ship = formatMoney(row.shipping_first_item_cents, cur);
-                            const time = row.handling_time_label ?? '—';
+                            const tot = formatMoney(totalCostCents(row), cur);
+                            const time = deliveryLabel(row) ?? '—';
                             const rating =
                                 row.average_rating != null && row.average_rating > 0
                                     ? `${Number(row.average_rating).toFixed(1)} ★`
                                     : null;
 
                             const line1 = row.is_recommended ? `${row.title} · Recommended` : row.title;
+                            const printBit =
+                                row.base_cost_cents != null ? `${base} print` : 'Print at save (catalog)';
+                            const totalBit = row.base_cost_cents != null ? `${tot} total · ` : '';
                             const line2 = row.is_printify_choice
                                 ? 'Printify-managed · simple setup'
-                                : `${base} base · ${ship} shipping · ${time}${rating ? ` · ${rating}` : ''} · ${row.country_label ?? row.country_code ?? '—'}`;
+                                : `${printBit} · ${ship} ship · ${totalBit}${time}${rating ? ` · ${rating}` : ''} · ${row.country_label ?? row.country_code ?? '—'}`;
 
                             return (
                                 <SelectItem
@@ -199,9 +255,9 @@ export function PrintifyProviderComparisonList({ rows, selectedId, loading, onSe
                                         </span>
                                     </div>
                                     <p className="mt-3 text-xs leading-relaxed text-gray-500 dark:text-gray-400">
-                                        Based on lowest total cost, delivery speed, and provider quality. Star ratings are relative
-                                        scores for comparison (Printify does not publish public provider ratings in the catalog
-                                        API).
+                                        Recommended from lowest standard shipping to this region when catalog print cost
+                                        is unavailable. Value score is a relative rank for this blueprint only, not a Printify
+                                        catalog star rating.
                                     </p>
                                 </>
                             )}

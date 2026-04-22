@@ -125,21 +125,190 @@ class PrintifyService
 
     /**
      * Get variants for a blueprint and print provider
+     *
+     * @return array{variants: array<int, array<string, mixed>>}
      */
-    public function getVariants(int $blueprintId, int $printProviderId): array
+    public function getVariants(int $blueprintId, int $printProviderId, bool $attachStandardShipping = true): array
     {
         try {
             $response = $this->client->get("v1/catalog/blueprints/{$blueprintId}/print_providers/{$printProviderId}/variants.json");
+            $decoded = json_decode($response->getBody(), true) ?: [];
 
-            return json_decode($response->getBody(), true) ?: [];
+            $variants = $this->normalizeDecodedCatalogVariantsPayload($decoded);
+            if ($attachStandardShipping) {
+                $variants = $this->attachStandardShippingToCatalogVariants($blueprintId, $printProviderId, $variants);
+            }
+
+            return [
+                'variants' => $variants,
+            ];
         } catch (RequestException $e) {
             $this->handleException($e, 'Variants', [
                 'blueprint_id' => $blueprintId,
                 'print_provider_id' => $printProviderId,
             ]);
 
+            return ['variants' => []];
+        }
+    }
+
+    /**
+     * Merges v2 standard shipping (per variantId) onto catalog variants. Printify catalog variants do not
+     * include fulfillment (print) cost; that is returned on shop products after creation.
+     *
+     * @param  array<int, array<string, mixed>>  $variants
+     * @return array<int, array<string, mixed>>
+     */
+    private function attachStandardShippingToCatalogVariants(int $blueprintId, int $printProviderId, array $variants): array
+    {
+        $byVariant = $this->indexStandardShippingByVariantId($blueprintId, $printProviderId);
+        foreach ($variants as $k => $v) {
+            $id = (int) ($v['id'] ?? 0);
+            if ($id > 0 && isset($byVariant[$id])) {
+                $variants[$k]['shipping_first_item_cents'] = $byVariant[$id]['shipping_first_item_cents'];
+                $variants[$k]['estimated_delivery_label'] = $byVariant[$id]['estimated_delivery_label'];
+                $variants[$k]['shipping_currency'] = $byVariant[$id]['currency'];
+            } else {
+                $variants[$k]['shipping_first_item_cents'] = null;
+                $variants[$k]['estimated_delivery_label'] = null;
+                $variants[$k]['shipping_currency'] = 'USD';
+            }
+        }
+
+        return $variants;
+    }
+
+    /**
+     * @return array<int, array{shipping_first_item_cents: ?int, estimated_delivery_label: ?string, currency: string}>
+     */
+    private function indexStandardShippingByVariantId(int $blueprintId, int $printProviderId): array
+    {
+        $shippingPayload = $this->getShipping($blueprintId, $printProviderId);
+        $shipData = $shippingPayload['data'] ?? null;
+        if (! is_array($shipData) || $shipData === []) {
             return [];
         }
+
+        $rowsByVariant = [];
+        foreach ($shipData as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $attr = $row['attributes'] ?? [];
+            if (! is_array($attr)) {
+                continue;
+            }
+            $code = is_array($attr['country'] ?? null) ? (string) ($attr['country']['code'] ?? '') : '';
+            $vid = (int) ($attr['variantId'] ?? 0);
+            if ($vid < 1) {
+                continue;
+            }
+            $rowsByVariant[$vid][] = ['code' => $code, 'attr' => $attr];
+        }
+
+        $index = [];
+        foreach ($rowsByVariant as $vid => $group) {
+            $us = array_values(array_filter($group, fn (array $g): bool => ($g['code'] ?? '') === 'US'));
+            $work = $us !== [] ? $us : $group;
+
+            $minShip = null;
+            $currency = 'USD';
+            foreach ($work as $g) {
+                $attr = $g['attr'];
+                $amt = $attr['shippingCost']['firstItem']['amount'] ?? null;
+                if ($amt === null || ! is_numeric($amt)) {
+                    continue;
+                }
+                $a = (int) $amt;
+                $minShip = $minShip === null ? $a : min($minShip, $a);
+                $currency = (string) ($attr['shippingCost']['firstItem']['currency'] ?? $currency);
+            }
+
+            $fromMin = null;
+            $toMax = null;
+            foreach ($work as $g) {
+                $ht = $g['attr']['handlingTime'] ?? null;
+                if (! is_array($ht)) {
+                    continue;
+                }
+                $from = $ht['from'] ?? null;
+                $to = $ht['to'] ?? null;
+                if ($from !== null && is_numeric($from)) {
+                    $fromMin = $fromMin === null ? (int) $from : min($fromMin, (int) $from);
+                }
+                if ($to !== null && is_numeric($to)) {
+                    $toMax = $toMax === null ? (int) $to : max($toMax, (int) $to);
+                }
+            }
+
+            $label = null;
+            if ($fromMin !== null && $toMax !== null) {
+                $label = $fromMin === $toMax
+                    ? "{$fromMin} business day".($fromMin === 1 ? '' : 's')
+                    : "{$fromMin}–{$toMax} business days";
+            }
+
+            if ($minShip !== null || $label !== null) {
+                $index[(int) $vid] = [
+                    'shipping_first_item_cents' => $minShip,
+                    'estimated_delivery_label' => $label,
+                    'currency' => $currency,
+                ];
+            }
+        }
+
+        return $index;
+    }
+
+    /**
+     * Flatten catalog variant entries (plain objects or JSON:API style with attributes).
+     *
+     * @param  array<string, mixed>  $row
+     * @return array<string, mixed>|null
+     */
+    private function catalogVariantRowToFlatArray(array $row): ?array
+    {
+        if (isset($row['attributes']) && is_array($row['attributes'])) {
+            $flat = $row['attributes'];
+            if (! array_key_exists('id', $flat) && array_key_exists('id', $row)) {
+                $flat['id'] = is_numeric($row['id']) ? (int) $row['id'] : $row['id'];
+            }
+
+            return $flat;
+        }
+
+        return $row;
+    }
+
+    /**
+     * Normalize any supported variants.json payload into a list of flat variant arrays.
+     *
+     * @param  array<string, mixed>  $decoded
+     * @return array<int, array<string, mixed>>
+     */
+    private function normalizeDecodedCatalogVariantsPayload(array $decoded): array
+    {
+        $rawList = [];
+        if (isset($decoded['variants']) && is_array($decoded['variants'])) {
+            $rawList = $decoded['variants'];
+        } elseif (isset($decoded['data']) && is_array($decoded['data'])) {
+            $rawList = $decoded['data'];
+        } elseif ($decoded !== [] && array_is_list($decoded)) {
+            $rawList = $decoded;
+        }
+
+        $out = [];
+        foreach ($rawList as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
+            $flat = $this->catalogVariantRowToFlatArray($row);
+            if ($flat !== null) {
+                $out[] = $flat;
+            }
+        }
+
+        return $out;
     }
 
     /**
@@ -162,8 +331,9 @@ class PrintifyService
     }
 
     /**
-     * Blueprint-level provider comparison: min variant cost, standard shipping to US (fallback: first region), handling time.
-     * Uses catalog API (v2 standard shipping, then v1 shipping.json if v2 is empty).
+     * Blueprint-level provider comparison: standard shipping to US (fallback: first region) and delivery time.
+     * Catalog variants do not include print/fulfillment cost; that is only available on shop products after creation.
+     * Uses v2 standard shipping, then v1 shipping.json if v2 is empty.
      *
      * @return array{rows: array<int, array<string, mixed>>}
      */
@@ -187,26 +357,6 @@ class PrintifyService
             $title = (string) ($provider['title'] ?? '');
             $isPrintifyChoice = stripos($title, 'Printify Choice') !== false;
 
-            $variantPayload = $this->getVariants($blueprintId, $pid);
-            $variants = is_array($variantPayload['variants'] ?? null) ? $variantPayload['variants'] : [];
-
-            $minCost = null;
-            foreach ($variants as $v) {
-                if (! is_array($v)) {
-                    continue;
-                }
-                $raw = null;
-                if (isset($v['cost']) && is_numeric($v['cost'])) {
-                    $raw = (int) $v['cost'];
-                } elseif (isset($v['price']) && is_numeric($v['price'])) {
-                    $raw = (int) $v['price'];
-                }
-                if ($raw === null) {
-                    continue;
-                }
-                $minCost = $minCost === null ? $raw : min($minCost, $raw);
-            }
-
             $parsed = $this->parseStandardShippingForComparison($blueprintId, $pid);
             if ($parsed === null) {
                 $parsed = $this->parseV1ShippingForComparison($blueprintId, $pid);
@@ -214,15 +364,21 @@ class PrintifyService
 
             $countryCode = $parsed['country_code'] ?? null;
 
+            $shipCents = $parsed['shipping_first_item_cents'] ?? null;
+
             $rows[] = [
                 'id' => $pid,
                 'title' => $title,
                 'is_printify_choice' => $isPrintifyChoice,
                 'decoration_methods' => $provider['decoration_methods'] ?? [],
-                'base_cost_cents' => $minCost,
-                'shipping_first_item_cents' => $parsed['shipping_first_item_cents'] ?? null,
+                'base_cost_cents' => null,
+                'shipping_first_item_cents' => $shipCents,
+                'total_cost_cents' => null,
                 'currency' => $parsed['currency'] ?? 'USD',
                 'handling_time_label' => $parsed['handling_time_label'] ?? null,
+                'estimated_delivery_label' => $parsed['handling_time_label'] ?? null,
+                'production_time_label' => null,
+                'shipping_transit_label' => null,
                 'country_code' => $countryCode,
                 'country_label' => $this->mapCountryCodeToLabel($countryCode),
                 'average_rating' => null,
@@ -251,12 +407,17 @@ class PrintifyService
             }
             $b = $row['base_cost_cents'] ?? null;
             $s = $row['shipping_first_item_cents'] ?? null;
-            if ($b === null || $s === null) {
+            if ($b !== null && $s !== null) {
+                $total = (int) $b + (int) $s;
+            } elseif ($s !== null) {
+                // Printify catalog variants omit print cost; rank comparable rows by shipping until shop product exists.
+                $total = (int) $s;
+            } else {
                 continue;
             }
             $comparable[] = [
                 'id' => (int) $row['id'],
-                'total' => (int) $b + (int) $s,
+                'total' => (int) $total,
             ];
         }
 
@@ -358,7 +519,9 @@ class PrintifyService
 
         $handlingLabel = null;
         if ($fromMin !== null && $toMax !== null) {
-            $handlingLabel = $fromMin === $toMax ? "{$fromMin} days" : "{$fromMin}–{$toMax} days";
+            $handlingLabel = $fromMin === $toMax
+                ? "{$fromMin} business day".($fromMin === 1 ? '' : 's')
+                : "{$fromMin}–{$toMax} business days";
         }
 
         $countryCode = $usAttrs !== [] ? 'US' : ($candidates[0]['code'] ?? null);
@@ -396,7 +559,10 @@ class PrintifyService
             $val = $ht['value'] ?? null;
             $unit = (string) ($ht['unit'] ?? 'day');
             if ($val !== null && is_numeric($val)) {
-                $handlingLabel = (int) $val.' '.($unit === 'day' ? 'days' : $unit);
+                $n = (int) $val;
+                $handlingLabel = $unit === 'day'
+                    ? "{$n} business day".($n === 1 ? '' : 's')
+                    : "{$n} {$unit}";
             }
         }
 
@@ -890,24 +1056,13 @@ class PrintifyService
      */
     public function getProductWithVariants(int $blueprintId, int $printProviderId): array
     {
-        try {
-            $response = $this->client->get("v1/catalog/blueprints/{$blueprintId}/print_providers/{$printProviderId}/variants.json");
-            $variants = json_decode($response->getBody(), true) ?? [];
+        $payload = $this->getVariants($blueprintId, $printProviderId);
 
-            return [
-                'blueprint_id' => $blueprintId,
-                'print_provider_id' => $printProviderId,
-                'variants' => $variants['data'] ?? $variants ?? [],
-            ];
-        } catch (RequestException $e) {
-            Log::error('Failed to fetch product variants from Printify', [
-                'blueprint_id' => $blueprintId,
-                'print_provider_id' => $printProviderId,
-                'error' => $e->getMessage(),
-            ]);
-
-            return [];
-        }
+        return [
+            'blueprint_id' => $blueprintId,
+            'print_provider_id' => $printProviderId,
+            'variants' => $payload['variants'] ?? [],
+        ];
     }
 
     /**

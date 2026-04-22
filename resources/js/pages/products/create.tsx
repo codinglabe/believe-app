@@ -47,11 +47,16 @@ interface Variant {
     id: number;
     title: string;
     options: {
-        color: string;
-        size: string;
+        color?: string;
+        size?: string;
     };
-    price: number;
-    cost: number;
+    /** Shop product only; catalog variants omit this. */
+    price?: number;
+    cost?: number;
+    /** Merged from Printify v2 standard shipping (US preferred). */
+    shipping_first_item_cents?: number | null;
+    estimated_delivery_label?: string | null;
+    shipping_currency?: string;
 }
 
 interface MerchantShipFromOption {
@@ -87,6 +92,22 @@ function collectInertiaErrorMessages(err: Record<string, unknown>): string[] {
         else if (typeof v === 'string') out.push(v);
     }
     return out.filter(Boolean);
+}
+
+function formatPrintifyMoneyCents(cents: number | null | undefined, currency = 'USD'): string {
+    if (cents == null || !Number.isFinite(cents)) {
+        return '—';
+    }
+    try {
+        return new Intl.NumberFormat('en-US', {
+            style: 'currency',
+            currency: currency || 'USD',
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+        }).format(cents / 100);
+    } catch {
+        return (cents / 100).toFixed(2);
+    }
 }
 
 export default function Create({
@@ -350,7 +371,8 @@ const handleCategoryChange = (categoryId: number) => {
     } else {
         // Add variant at production cost (at cost)
         newSelectedVariants = [...selectedVariants, variantId];
-        const cost = variant.cost / 100; // Convert to dollars if needed
+        const printCents = typeof variant.cost === 'number' && Number.isFinite(variant.cost) ? variant.cost : 0;
+        const cost = printCents / 100;
 
         updatedVariants.push({
             id: variant.id,
@@ -1102,6 +1124,26 @@ const handleCategoryChange = (categoryId: number) => {
                                                                                 )}
                                                                             </div>
                                                                         )}
+                                                                        <div className="mt-3 space-y-1 border-t border-gray-200 pt-2 text-xs leading-relaxed dark:border-gray-600">
+                                                                            {variant.shipping_first_item_cents != null && (
+                                                                                <p className="font-medium text-emerald-700 dark:text-emerald-400">
+                                                                                    Standard shipping (1st item, US):{' '}
+                                                                                    {formatPrintifyMoneyCents(
+                                                                                        variant.shipping_first_item_cents,
+                                                                                        variant.shipping_currency || 'USD',
+                                                                                    )}
+                                                                                </p>
+                                                                            )}
+                                                                            {variant.estimated_delivery_label && (
+                                                                                <p className="text-muted-foreground">
+                                                                                    Est. delivery: {variant.estimated_delivery_label}
+                                                                                </p>
+                                                                            )}
+                                                                            <p className="text-muted-foreground">
+                                                                                Print fulfillment cost appears in Printify after this product is
+                                                                                created (the catalog variants API does not include it).
+                                                                            </p>
+                                                                        </div>
                                                                     </div>
                                                                     <div
                                                                         className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 transition-all ${
