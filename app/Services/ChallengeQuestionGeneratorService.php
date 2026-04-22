@@ -98,6 +98,7 @@ SUB
 Create exactly {$batchSize} unique multiple-choice quiz questions for educational quizzes.
 Category (exact string for every row): "{$category}".{$traditionAlignment}{$challengeFocus}{$subRules}{$difficultyRules}
 Each question must have four options (A–D), one correct answer, a short explanation, and a difficulty field.
+Correct answer distribution (required): across this batch of {$batchSize} questions, spread correct_option roughly evenly across A, B, C, and D. Do not default most answers to A — models often bias toward A; intentionally vary which letter is correct.
 Avoid duplicating famous questions verbatim from common trivia apps; vary wording.
 Return JSON object: {"questions":[{"category":"{$category}","subcategory":"string","question":"string","option_a":"string","option_b":"string","option_c":"string","option_d":"string","correct_option":"A|B|C|D","explanation":"string","difficulty":"Easy|Medium|Hard"}]}
 PROMPT,
@@ -131,6 +132,9 @@ PROMPT,
             if ($forcedDiff !== '' && strcasecmp($rowDiff, $forcedDiff) !== 0) {
                 continue;
             }
+
+            /** Randomize which column holds the correct answer so LLM “always A” bias does not dominate the bank. */
+            $row = $this->shuffleStoredOptions($row);
 
             $hash = ChallengeQuestionHasher::hash(
                 $row['category'],
@@ -195,5 +199,41 @@ PROMPT,
         $cat = (string) ($row['category'] ?? $expectedCategory);
 
         return trim($cat) === trim($expectedCategory);
+    }
+
+    /**
+     * Permute option_a–d randomly and remap correct_option so gameplay sees A/B/C/D equally often over time.
+     *
+     * @param  array<string, mixed>  $row
+     * @return array<string, mixed>
+     */
+    protected function shuffleStoredOptions(array $row): array
+    {
+        $entries = [
+            ['orig' => 'A', 'text' => trim((string) $row['option_a'])],
+            ['orig' => 'B', 'text' => trim((string) $row['option_b'])],
+            ['orig' => 'C', 'text' => trim((string) $row['option_c'])],
+            ['orig' => 'D', 'text' => trim((string) $row['option_d'])],
+        ];
+
+        shuffle($entries);
+
+        $correct = strtoupper(trim((string) $row['correct_option']));
+        $newCorrect = 'A';
+        foreach ($entries as $i => $e) {
+            if ($e['orig'] === $correct) {
+                $newCorrect = chr(ord('A') + $i);
+
+                break;
+            }
+        }
+
+        return array_merge($row, [
+            'option_a' => $entries[0]['text'],
+            'option_b' => $entries[1]['text'],
+            'option_c' => $entries[2]['text'],
+            'option_d' => $entries[3]['text'],
+            'correct_option' => $newCorrect,
+        ]);
     }
 }
