@@ -298,6 +298,9 @@ class User extends Authenticatable implements MustVerifyEmail
             ->withTimestamps()->with(['user', 'nteeCode']);
     }
 
+    /**
+     * Primary organization affiliation selected by supporter.
+     */
     public function primaryOrganization(): BelongsTo
     {
         return $this->belongsTo(Organization::class, 'primary_organization_id');
@@ -500,14 +503,6 @@ class User extends Authenticatable implements MustVerifyEmail
     {
         return $this->belongsToMany(Organization::class, 'board_members', 'user_id', 'organization_id')
             ->withTimestamps();
-    }
-
-    /**
-     * Primary organization affiliation selected by supporter.
-     */
-    public function primaryOrganization(): BelongsTo
-    {
-        return $this->belongsTo(Organization::class, 'primary_organization_id');
     }
 
     public function canManageContent()

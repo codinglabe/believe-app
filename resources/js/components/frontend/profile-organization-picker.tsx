@@ -51,7 +51,7 @@ interface ProfileOrganizationPickerProps {
 }
 
 /**
- * Search + infinite scroll via Inertia partial reload on `profile.edit` (same pattern as ledger org picker).
+ * Search + infinite scroll via Inertia partial reload on `user.profile.edit` (supporter `/profile/edit`, not `profile.edit` which is org settings).
  */
 export function ProfileOrganizationPicker({
   variant,
@@ -89,7 +89,7 @@ export function ProfileOrganizationPicker({
         org_picker_exclude: excludeParam,
         org_picker_target: pickerTarget,
       }
-      router.get(route("profile.edit"), params, {
+      router.get(route("user.profile.edit"), params, {
         only: ["organizationPicker"],
         preserveScroll: true,
         preserveState: true,

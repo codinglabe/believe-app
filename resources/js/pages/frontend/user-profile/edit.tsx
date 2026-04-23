@@ -156,7 +156,7 @@ export default function ProfileEdit() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    post(route("profile.update"), {
+    post(route("user.profile.update"), {
       preserveScroll: true,
       onSuccess: () => {
         updateAppearance(data.preferred_theme)
