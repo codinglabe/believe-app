@@ -23,8 +23,9 @@ import {
   Copy,
   Calendar,
   Info,
+  Plus,
 } from "lucide-react"
-import { useForm, usePage, Link } from "@inertiajs/react"
+import { Link, useForm, usePage } from "@inertiajs/react"
 import { toast } from "sonner"
 import { Transition } from "@headlessui/react"
 import { Alert, AlertDescription } from "@/components/frontend/ui/alert"
@@ -37,8 +38,13 @@ import {
   SelectValue,
 } from "@/components/frontend/ui/select"
 import { RadioGroup, RadioGroupItem } from "@/components/frontend/ui/radio-group"
+import {
+  ProfileOrganizationPicker,
+  type ProfileOrgOption,
+} from "@/components/frontend/profile-organization-picker"
 import { useAppearance, type Appearance } from "@/hooks/use-appearance"
 import { cn } from "@/lib/utils"
+import type { SharedData } from "@/types"
 
 interface AffiliatedOrg {
   id: number
@@ -46,7 +52,9 @@ interface AffiliatedOrg {
   logo_url?: string | null
 }
 
-interface PageProps {
+type OrgRow = ProfileOrgOption
+
+interface ProfileEditPageProps {
   user: {
     id: number
     name: string
@@ -64,22 +72,30 @@ interface PageProps {
     secondary_organization_ids?: number[]
     unity_meeting_id?: string
     account_visibility?: "public" | "private"
-    message_audience?: "everyone" | "followers_only" | "organizations_i_follow" | "no_one"
-    appearance_preference?: Appearance | null
+    messaging_policy?: "everyone" | "followers_only" | "organizations_i_follow" | "no_one"
+    preferred_theme?: Appearance | null
   }
   availablePositions: { id: number; name: string }[]
   availableSupporterInterests: { id: number; name: string }[]
   affiliatedOrganizations: AffiliatedOrg[]
   religionOptions: string[]
+  organizations: OrgRow[]
+  organizationPicker?: {
+    target: "primary" | "secondary"
+    items: OrgRow[]
+    has_more: boolean
+    page: number
+    search: string
+  } | null
 }
 
 export default function ProfileEdit() {
-  const { user, availablePositions, availableSupporterInterests, affiliatedOrganizations, religionOptions } =
-    usePage<PageProps>().props
+  const { user, availablePositions, availableSupporterInterests, religionOptions, organizations = [] } =
+    usePage<SharedData & ProfileEditPageProps>().props
 
   const { updateAppearance } = useAppearance()
 
-  const { data, setData, post, processing, errors, reset, recentlySuccessful } = useForm({
+  const inertiaForm = useForm({
     name: user?.name || "",
     email: user?.email || "",
     phone: user?.phone || "",
@@ -92,37 +108,50 @@ export default function ProfileEdit() {
     state: user?.state || "",
     zipcode: user?.zipcode || "",
     religion: user?.religion || "",
-    primary_organization_id: user?.primary_organization_id ?? null,
-    secondary_organization_ids: user?.secondary_organization_ids ?? [],
     account_visibility: (user?.account_visibility === "private" ? "private" : "public") as "public" | "private",
-    message_audience: (user?.message_audience ?? "everyone") as PageProps["user"]["message_audience"],
-    appearance_preference: (user?.appearance_preference ?? "system") as Appearance,
+    messaging_policy: (user?.messaging_policy ?? "everyone") as ProfileEditPageProps["user"]["messaging_policy"],
+    primary_organization_id: user?.primary_organization_id ?? "",
+    secondary_organization_ids: user?.secondary_organization_ids ?? [],
+    preferred_theme: ((user?.preferred_theme as Appearance) ?? "system") as Appearance,
   })
+
+  inertiaForm.transform((payload) => ({
+    ...payload,
+    primary_organization_id:
+      payload.primary_organization_id === "" || payload.primary_organization_id === undefined
+        ? null
+        : typeof payload.primary_organization_id === "number"
+          ? payload.primary_organization_id
+          : Number(payload.primary_organization_id),
+  }))
+
+  const { data, setData, post, processing, errors, reset, recentlySuccessful } = inertiaForm
 
   const [previewUrl, setPreviewUrl] = useState(user?.image || null)
   const [copiedUnity, setCopiedUnity] = useState(false)
+  const [orgCache, setOrgCache] = useState<Record<number, OrgRow>>({})
 
   useEffect(() => {
-    if (user) {
-      setData("name", user.name || "")
-      setData("email", user.email || "")
-      setData("phone", user.phone || "")
-      setData("dob", user.dob || "")
-      setData("city", user.city || "")
-      setData("state", user.state || "")
-      setData("zipcode", user.zipcode || "")
-      setData("religion", user.religion || "")
-      setData("primary_organization_id", user.primary_organization_id ?? null)
-      setData("secondary_organization_ids", user.secondary_organization_ids ?? [])
-      setData("account_visibility", user.account_visibility === "private" ? "private" : "public")
-      setData("message_audience", (user.message_audience ?? "everyone") as PageProps["user"]["message_audience"])
-      setData("appearance_preference", (user.appearance_preference ?? "system") as Appearance)
-      setData("positions", user.positions || [])
-      setData("supporter_interests", user.supporter_interests || [])
-      if (user.image) {
-        setPreviewUrl(user.image)
-      }
+    if (!user) return
+    setData("name", user.name || "")
+    setData("email", user.email || "")
+    setData("phone", user.phone || "")
+    setData("dob", user.dob || "")
+    setData("city", user.city || "")
+    setData("state", user.state || "")
+    setData("zipcode", user.zipcode || "")
+    setData("religion", user.religion || "")
+    setData("account_visibility", user.account_visibility === "private" ? "private" : "public")
+    setData("messaging_policy", (user.messaging_policy ?? "everyone") as ProfileEditPageProps["user"]["messaging_policy"])
+    setData("primary_organization_id", user.primary_organization_id ?? "")
+    setData("secondary_organization_ids", user.secondary_organization_ids ?? [])
+    setData("preferred_theme", (user.preferred_theme as Appearance) || "system")
+    setData("positions", user.positions || [])
+    setData("supporter_interests", user.supporter_interests || [])
+    if (user.image) {
+      setPreviewUrl(user.image)
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- sync form when loaded user identity changes, not on every prop churn
   }, [user?.id])
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -130,7 +159,7 @@ export default function ProfileEdit() {
     post(route("profile.update"), {
       preserveScroll: true,
       onSuccess: () => {
-        updateAppearance(data.appearance_preference)
+        updateAppearance(data.preferred_theme)
         toast.success("Profile updated successfully!")
       },
       onError: (errs) => {
@@ -142,15 +171,14 @@ export default function ProfileEdit() {
 
   const handleCancel = () => {
     reset()
-    setPreviewUrl(user.image)
+    setPreviewUrl(user?.image ?? null)
   }
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (file) {
       setData("image", file)
-      const url = URL.createObjectURL(file)
-      setPreviewUrl(url)
+      setPreviewUrl(URL.createObjectURL(file))
     }
   }
 
@@ -172,12 +200,77 @@ export default function ProfileEdit() {
     value: position.id.toString(),
   }))
 
-  const secondaryOrgOptions = useMemo(
-    () =>
-      affiliatedOrganizations
-        .filter((org) => org.id !== data.primary_organization_id)
-        .map((org) => ({ label: org.name, value: String(org.id) })),
-    [affiliatedOrganizations, data.primary_organization_id],
+  const primaryOrgIdNum =
+    data.primary_organization_id === "" || data.primary_organization_id === undefined
+      ? null
+      : Number(data.primary_organization_id)
+
+  const resolvedOrganizations = useMemo(() => {
+    const map = new Map<number, OrgRow>()
+    for (const o of organizations) map.set(o.id, o)
+    for (const o of Object.values(orgCache)) map.set(o.id, o)
+    return Array.from(map.values())
+  }, [organizations, orgCache])
+
+  const mergeOrg = useCallback((org: OrgRow) => {
+    setOrgCache((prev) => ({ ...prev, [org.id]: org }))
+  }, [])
+
+  const primaryOrganizationDisplay = useMemo(() => {
+    if (primaryOrgIdNum === null) return null
+    return resolvedOrganizations.find((o) => o.id === primaryOrgIdNum) ?? null
+  }, [resolvedOrganizations, primaryOrgIdNum])
+
+  const secondaryExcludeIds = useMemo(() => {
+    const ids = [...data.secondary_organization_ids]
+    if (primaryOrgIdNum) ids.push(primaryOrgIdNum)
+    return [...new Set(ids)]
+  }, [data.secondary_organization_ids, primaryOrgIdNum])
+
+  const selectedSecondaryOrganizations = useMemo(
+    () => resolvedOrganizations.filter((o) => data.secondary_organization_ids.includes(o.id)),
+    [resolvedOrganizations, data.secondary_organization_ids],
+  )
+
+  const addSecondaryOrganization = useCallback(
+    (id: number) => {
+      if (primaryOrgIdNum && id === primaryOrgIdNum) return
+      if (data.secondary_organization_ids.includes(id)) return
+      setData("secondary_organization_ids", [...data.secondary_organization_ids, id])
+    },
+    [data.secondary_organization_ids, primaryOrgIdNum, setData],
+  )
+
+  const removeSecondaryOrganization = useCallback(
+    (id: number) =>
+      setData(
+        "secondary_organization_ids",
+        data.secondary_organization_ids.filter((x) => x !== id),
+      ),
+    [data.secondary_organization_ids, setData],
+  )
+
+  const handlePrimaryOrganizationChange = useCallback(
+    (value: string) => {
+      const nextPrimary = value === "__none__" ? "" : value
+      const pid = nextPrimary ? Number(nextPrimary) : null
+      setData({
+        ...data,
+        primary_organization_id: nextPrimary === "" ? "" : nextPrimary,
+        secondary_organization_ids: pid
+          ? data.secondary_organization_ids.filter((sid) => sid !== pid)
+          : data.secondary_organization_ids,
+      })
+    },
+    [data, setData],
+  )
+
+  const setPreferredTheme = useCallback(
+    (mode: Appearance) => {
+      setData("preferred_theme", mode)
+      updateAppearance(mode)
+    },
+    [setData, updateAppearance],
   )
 
   const selectedSupporterInterestCategories = useMemo(
@@ -520,7 +613,7 @@ export default function ProfileEdit() {
           </CardContent>
         </Card>
 
-        {/* 3 & 4: Account Settings | Organization Affiliation */}
+        {/* 3 & 4 */}
         <div className="grid gap-6 lg:grid-cols-2">
           <Card className={cardClass}>
             <CardHeader className="pb-4">{sectionTitle(<Shield className="h-5 w-5" />, 3, "Account Settings")}</CardHeader>
@@ -557,10 +650,10 @@ export default function ProfileEdit() {
               <div className="space-y-3">
                 <Label className="text-slate-200">Who can message me?</Label>
                 <RadioGroup
-                  value={data.message_audience ?? "everyone"}
+                  value={data.messaging_policy ?? "everyone"}
                   onValueChange={(v) =>
                     setData(
-                      "message_audience",
+                      "messaging_policy",
                       v as "everyone" | "followers_only" | "organizations_i_follow" | "no_one",
                     )
                   }
@@ -590,85 +683,96 @@ export default function ProfileEdit() {
                     </label>
                   ))}
                 </RadioGroup>
-                {errors.message_audience && (
-                  <p className="text-sm text-red-400">{errors.message_audience}</p>
-                )}
+                {errors.messaging_policy && <p className="text-sm text-red-400">{errors.messaging_policy}</p>}
               </div>
             </CardContent>
           </Card>
 
           <Card className={cardClass}>
-            <CardHeader className="pb-4">
-              {sectionTitle(<Building2 className="h-5 w-5" />, 4, "Organization Affiliation")}
-            </CardHeader>
-            <CardContent className="space-y-5">
-              <div>
-                <Label htmlFor="primary_organization_id" className="text-slate-200">
+            <CardHeader className="pb-4">{sectionTitle(<Building2 className="h-5 w-5" />, 4, "Organization Affiliation")}</CardHeader>
+            <CardContent className="space-y-6">
+              <div className="space-y-2">
+                <Label htmlFor="primary_organization" className="text-slate-200">
                   Primary Organization *
                 </Label>
-                <Select
-                  value={data.primary_organization_id ? String(data.primary_organization_id) : "__none__"}
-                  onValueChange={(value) => {
-                    if (value === "__none__") {
-                      setData("primary_organization_id", null)
-                      return
-                    }
-                    const id = Number(value)
-                    setData("primary_organization_id", id)
-                    setData(
-                      "secondary_organization_ids",
-                      data.secondary_organization_ids.filter((x) => x !== id),
-                    )
+                <ProfileOrganizationPicker
+                  variant="primary"
+                  triggerId="primary_organization"
+                  primaryValue={
+                    data.primary_organization_id === "" || data.primary_organization_id === undefined
+                      ? "__none__"
+                      : String(data.primary_organization_id)
+                  }
+                  selectedOrganization={primaryOrganizationDisplay ?? undefined}
+                  onPrimaryChange={(value, org) => {
+                    if (org) mergeOrg(org)
+                    handlePrimaryOrganizationChange(value)
                   }}
-                >
-                  <SelectTrigger id="primary_organization_id" className="mt-1 border-slate-600 bg-slate-800 text-slate-100">
-                    <SelectValue placeholder="Select the organization you primarily represent" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__none__">Select organization…</SelectItem>
-                    {affiliatedOrganizations.map((org) => (
-                      <SelectItem key={org.id} value={String(org.id)}>
-                        <span className="flex items-center gap-2">
-                          {org.logo_url ? (
-                            <img src={org.logo_url} alt="" className="h-6 w-6 rounded-full object-cover" />
-                          ) : (
-                            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-indigo-600 text-xs text-white">
-                              {org.name.charAt(0)}
-                            </span>
-                          )}
-                          {org.name}
-                        </span>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                  placeholder="Select organization"
+                  className="border-slate-600 bg-slate-800 text-slate-100"
+                />
+                <p className="text-sm text-slate-400">Select the organization you primarily represent.</p>
                 {errors.primary_organization_id && (
-                  <p className="mt-1 text-sm text-red-400">{errors.primary_organization_id}</p>
+                  <p className="text-sm text-red-400">{errors.primary_organization_id}</p>
                 )}
-                <p className="mt-2 text-sm text-slate-400">Select the organization you primarily represent.</p>
               </div>
 
-              <div>
-                <Label className="mb-2 block text-slate-200">Secondary Organizations</Label>
-                <MultiSelect
-                  options={secondaryOrgOptions}
-                  selected={data.secondary_organization_ids.map(String)}
-                  onChange={(selected) => setData("secondary_organization_ids", selected.map(Number))}
-                  placeholder="Select additional organizations you are affiliated with"
-                />
+              <div className="space-y-2">
+                <Label className="text-slate-200">Secondary Organizations</Label>
+                <p className="text-sm text-slate-400">Select additional organizations you are affiliated with.</p>
+                <div
+                  role="group"
+                  aria-label="Secondary organizations"
+                  className="flex min-h-10 w-full flex-wrap items-center gap-1 rounded-md border border-slate-600 bg-slate-800 px-2 py-1 text-sm"
+                >
+                  {selectedSecondaryOrganizations.map((org) => (
+                    <span
+                      key={org.id}
+                      className="inline-flex max-w-full items-center gap-1 rounded-md border border-white/20 bg-gradient-to-r from-purple-600 to-blue-600 px-2 py-0.5 text-[13px] text-white shadow-md"
+                    >
+                      <span className="truncate">{org.name}</span>
+                      <button
+                        type="button"
+                        onClick={() => removeSecondaryOrganization(org.id)}
+                        className="inline-flex size-4 shrink-0 items-center justify-center rounded-sm text-white/90 hover:bg-white/20"
+                        aria-label={`Remove ${org.name}`}
+                      >
+                        <X className="h-2.5 w-2.5" strokeWidth={2.5} />
+                      </button>
+                    </span>
+                  ))}
+                  <label className="sr-only" htmlFor="secondary-org-add">
+                    Add secondary organization
+                  </label>
+                  <ProfileOrganizationPicker
+                    key={secondaryExcludeIds.join(",")}
+                    variant="secondary-add"
+                    triggerId="secondary-org-add"
+                    excludeIds={secondaryExcludeIds}
+                    compactTrigger
+                    placeholder="Add organization…"
+                    onSecondaryAdd={(org) => {
+                      mergeOrg(org)
+                      addSecondaryOrganization(org.id)
+                    }}
+                  />
+                </div>
                 {errors.secondary_organization_ids && (
-                  <p className="mt-1 text-sm text-red-400">{errors.secondary_organization_ids}</p>
+                  <p className="text-sm text-red-400">{errors.secondary_organization_ids}</p>
                 )}
               </div>
 
               <div className="rounded-lg border border-dashed border-indigo-400/40 bg-slate-800/30 p-4 text-center">
                 <Link
                   href={route("organizations")}
-                  className="text-sm font-medium text-blue-400 hover:text-blue-300 hover:underline"
+                  className="inline-flex items-center justify-center gap-1.5 text-sm font-medium text-blue-400 hover:text-blue-300 hover:underline"
                 >
-                  + Request to Join Organization
+                  <Plus className="h-4 w-4" aria-hidden />
+                  Request to Join Organization
                 </Link>
-                <p className="mt-2 text-xs text-slate-500">Can&apos;t find your organization? Browse nonprofits to follow.</p>
+                <p className="mt-2 text-xs text-slate-500">
+                  Can&apos;t find your organization? Browse organizations and connect from the directory.
+                </p>
               </div>
             </CardContent>
           </Card>
@@ -676,26 +780,28 @@ export default function ProfileEdit() {
 
         {/* 5. Preferences */}
         <Card className={cardClass}>
-          <CardHeader className="pb-4">{sectionTitle(<Monitor className="h-5 w-5" />, 5, "Preferences (Global Settings)")}</CardHeader>
+          <CardHeader className="pb-4">
+            {sectionTitle(<Monitor className="h-5 w-5" />, 5, "Preferences (Global Settings)")}
+          </CardHeader>
           <CardContent className="space-y-3">
             <Label className="text-slate-200">Scene View (Theme)</Label>
-            <div className="inline-flex rounded-lg border border-slate-600 bg-slate-800 p-1">
+            <div className="mt-1 flex flex-wrap gap-2">
               {(
                 [
-                  ["system", <Monitor key="m" className="mr-1.5 h-4 w-4" />, "Auto (System)"],
-                  ["light", <Sun key="s" className="mr-1.5 h-4 w-4" />, "Light"],
-                  ["dark", <Moon key="d" className="mr-1.5 h-4 w-4" />, "Dark"],
+                  ["system", <Monitor key="ic-sys" className="h-4 w-4" aria-hidden />, "Auto (System)"],
+                  ["light", <Sun key="ic-light" className="h-4 w-4" aria-hidden />, "Light"],
+                  ["dark", <Moon key="ic-dark" className="h-4 w-4" aria-hidden />, "Dark"],
                 ] as const
               ).map(([mode, icon, label]) => (
                 <button
                   key={mode}
                   type="button"
-                  onClick={() => setData("appearance_preference", mode)}
+                  onClick={() => setPreferredTheme(mode)}
                   className={cn(
-                    "inline-flex items-center rounded-md px-3 py-2 text-sm font-medium transition-colors",
-                    data.appearance_preference === mode
-                      ? "bg-indigo-600 text-white shadow"
-                      : "text-slate-300 hover:bg-slate-700/80 hover:text-white",
+                    "inline-flex min-w-[8rem] flex-1 items-center justify-center gap-2 rounded-lg border px-4 py-2.5 text-sm font-medium transition-all sm:flex-none",
+                    data.preferred_theme === mode
+                      ? "border-transparent bg-gradient-to-r from-purple-600 to-blue-600 text-white shadow-md"
+                      : "border-slate-600 bg-slate-800/80 text-slate-200 hover:border-indigo-500/40 hover:bg-slate-800",
                   )}
                 >
                   {icon}
@@ -704,9 +810,7 @@ export default function ProfileEdit() {
               ))}
             </div>
             <p className="text-sm text-slate-400">These settings apply across the entire BIU platform.</p>
-            {errors.appearance_preference && (
-              <p className="text-sm text-red-400">{errors.appearance_preference}</p>
-            )}
+            {errors.preferred_theme && <p className="text-sm text-red-400">{errors.preferred_theme}</p>}
           </CardContent>
         </Card>
 

@@ -9,6 +9,7 @@ use App\Models\ChallengeQuizSubcategory;
 use App\Models\LevelUpChallengeEntry;
 use App\Models\LevelUpTrack;
 use App\Services\ChallengeHubImageService;
+// use App\Services\ChallengeQuestionImportService; // CSV import disabled — restore with import routes + methods
 use App\Support\ChallengeQuestionHasher;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\RedirectResponse;
@@ -21,8 +22,16 @@ use Inertia\Inertia;
 use Inertia\Response;
 use RuntimeException;
 
+// use Symfony\Component\HttpFoundation\StreamedResponse; // CSV template download — restore with import
+
 class AdminChallengeHubController extends Controller
 {
+    /** Kilobytes — matches config `challenge_hub.admin_entry_cover_max_kb`. */
+    protected function challengeHubCoverMaxKb(): int
+    {
+        return max(64, (int) config('challenge_hub.admin_entry_cover_max_kb', 5120));
+    }
+
     public function categoriesIndex(): Response
     {
         $categories = ChallengeHubCategory::query()
@@ -258,6 +267,47 @@ class AdminChallengeHubController extends Controller
         return redirect()->back()->with('success', 'Question deleted.');
     }
 
+    /*
+    public function importQuestions(Request $request, ChallengeQuestionImportService $importer): RedirectResponse
+    {
+        $request->validate([
+            'file' => 'required|file|mimes:csv,txt,xlsx,xls|max:10240',
+        ]);
+
+        try {
+            $result = $importer->import($request->file('file'));
+        } catch (\InvalidArgumentException $e) {
+            return redirect()->back()->with('error', $e->getMessage());
+        }
+
+        $summary = sprintf(
+            'Import finished: %d added, %d skipped (duplicate), %d skipped (invalid row).',
+            $result['inserted'],
+            $result['skipped_duplicates'],
+            $result['skipped_invalid']
+        );
+
+        return redirect()->back()
+            ->with('success', $summary)
+            ->with('import_errors', array_slice($result['errors'], 0, 50));
+    }
+
+    public function downloadQuestionImportTemplate(): StreamedResponse
+    {
+        return response()->streamDownload(function (): void {
+            $out = fopen('php://output', 'w');
+            if ($out === false) {
+                return;
+            }
+            fputcsv($out, ['category', 'subcategory', 'religion', 'difficulty', 'question', 'option_a', 'option_b', 'option_c', 'option_d', 'correct_answer', 'explanation']);
+            fputcsv($out, ['Faith', 'Bible', '', 'Easy', 'What is 2 + 2?', '3', '4', '5', '6', 'B', 'Numbers only.']);
+            fclose($out);
+        }, 'challenge-questions-import-template.csv', [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+        ]);
+    }
+    */
+
     public function storeCategory(Request $request, ChallengeHubImageService $images): RedirectResponse
     {
         $data = $request->validate([
@@ -265,7 +315,7 @@ class AdminChallengeHubController extends Controller
             'is_new' => 'boolean',
             'is_active' => 'boolean',
             'sort_order' => 'nullable|integer|min:0|max:65535',
-            'cover_image' => 'nullable|image|max:10240',
+            'cover_image' => 'nullable|image|max:'.$this->challengeHubCoverMaxKb(),
             'cover_prompt' => 'nullable|string|max:2000',
         ]);
 
@@ -538,7 +588,7 @@ class AdminChallengeHubController extends Controller
             'hub_category_id' => 'required|exists:challenge_hub_categories,id',
             'quiz_subcategory' => 'required|string|max:128',
             'sort_order' => 'nullable|integer|min:0|max:65535',
-            'cover_image' => 'nullable|image|max:10240',
+            'cover_image' => 'nullable|image|max:'.$this->challengeHubCoverMaxKb(),
             'cover_prompt' => 'nullable|string|max:2000',
         ]);
 
@@ -724,7 +774,7 @@ class AdminChallengeHubController extends Controller
     public function uploadTrackCover(Request $request, LevelUpTrack $track, ChallengeHubImageService $images): RedirectResponse
     {
         $request->validate([
-            'cover_image' => 'required|image|max:10240',
+            'cover_image' => 'required|image|max:'.$this->challengeHubCoverMaxKb(),
         ]);
 
         try {
@@ -880,7 +930,7 @@ class AdminChallengeHubController extends Controller
     public function uploadEntryCover(Request $request, LevelUpChallengeEntry $entry, ChallengeHubImageService $images): RedirectResponse
     {
         $request->validate([
-            'cover_image' => 'required|image|max:10240',
+            'cover_image' => 'required|image|max:'.$this->challengeHubCoverMaxKb(),
             'redirect_to' => 'nullable|in:challenges',
         ]);
 
@@ -1043,6 +1093,8 @@ class AdminChallengeHubController extends Controller
             : [];
 
         return Inertia::render('admin/challenge-hub/ChallengeEdit', array_merge($picker, [
+            'cover_client_max_kb' => (int) config('challenge_hub.admin_entry_cover_client_max_kb'),
+            'cover_server_max_kb' => (int) config('challenge_hub.admin_entry_cover_max_kb'),
             'entry' => [
                 'id' => $entry->id,
                 'title' => $entry->title,
@@ -1110,7 +1162,7 @@ class AdminChallengeHubController extends Controller
     public function uploadCategoryCover(Request $request, ChallengeHubCategory $category, ChallengeHubImageService $images): RedirectResponse
     {
         $request->validate([
-            'cover_image' => 'required|image|max:10240',
+            'cover_image' => 'required|image|max:'.$this->challengeHubCoverMaxKb(),
         ]);
 
         try {

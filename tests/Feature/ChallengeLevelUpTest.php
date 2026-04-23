@@ -1,10 +1,12 @@
 <?php
 
 use App\Models\ChallengeQuestion;
+use App\Models\LevelUpQuizSession;
 use App\Models\LevelUpTrack;
 use App\Models\RewardPointLedger;
 use App\Models\User;
 use App\Models\UserChallengeQuestionEvent;
+use App\Services\ChallengeQuestionService;
 use App\Support\ChallengeLevelUp;
 use App\Support\ChallengeQuestionHasher;
 use Database\Seeders\ChallengeHubCategoriesSeeder;
@@ -99,7 +101,7 @@ test('finish ends session and discards unanswered pending question', function ()
         ->where('status', UserChallengeQuestionEvent::STATUS_PENDING)
         ->count())->toBe(0);
 
-    expect(\App\Models\LevelUpQuizSession::query()
+    expect(LevelUpQuizSession::query()
         ->where('user_id', $user->id)
         ->whereNull('ended_at')
         ->count())->toBe(0);
@@ -123,11 +125,16 @@ test('correct answer credits reward points and ledger with challenge source', fu
 
     $this->actingAs($user)->post(route('challenge-hub.next', $track->slug));
     $event = UserChallengeQuestionEvent::query()->where('user_id', $user->id)->firstOrFail();
-    $correct = $event->challengeQuestion->correct_option;
+    $q = $event->challengeQuestion;
+    $correctDisplay = app(ChallengeQuestionService::class)->mapStorageLetterToDisplayLetter(
+        $q,
+        (int) $event->id,
+        (string) $q->correct_option
+    );
 
     $this->actingAs($user)->post(route('challenge-hub.answer', $track->slug), [
         'event_id' => $event->id,
-        'selected_option' => $correct,
+        'selected_option' => $correctDisplay,
     ]);
 
     $user->refresh();
@@ -152,10 +159,13 @@ test('wrong answer deducts reward points when balance is available', function ()
 
     $this->actingAs($user)->post(route('challenge-hub.next', $track->slug));
     $event = UserChallengeQuestionEvent::query()->where('user_id', $user->id)->firstOrFail();
+    $q = $event->fresh()->challengeQuestion;
+    $wrongStorage = challengeWrongOptionLetter((string) $q->correct_option);
+    $wrongDisplay = app(ChallengeQuestionService::class)->mapStorageLetterToDisplayLetter($q, (int) $event->id, $wrongStorage);
 
     $this->actingAs($user)->post(route('challenge-hub.answer', $track->slug), [
         'event_id' => $event->id,
-        'selected_option' => challengeWrongOptionLetter((string) $event->fresh()->challengeQuestion->correct_option),
+        'selected_option' => $wrongDisplay,
     ]);
 
     $user->refresh();
@@ -173,10 +183,13 @@ test('wrong answer applies full penalty when balance is zero resulting in negati
 
     $this->actingAs($user)->post(route('challenge-hub.next', $track->slug));
     $event = UserChallengeQuestionEvent::query()->where('user_id', $user->id)->firstOrFail();
+    $q = $event->fresh()->challengeQuestion;
+    $wrongStorage = challengeWrongOptionLetter((string) $q->correct_option);
+    $wrongDisplay = app(ChallengeQuestionService::class)->mapStorageLetterToDisplayLetter($q, (int) $event->id, $wrongStorage);
 
     $this->actingAs($user)->post(route('challenge-hub.answer', $track->slug), [
         'event_id' => $event->id,
-        'selected_option' => challengeWrongOptionLetter((string) $event->fresh()->challengeQuestion->correct_option),
+        'selected_option' => $wrongDisplay,
     ]);
 
     $user->refresh();
@@ -195,9 +208,13 @@ test('second question after first is different row', function () {
     $event1 = UserChallengeQuestionEvent::query()->where('user_id', $user->id)->firstOrFail();
     $qid1 = $event1->challenge_question_id;
 
+    $q1 = $event1->fresh()->challengeQuestion;
+    $wrongStorage = challengeWrongOptionLetter((string) $q1->correct_option);
+    $wrongDisplay = app(ChallengeQuestionService::class)->mapStorageLetterToDisplayLetter($q1, (int) $event1->id, $wrongStorage);
+
     $this->actingAs($user)->post(route('challenge-hub.answer', $track->slug), [
         'event_id' => $event1->id,
-        'selected_option' => 'C',
+        'selected_option' => $wrongDisplay,
     ]);
 
     $this->actingAs($user)->post(route('challenge-hub.next', $track->slug));

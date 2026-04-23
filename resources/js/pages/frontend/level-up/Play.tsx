@@ -16,7 +16,6 @@ import {
   Heart,
   Landmark,
   Loader2,
-  Sparkles,
   Trophy,
   XCircle,
 } from "lucide-react"
@@ -75,7 +74,10 @@ interface ActiveQuestion {
 interface LastResult {
   event_id?: number
   is_correct: boolean
+  /** Display letter (legacy); prefer {@link correct_answer_text} in UI. */
   correct_option: string
+  /** Full text of the correct choice (not A/B/C/D). */
+  correct_answer_text?: string | null
   explanation: string | null
   points_awarded: number
   reward_points_balance: number
@@ -255,27 +257,28 @@ export default function LevelUpPlay() {
 
   const showQuizResults = !!quiz_result
 
-  const quizSubtitle = activeQuestion?.subcategory
-    ? `${activeQuestion.subcategory} Quiz`
-    : track.subject_categories?.[0]
-      ? `${track.subject_categories[0]} Quiz`
-      : "Daily Quiz"
-
-  const quizModeLabel =
-    quizMode === "easy"
-      ? "Easy"
-      : quizMode === "hard"
-        ? "Hard"
-        : quizMode === "practice"
-          ? "Practice"
-          : "Medium"
-
   const challengesHref = route("challenge-hub.challenges", track.slug)
 
   const playShell = !showQuizResults
 
   const isStartScreen = !activeQuestion && !showFeedback && !exhausted
   const isFeedbackOnly = !!(showFeedback && lastResult)
+
+  /** From challenges modal (?begin=1): skip intro “Start” and fetch first question immediately. */
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const params = new URLSearchParams(window.location.search)
+    if (params.get("begin") !== "1") return
+
+    const u = new URL(window.location.href)
+    u.searchParams.delete("begin")
+    const qs = u.searchParams.toString()
+    window.history.replaceState(null, "", `${u.pathname}${qs ? `?${qs}` : ""}${u.hash}`)
+
+    if (!isStartScreen) return
+
+    requestNext()
+  }, [isStartScreen])
 
   const HeroIcon = CHALLENGE_HUB_ICON_MAP[hero_icon] ?? Heart
 
@@ -449,26 +452,6 @@ export default function LevelUpPlay() {
                       exit={{ opacity: 0 }}
                       className="space-y-5"
                     >
-                      <p className="text-center text-[11px] font-semibold uppercase tracking-[0.32em] text-purple-600 dark:text-purple-400">
-                        {quizSubtitle}
-                      </p>
-                      <p className="text-center text-[10px] text-slate-500 dark:text-white/50">
-                        <span className="rounded-full border border-slate-300 bg-slate-100 px-2.5 py-0.5 font-medium text-slate-700 dark:border-white/15 dark:bg-white/[0.06] dark:text-white/75">
-                          {practiceMode ? "Practice — learn without points" : `${quizModeLabel} questions`}
-                        </span>
-                      </p>
-                      {activeQuestion.generated_new_questions ? (
-                        <motion.p
-                          initial={{ opacity: 0, y: -4 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          transition={{ ...springTransition, delay: 0.06 }}
-                          className="flex items-center justify-center gap-2 text-center text-xs text-emerald-700 dark:text-emerald-200/90"
-                        >
-                          <Sparkles className="h-3.5 w-3.5 shrink-0 text-emerald-600 dark:text-emerald-400/90" strokeWidth={2} />
-                          Fresh questions were just added for you.
-                        </motion.p>
-                      ) : null}
-
                       <PlayTimerPill secondsLeft={secondsLeft} limitSec={limitSec} />
 
                       <motion.div
@@ -484,15 +467,6 @@ export default function LevelUpPlay() {
                         >
                           {activeQuestion.question}
                         </motion.p>
-                        {activeQuestion.difficulty && (
-                          <motion.p
-                            variants={fadeUp}
-                            transition={{ ...springTransition, delay: 0.05 }}
-                            className="mt-3 text-[11px] uppercase tracking-[0.18em] text-slate-500 dark:text-white/45"
-                          >
-                            {activeQuestion.difficulty}
-                          </motion.p>
-                        )}
                       </motion.div>
 
                       <div className="grid gap-3">
@@ -515,9 +489,8 @@ export default function LevelUpPlay() {
                                   : "border-purple-300/80 bg-white/95 backdrop-blur-[2px] hover:border-purple-400 dark:border-purple-500/35 dark:bg-[#0c0d18]/72 dark:hover:border-purple-500/55 dark:hover:bg-[#101125]/80"
                               )}
                             >
-                              <span className="flex min-w-0 items-baseline gap-3">
-                                <span className="shrink-0 font-semibold tabular-nums text-purple-600 dark:text-purple-400/90">{answerKey}.</span>
-                                <span className="min-w-0 flex-1 text-[15px] leading-snug text-slate-800 dark:text-white/95">{row.text}</span>
+                              <span className="min-w-0 flex-1 text-left text-[15px] leading-snug text-slate-800 dark:text-white/95">
+                                {row.text}
                               </span>
                               {selected === answerKey ? (
                                 <Check className="h-6 w-6 shrink-0 text-emerald-600 dark:text-emerald-400" strokeWidth={2.5} />
@@ -597,9 +570,13 @@ export default function LevelUpPlay() {
                           )}
                         </motion.div>
                         <p className="text-sm leading-relaxed text-slate-600 dark:text-white/70">
-                          <span className="inline-flex items-baseline gap-x-1.5 whitespace-nowrap">
-                            <span>Correct answer:</span>
-                            <span className="font-semibold text-purple-700 dark:text-purple-200">{lastResult.correct_option}</span>
+                          <span className="inline-flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                            <span className="shrink-0 text-slate-500 dark:text-white/55">Correct answer:</span>
+                            <span className="min-w-0 font-semibold text-purple-800 dark:text-purple-100">
+                              {lastResult.correct_answer_text?.trim()
+                                ? lastResult.correct_answer_text
+                                : lastResult.correct_option}
+                            </span>
                           </span>
                         </p>
                         {lastResult.explanation && (

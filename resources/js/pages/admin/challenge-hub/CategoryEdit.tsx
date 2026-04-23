@@ -1,6 +1,6 @@
 "use client"
 
-import React from "react"
+import React, { useState } from "react"
 import { Head, Link, useForm } from "@inertiajs/react"
 import AppLayout from "@/layouts/app-layout"
 import { ChallengeHubAdminNav } from "@/components/challenge-hub-admin-nav"
@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
 import { ArrowLeft, Upload, Wand2 } from "lucide-react"
+import { CHALLENGE_HUB_COVER_MAX_BYTES, validateChallengeHubCoverFile } from "@/lib/challenge-hub-cover-limit"
 import type { BreadcrumbItem } from "@/types"
 
 declare global {
@@ -55,6 +56,8 @@ export default function AdminChallengeHubCategoryEdit({ category }: Props) {
     cover_image: null,
   })
 
+  const [coverClientError, setCoverClientError] = useState<string | null>(null)
+
   const save = (e: React.FormEvent) => {
     e.preventDefault()
     form.put(route("admin.challenge-hub.categories.update", category.slug))
@@ -68,9 +71,19 @@ export default function AdminChallengeHubCategoryEdit({ category }: Props) {
   const uploadCover = (e: React.FormEvent) => {
     e.preventDefault()
     if (!uploadForm.data.cover_image) return
+    const msg = validateChallengeHubCoverFile(uploadForm.data.cover_image, CHALLENGE_HUB_COVER_MAX_BYTES)
+    if (msg) {
+      setCoverClientError(msg)
+      return
+    }
+    setCoverClientError(null)
+    uploadForm.clearErrors()
     uploadForm.post(route("admin.challenge-hub.categories.upload-cover", category.slug), {
       forceFormData: true,
-      onSuccess: () => uploadForm.setData("cover_image", null),
+      onSuccess: () => {
+        uploadForm.setData("cover_image", null)
+        setCoverClientError(null)
+      },
     })
   }
 
@@ -168,6 +181,7 @@ export default function AdminChallengeHubCategoryEdit({ category }: Props) {
                       onChange={(e) => {
                         const f = e.target.files?.[0] ?? null
                         uploadForm.setData("cover_image", f)
+                        setCoverClientError(null)
                       }}
                     />
                   </div>
@@ -178,6 +192,7 @@ export default function AdminChallengeHubCategoryEdit({ category }: Props) {
                     </Button>
                   </div>
                 </div>
+                {coverClientError ? <p className="text-sm text-red-600">{coverClientError}</p> : null}
                 {uploadForm.errors.cover_image ? (
                   <p className="text-sm text-red-600">{uploadForm.errors.cover_image}</p>
                 ) : null}

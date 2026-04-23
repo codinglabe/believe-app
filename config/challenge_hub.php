@@ -55,4 +55,23 @@ return [
         'Check back soon or open the Challenge Hub for more topics.'
     ),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Admin — challenge / track / category cover uploads
+    |--------------------------------------------------------------------------
+    |
+    | Laravel validates file size in kilobytes (rule max:N = N KB).
+    |
+    | Many servers use nginx `client_max_body_size 1m;` — uploads over that never
+    | reach PHP, so the browser shows a raw "413 Request Entity Too Large" page.
+    | `admin_entry_cover_client_max_kb` is the limit enforced in JavaScript before
+    | POST (default 5120 KB ≈ 5 MB). Raise it together with nginx, e.g.:
+    |   client_max_body_size 8m;
+    | and optionally CHALLENGE_HUB_ADMIN_ENTRY_COVER_CLIENT_MAX_KB if you need to go higher.
+    |
+    */
+    'admin_entry_cover_max_kb' => max(64, (int) env('CHALLENGE_HUB_ADMIN_ENTRY_COVER_MAX_KB', 5120)),
+
+    'admin_entry_cover_client_max_kb' => max(64, (int) env('CHALLENGE_HUB_ADMIN_ENTRY_COVER_CLIENT_MAX_KB', 5120)),
+
 ];

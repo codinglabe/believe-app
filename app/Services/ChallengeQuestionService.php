@@ -71,7 +71,7 @@ class ChallengeQuestionService
 
         if ($pending && $pending->challengeQuestion) {
             if (! $this->questionMatchesUserReligion($pending->challengeQuestion, $profileReligion)) {
-                $pending->delete();
+                $pending->update(['status' => UserChallengeQuestionEvent::STATUS_SKIPPED]);
             } else {
                 return $this->withQuestionMeta($this->questionPayloadFromEvent($pending), false);
             }
@@ -184,6 +184,7 @@ class ChallengeQuestionService
         $responseTimeMs = (int) min($rawElapsed, $limitMs);
 
         $selectedOptionNorm = null;
+        $selectedStorageLetter = null;
         if (! $effectiveTimedOut) {
             if (! is_string($selectedOption)) {
                 throw new InvalidArgumentException('Invalid option.');
@@ -192,9 +193,13 @@ class ChallengeQuestionService
             if (! in_array($selectedOptionNorm, ['A', 'B', 'C', 'D'], true)) {
                 throw new InvalidArgumentException('Invalid option.');
             }
+            /** Display letters A–D are shuffled per event; map back to stored column letter for grading. */
+            $selectedStorageLetter = $this->mapDisplayLetterToStorageLetter($q, (int) $event->id, $selectedOptionNorm);
         }
 
-        $correct = ! $effectiveTimedOut && strtoupper((string) $q->correct_option) === $selectedOptionNorm;
+        $correct = ! $effectiveTimedOut
+            && $selectedStorageLetter !== null
+            && strtoupper((string) $q->correct_option) === $selectedStorageLetter;
 
         $pointsPerCorrect = (float) config('services.challenge_quiz.points_per_correct', 10);
         $pointsPerIncorrect = (float) config('services.challenge_quiz.points_per_incorrect', $pointsPerCorrect);
@@ -251,7 +256,8 @@ class ChallengeQuestionService
         return [
             'event_id' => $event->id,
             'is_correct' => $correct,
-            'correct_option' => strtoupper((string) $q->correct_option),
+            'correct_option' => $this->mapStorageLetterToDisplayLetter($q, (int) $event->id, (string) $q->correct_option),
+            'correct_answer_text' => $this->optionTextForStorageLetter($q, (string) $q->correct_option),
             'explanation' => $q->explanation,
             'points_awarded' => $points,
             'reward_points_balance' => $user->fresh()->currentRewardPoints(),
@@ -263,7 +269,7 @@ class ChallengeQuestionService
     /**
      * Drops any unanswered question on the open session, then closes that session (same scoring as exhaustion).
      *
-     * @return array<string, mixed>|null  Null when there is no open quiz session for this track.
+     * @return array<string, mixed>|null Null when there is no open quiz session for this track.
      */
     public function finishTrackQuizForUser(User $user, LevelUpTrack $track, bool $practiceMode = false): ?array
     {
@@ -281,7 +287,7 @@ class ChallengeQuestionService
         UserChallengeQuestionEvent::query()
             ->where('level_up_quiz_session_id', $session->id)
             ->where('status', UserChallengeQuestionEvent::STATUS_PENDING)
-            ->delete();
+            ->update(['status' => UserChallengeQuestionEvent::STATUS_SKIPPED]);
 
         return $this->finalizeOpenSessionForTrack($user, $track, $practiceMode);
     }
@@ -430,6 +436,8 @@ class ChallengeQuestionService
     }
 
     /**
+     * Every question id the user has been assigned (pending, answered, or skipped) — never repeats a row per user (DB unique).
+     *
      * @return Collection<int, int>
      */
     protected function usedQuestionIds(int $userId): Collection
@@ -437,6 +445,73 @@ class ChallengeQuestionService
         return UserChallengeQuestionEvent::query()
             ->where('user_id', $userId)
             ->pluck('challenge_question_id');
+    }
+
+    /**
+     * Stable order for this event so options are shuffled on screen but the same order is used when grading.
+     *
+     * @return list<array{0: 'A'|'B'|'C'|'D', 1: string}>
+     */
+    protected function orderedOptionPairsForPlay(ChallengeQuestion $q, int $eventId): array
+    {
+        $pairs = [
+            ['A', trim((string) $q->option_a)],
+            ['B', trim((string) $q->option_b)],
+            ['C', trim((string) $q->option_c)],
+            ['D', trim((string) $q->option_d)],
+        ];
+
+        usort($pairs, function (array $a, array $b) use ($q, $eventId): int {
+            $ha = hash('sha256', $eventId.'|'.$q->id.'|'.$a[0]);
+            $hb = hash('sha256', $eventId.'|'.$q->id.'|'.$b[0]);
+
+            return strcmp($ha, $hb);
+        });
+
+        return $pairs;
+    }
+
+    /** Stored {@see ChallengeQuestion::$correct_option} letter → letter shown on the play UI for this event. */
+    public function mapStorageLetterToDisplayLetter(ChallengeQuestion $q, int $eventId, string $storageLetter): string
+    {
+        $storageLetter = strtoupper(trim($storageLetter));
+        $pairs = $this->orderedOptionPairsForPlay($q, $eventId);
+        foreach ($pairs as $i => $pair) {
+            if ($pair[0] === $storageLetter) {
+                return chr(ord('A') + $i);
+            }
+        }
+
+        return $storageLetter;
+    }
+
+    protected function optionTextForStorageLetter(ChallengeQuestion $q, string $storageLetter): string
+    {
+        return match (strtoupper(trim($storageLetter))) {
+            'A' => trim((string) $q->option_a),
+            'B' => trim((string) $q->option_b),
+            'C' => trim((string) $q->option_c),
+            'D' => trim((string) $q->option_d),
+            default => '',
+        };
+    }
+
+    /** Letter the learner tapped (A–D on screen) → stored column letter for this event. */
+    public function mapDisplayLetterToStorageLetter(ChallengeQuestion $q, int $eventId, string $displayLetter): string
+    {
+        $displayLetter = strtoupper(trim($displayLetter));
+        if (! in_array($displayLetter, ['A', 'B', 'C', 'D'], true)) {
+            throw new InvalidArgumentException('Invalid option.');
+        }
+
+        $pairs = $this->orderedOptionPairsForPlay($q, $eventId);
+        $idx = ord($displayLetter) - ord('A');
+        $pair = $pairs[$idx] ?? null;
+        if ($pair === null) {
+            throw new InvalidArgumentException('Invalid option.');
+        }
+
+        return $pair[0];
     }
 
     /**
@@ -452,18 +527,12 @@ class ChallengeQuestionService
             ];
         }
 
-        /** @var list<array{0: 'A'|'B'|'C'|'D', 1: string}> $pairs */
-        $pairs = [
-            ['A', (string) $q->option_a],
-            ['B', (string) $q->option_b],
-            ['C', (string) $q->option_c],
-            ['D', (string) $q->option_d],
-        ];
+        $pairs = $this->orderedOptionPairsForPlay($q, (int) $event->id);
 
         $optionRows = [];
-        foreach ($pairs as [$answerKey, $text]) {
+        foreach ($pairs as $i => [, $text]) {
             $optionRows[] = [
-                'answer_key' => $answerKey,
+                'answer_key' => chr(ord('A') + $i),
                 'text' => $text,
             ];
         }

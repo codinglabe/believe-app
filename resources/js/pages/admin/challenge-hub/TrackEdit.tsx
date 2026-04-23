@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/select"
 import { Checkbox } from "@/components/ui/checkbox"
 import { ArrowLeft, Trash2, Upload, Wand2 } from "lucide-react"
+import { CHALLENGE_HUB_COVER_MAX_BYTES, validateChallengeHubCoverFile } from "@/lib/challenge-hub-cover-limit"
 import type { BreadcrumbItem } from "@/types"
 
 declare global {
@@ -275,6 +276,8 @@ export default function AdminChallengeHubTrackEdit({
     cover_image: null,
   })
 
+  const [trackCoverClientError, setTrackCoverClientError] = useState<string | null>(null)
+
   const selectedHub = hub_categories.find((h) => String(h.id) === String(trackForm.data.hub_category_id))
   const hubLabel = selectedHub?.label ?? ""
   const subOptions = hubLabel ? subcategories_by_category[hubLabel] ?? [] : []
@@ -319,9 +322,19 @@ export default function AdminChallengeHubTrackEdit({
   const uploadTrackCover = (e: React.FormEvent) => {
     e.preventDefault()
     if (!uploadCoverForm.data.cover_image) return
+    const msg = validateChallengeHubCoverFile(uploadCoverForm.data.cover_image, CHALLENGE_HUB_COVER_MAX_BYTES)
+    if (msg) {
+      setTrackCoverClientError(msg)
+      return
+    }
+    setTrackCoverClientError(null)
+    uploadCoverForm.clearErrors()
     uploadCoverForm.post(route("admin.challenge-hub.tracks.upload-cover", track.slug), {
       forceFormData: true,
-      onSuccess: () => uploadCoverForm.setData("cover_image", null),
+      onSuccess: () => {
+        uploadCoverForm.setData("cover_image", null)
+        setTrackCoverClientError(null)
+      },
     })
   }
 
@@ -508,6 +521,7 @@ export default function AdminChallengeHubTrackEdit({
                         onChange={(e) => {
                           const f = e.target.files?.[0] ?? null
                           uploadCoverForm.setData("cover_image", f)
+                          setTrackCoverClientError(null)
                         }}
                       />
                     </div>
@@ -518,6 +532,9 @@ export default function AdminChallengeHubTrackEdit({
                       </Button>
                     </div>
                   </div>
+                  {trackCoverClientError ? (
+                    <p className="text-sm text-red-600">{trackCoverClientError}</p>
+                  ) : null}
                   {uploadCoverForm.errors.cover_image ? (
                     <p className="text-sm text-red-600">{uploadCoverForm.errors.cover_image}</p>
                   ) : null}
