@@ -133,7 +133,14 @@ class UserProfileController extends Controller
     public function edit()
     {
         $user = auth()->user();
-        $user->load(['supporterPositions', 'supporterInterestCategories']);
+        $user->load([
+            'supporterPositions',
+            'supporterInterestCategories',
+            'favoriteOrganizations' => function ($q) {
+                $q->select('organizations.id', 'organizations.name', 'organizations.user_id')
+                    ->with(['user:id,image']);
+            },
+        ]);
 
         // সব active positions + ইউজারের বর্তমান positions
         $positions = SupporterPosition::where('is_active', 1)
@@ -149,6 +156,39 @@ class UserProfileController extends Controller
             ->get(['id', 'name']);
 
         $userSupporterInterestIds = $user->supporterInterestCategories->pluck('id')->toArray();
+        $affiliatedOrganizations = $user->favoriteOrganizations
+            ->map(function (Organization $org) {
+                $logoUrl = null;
+                if ($org->relationLoaded('user') && $org->user?->image) {
+                    $logoUrl = Storage::url($org->user->image);
+                }
+
+                return [
+                    'id' => (int) $org->id,
+                    'name' => (string) $org->name,
+                    'logo_url' => $logoUrl,
+                ];
+            })
+            ->values()
+            ->all();
+
+        $favoriteOrgIds = $user->favoriteOrganizations->pluck('id')->map(fn ($id) => (int) $id)->values()->all();
+        $primaryOrgId = $user->primary_organization_id ? (int) $user->primary_organization_id : null;
+        $storedSecondary = $user->secondary_organization_ids;
+        if (is_array($storedSecondary) && count($storedSecondary) > 0) {
+            $secondaryOrgIds = array_values(array_unique(array_filter(array_map('intval', $storedSecondary))));
+        } else {
+            $secondaryOrgIds = array_values(array_filter(
+                $favoriteOrgIds,
+                fn (int $id) => $primaryOrgId === null || $id !== $primaryOrgId
+            ));
+        }
+
+        $slugPart = trim((string) ($user->slug ?? ''));
+        if ($slugPart === '') {
+            $slugPart = Str::slug((string) $user->name) ?: 'supporter';
+        }
+        $unityMeetingId = 'uni-'.$slugPart.'-'.$user->id;
 
         return Inertia::render('frontend/user-profile/edit', [
             'user' => [
@@ -165,9 +205,22 @@ class UserProfileController extends Controller
                 'state' => $user->state,
                 'zipcode' => $user->zipcode,
                 'religion' => $user->religion,
+                'primary_organization_id' => $user->primary_organization_id ? (int) $user->primary_organization_id : null,
+                'secondary_organization_ids' => $secondaryOrgIds,
+                'unity_meeting_id' => $unityMeetingId,
+                'account_visibility' => in_array((string) ($user->account_visibility ?? 'public'), ['public', 'private'], true)
+                    ? (string) $user->account_visibility
+                    : 'public',
+                'message_audience' => in_array((string) ($user->message_audience ?? 'everyone'), [
+                    'everyone', 'followers_only', 'organizations_i_follow', 'no_one',
+                ], true) ? (string) $user->message_audience : 'everyone',
+                'appearance_preference' => in_array((string) ($user->appearance_preference ?? ''), ['system', 'light', 'dark'], true)
+                    ? (string) $user->appearance_preference
+                    : null,
             ],
             'availablePositions' => $positions,
             'availableSupporterInterests' => $supporterInterests,
+            'affiliatedOrganizations' => $affiliatedOrganizations,
             'religionOptions' => ProfileReligions::values(),
         ]);
     }
@@ -212,9 +265,57 @@ class UserProfileController extends Controller
             'timezone' => ['nullable', 'string', 'max:255'],
             'city' => [Rule::requiredIf($isSupporter), 'nullable', 'string', 'max:255'],
             'state' => [Rule::requiredIf($isSupporter), 'nullable', 'string', 'max:2'],
-            'zipcode' => ['nullable', 'string', 'max:10'],
+            'zipcode' => [Rule::requiredIf($isSupporter), 'nullable', 'string', 'max:10'],
             'religion' => ['sometimes', 'nullable', 'string', Rule::in(ProfileReligions::values())],
+            'primary_organization_id' => ['nullable', 'integer', Rule::exists('organizations', 'id')],
+            'secondary_organization_ids' => ['sometimes', 'array'],
+            'secondary_organization_ids.*' => ['integer', Rule::exists('organizations', 'id')],
+            'account_visibility' => ['sometimes', 'string', Rule::in(['public', 'private'])],
+            'message_audience' => ['sometimes', 'string', Rule::in([
+                'everyone', 'followers_only', 'organizations_i_follow', 'no_one',
+            ])],
+            'appearance_preference' => ['sometimes', 'nullable', 'string', Rule::in(['system', 'light', 'dark'])],
         ]);
+
+        $primaryOrganizationId = isset($validated['primary_organization_id']) && $validated['primary_organization_id'] !== null
+            ? (int) $validated['primary_organization_id']
+            : null;
+
+        if ($isSupporter) {
+            $favoriteOrganizationIds = $user->favoriteOrganizations()
+                ->pluck('organizations.id')
+                ->map(fn ($id) => (int) $id)
+                ->all();
+
+            if (count($favoriteOrganizationIds) > 0 && $primaryOrganizationId === null) {
+                return back()->withErrors([
+                    'primary_organization_id' => 'Please select a primary organization.',
+                ])->withInput();
+            }
+
+            if ($primaryOrganizationId !== null && ! in_array($primaryOrganizationId, $favoriteOrganizationIds, true)) {
+                return back()->withErrors([
+                    'primary_organization_id' => 'Your primary organization must be one of your followed organizations.',
+                ])->withInput();
+            }
+
+            $secondaryIds = array_values(array_unique(array_filter(
+                array_map('intval', $validated['secondary_organization_ids'] ?? []),
+                fn (int $id) => $id > 0
+            )));
+            foreach ($secondaryIds as $sid) {
+                if (! in_array($sid, $favoriteOrganizationIds, true)) {
+                    return back()->withErrors([
+                        'secondary_organization_ids' => 'Secondary organizations must be organizations you follow.',
+                    ])->withInput();
+                }
+                if ($primaryOrganizationId !== null && $sid === $primaryOrganizationId) {
+                    return back()->withErrors([
+                        'secondary_organization_ids' => 'Secondary organizations cannot include your primary organization.',
+                    ])->withInput();
+                }
+            }
+        }
 
         // Email changed? Send verification
         if ($user->email !== $validated['email']) {
@@ -255,7 +356,26 @@ class UserProfileController extends Controller
             'city' => $geoAfterNorm['city'],
             'state' => $geoAfterNorm['state'],
             'zipcode' => $geoAfterNorm['zip'] !== '' ? $geoAfterNorm['zip'] : null,
+            'primary_organization_id' => $primaryOrganizationId,
         ];
+
+        if ($isSupporter) {
+            $secondaryIds = array_values(array_unique(array_filter(
+                array_map('intval', $validated['secondary_organization_ids'] ?? []),
+                fn (int $id) => $id > 0
+            )));
+            $updateData['secondary_organization_ids'] = $secondaryIds;
+
+            if (array_key_exists('account_visibility', $validated)) {
+                $updateData['account_visibility'] = $validated['account_visibility'];
+            }
+            if (array_key_exists('message_audience', $validated)) {
+                $updateData['message_audience'] = $validated['message_audience'];
+            }
+            if (array_key_exists('appearance_preference', $validated)) {
+                $updateData['appearance_preference'] = $validated['appearance_preference'];
+            }
+        }
 
         if (array_key_exists('religion', $validated)) {
             $updateData['religion'] = $validated['religion'];

@@ -110,6 +110,11 @@ class User extends Authenticatable implements MustVerifyEmail
         'city',
         'state',
         'zipcode',
+        'primary_organization_id',
+        'account_visibility',
+        'message_audience',
+        'appearance_preference',
+        'secondary_organization_ids',
         'religion',
         'volunteer_interest_statement',
         'youtube_channel_url',
@@ -170,6 +175,7 @@ class User extends Authenticatable implements MustVerifyEmail
             'believe_points_last_auto_replenish_at' => 'datetime',
             'youtube_token_expires_at' => 'datetime',
             'dropbox_token_expires_at' => 'datetime',
+            'secondary_organization_ids' => 'array',
         ];
     }
 
@@ -483,6 +489,14 @@ class User extends Authenticatable implements MustVerifyEmail
     {
         return $this->belongsToMany(Organization::class, 'board_members', 'user_id', 'organization_id')
             ->withTimestamps();
+    }
+
+    /**
+     * Primary organization affiliation selected by supporter.
+     */
+    public function primaryOrganization(): BelongsTo
+    {
+        return $this->belongsTo(Organization::class, 'primary_organization_id');
     }
 
     public function canManageContent()
