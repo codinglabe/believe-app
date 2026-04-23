@@ -3,13 +3,23 @@ import { PageHead } from '@/components/frontend/PageHead';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Search, Calendar, Users, DollarSign, Gift, Clock, CheckCircle, ArrowRight } from 'lucide-react';
-import { PageProps } from '@/types';
+import {
+    Search,
+    Calendar,
+    Users,
+    DollarSign,
+    Gift,
+    Clock,
+    CheckCircle,
+    ArrowRight,
+    Ticket,
+    Sparkles,
+} from 'lucide-react';
+import type { PageProps } from '@/types';
 import FrontendLayout from '@/layouts/frontend/frontend-layout';
 import CountdownTimer from '@/components/ui/countdown-timer';
+import { cn } from '@/lib/utils';
 
 interface Raffle {
     id: number;
@@ -38,14 +48,18 @@ interface Raffle {
 interface RafflesIndexProps extends PageProps {
     raffles: {
         data: Raffle[];
-        links: any[];
-        meta: any;
+        links: { url: string | null; label: string; active: boolean }[];
+        meta: unknown;
     };
     filters: {
         search?: string;
         status?: string;
     };
 }
+
+/** Matches frontend layout tokens (navbar/footer): bg-background, bg-card, blue→purple accents */
+const cardSurface =
+    'rounded-xl border border-border bg-card text-card-foreground shadow-sm';
 
 export default function RafflesIndex({ raffles, filters }: RafflesIndexProps) {
     const [search, setSearch] = useState(filters.search || '');
@@ -65,15 +79,34 @@ export default function RafflesIndex({ raffles, filters }: RafflesIndexProps) {
 
     const getStatusBadge = (raffle: Raffle) => {
         if (raffle.is_completed) {
-            return <Badge variant="secondary" className="bg-green-100 text-green-800"><CheckCircle className="w-3 h-3 mr-1" />Completed</Badge>;
+            return (
+                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2.5 py-0.5 text-xs font-semibold text-emerald-800 dark:text-emerald-200">
+                    <CheckCircle className="h-3.5 w-3.5" />
+                    Completed
+                </span>
+            );
         }
         if (raffle.is_draw_time) {
-            return <Badge variant="secondary" className="bg-yellow-100 text-yellow-800"><Clock className="w-3 h-3 mr-1" />Draw Time</Badge>;
+            return (
+                <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2.5 py-0.5 text-xs font-semibold text-amber-900 dark:text-amber-100">
+                    <Clock className="h-3.5 w-3.5" />
+                    Draw time
+                </span>
+            );
         }
         if (raffle.is_active) {
-            return <Badge variant="secondary" className="bg-blue-100 text-blue-800"><Gift className="w-3 h-3 mr-1" />Active</Badge>;
+            return (
+                <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-semibold text-primary">
+                    <Sparkles className="h-3.5 w-3.5" />
+                    Active
+                </span>
+            );
         }
-        return <Badge variant="outline">Inactive</Badge>;
+        return (
+            <span className="inline-flex rounded-full border border-border bg-muted/50 px-2.5 py-0.5 text-xs font-medium text-muted-foreground">
+                Inactive
+            </span>
+        );
     };
 
     const formatDate = (dateString: string) => {
@@ -82,55 +115,54 @@ export default function RafflesIndex({ raffles, filters }: RafflesIndexProps) {
             month: 'short',
             day: 'numeric',
             hour: '2-digit',
-            minute: '2-digit'
+            minute: '2-digit',
         });
     };
 
     return (
         <FrontendLayout>
-            <PageHead title="Raffle Draws" description="Enter raffles to win prizes while supporting nonprofits. Buy tickets and support great causes." />
-            
-            <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
-                {/* Hero Section */}
-                <div className="bg-gradient-to-r from-purple-600 to-pink-600 text-white py-16">
-                    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                        <div className="text-center">
-                            <h1 className="text-4xl md:text-6xl font-bold mb-4">
-                                🎟️ Raffle Draws
-                            </h1>
-                            <p className="text-xl md:text-2xl mb-8 text-purple-100">
-                                Win amazing prizes while supporting great causes!
-                            </p>
-                            <div className="flex justify-center">
-                                <Gift className="w-16 h-16 text-yellow-300 animate-bounce" />
-                            </div>
-                        </div>
-                    </div>
-                </div>
+            <PageHead
+                title="Raffles"
+                description="Enter raffles to win prizes while supporting nonprofits. Buy tickets through secure checkout."
+            />
 
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-                    {/* Search and Filter */}
-                    <div className="mb-8">
-                        <div className="flex flex-col md:flex-row gap-4 items-center justify-between">
-                            <form onSubmit={handleSearch} className="flex-1 max-w-md">
+            <div className="min-h-screen bg-background">
+                <div className="mx-auto max-w-7xl px-4 pb-16 pt-10 sm:px-6 lg:px-8 lg:pt-14">
+                    {/* Hero */}
+                    <header className="mb-10 text-center lg:mb-12">
+                        <div className="mx-auto mb-4 inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-600 to-purple-600 text-white shadow-md">
+                            <Ticket className="h-7 w-7" />
+                        </div>
+                        <h1 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl md:text-5xl">
+                            Raffles for good
+                        </h1>
+                        <p className="mx-auto mt-3 max-w-2xl text-base text-muted-foreground sm:text-lg">
+                            Support nonprofits with every ticket. Transparent draws, secure payments, and prizes you will
+                            love.
+                        </p>
+                    </header>
+
+                    {/* Filters */}
+                    <div className={cn('mb-10 p-4 sm:p-5', cardSurface)}>
+                        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                            <form onSubmit={handleSearch} className="w-full max-w-md flex-1">
                                 <div className="relative">
-                                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                                     <Input
                                         type="text"
-                                        placeholder="Search raffles..."
+                                        placeholder="Search by title or description…"
                                         value={search}
                                         onChange={(e) => setSearch(e.target.value)}
-                                        className="pl-10"
+                                        className="h-11 border-input bg-background pl-10 text-foreground placeholder:text-muted-foreground focus-visible:ring-ring"
                                     />
                                 </div>
                             </form>
-                            
                             <Select value={status} onValueChange={handleStatusChange}>
-                                <SelectTrigger className="w-48">
-                                    <SelectValue placeholder="All Status" />
+                                <SelectTrigger className="h-11 w-full border-input bg-background md:w-52">
+                                    <SelectValue placeholder="Status" />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    <SelectItem value="all">All Status</SelectItem>
+                                    <SelectItem value="all">All statuses</SelectItem>
                                     <SelectItem value="active">Active</SelectItem>
                                     <SelectItem value="completed">Completed</SelectItem>
                                     <SelectItem value="cancelled">Cancelled</SelectItem>
@@ -139,119 +171,122 @@ export default function RafflesIndex({ raffles, filters }: RafflesIndexProps) {
                         </div>
                     </div>
 
-                    {/* Raffles Grid */}
+                    {/* Grid */}
                     {raffles.data.length > 0 ? (
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 lg:gap-8">
                             {raffles.data.map((raffle) => (
-                                <Card key={raffle.id} className="overflow-hidden hover:shadow-lg transition-shadow duration-300 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
-                                    {raffle.image && (
-                                        <div className="aspect-video overflow-hidden">
+                                <article
+                                    key={raffle.id}
+                                    className={cn(
+                                        'group flex flex-col overflow-hidden transition-shadow duration-300 hover:shadow-md',
+                                        cardSurface,
+                                    )}
+                                >
+                                    <div className="relative aspect-[16/10] overflow-hidden bg-muted">
+                                        {raffle.image ? (
                                             <img
                                                 src={`/storage/${raffle.image}`}
-                                                alt={raffle.title}
-                                                className="w-full h-full object-cover"
+                                                alt=""
+                                                className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.03]"
                                             />
-                                        </div>
-                                    )}
-                                    
-                                    <CardHeader>
-                                        <div className="flex items-start justify-between">
-                                            <div className="flex-1">
-                                                <CardTitle className="text-lg font-semibold text-gray-900 dark:text-white line-clamp-2">
-                                                    {raffle.title}
-                                                </CardTitle>
-                                                <CardDescription className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-                                                    by {raffle.organization.name}
-                                                </CardDescription>
+                                        ) : (
+                                            <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-blue-50 to-purple-50 dark:from-blue-950/40 dark:to-purple-950/30">
+                                                <Gift className="h-14 w-14 text-primary/60" />
                                             </div>
-                                            {getStatusBadge(raffle)}
+                                        )}
+                                        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/65 via-black/20 to-transparent p-4 pt-12">
+                                            <p className="line-clamp-2 text-sm font-semibold text-white drop-shadow-sm">
+                                                {raffle.title}
+                                            </p>
+                                            <p className="mt-0.5 text-xs text-white/85">{raffle.organization.name}</p>
                                         </div>
-                                    </CardHeader>
+                                        <div className="absolute right-3 top-3">{getStatusBadge(raffle)}</div>
+                                    </div>
 
-                                    <CardContent>
-                                        <p className="text-gray-600 dark:text-gray-300 text-sm line-clamp-3 mb-4">
+                                    <div className="flex flex-1 flex-col p-5">
+                                        <p className="mb-4 line-clamp-3 text-sm leading-relaxed text-muted-foreground">
                                             {raffle.description}
                                         </p>
 
-                                        {/* Essential Info */}
-                                        <div className="flex items-center justify-between text-sm mb-3">
-                                            <div className="flex items-center text-gray-600 dark:text-gray-400">
-                                                <DollarSign className="w-4 h-4 mr-1" />
-                                                ${raffle.ticket_price}
+                                        <div className="mb-4 grid grid-cols-3 gap-2 text-center text-xs text-muted-foreground">
+                                            <div className="rounded-xl bg-muted/80 py-2">
+                                                <DollarSign className="mx-auto mb-0.5 h-3.5 w-3.5 text-primary" />
+                                                <span className="font-semibold text-foreground">
+                                                    ${Number(raffle.ticket_price).toFixed(0)}
+                                                </span>
+                                                <div className="text-[10px] uppercase tracking-wide opacity-80">each</div>
                                             </div>
-                                            <div className="flex items-center text-gray-600 dark:text-gray-400">
-                                                <Users className="w-4 h-4 mr-1" />
-                                                {raffle.sold_tickets}/{raffle.total_tickets}
+                                            <div className="rounded-xl bg-muted/80 py-2">
+                                                <Users className="mx-auto mb-0.5 h-3.5 w-3.5 text-primary" />
+                                                <span className="font-semibold text-foreground">
+                                                    {raffle.sold_tickets}/{raffle.total_tickets}
+                                                </span>
+                                                <div className="text-[10px] uppercase tracking-wide opacity-80">sold</div>
                                             </div>
-                                            <div className="flex items-center text-gray-600 dark:text-gray-400">
-                                                <Gift className="w-4 h-4 mr-1" />
-                                                {raffle.prizes?.length || 0} prizes
+                                            <div className="rounded-xl bg-muted/80 py-2">
+                                                <Gift className="mx-auto mb-0.5 h-3.5 w-3.5 text-primary" />
+                                                <span className="font-semibold text-foreground">
+                                                    {raffle.prizes?.length ?? 0}
+                                                </span>
+                                                <div className="text-[10px] uppercase tracking-wide opacity-80">prizes</div>
                                             </div>
                                         </div>
 
-                                        {/* Countdown Timer */}
                                         {raffle.is_active && !raffle.is_completed && (
-                                            <div className="mb-3">
-                                                <CountdownTimer drawDate={raffle.draw_date} size="small" showLabel={false} />
+                                            <div className="mb-4 rounded-xl border border-border bg-muted/40 px-3 py-2">
+                                                <CountdownTimer drawDate={raffle.draw_date} size="small" showLabel />
                                             </div>
                                         )}
-                                    </CardContent>
 
-                                    <CardFooter>
-                                        <Link
-                                            href={route('frontend.raffles.show', raffle.id)}
-                                            className="w-full"
-                                        >
-                                            <Button className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700">
-                                                View Details
-                                                <ArrowRight className="w-4 h-4 ml-2" />
+                                        <div className="mt-auto flex items-center justify-between gap-2 border-t border-border pt-4 text-xs text-muted-foreground">
+                                            <span className="inline-flex items-center gap-1">
+                                                <Calendar className="h-3.5 w-3.5 shrink-0" />
+                                                {formatDate(raffle.draw_date)}
+                                            </span>
+                                        </div>
+
+                                        <Link href={route('frontend.raffles.show', raffle.id)} className="mt-4 block">
+                                            <Button className="h-11 w-full rounded-xl bg-gradient-to-r from-blue-600 to-purple-600 text-sm font-semibold text-white shadow-sm transition hover:from-blue-700 hover:to-purple-700">
+                                                View raffle
+                                                <ArrowRight className="ml-2 h-4 w-4" />
                                             </Button>
                                         </Link>
-                                    </CardFooter>
-                                </Card>
+                                    </div>
+                                </article>
                             ))}
                         </div>
                     ) : (
-                        <Card className="text-center py-12">
-                            <CardContent>
-                                <Gift className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-                                <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
-                                    No raffles found
-                                </h3>
-                                <p className="text-gray-600 dark:text-gray-400">
-                                    {filters.search || filters.status 
-                                        ? 'Try adjusting your search criteria.'
-                                        : 'Check back later for new raffle draws!'
-                                    }
-                                </p>
-                            </CardContent>
-                        </Card>
-                    )}
-
-                    {/* Pagination */}
-                    {raffles.data.length > 0 && raffles.links && (
-                        <div className="mt-8 flex justify-center">
-                            <div className="flex space-x-2">
-                                {raffles.links.map((link, index) => (
-                                    <Link
-                                        key={index}
-                                        href={link.url || '#'}
-                                        className={`px-3 py-2 text-sm rounded-md ${
-                                            link.active
-                                                ? 'bg-purple-600 text-white'
-                                                : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
-                                        } ${!link.url ? 'opacity-50 cursor-not-allowed' : ''}`}
-                                        dangerouslySetInnerHTML={{ __html: link.label }}
-                                    />
-                                ))}
-                            </div>
+                        <div className={cn('py-16 text-center', cardSurface)}>
+                            <Gift className="mx-auto mb-4 h-14 w-14 text-muted-foreground/50" />
+                            <h3 className="text-lg font-semibold text-foreground">No raffles match</h3>
+                            <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground">
+                                {filters.search || filters.status
+                                    ? 'Try different keywords or reset the status filter.'
+                                    : 'New fundraisers will appear here soon.'}
+                            </p>
                         </div>
                     )}
+
+                    {raffles.data.length > 0 && raffles.links?.length ? (
+                        <nav className="mt-12 flex flex-wrap justify-center gap-2" aria-label="Pagination">
+                            {raffles.links.map((link, index) => (
+                                <Link
+                                    key={index}
+                                    href={link.url || '#'}
+                                    className={cn(
+                                        'min-w-[2.5rem] rounded-lg px-3 py-2 text-sm font-medium transition-colors',
+                                        link.active
+                                            ? 'bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-sm'
+                                            : 'border border-border bg-background text-foreground hover:bg-muted/80',
+                                        !link.url && 'pointer-events-none opacity-40',
+                                    )}
+                                    dangerouslySetInnerHTML={{ __html: link.label }}
+                                />
+                            ))}
+                        </nav>
+                    ) : null}
                 </div>
             </div>
         </FrontendLayout>
     );
 }
-
-
-

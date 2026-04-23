@@ -9,6 +9,9 @@ return [
     */
     'question_time_limit_seconds' => max(1, (int) env('CHALLENGE_QUIZ_QUESTION_SECONDS', 10)),
 
+    /** Extra time for Practice mode (multiplier on question_time_limit_seconds). */
+    'practice_time_multiplier' => max(1.0, (float) env('CHALLENGE_QUIZ_PRACTICE_TIME_MULTIPLIER', 1.5)),
+
     /*
     | Streak bonus at end of a completed quiz run (max streak − 1) × tier, capped.
     */

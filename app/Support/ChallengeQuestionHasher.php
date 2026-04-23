@@ -11,6 +11,7 @@ class ChallengeQuestionHasher
         string $optionB,
         string $optionC,
         string $optionD,
+        ?string $religion = null,
     ): string {
         $norm = static function (string $s): string {
             $t = trim(preg_replace('/\s+/u', ' ', $s));
@@ -19,6 +20,9 @@ class ChallengeQuestionHasher
         };
 
         $payload = $norm($category).'|'.$norm($question).'|'.$norm($optionA).'|'.$norm($optionB).'|'.$norm($optionC).'|'.$norm($optionD);
+        if ($religion !== null && trim($religion) !== '') {
+            $payload .= '|rel:'.$norm($religion);
+        }
 
         return hash('sha256', $payload);
     }

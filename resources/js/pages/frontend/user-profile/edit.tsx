@@ -46,13 +46,16 @@ interface PageProps {
     city?: string
     state?: string
     zipcode?: string
+    religion?: string | null
   }
   availablePositions: { id: number; name: string }[]
   availableSupporterInterests: { id: number; name: string }[]
+  religionOptions: string[]
 }
 
 export default function ProfileEdit() {
-  const { user, availablePositions, availableSupporterInterests } = usePage<PageProps>().props
+  const { user, availablePositions, availableSupporterInterests, religionOptions } =
+    usePage<PageProps>().props
 
   const { data, setData, post, processing, errors, reset, recentlySuccessful } = useForm({
     name: user?.name || "",
@@ -67,6 +70,7 @@ export default function ProfileEdit() {
     city: user?.city || "",
     state: user?.state || "",
     zipcode: user?.zipcode || "",
+    religion: user?.religion || "",
   })
 
   const [previewUrl, setPreviewUrl] = useState(user?.image || null)
@@ -81,6 +85,7 @@ export default function ProfileEdit() {
       setData("city", user.city || "")
       setData("state", user.state || "")
       setData("zipcode", user.zipcode || "")
+      setData("religion", user.religion || "")
       setData("positions", user.positions || [])
       setData("supporter_interests", user.supporter_interests || [])
       if (user.image) {
@@ -276,6 +281,35 @@ export default function ProfileEdit() {
                 required
               />
               {errors.dob && <p className="text-red-600 text-sm mt-1">{errors.dob}</p>}
+            </div>
+
+            <div>
+              <Label htmlFor="religion" className="text-gray-900 dark:text-white">
+                Major World Religions
+              </Label>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 mb-2">
+                Optional — choose the tradition that best describes you.
+              </p>
+              <Select
+                value={data.religion ? data.religion : "__none__"}
+                onValueChange={(v) => setData("religion", v === "__none__" ? "" : v)}
+              >
+                <SelectTrigger
+                  id="religion"
+                  className="bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600"
+                >
+                  <SelectValue placeholder="Select…" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">Prefer not to say</SelectItem>
+                  {religionOptions.map((r) => (
+                    <SelectItem key={r} value={r}>
+                      {r}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {errors.religion && <p className="text-red-600 text-sm mt-1">{errors.religion}</p>}
             </div>
 
             {/* Location Information */}

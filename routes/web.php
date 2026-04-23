@@ -259,6 +259,13 @@ Route::middleware(['auth', 'EnsureEmailIsVerified'])->prefix('challenge-hub')->n
     Route::post('/{track:slug}/answer', [ChallengeLevelUpController::class, 'answer'])
         ->middleware('throttle:90,1')
         ->name('answer');
+    Route::post('/{track:slug}/finish', [ChallengeLevelUpController::class, 'finish'])
+        ->middleware('throttle:45,1')
+        ->name('finish');
+    /** GET refresh fallback for POST-only quiz routes (avoids Method Not Allowed on reload). */
+    Route::get('/{track:slug}/next', [ChallengeLevelUpController::class, 'restorePlayFromGet'])->name('next.get');
+    Route::get('/{track:slug}/answer', [ChallengeLevelUpController::class, 'restorePlayFromGet'])->name('answer.get');
+    Route::get('/{track:slug}/finish', [ChallengeLevelUpController::class, 'restorePlayFromGet'])->name('finish.get');
 });
 
 Route::get('pwa-setup', function () {
@@ -1398,8 +1405,6 @@ Route::resource('raffles', RaffleController::class)->middleware([
 
 Route::post('raffles/{raffle}/purchase', [RaffleController::class, 'purchaseTickets'])->name('raffles.purchase')->middleware('permission:raffle.purchase');
 Route::post('raffles/{raffle}/draw', [RaffleController::class, 'drawWinners'])->name('raffles.draw')->middleware('permission:raffle.draw');
-Route::get('raffles/tickets/{ticket}/qr-code', [RaffleController::class, 'generateTicketQrCode'])->name('raffles.ticket.qr-code')->middleware('permission:raffle.read');
-Route::get('raffles/tickets/{ticket}/verify', [RaffleController::class, 'verifyTicket'])->name('raffles.verify-ticket')->middleware('permission:raffle.read');
 
 Route::resource('position-categories', PositionCategoryController::class)->except(['show'])->middleware([
     'index' => 'permission:job.position.categories.read',
@@ -2265,12 +2270,9 @@ Route::prefix('irs-bmf')->name('irs-bmf.')->middleware(['auth', 'EnsureEmailIsVe
     Route::post('/import', [IrsBmfController::class, 'triggerImport'])->name('import');
 });
 
-// Frontend Raffle Routes (for users to browse and purchase)
-// Public QR Code Route (no authentication required)
-Route::get('/raffles/tickets/{ticket}/qr-code', [RaffleController::class, 'generateTicketQrCode'])->name('raffles.ticket.qr-code.public');
-
-// Public QR Code Verification Route (no authentication required)
-Route::get('/raffles/tickets/{ticket}/verify', [RaffleController::class, 'verifyTicket'])->name('raffles.verify-ticket.public');
+// Raffle ticket QR + verify: public so <img src> and phone scans work without raffle.read permission
+Route::get('/raffles/tickets/{ticket}/qr-code', [RaffleController::class, 'generateTicketQrCode'])->name('raffles.ticket.qr-code');
+Route::get('/raffles/tickets/{ticket}/verify', [RaffleController::class, 'verifyTicket'])->name('raffles.verify-ticket');
 
 // Test QR Code Route
 Route::get('/test-qr', function () {

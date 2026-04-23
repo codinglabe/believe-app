@@ -203,4 +203,50 @@ class StripeProcessingFeeEstimator
             'fee_addon_usd' => round(max(0, $gross - $net), 2),
         ];
     }
+
+    /**
+     * Same fee breakdown as /donate (donor covers vs org absorbs). Used by donate page and raffle checkout preview.
+     *
+     * @return array{mode: string, rail: string, base_gift_usd: float, checkout_total_usd: float, processing_fee_estimate: float, estimated_net_to_org_usd: float}
+     */
+    public static function giftFeePreviewPayload(float $base, bool $donorCovers, string $rail = 'card'): array
+    {
+        $rail = in_array($rail, ['card', 'bank'], true) ? $rail : 'card';
+
+        if ($donorCovers) {
+            if ($rail === 'bank') {
+                $checkoutTotal = self::grossUpAchChargeUsdForNetGiftUsd($base);
+                $feeAddon = self::feeAddonWhenDonorCoversAchUsd($base);
+            } else {
+                $checkoutTotal = self::grossUpCardChargeUsdForNetGiftUsd($base);
+                $feeAddon = self::feeAddonWhenDonorCoversUsd($base);
+            }
+
+            return [
+                'mode' => 'donor_covers',
+                'rail' => $rail,
+                'base_gift_usd' => $base,
+                'checkout_total_usd' => round($checkoutTotal, 2),
+                'processing_fee_estimate' => round($feeAddon, 2),
+                'estimated_net_to_org_usd' => $base,
+            ];
+        }
+
+        if ($rail === 'bank') {
+            $fee = self::estimateAchFeeOnChargeUsd($base);
+            $net = self::estimateNetAfterAchFeeWhenOrgAbsorbsUsd($base);
+        } else {
+            $fee = self::estimateCardFeeOnChargeUsd($base);
+            $net = self::estimateNetAfterCardFeeWhenOrgAbsorbsUsd($base);
+        }
+
+        return [
+            'mode' => 'org_covers',
+            'rail' => $rail,
+            'base_gift_usd' => $base,
+            'checkout_total_usd' => $base,
+            'processing_fee_estimate' => round($fee, 2),
+            'estimated_net_to_org_usd' => $net,
+        ];
+    }
 }
