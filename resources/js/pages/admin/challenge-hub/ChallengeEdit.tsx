@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { ArrowLeft, Trash2, Upload, Wand2 } from "lucide-react"
+import { validateChallengeHubCoverFile } from "@/lib/challenge-hub-cover-limit"
 import type { BreadcrumbItem } from "@/types"
 
 declare global {
@@ -52,11 +53,28 @@ interface Props {
   subcategory_options: string[]
   hub_categories: HubRow[]
   subcategories_by_category: Record<string, string[]>
+  /** Pre-POST limit (KB) — must stay ≤ nginx client_max_body_size or browser gets raw 413 HTML. */
+  cover_client_max_kb: number
+  /** Laravel validation max (KB) when the request reaches PHP. */
+  cover_server_max_kb: number
+}
+
+function formatKbAsMb(kb: number): string {
+  return (kb / 1024).toFixed(kb >= 1024 ? 1 : 2)
 }
 
 export default function AdminChallengeHubChallengeEdit() {
-  const { entry, track, subcategory_options: subFromServer, subcategories_by_category } = usePage<Props>().props
+  const {
+    entry,
+    track,
+    subcategory_options: subFromServer,
+    subcategories_by_category,
+    cover_client_max_kb: coverClientMaxKb = 5120,
+    cover_server_max_kb: coverServerMaxKb = 5120,
+  } = usePage<Props>().props
   const { flash } = usePage().props as { flash?: { success?: string; error?: string } }
+
+  const coverClientMaxBytes = Math.max(64, coverClientMaxKb) * 1024
 
   const hubLabel = track.hub_label
   const subOptions = [...(subcategories_by_category[hubLabel] ?? subFromServer)]
@@ -78,6 +96,7 @@ export default function AdminChallengeHubChallengeEdit() {
   )
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
+  const [coverUploadError, setCoverUploadError] = useState<string | null>(null)
 
   const uploadForm = useForm<{ cover_image: File | null; redirect_to: "challenges" }>({
     cover_image: null,
@@ -102,12 +121,54 @@ export default function AdminChallengeHubChallengeEdit() {
     })
   }
 
+  const validateCoverFile = (file: File | null): string | null =>
+    validateChallengeHubCoverFile(file, coverClientMaxBytes)
+
   const uploadCover = (e: React.FormEvent) => {
     e.preventDefault()
-    if (!uploadForm.data.cover_image) return
+    const file = uploadForm.data.cover_image
+    if (!file) return
+    const msg = validateCoverFile(file)
+    if (msg) {
+      setCoverUploadError(msg)
+      return
+    }
+    setCoverUploadError(null)
+    uploadForm.clearErrors()
     uploadForm.post(route("admin.challenge-hub.entries.upload-cover", entry.id), {
       forceFormData: true,
-      onSuccess: () => uploadForm.setData("cover_image", null),
+      onSuccess: () => {
+        uploadForm.setData("cover_image", null)
+        setCoverUploadError(null)
+      },
+      onError: (errors) => {
+        const bag = errors as Record<string, unknown>
+        const fromField = bag.cover_image
+        const str =
+          typeof fromField === "string"
+            ? fromField
+            : Array.isArray(fromField)
+              ? String(fromField[0])
+              : typeof bag.message === "string"
+                ? bag.message
+                : null
+        const all = JSON.stringify(errors)
+        if (
+          str?.includes("413") ||
+          all.includes("413") ||
+          str?.toLowerCase().includes("too large") ||
+          all.toLowerCase().includes("request entity too large")
+        ) {
+          setCoverUploadError(
+            `The server rejected this upload (413). Use an image under ${formatKbAsMb(coverClientMaxKb)}MB, or raise nginx client_max_body_size (and CHALLENGE_HUB_ADMIN_ENTRY_COVER_CLIENT_MAX_KB) so larger files can reach PHP.`
+          )
+          return
+        }
+        setCoverUploadError(
+          str ||
+            `Upload failed. Use an image under ${formatKbAsMb(coverClientMaxKb)}MB (${coverClientMaxKb}KB). Server allows up to ${formatKbAsMb(coverServerMaxKb)}MB when nginx/PHP limits are high enough.`
+        )
+      },
     })
   }
 
@@ -131,7 +192,7 @@ export default function AdminChallengeHubChallengeEdit() {
   return (
     <AppLayout breadcrumbs={breadcrumbs}>
       <Head title={`${entry.title} — Challenge`} />
-      <div className="w-full max-w-full p-4 sm:p-6">
+      <div className="w-full max-w-none p-4 sm:p-6">
         <ChallengeHubAdminNav active="challenges" />
 
         {flash?.success ? (
@@ -162,7 +223,7 @@ export default function AdminChallengeHubChallengeEdit() {
           </Link>
         </div>
 
-        <Card className="mx-auto w-full max-w-2xl">
+        <Card className="w-full max-w-none">
           <CardHeader>
             <CardTitle>Edit challenge</CardTitle>
             <CardDescription className="space-y-2">
@@ -282,18 +343,28 @@ export default function AdminChallengeHubChallengeEdit() {
               </div>
 
               <form onSubmit={uploadCover} className="mt-6 border-t pt-4">
-                <p className="mb-2 text-xs text-muted-foreground">Or upload a file (JPEG, PNG, WebP — max 10MB)</p>
+                <p className="mb-2 text-xs text-muted-foreground">
+                  Or upload a file (JPEG, PNG, WebP). Safe size for this environment: up to{" "}
+                  <strong>
+                    {formatKbAsMb(coverClientMaxKb)}MB ({coverClientMaxKb}KB)
+                  </strong>{" "}
+                  — larger files are often blocked by nginx before Laravel runs. Backend accepts up to{" "}
+                  {formatKbAsMb(coverServerMaxKb)}MB when the server is configured for it.
+                </p>
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
                   <div className="min-w-0 flex-1 space-y-2">
                     <Label htmlFor="cover-upload">Image file</Label>
                     <Input
                       id="cover-upload"
                       type="file"
-                      accept="image/*"
+                      accept="image/jpeg,image/png,image/webp,image/gif"
                       className="cursor-pointer"
-                      onChange={(e) =>
-                        uploadForm.setData("cover_image", e.target.files?.[0] ?? null)
-                      }
+                      onChange={(e) => {
+                        const next = e.target.files?.[0] ?? null
+                        uploadForm.setData("cover_image", next)
+                        uploadForm.clearErrors()
+                        setCoverUploadError(next ? validateCoverFile(next) : null)
+                      }}
                     />
                   </div>
                   <Button type="submit" variant="outline" size="sm" disabled={!uploadForm.data.cover_image || uploadForm.processing}>
@@ -301,6 +372,16 @@ export default function AdminChallengeHubChallengeEdit() {
                     Upload
                   </Button>
                 </div>
+                {coverUploadError ? (
+                  <p className="mt-2 text-sm text-red-600 dark:text-red-400" role="alert">
+                    {coverUploadError}
+                  </p>
+                ) : null}
+                {uploadForm.errors.cover_image ? (
+                  <p className="mt-2 text-sm text-red-600 dark:text-red-400" role="alert">
+                    {uploadForm.errors.cover_image}
+                  </p>
+                ) : null}
               </form>
             </div>
 

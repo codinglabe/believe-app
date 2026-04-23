@@ -11,6 +11,9 @@ class UserChallengeQuestionEvent extends Model
 
     public const STATUS_ANSWERED = 'answered';
 
+    /** Quit mid-quiz / religion mismatch / abandon — counts as “seen” so the question is not repeated. */
+    public const STATUS_SKIPPED = 'skipped';
+
     protected $fillable = [
         'user_id',
         'level_up_track_id',

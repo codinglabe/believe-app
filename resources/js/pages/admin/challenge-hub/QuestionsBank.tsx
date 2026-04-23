@@ -58,7 +58,18 @@ const SEARCH_DEBOUNCE_MS = 400
 
 export default function AdminChallengeHubQuestionsBank() {
   const { questions, filters, category_options } = usePage<Props>().props
-  const { flash } = usePage().props as { flash?: { success?: string; error?: string } }
+  const { flash } = usePage().props as {
+    flash?: {
+      success?: string
+      error?: string
+      // import_errors?: { row: number; message: string }[] // CSV import disabled
+    }
+  }
+
+  // CSV / Excel import disabled — restore with routes + AdminChallengeHubController import methods.
+  // const importForm = useForm<{ file: File | null }>({
+  //   file: null,
+  // })
 
   const [category, setCategory] = useState(() => filters.category || "")
   const [search, setSearch] = useState(() => filters.search || "")
@@ -172,6 +183,85 @@ export default function AdminChallengeHubQuestionsBank() {
             {flash.error}
           </div>
         ) : null}
+
+        {/* CSV / Excel import — uncomment block + routes + controller methods to restore.
+        {flash?.import_errors && flash.import_errors.length > 0 ? (
+          <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-100">
+            <p className="font-medium">Import row notes (first 50)</p>
+            <ul className="mt-2 max-h-52 list-inside list-disc space-y-1 overflow-y-auto">
+              {flash.import_errors.map((e, i) => (
+                <li key={i}>
+                  Row {e.row}: {e.message}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+
+        <Card className="w-full">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <FileUp className="h-5 w-5" />
+              Import from CSV or Excel
+            </CardTitle>
+            <CardDescription>
+              <strong>All fields live in the file</strong> — there are no category/religion controls on this page. Use the
+              fixed header row (do not rename or reorder):{" "}
+              <span className="font-mono text-xs">
+                category, subcategory, religion, difficulty, question, option_a, option_b, option_c, option_d,
+                correct_answer
+              </span>
+              , optional <span className="font-mono text-xs">explanation</span>. In Excel you can turn{" "}
+              <span className="font-mono text-xs">religion</span> / <span className="font-mono text-xs">difficulty</span>{" "}
+              into real dropdowns via <em>Data Validation</em> (values must match the server: hub labels, subcategories,
+              allowed religion names, or Easy/Medium/Hard). <code className="rounded bg-muted px-1 py-0.5 text-xs">correct_answer</code>{" "}
+              may be labeled <code className="rounded bg-muted px-1 py-0.5 text-xs">correct_option</code>. Empty{" "}
+              <span className="font-mono text-xs">religion</span>/<span className="font-mono text-xs">difficulty</span> is
+              allowed. Max upload 10&nbsp;MB.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form
+              className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-end"
+              onSubmit={(e) => {
+                e.preventDefault()
+                if (!importForm.data.file) return
+                importForm.post(route("admin.challenge-hub.questions.import"), {
+                  forceFormData: true,
+                  preserveScroll: true,
+                  onSuccess: () => importForm.reset("file"),
+                })
+              }}
+            >
+              <div className="min-w-0 flex-1 space-y-2">
+                <Label htmlFor="question-import-file">File (.csv, .xlsx, .xls)</Label>
+                <Input
+                  id="question-import-file"
+                  type="file"
+                  accept=".csv,.txt,.xlsx,.xls,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                  className="cursor-pointer w-full max-w-xl"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0] ?? null
+                    importForm.setData("file", f)
+                    importForm.clearErrors()
+                  }}
+                />
+                {importForm.errors.file ? (
+                  <p className="text-sm text-red-600">{importForm.errors.file}</p>
+                ) : null}
+              </div>
+              <div className="flex shrink-0 flex-wrap gap-2">
+                <Button type="submit" variant="outline" disabled={importForm.processing || !importForm.data.file}>
+                  Upload and import
+                </Button>
+                <Button asChild variant="ghost" type="button">
+                  <a href={route("admin.challenge-hub.questions.import-template")}>Download template CSV</a>
+                </Button>
+              </div>
+            </form>
+          </CardContent>
+        </Card>
+        */}
 
         <Card className="w-full">
           <CardHeader>

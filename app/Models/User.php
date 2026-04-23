@@ -120,6 +120,11 @@ class User extends Authenticatable implements MustVerifyEmail
         'dropbox_access_token',
         'dropbox_token_expires_at',
         'dropbox_folder_name',
+        'account_visibility',
+        'messaging_policy',
+        'primary_organization_id',
+        'secondary_organization_ids',
+        'preferred_theme',
     ];
 
     /**
@@ -145,6 +150,7 @@ class User extends Authenticatable implements MustVerifyEmail
             'email_verified_at' => 'datetime',
             'ownership_verified_at' => 'datetime',
             'verification_metadata' => 'array',
+            'secondary_organization_ids' => 'array',
             'password' => 'hashed',
             'wallet_token_expires_at' => 'datetime',
             'wallet_connected_at' => 'datetime',
@@ -284,6 +290,11 @@ class User extends Authenticatable implements MustVerifyEmail
     {
         return $this->belongsToMany(Organization::class, 'user_favorite_organizations')
             ->withTimestamps()->with(['user', 'nteeCode']);
+    }
+
+    public function primaryOrganization(): BelongsTo
+    {
+        return $this->belongsTo(Organization::class, 'primary_organization_id');
     }
 
     public function savedNewsArticles(): BelongsToMany

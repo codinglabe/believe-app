@@ -161,6 +161,21 @@ return [
         'max_openai_batches_per_user_category_per_day' => (int) env('CHALLENGE_QUIZ_MAX_AI_BATCHES_PER_DAY', 20),
         /** Questions per OpenAI batch when pool is empty */
         'openai_batch_size' => (int) env('CHALLENGE_QUIZ_AI_BATCH_SIZE', 8),
+        /**
+         * Ground generation on passages in `challenge_grounding_passages` (any text: scripture, facts, notes).
+         * Tags in `topics` should match hub category labels and/or quiz subcategory names.
+         *
+         * Token/cost: English text is often ~3–4 characters per token; cap total + per-passage size to control input size.
+         */
+        'grounding' => [
+            'enabled' => env('CHALLENGE_QUIZ_GROUNDING_ENABLED', true),
+            /** Max rows merged into one prompt (each row still trimmed by max_chars_per_passage). */
+            'passage_limit' => (int) env('CHALLENGE_QUIZ_GROUNDING_PASSAGE_LIMIT', 10),
+            /** Per-passage body truncation before the overall cap below. */
+            'max_chars_per_passage' => (int) env('CHALLENGE_QUIZ_GROUNDING_MAX_CHARS_PER_PASSAGE', 900),
+            /** Hard ceiling for the entire grounding block (all passages + headers); stops appending once reached. */
+            'max_total_chars' => (int) env('CHALLENGE_QUIZ_GROUNDING_MAX_TOTAL_CHARS', 10000),
+        ],
     ],
 
     /*

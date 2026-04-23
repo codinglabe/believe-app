@@ -130,7 +130,7 @@ class UserProfileController extends Controller
         ]);
     }
 
-    public function edit()
+    public function edit(Request $request)
     {
         $user = auth()->user();
         $user->load(['supporterPositions', 'supporterInterestCategories']);
@@ -150,6 +150,33 @@ class UserProfileController extends Controller
 
         $userSupporterInterestIds = $user->supporterInterestCategories->pluck('id')->toArray();
 
+        $seedIds = array_values(array_unique(array_filter(array_merge(
+            [$user->primary_organization_id],
+            $user->secondary_organization_ids ?? [],
+        ))));
+
+        $organizationOptions = [];
+        if (count($seedIds) > 0) {
+            $organizationOptions = Organization::query()
+                ->whereIn('id', $seedIds)
+                ->orderBy('name')
+                ->get(['id', 'name', 'registered_user_image'])
+                ->map(static function (Organization $o) {
+                    return [
+                        'id' => $o->id,
+                        'name' => $o->name,
+                        'image' => $o->registered_user_image ? Storage::url($o->registered_user_image) : null,
+                    ];
+                })
+                ->values()
+                ->all();
+        }
+
+        $organizationPicker = null;
+        if ($request->filled('org_picker_page')) {
+            $organizationPicker = $this->organizationPickerPayload($request);
+        }
+
         return Inertia::render('frontend/user-profile/edit', [
             'user' => [
                 'id' => $user->id,
@@ -165,17 +192,82 @@ class UserProfileController extends Controller
                 'state' => $user->state,
                 'zipcode' => $user->zipcode,
                 'religion' => $user->religion,
+                'account_visibility' => $user->account_visibility ?? 'public',
+                'messaging_policy' => $user->messaging_policy ?? 'everyone',
+                'primary_organization_id' => $user->primary_organization_id,
+                'secondary_organization_ids' => $user->secondary_organization_ids ?? [],
+                'preferred_theme' => $user->preferred_theme ?? 'system',
             ],
             'availablePositions' => $positions,
             'availableSupporterInterests' => $supporterInterests,
             'religionOptions' => ProfileReligions::values(),
+            'organizations' => $organizationOptions,
+            'organizationPicker' => $organizationPicker,
         ]);
+    }
+
+    /**
+     * Paginated organization list for profile edit pickers (Inertia partial reload only).
+     *
+     * @return array{target: string, items: array<int, array{id: int, name: string, image: string|null}>, has_more: bool, page: int, search: string}
+     */
+    private function organizationPickerPayload(Request $request): array
+    {
+        $validated = $request->validate([
+            'org_picker_page' => ['required', 'integer', 'min:1'],
+            'org_picker_q' => ['nullable', 'string', 'max:100'],
+            'org_picker_exclude' => ['nullable', 'string', 'max:2000'],
+            'org_picker_target' => ['required', 'in:primary,secondary'],
+        ]);
+
+        $page = (int) $validated['org_picker_page'];
+        $perPage = 30;
+        $search = trim((string) ($validated['org_picker_q'] ?? ''));
+        $excludeRaw = (string) ($validated['org_picker_exclude'] ?? '');
+        $excludeIds = collect(explode(',', $excludeRaw))
+            ->map(fn ($v) => (int) trim((string) $v))
+            ->filter(fn ($id) => $id > 0)
+            ->unique()
+            ->values()
+            ->all();
+
+        $query = Organization::query()
+            ->active()
+            ->excludingCareAllianceHubs()
+            ->when($search !== '', function ($q) use ($search) {
+                $escaped = addcslashes($search, '%_\\');
+                $q->where('name', 'like', '%'.$escaped.'%');
+            })
+            ->when(count($excludeIds) > 0, fn ($q) => $q->whereNotIn('id', $excludeIds))
+            ->orderBy('name');
+
+        $paginator = $query->paginate($perPage, ['id', 'name', 'registered_user_image'], 'page', $page);
+
+        $items = $paginator->getCollection()->map(static function (Organization $o) {
+            return [
+                'id' => $o->id,
+                'name' => $o->name,
+                'image' => $o->registered_user_image ? Storage::url($o->registered_user_image) : null,
+            ];
+        })->values()->all();
+
+        return [
+            'target' => $validated['org_picker_target'],
+            'items' => $items,
+            'has_more' => $paginator->hasMorePages(),
+            'page' => $paginator->currentPage(),
+            'search' => $search,
+        ];
     }
 
     public function update(Request $request)
     {
         $user = $request->user();
         $isSupporter = ($user->role ?? null) === 'user';
+
+        if ($request->has('primary_organization_id') && $request->input('primary_organization_id') === '') {
+            $request->merge(['primary_organization_id' => null]);
+        }
 
         if ($request->has('religion') && $request->input('religion') === '') {
             $request->merge(['religion' => null]);
@@ -214,6 +306,12 @@ class UserProfileController extends Controller
             'state' => [Rule::requiredIf($isSupporter), 'nullable', 'string', 'max:2'],
             'zipcode' => ['nullable', 'string', 'max:10'],
             'religion' => ['sometimes', 'nullable', 'string', Rule::in(ProfileReligions::values())],
+            'account_visibility' => ['sometimes', 'string', Rule::in(['public', 'private'])],
+            'messaging_policy' => ['sometimes', 'string', Rule::in(['everyone', 'followers_only', 'organizations_i_follow', 'no_one'])],
+            'primary_organization_id' => ['nullable', 'integer', Rule::exists('organizations', 'id')],
+            'secondary_organization_ids' => ['sometimes', 'array'],
+            'secondary_organization_ids.*' => ['integer', Rule::exists('organizations', 'id')],
+            'preferred_theme' => ['nullable', 'string', Rule::in(['system', 'light', 'dark'])],
         ]);
 
         // Email changed? Send verification
@@ -260,6 +358,32 @@ class UserProfileController extends Controller
         if (array_key_exists('religion', $validated)) {
             $updateData['religion'] = $validated['religion'];
         }
+
+        if (array_key_exists('account_visibility', $validated)) {
+            $updateData['account_visibility'] = $validated['account_visibility'];
+        }
+
+        if (array_key_exists('messaging_policy', $validated)) {
+            $updateData['messaging_policy'] = $validated['messaging_policy'];
+        }
+
+        if (array_key_exists('primary_organization_id', $validated)) {
+            $updateData['primary_organization_id'] = $validated['primary_organization_id'];
+        }
+
+        if (array_key_exists('preferred_theme', $validated)) {
+            $updateData['preferred_theme'] = $validated['preferred_theme'];
+        }
+
+        $secondaryIds = array_values(array_unique(array_filter(
+            array_map('intval', $validated['secondary_organization_ids'] ?? []),
+            fn (int $id) => $id > 0
+        )));
+        $primaryForSecondary = (int) ($updateData['primary_organization_id'] ?? $user->primary_organization_id ?? 0);
+        if ($primaryForSecondary > 0) {
+            $secondaryIds = array_values(array_filter($secondaryIds, fn (int $id) => $id !== $primaryForSecondary));
+        }
+        $updateData['secondary_organization_ids'] = $secondaryIds;
 
         // Update timezone if provided and valid
         if (isset($validated['timezone']) && ! empty($validated['timezone'])) {

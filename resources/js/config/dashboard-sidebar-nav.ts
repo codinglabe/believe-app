@@ -685,9 +685,21 @@ export const dashboardSidebarNavItems: (NavItem | NavGroup)[] = [
                                 role: 'admin',
                             },
                             {
+                                title: 'Challenges',
+                                href: route('admin.challenge-hub.challenges.index'),
+                                icon: Sparkles,
+                                role: 'admin',
+                            },
+                            {
                                 title: 'Questions bank',
                                 href: route('admin.challenge-hub.questions.index'),
                                 icon: BookOpen,
+                                role: 'admin',
+                            },
+                            {
+                                title: 'Subcategories',
+                                href: route('admin.challenge-hub.subcategories.index'),
+                                icon: Tag,
                                 role: 'admin',
                             },
                         ],

@@ -1,6 +1,6 @@
 "use client"
 
-import React from "react"
+import React, { useState } from "react"
 import { Head, Link, useForm } from "@inertiajs/react"
 import AppLayout from "@/layouts/app-layout"
 import { ChallengeHubAdminNav } from "@/components/challenge-hub-admin-nav"
@@ -17,6 +17,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { ArrowLeft, Plus, Wand2 } from "lucide-react"
+import { CHALLENGE_HUB_COVER_MAX_BYTES, validateChallengeHubCoverFile } from "@/lib/challenge-hub-cover-limit"
 import type { BreadcrumbItem } from "@/types"
 
 declare global {
@@ -31,6 +32,8 @@ interface Props {
 }
 
 export default function AdminChallengeHubTrackCreate({ hub_categories, subcategories_by_category }: Props) {
+  const [coverClientError, setCoverClientError] = useState<string | null>(null)
+
   const form = useForm({
     name: "",
     status: "coming_soon" as "active" | "coming_soon",
@@ -47,6 +50,12 @@ export default function AdminChallengeHubTrackCreate({ hub_categories, subcatego
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault()
+    const msg = validateChallengeHubCoverFile(form.data.cover_image, CHALLENGE_HUB_COVER_MAX_BYTES)
+    if (msg) {
+      setCoverClientError(msg)
+      return
+    }
+    setCoverClientError(null)
     form.post(route("admin.challenge-hub.tracks.store"), {
       forceFormData: true,
     })
@@ -198,7 +207,8 @@ export default function AdminChallengeHubTrackCreate({ hub_categories, subcatego
                 <div className="space-y-4 border-t border-gray-200 pt-6 dark:border-gray-800 md:col-span-2">
                   <h3 className="text-base font-semibold">Cover image (optional)</h3>
                   <p className="text-sm text-gray-500 dark:text-gray-400">
-                    Upload a file or describe an image for AI (min. 12 characters). If both are set, upload wins.
+                    Upload a file or describe an image for AI (min. 12 characters). If both are set, upload wins. Max 5MB
+                    per image.
                   </p>
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-6">
                     <div className="space-y-2">
@@ -211,8 +221,15 @@ export default function AdminChallengeHubTrackCreate({ hub_categories, subcatego
                         onChange={(e) => {
                           const f = e.target.files?.[0] ?? null
                           form.setData("cover_image", f)
+                          form.clearErrors("cover_image")
+                          setCoverClientError(
+                            f ? validateChallengeHubCoverFile(f, CHALLENGE_HUB_COVER_MAX_BYTES) : null
+                          )
                         }}
                       />
+                      {coverClientError ? (
+                        <p className="text-sm text-red-600">{coverClientError}</p>
+                      ) : null}
                       {form.errors.cover_image ? (
                         <p className="text-sm text-red-600">{form.errors.cover_image}</p>
                       ) : null}
@@ -242,6 +259,7 @@ export default function AdminChallengeHubTrackCreate({ hub_categories, subcatego
                     type="submit"
                     disabled={
                       form.processing ||
+                      !!coverClientError ||
                       hub_categories.length === 0 ||
                       !form.data.hub_category_id ||
                       !form.data.quiz_subcategory ||
