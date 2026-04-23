@@ -49,6 +49,7 @@ import {
   Monitor,
   Compass,
   Ticket,
+  Trophy,
   Activity,
   BarChart3,
   Settings,
@@ -192,6 +193,7 @@ export default function Navbar() {
     { name: "Events", href: route("alleventsPage"), icon: Calendar },
     { name: "Volunteers", href: route("volunteer-opportunities.index"), icon: HeartHandshake },
     { name: "Courses", href: route("course.index"), icon: GraduationCap },
+    ...(isLoggedIn ? [{ name: "Challenge Hub", href: route("challenge-hub.index"), icon: Trophy }] : []),
     ...(isLoggedIn ? [{ name: "Supporters", href: route("find-supporters.index"), icon: UserPlus }] : []),
     ...(isLoggedIn ? [{ name: "Groups", href: route("groups"), icon: Users }] : []),
     ...(isLoggedIn && !showOrgOnlyNav
