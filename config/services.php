@@ -148,15 +148,16 @@ return [
 
     /*
     | Level Up / Challenge Hub quiz: OpenAI generation and points.
+    | Default: gpt-3.5-turbo. Override with CHALLENGE_QUIZ_AI_MODEL in .env if needed.
     */
     'challenge_quiz' => [
-        'model' => env('CHALLENGE_QUIZ_AI_MODEL', 'gpt-4o-mini'),
+        'model' => env('CHALLENGE_QUIZ_AI_MODEL', 'gpt-3.5-turbo'),
         'max_output_tokens' => (int) env('CHALLENGE_QUIZ_AI_MAX_TOKENS', 4096),
         /** Reward points per correct answer */
         'points_per_correct' => (float) env('CHALLENGE_QUIZ_POINTS_PER_CORRECT', 10),
         /** Deducted on wrong / timeout (defaults to same as correct when env omitted) */
         'points_per_incorrect' => (float) env('CHALLENGE_QUIZ_POINTS_PER_INCORRECT', env('CHALLENGE_QUIZ_POINTS_PER_CORRECT', 10)),
-        /** Max OpenAI-generated question batches per user per category per 24h */
+        /** @deprecated No longer enforced (generation is not cache-limited). Kept for .env compatibility. */
         'max_openai_batches_per_user_category_per_day' => (int) env('CHALLENGE_QUIZ_MAX_AI_BATCHES_PER_DAY', 20),
         /** Questions per OpenAI batch when pool is empty */
         'openai_batch_size' => (int) env('CHALLENGE_QUIZ_AI_BATCH_SIZE', 8),

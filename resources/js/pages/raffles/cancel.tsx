@@ -1,175 +1,124 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Head, Link } from '@inertiajs/react';
-import { XCircle, AlertTriangle, ArrowLeft, RefreshCw, Ticket } from 'lucide-react';
+import { ArrowLeft, HelpCircle, Ticket, XCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import FrontendLayout from '@/layouts/frontend/frontend-layout';
+import { cn } from '@/lib/utils';
 
 interface CancelPageProps {
     auth: {
         user: {
             name: string;
             email: string;
-        };
+        } | null;
     };
 }
 
-export default function RaffleCancelPage({ auth }: CancelPageProps) {
-    const [isVisible, setIsVisible] = useState(false);
-    const [showShake, setShowShake] = useState(false);
+const reasons = [
+    'You closed checkout or clicked back before paying',
+    'Your card or bank declined the charge',
+    'A network or browser issue interrupted checkout',
+];
+
+const tips = [
+    'Confirm your card has funds and isn’t expired',
+    'Try another card or payment method',
+    'Temporarily disable extensions that block popups',
+];
+
+export default function RaffleCancelPage({ auth: _auth }: CancelPageProps) {
+    const [mounted, setMounted] = useState(false);
 
     useEffect(() => {
-        // Trigger animations on mount
-        setIsVisible(true);
-        
-        // Trigger shake animation after a short delay
-        const shakeTimer = setTimeout(() => setShowShake(true), 500);
-        return () => clearTimeout(shakeTimer);
+        setMounted(true);
     }, []);
 
     return (
         <FrontendLayout>
-            <Head title="Payment Cancelled" />
-            
-            <div className="min-h-screen bg-gradient-to-br from-red-50 via-orange-50 to-yellow-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 py-12">
-                <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-                    
-                    {/* Cancel Header */}
-                    <div className={`text-center mb-12 transition-all duration-1000 ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'}`}>
-                        <div className={`inline-flex items-center justify-center w-24 h-24 bg-red-100 dark:bg-red-900 rounded-full mb-6 ${showShake ? 'animate-bounce' : ''}`}>
-                            <XCircle className="w-12 h-12 text-red-600 dark:text-red-400" />
+            <Head title="Checkout cancelled" />
+
+            <div className="relative min-h-screen overflow-hidden bg-background">
+                <div className="pointer-events-none absolute inset-0">
+                    <div className="absolute -left-24 top-32 h-80 w-80 rounded-full bg-rose-500/10 blur-3xl dark:bg-rose-500/5" />
+                    <div className="absolute -right-16 bottom-40 h-72 w-72 rounded-full bg-amber-500/10 blur-3xl dark:bg-amber-500/5" />
+                    <div className="absolute left-1/2 top-1/4 h-px w-[min(100%,48rem)] -translate-x-1/2 bg-gradient-to-r from-transparent via-border to-transparent" />
+                </div>
+
+                <div className="relative mx-auto max-w-2xl px-4 py-16 sm:px-6 lg:py-24">
+                    <div
+                        className={cn(
+                            'transition-all duration-500',
+                            mounted ? 'translate-y-0 opacity-100' : 'translate-y-4 opacity-0',
+                        )}
+                    >
+                        {/* Hero */}
+                        <div className="mb-10 text-center">
+                            <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-2xl border border-rose-500/25 bg-rose-500/[0.08] shadow-sm dark:border-rose-400/20 dark:bg-rose-950/40">
+                                <XCircle className="h-8 w-8 text-rose-600 dark:text-rose-400" aria-hidden />
+                            </div>
+                            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                                Raffle checkout
+                            </p>
+                            <h1 className="mb-3 font-serif text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
+                                Checkout cancelled
+                            </h1>
+                            <p className="mx-auto max-w-md text-base leading-relaxed text-muted-foreground">
+                                No payment was completed. You can try again anytime — nothing was charged.
+                            </p>
                         </div>
-                        <h1 className="text-4xl font-bold text-gray-900 dark:text-white mb-4">
-                            😔 Payment Cancelled
-                        </h1>
-                        <p className="text-xl text-gray-600 dark:text-gray-300 mb-8">
-                            Your raffle ticket purchase was cancelled
-                        </p>
-                        
-                        {/* Warning Badge */}
-                        <Badge className="bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200 text-lg px-6 py-3 mb-8">
-                            <AlertTriangle className="w-5 h-5 mr-2" />
-                            Payment Cancelled
-                        </Badge>
-                    </div>
 
-                    {/* Information Card */}
-                    <Card className={`mb-8 transition-all duration-1000 delay-300 ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'} bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700`}>
-                        <CardHeader className="bg-gradient-to-r from-red-500 to-orange-500 text-white">
-                            <CardTitle className="flex items-center text-2xl">
-                                <AlertTriangle className="w-6 h-6 mr-3" />
-                                What Happened?
-                            </CardTitle>
-                        </CardHeader>
-                        <CardContent className="p-6">
-                            <div className="space-y-4">
-                                <p className="text-gray-700 dark:text-gray-300 text-lg">
-                                    Your payment was cancelled before completion. This could happen for several reasons:
-                                </p>
-                                <ul className="list-disc list-inside space-y-2 text-gray-600 dark:text-gray-400">
-                                    <li>You clicked the "Cancel" button during checkout</li>
-                                    <li>There was an issue with your payment method</li>
-                                    <li>You closed the browser window during payment</li>
-                                    <li>There was a technical issue with the payment processor</li>
-                                </ul>
-                                <div className="bg-blue-50 dark:bg-blue-900 border border-blue-200 dark:border-blue-700 rounded-lg p-4 mt-6">
-                                    <p className="text-blue-800 dark:text-blue-200 font-semibold">
-                                        💡 Don't worry! No charges were made to your account.
-                                    </p>
+                        {/* Main panel */}
+                        <div className="rounded-2xl border border-border bg-card p-6 shadow-sm sm:p-8">
+                            <div className="mb-8 rounded-xl border border-dashed border-amber-500/35 bg-amber-500/[0.06] px-4 py-3 text-center text-sm text-amber-950 dark:border-amber-500/25 dark:bg-amber-950/25 dark:text-amber-100">
+                                <strong className="font-semibold">Your account was not charged.</strong>{' '}
+                                Returning to checkout is safe.
+                            </div>
+
+                            <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                                Common reasons
+                            </h2>
+                            <ul className="mb-8 space-y-2.5 text-sm text-foreground">
+                                {reasons.map((line) => (
+                                    <li key={line} className="flex gap-3">
+                                        <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-muted-foreground/40" />
+                                        <span className="leading-relaxed text-muted-foreground">{line}</span>
+                                    </li>
+                                ))}
+                            </ul>
+
+                            <div className="flex items-start gap-3 rounded-xl bg-muted/50 px-4 py-3 dark:bg-muted/30">
+                                <HelpCircle className="mt-0.5 h-5 w-5 shrink-0 text-muted-foreground" aria-hidden />
+                                <div>
+                                    <p className="mb-2 text-sm font-medium text-foreground">If it keeps failing</p>
+                                    <ul className="space-y-1.5 text-sm text-muted-foreground">
+                                        {tips.map((t) => (
+                                            <li key={t}>{t}</li>
+                                        ))}
+                                    </ul>
                                 </div>
                             </div>
-                        </CardContent>
-                    </Card>
+                        </div>
 
-                    {/* Next Steps */}
-                    <Card className={`mb-8 transition-all duration-1000 delay-500 ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'} bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700`}>
-                        <CardHeader>
-                            <CardTitle className="text-2xl text-gray-900 dark:text-white">What's Next?</CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                                <div className="text-center p-6 bg-gray-50 dark:bg-gray-700 rounded-lg">
-                                    <div className="w-16 h-16 bg-blue-100 dark:bg-blue-900 rounded-full flex items-center justify-center mb-4 mx-auto">
-                                        <RefreshCw className="w-8 h-8 text-blue-600 dark:text-blue-400" />
-                                    </div>
-                                    <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
-                                        Try Again
-                                    </h3>
-                                    <p className="text-gray-600 dark:text-gray-300 text-sm">
-                                        You can attempt to purchase the raffle tickets again
-                                    </p>
-                                </div>
-                                
-                                <div className="text-center p-6 bg-gray-50 dark:bg-gray-700 rounded-lg">
-                                    <div className="w-16 h-16 bg-green-100 dark:bg-green-900 rounded-full flex items-center justify-center mb-4 mx-auto">
-                                        <Ticket className="w-8 h-8 text-green-600 dark:text-green-400" />
-                                    </div>
-                                    <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
-                                        Browse Raffles
-                                    </h3>
-                                    <p className="text-gray-600 dark:text-gray-300 text-sm">
-                                        Explore other exciting raffles available
-                                    </p>
-                                </div>
-                                
-                                <div className="text-center p-6 bg-gray-50 dark:bg-gray-700 rounded-lg">
-                                    <div className="w-16 h-16 bg-purple-100 dark:bg-purple-900 rounded-full flex items-center justify-center mb-4 mx-auto">
-                                        <ArrowLeft className="w-8 h-8 text-purple-600 dark:text-purple-400" />
-                                    </div>
-                                    <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
-                                        Go Back
-                                    </h3>
-                                    <p className="text-gray-600 dark:text-gray-300 text-sm">
-                                        Return to the previous page or dashboard
-                                    </p>
-                                </div>
-                            </div>
-                        </CardContent>
-                    </Card>
-
-                    {/* Help Section */}
-                    <Card className={`mb-8 transition-all duration-1000 delay-700 ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'} bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700`}>
-                        <CardHeader>
-                            <CardTitle className="text-2xl text-gray-900 dark:text-white">Need Help?</CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                            <div className="bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-900 dark:to-purple-900 rounded-lg p-6">
-                                <p className="text-gray-700 dark:text-gray-300 mb-4">
-                                    If you're experiencing issues with payments, here are some things to try:
-                                </p>
-                                <ul className="list-disc list-inside space-y-2 text-gray-600 dark:text-gray-400">
-                                    <li>Check that your payment method is valid and has sufficient funds</li>
-                                    <li>Try using a different payment method</li>
-                                    <li>Clear your browser cache and cookies</li>
-                                    <li>Disable any ad blockers or browser extensions temporarily</li>
-                                    <li>Contact support if the problem persists</li>
-                                </ul>
-                            </div>
-                        </CardContent>
-                    </Card>
-
-                    {/* Action Buttons */}
-                    <div className={`text-center transition-all duration-1000 delay-1000 ${isVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'}`}>
-                        <div className="flex flex-col sm:flex-row gap-4 justify-center">
-                            <Button 
+                        {/* Actions */}
+                        <div className="mt-10 flex flex-col gap-3 sm:flex-row sm:justify-center">
+                            <Button
+                                type="button"
+                                variant="default"
+                                className="h-11 rounded-xl bg-gradient-to-r from-blue-600 to-violet-600 px-6 font-semibold text-white shadow-md hover:from-blue-700 hover:to-violet-700 sm:min-w-[11rem]"
                                 onClick={() => window.history.back()}
-                                className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white px-8 py-3 text-lg"
                             >
-                                <ArrowLeft className="w-5 h-5 mr-2" />
-                                Try Again
+                                <ArrowLeft className="mr-2 h-4 w-4" aria-hidden />
+                                Go back
                             </Button>
-                            <Link href="/frontend/raffles">
-                                <Button variant="outline" className="px-8 py-3 text-lg border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700">
-                                    <Ticket className="w-5 h-5 mr-2" />
-                                    Browse Raffles
-                                </Button>
-                            </Link>
-                            <Link href="/dashboard">
-                                <Button variant="outline" className="px-8 py-3 text-lg border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700">
-                                    Go to Dashboard
-                                </Button>
-                            </Link>
+                            <Button variant="outline" className="h-11 rounded-xl border-border" asChild>
+                                <Link href="/frontend/raffles">
+                                    <Ticket className="mr-2 h-4 w-4" aria-hidden />
+                                    Browse raffles
+                                </Link>
+                            </Button>
+                            <Button variant="ghost" className="h-11 rounded-xl text-muted-foreground" asChild>
+                                <Link href="/dashboard">Dashboard</Link>
+                            </Button>
                         </div>
                     </div>
                 </div>

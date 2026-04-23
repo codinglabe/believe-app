@@ -9,8 +9,10 @@ use App\Models\LevelUpQuizSession;
 use App\Models\LevelUpTrack;
 use App\Models\UserChallengeQuestionEvent;
 use App\Services\ChallengeQuestionService;
+use App\Support\ChallengePlayQuizMode;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
@@ -227,6 +229,7 @@ class ChallengeLevelUpController extends Controller
             'quiz_card_fallback_images' => array_values(array_filter($fallbackImages, fn ($u) => is_string($u) && $u !== '')),
             'challenges_empty_heading' => (string) config('challenge_hub.challenges_empty_heading'),
             'challenges_empty_hint' => (string) config('challenge_hub.challenges_empty_hint'),
+            'quiz_mode' => $this->quizModeFromRequest($request),
         ]);
     }
 
@@ -239,19 +242,37 @@ class ChallengeLevelUpController extends Controller
         $user = Auth::user();
         abort_if(! $user, 403);
 
-        $sessionKey = 'challenge_hub_play_card_'.$track->id;
-        if (is_string($challenge) && $challenge !== '') {
-            session([$sessionKey => $challenge]);
-        } else {
-            session()->forget($sessionKey);
-        }
-
         $answeredCount = $this->answeredCount($user->id, $track->id);
 
-        return Inertia::render('frontend/level-up/Play', $this->playPageProps($track, $answeredCount, null, null, null, null, null));
+        return Inertia::render('frontend/level-up/Play', $this->playPageProps($request, $track, $answeredCount, null, null, null, null, null));
     }
 
-    public function next(LevelUpTrack $track): Response
+    /**
+     * Inertia quiz actions use POST only. A browser refresh issues GET — redirect back to the play URL so users do not see 405.
+     */
+    public function restorePlayFromGet(Request $request, LevelUpTrack $track): RedirectResponse
+    {
+        if (! $track->isActive()) {
+            abort(404);
+        }
+
+        $params = array_filter([
+            'track' => $track->slug,
+            'challenge' => is_string($request->query('challenge')) && trim($request->query('challenge')) !== ''
+                ? trim((string) $request->query('challenge'))
+                : null,
+        ]);
+
+        $url = route('challenge-hub.play', $params);
+        $qm = $request->query('quiz_mode');
+        if (is_string($qm) && trim($qm) !== '') {
+            $url .= (str_contains($url, '?') ? '&' : '?').'quiz_mode='.rawurlencode(trim($qm));
+        }
+
+        return redirect()->to($url);
+    }
+
+    public function next(Request $request, LevelUpTrack $track): Response
     {
         if (! $track->isActive()) {
             abort(404);
@@ -260,9 +281,19 @@ class ChallengeLevelUpController extends Controller
         $user = Auth::user();
         abort_if(! $user, 403);
 
+        $challengeSlug = $this->resolveChallengeSlugFromRequest($request, $request->route('challenge'));
+
         /** @var ChallengeQuestionService $service */
         $service = app(ChallengeQuestionService::class);
-        $qstate = $service->next($user, $track);
+        $entry = $this->selectedChallengeEntry($track, $challengeSlug);
+        $qstate = $service->next(
+            $user,
+            $track,
+            $this->quizSubcategoryFilterForPlay($track, $challengeSlug),
+            $this->quizModeFromRequest($request),
+            $entry?->title,
+            $entry?->description
+        );
 
         $answeredCount = $this->answeredCount($user->id, $track->id);
 
@@ -272,7 +303,7 @@ class ChallengeLevelUpController extends Controller
         $quizResult = null;
 
         if (($qstate['status'] ?? null) === 'exhausted') {
-            $quizResult = $service->finalizeOpenSessionForTrack($user, $track);
+            $quizResult = $service->finalizeOpenSessionForTrack($user, $track, $this->practiceModeForPlay($request));
         }
 
         if (($qstate['status'] ?? null) === 'question') {
@@ -289,7 +320,7 @@ class ChallengeLevelUpController extends Controller
 
         return Inertia::render(
             'frontend/level-up/Play',
-            $this->playPageProps($track, $answeredCount, $activeQuestion, $playStatus, $playMessage, null, $quizResult)
+            $this->playPageProps($request, $track, $answeredCount, $activeQuestion, $playStatus, $playMessage, null, $quizResult)
         );
     }
 
@@ -318,13 +349,53 @@ class ChallengeLevelUpController extends Controller
             (int) $validated['event_id'],
             $validated['selected_option'] ?? null,
             $timedOut,
+            $this->practiceModeForPlay($request),
         );
 
         $answeredCount = $this->answeredCount($user->id, $track->id);
 
         return Inertia::render(
             'frontend/level-up/Play',
-            $this->playPageProps($track, $answeredCount, null, null, null, $result, null)
+            $this->playPageProps($request, $track, $answeredCount, null, null, null, $result, null)
+        );
+    }
+
+    public function finish(Request $request, LevelUpTrack $track): Response
+    {
+        if (! $track->isActive()) {
+            abort(404);
+        }
+
+        $user = Auth::user();
+        abort_if(! $user, 403);
+
+        /** @var ChallengeQuestionService $service */
+        $service = app(ChallengeQuestionService::class);
+
+        $quizResult = $service->finishTrackQuizForUser($user, $track, $this->practiceModeForPlay($request));
+
+        if ($quizResult === null) {
+            $user->refresh();
+            $quizResult = [
+                'headline' => 'Quiz Results',
+                'summary' => 'There was no active quiz session to end.',
+                'congratulations' => false,
+                'score_correct' => 0,
+                'score_total' => 0,
+                'points_from_answers' => 0.0,
+                'streak_bonus' => 0.0,
+                'points_total' => 0.0,
+                'max_streak' => 0,
+                'total_time_ms' => 0,
+                'reward_points_balance' => round((float) $user->currentRewardPoints(), 2),
+            ];
+        }
+
+        $answeredCount = $this->answeredCount($user->id, $track->id);
+
+        return Inertia::render(
+            'frontend/level-up/Play',
+            $this->playPageProps($request, $track, $answeredCount, null, null, null, null, $quizResult)
         );
     }
 
@@ -455,6 +526,7 @@ class ChallengeLevelUpController extends Controller
      * @return array<string, mixed>
      */
     protected function playPageProps(
+        Request $request,
         LevelUpTrack $track,
         int $answeredCount,
         ?array $activeQuestion,
@@ -487,7 +559,7 @@ class ChallengeLevelUpController extends Controller
 
         $pres = $this->resolveTrackHeroPresentation($track, null, $challengeHubCategories);
 
-        $cardKey = session('challenge_hub_play_card_'.$track->id);
+        $cardKey = $this->resolveChallengeSlugFromRequest($request, $request->route('challenge'));
         $pres = $this->applySelectedQuizCardToPlayHero($pres, is_string($cardKey) ? $cardKey : null);
 
         return [
@@ -496,16 +568,70 @@ class ChallengeLevelUpController extends Controller
             'active_category_slug' => $pres['active_category_slug'],
             'hero_icon' => $pres['hero_icon'],
             'play_hero_from_card' => (bool) ($pres['play_hero_from_card'] ?? false),
+            /** Echo back for POST next/answer — no session; slug from route, query, or body. */
+            'play_challenge_slug' => is_string($cardKey) && $cardKey !== '' ? $cardKey : null,
             'answeredCount' => $answeredCount,
             'activeQuestion' => $activeQuestion,
             'playStatus' => $playStatus,
             'playMessage' => $playMessage,
             'lastResult' => $lastResult,
             'quiz_result' => $quizResult,
-            'question_time_limit_seconds' => (int) config('challenge_hub.question_time_limit_seconds', 10),
+            'question_time_limit_seconds' => $this->questionTimeLimitSecondsForPlay($request),
+            'quiz_mode' => $this->quizModeFromRequest($request),
+            'practice_mode' => $this->practiceModeForPlay($request),
             'reward_points_balance' => $rewardBalance,
             'quiz_session_streak' => $sessionStreak,
         ];
+    }
+
+    /**
+     * Challenge card slug: POST body (quiz actions) > query > route parameter (play URL).
+     */
+    protected function resolveChallengeSlugFromRequest(Request $request, mixed $routeChallenge = null): ?string
+    {
+        $body = $request->input('challenge');
+        if (is_string($body) && trim($body) !== '') {
+            return trim($body);
+        }
+        $q = $request->query('challenge');
+        if (is_string($q) && trim($q) !== '') {
+            return trim($q);
+        }
+        if (is_string($routeChallenge) && trim($routeChallenge) !== '') {
+            return trim($routeChallenge);
+        }
+
+        return null;
+    }
+
+    /**
+     * Quiz difficulty / practice: POST body (each quiz request) > query string (initial page load).
+     *
+     * @return ChallengePlayQuizMode::EASY|ChallengePlayQuizMode::MEDIUM|ChallengePlayQuizMode::HARD|ChallengePlayQuizMode::PRACTICE
+     */
+    protected function quizModeFromRequest(Request $request): string
+    {
+        $raw = $request->input('quiz_mode');
+        if (! is_string($raw) || trim($raw) === '') {
+            $raw = $request->query('quiz_mode');
+        }
+
+        return ChallengePlayQuizMode::normalize(is_string($raw) ? $raw : null);
+    }
+
+    protected function practiceModeForPlay(Request $request): bool
+    {
+        return ChallengePlayQuizMode::isPractice($this->quizModeFromRequest($request));
+    }
+
+    protected function questionTimeLimitSecondsForPlay(Request $request): int
+    {
+        $base = (int) config('challenge_hub.question_time_limit_seconds', 10);
+        if ($this->practiceModeForPlay($request)) {
+            $base = (int) round($base * (float) config('challenge_hub.practice_time_multiplier', 1.5));
+        }
+
+        return max(1, $base);
     }
 
     protected function answeredCount(int $userId, int $trackId): int
@@ -625,16 +751,57 @@ class ChallengeLevelUpController extends Controller
     }
 
     /**
-     * Question bank scope for counts on a challenge row (category + optional track quiz_subcategory).
-     *
-     * @param  array<int, string>  $subjectCats
+     * Subcategory stored on {@link ChallengeQuestion} rows for filtering. Per-challenge entries win over the track default
+     * so each hub card only draws (and generates) questions for that challenge.
      */
-    protected function challengeQuestionsQueryForTrack(LevelUpTrack $track, array $subjectCats): Builder
+    protected function effectiveSubcategoryForHubChallenge(LevelUpTrack $track, ?LevelUpChallengeEntry $entry): ?string
     {
-        $query = ChallengeQuestion::query()->whereIn('category', $subjectCats);
+        if ($entry && filled($entry->subcategory_key)) {
+            return trim((string) $entry->subcategory_key);
+        }
         $quizSub = $track->quiz_subcategory;
         if (is_string($quizSub) && trim($quizSub) !== '') {
-            $query->where('subcategory', trim($quizSub));
+            return trim($quizSub);
+        }
+
+        return null;
+    }
+
+    /**
+     * Subcategory filter for {@link ChallengeQuestion} from the selected hub card slug (route / query / POST).
+     */
+    protected function quizSubcategoryFilterForPlay(LevelUpTrack $track, ?string $challengeSlug): ?string
+    {
+        $entry = $this->selectedChallengeEntry($track, $challengeSlug);
+
+        return $this->effectiveSubcategoryForHubChallenge($track, $entry);
+    }
+
+    /**
+     * Active hub challenge row for the given card slug (from /play/{challenge} or repeated on each POST).
+     */
+    protected function selectedChallengeEntry(LevelUpTrack $track, ?string $challengeSlug): ?LevelUpChallengeEntry
+    {
+        if (! is_string($challengeSlug) || $challengeSlug === '') {
+            return null;
+        }
+
+        return LevelUpChallengeEntry::query()
+            ->where('level_up_track_id', $track->id)
+            ->where('slug', $challengeSlug)
+            ->where('is_active', true)
+            ->first();
+    }
+
+    /**
+     * @param  array<int, string>  $subjectCats
+     */
+    protected function challengeQuestionsQueryForEntry(LevelUpTrack $track, array $subjectCats, ?LevelUpChallengeEntry $entry): Builder
+    {
+        $query = ChallengeQuestion::query()->whereIn('category', $subjectCats);
+        $sub = $this->effectiveSubcategoryForHubChallenge($track, $entry);
+        if (is_string($sub) && $sub !== '') {
+            $query->where('subcategory', $sub);
         }
 
         return $query;
@@ -649,13 +816,7 @@ class ChallengeLevelUpController extends Controller
      */
     protected function quizCardFromEntry(LevelUpTrack $track, array $subjectCats, LevelUpChallengeEntry $entry): array
     {
-        $base = $this->challengeQuestionsQueryForTrack($track, $subjectCats);
-        $trackScoped = $track->quiz_subcategory;
-        if (! is_string($trackScoped) || trim($trackScoped) === '') {
-            if (filled($entry->subcategory_key)) {
-                $base->where('subcategory', $entry->subcategory_key);
-            }
-        }
+        $base = $this->challengeQuestionsQueryForEntry($track, $subjectCats, $entry);
         $questionCount = (clone $base)->count();
         $qIds = (clone $base)->pluck('id')->all();
         $playsToday = $this->playsTodayForTrackQuestions($track, $qIds);

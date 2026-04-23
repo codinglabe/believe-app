@@ -8,6 +8,8 @@ use App\Models\LevelUpTrack;
 use App\Models\User;
 use App\Models\UserChallengeQuestionEvent;
 use App\Support\ChallengeLevelUp;
+use App\Support\ChallengePlayQuizMode;
+use App\Support\ProfileReligions;
 use Illuminate\Support\Collection;
 use InvalidArgumentException;
 
@@ -17,18 +19,32 @@ class ChallengeQuestionService
         protected ChallengeQuestionGeneratorService $generator,
     ) {}
 
-    protected function questionTimeLimitMs(): int
+    protected function questionTimeLimitMs(bool $practiceMode = false): int
     {
         $sec = (int) config('challenge_hub.question_time_limit_seconds', 10);
+        if ($practiceMode) {
+            $sec = (int) round($sec * (float) config('challenge_hub.practice_time_multiplier', 1.5));
+        }
 
         return max(1000, $sec * 1000);
     }
 
     /**
+     * @param  string|null  $quizSubcategoryFilter  Matches {@link ChallengeQuestion::subcategory} for the selected hub challenge
+     *                                              (from session card + track). Null = any subcategory in the track categories.
+     * @param  string  $quizMode  {@see ChallengePlayQuizMode} easy|medium|hard|practice
+     * @param  string|null  $hubChallengeTitle  Selected hub card title — passed into OpenAI when generating new rows.
+     * @param  string|null  $hubChallengeDescription  Selected hub card description — same.
      * @return array<string, mixed>
      */
-    public function next(User $user, LevelUpTrack $track): array
-    {
+    public function next(
+        User $user,
+        LevelUpTrack $track,
+        ?string $quizSubcategoryFilter = null,
+        string $quizMode = ChallengePlayQuizMode::MEDIUM,
+        ?string $hubChallengeTitle = null,
+        ?string $hubChallengeDescription = null,
+    ): array {
         if (! $track->isActive()) {
             throw new InvalidArgumentException('Track is not active.');
         }
@@ -44,6 +60,8 @@ class ChallengeQuestionService
             ];
         }
 
+        $profileReligion = ProfileReligions::nullableAllowed($user->religion);
+
         $pending = UserChallengeQuestionEvent::query()
             ->where('user_id', $user->id)
             ->where('level_up_track_id', $track->id)
@@ -52,19 +70,39 @@ class ChallengeQuestionService
             ->first();
 
         if ($pending && $pending->challengeQuestion) {
-            return $this->withQuestionMeta($this->questionPayloadFromEvent($pending), false);
+            if (! $this->questionMatchesUserReligion($pending->challengeQuestion, $profileReligion)) {
+                $pending->delete();
+            } else {
+                return $this->withQuestionMeta($this->questionPayloadFromEvent($pending), false);
+            }
         }
 
         $usedIds = $this->usedQuestionIds($user->id);
 
-        $subcategory = $track->quiz_subcategory;
-        $question = $this->pickRandomUnseen($categories, $usedIds, $subcategory);
+        $subcategory = is_string($quizSubcategoryFilter) && trim($quizSubcategoryFilter) !== ''
+            ? trim($quizSubcategoryFilter)
+            : null;
+
+        $mode = ChallengePlayQuizMode::normalize($quizMode);
+        $difficultyCanonical = ChallengePlayQuizMode::difficultyLabelForQuestions($mode);
+        $practiceVariety = ChallengePlayQuizMode::isPractice($mode);
+
+        $question = $this->pickRandomUnseen($categories, $usedIds, $subcategory, $difficultyCanonical, $profileReligion);
 
         $generatedNewCount = 0;
         if (! $question) {
-            $generatedNewCount = $this->generator->generateBatchIfAllowed($user->id, $categories[0]);
+            $generatedNewCount = $this->generator->generateBatchIfAllowed(
+                $user->id,
+                $categories[0],
+                $subcategory,
+                $difficultyCanonical,
+                $practiceVariety,
+                $hubChallengeTitle,
+                $hubChallengeDescription,
+                $user->religion
+            );
             $usedIds = $this->usedQuestionIds($user->id);
-            $question = $this->pickRandomUnseen($categories, $usedIds, $subcategory);
+            $question = $this->pickRandomUnseen($categories, $usedIds, $subcategory, $difficultyCanonical, $profileReligion);
         }
 
         if (! $question) {
@@ -115,8 +153,14 @@ class ChallengeQuestionService
     /**
      * @return array<string, mixed>
      */
-    public function answer(User $user, LevelUpTrack $track, int $eventId, ?string $selectedOption, bool $timedOut = false): array
-    {
+    public function answer(
+        User $user,
+        LevelUpTrack $track,
+        int $eventId,
+        ?string $selectedOption,
+        bool $timedOut = false,
+        bool $practiceMode = false,
+    ): array {
         if (! $track->isActive()) {
             throw new InvalidArgumentException('Track is not active.');
         }
@@ -134,7 +178,7 @@ class ChallengeQuestionService
             throw new InvalidArgumentException('Question missing.');
         }
 
-        $limitMs = $this->questionTimeLimitMs();
+        $limitMs = $this->questionTimeLimitMs($practiceMode);
         $rawElapsed = (int) max(0, $event->created_at->diffInMilliseconds(now()));
         $effectiveTimedOut = $timedOut || $rawElapsed >= $limitMs;
         $responseTimeMs = (int) min($rawElapsed, $limitMs);
@@ -156,34 +200,36 @@ class ChallengeQuestionService
         $pointsPerIncorrect = (float) config('services.challenge_quiz.points_per_incorrect', $pointsPerCorrect);
 
         $points = 0.0;
-        if ($correct) {
-            $points = $pointsPerCorrect;
-            $user->addRewardPoints(
-                $points,
-                ChallengeLevelUp::LEDGER_SOURCE,
-                $event->id,
-                $track->name.' — correct answer',
-                [
-                    'level_up_track_slug' => $track->slug,
-                    'challenge_question_id' => $q->id,
-                ]
-            );
-        } else {
-            $balance = $user->currentRewardPoints();
-            $deduct = min($pointsPerIncorrect, max(0.0, $balance));
-            if ($deduct > 0.00001) {
-                $user->deductRewardPoints(
-                    $deduct,
+        if (! $practiceMode) {
+            if ($correct) {
+                $points = $pointsPerCorrect;
+                $user->addRewardPoints(
+                    $points,
                     ChallengeLevelUp::LEDGER_SOURCE,
                     $event->id,
-                    $track->name.' — incorrect answer',
+                    $track->name.' — correct answer',
                     [
                         'level_up_track_slug' => $track->slug,
                         'challenge_question_id' => $q->id,
-                        'timed_out' => $effectiveTimedOut,
                     ]
                 );
-                $points = -1 * $deduct;
+            } else {
+                $deduct = $pointsPerIncorrect;
+                if ($deduct > 0.00001) {
+                    $user->deductRewardPoints(
+                        $deduct,
+                        ChallengeLevelUp::LEDGER_SOURCE,
+                        $event->id,
+                        $track->name.' — incorrect answer',
+                        [
+                            'level_up_track_slug' => $track->slug,
+                            'challenge_question_id' => $q->id,
+                            'timed_out' => $effectiveTimedOut,
+                        ],
+                        allowNegativeBalance: true
+                    );
+                    $points = -1 * $deduct;
+                }
             }
         }
 
@@ -203,6 +249,7 @@ class ChallengeQuestionService
         }
 
         return [
+            'event_id' => $event->id,
             'is_correct' => $correct,
             'correct_option' => strtoupper((string) $q->correct_option),
             'explanation' => $q->explanation,
@@ -211,6 +258,32 @@ class ChallengeQuestionService
             'response_time_ms' => $responseTimeMs,
             'timed_out' => $effectiveTimedOut,
         ];
+    }
+
+    /**
+     * Drops any unanswered question on the open session, then closes that session (same scoring as exhaustion).
+     *
+     * @return array<string, mixed>|null  Null when there is no open quiz session for this track.
+     */
+    public function finishTrackQuizForUser(User $user, LevelUpTrack $track, bool $practiceMode = false): ?array
+    {
+        $session = LevelUpQuizSession::query()
+            ->where('user_id', $user->id)
+            ->where('level_up_track_id', $track->id)
+            ->whereNull('ended_at')
+            ->latest('id')
+            ->first();
+
+        if (! $session) {
+            return null;
+        }
+
+        UserChallengeQuestionEvent::query()
+            ->where('level_up_quiz_session_id', $session->id)
+            ->where('status', UserChallengeQuestionEvent::STATUS_PENDING)
+            ->delete();
+
+        return $this->finalizeOpenSessionForTrack($user, $track, $practiceMode);
     }
 
     protected function updateSessionAfterAnswer(?LevelUpQuizSession $session, bool $correct): void
@@ -237,7 +310,7 @@ class ChallengeQuestionService
      *
      * @return array<string, mixed>|null
      */
-    public function finalizeOpenSessionForTrack(User $user, LevelUpTrack $track): ?array
+    public function finalizeOpenSessionForTrack(User $user, LevelUpTrack $track, bool $practiceMode = false): ?array
     {
         $session = LevelUpQuizSession::query()
             ->where('user_id', $user->id)
@@ -262,9 +335,9 @@ class ChallengeQuestionService
         $total = $events->count();
         $pointsFromAnswers = (float) $events->sum(fn (UserChallengeQuestionEvent $e) => (float) $e->points_awarded);
 
-        $bonus = $this->streakBonusPoints((int) $session->max_answer_streak);
+        $bonus = $practiceMode ? 0.0 : $this->streakBonusPoints((int) $session->max_answer_streak);
 
-        if ($bonus > 0.00001) {
+        if (! $practiceMode && $bonus > 0.00001) {
             $user->addRewardPoints(
                 $bonus,
                 ChallengeLevelUp::LEDGER_SOURCE,
@@ -316,13 +389,41 @@ class ChallengeQuestionService
      * @param  array<int, string>  $categories
      * @param  Collection<int, int>  $usedIds
      */
-    protected function pickRandomUnseen(array $categories, Collection $usedIds, ?string $subcategory = null): ?ChallengeQuestion
+    /**
+     * @param  string|null  $profileReligion  {@see ProfileReligions::nullableAllowed()} — when set, only rows tagged with that tradition; untagged rows are excluded (legacy/generic pool is for users without a profile religion).
+     */
+    protected function questionMatchesUserReligion(ChallengeQuestion $q, ?string $profileReligion): bool
     {
+        $tag = $q->religion;
+        $tag = is_string($tag) ? trim($tag) : '';
+        if ($profileReligion !== null) {
+            return $tag === $profileReligion;
+        }
+
+        return $tag === '';
+    }
+
+    protected function pickRandomUnseen(
+        array $categories,
+        Collection $usedIds,
+        ?string $subcategory = null,
+        ?string $difficultyCanonical = null,
+        ?string $profileReligion = null,
+    ): ?ChallengeQuestion {
         $sub = is_string($subcategory) ? trim($subcategory) : '';
+        $diff = is_string($difficultyCanonical) ? trim($difficultyCanonical) : '';
 
         return ChallengeQuestion::query()
             ->whereIn('category', $categories)
             ->when($sub !== '', fn ($q) => $q->where('subcategory', $sub))
+            ->when($diff !== '', function ($q) use ($diff) {
+                $q->whereRaw('LOWER(TRIM(COALESCE(difficulty, ""))) = ?', [strtolower($diff)]);
+            })
+            ->when(
+                $profileReligion !== null,
+                fn ($q) => $q->where('religion', $profileReligion),
+                fn ($q) => $q->whereNull('religion'),
+            )
             ->when($usedIds->isNotEmpty(), fn ($q) => $q->whereNotIn('id', $usedIds))
             ->inRandomOrder()
             ->first();
@@ -358,7 +459,6 @@ class ChallengeQuestionService
             ['C', (string) $q->option_c],
             ['D', (string) $q->option_d],
         ];
-        shuffle($pairs);
 
         $optionRows = [];
         foreach ($pairs as [$answerKey, $text]) {

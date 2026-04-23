@@ -1,29 +1,52 @@
-import { Link, useForm } from '@inertiajs/react';
+import { Link, router, useForm, usePage } from '@inertiajs/react';
 import { PageHead } from '@/components/frontend/PageHead';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { 
-    Calendar, 
-    Users, 
-    DollarSign, 
-    Gift, 
-    Clock, 
-    CheckCircle, 
+import { Switch } from '@/components/frontend/ui/switch';
+import {
+    Gift,
+    Clock,
+    CheckCircle,
     ArrowLeft,
     Ticket,
     Crown,
     Medal,
-    Award
+    Award,
+    Loader2,
+    Sparkles,
+    Info,
+    Coins,
+    CreditCard,
+    ChevronRight,
 } from 'lucide-react';
-import { PageProps } from '@/types';
+import type { PageProps, ProcessingFeeRates } from '@/types';
 import FrontendLayout from '@/layouts/frontend/frontend-layout';
 import CountdownTimer from '@/components/ui/countdown-timer';
 import RaffleTicket from '@/components/ui/raffle-ticket';
+import { cn } from '@/lib/utils';
+
+/** Raffle preview is card-only; rail is always `card` from the server. */
+interface FeePreviewFromServer {
+    mode: 'donor_covers' | 'org_covers';
+    rail?: 'card';
+    base_gift_usd: number;
+    checkout_total_usd: number;
+    processing_fee_estimate: number;
+    estimated_net_to_org_usd: number;
+}
+
+const DEFAULT_PROCESSING_FEE_RATES: ProcessingFeeRates = {
+    card_percent: 0.029,
+    card_fixed_usd: 0.3,
+    ach_percent: 0.008,
+    ach_fee_cap_usd: 5,
+};
+
+const cardSurface =
+    'rounded-xl border border-border bg-card text-card-foreground shadow-sm';
 
 interface RaffleTicket {
     id: number;
@@ -67,7 +90,13 @@ interface Raffle {
     }>;
     winners_count: number;
     organization: {
+        id?: number;
         name: string;
+        role?: string;
+        organization?: {
+            name: string;
+            description?: string | null;
+        } | null;
         description?: string;
     };
     tickets: RaffleTicket[];
@@ -80,6 +109,11 @@ interface Raffle {
 
 interface RaffleShowProps extends PageProps {
     raffle: Raffle;
+    feePreview?: FeePreviewFromServer | null;
+    /** When false, only Stripe checkout is offered */
+    believePointsEnabled?: boolean;
+    /** Purchased Believe Points balance (1 point ≈ $1 toward eligible purchases) */
+    believePointsBalance?: number;
     auth: {
         user: {
             name: string;
@@ -88,35 +122,126 @@ interface RaffleShowProps extends PageProps {
     };
 }
 
-export default function RaffleShow({ raffle, auth }: RaffleShowProps) {
-    const [quantity, setQuantity] = useState(1);
-    
+export default function RaffleShow({
+    raffle,
+    auth,
+    believePointsEnabled = false,
+    believePointsBalance = 0,
+}: RaffleShowProps) {
+    const page = usePage<RaffleShowProps & { processingFeeRates?: ProcessingFeeRates }>();
+    const feePreview = page.props.feePreview ?? null;
+    const processingFeeRates = page.props.processingFeeRates ?? DEFAULT_PROCESSING_FEE_RATES;
+
     const { data, setData, post, processing, errors } = useForm({
         quantity: 1,
+        donor_covers_processing_fees: true,
+        payment_method: 'stripe' as 'stripe' | 'believe_points',
     });
+
+    const lineSubtotal = Math.round(Number(raffle.ticket_price) * data.quantity * 100) / 100;
+    const canPayWithBelievePoints =
+        believePointsEnabled && lineSubtotal > 0 && believePointsBalance >= lineSubtotal;
+
+    const showPaymentPicker = Boolean(believePointsEnabled);
+    const [checkoutStep, setCheckoutStep] = useState<1 | 2>(() => (showPaymentPicker ? 1 : 2));
+
+    const [feePreviewLoading, setFeePreviewLoading] = useState(false);
+    const rafflePreviewPartialReloadSkipRef = useRef(true);
+
+    useEffect(() => {
+        if (rafflePreviewPartialReloadSkipRef.current) {
+            rafflePreviewPartialReloadSkipRef.current = false;
+            return;
+        }
+        if (checkoutStep !== 2) {
+            return;
+        }
+        if (data.payment_method !== 'stripe') {
+            return;
+        }
+        const baseUsd = Math.round(Number(raffle.ticket_price) * data.quantity * 100) / 100;
+        if (baseUsd <= 0) {
+            return;
+        }
+        const t = window.setTimeout(() => {
+            setFeePreviewLoading(true);
+            router.get(
+                route('frontend.raffles.show', raffle.id),
+                {
+                    fee_preview_amount: baseUsd,
+                    fee_preview_donor_covers: data.donor_covers_processing_fees ? 1 : 0,
+                },
+                {
+                    preserveScroll: true,
+                    preserveState: true,
+                    replace: true,
+                    only: ['feePreview'],
+                    onFinish: () => setFeePreviewLoading(false),
+                    onCancel: () => setFeePreviewLoading(false),
+                },
+            );
+        }, 300);
+        return () => clearTimeout(t);
+    }, [
+        checkoutStep,
+        data.quantity,
+        data.donor_covers_processing_fees,
+        data.payment_method,
+        raffle.id,
+        raffle.ticket_price,
+    ]);
 
     const handlePurchase = (e: React.FormEvent) => {
         e.preventDefault();
-        setData('quantity', quantity);
         post(route('frontend.raffles.purchase', raffle.id), {
             onSuccess: () => {
-                // Reset form after successful purchase
-                setQuantity(1);
-            }
+                setData('quantity', 1);
+                setData('donor_covers_processing_fees', true);
+                setData('payment_method', 'stripe');
+                setCheckoutStep(showPaymentPicker ? 1 : 2);
+            },
         });
+    };
+
+    const selectPaymentMethod = (method: 'stripe' | 'believe_points') => {
+        setData('payment_method', method);
+        setCheckoutStep(2);
+    };
+
+    const goBackToPaymentStep = () => {
+        setCheckoutStep(1);
     };
 
     const getStatusBadge = () => {
         if (raffle.is_completed) {
-            return <Badge variant="secondary" className="bg-green-100 text-green-800"><CheckCircle className="w-3 h-3 mr-1" />Completed</Badge>;
+            return (
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/15 px-3 py-1 text-xs font-semibold text-emerald-900 dark:text-emerald-100">
+                    <CheckCircle className="h-3.5 w-3.5" />
+                    Completed
+                </span>
+            );
         }
         if (raffle.is_draw_time) {
-            return <Badge variant="secondary" className="bg-yellow-100 text-yellow-800"><Clock className="w-3 h-3 mr-1" />Draw Time</Badge>;
+            return (
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/15 px-3 py-1 text-xs font-semibold text-amber-950 dark:text-amber-100">
+                    <Clock className="h-3.5 w-3.5" />
+                    Draw time
+                </span>
+            );
         }
         if (raffle.is_active) {
-            return <Badge variant="secondary" className="bg-blue-100 text-blue-800"><Gift className="w-3 h-3 mr-1" />Active</Badge>;
+            return (
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">
+                    <Sparkles className="h-3.5 w-3.5" />
+                    Active
+                </span>
+            );
         }
-        return <Badge variant="outline">Inactive</Badge>;
+        return (
+            <span className="inline-flex rounded-full border border-border bg-muted/50 px-3 py-1 text-xs font-medium text-muted-foreground">
+                Inactive
+            </span>
+        );
     };
 
     const formatDate = (dateString: string) => {
@@ -125,321 +250,521 @@ export default function RaffleShow({ raffle, auth }: RaffleShowProps) {
             month: 'long',
             day: 'numeric',
             hour: '2-digit',
-            minute: '2-digit'
+            minute: '2-digit',
         });
     };
 
     const getPositionIcon = (position: number) => {
         switch (position) {
             case 1:
-                return <Crown className="w-5 h-5 text-yellow-500" />;
+                return <Crown className="h-5 w-5 text-amber-500" />;
             case 2:
-                return <Medal className="w-5 h-5 text-gray-400" />;
+                return <Medal className="h-5 w-5 text-muted-foreground" />;
             case 3:
-                return <Award className="w-5 h-5 text-amber-600" />;
+                return <Award className="h-5 w-5 text-amber-600" />;
             default:
-                return <Gift className="w-5 h-5 text-purple-500" />;
+                return <Gift className="h-5 w-5 text-primary" />;
         }
     };
 
     const metaDescription = raffle.description ? String(raffle.description).slice(0, 160) : undefined;
 
+    const hostingOrganizationName = (() => {
+        const u = raffle.organization;
+        if (!u?.name) {
+            return null as string | null;
+        }
+        const profileName = u.organization?.name?.trim();
+        if (profileName) {
+            return profileName;
+        }
+        const role = u.role ?? '';
+        if (role === 'organization' || role === 'organization_pending' || role === 'care_alliance') {
+            return u.name.trim();
+        }
+        return null as string | null;
+    })();
+
+    const organizationCardName = hostingOrganizationName ?? raffle.organization.name;
+    const organizationCardDescription =
+        raffle.organization.organization?.description?.trim() ||
+        raffle.organization.description?.trim() ||
+        null;
+
     return (
         <FrontendLayout>
             <PageHead title={raffle.title} description={metaDescription} />
-            
-            <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
-                {/* Header */}
-                <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
-                    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-                        <Link 
-                            href={route('frontend.raffles.index')}
-                            className="inline-flex items-center text-purple-600 hover:text-purple-700 mb-4"
-                        >
-                            <ArrowLeft className="w-4 h-4 mr-2" />
-                            Back to Raffles
-                        </Link>
-                        
-                        <div className="flex items-start justify-between">
-                            <div className="flex-1">
-                                <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
+
+            <div className="min-h-screen bg-background">
+                <div className="mx-auto max-w-7xl px-4 pb-16 pt-8 sm:px-6 lg:px-8 lg:pt-10">
+                    <Link
+                        href={route('frontend.raffles.index')}
+                        className="mb-6 inline-flex items-center gap-2 text-sm font-medium text-muted-foreground transition hover:text-primary"
+                    >
+                        <ArrowLeft className="h-4 w-4 shrink-0" />
+                        All raffles
+                    </Link>
+
+                    {/* Hero */}
+                    <header className={cn('mb-10 p-6 sm:p-8', cardSurface)}>
+                        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                            <div className="min-w-0 flex-1">
+                                {hostingOrganizationName ? (
+                                    <p className="text-sm font-semibold uppercase tracking-wide text-primary">
+                                        {hostingOrganizationName}
+                                    </p>
+                                ) : null}
+                                <h1 className="mt-1 text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
                                     {raffle.title}
                                 </h1>
-                                <p className="text-gray-600 dark:text-gray-400 mb-4">
-                                    by {raffle.organization.name}
-                                </p>
-                                {getStatusBadge()}
+                                {!hostingOrganizationName ? (
+                                    <p className="mt-2 text-muted-foreground">Hosted by {raffle.organization.name}</p>
+                                ) : null}
+                                <div className="mt-4">{getStatusBadge()}</div>
+                            </div>
+                            <div className="flex shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-600 to-purple-600 p-4 text-white shadow-md sm:p-5">
+                                <Ticket className="h-10 w-10 sm:h-12 sm:w-12" />
                             </div>
                         </div>
-                    </div>
-                </div>
+                    </header>
 
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                        {/* Main Content */}
-                        <div className="lg:col-span-2 space-y-6">
-                            {/* Image */}
-                            {raffle.image && (
-                                <Card className="overflow-hidden">
-                                    <CardContent className="p-0">
-                                        <div className="aspect-video overflow-hidden">
-                                            <img
-                                                src={`/storage/${raffle.image}`}
-                                                alt={raffle.title}
-                                                className="w-full h-full object-cover"
-                                            />
-                                        </div>
-                                    </CardContent>
-                                </Card>
-                            )}
-
-                            {/* Countdown Timer */}
-                            <Card className="bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-900/20 dark:to-pink-900/20 border-purple-200 dark:border-purple-800">
-                                <CardContent className="p-0">
-                                    <CountdownTimer drawDate={raffle.draw_date} size="medium" />
-                                </CardContent>
-                            </Card>
-
-                            {/* Description */}
-                            <Card>
-                                <CardHeader>
-                                    <CardTitle>About This Raffle</CardTitle>
-                                </CardHeader>
-                                <CardContent>
-                                    <p className="text-gray-700 dark:text-gray-300 leading-relaxed">
-                                        {raffle.description}
-                                    </p>
-                                </CardContent>
-                            </Card>
-
-                            {/* Prizes */}
-                            <Card>
-                                <CardHeader>
-                                    <CardTitle className="flex items-center">
-                                        <Gift className="w-5 h-5 mr-2 text-purple-600" />
-                                        Prizes
-                                    </CardTitle>
-                                </CardHeader>
-                                <CardContent>
-                                    <div className="space-y-4">
-                                        {raffle.prizes.map((prize, index) => (
-                                            <div key={index} className="flex items-start space-x-3 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
-                                                <div className="flex-shrink-0">
-                                                    {getPositionIcon(index + 1)}
-                                                </div>
-                                                <div className="flex-1">
-                                                    <h4 className="font-semibold text-gray-900 dark:text-white">
-                                                        {prize.name}
-                                                    </h4>
-                                                    {prize.description && (
-                                                        <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-                                                            {prize.description}
-                                                        </p>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        ))}
+                    <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
+                        <div className="space-y-6 lg:col-span-2">
+                            {raffle.image ? (
+                                <div className={cn('overflow-hidden p-0', cardSurface)}>
+                                    <div className="aspect-video overflow-hidden">
+                                        <img
+                                            src={`/storage/${raffle.image}`}
+                                            alt={raffle.title}
+                                            className="h-full w-full object-cover"
+                                        />
                                     </div>
-                                </CardContent>
-                            </Card>
+                                </div>
+                            ) : null}
 
-                            {/* Winners */}
-                            {raffle.is_completed && raffle.winners && raffle.winners.length > 0 && (
-                                <Card>
-                                    <CardHeader>
-                                        <CardTitle className="flex items-center">
-                                            <Crown className="w-5 h-5 mr-2 text-yellow-500" />
-                                            Winners
-                                        </CardTitle>
-                                    </CardHeader>
-                                    <CardContent>
-                                        <div className="space-y-4">
-                                            {raffle.winners.map((winner) => (
-                                                <div key={winner.id} className="flex items-center justify-between p-4 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg border border-yellow-200 dark:border-yellow-800">
-                                                    <div className="flex items-center space-x-3">
-                                                        {getPositionIcon(winner.position)}
-                                                        <div>
-                                                            <h4 className="font-semibold text-gray-900 dark:text-white">
-                                                                {winner.user.name}
-                                                            </h4>
-                                                            <p className="text-sm text-gray-600 dark:text-gray-400">
-                                                                Ticket #{winner.ticket.ticket_number}
-                                                            </p>
-                                                        </div>
-                                                    </div>
-                                                    <div className="text-right">
-                                                        <p className="font-semibold text-gray-900 dark:text-white">
-                                                            {winner.prize_name}
-                                                        </p>
-                                                        <p className="text-sm text-gray-600 dark:text-gray-400">
-                                                            {formatDate(winner.announced_at)}
+                            <div className={cn('overflow-hidden p-0', cardSurface)}>
+                                <div className="border-b border-border bg-muted/40 px-5 py-3">
+                                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                                        Draw countdown
+                                    </p>
+                                </div>
+                                <div className="p-2 sm:p-4">
+                                    <CountdownTimer drawDate={raffle.draw_date} size="medium" />
+                                </div>
+                            </div>
+
+                            <section className={cn('p-6 sm:p-8', cardSurface)}>
+                                <h2 className="mb-4 flex items-center gap-2 text-lg font-bold text-foreground">
+                                    <Info className="h-5 w-5 text-primary" />
+                                    About this raffle
+                                </h2>
+                                <p className="leading-relaxed text-muted-foreground">{raffle.description}</p>
+                            </section>
+
+                            <section className={cn('p-6 sm:p-8', cardSurface)}>
+                                <h2 className="mb-5 flex items-center gap-2 text-lg font-bold text-foreground">
+                                    <Gift className="h-5 w-5 text-primary" />
+                                    Prizes
+                                </h2>
+                                <ul className="space-y-3">
+                                    {raffle.prizes.map((prize, index) => (
+                                        <li
+                                            key={index}
+                                            className="flex gap-4 rounded-xl border border-border bg-muted/30 p-4"
+                                        >
+                                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-border bg-background shadow-sm">
+                                                {getPositionIcon(index + 1)}
+                                            </div>
+                                            <div className="min-w-0">
+                                                <h3 className="font-semibold text-foreground">{prize.name}</h3>
+                                                {prize.description ? (
+                                                    <p className="mt-1 text-sm text-muted-foreground">{prize.description}</p>
+                                                ) : null}
+                                            </div>
+                                        </li>
+                                    ))}
+                                </ul>
+                            </section>
+
+                            {raffle.is_completed && raffle.winners?.length ? (
+                                <section className={cn('p-6 sm:p-8', cardSurface)}>
+                                    <h2 className="mb-5 flex items-center gap-2 text-lg font-bold text-foreground">
+                                        <Crown className="h-5 w-5 text-amber-500" />
+                                        Winners
+                                    </h2>
+                                    <ul className="space-y-3">
+                                        {raffle.winners.map((winner) => (
+                                            <li
+                                                key={winner.id}
+                                                className="flex flex-col justify-between gap-3 rounded-xl border border-amber-500/25 bg-amber-500/[0.06] p-4 sm:flex-row sm:items-center dark:border-amber-500/30 dark:bg-amber-950/20"
+                                            >
+                                                <div className="flex items-center gap-3">
+                                                    {getPositionIcon(winner.position)}
+                                                    <div>
+                                                        <p className="font-semibold text-foreground">{winner.user.name}</p>
+                                                        <p className="text-sm text-muted-foreground">
+                                                            Ticket #{winner.ticket.ticket_number}
                                                         </p>
                                                     </div>
                                                 </div>
-                                            ))}
-                                        </div>
-                                    </CardContent>
-                                </Card>
-                            )}
+                                                <div className="text-left sm:text-right">
+                                                    <p className="font-semibold text-foreground">{winner.prize_name}</p>
+                                                    <p className="text-xs text-muted-foreground">
+                                                        {formatDate(winner.announced_at)}
+                                                    </p>
+                                                </div>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </section>
+                            ) : null}
                         </div>
 
-                        {/* Sidebar */}
-                        <div className="space-y-6">
-                            {/* Purchase Card */}
-                            {((raffle.is_active && !raffle.is_completed) || (raffle.status === 'active' && raffle.available_tickets > 0)) && (
-                                <Card className="bg-gradient-to-br from-purple-50 to-pink-50 dark:from-purple-900/20 dark:to-pink-900/20 border-purple-200 dark:border-purple-800">
-                                    <CardHeader>
-                                        <CardTitle className="flex items-center text-purple-800 dark:text-purple-200">
-                                            <Ticket className="w-5 h-5 mr-2" />
-                                            Purchase Tickets
+                        <aside className="space-y-6">
+                            {((raffle.is_active && !raffle.is_completed) ||
+                                (raffle.status === 'active' && raffle.available_tickets > 0)) && (
+                                <Card className={cardSurface}>
+                                    <CardHeader className="border-b border-border pb-4">
+                                        <CardTitle className="flex items-center gap-2 text-lg text-foreground">
+                                            <Ticket className="h-5 w-5 text-primary" />
+                                            Get tickets
                                         </CardTitle>
-                                        <CardDescription className="text-purple-600 dark:text-purple-400">
-                                            Secure payment via Stripe
+                                        <CardDescription className="text-muted-foreground">
+                                            {showPaymentPicker && checkoutStep === 1
+                                                ? 'Choose how you’d like to pay.'
+                                                : data.payment_method === 'believe_points'
+                                                  ? 'Choose quantity and confirm with Believe Points.'
+                                                  : 'Choose quantity and continue to checkout.'}
                                         </CardDescription>
                                     </CardHeader>
                                     <CardContent>
-                                        <form onSubmit={handlePurchase} className="space-y-4">
+                                        {showPaymentPicker && checkoutStep === 1 ? (
+                                            <div className="space-y-3">
+                                                <p className="text-sm font-semibold tracking-wide text-foreground">
+                                                    Payment method
+                                                </p>
+                                                <div className="flex flex-col gap-2">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => selectPaymentMethod('stripe')}
+                                                        className={cn(
+                                                            'group flex w-full items-center gap-3 rounded-xl border border-border bg-muted/30 px-3 py-2.5 text-left shadow-sm outline-none ring-offset-background transition-all',
+                                                            'hover:border-primary/50 hover:bg-muted/50 focus-visible:border-primary focus-visible:ring-2 focus-visible:ring-ring',
+                                                            'active:scale-[0.995]',
+                                                        )}
+                                                    >
+                                                        <CreditCard
+                                                            className="h-5 w-5 shrink-0 text-primary"
+                                                            aria-hidden
+                                                        />
+                                                        <div className="min-w-0 flex-1">
+                                                            <span className="block text-sm font-semibold text-foreground">
+                                                                Card
+                                                            </span>
+                                                            <span className="block text-xs leading-snug text-muted-foreground">
+                                                                Debit or credit via secure checkout
+                                                            </span>
+                                                        </div>
+                                                        <ChevronRight
+                                                            className="h-4 w-4 shrink-0 text-muted-foreground opacity-70 transition-transform group-hover:translate-x-0.5"
+                                                            aria-hidden
+                                                        />
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => selectPaymentMethod('believe_points')}
+                                                        className={cn(
+                                                            'group flex w-full items-center gap-3 rounded-xl border border-border bg-amber-500/[0.06] px-3 py-2.5 text-left shadow-sm outline-none ring-offset-background transition-all',
+                                                            'hover:border-amber-500/45 hover:bg-amber-500/10 focus-visible:border-amber-600 focus-visible:ring-2 focus-visible:ring-amber-500/25',
+                                                            'active:scale-[0.995]',
+                                                        )}
+                                                    >
+                                                        <Coins
+                                                            className="h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400"
+                                                            aria-hidden
+                                                        />
+                                                        <div className="min-w-0 flex-1">
+                                                            <span className="block text-sm font-semibold text-foreground">
+                                                                Believe Points
+                                                            </span>
+                                                            <span className="block text-xs leading-snug text-muted-foreground">
+                                                                Balance{' '}
+                                                                <strong className="font-semibold text-foreground">
+                                                                    {believePointsBalance.toFixed(2)}
+                                                                </strong>{' '}
+                                                                pts · 1 pt = $1
+                                                            </span>
+                                                        </div>
+                                                        <ChevronRight
+                                                            className="h-4 w-4 shrink-0 text-muted-foreground opacity-70 transition-transform group-hover:translate-x-0.5"
+                                                            aria-hidden
+                                                        />
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        ) : (
+                                        <form onSubmit={handlePurchase} className="space-y-5">
+                                            {showPaymentPicker ? (
+                                                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-4">
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="rounded-full bg-muted px-3 py-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                                                            {data.payment_method === 'believe_points'
+                                                                ? 'Believe Points'
+                                                                : 'Card'}
+                                                        </span>
+                                                        <span className="text-sm text-muted-foreground">
+                                                            {data.payment_method === 'believe_points'
+                                                                ? `${believePointsBalance.toFixed(2)} pts available`
+                                                                : 'Pay at checkout'}
+                                                        </span>
+                                                    </div>
+                                                    <Button
+                                                        type="button"
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        className="h-9 shrink-0 gap-1 text-muted-foreground hover:text-foreground"
+                                                        onClick={goBackToPaymentStep}
+                                                    >
+                                                        <ArrowLeft className="h-4 w-4" aria-hidden />
+                                                        Change method
+                                                    </Button>
+                                                </div>
+                                            ) : null}
+
                                             <div>
-                                                <Label htmlFor="quantity">Quantity</Label>
+                                                <Label htmlFor="quantity" className="text-foreground">
+                                                    Quantity
+                                                </Label>
                                                 <Input
                                                     id="quantity"
                                                     type="number"
-                                                    min="1"
-                                                    max="10"
+                                                    min={1}
+                                                    max={10}
                                                     value={data.quantity}
                                                     onChange={(e) => {
-                                                        const value = parseInt(e.target.value) || 1;
-                                                        setQuantity(value);
-                                                        setData('quantity', value);
+                                                        const value = parseInt(e.target.value, 10) || 1;
+                                                        setData('quantity', Math.min(10, Math.max(1, value)));
                                                     }}
-                                                    className="mt-1"
+                                                    className="mt-1.5 h-11 border-border bg-background"
                                                 />
-                                                {errors.quantity && (
-                                                    <p className="text-red-500 text-sm mt-1">{errors.quantity}</p>
-                                                )}
+                                                {errors.quantity ? (
+                                                    <p className="mt-1 text-sm text-red-600 dark:text-red-400">{errors.quantity}</p>
+                                                ) : null}
                                             </div>
 
-                                            
-                                            <div className="space-y-2">
-                                                <div className="flex justify-between text-sm">
-                                                    <span className="text-gray-600 dark:text-gray-400">Price per ticket:</span>
-                                                    <span className="font-semibold">${raffle.ticket_price}</span>
+                                            <div className="space-y-3 rounded-xl border border-border bg-muted/40 p-4">
+                                                <div className="flex justify-between text-sm text-muted-foreground">
+                                                    <span>Price per ticket</span>
+                                                    <span className="font-semibold text-foreground">
+                                                        ${Number(raffle.ticket_price).toFixed(2)}
+                                                    </span>
                                                 </div>
-                                                <div className="flex justify-between text-sm">
-                                                    <span className="text-gray-600 dark:text-gray-400">Subtotal:</span>
-                                                    <span className="font-semibold">${(raffle.ticket_price * data.quantity).toFixed(2)}</span>
+                                                <div className="flex justify-between text-sm text-muted-foreground">
+                                                    <span>
+                                                        Subtotal ({data.quantity} ticket{data.quantity !== 1 ? 's' : ''})
+                                                    </span>
+                                                    <span className="font-semibold text-foreground">
+                                                        ${lineSubtotal.toFixed(2)}
+                                                    </span>
                                                 </div>
-                                                <div className="flex justify-between text-sm text-orange-600">
-                                                    <span>Processing fee (2.9% + $0.30):</span>
-                                                    <span>+${((raffle.ticket_price * data.quantity * 0.029) + 0.30).toFixed(2)}</span>
-                                                </div>
-                                                <div className="flex justify-between text-sm font-semibold text-lg border-t pt-2">
-                                                    <span>Total:</span>
-                                                    <span>${((raffle.ticket_price * data.quantity) + (raffle.ticket_price * data.quantity * 0.029) + 0.30).toFixed(2)}</span>
-                                                </div>
+
+                                                {lineSubtotal > 0 && data.payment_method === 'stripe' ? (
+                                                    <>
+                                                        <div className="flex items-center justify-between gap-3 border-t border-border pt-3">
+                                                            <div className="min-w-0">
+                                                                <p className="text-sm font-semibold text-foreground">
+                                                                    Cover processing fees
+                                                                </p>
+                                                                <p className="mt-0.5 text-xs text-muted-foreground">
+                                                                    When on, your total is adjusted so the nonprofit receives the full
+                                                                    subtotal.
+                                                                </p>
+                                                            </div>
+                                                            <Switch
+                                                                checked={data.donor_covers_processing_fees}
+                                                                onCheckedChange={(v) => setData('donor_covers_processing_fees', v)}
+                                                            />
+                                                        </div>
+
+                                                        <div className="relative min-h-[4rem] space-y-1.5 text-xs">
+                                                            {feePreviewLoading && !feePreview ? (
+                                                                <div className="flex items-center gap-2 py-4 text-muted-foreground">
+                                                                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                                                                    Updating estimate…
+                                                                </div>
+                                                            ) : null}
+                                                            {feePreview ? (
+                                                                <div className={cn('space-y-1.5', feePreviewLoading && 'opacity-60')}>
+                                                                    {feePreview.mode === 'donor_covers' ? (
+                                                                        <>
+                                                                            <div className="flex justify-between text-foreground">
+                                                                                <span>To nonprofit</span>
+                                                                                <span className="font-medium tabular-nums">
+                                                                                    ${feePreview.base_gift_usd.toFixed(2)}
+                                                                                </span>
+                                                                            </div>
+                                                                            <div className="flex justify-between text-muted-foreground">
+                                                                                <span>Est. processing</span>
+                                                                                <span className="tabular-nums">
+                                                                                    +${feePreview.processing_fee_estimate.toFixed(2)}
+                                                                                </span>
+                                                                            </div>
+                                                                            <div className="flex justify-between border-t border-border pt-2 font-semibold text-foreground">
+                                                                                <span>Est. total</span>
+                                                                                <span className="tabular-nums">
+                                                                                    ${feePreview.checkout_total_usd.toFixed(2)}
+                                                                                </span>
+                                                                            </div>
+                                                                        </>
+                                                                    ) : (
+                                                                        <>
+                                                                            <div className="flex justify-between text-foreground">
+                                                                                <span>You pay</span>
+                                                                                <span className="font-medium tabular-nums">
+                                                                                    ${feePreview.base_gift_usd.toFixed(2)}
+                                                                                </span>
+                                                                            </div>
+                                                                            <div className="flex justify-between text-muted-foreground">
+                                                                                <span>Est. processing</span>
+                                                                                <span className="tabular-nums">
+                                                                                    −${feePreview.processing_fee_estimate.toFixed(2)}
+                                                                                </span>
+                                                                            </div>
+                                                                            <div className="flex justify-between border-t border-border pt-2 font-medium text-foreground">
+                                                                                <span>Est. to nonprofit</span>
+                                                                                <span className="font-medium tabular-nums">
+                                                                                    ${feePreview.estimated_net_to_org_usd.toFixed(2)}
+                                                                                </span>
+                                                                            </div>
+                                                                        </>
+                                                                    )}
+                                                                    {feePreviewLoading ? (
+                                                                        <div className="absolute inset-0 flex items-center justify-center rounded-lg bg-background/70 backdrop-blur-[1px]">
+                                                                            <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                                                                        </div>
+                                                                    ) : null}
+                                                                </div>
+                                                            ) : null}
+                                                            <p className="pt-2 text-[11px] text-muted-foreground">
+                                                                Uses {(processingFeeRates.card_percent * 100).toFixed(1)}% + $
+                                                                {processingFeeRates.card_fixed_usd.toFixed(2)} estimate. Final amount at
+                                                                checkout.
+                                                            </p>
+                                                        </div>
+                                                    </>
+                                                ) : lineSubtotal > 0 && data.payment_method === 'believe_points' ? (
+                                                    <div className="border-t border-border pt-3 text-sm text-muted-foreground">
+                                                        <p>
+                                                            This order uses{' '}
+                                                            <strong className="text-foreground">
+                                                                {lineSubtotal.toFixed(2)} Believe Points
+                                                            </strong>{' '}
+                                                            (no card processing fees).
+                                                        </p>
+                                                    </div>
+                                                ) : null}
                                             </div>
 
-                                            <Button 
-                                                type="submit" 
-                                                disabled={processing || data.quantity > raffle.available_tickets}
-                                                className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white font-semibold py-3 rounded-lg shadow-lg hover:shadow-xl transition-all duration-200"
+                                            {errors.payment_method ? (
+                                                <p className="text-sm text-red-600 dark:text-red-400">{errors.payment_method}</p>
+                                            ) : null}
+
+                                            {data.payment_method === 'believe_points' &&
+                                            lineSubtotal > 0 &&
+                                            !canPayWithBelievePoints ? (
+                                                <p className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-950 dark:text-amber-100">
+                                                    This order needs{' '}
+                                                    <strong>{lineSubtotal.toFixed(2)}</strong> points; your balance is{' '}
+                                                    <strong>{believePointsBalance.toFixed(2)}</strong>. Lower the quantity or use
+                                                    card — or{' '}
+                                                    <button
+                                                        type="button"
+                                                        className="font-semibold underline underline-offset-2 hover:no-underline"
+                                                        onClick={() => selectPaymentMethod('stripe')}
+                                                    >
+                                                        switch to Card
+                                                    </button>
+                                                    .
+                                                </p>
+                                            ) : null}
+
+                                            <Button
+                                                type="submit"
+                                                disabled={
+                                                    processing ||
+                                                    data.quantity > raffle.available_tickets ||
+                                                    (data.payment_method === 'believe_points' && !canPayWithBelievePoints)
+                                                }
+                                                className="h-12 w-full rounded-xl bg-gradient-to-r from-blue-600 to-purple-600 font-semibold text-white shadow-lg shadow-blue-500/20 hover:from-blue-700 hover:to-purple-700"
                                             >
-                                                {processing ? 'Processing...' : `Pay with Stripe - ${data.quantity} Ticket${data.quantity > 1 ? 's' : ''}`}
+                                                {processing
+                                                    ? data.payment_method === 'believe_points'
+                                                        ? 'Completing…'
+                                                        : 'Redirecting…'
+                                                    : data.payment_method === 'believe_points'
+                                                      ? `Use ${lineSubtotal.toFixed(2)} Believe Points · ${data.quantity} ticket${data.quantity > 1 ? 's' : ''}`
+                                                      : `Card · ${data.quantity} ticket${data.quantity > 1 ? 's' : ''}`}
                                             </Button>
 
-                                            {data.quantity > raffle.available_tickets && (
-                                                <p className="text-red-500 text-sm text-center">
-                                                    Not enough tickets available
-                                                </p>
-                                            )}
+                                            {data.quantity > raffle.available_tickets ? (
+                                                <p className="text-center text-sm text-red-600 dark:text-red-400">Not enough tickets left</p>
+                                            ) : null}
                                         </form>
+                                        )}
                                     </CardContent>
                                 </Card>
                             )}
 
-                            {/* Raffle Info */}
-                            <Card>
-                                <CardHeader>
-                                    <CardTitle>Raffle Details</CardTitle>
-                                </CardHeader>
-                                <CardContent className="space-y-4">
-                                    <div className="flex items-center justify-between">
-                                        <span className="text-gray-600 dark:text-gray-400">Ticket Price:</span>
-                                        <span className="font-semibold">${raffle.ticket_price}</span>
-                                    </div>
-                                    
-                                    <div className="flex items-center justify-between">
-                                        <span className="text-gray-600 dark:text-gray-400">Total Tickets:</span>
-                                        <span className="font-semibold">{raffle.total_tickets}</span>
-                                    </div>
-                                    
-                                    <div className="flex items-center justify-between">
-                                        <span className="text-gray-600 dark:text-gray-400">Sold:</span>
-                                        <span className="font-semibold">{raffle.sold_tickets}</span>
-                                    </div>
-                                    
-                                    <div className="flex items-center justify-between">
-                                        <span className="text-gray-600 dark:text-gray-400">Available:</span>
-                                        <span className="font-semibold text-green-600">{raffle.available_tickets}</span>
-                                    </div>
-                                    
-                                    <div className="flex items-center justify-between">
-                                        <span className="text-gray-600 dark:text-gray-400">Draw Date:</span>
-                                        <span className="font-semibold">{formatDate(raffle.draw_date)}</span>
-                                    </div>
-                                    
-                                    <div className="flex items-center justify-between">
-                                        <span className="text-gray-600 dark:text-gray-400">Winners:</span>
-                                        <span className="font-semibold">{raffle.winners_count}</span>
-                                    </div>
-                                </CardContent>
-                            </Card>
+                            <section className={cn('p-6', cardSurface)}>
+                                <h2 className="mb-4 text-lg font-bold text-foreground">Raffle details</h2>
+                                <dl className="space-y-3 text-sm">
+                                    {[
+                                        ['Ticket price', `$${raffle.ticket_price}`],
+                                        ['Total tickets', String(raffle.total_tickets)],
+                                        ['Sold', String(raffle.sold_tickets)],
+                                        ['Available', String(raffle.available_tickets)],
+                                        ['Draw date', formatDate(raffle.draw_date)],
+                                        ['Winner spots', String(raffle.winners_count)],
+                                    ].map(([k, v]) => (
+                                        <div key={k} className="flex justify-between gap-4 border-b border-border pb-2 last:border-0">
+                                            <dt className="text-muted-foreground">{k}</dt>
+                                            <dd className="font-medium text-foreground">{v}</dd>
+                                        </div>
+                                    ))}
+                                </dl>
+                            </section>
 
-                            {/* Organization Info */}
-                            <Card>
-                                <CardHeader>
-                                    <CardTitle>Organization</CardTitle>
-                                </CardHeader>
-                                <CardContent>
-                                    <h4 className="font-semibold text-gray-900 dark:text-white mb-2">
-                                        {raffle.organization.name}
-                                    </h4>
-                                    {raffle.organization.description && (
-                                        <p className="text-sm text-gray-600 dark:text-gray-400">
-                                            {raffle.organization.description}
-                                        </p>
-                                    )}
-                                </CardContent>
-                            </Card>
+                            <section className={cn('p-6', cardSurface)}>
+                                <h2 className="mb-3 text-lg font-bold text-foreground">Organization</h2>
+                                <p className="text-base font-semibold text-primary">{organizationCardName}</p>
+                                {organizationCardDescription ? (
+                                    <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
+                                        {organizationCardDescription}
+                                    </p>
+                                ) : null}
+                            </section>
 
-                            {/* Ticket Preview */}
-                            <Card className="bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-900/20 dark:to-purple-900/20 border-blue-200 dark:border-blue-800">
-                                <CardHeader>
-                                    <CardTitle className="flex items-center text-blue-800 dark:text-blue-200">
-                                        <Ticket className="w-5 h-5 mr-2" />
-                                        Your Ticket Preview
-                                    </CardTitle>
-                                    <CardDescription className="text-blue-600 dark:text-blue-400">
-                                        This is how your raffle ticket will look
-                                    </CardDescription>
-                                </CardHeader>
-                                <CardContent>
-                                    <div className="flex justify-center">
-                                        <RaffleTicket 
-                                            ticket={{
-                                                id: 0,
-                                                ticket_number: 'XXXX-XXXX-XXXX',
-                                                price: raffle.ticket_price,
-                                                purchased_at: new Date().toISOString(),
-                                                user: auth.user,
-                                                raffle: raffle
-                                            }}
-                                            showStub={true}
-                                        />
-                                    </div>
-                                </CardContent>
-                            </Card>
-                        </div>
+                            <section className={cn('p-6', cardSurface)}>
+                                <h2 className="mb-3 flex items-center gap-2 text-lg font-bold text-foreground">
+                                    <Ticket className="h-5 w-5 text-primary" />
+                                    Ticket preview
+                                </h2>
+                                <p className="mb-4 text-sm text-muted-foreground">Sample layout for your purchased tickets</p>
+                                <div className="flex w-full justify-center pb-2">
+                                    <RaffleTicket
+                                        ticket={{
+                                            id: 0,
+                                            ticket_number: 'XXXX-XXXX-XXXX',
+                                            price: raffle.ticket_price,
+                                            purchased_at: new Date().toISOString(),
+                                            user: auth.user,
+                                            raffle: raffle,
+                                        }}
+                                        showStub
+                                    />
+                                </div>
+                            </section>
+                        </aside>
                     </div>
                 </div>
             </div>
