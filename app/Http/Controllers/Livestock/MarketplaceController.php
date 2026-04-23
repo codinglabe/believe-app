@@ -173,8 +173,8 @@ class MarketplaceController extends BaseController
                 "Purchase: {$listing->title} - {$listing->animal->breed}",
                 1,
                 [
-                    'success_url' => route('marketplace.purchase.success').'?session_id={CHECKOUT_SESSION_ID}&listing_id='.$listing->id,
-                    'cancel_url' => route('marketplace.purchase.cancel').'?listing_id='.$listing->id,
+                    'success_url' => route('livestock.marketplace.purchase.success').'?session_id={CHECKOUT_SESSION_ID}&listing_id='.$listing->id,
+                    'cancel_url' => route('livestock.marketplace.purchase.cancel').'?listing_id='.$listing->id,
                     'metadata' => [
                         'user_id' => $user->id,
                         'listing_id' => $listing->id,
@@ -215,7 +215,7 @@ class MarketplaceController extends BaseController
             $listingId = $request->query('listing_id');
 
             if (! $sessionId || ! $listingId) {
-                return redirect()->route('marketplace.index')
+                return redirect()->route('livestock.marketplace.index')
                     ->with('error', 'Invalid session. Please try again.');
             }
 
@@ -230,20 +230,20 @@ class MarketplaceController extends BaseController
             $session = Cashier::stripe()->checkout->sessions->retrieve($sessionId);
 
             if ($session->payment_status !== 'paid') {
-                return redirect()->route('marketplace.show', $listingId)
+                return redirect()->route('livestock.marketplace.show', $listingId)
                     ->with('error', 'Payment was not completed.');
             }
 
             // Verify metadata matches
             $metadata = $session->metadata ?? [];
             if (empty($metadata->listing_id) || $metadata->listing_id != $listingId) {
-                return redirect()->route('marketplace.index')
+                return redirect()->route('livestock.marketplace.index')
                     ->with('error', 'Invalid purchase session.');
             }
 
             // Verify user matches
             if (empty($metadata->user_id) || $metadata->user_id != $user->id) {
-                return redirect()->route('marketplace.index')
+                return redirect()->route('livestock.marketplace.index')
                     ->with('error', 'Invalid user for this purchase.');
             }
 
@@ -254,7 +254,7 @@ class MarketplaceController extends BaseController
 
             // Verify listing is still available
             if ($listing->status !== 'active') {
-                return redirect()->route('marketplace.show', $listingId)
+                return redirect()->route('livestock.marketplace.show', $listingId)
                     ->with('error', 'This listing is no longer available.');
             }
 
@@ -342,7 +342,7 @@ class MarketplaceController extends BaseController
                     'session_id' => $sessionId,
                 ]);
 
-                return redirect()->route('marketplace.show', $listingId)
+                return redirect()->route('livestock.marketplace.show', $listingId)
                     ->with('error', 'Purchase processing failed. Please contact support.');
             }
 
@@ -353,7 +353,7 @@ class MarketplaceController extends BaseController
                 'listing_id' => $request->query('listing_id'),
             ]);
 
-            return redirect()->route('marketplace.index')
+            return redirect()->route('livestock.marketplace.index')
                 ->with('error', 'Error processing payment. Please contact support.');
         }
     }
@@ -366,11 +366,11 @@ class MarketplaceController extends BaseController
         $listingId = $request->query('listing_id');
 
         if ($listingId) {
-            return redirect()->route('marketplace.show', $listingId)
+            return redirect()->route('livestock.marketplace.show', $listingId)
                 ->with('info', 'Purchase was cancelled. You can try again anytime.');
         }
 
-        return redirect()->route('marketplace.index')
+        return redirect()->route('livestock.marketplace.index')
             ->with('info', 'Purchase was cancelled.');
     }
 }

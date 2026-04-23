@@ -66,11 +66,11 @@ function MetadataLine({ row }: { row: PrintifyProviderComparisonRow }) {
         <div className="text-muted-foreground mt-2 space-y-1.5 text-sm leading-relaxed">
             <dl className="grid grid-cols-1 gap-x-4 gap-y-1 sm:grid-cols-2">
                 <div className="flex flex-wrap gap-x-2 sm:col-span-2">
-                    <dt className="font-medium text-gray-700 dark:text-gray-300">Print fulfillment</dt>
+                    <dt className="font-medium text-gray-700 dark:text-gray-300">Print production (blank item)</dt>
                     <dd className="text-gray-900 dark:text-gray-100">
                         {printMissing ? (
                             <span className="text-muted-foreground font-normal">
-                                Not in catalog API — set when the product is created in Printify
+                                Not in Printify&apos;s catalog API — Believe loads this from your shop product after you create the listing
                             </span>
                         ) : (
                             base
@@ -111,9 +111,10 @@ function MetadataLine({ row }: { row: PrintifyProviderComparisonRow }) {
                 </div>
             </dl>
             <p className="text-xs text-gray-500 dark:text-gray-400">
-                Standard shipping and delivery range come from Printify&apos;s v2 standard shipping catalog for the
-                selected region. Per-variant print pricing is returned on the shop product after creation, not on the
-                public catalog variants endpoint.
+                Shipping amounts and delivery ranges use Printify&apos;s standard-shipping catalog for the selected variant
+                and region. Blank-item print price exists only on the shop product resource after the product is created,
+                not on catalog variants — so comparison here is mainly shipping + delivery (and print cost when Printify
+                adds it to catalog responses in the future).
             </p>
         </div>
     );
@@ -194,7 +195,7 @@ export function PrintifyProviderComparisonList({ rows, selectedId, loading, onSe
 
                             const line1 = row.is_recommended ? `${row.title} · Recommended` : row.title;
                             const printBit =
-                                row.base_cost_cents != null ? `${base} print` : 'Print at save (catalog)';
+                                row.base_cost_cents != null ? `${base} print` : 'Print cost after save (not in catalog)';
                             const totalBit = row.base_cost_cents != null ? `${tot} total · ` : '';
                             const line2 = row.is_printify_choice
                                 ? 'Printify-managed · simple setup'

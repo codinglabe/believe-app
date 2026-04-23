@@ -650,7 +650,7 @@ export default function AnimalShow({ animal, breeding_events = [], offspring = [
                                             {animal.listing.status}
                                         </Badge>
                                         <div className="flex gap-2 mt-2">
-                                            <Link href={route('marketplace.show', animal.listing.id)} className="flex-1">
+                                            <Link href={route('livestock.marketplace.show', animal.listing.id)} className="flex-1">
                                                 <Button 
                                                     variant="outline" 
                                                     size="sm" 

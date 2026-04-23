@@ -1367,6 +1367,9 @@ Route::middleware(['auth', 'topics.selected', 'role:admin|organization|care_alli
     Route::get('/printify/provider-comparison', [PrintifyProductController::class, 'getProviderComparison'])->name('printify.provider-comparison');
     Route::get('/printify/variants', [PrintifyProductController::class, 'getVariants'])->name('printify.variants');
     Route::get('/printify/shipping', [PrintifyProductController::class, 'getShipping'])->name('printify.shipping');
+    Route::post('/printify/preview-variant-costs', [PrintifyProductController::class, 'previewVariantCosts'])
+        ->middleware('throttle:12,1')
+        ->name('printify.preview-variant-costs');
     // Route::post('/printify/products/sync', [ProductController::class, 'syncFromPrintify'])->name('printify.products.sync');
 });
 

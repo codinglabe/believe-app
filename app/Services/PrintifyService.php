@@ -4,6 +4,7 @@ namespace App\Services;
 
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\RequestException;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -179,11 +180,14 @@ class PrintifyService
     }
 
     /**
+     * @param  array<string, mixed>|null  $shippingPayload  Raw v2 standard shipping JSON; when null, fetches from API.
      * @return array<int, array{shipping_first_item_cents: ?int, estimated_delivery_label: ?string, currency: string}>
      */
-    private function indexStandardShippingByVariantId(int $blueprintId, int $printProviderId): array
+    private function indexStandardShippingByVariantId(int $blueprintId, int $printProviderId, ?array $shippingPayload = null): array
     {
-        $shippingPayload = $this->getShipping($blueprintId, $printProviderId);
+        if ($shippingPayload === null) {
+            $shippingPayload = $this->getShipping($blueprintId, $printProviderId);
+        }
         $shipData = $shippingPayload['data'] ?? null;
         if (! is_array($shipData) || $shipData === []) {
             return [];
@@ -332,16 +336,34 @@ class PrintifyService
 
     /**
      * Blueprint-level provider comparison: standard shipping to US (fallback: first region) and delivery time.
-     * Catalog variants do not include print/fulfillment cost; that is only available on shop products after creation.
+     * When a catalog variant is chosen (see $referencePrintProviderId + $catalogVariantId), shipping is resolved
+     * per matched variant title across providers; print base cost is set when the catalog payload includes it
+     * (otherwise it stays null until a shop product exists — see getProduct after creation).
      * Uses v2 standard shipping, then v1 shipping.json if v2 is empty.
      *
-     * @return array{rows: array<int, array<string, mixed>>}
+     * @return array{rows: array<int, array<string, mixed>>, reference_print_provider_id: ?int}
      */
-    public function getProviderComparison(int $blueprintId): array
+    public function getProviderComparison(int $blueprintId, ?int $referencePrintProviderId = null, ?int $catalogVariantId = null, ?string $catalogVariantTitle = null): array
     {
         $providers = $this->getProviders($blueprintId);
         if (! is_array($providers) || $providers === []) {
-            return ['rows' => []];
+            return ['rows' => [], 'reference_print_provider_id' => null];
+        }
+
+        $resolvedRef = ($referencePrintProviderId !== null && $referencePrintProviderId > 0)
+            ? $referencePrintProviderId
+            : $this->resolveReferenceCatalogPrintProviderId($providers);
+
+        $variantMatchTitle = null;
+        if ($catalogVariantTitle !== null) {
+            $t = trim($catalogVariantTitle);
+            if ($t !== '') {
+                $variantMatchTitle = $t;
+            }
+        }
+        if ($variantMatchTitle === null && $catalogVariantId !== null && $catalogVariantId > 0 && $resolvedRef !== null && $resolvedRef > 0) {
+            $refRows = $this->getCatalogVariantRows($blueprintId, $resolvedRef);
+            $variantMatchTitle = $this->findCatalogVariantTitleById($refRows, $catalogVariantId);
         }
 
         $rows = [];
@@ -357,9 +379,26 @@ class PrintifyService
             $title = (string) ($provider['title'] ?? '');
             $isPrintifyChoice = stripos($title, 'Printify Choice') !== false;
 
-            $parsed = $this->parseStandardShippingForComparison($blueprintId, $pid);
+            $parsed = null;
+            $baseCostCents = null;
+
+            if ($variantMatchTitle !== null && $variantMatchTitle !== '') {
+                $pvRows = $this->getCatalogVariantRows($blueprintId, $pid);
+                $matched = $this->findCatalogVariantByTitle($pvRows, $variantMatchTitle);
+                if ($matched !== null) {
+                    $baseCostCents = $this->extractCatalogVariantPrintCostCents($matched);
+                    $matchedId = (int) ($matched['id'] ?? 0);
+                    if ($matchedId > 0) {
+                        $parsed = $this->parseStandardShippingForSingleCatalogVariant($blueprintId, $pid, $matchedId);
+                    }
+                }
+            }
+
             if ($parsed === null) {
-                $parsed = $this->parseV1ShippingForComparison($blueprintId, $pid);
+                $parsed = $this->parseStandardShippingForComparison($blueprintId, $pid);
+                if ($parsed === null) {
+                    $parsed = $this->parseV1ShippingForComparison($blueprintId, $pid);
+                }
             }
 
             $countryCode = $parsed['country_code'] ?? null;
@@ -371,7 +410,7 @@ class PrintifyService
                 'title' => $title,
                 'is_printify_choice' => $isPrintifyChoice,
                 'decoration_methods' => $provider['decoration_methods'] ?? [],
-                'base_cost_cents' => null,
+                'base_cost_cents' => $baseCostCents,
                 'shipping_first_item_cents' => $shipCents,
                 'total_cost_cents' => null,
                 'currency' => $parsed['currency'] ?? 'USD',
@@ -388,7 +427,128 @@ class PrintifyService
 
         $rows = $this->enrichProviderComparisonRows($rows);
 
-        return ['rows' => $rows];
+        return [
+            'rows' => $rows,
+            'reference_print_provider_id' => $resolvedRef,
+        ];
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $providers
+     */
+    private function resolveReferenceCatalogPrintProviderId(array $providers): ?int
+    {
+        $firstAny = null;
+        foreach ($providers as $p) {
+            if (! is_array($p)) {
+                continue;
+            }
+            $pid = (int) ($p['id'] ?? 0);
+            if ($pid < 1) {
+                continue;
+            }
+            if ($firstAny === null) {
+                $firstAny = $pid;
+            }
+            $pt = (string) ($p['title'] ?? '');
+            if ($pt !== '' && stripos($pt, 'Printify Choice') === false) {
+                return $pid;
+            }
+        }
+
+        return $firstAny;
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    private function getCatalogVariantRows(int $blueprintId, int $printProviderId): array
+    {
+        $res = $this->getVariants($blueprintId, $printProviderId, false);
+
+        return $res['variants'] ?? [];
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $variants
+     */
+    private function findCatalogVariantTitleById(array $variants, int $variantId): ?string
+    {
+        foreach ($variants as $v) {
+            if (! is_array($v)) {
+                continue;
+            }
+            if ((int) ($v['id'] ?? 0) === $variantId) {
+                $t = trim((string) ($v['title'] ?? ''));
+
+                return $t !== '' ? $t : null;
+            }
+        }
+
+        return null;
+    }
+
+    private function normalizeCatalogVariantTitle(string $title): string
+    {
+        $t = preg_replace('/\s+/u', ' ', trim($title)) ?? trim($title);
+
+        return mb_strtolower($t);
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $variants
+     * @return array<string, mixed>|null
+     */
+    private function findCatalogVariantByTitle(array $variants, string $title): ?array
+    {
+        $needle = $this->normalizeCatalogVariantTitle($title);
+        if ($needle === '') {
+            return null;
+        }
+        foreach ($variants as $v) {
+            if (! is_array($v)) {
+                continue;
+            }
+            $t = (string) ($v['title'] ?? '');
+            if ($this->normalizeCatalogVariantTitle($t) === $needle) {
+                return $v;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $variant
+     */
+    private function extractCatalogVariantPrintCostCents(array $variant): ?int
+    {
+        foreach (['cost', 'production_cost', 'base_cost'] as $key) {
+            if (isset($variant[$key]) && is_numeric($variant[$key])) {
+                return (int) $variant[$key];
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @return array{shipping_first_item_cents: ?int, currency: string, handling_time_label: ?string, country_code: ?string}|null
+     */
+    private function parseStandardShippingForSingleCatalogVariant(int $blueprintId, int $printProviderId, int $variantId): ?array
+    {
+        $idx = $this->indexStandardShippingByVariantId($blueprintId, $printProviderId);
+        if (! isset($idx[$variantId])) {
+            return null;
+        }
+        $row = $idx[$variantId];
+
+        return [
+            'shipping_first_item_cents' => $row['shipping_first_item_cents'] ?? null,
+            'currency' => $row['currency'] ?? 'USD',
+            'handling_time_label' => $row['estimated_delivery_label'] ?? null,
+            'country_code' => 'US',
+        ];
     }
 
     /**
@@ -745,8 +905,9 @@ class PrintifyService
     {
         try {
             $response = $this->client->delete("v1/shops/{$this->shopId}/products/{$productId}.json");
+            $code = $response->getStatusCode();
 
-            return $response->getStatusCode() === 200;
+            return $code === 200 || $code === 204;
         } catch (RequestException $e) {
             $this->handleException($e, 'Delete Product', ['product_id' => $productId]);
             throw $e;
@@ -1344,5 +1505,176 @@ class PrintifyService
         }
 
         return 'Guzzle Error: '.$e->getMessage();
+    }
+
+    /**
+     * Upload design files the same way as product create (Printify uploads API + local base64 in local env).
+     *
+     * @param  list<UploadedFile>  $files
+     * @return list<array<string, mixed>>
+     */
+    public function prepareDesignPlaceholdersFromUploads(array $files): array
+    {
+        $prepared = [];
+        foreach ($files as $uploadedFile) {
+            if (! $uploadedFile instanceof UploadedFile || ! $uploadedFile->isValid()) {
+                continue;
+            }
+
+            $filename = time().'_'.uniqid().'.'.$uploadedFile->getClientOriginalExtension();
+            $path = $uploadedFile->storeAs('designs', $filename, 'public');
+            $fullUrl = asset('storage/'.$path);
+
+            try {
+                if (env('APP_ENV') === 'local') {
+                    $base64 = base64_encode((string) file_get_contents($uploadedFile->getRealPath()));
+                    $baseName = pathinfo($uploadedFile->getClientOriginalName(), PATHINFO_FILENAME);
+                    $extension = strtolower($uploadedFile->getClientOriginalExtension());
+                    $resp = Http::withToken((string) config('printify.api_key'))
+                        ->withHeaders(['Accept' => 'application/json'])
+                        ->post('https://api.printify.com/v1/uploads/images.json', [
+                            'file_name' => $baseName.'.'.$extension,
+                            'contents' => $base64,
+                        ]);
+                    $resp->throw();
+                    $uploadResult = $resp->json();
+                } else {
+                    $uploadResult = $this->uploadImage($fullUrl);
+                }
+
+                if (! is_array($uploadResult) || ! isset($uploadResult['id'])) {
+                    throw new \RuntimeException('Failed to get image ID from Printify upload');
+                }
+
+                $prepared[] = [
+                    'id' => $uploadResult['id'],
+                    'x' => 0.5,
+                    'y' => 0.5,
+                    'scale' => 1,
+                    'angle' => 0,
+                ];
+            } catch (\Throwable $e) {
+                Log::error('Printify preview image upload failed', [
+                    'file' => $uploadedFile->getClientOriginalName(),
+                    'error' => $e->getMessage(),
+                ]);
+                throw new \RuntimeException('Failed to process design image "'.$uploadedFile->getClientOriginalName().'": '.$e->getMessage(), 0, $e);
+            }
+        }
+
+        if ($prepared === []) {
+            throw new \InvalidArgumentException('No valid design images could be processed');
+        }
+
+        return $prepared;
+    }
+
+    /**
+     * Creates a temporary shop product so Printify returns variant fulfillment costs, then deletes the product.
+     * This is the supported way to read per-variant print cost before publishing a listing.
+     *
+     * @param  list<int>  $variantIds
+     * @param  list<array<string, mixed>>  $preparedPlaceholderImages  from prepareDesignPlaceholdersFromUploads()
+     * @return list<array{id: int, cost_cents: ?int, title: ?string}>
+     */
+    public function previewVariantCostsViaTempProduct(int $blueprintId, int $printProviderId, array $variantIds, array $preparedPlaceholderImages): array
+    {
+        if (empty($this->shopId)) {
+            throw new \InvalidArgumentException('Printify shop ID is not configured.');
+        }
+
+        $variantIds = array_values(array_unique(array_filter(array_map('intval', $variantIds))));
+        if ($variantIds === []) {
+            throw new \InvalidArgumentException('No variants to preview.');
+        }
+        if (count($variantIds) > 40) {
+            throw new \InvalidArgumentException('Too many variants for one preview (max 40).');
+        }
+        if ($preparedPlaceholderImages === []) {
+            throw new \InvalidArgumentException('Design images are required.');
+        }
+
+        $tempPrice = 100;
+        $tag = 'biu-cost-preview-'.bin2hex(random_bytes(4));
+        $payload = [
+            'title' => '[Temp] '.$tag,
+            'description' => 'Temporary product for cost preview in Believe. You may delete it in Printify if it was not removed automatically.',
+            'blueprint_id' => $blueprintId,
+            'print_provider_id' => $printProviderId,
+            'variants' => array_map(fn (int $vid): array => [
+                'id' => $vid,
+                'price' => $tempPrice,
+                'is_enabled' => true,
+            ], $variantIds),
+            'print_areas' => [
+                [
+                    'variant_ids' => $variantIds,
+                    'placeholders' => [
+                        [
+                            'position' => 'front',
+                            'images' => $preparedPlaceholderImages,
+                        ],
+                    ],
+                ],
+            ],
+        ];
+
+        $created = $this->createProduct($payload);
+        $productId = (string) ($created['id'] ?? '');
+        if ($productId === '') {
+            throw new \RuntimeException('Printify did not return a product id.');
+        }
+
+        $out = [];
+        try {
+            for ($attempt = 0; $attempt < 10; $attempt++) {
+                $product = $this->getProduct($productId);
+                $variants = $product['variants'] ?? [];
+                $out = [];
+                $allNumeric = true;
+                foreach ($variantIds as $vid) {
+                    $title = null;
+                    $cost = null;
+                    $found = false;
+                    foreach ($variants as $v) {
+                        if (! is_array($v)) {
+                            continue;
+                        }
+                        if ((int) ($v['id'] ?? 0) !== $vid) {
+                            continue;
+                        }
+                        $found = true;
+                        $title = isset($v['title']) ? (string) $v['title'] : null;
+                        $c = $v['cost'] ?? null;
+                        if (is_numeric($c) && (int) $c > 0) {
+                            $cost = (int) $c;
+                        }
+                        break;
+                    }
+                    if (! $found || $cost === null || $cost < 1) {
+                        $allNumeric = false;
+                    }
+                    $out[] = ['id' => $vid, 'cost_cents' => $cost, 'title' => $title];
+                }
+                if ($allNumeric) {
+                    break;
+                }
+                usleep(450_000);
+            }
+        } finally {
+            try {
+                $deleted = $this->deleteProduct($productId);
+                if (! $deleted) {
+                    Log::warning('Printify preview product delete returned non-200', ['product_id' => $productId]);
+                }
+            } catch (\Throwable $e) {
+                Log::warning('Failed to delete temporary Printify preview product', [
+                    'product_id' => $productId,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        return $out;
     }
 }
