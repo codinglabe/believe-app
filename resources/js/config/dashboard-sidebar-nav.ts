@@ -29,18 +29,22 @@ import {
     Plus,
     Mail,
     CalendarPlus,
+    PlusCircle,
     Star,
+    Bot,
     ClipboardList,
     FileCheck,
     DollarSign,
     Coins,
     PieChart,
+    Clock,
     UserCheck,
     Info,
     Heart,
     Megaphone,
     Wallet,
     Gavel,
+    Handshake,
     Bell,
     Send,
     Store,
@@ -58,31 +62,22 @@ import {
     ScrollText,
     Home,
     Brain,
-    Handshake,
+    Puzzle,
     LineChart,
-    Bot,
     Facebook,
     Link as LinkIcon,
     Activity,
     MessageCircle,
     Sparkles,
     Trophy,
-    Compass,
-    Newspaper,
-    Radio,
-    MapPin,
 } from 'lucide-react';
 
 /**
- * BIU sidebar — matches client “final menu” structure.
- * Convention (Option A): items that are * in the spec use `role: ORG_STAR_ROLES` so
- * supporters (`user`) do not see them at all. Admins and nonprofit roles still do.
+ * BIU production sidebar — section order and labels match client spec.
  */
-const ORG_STAR_ROLES = ['organization', 'organization_pending', 'care_alliance', 'admin'] as const;
-
 export const dashboardSidebarNavItems: (NavItem | NavGroup)[] = [
     {
-        title: 'Home',
+        title: 'Dashboard',
         icon: Home,
         items: [
             {
@@ -92,201 +87,53 @@ export const dashboardSidebarNavItems: (NavItem | NavGroup)[] = [
                 permission: 'dashboard.read',
             },
             {
-                title: 'Dashboard',
+                title: 'Supporter home',
                 href: route('user.profile.index'),
                 icon: BarChart3,
                 role: 'user',
             },
-            {
-                title: 'Activity feed',
-                href: '/social-feed',
-                icon: Activity,
-            },
-            {
-                title: 'Notifications',
-                href: route('notifications.index'),
-                icon: Bell,
-            },
         ],
     },
 
     {
-        title: 'Explore',
-        icon: Compass,
+        title: 'Fundraising',
+        icon: HandCoins,
+        role: ['organization', 'organization_pending', 'admin'],
         items: [
             {
-                title: 'Explore causes',
-                href: route('explore-by-cause.index'),
-                icon: MapPin,
-            },
-            {
-                title: 'Organizations',
-                href: route('organizations'),
-                icon: Building2,
-            },
-            {
-                title: 'Campaigns',
-                href: route('fundme.index'),
-                icon: Megaphone,
-            },
-            {
-                title: 'Events',
-                href: route('alleventsPage'),
-                icon: Calendar,
-            },
-            {
-                title: 'Volunteers',
-                href: route('volunteer-opportunities.index'),
-                icon: UserCheck,
-            },
-            {
-                title: 'Courses',
-                href: route('course.index'),
-                icon: GraduationCap,
-            },
-            {
-                title: 'Supporters',
-                href: route('find-supporters.index'),
-                icon: Users,
-            },
-            {
-                title: 'Groups',
-                href: route('chat.index'),
-                icon: Hash,
-            },
-        ],
-    },
-
-    {
-        title: 'Community',
-        icon: Users,
-        items: [
-            {
-                title: 'Social feed',
-                href: route('social-feed.index'),
-                icon: Facebook,
-            },
-            {
-                title: 'Find supporters',
-                href: route('find-supporters.index'),
-                icon: Search,
-            },
-            {
-                title: 'Care alliances',
-                href: route('find-care-alliances.index'),
+                title: 'Donations',
+                href: '/donations',
                 icon: HeartHandshake,
+                role: 'organization',
             },
             {
-                title: 'Groups',
-                href: route('chat.index'),
-                icon: Layers,
-            },
-            {
-                title: 'Chat',
-                href: route('chat.index'),
-                icon: MessageCircle,
-            },
-        ],
-    },
-
-    {
-        title: 'Give',
-        icon: Heart,
-        items: [
-            {
-                title: 'Donate',
-                href: route('donate'),
-                icon: HeartHandshake,
-            },
-            {
-                title: 'FundMe / Support a project',
+                title: 'Fundraisers',
                 href: '/fundme',
                 icon: HandCoins,
-                role: [...ORG_STAR_ROLES],
+                role: 'organization',
             },
             {
                 title: 'Raffles',
                 href: '/raffles',
                 icon: Gift,
                 permission: 'raffle.read',
-                role: [...ORG_STAR_ROLES],
             },
             {
-                title: 'Gift cards',
-                icon: CreditCard,
-                items: [
-                    {
-                        title: 'Browse & buy',
-                        href: route('gift-cards.index'),
-                        icon: Gift,
-                    },
-                    {
-                        title: 'My cards',
-                        href: route('gift-cards.my-cards'),
-                        icon: Wallet,
-                        role: 'user',
-                    },
-                    {
-                        title: 'Purchased (organization)',
-                        href: route('gift-cards.created'),
-                        icon: ShoppingBag,
-                        role: [...ORG_STAR_ROLES],
-                    },
-                ],
+                title: 'Project applications',
+                href: '/dashboard/project-applications',
+                icon: FileText,
+                role: ['organization', 'organization_pending', 'admin'],
             },
         ],
     },
 
     {
-        title: 'Earn & save',
-        icon: Wallet,
+        title: 'Marketing',
+        icon: Megaphone,
         items: [
             {
-                title: 'Marketplace',
-                href: route('marketplace.index'),
-                icon: ShoppingCart,
-            },
-            {
-                title: 'Merchant deals',
-                href: route('merchant-hub.index'),
-                icon: Store,
-            },
-            {
-                title: 'Redeem points',
-                href: route('believe-points.index'),
-                icon: Coins,
-            },
-            {
-                title: 'Sell products',
-                href: '/products',
-                icon: Package,
-                permission: 'product.read',
-                role: [...ORG_STAR_ROLES],
-            },
-            {
-                title: 'My earnings',
-                href: '/orders',
-                icon: DollarSign,
-                permission: 'ecommerce.read',
-                role: [...ORG_STAR_ROLES],
-            },
-        ],
-    },
-
-    {
-        title: 'Engagement',
-        icon: Send,
-        role: [...ORG_STAR_ROLES],
-        items: [
-            {
-                title: 'Create engagement',
-                href: route('newsletter.create'),
+                title: 'Auto Drip Campaign',
                 icon: Mail,
-                permission: 'newsletter.create',
-            },
-            {
-                title: 'Drip campaigns (AI)',
-                icon: Brain,
                 items: [
                     {
                         title: 'Campaigns',
@@ -308,14 +155,197 @@ export const dashboardSidebarNavItems: (NavItem | NavGroup)[] = [
                     },
                     {
                         title: 'Email invites',
-                        href: route('email-invite.index'),
+                        href: '/email-invite',
                         icon: Mail,
                         permission: 'email.invite.read',
+                        role: 'organization',
                     },
                 ],
             },
             {
-                title: 'Connection hub',
+                title: 'Engagement',
+                href: '/newsletter',
+                icon: Mail,
+                permission: 'newsletter.read',
+            },
+            {
+                title: 'Social',
+                icon: Facebook,
+                role: 'organization',
+                items: [
+                    {
+                        title: 'Social media',
+                        href: route('social-media.index'),
+                        icon: Facebook,
+                        role: 'organization',
+                    },
+                    {
+                        title: 'Connect pages',
+                        href: '/facebook/connect',
+                        icon: LinkIcon,
+                        role: 'organization',
+                    },
+                    {
+                        title: 'Posts',
+                        href: '/facebook/posts',
+                        icon: FileText,
+                        role: 'organization',
+                    },
+                    {
+                        title: 'Create post',
+                        href: '/facebook/posts/create',
+                        icon: Plus,
+                        role: 'organization',
+                    },
+                ],
+            },
+            {
+                title: 'Communication',
+                icon: MessageSquare,
+                items: [
+                    {
+                        title: 'Announcements',
+                        href: '/chat',
+                        icon: Bell,
+                        permission: 'communication.read',
+                    },
+                    {
+                        title: 'Content',
+                        icon: FileText,
+                        items: [
+                            {
+                                title: 'Content items',
+                                href: '/content',
+                                icon: FileText,
+                                permission: 'content.read',
+                            },
+                            {
+                                title: 'Create content',
+                                href: '/content/create',
+                                icon: PlusCircle,
+                                permission: 'content.create',
+                            },
+                        ],
+                        permission: 'content.read',
+                    },
+                    {
+                        title: 'Group chat',
+                        icon: Send,
+                        items: [
+                            {
+                                title: 'Create',
+                                href: '/chat-group-topics',
+                                icon: MessageSquare,
+                                permission: 'communication.read',
+                            },
+                            {
+                                title: 'Select chat topic',
+                                href: '/group-topics/select',
+                                icon: MessageSquare,
+                                permission: 'communication.read',
+                            },
+                        ],
+                        permission: 'communication.read',
+                    },
+                ],
+                permission: 'communication.read',
+            },
+        ],
+    },
+
+    {
+        title: 'Commerce',
+        icon: Store,
+        items: [
+            {
+                title: 'Marketplace',
+                icon: ShoppingCart,
+                items: [
+                    {
+                        title: 'Products',
+                        href: '/products',
+                        icon: ShoppingCart,
+                        permission: 'product.read',
+                    },
+                    {
+                        title: 'Categories',
+                        href: '/categories',
+                        icon: Tag,
+                        permission: 'category.read',
+                        role: 'admin',
+                    },
+                    {
+                        title: 'Orders',
+                        href: '/orders',
+                        icon: Package,
+                        permission: 'ecommerce.read',
+                    },
+                    {
+                        title: 'Merchant product pool',
+                        href: route('marketplace.product-pool.index'),
+                        icon: Package,
+                        permission: 'product.read',
+                    },
+                ],
+            },
+            {
+                title: 'Merchants',
+                icon: Store,
+                role: 'admin',
+                items: [
+                    {
+                        title: 'Merchants',
+                        href: '/admin/merchant-hub/merchants',
+                        icon: Store,
+                        role: 'admin',
+                    },
+                    {
+                        title: 'Offers',
+                        href: '/admin/merchant-hub/offers',
+                        icon: Gift,
+                        role: 'admin',
+                    },
+                    {
+                        title: 'Redemptions',
+                        href: '/admin/merchant-hub/redemptions',
+                        icon: ShoppingCart,
+                        role: 'admin',
+                    },
+                    {
+                        title: 'Categories',
+                        href: '/admin/merchant-hub-categories',
+                        icon: Tag,
+                        role: 'admin',
+                    },
+                ],
+            },
+            {
+                title: 'Barter',
+                href: '/barter',
+                icon: Handshake,
+                role: 'organization',
+            },
+            {
+                title: 'Gift cards',
+                icon: Gift,
+                role: ['organization', 'admin'],
+                items: [
+                    {
+                        title: 'Purchased cards',
+                        href: route('gift-cards.created'),
+                        icon: Gift,
+                    },
+                ],
+            },
+        ],
+    },
+
+    {
+        title: 'Programs',
+        icon: GraduationCap,
+        items: [
+            {
+                title: 'Connection Hub',
                 icon: GraduationCap,
                 items: [
                     {
@@ -328,230 +358,125 @@ export const dashboardSidebarNavItems: (NavItem | NavGroup)[] = [
                         title: 'Course topics',
                         href: '/topics',
                         icon: BookOpen,
+                        // Match event types: show catalog when org dashboard or explicit read (avoids hidden link if Spatie is stale)
                         permission: ['topic.read', 'dashboard.organization'],
                     },
                 ],
                 permission: 'course.read',
             },
             {
-                title: 'Audience / recipients',
-                href: route('newsletter.recipients'),
-                icon: Users,
-                permission: 'newsletter.read',
-            },
-            {
-                title: 'Usage dashboard',
-                href: '/supporter-activity',
-                icon: LineChart,
-                permission: 'dashboard.read',
-            },
-        ],
-    },
-
-    {
-        title: 'Media',
-        icon: Video,
-        items: [
-            {
-                title: 'News',
-                href: route('nonprofit.news'),
-                icon: Newspaper,
-            },
-            {
-                title: 'Unity videos',
-                href: route('unity-videos.index'),
-                icon: Youtube,
-            },
-            {
-                title: 'Unity live & meet',
-                icon: Radio,
-                items: [
-                    {
-                        title: 'Unity live',
-                        href: route('unity-live.index'),
-                        icon: Video,
-                    },
-                    {
-                        title: 'Livestreams (organization)',
-                        href: '/livestreams',
-                        icon: Radio,
-                        role: [...ORG_STAR_ROLES],
-                    },
-                    {
-                        title: 'Unity meet',
-                        href: route('livestreams.supporter.index'),
-                        icon: MessageCircle,
-                    },
-                ],
-            },
-        ],
-    },
-
-    {
-        title: 'Tools',
-        icon: Monitor,
-        items: [
-            {
-                title: 'Kiosk',
-                href: route('kiosk.index'),
-                icon: Monitor,
-            },
-            {
-                title: 'Event calendar',
-                href: '/events',
+                title: 'Events',
                 icon: Calendar,
+                items: [
+                    {
+                        title: 'Events',
+                        href: '/events',
+                        icon: Calendar,
+                        permission: 'event.read',
+                    },
+                    {
+                        title: 'Event types',
+                        href: '/event-types',
+                        icon: Layers,
+                        // Organization dashboard: show catalog for read (fallback if event_type.read not in session)
+                        permission: ['event_type.read', 'dashboard.organization'],
+                    },
+                    {
+                        title: 'Create event',
+                        icon: Plus,
+                        items: [
+                            {
+                                title: 'New event',
+                                href: '/events/create',
+                                icon: Plus,
+                                permission: 'event.create',
+                            },
+                        ],
+                    },
+                ],
                 permission: 'event.read',
-                role: [...ORG_STAR_ROLES],
             },
+        ],
+    },
+
+    {
+        title: 'Community',
+        icon: Users,
+        role: 'organization',
+        items: [
             {
-                title: 'Volunteer roster',
-                href: '/volunteers',
+                title: 'Followers',
+                href: route('organization.followers.index'),
                 icon: UserCheck,
-                permission: 'volunteer.read',
-                role: [...ORG_STAR_ROLES],
+                permission: 'organization.followers.read',
+                role: 'organization',
             },
             {
-                title: 'AI assistant',
-                href: '/ai-chat',
-                icon: Bot,
-                permission: 'ai.chat.use',
-                role: [...ORG_STAR_ROLES],
-            },
-        ],
-    },
-
-    {
-        title: 'More',
-        icon: Info,
-        items: [
-            {
-                title: 'About',
-                href: route('about'),
-                icon: Info,
+                title: 'Kiosk listings',
+                href: route('organization.kiosk-providers.index'),
+                icon: Monitor,
+                permission: 'organization.followers.read',
+                role: 'organization',
             },
             {
-                title: 'Pricing',
-                href: route('pricing'),
-                icon: Sparkles,
-            },
-            {
-                title: 'Settings / account',
-                icon: Settings,
-                items: [
-                    {
-                        title: 'Supporter profile',
-                        href: route('user.profile.edit'),
-                        icon: UserCheck,
-                        role: 'user',
-                    },
-                    {
-                        title: 'Integrations',
-                        href: route('user.profile.integrations'),
-                        icon: LinkIcon,
-                        role: 'user',
-                    },
-                    {
-                        title: 'Organization settings',
-                        href: '/settings/profile',
-                        icon: Settings,
-                        permission: 'profile.read',
-                        excludeCareAllianceHub: true,
-                    },
-                    {
-                        title: 'Alliance settings',
-                        href: '/settings/profile',
-                        icon: Settings,
-                        permission: 'profile.read',
-                        role: 'care_alliance',
-                    },
-                    {
-                        title: 'Roles & permissions',
-                        href: '/permission-management',
-                        icon: Shield,
-                        permission: 'role.management.read',
-                    },
-                ],
-            },
-            {
-                title: 'Help / support',
-                href: route('contact'),
+                title: 'Chat',
                 icon: MessageCircle,
+                items: [
+                    {
+                        title: 'Announcements',
+                        href: '/chat',
+                        icon: Bell,
+                        permission: 'communication.read',
+                    },
+                    {
+                        title: 'Create group chat',
+                        href: '/chat-group-topics',
+                        icon: MessageSquare,
+                        permission: 'communication.read',
+                    },
+                    {
+                        title: 'Select chat topic',
+                        href: '/group-topics/select',
+                        icon: MessageSquare,
+                        permission: 'communication.read',
+                    },
+                ],
+                permission: 'communication.read',
             },
         ],
     },
 
     {
-        title: 'Organization',
-        icon: Building2,
-        role: [...ORG_STAR_ROLES],
+        title: 'Opportunities',
+        icon: Puzzle,
+        role: 'organization',
         items: [
             {
-                title: 'Donations (dashboard)',
-                href: '/donations',
-                icon: HeartHandshake,
-                role: 'organization',
-            },
-            {
-                title: 'Project applications',
-                href: '/dashboard/project-applications',
-                icon: FileText,
-                role: ['organization', 'organization_pending', 'admin'],
-            },
-            {
-                title: 'Alliance membership',
-                href: '/organization/alliance-membership',
-                icon: Users,
-                role: ['organization', 'organization_pending'],
-                organizationOnlyNav: true,
-            },
-            {
-                title: 'Care Alliance workspace',
-                icon: HeartHandshake,
-                role: 'care_alliance',
+                title: 'Volunteers',
+                icon: UserCheck,
                 items: [
                     {
-                        title: 'Members',
-                        href: '/care-alliance/workspace/members',
-                        icon: Users,
-                        role: 'care_alliance',
-                    },
-                    {
-                        title: 'Campaigns',
-                        href: '/care-alliance/workspace/campaigns',
-                        icon: Megaphone,
-                        role: 'care_alliance',
-                    },
-                ],
-            },
-            {
-                title: 'Governance',
-                icon: Gavel,
-                role: 'organization',
-                items: [
-                    {
-                        title: 'Board',
-                        href: '/board-members',
-                        icon: Users,
+                        title: 'Volunteers',
+                        href: '/volunteers',
+                        icon: UserCheck,
+                        permission: 'volunteer.read',
                         role: 'organization',
                     },
                     {
-                        title: 'Compliance',
-                        href: '/compliance',
-                        icon: Shield,
+                        title: 'Supporter volunteer interests',
+                        href: '/volunteers/supporter-interests',
+                        icon: HeartHandshake,
+                        permission: 'volunteer.read',
+                        role: 'organization',
+                    },
+                    {
+                        title: 'Time sheet',
+                        href: '/volunteers/timesheet',
+                        icon: Clock,
+                        permission: 'volunteer.timesheet.read',
                         role: 'organization',
                     },
                 ],
-            },
-            {
-                title: 'Barter network',
-                href: '/barter',
-                icon: Handshake,
-                role: 'organization',
-            },
-            {
-                title: 'Contractors',
-                href: '/service-hub',
-                icon: Briefcase,
                 role: 'organization',
             },
             {
@@ -585,248 +510,157 @@ export const dashboardSidebarNavItems: (NavItem | NavGroup)[] = [
                 ],
             },
             {
-                title: 'Integrations',
-                icon: LinkIcon,
-                items: [
-                    {
-                        title: 'Social media',
-                        href: route('social-media.index'),
-                        icon: Facebook,
-                        role: 'organization',
-                    },
-                    {
-                        title: 'YouTube',
-                        href: route('integrations.youtube'),
-                        icon: Youtube,
-                        role: 'organization',
-                    },
-                    {
-                        title: 'Dropbox (recordings)',
-                        href: route('integrations.dropbox'),
-                        icon: Cloud,
-                        role: 'organization',
-                    },
-                ],
-            },
-            {
-                title: 'Followers & kiosk listings',
-                icon: UserCheck,
+                title: 'Contractors',
+                href: '/service-hub',
+                icon: Briefcase,
                 role: 'organization',
-                items: [
-                    {
-                        title: 'Followers',
-                        href: route('organization.followers.index'),
-                        icon: UserCheck,
-                        permission: 'organization.followers.read',
-                        role: 'organization',
-                    },
-                    {
-                        title: 'Kiosk listings',
-                        href: route('organization.kiosk-providers.index'),
-                        icon: Monitor,
-                        permission: 'organization.followers.read',
-                        role: 'organization',
-                    },
-                ],
             },
+        ],
+    },
+
+    {
+        title: 'Insights',
+        icon: LineChart,
+        permission: 'dashboard.read',
+        items: [
             {
-                title: 'Marketing & comms (advanced)',
-                icon: Megaphone,
-                items: [
-                    {
-                        title: 'Engagement hub',
-                        href: '/newsletter',
-                        icon: Mail,
-                        permission: 'newsletter.read',
-                    },
-                    {
-                        title: 'Announcements',
-                        href: '/chat',
-                        icon: Bell,
-                        permission: 'communication.read',
-                    },
-                    {
-                        title: 'Content items',
-                        href: '/content',
-                        icon: FileText,
-                        permission: 'content.read',
-                    },
-                    {
-                        title: 'Create content',
-                        href: '/content/create',
-                        icon: Plus,
-                        permission: 'content.create',
-                    },
-                    {
-                        title: 'Group chat setup',
-                        icon: Send,
-                        items: [
-                            {
-                                title: 'Create',
-                                href: '/chat-group-topics',
-                                icon: MessageSquare,
-                                permission: 'communication.read',
-                            },
-                            {
-                                title: 'Select chat topic',
-                                href: '/group-topics/select',
-                                icon: MessageSquare,
-                                permission: 'communication.read',
-                            },
-                        ],
-                        permission: 'communication.read',
-                    },
-                ],
-            },
-            {
-                title: 'Commerce (advanced)',
-                icon: Store,
-                items: [
-                    {
-                        title: 'Marketplace products',
-                        href: '/products',
-                        icon: ShoppingCart,
-                        permission: 'product.read',
-                    },
-                    {
-                        title: 'Categories',
-                        href: '/categories',
-                        icon: Tag,
-                        permission: 'category.read',
-                        role: 'admin',
-                    },
-                    {
-                        title: 'Orders',
-                        href: '/orders',
-                        icon: Package,
-                        permission: 'ecommerce.read',
-                    },
-                    {
-                        title: 'Merchant product pool',
-                        href: '/marketplace/product-pool',
-                        icon: Package,
-                        permission: 'product.read',
-                    },
-                    {
-                        title: 'Merchants (admin)',
-                        icon: Store,
-                        role: 'admin',
-                        items: [
-                            {
-                                title: 'Merchants',
-                                href: '/admin/merchant-hub/merchants',
-                                icon: Store,
-                                role: 'admin',
-                            },
-                            {
-                                title: 'Offers',
-                                href: '/admin/merchant-hub/offers',
-                                icon: Gift,
-                                role: 'admin',
-                            },
-                            {
-                                title: 'Redemptions',
-                                href: '/admin/merchant-hub/redemptions',
-                                icon: ShoppingCart,
-                                role: 'admin',
-                            },
-                            {
-                                title: 'Categories',
-                                href: '/admin/merchant-hub-categories',
-                                icon: Tag,
-                                role: 'admin',
-                            },
-                        ],
-                    },
-                ],
-            },
-            {
-                title: 'Programs (events & courses)',
-                icon: GraduationCap,
-                items: [
-                    {
-                        title: 'Events (manage)',
-                        icon: Calendar,
-                        items: [
-                            {
-                                title: 'Events',
-                                href: '/events',
-                                icon: Calendar,
-                                permission: 'event.read',
-                            },
-                            {
-                                title: 'Event types',
-                                href: '/event-types',
-                                icon: Layers,
-                                permission: ['event_type.read', 'dashboard.organization'],
-                            },
-                            {
-                                title: 'New event',
-                                href: '/events/create',
-                                icon: Plus,
-                                permission: 'event.create',
-                            },
-                        ],
-                        permission: 'event.read',
-                    },
-                ],
-                permission: 'event.read',
-            },
-            {
-                title: 'Insights (transactions)',
-                icon: LineChart,
+                title: 'Overview',
+                href: '/supporter-activity',
+                icon: Activity,
                 permission: 'dashboard.read',
-                role: [...ORG_STAR_ROLES],
+                role: ['organization', 'admin'],
+            },
+            {
+                title: 'Behavior',
+                href: '/supporter-activity?metric=active_supporters',
+                icon: Activity,
+                permission: 'dashboard.read',
+                role: ['organization', 'admin'],
+            },
+            {
+                title: 'Engagement',
+                href: '/supporter-activity?metric=event_participants',
+                icon: Activity,
+                permission: 'dashboard.read',
+                role: ['organization', 'admin'],
+            },
+            {
+                title: 'Transactions (supporters)',
+                href: '/supporter-activity#transaction-ledger',
+                icon: ScrollText,
+                permission: 'dashboard.read',
+                role: 'organization',
+            },
+            {
+                title: 'Transactions (platform)',
+                href: '/admin/transactions/ledger',
+                icon: ScrollText,
+                role: 'admin',
+            },
+            {
+                title: 'Usage',
+                href: '/supporter-activity?metric=course_participants',
+                icon: Activity,
+                permission: 'dashboard.read',
+                role: ['organization', 'admin'],
+            },
+            {
+                title: 'Points',
+                href: '/supporter-activity?metric=donors',
+                icon: Coins,
+                permission: 'dashboard.read',
+                role: ['organization', 'admin'],
+            },
+        ],
+    },
+
+    {
+        title: 'Organization',
+        icon: Building2,
+        items: [
+            {
+                title: 'Alliance membership',
+                href: '/organization/alliance-membership',
+                icon: Users,
+                role: ['organization', 'organization_pending'],
+                organizationOnlyNav: true,
+            },
+            {
+                title: 'Care Alliance',
+                icon: HeartHandshake,
+                role: 'care_alliance',
                 items: [
                     {
-                        title: 'Overview',
-                        href: '/supporter-activity',
-                        icon: Activity,
-                        permission: 'dashboard.read',
+                        title: 'Members',
+                        href: '/care-alliance/workspace/members',
+                        icon: Users,
+                        role: 'care_alliance',
                     },
                     {
-                        title: 'Behavior',
-                        href: '/supporter-activity?metric=active_supporters',
-                        icon: Activity,
-                        permission: 'dashboard.read',
-                    },
-                    {
-                        title: 'Engagement',
-                        href: '/supporter-activity?metric=event_participants',
-                        icon: Activity,
-                        permission: 'dashboard.read',
-                    },
-                    {
-                        title: 'Transactions (supporters)',
-                        href: '/supporter-activity#transaction-ledger',
-                        icon: ScrollText,
-                        permission: 'dashboard.read',
-                        role: 'organization',
-                    },
-                    {
-                        title: 'Transactions (platform)',
-                        href: '/admin/transactions/ledger',
-                        icon: ScrollText,
-                        role: 'admin',
-                    },
-                    {
-                        title: 'Usage',
-                        href: '/supporter-activity?metric=course_participants',
-                        icon: Activity,
-                        permission: 'dashboard.read',
-                    },
-                    {
-                        title: 'Points',
-                        href: '/supporter-activity?metric=donors',
-                        icon: Coins,
-                        permission: 'dashboard.read',
+                        title: 'Campaigns',
+                        href: '/care-alliance/workspace/campaigns',
+                        icon: Megaphone,
+                        role: 'care_alliance',
                     },
                 ],
             },
+        ],
+    },
+
+    {
+        title: 'Governance',
+        icon: Gavel,
+        role: 'organization',
+        items: [
             {
-                title: 'System (org / admin)',
+                title: 'Board',
+                href: '/board-members',
+                icon: Users,
+                role: 'organization',
+            },
+            {
+                title: 'Compliance',
+                href: '/compliance',
+                icon: Shield,
+                role: 'organization',
+            },
+        ],
+    },
+
+    {
+        title: 'System',
+        icon: Settings,
+        items: [
+            {
+                title: 'Settings',
                 icon: Settings,
                 items: [
+                    {
+                        title: 'Roles & permissions',
+                        href: '/permission-management',
+                        icon: Shield,
+                        permission: 'role.management.read',
+                    },
+                    {
+                        title: 'Organization settings',
+                        href: '/settings/profile',
+                        icon: Settings,
+                        permission: 'profile.read',
+                        excludeCareAllianceHub: true,
+                    },
+                    {
+                        title: 'Alliance settings',
+                        href: '/settings/profile',
+                        icon: Settings,
+                        permission: 'profile.read',
+                        role: 'care_alliance',
+                    },
+                    {
+                        title: 'Profile',
+                        href: route('user.profile.index'),
+                        icon: UserCheck,
+                        role: 'user',
+                    },
                     {
                         title: 'SEO settings',
                         href: '/admin/seo',
@@ -851,9 +685,21 @@ export const dashboardSidebarNavItems: (NavItem | NavGroup)[] = [
                                 role: 'admin',
                             },
                             {
+                                title: 'Challenges',
+                                href: route('admin.challenge-hub.challenges.index'),
+                                icon: Sparkles,
+                                role: 'admin',
+                            },
+                            {
                                 title: 'Questions bank',
                                 href: route('admin.challenge-hub.questions.index'),
                                 icon: BookOpen,
+                                role: 'admin',
+                            },
+                            {
+                                title: 'Subcategories',
+                                href: route('admin.challenge-hub.subcategories.index'),
+                                icon: Tag,
                                 role: 'admin',
                             },
                         ],
@@ -1031,6 +877,75 @@ export const dashboardSidebarNavItems: (NavItem | NavGroup)[] = [
                         role: 'admin',
                     },
                 ],
+            },
+            {
+                title: 'Integrations',
+                icon: LinkIcon,
+                items: [
+                    {
+                        title: 'Email invites',
+                        href: '/email-invite',
+                        icon: Mail,
+                        permission: 'email.invite.read',
+                        role: 'organization',
+                    },
+                    {
+                        title: 'Social media',
+                        href: route('social-media.index'),
+                        icon: Facebook,
+                        role: 'organization',
+                    },
+                    {
+                        title: 'YouTube',
+                        href: route('integrations.youtube'),
+                        icon: Youtube,
+                        role: 'organization',
+                    },
+                    {
+                        title: 'Dropbox (recordings)',
+                        href: route('integrations.dropbox'),
+                        icon: Cloud,
+                        role: 'organization',
+                    },
+                    {
+                        title: 'Integrations (profile)',
+                        href: route('user.profile.integrations'),
+                        icon: LinkIcon,
+                        role: 'user',
+                    },
+                ],
+            },
+            {
+                title: 'Wallet',
+                href: '/believe-points',
+                icon: Wallet,
+                role: 'user',
+            },
+        ],
+    },
+
+    {
+        title: 'Tools',
+        icon: Brain,
+        items: [
+            {
+                title: 'AI (ChatGPT assistant)',
+                href: '/ai-chat',
+                icon: Bot,
+                permission: 'ai.chat.use',
+                role: 'organization',
+            },
+            {
+                title: 'Livestream',
+                href: '/livestreams',
+                icon: Video,
+                role: ['organization', 'organization_pending', 'care_alliance'],
+            },
+            {
+                title: 'Unity Meet',
+                href: '/livestreams/supporter',
+                icon: MessageCircle,
+                role: ['user', 'organization', 'organization_pending', 'care_alliance'],
             },
         ],
     },

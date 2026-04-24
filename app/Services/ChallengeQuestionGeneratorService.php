@@ -6,13 +6,14 @@ use App\Models\ChallengeQuestion;
 use App\Support\ChallengeQuestionHasher;
 use App\Support\ProfileReligions;
 use Illuminate\Database\QueryException;
-use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 class ChallengeQuestionGeneratorService
 {
     public function __construct(
         protected OpenAiService $openAi,
+        protected ChallengeGroundingService $grounding,
     ) {}
 
     /**
@@ -87,6 +88,9 @@ SUB
 
         $traditionAlignment = ProfileReligions::challengeQuizPromptAlignment($religionStored);
 
+        $subForGrounding = $subTrim !== '' ? $subTrim : null;
+        $groundingSection = $this->buildGroundingPromptSection($category, $subForGrounding, $religionStored);
+
         $messages = [
             [
                 'role' => 'system',
@@ -96,7 +100,7 @@ SUB
                 'role' => 'user',
                 'content' => <<<PROMPT
 Create exactly {$batchSize} unique multiple-choice quiz questions for educational quizzes.
-Category (exact string for every row): "{$category}".{$traditionAlignment}{$challengeFocus}{$subRules}{$difficultyRules}
+Category (exact string for every row): "{$category}".{$traditionAlignment}{$challengeFocus}{$subRules}{$difficultyRules}{$groundingSection}
 Each question must have four options (A–D), one correct answer, a short explanation, and a difficulty field.
 Correct answer distribution (required): across this batch of {$batchSize} questions, spread correct_option roughly evenly across A, B, C, and D. Do not default most answers to A — models often bias toward A; intentionally vary which letter is correct.
 Avoid duplicating famous questions verbatim from common trivia apps; vary wording.
@@ -235,5 +239,25 @@ PROMPT,
             'option_d' => $entries[3]['text'],
             'correct_option' => $newCorrect,
         ]);
+    }
+
+    /**
+     * When passages exist for this category/subcategory (+ religion scope), constrain the model to that text only.
+     */
+    protected function buildGroundingPromptSection(string $category, ?string $subcategory, ?string $profileReligion): string
+    {
+        if (! config('services.challenge_quiz.grounding.enabled', true)) {
+            return '';
+        }
+
+        $limit = max(1, (int) config('services.challenge_quiz.grounding.passage_limit', 24));
+        $passages = $this->grounding->passagesForChallengePrompt($category, $subcategory, $profileReligion, $limit);
+        $formatted = $this->grounding->formatPassagesForPrompt($passages);
+
+        if ($formatted === '') {
+            return '';
+        }
+
+        return "\n\nGROUNDING (required — sole factual source): The following passages are stored reference material. Every question and answer MUST be directly answerable from these passages alone. Do not invent facts, verses, numbers, or teachings not present below. Paraphrasing and summarizing are allowed; invented or external trivia is not.\n\n".$formatted;
     }
 }

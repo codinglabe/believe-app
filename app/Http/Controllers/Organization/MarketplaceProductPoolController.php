@@ -81,7 +81,7 @@ class MarketplaceProductPoolController extends Controller
             return $row;
         });
 
-        return Inertia::render('Organization/MarketplaceProductPool/Index', [
+        return Inertia::render('organization/MarketplaceProductPool/Index', [
             'products' => $products,
             'categories' => $categories,
             'filters' => [

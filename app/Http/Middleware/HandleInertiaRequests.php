@@ -2,11 +2,19 @@
 
 namespace App\Http\Middleware;
 
+use App\Models\AdminSetting;
 use App\Models\CareAlliance;
+use App\Models\LivestockUser;
+use App\Models\Merchant;
+use App\Models\Organization;
+use App\Models\OrganizationProduct;
+use App\Services\SeoService;
 use App\Services\StripeProcessingFeeEstimator;
+use Carbon\Carbon;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
+use Laravel\Cashier\Cashier;
 use Tighten\Ziggy\Ziggy;
 
 class HandleInertiaRequests extends Middleware
@@ -71,12 +79,12 @@ class HandleInertiaRequests extends Middleware
 
         // Only load organization relationship if user is not a LivestockUser or Merchant
         // Load organization manually to avoid ambiguous column error with hasOneThrough
-        if ($user && ! $isLivestockDomain && ! $isMerchantDomain && ! ($user instanceof \App\Models\LivestockUser) && ! ($user instanceof \App\Models\Merchant)) {
+        if ($user && ! $isLivestockDomain && ! $isMerchantDomain && ! ($user instanceof LivestockUser) && ! ($user instanceof Merchant)) {
             // Load organization manually through board_members to avoid relationship query issues
             // This prevents the ambiguous column error when eager loading
             $boardMember = $user->boardMemberships()->first();
             if ($boardMember) {
-                $organization = \App\Models\Organization::find($boardMember->organization_id);
+                $organization = Organization::find($boardMember->organization_id);
                 if ($organization) {
                     $user->setRelation('organization', $organization);
                 }
@@ -85,7 +93,7 @@ class HandleInertiaRequests extends Middleware
         }
         // Only access roles if user is not a LivestockUser or Merchant (User model has roles via Spatie Permission)
         $role = null;
-        if ($user && ! ($user instanceof \App\Models\LivestockUser) && ! ($user instanceof \App\Models\Merchant)) {
+        if ($user && ! ($user instanceof LivestockUser) && ! ($user instanceof Merchant)) {
             $role = $user->roles?->first();
         }
 
@@ -93,7 +101,7 @@ class HandleInertiaRequests extends Middleware
         $permissions = [];
         $roles = [];
 
-        if ($user && ! $isLivestockDomain && ! $isMerchantDomain && ! ($user instanceof \App\Models\LivestockUser) && ! ($user instanceof \App\Models\Merchant) && method_exists($user, 'getAllPermissions')) {
+        if ($user && ! $isLivestockDomain && ! $isMerchantDomain && ! ($user instanceof LivestockUser) && ! ($user instanceof Merchant) && method_exists($user, 'getAllPermissions')) {
             $permissions = $user->getAllPermissions()->pluck('name')->toArray();
             $roles = $user->roles?->pluck('name')->toArray() ?? [];
         }
@@ -101,7 +109,7 @@ class HandleInertiaRequests extends Middleware
         // Build user data based on domain
         $userData = null;
         if ($user) {
-            if ($isMerchantDomain || ($user instanceof \App\Models\Merchant)) {
+            if ($isMerchantDomain || ($user instanceof Merchant)) {
                 // Real-time check: Get subscription and refresh from Stripe
                 $subscription = $user->subscriptions()
                     ->whereIn('stripe_status', ['active', 'trialing', 'canceled'])
@@ -114,15 +122,15 @@ class HandleInertiaRequests extends Middleware
                     // Real-time check: Refresh subscription status from Stripe
                     try {
                         if ($subscription->stripe_id) {
-                            $stripe = \Laravel\Cashier\Cashier::stripe();
+                            $stripe = Cashier::stripe();
                             $stripeSubscription = $stripe->subscriptions->retrieve($subscription->stripe_id);
 
                             // Update local subscription with latest data from Stripe
                             $subscription->stripe_status = $stripeSubscription->status;
                             $subscription->ends_at = $stripeSubscription->cancel_at ?
-                                \Carbon\Carbon::createFromTimestamp($stripeSubscription->cancel_at) : null;
+                                Carbon::createFromTimestamp($stripeSubscription->cancel_at) : null;
                             $subscription->trial_ends_at = $stripeSubscription->trial_end ?
-                                \Carbon\Carbon::createFromTimestamp($stripeSubscription->trial_end) : null;
+                                Carbon::createFromTimestamp($stripeSubscription->trial_end) : null;
 
                             // If cancel_at is set, mark as canceled even if status is still 'active'
                             if ($stripeSubscription->cancel_at) {
@@ -167,12 +175,12 @@ class HandleInertiaRequests extends Middleware
                     'email_verified_at' => $user->email_verified_at,
                     'joined' => $user->created_at->format('F Y'),
                     'has_active_subscription' => $hasActiveSubscription,
-                    'pending_pool_approval_count' => \App\Models\OrganizationProduct::query()
+                    'pending_pool_approval_count' => OrganizationProduct::query()
                         ->where('status', 'pending_merchant_approval')
                         ->whereHas('marketplaceProduct', fn ($q) => $q->where('merchant_id', $user->id))
                         ->count(),
                 ];
-            } elseif ($isLivestockDomain || ($user instanceof \App\Models\LivestockUser)) {
+            } elseif ($isLivestockDomain || ($user instanceof LivestockUser)) {
                 // Livestock user data
                 $userData = [
                     'id' => $user->id,
@@ -198,7 +206,7 @@ class HandleInertiaRequests extends Middleware
                 ];
             } else {
                 // Main app user data (only for regular User models)
-                if (! ($user instanceof \App\Models\LivestockUser) && ! ($user instanceof \App\Models\Merchant)) {
+                if (! ($user instanceof LivestockUser) && ! ($user instanceof Merchant)) {
                     $careAllianceHub = CareAlliance::query()
                         ->where('creator_user_id', $user->id)
                         ->where('status', 'active')
@@ -271,7 +279,7 @@ class HandleInertiaRequests extends Middleware
         }
 
         // Get footer settings
-        $footerSettings = \App\Models\AdminSetting::get('footer_settings', null);
+        $footerSettings = AdminSetting::get('footer_settings', null);
         if ($footerSettings && is_array($footerSettings)) {
             // Settings are already decoded from JSON
         } else {
@@ -279,15 +287,16 @@ class HandleInertiaRequests extends Middleware
         }
 
         // SEO (from admin SEO settings) for main app only — used for social share previews (Facebook, WhatsApp, etc.)
-        $seoSiteName = (! $isLivestockDomain && ! $isMerchantDomain) ? \App\Services\SeoService::getSiteName() : null;
+        $seoSiteName = (! $isLivestockDomain && ! $isMerchantDomain) ? SeoService::getSiteName() : null;
         $seoCanonical = (! $isLivestockDomain && ! $isMerchantDomain) ? $request->url() : null;
-        $seoDefaultImage = (! $isLivestockDomain && ! $isMerchantDomain) ? \App\Services\SeoService::getDefaultShareImage() : null;
+        $seoDefaultImage = (! $isLivestockDomain && ! $isMerchantDomain) ? SeoService::getDefaultShareImage() : null;
 
         // Consume flash messages so they are only sent once (not on every reload/page switch)
         $success = $request->session()->pull('success');
         $error = $request->session()->pull('error');
         $info = $request->session()->pull('info');
         $warning = $request->session()->pull('warning');
+        $importErrors = $request->session()->pull('import_errors');
         $kioskServiceRequest = $request->session()->pull('kiosk_service_request');
 
         return [
@@ -316,6 +325,7 @@ class HandleInertiaRequests extends Middleware
                     'error' => $error,
                     'info' => $info,
                     'warning' => $warning,
+                    'import_errors' => $importErrors,
                     'kiosk_service_request' => $kioskServiceRequest,
                 ])
             ),

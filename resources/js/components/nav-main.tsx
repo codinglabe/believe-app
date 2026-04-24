@@ -1,7 +1,8 @@
 import { SidebarGroup, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from '@/components/ui/sidebar';
+import { Input } from '@/components/ui/input';
 import { type NavItem, type NavGroup } from '@/types';
 import { Link, usePage } from '@inertiajs/react';
-import { ChevronRight } from 'lucide-react';
+import { ChevronRight, Search } from 'lucide-react';
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -92,6 +93,7 @@ function getActiveChildHref(entries: NavEntry[], currentUrl: string): string | n
 export function NavMain({ items = [] }: NavMainProps) {
     const page = usePage<PageProps>();
     const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+    const [searchTerm, setSearchTerm] = useState('');
     /** Path only (no query or hash) so /admin/kiosk/items matches even with ?page=2 */
     const pathname = page.url.split('?')[0].split('#')[0];
 
@@ -223,10 +225,64 @@ export function NavMain({ items = [] }: NavMainProps) {
     };
 
     const visibleItems = buildVisibleEntries(items);
+    const normalizedSearch = searchTerm.trim().toLowerCase();
+
+    const filterEntriesBySearch = (entries: NavEntry[], query: string): NavEntry[] => {
+        if (!query) return entries;
+
+        return entries.reduce<NavEntry[]>((acc, entry) => {
+            if (isGroup(entry)) {
+                const filteredChildren = filterEntriesBySearch(entry.items, query);
+                const groupMatches = entry.title.toLowerCase().includes(query);
+                if (groupMatches || filteredChildren.length > 0) {
+                    acc.push({
+                        ...entry,
+                        items: filteredChildren,
+                    });
+                }
+                return acc;
+            }
+
+            const titleMatches = entry.title.toLowerCase().includes(query);
+            const hrefMatches = entry.href.toLowerCase().includes(query);
+            if (titleMatches || hrefMatches) {
+                acc.push(entry);
+            }
+            return acc;
+        }, []);
+    };
+
+    const collectGroupTitles = (entries: NavEntry[]): string[] =>
+        entries.flatMap((entry) => (isGroup(entry) ? [entry.title, ...collectGroupTitles(entry.items)] : []));
+
+    const filteredVisibleItems = filterEntriesBySearch(visibleItems, normalizedSearch);
+
+    useEffect(() => {
+        if (!normalizedSearch) return;
+        setExpandedGroups(new Set(collectGroupTitles(filteredVisibleItems)));
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [normalizedSearch]);
 
     return (
-        <>
-            {visibleItems.map((item) => {
+        <div className="space-y-2">
+            <div className="relative px-1">
+                <Search className="text-muted-foreground pointer-events-none absolute top-1/2 left-4 h-4 w-4 -translate-y-1/2" />
+                <Input
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    placeholder="Search menu..."
+                    className="h-9 pl-9 text-sm"
+                    aria-label="Search sidebar menu"
+                />
+            </div>
+
+            {filteredVisibleItems.length === 0 ? (
+                <div className="text-muted-foreground rounded-md px-3 py-4 text-sm">
+                    No menu found for "{searchTerm.trim()}".
+                </div>
+            ) : null}
+
+            {filteredVisibleItems.map((item) => {
                 if (isGroup(item)) {
                     const isExpanded = expandedGroups.has(item.title);
                     const hasActiveChild = (() => {
@@ -560,6 +616,6 @@ export function NavMain({ items = [] }: NavMainProps) {
                     </SidebarGroup>
                 );
             })}
-        </>
+        </div>
     );
 }

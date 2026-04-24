@@ -326,6 +326,9 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:admin'])->group(functi
     Route::get('/admin/challenge-hub/tracks/create', [AdminChallengeHubController::class, 'createTrack'])->name('admin.challenge-hub.tracks.create');
     Route::post('/admin/challenge-hub/tracks', [AdminChallengeHubController::class, 'storeTrack'])->name('admin.challenge-hub.tracks.store');
     Route::get('/admin/challenge-hub/questions', [AdminChallengeHubController::class, 'questionsIndex'])->name('admin.challenge-hub.questions.index');
+    // CSV / Excel import temporarily disabled — uncomment routes + controller methods + QuestionsBank UI to restore.
+    // Route::post('/admin/challenge-hub/questions/import', [AdminChallengeHubController::class, 'importQuestions'])->name('admin.challenge-hub.questions.import');
+    // Route::get('/admin/challenge-hub/questions/import-template', [AdminChallengeHubController::class, 'downloadQuestionImportTemplate'])->name('admin.challenge-hub.questions.import-template');
     Route::get('/admin/challenge-hub/questions/create', [AdminChallengeHubController::class, 'createQuestion'])->name('admin.challenge-hub.questions.create');
     Route::post('/admin/challenge-hub/questions', [AdminChallengeHubController::class, 'storeQuestion'])->name('admin.challenge-hub.questions.store');
     Route::get('/admin/challenge-hub/questions/{question}/edit', [AdminChallengeHubController::class, 'editQuestion'])->name('admin.challenge-hub.questions.edit');
@@ -1374,6 +1377,9 @@ Route::middleware(['auth', 'topics.selected', 'role:admin|organization|care_alli
     Route::get('/printify/provider-comparison', [PrintifyProductController::class, 'getProviderComparison'])->name('printify.provider-comparison');
     Route::get('/printify/variants', [PrintifyProductController::class, 'getVariants'])->name('printify.variants');
     Route::get('/printify/shipping', [PrintifyProductController::class, 'getShipping'])->name('printify.shipping');
+    Route::post('/printify/preview-variant-costs', [PrintifyProductController::class, 'previewVariantCosts'])
+        ->middleware('throttle:12,1')
+        ->name('printify.preview-variant-costs');
     // Route::post('/printify/products/sync', [ProductController::class, 'syncFromPrintify'])->name('printify.products.sync');
 });
 

@@ -20,7 +20,7 @@ import { route } from "ziggy-js"
 
 const breadcrumbs: BreadcrumbItem[] = [
   { title: "Dashboard", href: "/dashboard" },
-  { title: "Merchant product pool", href: "/marketplace/product-pool" },
+  { title: "Merchant product pool", href: route("marketplace.product-pool.index") },
 ]
 
 interface MerchantMini {
@@ -112,7 +112,7 @@ export default function MarketplaceProductPoolIndex({ products, categories, filt
 
   const applyFilters = () => {
     router.get(
-      "/marketplace/product-pool",
+      route("marketplace.product-pool.index"),
       { search: search || undefined, category: category || undefined },
       { preserveState: true, replace: true },
     )
@@ -164,7 +164,7 @@ export default function MarketplaceProductPoolIndex({ products, categories, filt
     if (!selected) return
     setSubmitting(true)
     router.post(
-      "/marketplace/product-pool/adopt",
+      route("marketplace.product-pool.adopt"),
       {
         marketplace_product_id: selected.id,
         custom_price: customPrice,

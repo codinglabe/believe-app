@@ -6,7 +6,20 @@ if (! defined('STDIN')) {
     define('STDIN', fopen('php://memory', 'r'));
 }
 
+use App\Http\Middleware\BarterNetworkAccess;
+use App\Http\Middleware\CheckPermission;
+use App\Http\Middleware\CheckRole;
+use App\Http\Middleware\CheckRoleSimple;
+use App\Http\Middleware\CheckTopicsSelected;
+use App\Http\Middleware\DenyCareAllianceHubUser;
 use App\Http\Middleware\DetectTimezone;
+use App\Http\Middleware\EnsureApiEmailVerified;
+use App\Http\Middleware\EnsureCanCreateEvents;
+use App\Http\Middleware\EnsureCanReadEventTypes;
+use App\Http\Middleware\EnsureCanReadTopics;
+use App\Http\Middleware\EnsureCareAllianceWalletEligible;
+use App\Http\Middleware\EnsureEmailIsVerified;
+use App\Http\Middleware\EnsureServiceHubSeller;
 use App\Http\Middleware\HandleAppearance;
 use App\Http\Middleware\HandleInertiaRequests;
 use App\Http\Middleware\IncreaseUploadLimits;
@@ -16,6 +29,11 @@ use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets;
 use Illuminate\Support\Facades\Route;
+use Inertia\Inertia;
+use Spatie\Permission\Middleware\PermissionMiddleware;
+use Spatie\Permission\Middleware\RoleMiddleware;
+use Spatie\Permission\Middleware\RoleOrPermissionMiddleware;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -65,26 +83,35 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
 
         $middleware->alias([
-            'role' => \Spatie\Permission\Middleware\RoleMiddleware::class,
-            'role.simple' => \App\Http\Middleware\CheckRoleSimple::class, // Simple role check without guard issues
-            'permission' => \Spatie\Permission\Middleware\PermissionMiddleware::class,
-            'role_or_permission' => \Spatie\Permission\Middleware\RoleOrPermissionMiddleware::class,
-            'topics.selected' => \App\Http\Middleware\CheckTopicsSelected::class,
-            'check.permission' => \App\Http\Middleware\CheckPermission::class,
-            'check.role' => \App\Http\Middleware\CheckRole::class,
-            'EnsureEmailIsVerified' => \App\Http\Middleware\EnsureEmailIsVerified::class,
-            'api.email.verified' => \App\Http\Middleware\EnsureApiEmailVerified::class, // Secure API email verification guard
-            'barter.access' => \App\Http\Middleware\BarterNetworkAccess::class,
-            'care_alliance.wallet' => \App\Http\Middleware\EnsureCareAllianceWalletEligible::class,
-            'deny.care_alliance.hub' => \App\Http\Middleware\DenyCareAllianceHubUser::class,
-            'can.read.event_types' => \App\Http\Middleware\EnsureCanReadEventTypes::class,
-            'can.read.topics' => \App\Http\Middleware\EnsureCanReadTopics::class,
-            'can.create.events' => \App\Http\Middleware\EnsureCanCreateEvents::class,
-            'ensure.service.hub.seller' => \App\Http\Middleware\EnsureServiceHubSeller::class,
+            'role' => RoleMiddleware::class,
+            'role.simple' => CheckRoleSimple::class, // Simple role check without guard issues
+            'permission' => PermissionMiddleware::class,
+            'role_or_permission' => RoleOrPermissionMiddleware::class,
+            'topics.selected' => CheckTopicsSelected::class,
+            'check.permission' => CheckPermission::class,
+            'check.role' => CheckRole::class,
+            'EnsureEmailIsVerified' => EnsureEmailIsVerified::class,
+            'api.email.verified' => EnsureApiEmailVerified::class, // Secure API email verification guard
+            'barter.access' => BarterNetworkAccess::class,
+            'care_alliance.wallet' => EnsureCareAllianceWalletEligible::class,
+            'deny.care_alliance.hub' => DenyCareAllianceHubUser::class,
+            'can.read.event_types' => EnsureCanReadEventTypes::class,
+            'can.read.topics' => EnsureCanReadTopics::class,
+            'can.create.events' => EnsureCanCreateEvents::class,
+            'ensure.service.hub.seller' => EnsureServiceHubSeller::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {
-        $exceptions->render(function (\Symfony\Component\HttpKernel\Exception\HttpException $e, $request) {
+        $exceptions->render(function (HttpException $e, $request) {
+            if ($e->getStatusCode() === 413) {
+                if ($request->header('X-Inertia')) {
+                    return redirect()->back()->with(
+                        'error',
+                        'The upload is too large. Challenge cover images must be 5MB or smaller (JPEG, PNG, or WebP). If this appears for a small file, the server limit may be lower — try compressing the image or ask your host to raise PHP post_max_size and nginx client_max_body_size.'
+                    );
+                }
+            }
+
             if ($e->getStatusCode() === 404) {
                 // If it's an AJAX request, return JSON response
                 if ($request->expectsJson()) {
@@ -113,7 +140,7 @@ return Application::configure(basePath: dirname(__DIR__))
                     $backUrl = '/';
                 }
 
-                return \Inertia\Inertia::render('errors/404', [
+                return Inertia::render('errors/404', [
                     'backUrl' => $backUrl,
                     'errorMessage' => $e->getMessage() ?: 'Page not found',
                     'auth' => [
@@ -142,7 +169,7 @@ return Application::configure(basePath: dirname(__DIR__))
                 if ($user && method_exists($user, 'getRoleNames')) {
                     try {
                         $userRoles = $user->getRoleNames()->toArray();
-                    } catch (\Exception $ex) {
+                    } catch (Exception $ex) {
                         // If getRoleNames fails, try to get role from user property
                         $userRoles = $user->role ? [$user->role] : [];
                     }
@@ -153,7 +180,7 @@ return Application::configure(basePath: dirname(__DIR__))
                 if ($user && method_exists($user, 'getAllPermissions')) {
                     try {
                         $userPermissions = $user->getAllPermissions()->pluck('name')->toArray();
-                    } catch (\Exception $ex) {
+                    } catch (Exception $ex) {
                         $userPermissions = [];
                     }
                 }
@@ -191,7 +218,7 @@ return Application::configure(basePath: dirname(__DIR__))
                     $backUrl = '/';
                 }
 
-                return \Inertia\Inertia::render('errors/permission-denied', [
+                return Inertia::render('errors/permission-denied', [
                     'permission' => 'access_denied',
                     'userRole' => $userRoles[0] ?? ($user->role ?? null),
                     'userRoles' => $userRoles,

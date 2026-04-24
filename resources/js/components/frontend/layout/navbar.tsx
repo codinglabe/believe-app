@@ -15,6 +15,8 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/frontend/ui/av
 import {
   Menu,
   X,
+  Home,
+  Bell,
   User,
   LogOut,
   LayoutGrid,
@@ -28,7 +30,6 @@ import {
   ChevronRight,
   Newspaper,
   Calendar,
-  Briefcase,
   GraduationCap,
   Store,
   Users,
@@ -49,6 +50,12 @@ import {
   Compass,
   Ticket,
   Trophy,
+  Activity,
+  BarChart3,
+  Settings,
+  HelpCircle,
+  Link2,
+  Tag,
 } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 import { ThemeToggle } from "@/components/frontend/theme-toggle"
@@ -59,8 +66,6 @@ import { NotificationBell } from "@/components/notification-bell"
 import SiteTitle from "@/components/site-title"
 import { WalletPopup } from "@/components/WalletPopup"
 import { UserWalletSubscriptionModal } from "@/components/UserWalletSubscriptionModal"
-import { BelievePointsDisplay } from "@/components/believe-points-display"
-
 // Extending SharedData interface to include wallet_balance
 interface SharedData extends Record<string, unknown> {
   auth: {
@@ -97,6 +102,35 @@ interface SharedData extends Record<string, unknown> {
   }
 }
 
+type LandingNavItem = { name: string; href: string; icon: React.ComponentType<{ className?: string }> }
+
+function LandingNavDropdown({ label, items }: { label: string; items: LandingNavItem[] }) {
+  if (items.length === 0) return null
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="ghost"
+          className="hover:bg-accent h-9 max-w-[10.5rem] shrink-0 cursor-pointer px-2 text-xs font-medium whitespace-nowrap 2xl:max-w-none 2xl:px-2.5 2xl:text-sm"
+        >
+          <span className="truncate">{label}</span>
+          <ChevronDown className="ml-0.5 h-3 w-3 shrink-0 opacity-70" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="max-h-[min(70vh,28rem)] w-[min(100vw-2rem,18rem)] overflow-y-auto sm:w-56">
+        {items.map((item) => (
+          <DropdownMenuItem key={item.name} asChild>
+            <Link href={item.href} className="flex cursor-pointer items-center">
+              <item.icon className="mr-2 h-4 w-4 shrink-0" />
+              <span>{item.name}</span>
+            </Link>
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
+
 export default function Navbar() {
   const { auth } = usePage<SharedData>().props
   const [isOpen, setIsOpen] = useState(false)
@@ -126,58 +160,106 @@ export default function Navbar() {
   const [hasSubscription, setHasSubscription] = useState<boolean | null>(null)
   const [showSubscriptionModal, setShowSubscriptionModal] = useState(false)
 
-  // Core navigation items (always visible)
-  const coreNavItems = [
-    { name: "Home", href: "/" },
-    { name: "About", href: "/about" },
-    { name: "Pricing", href: route("pricing") },
-    { name: "Donate", href: "/donate" },
-  ]
+  const role = auth?.user?.role
+  const isAdmin = role === "admin"
+  const isOrgUser = role === "organization" || role === "organization_pending"
+  /** Organizations + Care Alliance: show * (org-only) nav entries; admins see them too. */
+  const showOrgOnlyNav = isOrgUser || hasCareAllianceRole || isAdmin
 
-  // Community: Social Feed → Find Supporters → Find Care Alliances → Chat
-  const communityItems = [
+  const dashboardHref =
+    !isLoggedIn
+      ? "/"
+      : isAdmin || isOrgUser
+        ? route("dashboard")
+        : hasCareAllianceRole
+          ? route("care-alliance.dashboard")
+          : route("user.profile.index")
+
+  const homeNavItems: LandingNavItem[] = [
+    { name: "Home", href: "/", icon: Home },
     ...(isLoggedIn
       ? [
-          { name: "Social Feed", href: route("social-feed.index"), icon: Users },
-          { name: "Find Supporters", href: route("find-supporters.index"), icon: UserPlus },
+          { name: "Dashboard", href: dashboardHref, icon: BarChart3 },
+          { name: "Activity Feed", href: route("social-feed.index"), icon: Activity },
+          { name: "Notifications", href: route("notifications.index"), icon: Bell },
         ]
       : []),
-    { name: "Find Care Alliances", href: route("find-care-alliances.index"), icon: HeartHandshake },
+  ]
+
+  const exploreNavItems: LandingNavItem[] = [
+    ...(isLoggedIn ? [{ name: "Explore Causes", href: "/explore-by-cause", icon: Compass }] : []),
+    { name: "Organizations", href: route("organizations"), icon: Building2 },
+    { name: "Campaigns", href: route("fundme.index"), icon: Heart },
+    { name: "Events", href: route("alleventsPage"), icon: Calendar },
+    { name: "Volunteers", href: route("volunteer-opportunities.index"), icon: HeartHandshake },
+    { name: "Courses", href: route("course.index"), icon: GraduationCap },
+    ...(isLoggedIn ? [{ name: "Challenge Hub", href: route("challenge-hub.index"), icon: Trophy }] : []),
+    ...(isLoggedIn ? [{ name: "Supporters", href: route("find-supporters.index"), icon: UserPlus }] : []),
+    ...(isLoggedIn ? [{ name: "Groups", href: route("groups"), icon: Users }] : []),
+    ...(isLoggedIn && !showOrgOnlyNav
+      ? [{ name: "Raffles", href: route("frontend.raffles.index"), icon: Ticket }]
+      : []),
+  ]
+
+  const communityNavItems: LandingNavItem[] = [
+    ...(isLoggedIn ? [{ name: "Social Feed", href: route("social-feed.index"), icon: Users }] : []),
+    ...(isLoggedIn ? [{ name: "Find Supporters", href: route("find-supporters.index"), icon: UserPlus }] : []),
+    { name: "Care Alliances", href: route("find-care-alliances.index"), icon: HeartHandshake },
+    ...(isLoggedIn ? [{ name: "Groups", href: route("groups"), icon: Users }] : []),
     ...(isLoggedIn ? [{ name: "Chat", href: route("chat.index"), icon: MessageSquare }] : []),
   ]
 
-  // Media: News → Unity Videos → Unity Live & Meet
-  const mediaItems = [
+  const giveNavItems: LandingNavItem[] = [
+    { name: "Donate", href: "/donate", icon: Heart },
+    ...(showOrgOnlyNav
+      ? [
+          { name: "FundMe / Support a Project", href: "/fundme", icon: Handshake },
+          { name: "Raffles", href: "/raffles", icon: Ticket },
+        ]
+      : []),
+    { name: "Gift Cards", href: route("gift-cards.index"), icon: Gift },
+  ]
+
+  const earnSaveNavItems: LandingNavItem[] = [
+    { name: "Marketplace", href: route("marketplace.index"), icon: Store },
+    { name: "Merchant Deals", href: route("merchant-hub.index"), icon: ShoppingBag },
+    ...(isLoggedIn ? [{ name: "Redeem Points", href: route("believe-points.index"), icon: Coins }] : []),
+    ...(showOrgOnlyNav
+      ? [
+          { name: "Sell Products", href: route("products.create"), icon: Store },
+          { name: "My Earnings", href: "/orders", icon: TrendingUp },
+        ]
+      : []),
+  ]
+
+  const engagementNavItems: LandingNavItem[] = showOrgOnlyNav
+    ? [
+        { name: "Create Engagement", href: route("newsletter.create"), icon: Mail },
+        { name: "Drip Campaigns (AI)", href: route("campaigns.ai-create"), icon: Sparkles },
+        { name: "Connection Hub", href: route("admin.courses.index"), icon: Link2 },
+        { name: "Audience / Recipients", href: route("newsletter.recipients"), icon: UserPlus },
+        { name: "Usage Dashboard", href: "/supporter-activity", icon: BarChart3 },
+      ]
+    : []
+
+  const mediaNavItems: LandingNavItem[] = [
     { name: "News", href: "/nonprofit-news", icon: Newspaper },
     { name: "Unity Videos", href: "/unity-videos", icon: Video },
     { name: "Unity Live & Meet", href: "/unity-live", icon: Radio },
   ]
 
-  // Services dropdown items (Nonprofit Barter only when organization is logged in)
-  const isOrgUser = auth?.user?.role === "organization" || auth?.user?.role === "organization_pending"
-  const showCommunityProjects = isOrgUser || hasCareAllianceRole
-  const servicesItems = [
-    { name: "Kiosk", href: "/kiosk", icon: Monitor },
-    { name: "Support a Project", href: route("support-a-project"), icon: Heart },
-    ...(showCommunityProjects ? [{ name: "Community Projects", href: "/fundraise/community-projects", icon: Building2 }] : []),
-    ...(isOrgUser ? [{ name: "Nonprofit Barter", href: route("barter.index"), icon: Handshake }] : []),
-    { name: "Service Hub", href: "/service-hub", icon: Sparkles },
-    { name: "Merchant Hub", href: "/merchant-hub", icon: ShoppingBag },
-    { name: "Marketplace", href: "/marketplace", icon: Store },
-    { name: "Gift Cards", href: route("gift-cards.index"), icon: Gift },
-    { name: "Raffles", href: route("frontend.raffles.index"), icon: Ticket },
-    { name: "Volunteer Opportunity", href: "/volunteer-opportunities", icon: HeartHandshake },
-    { name: "Jobs", href: "/jobs", icon: Briefcase },
-    { name: "Connection Hub", href: route("course.index"), icon: GraduationCap },
-    ...(isLoggedIn ? [{ name: "Challenge Hub", href: route("challenge-hub.index"), icon: Trophy }] : []),
-    { name: "Event Calendar", href: "/all-events", icon: Calendar },
-    { name: "Explore Causes", href: "/explore-by-cause", icon: Compass },
+  const toolsNavItems: LandingNavItem[] = [
+    { name: "Kiosk", href: route("kiosk.index"), icon: Monitor },
+    ...(showOrgOnlyNav ? [{ name: "Event Calendar", href: route("events.index"), icon: Calendar }] : []),
   ]
 
-  // More dropdown items (Fractional Ownership commented out)
-  const moreItems = [
-    // { name: "Fractional Ownership", href: "/fractional", icon: Building2 },
-    { name: "Contact", href: "/contact", icon: Mail },
+  const moreNavItems: LandingNavItem[] = [
+    { name: "About", href: route("about"), icon: Globe },
+    { name: "Pricing", href: route("pricing"), icon: Tag },
+    ...(isLoggedIn
+      ? [{ name: "Settings / Account", href: route("profile.edit"), icon: Settings }]
+      : []),
+    { name: "Help / Support", href: route("contact"), icon: HelpCircle },
   ]
 
   const cleanup = useMobileNavigation()
@@ -353,107 +435,36 @@ export default function Navbar() {
 
   return (
       <nav className="bg-background/95 supports-[backdrop-filter]:bg-background/60 sticky top-0 z-50 w-full border-b backdrop-blur">
-          <div className="container mx-auto px-4">
-              <div className="flex h-16 items-center justify-between">
-                  {/* Logo */}
-                  <SiteTitle />
+          {/* Same width as frontend footer: `container mx-auto px-4` */}
+          <div className="container mx-auto flex h-16 min-w-0 items-center gap-2 px-4 sm:gap-3">
+                  {/* Logo — compact in header to avoid overlap with nav */}
+                  <SiteTitle className="max-[380px]:[&_span]:sr-only max-[380px]:[&_img]:h-8 max-[380px]:[&_img]:w-8" />
 
-                  {/* Desktop Navigation */}
-                  <div className="hidden items-center space-x-1 xl:flex">
-                      {/* Core items - always visible */}
-                      {coreNavItems.map((item) => (
-                          <Link key={item.name} href={item.href}>
+                  {/* Desktop Navigation — full inline bar only on wide screens (2xl+) */}
+                  <div className="hidden min-w-0 flex-1 flex-wrap items-center justify-center gap-x-0.5 gap-y-1 2xl:flex 2xl:flex-nowrap">
+                      {isLoggedIn ? (
+                          <LandingNavDropdown label="Home" items={homeNavItems} />
+                      ) : (
+                          <Link href="/">
                               <Button variant="ghost" className="hover:bg-accent cursor-pointer text-sm font-medium">
-                                  {item.name}
+                                  Home
                               </Button>
                           </Link>
-                      ))}
-
-                      {/* Community Dropdown */}
-                      {communityItems.length > 0 && (
-                          <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                  <Button variant="ghost" className="hover:bg-accent cursor-pointer text-sm font-medium">
-                                      Community
-                                      <ChevronDown className="ml-1 h-3 w-3" />
-                                  </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="start" className="w-48">
-                                  {communityItems.map((item) => (
-                                      <DropdownMenuItem key={item.name} asChild>
-                                          <Link href={item.href} className="flex cursor-pointer items-center">
-                                              {item.icon && <item.icon className="mr-2 h-4 w-4" />}
-                                              <span>{item.name}</span>
-                                          </Link>
-                                      </DropdownMenuItem>
-                                  ))}
-                              </DropdownMenuContent>
-                          </DropdownMenu>
                       )}
-
-                      {/* Media Dropdown */}
-                      <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" className="hover:bg-accent cursor-pointer text-sm font-medium">
-                                  Media
-                                  <ChevronDown className="ml-1 h-3 w-3" />
-                              </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="start" className="w-48">
-                              {mediaItems.map((item) => (
-                                  <DropdownMenuItem key={item.name} asChild>
-                                      <Link href={item.href} className="flex cursor-pointer items-center">
-                                          {item.icon && <item.icon className="mr-2 h-4 w-4" />}
-                                          <span>{item.name}</span>
-                                      </Link>
-                                  </DropdownMenuItem>
-                              ))}
-                          </DropdownMenuContent>
-                      </DropdownMenu>
-
-                      {/* Services Dropdown */}
-                      <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" className="hover:bg-accent cursor-pointer text-sm font-medium">
-                                  Services
-                                  <ChevronDown className="ml-1 h-3 w-3" />
-                              </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="start" className="w-48">
-                              {servicesItems.map((item) => (
-                                  <DropdownMenuItem key={item.name} asChild>
-                                      <Link href={item.href} className="flex cursor-pointer items-center">
-                                          {item.icon && <item.icon className="mr-2 h-4 w-4" />}
-                                          <span>{item.name}</span>
-                                      </Link>
-                                  </DropdownMenuItem>
-                              ))}
-                          </DropdownMenuContent>
-                      </DropdownMenu>
-
-                      {/* More Dropdown */}
-                      <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" className="hover:bg-accent cursor-pointer text-sm font-medium">
-                                  More
-                                  <ChevronDown className="ml-1 h-3 w-3" />
-                              </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="start" className="w-48">
-                              {moreItems.map((item) => (
-                                  <DropdownMenuItem key={item.name} asChild>
-                                      <Link href={item.href} className="flex cursor-pointer items-center">
-                                          {item.icon && <item.icon className="mr-2 h-4 w-4" />}
-                                          <span>{item.name}</span>
-                                      </Link>
-                                  </DropdownMenuItem>
-                              ))}
-                          </DropdownMenuContent>
-                      </DropdownMenu>
+                      <LandingNavDropdown label="Explore" items={exploreNavItems} />
+                      <LandingNavDropdown label="Community" items={communityNavItems} />
+                      <LandingNavDropdown label="Give" items={giveNavItems} />
+                      <LandingNavDropdown label="Earn & Save" items={earnSaveNavItems} />
+                      {engagementNavItems.length > 0 ? (
+                          <LandingNavDropdown label="Engagement" items={engagementNavItems} />
+                      ) : null}
+                      <LandingNavDropdown label="Media" items={mediaNavItems} />
+                      <LandingNavDropdown label="Tools" items={toolsNavItems} />
+                      <LandingNavDropdown label="More" items={moreNavItems} />
                   </div>
 
                   {/* Desktop Actions */}
-                  <div className="hidden items-center space-x-2 xl:flex">
+                  <div className="hidden shrink-0 items-center gap-1 2xl:flex 2xl:gap-2">
                       <ThemeToggle />
                       {isLoggedIn ? (
                           <>
@@ -466,7 +477,7 @@ export default function Navbar() {
                 {showWalletInHeader && (
                   <div
                     onClick={handleWalletClick}
-                    className="h-9 px-3 flex items-center gap-2 bg-gray-100 dark:bg-gray-800 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 cursor-pointer transition-colors"
+                    className="flex h-9 max-w-[11rem] cursor-pointer items-center gap-1.5 rounded-full bg-gray-100 px-2 transition-colors hover:bg-gray-200 sm:max-w-none sm:gap-2 sm:px-3 dark:bg-gray-800 dark:hover:bg-gray-700"
                   >
                     <Wallet className="h-4 w-4 text-green-600" />
                     {/* Only show balance and eye icon if user has subscription (or is organization user) */}
@@ -480,7 +491,7 @@ export default function Navbar() {
 
                       return (
                         <>
-                          <span className="font-medium text-sm">
+                          <span className="max-w-[5.5rem] truncate text-sm font-medium sm:max-w-none">
                             {showBalance ? `$${userBalance.toLocaleString('en-US', {
                               minimumFractionDigits: 2,
                               maximumFractionDigits: 2
@@ -688,107 +699,251 @@ export default function Navbar() {
                       )}
                   </div>
 
-                  {/* Mobile menu button */}
-                  <div className="flex items-center space-x-2 xl:hidden">
+                  {/* Tablet & mobile: utilities + sheet menu (below 2xl full nav) */}
+                  <div className="ml-auto flex min-w-0 shrink-0 items-center gap-0.5 sm:gap-1 2xl:hidden">
                       <ThemeToggle />
                       {isLoggedIn ? (
                           <>
                               <NotificationBell userId={auth.user.id} emailVerified={!!auth.user.email_verified_at} />
+                              {showWalletInHeader && (
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-9 w-9 shrink-0 text-green-600"
+                                  aria-label="Wallet"
+                                  onClick={handleWalletClick}
+                                >
+                                  <Wallet className="h-5 w-5" />
+                                </Button>
+                              )}
+                              {auth?.user?.role !== "admin" &&
+                                (auth?.user?.believe_points !== undefined || auth?.user?.reward_points !== undefined) && (
+                                  <DropdownMenu>
+                                    <DropdownMenuTrigger asChild>
+                                      <Button variant="ghost" size="icon" className="h-9 w-9 shrink-0" aria-label="Points">
+                                        <Coins className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+                                      </Button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent className="w-64" align="end" forceMount>
+                                      <div className="space-y-3 p-3">
+                                        {auth?.user?.reward_points !== undefined && (
+                                          <div className="flex items-center justify-between gap-2 rounded-lg border border-blue-200 bg-gradient-to-r from-blue-50 to-indigo-50 p-2 dark:border-blue-800 dark:from-blue-950/20 dark:to-indigo-950/20">
+                                            <div className="flex min-w-0 items-center gap-2">
+                                              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-blue-500">
+                                                <Gift className="h-4 w-4 text-white" />
+                                              </div>
+                                              <div className="min-w-0">
+                                                <p className="text-muted-foreground text-xs">Reward Points</p>
+                                                <p className="text-sm font-semibold text-blue-700 dark:text-blue-300">
+                                                  {(auth.user.reward_points || 0).toLocaleString()}
+                                                </p>
+                                              </div>
+                                            </div>
+                                            <span className="shrink-0 text-xs font-semibold text-blue-600 dark:text-blue-400">Earned</span>
+                                          </div>
+                                        )}
+                                        {auth?.user?.believe_points !== undefined && (
+                                          <Link
+                                            href={route("believe-points.index")}
+                                            className="flex items-center justify-between gap-2 rounded-lg border border-purple-200 bg-gradient-to-r from-purple-50 to-pink-50 p-2 transition-all hover:border-purple-400 hover:shadow-sm dark:border-purple-800 dark:from-purple-950/20 dark:to-pink-950/20 dark:hover:border-purple-600"
+                                          >
+                                            <div className="flex min-w-0 items-center gap-2">
+                                              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-purple-500">
+                                                <Sparkles className="h-4 w-4 text-white" />
+                                              </div>
+                                              <div className="min-w-0">
+                                                <p className="text-muted-foreground text-xs">Believe Points</p>
+                                                <p className="text-sm font-semibold text-purple-700 dark:text-purple-300">
+                                                  {(auth.user.believe_points || 0).toLocaleString(undefined, {
+                                                    minimumFractionDigits: 2,
+                                                    maximumFractionDigits: 2,
+                                                  })}
+                                                </p>
+                                              </div>
+                                            </div>
+                                            <span className="flex shrink-0 items-center gap-0.5 text-xs font-semibold text-purple-600 dark:text-purple-400">
+                                              Buy
+                                              <ChevronRight className="h-4 w-4" />
+                                            </span>
+                                          </Link>
+                                        )}
+                                      </div>
+                                    </DropdownMenuContent>
+                                  </DropdownMenu>
+                                )}
                           </>
                       ) : null}
-                      <Button variant="ghost" size="sm" onClick={() => setIsOpen(!isOpen)}>
-                          {isOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+                      <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-9 shrink-0 gap-1.5 px-2 sm:px-3"
+                          onClick={() => setIsOpen(!isOpen)}
+                          aria-expanded={isOpen}
+                          aria-controls="site-nav-mobile-panel"
+                          aria-label={isOpen ? "Close site menu" : "Open site menu"}
+                      >
+                          <span className="hidden text-xs font-medium sm:inline">Menu</span>
+                          {isOpen ? <X className="h-5 w-5 shrink-0" /> : <Menu className="h-5 w-5 shrink-0" />}
                       </Button>
                   </div>
-              </div>
+          </div>
 
-              {/* Mobile Navigation */}
+              {/* Mobile / tablet Navigation sheet */}
               <AnimatePresence>
                   {isOpen && (
                       <motion.div
+                          id="site-nav-mobile-panel"
                           initial={{ opacity: 0, height: 0 }}
                           animate={{ opacity: 1, height: 'auto' }}
                           exit={{ opacity: 0, height: 0 }}
                           transition={{ duration: 0.2 }}
-                          className="border-t xl:hidden"
+                          className="border-t 2xl:hidden"
                       >
-                          <div className="max-h-[calc(100vh-4rem)] space-y-2 overflow-y-auto py-4">
-                              {/* Core items */}
+                          <div className="container mx-auto max-h-[calc(100vh-4rem)] space-y-2 overflow-y-auto px-4 py-4">
                               <div className="px-3 py-2">
-                                  <p className="text-muted-foreground mb-2 text-xs font-semibold tracking-wider uppercase">Main</p>
-                                  {coreNavItems.map((item) => (
-                                      <Link
-                                          key={item.name}
-                                          href={item.href}
-                                          className="text-foreground hover:bg-accent block cursor-pointer rounded-md px-3 py-2 text-base font-medium"
-                                          onClick={() => setIsOpen(false)}
-                                      >
-                                          {item.name}
-                                      </Link>
-                                  ))}
-                              </div>
-
-                              {/* Community section */}
-                              {communityItems.length > 0 && (
-                                  <div className="border-t px-3 py-2">
-                                      <p className="text-muted-foreground mb-2 text-xs font-semibold tracking-wider uppercase">Community</p>
-                                      {communityItems.map((item) => (
+                                  <p className="text-muted-foreground mb-2 text-xs font-semibold tracking-wider uppercase">Home</p>
+                                  {isLoggedIn ? (
+                                      homeNavItems.map((item) => (
                                           <Link
                                               key={item.name}
                                               href={item.href}
                                               className="text-foreground hover:bg-accent flex cursor-pointer items-center rounded-md px-3 py-2 text-base font-medium"
                                               onClick={() => setIsOpen(false)}
                                           >
-                                              {item.icon && <item.icon className="mr-2 h-4 w-4" />}
+                                              <item.icon className="mr-2 h-4 w-4 shrink-0" />
+                                              {item.name}
+                                          </Link>
+                                      ))
+                                  ) : (
+                                      <Link
+                                          href="/"
+                                          className="text-foreground hover:bg-accent flex cursor-pointer items-center rounded-md px-3 py-2 text-base font-medium"
+                                          onClick={() => setIsOpen(false)}
+                                      >
+                                          <Home className="mr-2 h-4 w-4 shrink-0" />
+                                          Home
+                                      </Link>
+                                  )}
+                              </div>
+
+                              <div className="border-t px-3 py-2">
+                                  <p className="text-muted-foreground mb-2 text-xs font-semibold tracking-wider uppercase">Explore</p>
+                                  {exploreNavItems.map((item) => (
+                                      <Link
+                                          key={item.name}
+                                          href={item.href}
+                                          className="text-foreground hover:bg-accent flex cursor-pointer items-center rounded-md px-3 py-2 text-base font-medium"
+                                          onClick={() => setIsOpen(false)}
+                                      >
+                                          <item.icon className="mr-2 h-4 w-4 shrink-0" />
+                                          {item.name}
+                                      </Link>
+                                  ))}
+                              </div>
+
+                              <div className="border-t px-3 py-2">
+                                  <p className="text-muted-foreground mb-2 text-xs font-semibold tracking-wider uppercase">Community</p>
+                                  {communityNavItems.map((item) => (
+                                      <Link
+                                          key={`${item.name}-${item.href}`}
+                                          href={item.href}
+                                          className="text-foreground hover:bg-accent flex cursor-pointer items-center rounded-md px-3 py-2 text-base font-medium"
+                                          onClick={() => setIsOpen(false)}
+                                      >
+                                          <item.icon className="mr-2 h-4 w-4 shrink-0" />
+                                          {item.name}
+                                      </Link>
+                                  ))}
+                              </div>
+
+                              <div className="border-t px-3 py-2">
+                                  <p className="text-muted-foreground mb-2 text-xs font-semibold tracking-wider uppercase">Give</p>
+                                  {giveNavItems.map((item) => (
+                                      <Link
+                                          key={item.name}
+                                          href={item.href}
+                                          className="text-foreground hover:bg-accent flex cursor-pointer items-center rounded-md px-3 py-2 text-base font-medium"
+                                          onClick={() => setIsOpen(false)}
+                                      >
+                                          <item.icon className="mr-2 h-4 w-4 shrink-0" />
+                                          {item.name}
+                                      </Link>
+                                  ))}
+                              </div>
+
+                              <div className="border-t px-3 py-2">
+                                  <p className="text-muted-foreground mb-2 text-xs font-semibold tracking-wider uppercase">Earn &amp; Save</p>
+                                  {earnSaveNavItems.map((item) => (
+                                      <Link
+                                          key={item.name}
+                                          href={item.href}
+                                          className="text-foreground hover:bg-accent flex cursor-pointer items-center rounded-md px-3 py-2 text-base font-medium"
+                                          onClick={() => setIsOpen(false)}
+                                      >
+                                          <item.icon className="mr-2 h-4 w-4 shrink-0" />
+                                          {item.name}
+                                      </Link>
+                                  ))}
+                              </div>
+
+                              {engagementNavItems.length > 0 ? (
+                                  <div className="border-t px-3 py-2">
+                                      <p className="text-muted-foreground mb-2 text-xs font-semibold tracking-wider uppercase">Engagement</p>
+                                      {engagementNavItems.map((item) => (
+                                          <Link
+                                              key={item.name}
+                                              href={item.href}
+                                              className="text-foreground hover:bg-accent flex cursor-pointer items-center rounded-md px-3 py-2 text-base font-medium"
+                                              onClick={() => setIsOpen(false)}
+                                          >
+                                              <item.icon className="mr-2 h-4 w-4 shrink-0" />
                                               {item.name}
                                           </Link>
                                       ))}
                                   </div>
-                              )}
+                              ) : null}
 
-                              {/* Media section */}
                               <div className="border-t px-3 py-2">
                                   <p className="text-muted-foreground mb-2 text-xs font-semibold tracking-wider uppercase">Media</p>
-                                  {mediaItems.map((item) => (
+                                  {mediaNavItems.map((item) => (
                                       <Link
                                           key={item.name}
                                           href={item.href}
                                           className="text-foreground hover:bg-accent flex cursor-pointer items-center rounded-md px-3 py-2 text-base font-medium"
                                           onClick={() => setIsOpen(false)}
                                       >
-                                          {item.icon && <item.icon className="mr-2 h-4 w-4" />}
+                                          <item.icon className="mr-2 h-4 w-4 shrink-0" />
                                           {item.name}
                                       </Link>
                                   ))}
                               </div>
 
-                              {/* Services section */}
                               <div className="border-t px-3 py-2">
-                                  <p className="text-muted-foreground mb-2 text-xs font-semibold tracking-wider uppercase">Services</p>
-                                  {servicesItems.map((item) => (
+                                  <p className="text-muted-foreground mb-2 text-xs font-semibold tracking-wider uppercase">Tools</p>
+                                  {toolsNavItems.map((item) => (
                                       <Link
                                           key={item.name}
                                           href={item.href}
                                           className="text-foreground hover:bg-accent flex cursor-pointer items-center rounded-md px-3 py-2 text-base font-medium"
                                           onClick={() => setIsOpen(false)}
                                       >
-                                          {item.icon && <item.icon className="mr-2 h-4 w-4" />}
+                                          <item.icon className="mr-2 h-4 w-4 shrink-0" />
                                           {item.name}
                                       </Link>
                                   ))}
                               </div>
 
-                              {/* More section */}
                               <div className="border-t px-3 py-2">
                                   <p className="text-muted-foreground mb-2 text-xs font-semibold tracking-wider uppercase">More</p>
-                                  {moreItems.map((item) => (
+                                  {moreNavItems.map((item) => (
                                       <Link
                                           key={item.name}
                                           href={item.href}
                                           className="text-foreground hover:bg-accent flex cursor-pointer items-center rounded-md px-3 py-2 text-base font-medium"
                                           onClick={() => setIsOpen(false)}
                                       >
-                                          {item.icon && <item.icon className="mr-2 h-4 w-4" />}
+                                          <item.icon className="mr-2 h-4 w-4 shrink-0" />
                                           {item.name}
                                       </Link>
                                   ))}
@@ -1000,7 +1155,6 @@ export default function Navbar() {
                       </motion.div>
                   )}
               </AnimatePresence>
-          </div>
 
           {/* Wallet Popup */}
           {showWalletPopup && <WalletPopup isOpen={showWalletPopup} onClose={handleWalletPopupClose} />}

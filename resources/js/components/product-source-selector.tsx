@@ -226,7 +226,7 @@ export function ProductSourceSelector({
                   <span className="font-semibold text-gray-800 dark:text-gray-200">Merchant pool products:</span>{' '}
                   Add them from{' '}
                   <Link
-                    href="/marketplace/product-pool"
+                    href={route('marketplace.product-pool.index')}
                     className="font-medium text-emerald-700 underline underline-offset-2 hover:text-emerald-800 dark:text-emerald-400 dark:hover:text-emerald-300"
                   >
                     Commerce → Merchant product pool

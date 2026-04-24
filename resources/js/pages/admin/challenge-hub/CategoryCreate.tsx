@@ -1,6 +1,6 @@
 "use client"
 
-import React from "react"
+import React, { useState } from "react"
 import { Head, Link, useForm } from "@inertiajs/react"
 import AppLayout from "@/layouts/app-layout"
 import { ChallengeHubAdminNav } from "@/components/challenge-hub-admin-nav"
@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { ArrowLeft, Plus, Wand2 } from "lucide-react"
+import { CHALLENGE_HUB_COVER_MAX_BYTES, validateChallengeHubCoverFile } from "@/lib/challenge-hub-cover-limit"
 import type { BreadcrumbItem } from "@/types"
 
 declare global {
@@ -18,6 +19,8 @@ declare global {
 }
 
 export default function AdminChallengeHubCategoryCreate() {
+  const [coverClientError, setCoverClientError] = useState<string | null>(null)
+
   const form = useForm({
     label: "",
     is_new: false,
@@ -29,6 +32,12 @@ export default function AdminChallengeHubCategoryCreate() {
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault()
+    const msg = validateChallengeHubCoverFile(form.data.cover_image, CHALLENGE_HUB_COVER_MAX_BYTES)
+    if (msg) {
+      setCoverClientError(msg)
+      return
+    }
+    setCoverClientError(null)
     form.post(route("admin.challenge-hub.categories.store"), {
       forceFormData: true,
     })
@@ -114,7 +123,7 @@ export default function AdminChallengeHubCategoryCreate() {
                 <h3 className="mb-1 text-lg font-semibold">Cover image (optional)</h3>
                 <p className="mb-4 text-sm text-gray-500 dark:text-gray-400">
                   Upload a file or describe an image for AI generation (min. 12 characters). If both are set, upload
-                  wins.
+                  wins. Max 5MB per image.
                 </p>
                 <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
                   <div className="space-y-2">
@@ -127,8 +136,15 @@ export default function AdminChallengeHubCategoryCreate() {
                       onChange={(e) => {
                         const f = e.target.files?.[0] ?? null
                         form.setData("cover_image", f)
+                        form.clearErrors("cover_image")
+                        setCoverClientError(
+                          f ? validateChallengeHubCoverFile(f, CHALLENGE_HUB_COVER_MAX_BYTES) : null
+                        )
                       }}
                     />
+                    {coverClientError ? (
+                      <p className="text-sm text-red-600">{coverClientError}</p>
+                    ) : null}
                     {form.errors.cover_image ? (
                       <p className="text-sm text-red-600">{form.errors.cover_image}</p>
                     ) : null}
@@ -154,7 +170,7 @@ export default function AdminChallengeHubCategoryCreate() {
               </div>
 
               <div className="flex justify-end">
-                <Button type="submit" disabled={form.processing}>
+                <Button type="submit" disabled={form.processing || !!coverClientError}>
                   Create category
                 </Button>
               </div>

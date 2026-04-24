@@ -180,7 +180,8 @@ export default function LevelUpChallenges() {
 
   const goToPlay = () => {
     if (!pendingCard) return
-    router.visit(playHrefForCard(pendingCard, selectedMode))
+    const href = playHrefForCard(pendingCard, selectedMode)
+    router.visit(`${href}${href.includes("?") ? "&" : "?"}begin=1`)
     setQuizModalOpen(false)
     setPendingCard(null)
   }
@@ -324,11 +325,11 @@ export default function LevelUpChallenges() {
                     })}
                   </div>
 
-                  <div className="mt-6 flex flex-col gap-2.5 sm:flex-row sm:justify-end">
+                  <div className="mt-6 flex flex-col gap-2.5 sm:flex-row sm:items-stretch sm:justify-end">
                     <Button
                       type="button"
                       variant="secondary"
-                      className="w-full border border-slate-300 bg-slate-100 text-slate-800 hover:bg-slate-200 sm:w-auto dark:border-white/15 dark:bg-white/5 dark:text-white dark:hover:bg-white/10"
+                      className="h-12 w-full border border-slate-300 bg-slate-100 px-4 text-sm font-semibold text-slate-800 hover:bg-slate-200 sm:w-auto dark:border-white/15 dark:bg-white/5 dark:text-white dark:hover:bg-white/10"
                       onClick={() => {
                         setQuizModalOpen(false)
                         setPendingCard(null)
@@ -338,11 +339,14 @@ export default function LevelUpChallenges() {
                     </Button>
                     <Button
                       type="button"
-                      className={cn("w-full sm:w-auto", challengePrimaryCta)}
+                      className={cn(
+                        challengePrimaryCta,
+                        "h-12 w-full px-4 py-0 text-base font-bold leading-none sm:w-auto"
+                      )}
                       onClick={goToPlay}
                       disabled={!pendingCard}
                     >
-                      Start quiz
+                      Start Challenge
                     </Button>
                   </div>
                 </div>
@@ -418,7 +422,7 @@ export default function LevelUpChallenges() {
                             className={cn("shrink-0 shadow-inner dark:hover:text-white", challengePrimaryCtaSm)}
                             onClick={() => openStartModal(card)}
                           >
-                            Start Quiz
+                            Start Challenge
                           </Button>
                         </div>
                       </div>

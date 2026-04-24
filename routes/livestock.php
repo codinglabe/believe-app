@@ -27,8 +27,8 @@ use Inertia\Inertia;
 // ============================================
 // These routes are only accessible on bidalivestock.test domain
 
-// Public Marketplace Routes
-Route::prefix('marketplace')->name('marketplace.')->group(function () {
+// Public Marketplace Routes (namespaced so Ziggy/main app keep `marketplace.index` for BIU nonprofit marketplace)
+Route::prefix('marketplace')->name('livestock.marketplace.')->group(function () {
     Route::get('/', [LivestockMarketplaceController::class, 'index'])->name('index');
     Route::get('/{id}', [LivestockMarketplaceController::class, 'show'])->name('show');
     
