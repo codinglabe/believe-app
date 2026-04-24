@@ -62,7 +62,7 @@ export default function CreateCampaign({ wallet, campaignTypes }: Props) {
     const e: Record<string, string> = {}
     if (s === 0) {
       if (!form.title.trim()) e.title = 'Campaign title is required'
-      if (!form.reward_per_response_brp || form.reward_per_response_brp < 1) e.reward = 'Reward must be at least 1 BRP'
+      if (!form.reward_per_response_brp || form.reward_per_response_brp < 1) e.reward = 'Reward must be at least 1 BP'
       if (!form.total_budget_brp || form.total_budget_brp < form.reward_per_response_brp) e.budget = 'Budget must be ≥ reward per response'
     }
     if (s === 1) {
@@ -150,14 +150,14 @@ export default function CreateCampaign({ wallet, campaignTypes }: Props) {
                             <button key={ct.value} type="button" onClick={() => { setField('type', ct.value); setField('reward_per_response_brp', ct.default_reward) }}
                               className={`p-3 rounded-xl border text-left transition-all ${form.type === ct.value ? 'border-[#2563EB] bg-[#2563EB]/10' : 'border-gray-700/60 bg-gray-900/40 hover:border-gray-600'}`}>
                               <p className="text-xs font-semibold text-white">{ct.label}</p>
-                              <p className="text-xs text-[#2563EB] font-bold">{ct.default_reward} BRP</p>
+                              <p className="text-xs text-[#2563EB] font-bold">{ct.default_reward} BP</p>
                               <p className="text-xs text-gray-500">{ct.est_time}</p>
                             </button>
                           ))}
                         </div>
                       </div>
                       <div>
-                        <MerchantLabel>Reward Per Response (BRP)</MerchantLabel>
+                        <MerchantLabel>Reward Per Response (BP)</MerchantLabel>
                         <MerchantInput type="number" min={1} value={form.reward_per_response_brp} onChange={(e) => setField('reward_per_response_brp', Number(e.target.value))} className={`mt-1 ${errors.reward ? 'border-red-500' : ''}`} />
                         <p className="text-xs text-gray-500 mt-1">= ${(reward * 0.01).toFixed(2)} value</p>
                         {errors.reward && <p className="text-xs text-red-400 mt-1">{errors.reward}</p>}
@@ -199,7 +199,7 @@ export default function CreateCampaign({ wallet, campaignTypes }: Props) {
                     <MerchantCard className="shadow-lg border border-[#2563EB]/20">
                       <MerchantCardContent className="p-4 space-y-2">
                         <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Live Calculation</p>
-                        <div className="flex justify-between text-sm"><span className="text-gray-400">✓ You will pay</span><span className="text-white font-medium">{reward} BRP per response</span></div>
+                        <div className="flex justify-between text-sm"><span className="text-gray-400">✓ Earned per response</span><span className="text-white font-medium">{reward} BP</span></div>
                         <div className="flex justify-between text-sm"><span className="text-gray-400">✓ Max participants</span><span className="text-white font-medium">{maxResponses.toLocaleString()}</span></div>
                         <div className="flex justify-between text-sm"><span className="text-gray-400">✓ Total campaign cost</span><span className="text-white font-medium">{budget.toLocaleString()} BRP</span></div>
                         <div className="flex justify-between text-sm"><span className="text-gray-400">✓ Estimated reach</span><span className="text-emerald-400 font-medium">High engagement</span></div>
@@ -394,7 +394,7 @@ export default function CreateCampaign({ wallet, campaignTypes }: Props) {
                       {[
                         ['Campaign Title', form.title],
                         ['Type', campaignTypes.find(t => t.value === form.type)?.label || form.type],
-                        ['Reward Per Response', `${reward} BRP (= $${(reward * 0.01).toFixed(2)})`],
+                        ['Reward Per Response', `${reward} BP (= $${(reward * 0.01).toFixed(2)})`],
                         ['Total Budget', `${budget.toLocaleString()} BRP (= $${(budget * 0.01).toFixed(2)})`],
                         ['Max Responses', maxResponses.toLocaleString()],
                         ['Estimated Time', selectedType?.est_time || '—'],

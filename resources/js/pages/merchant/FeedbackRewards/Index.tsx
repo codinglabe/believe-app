@@ -82,7 +82,7 @@ export default function FeedbackRewardsIndex({ campaigns, wallet, filters }: Pro
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
               <div>
                 <h1 className="text-3xl font-bold text-white mb-1">Feedback & Rewards</h1>
-                <p className="text-gray-400">Collect feedback and reward your supporters with BRP</p>
+                <p className="text-gray-400">Collect feedback and let supporters earn BP</p>
               </div>
               <Link href="/feedback-rewards/create">
                 <MerchantButton className="bg-gradient-to-r from-[#2563EB] to-[#1D4ED8] hover:from-[#FF1FA3] hover:via-[#EC1F4C] hover:to-[#F98461]">
@@ -208,7 +208,7 @@ export default function FeedbackRewardsIndex({ campaigns, wallet, filters }: Pro
                                 <span className="text-sm text-gray-400">{typeLabels[campaign.type] || campaign.type}</span>
                               </td>
                               <td className="px-4 py-4">
-                                <span className="text-sm text-white font-medium">{campaign.reward_per_response_brp} BRP</span>
+                                <span className="text-sm text-white font-medium">{campaign.reward_per_response_brp} BP</span>
                               </td>
                               <td className="px-4 py-4">
                                 <span className="text-sm text-gray-300">{campaign.remaining_budget_brp.toLocaleString()} / {campaign.total_budget_brp.toLocaleString()}</span>

@@ -197,7 +197,7 @@ export default function ShowCampaign({ campaign, insights, recentResponses }: Pr
                     <MerchantCardContent className="p-0">
                       <table className="w-full">
                         <thead><tr className="border-b border-gray-800">
-                          {['Date', 'Supporter', 'BRP Earned', 'Status'].map(h => (
+                          {['Date', 'Supporter', 'BP Earned', 'Status'].map(h => (
                             <th key={h} className="text-left px-5 py-2.5 text-xs font-semibold text-gray-400 uppercase">{h}</th>
                           ))}
                         </tr></thead>
@@ -206,7 +206,7 @@ export default function ShowCampaign({ campaign, insights, recentResponses }: Pr
                             <tr key={resp.id} className="hover:bg-white/[0.02]">
                               <td className="px-5 py-3 text-sm text-gray-400">{new Date(resp.created_at).toLocaleDateString()}</td>
                               <td className="px-5 py-3 text-sm text-white">{resp.supporter?.name || 'Anonymous'}</td>
-                              <td className="px-5 py-3 text-sm text-emerald-400 font-semibold">+{resp.reward_brp} BRP</td>
+                              <td className="px-5 py-3 text-sm text-emerald-400 font-semibold">+{resp.reward_brp} BP</td>
                               <td className="px-5 py-3"><span className="px-2 py-0.5 rounded-full text-xs bg-emerald-500/15 text-emerald-300">{resp.status}</span></td>
                             </tr>
                           ))}
@@ -228,7 +228,7 @@ export default function ShowCampaign({ campaign, insights, recentResponses }: Pr
                     </div>
                     <div className="flex justify-between text-sm"><span className="text-gray-400">BRP Spent</span><span className="text-white font-bold">{campaign.spent_budget_brp.toLocaleString()}</span></div>
                     <div className="flex justify-between text-sm"><span className="text-gray-400">Remaining</span><span className="text-emerald-400 font-bold">{campaign.remaining_budget_brp.toLocaleString()}</span></div>
-                    <div className="flex justify-between text-sm"><span className="text-gray-400">Reward/Response</span><span className="text-white font-bold">{campaign.reward_per_response_brp} BRP</span></div>
+                    <div className="flex justify-between text-sm"><span className="text-gray-400">Reward/Response</span><span className="text-white font-bold">{campaign.reward_per_response_brp} BP</span></div>
                     <div className="flex justify-between text-sm"><span className="text-gray-400">Status</span>
                       <span className={`px-2 py-0.5 rounded-full text-xs ${statusColors[campaign.status] || ''}`}>{campaign.status}</span>
                     </div>

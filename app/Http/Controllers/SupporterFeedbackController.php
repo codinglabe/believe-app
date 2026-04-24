@@ -24,7 +24,6 @@ class SupporterFeedbackController extends Controller
     public function show(string $uuid)
     {
         $campaign = FeedbackCampaign::where('uuid', $uuid)
-            ->where('status', 'active')
             ->with('questions.options', 'merchant:id,business_name,name')
             ->firstOrFail();
 
@@ -35,6 +34,10 @@ class SupporterFeedbackController extends Controller
             $alreadyResponded = $campaign->responses()
                 ->where('supporter_id', $user->id)
                 ->exists();
+        }
+
+        if ($campaign->status !== 'active' && ! $alreadyResponded) {
+            abort(404);
         }
 
         return Inertia::render('merchant/Feedback/Show', [
@@ -87,7 +90,7 @@ class SupporterFeedbackController extends Controller
             $this->campaignService->submitResponse($campaign, $user->id, $validated['answers']);
 
             return redirect()->back()
-                ->with('success', "Thank you! You earned {$campaign->reward_per_response_brp} BRP.");
+                ->with('success', "Thank you! You earned {$campaign->reward_per_response_brp} BP.");
         } catch (\Exception $e) {
             Log::error('Feedback submission error: ' . $e->getMessage());
 
