@@ -346,11 +346,11 @@ class MerchantHubOfferController extends Controller
                     // Allow redeem via cash even when not enough points (reason explains points shortfall)
                     $redemptionEligibility['canRedeem'] = true;
                     $redemptionEligibility['canPayWithCash'] = true;
-                    $redemptionEligibility['reason'] = 'You need '.number_format($offer->points_required).' points to redeem with points, but you have '.number_format($userPoints).'. You can pay with cash below (full amount).';
+                    $redemptionEligibility['reason'] = 'You need '.number_format($offer->points_required).' reward points to claim this offer with points, but you have '.number_format($userPoints).'. You can pay with cash below (full amount).';
                 } else {
                     // Points-only offer: no monthly cap anymore, but still require enough points.
                     $redemptionEligibility['canRedeem'] = false;
-                    $redemptionEligibility['reason'] = 'You need '.number_format($offer->points_required).' points to redeem this offer.';
+                    $redemptionEligibility['reason'] = 'You need '.number_format($offer->points_required).' reward points to claim this offer.';
                 }
             }
         }

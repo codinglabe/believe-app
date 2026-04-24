@@ -426,9 +426,9 @@ export default function AdminRedemptionsIndex({ redemptions, filters: initialFil
                                 <Gift className="h-10 w-10 text-gray-400 dark:text-gray-500" />
                             </div>
                             <div>
-                                <p className="text-xl font-semibold text-gray-900 dark:text-white mb-1.5">No redemptions found</p>
+                                <p className="text-xl font-semibold text-gray-900 dark:text-white mb-1.5">No claims found</p>
                                 <p className="text-sm text-gray-600 dark:text-gray-400">
-                                    Adjust your filters or wait for users to redeem offers.
+                                    Adjust your filters or wait for users to claim offers.
                                 </p>
                             </div>
                         </div>
@@ -439,7 +439,7 @@ export default function AdminRedemptionsIndex({ redemptions, filters: initialFil
                 <Dialog open={updateStatusDialogOpen} onOpenChange={setUpdateStatusDialogOpen}>
                     <DialogContent>
                         <DialogHeader>
-                            <DialogTitle>Update Redemption Status</DialogTitle>
+                            <DialogTitle>Update claim status</DialogTitle>
                             <DialogDescription>
                                 Update the status for receipt code: <strong>{redemptionToUpdate?.receipt_code}</strong>
                             </DialogDescription>

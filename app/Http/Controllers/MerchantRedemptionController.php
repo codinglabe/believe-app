@@ -576,7 +576,7 @@ class MerchantRedemptionController extends Controller
                     'merchant_hub_redemption',
                     $redemption->id,
                     $pointsRequired,
-                    "Redeemed merchant offer: {$offer->title}",
+                    "Merchant hub offer claimed: {$offer->title}",
                     [
                         'offer_id' => $offer->id,
                         'offer_title' => $offer->title,
@@ -698,7 +698,7 @@ class MerchantRedemptionController extends Controller
         $paymentMethod = $request->input('payment_method', 'points');
 
         if (! $user) {
-            return back()->withErrors(['error' => 'You must be logged in to redeem offers.']);
+            return back()->withErrors(['error' => 'You must be logged in to claim merchant offers.']);
         }
 
         DB::beginTransaction();
@@ -803,7 +803,7 @@ class MerchantRedemptionController extends Controller
                 'merchant_hub_redemption',
                 $redemption->id,
                 (int) $offer->points_required,
-                "Redeemed merchant offer: {$offer->title}",
+                "Merchant hub offer claimed: {$offer->title}",
                 [
                     'offer_id' => $offer->id,
                     'offer_title' => $offer->title,
@@ -848,7 +848,7 @@ class MerchantRedemptionController extends Controller
             DB::rollBack();
             Log::error('Redemption failed: '.$e->getMessage());
 
-            return back()->withErrors(['error' => 'An error occurred during redemption. Please try again.']);
+            return back()->withErrors(['error' => 'Something went wrong completing your claim. Please try again.']);
         }
     }
 

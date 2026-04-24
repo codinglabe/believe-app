@@ -3,7 +3,7 @@
 namespace App\Services;
 
 /**
- * Gifted Believe Points may only be redeemed on closed-loop retail cards.
+ * Gifted Believe Points may only be used on closed-loop retail cards.
  * Open-loop network cards (Visa, Mastercard) must be paid with purchased Believe Points only.
  */
 class GiftCardGiftedPointsPolicy

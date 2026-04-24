@@ -56,7 +56,7 @@
             <ul style="margin: 0; padding-left: 20px; font-size: 14px; line-height: 1.8; color: #555;">
                 <li style="margin-bottom: 8px;">Accept donations directly through your organization</li>
                 <li style="margin-bottom: 8px;">Reward supporters, volunteers, and participants with points</li>
-                <li style="margin-bottom: 8px;">Points can be redeemed in the Merchant Hub</li>
+                <li style="margin-bottom: 8px;">Reward points can be used in the Merchant Hub</li>
                 <li style="margin-bottom: 8px;">Turn engagement into measurable impact</li>
             </ul>
         </div>

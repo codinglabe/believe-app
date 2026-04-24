@@ -49,8 +49,8 @@ export default function RedemptionConfirmed({ redemption: propRedemption }: Prop
     if (navigator.share && redemption.qr_code_url) {
       try {
         await navigator.share({
-          title: 'Redemption QR Code',
-          text: `Redemption Code: ${redemption.code}`,
+          title: 'Offer claim QR code',
+          text: `Receipt code: ${redemption.code}`,
           url: redemption.qr_code_url,
         })
       } catch (error) {
@@ -61,7 +61,7 @@ export default function RedemptionConfirmed({ redemption: propRedemption }: Prop
 
   return (
     <>
-      <Head title="Redemption Confirmed - Believe" />
+      <Head title="Offer claim confirmed - Believe" />
       <div className="min-h-screen bg-gradient-to-br from-green-50 to-white dark:from-gray-900 dark:to-gray-800">
         <MerchantHeader
           onMenuClick={() => console.log('Menu clicked')}
@@ -86,7 +86,7 @@ export default function RedemptionConfirmed({ redemption: propRedemption }: Prop
                   </motion.div>
 
                   <h2 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-6">
-                    Redemption Confirmed!
+                    Offer claim confirmed!
                   </h2>
 
                   <div className="bg-green-50 dark:bg-green-900/20 rounded-xl p-6 mb-6">
@@ -105,7 +105,7 @@ export default function RedemptionConfirmed({ redemption: propRedemption }: Prop
                   {redemption.code && (
                     <div className="bg-gray-50 dark:bg-gray-800 rounded-xl p-4 mb-6">
                       <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">
-                        Redemption Code
+                        Receipt code
                       </p>
                       <p className="text-xl font-mono font-bold text-gray-900 dark:text-gray-100">
                         {redemption.code}
@@ -114,7 +114,7 @@ export default function RedemptionConfirmed({ redemption: propRedemption }: Prop
                   )}
 
                   <p className="text-gray-700 dark:text-gray-300 mb-8">
-                    Your points are reserved for this offer. Show the QR code to the merchant to complete your redemption.
+                    Your points are reserved for this offer. Show the QR code to the merchant to complete your claim.
                   </p>
 
                   <Button
@@ -139,7 +139,7 @@ export default function RedemptionConfirmed({ redemption: propRedemption }: Prop
                                 <img
                                   key={redemption.qr_code_url}
                                   src={redemption.qr_code_url + '?t=' + Date.now()}
-                                  alt="Redemption QR Code"
+                                  alt="Offer claim QR code"
                                   className="w-64 h-64 object-contain"
                                   onError={(e) => {
                                     console.error('QR code failed to load:', redemption.qr_code_url)

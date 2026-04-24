@@ -17,7 +17,7 @@ export function QRCodeDisplay({
   onDownload,
   onShare,
   title = "QR Code",
-  instruction = "Scan to Redeem"
+  instruction = "Scan to verify claim"
 }: QRCodeDisplayProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
 

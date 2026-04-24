@@ -342,7 +342,7 @@ class MerchantOfferController extends Controller
             // Check if offer has redemptions
             if ($offer->redemptions()->count() > 0) {
                 return redirect()->back()
-                    ->with('error', 'Cannot delete offer with existing redemptions.');
+                    ->with('error', 'Cannot delete an offer that already has claims.');
             }
 
             // Delete image if it exists

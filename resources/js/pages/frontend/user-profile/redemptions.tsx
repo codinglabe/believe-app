@@ -123,15 +123,15 @@ export default function Redemptions({ redemptions, filters }: PageProps) {
   }
 
   return (
-    <ProfileLayout title="Redemptions" description="View and manage your merchant offer redemptions">
-      <Head title="Redemptions" />
+    <ProfileLayout title="Merchant claims" description="View and manage offers you claimed with reward points">
+      <Head title="Merchant claims" />
       
       <div className="space-y-6">
         {/* Header */}
         <div>
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">Redemptions</h1>
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">Merchant claims</h1>
           <p className="text-gray-600 dark:text-gray-400">
-            View all your merchant offer redemptions and QR codes
+            View offers you claimed with reward points and your QR codes
           </p>
         </div>
 
@@ -141,10 +141,10 @@ export default function Redemptions({ redemptions, filters }: PageProps) {
             <CardContent className="py-12 text-center">
               <Gift className="h-12 w-12 mx-auto text-gray-400 mb-4" />
               <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
-                No Redemptions Yet
+                No claims yet
               </h3>
               <p className="text-gray-600 dark:text-gray-400 mb-4">
-                You haven't redeemed any merchant offers yet.
+                You haven't claimed any merchant offers yet.
               </p>
             </CardContent>
           </Card>
@@ -244,7 +244,7 @@ export default function Redemptions({ redemptions, filters }: PageProps) {
                           </div>
                         ) : null}
                         <div>
-                          <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Redeemed</p>
+                          <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Claimed</p>
                           <p className="text-sm font-semibold text-gray-900 dark:text-white">
                             {formatDate(redemption.created_at)}
                           </p>

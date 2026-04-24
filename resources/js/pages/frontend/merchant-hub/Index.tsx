@@ -336,7 +336,7 @@ export default function MerchantHubIndex({
                 className="text-sm sm:text-base md:text-lg text-white/75 mb-5 sm:mb-6 max-w-2xl mx-auto leading-snug sm:leading-relaxed px-1"
               >
                 {currentTab === 'offers'
-                  ? 'Redeem points for real value from local merchants who give back.'
+                  ? 'Use reward points for real value from local merchants who give back.'
                   : 'Shop curated items from verified merchants — same secure checkout as the rest of Believe In Unity.'}
               </motion.p>
 

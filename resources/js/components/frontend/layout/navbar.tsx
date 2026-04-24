@@ -223,7 +223,7 @@ export default function Navbar() {
   const earnSaveNavItems: LandingNavItem[] = [
     { name: "Marketplace", href: route("marketplace.index"), icon: Store },
     { name: "Merchant Deals", href: route("merchant-hub.index"), icon: ShoppingBag },
-    ...(isLoggedIn ? [{ name: "Redeem Points", href: route("believe-points.index"), icon: Coins }] : []),
+    ...(isLoggedIn ? [{ name: "Add Points", href: route("believe-points.index"), icon: Coins }] : []),
     ...(showOrgOnlyNav
       ? [
           { name: "Sell Products", href: route("products.create"), icon: Store },

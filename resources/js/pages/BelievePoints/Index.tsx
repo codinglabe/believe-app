@@ -409,7 +409,7 @@ export default function BelievePointsIndex({
                   <div className="min-w-0 flex-1 space-y-3">
                     <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-baseline sm:justify-between sm:gap-x-4 sm:gap-y-2">
                       <CardTitle className="text-xl font-semibold leading-tight tracking-tight text-gray-900 dark:text-white">
-                        Purchase Believe Points
+                        Add Believe Points
                       </CardTitle>
                       <Badge
                         variant="outline"
@@ -766,7 +766,7 @@ export default function BelievePointsIndex({
                                   <p className="text-muted-foreground mb-2">Points may not be:</p>
                                   <ul className="text-muted-foreground space-y-1 list-disc list-inside">
                                     <li>Withdrawn as cash</li>
-                                    <li>Redeemed for U.S. dollars or cryptocurrency</li>
+                                    <li>Eligible for conversion to U.S. dollars or cryptocurrency per policy</li>
                                     <li>Converted into wallet balances or bank funds</li>
                                     <li>Transferred peer‑to‑peer between individual users</li>
                                     <li>Sold, traded, or exchanged on secondary markets</li>
@@ -804,7 +804,7 @@ export default function BelievePointsIndex({
                                     <li>At Believe's discretion</li>
                                     <li>Returned to the original payment method</li>
                                   </ul>
-                                  <p className="text-muted-foreground mt-2">Refunds are treated as purchase reversals, not redemptions.</p>
+                                  <p className="text-muted-foreground mt-2">Refunds are treated as purchase reversals—not the same as spending Merchant Hub reward points.</p>
                                 </div>
 
                                 <div>
@@ -893,7 +893,7 @@ export default function BelievePointsIndex({
                       </>
                     ) : (
                       <>
-                        Purchase Believe Points
+                        Add Believe Points
                         <ArrowRight className="ml-2 h-5 w-5" />
                       </>
                     )}
@@ -1112,8 +1112,8 @@ export default function BelievePointsIndex({
   if (isSupporter) {
     return (
       <>
-        <Head title="Believe Points" />
-        <ProfileLayout title="Believe Points" description="Purchase and manage your Believe Points. 1 Believe Point = $1 USD">
+        <Head title="Add Believe Points" />
+        <ProfileLayout title="Add Believe Points" description="Add funds and manage your Believe Points. 1 Believe Point = $1 USD">
           {content}
         </ProfileLayout>
       </>
@@ -1123,10 +1123,10 @@ export default function BelievePointsIndex({
   // For organizations and admins, use AppSidebarLayout
   return (
     <AppSidebarLayout>
-      <Head title="Believe Points" />
+      <Head title="Add Believe Points" />
       <div className="m-3 min-w-0 space-y-6 md:m-6">
         <div className="mx-auto max-w-6xl border-b border-gray-200 pb-5 dark:border-gray-700 sm:pb-6">
-          <h1 className="text-2xl font-bold tracking-tight text-gray-900 dark:text-white sm:text-3xl">Believe Points</h1>
+          <h1 className="text-2xl font-bold tracking-tight text-gray-900 dark:text-white sm:text-3xl">Add Believe Points</h1>
           <p className="mt-2 max-w-2xl text-sm leading-relaxed text-gray-600 dark:text-gray-300">
             Buy platform credits (1 Point = $1 USD) for donations and eligible purchases. Card or bank checkout via
             Stripe.

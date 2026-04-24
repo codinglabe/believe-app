@@ -40,7 +40,7 @@ export default function QRCodePage() {
             onDownload={handleDownload}
             onShare={handleShare}
             title="QR Code"
-            instruction="Scan to Redeem"
+            instruction="Scan to verify claim"
           />
         </div>
       </div>

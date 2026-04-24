@@ -649,7 +649,7 @@ export default function RewardPointsLedger({
                   No Transactions Yet
                 </h3>
                 <p className="text-sm text-gray-600 dark:text-gray-400 max-w-sm mx-auto">
-                  Your reward points transaction history will appear here once you start earning or redeeming points.
+                  Your reward points transaction history will appear here once you start earning or spending reward points.
                 </p>
               </div>
             )}
