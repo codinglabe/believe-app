@@ -11,6 +11,8 @@ class ChallengeQuestion extends Model
 
     public const SOURCE_OPENAI = 'openai';
 
+    public const SOURCE_SCRIPTURE = 'scripture';
+
     public const SOURCE_ADMIN = 'admin';
 
     protected $fillable = [

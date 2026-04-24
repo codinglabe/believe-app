@@ -295,7 +295,7 @@ class LivestreamController extends Controller
         if ($orgStream) {
             $participantUrl = $orgStream->getParticipantUrl();
             $password = $orgStream->getDecryptedPassword();
-            return Inertia::render('organization/Livestreams/GuestJoin', [
+            return Inertia::render('Organization/Livestreams/GuestJoin', [
                 'livestream' => [
                     'id' => $orgStream->id,
                     'title' => $orgStream->title,
@@ -320,7 +320,7 @@ class LivestreamController extends Controller
         if ($userStream) {
             $participantUrl = $userStream->getParticipantUrl();
             $password = $userStream->getDecryptedPassword();
-            return Inertia::render('organization/Livestreams/GuestJoin', [
+            return Inertia::render('Organization/Livestreams/GuestJoin', [
                 'livestream' => [
                     'id' => $userStream->id,
                     'title' => $userStream->title,

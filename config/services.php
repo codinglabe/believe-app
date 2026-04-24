@@ -147,34 +147,36 @@ return [
     ],
 
     /*
-    | Level Up / Challenge Hub quiz: OpenAI generation and points.
-    | Default: gpt-3.5-turbo. Override with CHALLENGE_QUIZ_AI_MODEL in .env if needed.
+    | Level Up / Challenge Hub quiz (tuning lives here — no long list of CHALLENGE_QUIZ_* in .env).
+    | Needs OPENAI_API_KEY in .env for stem refiner and full OpenAI question batches.
+    | Billing: see `laravel.log` (prompt_tokens, completion_tokens, total_tokens on OpenAI lines).
     */
     'challenge_quiz' => [
-        'model' => env('CHALLENGE_QUIZ_AI_MODEL', 'gpt-3.5-turbo'),
-        'max_output_tokens' => (int) env('CHALLENGE_QUIZ_AI_MAX_TOKENS', 4096),
-        /** Reward points per correct answer */
-        'points_per_correct' => (float) env('CHALLENGE_QUIZ_POINTS_PER_CORRECT', 10),
-        /** Deducted on wrong / timeout (defaults to same as correct when env omitted) */
-        'points_per_incorrect' => (float) env('CHALLENGE_QUIZ_POINTS_PER_INCORRECT', env('CHALLENGE_QUIZ_POINTS_PER_CORRECT', 10)),
-        /** @deprecated No longer enforced (generation is not cache-limited). Kept for .env compatibility. */
-        'max_openai_batches_per_user_category_per_day' => (int) env('CHALLENGE_QUIZ_MAX_AI_BATCHES_PER_DAY', 20),
-        /** Questions per OpenAI batch when pool is empty */
-        'openai_batch_size' => (int) env('CHALLENGE_QUIZ_AI_BATCH_SIZE', 8),
+        'scripture_mcq_enabled' => true,
+        'scripture_same_book_distractors' => true,
         /**
-         * Ground generation on passages in `challenge_grounding_passages` (any text: scripture, facts, notes).
-         * Tags in `topics` should match hub category labels and/or quiz subcategory names.
-         *
-         * Token/cost: English text is often ~3–4 characters per token; cap total + per-passage size to control input size.
+         * When true: refill uses OpenAI with GROUNDING from this DB (scripture + admin passages) first — full
+         * professional questions with natural language options, like the old "direct OpenAI" path. Scripture "reference" MCQ is only a fallback. Needs OPENAI_API_KEY.
          */
+        'prefer_openai_grounded_refill' => true,
+        /** If prefer_openai_grounded_refill is false: script runs first, then this can run OpenAI after (legacy). */
+        'openai_after_scripture' => false,
+        /** Batched ref-only stem polish (rarely needed if prefer_openai_grounded_refill is on). */
+        'scripture_stem_refiner_enabled' => false,
+        'scripture_stem_refiner_model' => 'gpt-3.5-turbo',
+        'scripture_stem_refiner_max_output_tokens' => 2200,
+        'scripture_stem_refiner_excerpt_max_chars' => 320,
+        'model' => 'gpt-3.5-turbo',
+        'max_output_tokens' => 4096,
+        'points_per_correct' => 10.0,
+        'points_per_incorrect' => 10.0,
+        'max_openai_batches_per_user_category_per_day' => 20,
+        'openai_batch_size' => 8,
         'grounding' => [
-            'enabled' => env('CHALLENGE_QUIZ_GROUNDING_ENABLED', true),
-            /** Max rows merged into one prompt (each row still trimmed by max_chars_per_passage). */
-            'passage_limit' => (int) env('CHALLENGE_QUIZ_GROUNDING_PASSAGE_LIMIT', 10),
-            /** Per-passage body truncation before the overall cap below. */
-            'max_chars_per_passage' => (int) env('CHALLENGE_QUIZ_GROUNDING_MAX_CHARS_PER_PASSAGE', 900),
-            /** Hard ceiling for the entire grounding block (all passages + headers); stops appending once reached. */
-            'max_total_chars' => (int) env('CHALLENGE_QUIZ_GROUNDING_MAX_TOTAL_CHARS', 10000),
+            'enabled' => true,
+            'passage_limit' => 10,
+            'max_chars_per_passage' => 900,
+            'max_total_chars' => 10_000,
         ],
     ],
 
@@ -187,6 +189,15 @@ return [
         'image_size' => env('CHALLENGE_HUB_IMAGE_SIZE', '512x512'),
         'image_max_width' => (int) env('CHALLENGE_HUB_IMAGE_MAX_WIDTH', 384),
         'image_prompt_suffix' => env('CHALLENGE_HUB_IMAGE_PROMPT_SUFFIX', 'Isolated subject, centered, simple illustration, generous empty space around the subject, no text, no border, crisp edges, dark purple / gold palette, suitable for overlay on a dark UI (not a full scene).'),
+    ],
+
+    /**
+     * `scripture:import-remote` HTTP client. Honoured only when APP_ENV is not production; production always verifies TLS.
+     * Local Windows: set curl.cainfo, or SCRIPTURE_IMPORT_CAFILE, or SCRIPTURE_IMPORT_VERIFY_SSL=false (omit on server).
+     */
+    'scripture_import' => [
+        'verify_ssl' => filter_var(env('SCRIPTURE_IMPORT_VERIFY_SSL', true), FILTER_VALIDATE_BOOL),
+        'cafile' => env('SCRIPTURE_IMPORT_CAFILE'),
     ],
 
     'gmail' => [

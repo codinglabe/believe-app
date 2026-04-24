@@ -4,19 +4,19 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Timed quiz play — per-question limit (seconds)
+    | Timed quiz play — per-question limit (seconds) — edit here; no CHALLENGE_QUIZ_* in .env.
     |--------------------------------------------------------------------------
     */
-    'question_time_limit_seconds' => max(1, (int) env('CHALLENGE_QUIZ_QUESTION_SECONDS', 10)),
+    'question_time_limit_seconds' => 10,
 
     /** Extra time for Practice mode (multiplier on question_time_limit_seconds). */
-    'practice_time_multiplier' => max(1.0, (float) env('CHALLENGE_QUIZ_PRACTICE_TIME_MULTIPLIER', 1.5)),
+    'practice_time_multiplier' => 1.5,
 
     /*
     | Streak bonus at end of a completed quiz run (max streak − 1) × tier, capped.
     */
-    'streak_bonus_per_streak_tier' => (float) env('CHALLENGE_QUIZ_STREAK_BONUS_PER_TIER', 10),
-    'streak_bonus_cap' => (float) env('CHALLENGE_QUIZ_STREAK_BONUS_CAP', 30),
+    'streak_bonus_per_streak_tier' => 10.0,
+    'streak_bonus_cap' => 30.0,
 
     /*
     |--------------------------------------------------------------------------
