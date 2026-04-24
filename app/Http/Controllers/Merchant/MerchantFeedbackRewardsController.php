@@ -103,7 +103,7 @@ class MerchantFeedbackRewardsController extends Controller
             'title.required' => 'Campaign title is required.',
             'type.required' => 'Please select a campaign type.',
             'reward_per_response_brp.required' => 'Reward per response is required.',
-            'reward_per_response_brp.min' => 'Reward must be at least 1 BRP.',
+            'reward_per_response_brp.min' => 'Reward must be at least 1 BP.',
             'total_budget_brp.required' => 'Total budget is required.',
             'total_budget_brp.min' => 'Budget must be at least 1 BRP.',
             'question_text.required' => 'Please enter a question.',

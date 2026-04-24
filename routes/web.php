@@ -617,6 +617,15 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin|use
     Route::post('/auto-replenish/remove-payment', [BelievePointController::class, 'autoReplenishRemovePaymentMethod'])->name('auto-replenish.remove-payment');
 });
 
+Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin|user|care_alliance'])->group(function () {
+    Route::get('/feedback-campaigns', [\App\Http\Controllers\FeedbackCampaignBrowserController::class, 'index'])
+        ->name('feedback-campaigns.index');
+    Route::get('/feedback/{uuid}', [\App\Http\Controllers\SupporterFeedbackController::class, 'show'])
+        ->name('feedback-campaigns.show');
+    Route::post('/feedback/{uuid}', [\App\Http\Controllers\SupporterFeedbackController::class, 'submit'])
+        ->name('feedback-campaigns.submit');
+});
+
 // Merchant Hub Routes (Public - for viewing offers)
 Route::prefix('merchant-hub')->name('merchant-hub.')->group(function () {
     Route::get('/', [MerchantHubOfferController::class, 'index'])->name('index');
