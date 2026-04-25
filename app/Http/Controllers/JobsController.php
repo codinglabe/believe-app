@@ -7,6 +7,7 @@ use App\Models\JobPosition;
 use App\Models\JobPost;
 use App\Models\Organization;
 use App\Models\PositionCategory;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 
@@ -96,13 +97,22 @@ class JobsController extends Controller
 
     public function volunteerOpportunities(Request $request)
     {
-        $positionIdsRaw = $request->input('position_ids');
-        $positionIds = [];
-        if (is_array($positionIdsRaw)) {
-            $positionIds = array_values(array_unique(array_filter(array_map('intval', $positionIdsRaw))));
-        } elseif (is_string($positionIdsRaw) && trim($positionIdsRaw) !== '') {
-            $positionIds = array_values(array_unique(array_filter(array_map('intval', explode(',', $positionIdsRaw)))));
+        $positionIdsFromRequest = $this->parseVolunteerPositionIdsFromRequest($request);
+
+        /** @var User|null $authUser */
+        $authUser = $request->user();
+        $savedVolunteerPositionIds = [];
+        if ($authUser instanceof User && $authUser->role === 'user') {
+            $savedVolunteerPositionIds = $authUser->volunteerPreferredJobPositions()
+                ->pluck('job_positions.id')
+                ->map(static fn ($id) => (int) $id)
+                ->values()
+                ->all();
         }
+
+        $positionIds = count($positionIdsFromRequest) > 0
+            ? $positionIdsFromRequest
+            : $savedVolunteerPositionIds;
 
         $jobs = JobPost::query()
             ->with(['organization', 'position'])
@@ -214,6 +224,17 @@ class JobsController extends Controller
             );
         }
 
+        $filters = $request->only([
+            'search',
+            'location_type',
+            'city',
+            'state',
+            'organization_id',
+            'position_category_id',
+            'position_id',
+        ]);
+        $filters['position_ids'] = array_map(static fn (int $id) => (string) $id, $positionIds);
+
         return Inertia::render('frontend/jobs/volunteer-opportunities', [
             'jobs' => $jobs,
             'organizations' => $organizations,
@@ -222,17 +243,43 @@ class JobsController extends Controller
             'positionLabels' => $positionLabels,
             'positionPicker' => $positionPicker,
             'organizationPicker' => $organizationPicker,
-            'filters' => $request->only([
-                'search',
-                'location_type',
-                'city',
-                'state',
-                'organization_id',
-                'position_category_id',
-                'position_id',
-                'position_ids',
-            ]),
+            'filters' => $filters,
         ]);
+    }
+
+    /**
+     * @return list<int>
+     */
+    private function parseVolunteerPositionIdsFromRequest(Request $request): array
+    {
+        $positionIdsRaw = $request->input('position_ids');
+        if (is_array($positionIdsRaw)) {
+            return array_values(array_unique(array_filter(array_map('intval', $positionIdsRaw))));
+        }
+        if (is_string($positionIdsRaw) && trim($positionIdsRaw) !== '') {
+            return array_values(array_unique(array_filter(array_map('intval', explode(',', $positionIdsRaw)))));
+        }
+
+        return [];
+    }
+
+    public function saveVolunteerPreferredPositions(Request $request)
+    {
+        $validated = $request->validate([
+            'position_ids' => ['nullable', 'array'],
+            'position_ids.*' => ['integer', 'exists:job_positions,id'],
+        ]);
+
+        /** @var User $user */
+        $user = $request->user();
+        $ids = array_values(array_unique(array_filter(
+            array_map('intval', $validated['position_ids'] ?? []),
+            static fn (int $id) => $id > 0
+        )));
+
+        $user->volunteerPreferredJobPositions()->sync($ids);
+
+        return back();
     }
 
     /**
@@ -314,7 +361,9 @@ class JobsController extends Controller
             'volunteer_interest_statement' => ['nullable', 'string', 'max:2000'],
         ]);
 
-        $request->user()->update([
+        /** @var User $user */
+        $user = $request->user();
+        $user->update([
             'volunteer_interest_statement' => $validated['volunteer_interest_statement'] !== ''
                 ? $validated['volunteer_interest_statement']
                 : null,

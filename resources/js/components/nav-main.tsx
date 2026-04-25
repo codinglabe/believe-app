@@ -56,11 +56,18 @@ function volunteerDashboardHrefActive(href: string, path: string): boolean {
     if (href === '/volunteers/supporter-interests') {
         return path.startsWith('/volunteers/supporter-interests');
     }
+    if (href === '/volunteers/volunteer-interests') {
+        return path.startsWith('/volunteers/volunteer-interests');
+    }
     if (href === '/volunteers') {
         if (!path.startsWith('/volunteers')) {
             return false;
         }
-        if (path.startsWith('/volunteers/timesheet') || path.startsWith('/volunteers/supporter-interests')) {
+        if (
+            path.startsWith('/volunteers/timesheet') ||
+            path.startsWith('/volunteers/supporter-interests') ||
+            path.startsWith('/volunteers/volunteer-interests')
+        ) {
             return false;
         }
         return path === '/volunteers' || /^\/volunteers\/\d+$/.test(path);
@@ -307,6 +314,9 @@ export function NavMain({ items = [] }: NavMainProps) {
                             if (subItem.href === '/volunteers/timesheet') return pathname.startsWith('/volunteers/timesheet');
                             if (subItem.href === '/volunteers/supporter-interests') {
                                 return pathname.startsWith('/volunteers/supporter-interests');
+                            }
+                            if (subItem.href === '/volunteers/volunteer-interests') {
+                                return pathname.startsWith('/volunteers/volunteer-interests');
                             }
                             if (subItem.href === '/volunteers') {
                                 return volunteerDashboardHrefActive('/volunteers', pathname);
@@ -555,6 +565,8 @@ export function NavMain({ items = [] }: NavMainProps) {
                                                 (subItem.href === '/volunteers/timesheet' && pathname.startsWith('/volunteers/timesheet')) ||
                                                 (subItem.href === '/volunteers/supporter-interests' &&
                                                     pathname.startsWith('/volunteers/supporter-interests')) ||
+                                                (subItem.href === '/volunteers/volunteer-interests' &&
+                                                    pathname.startsWith('/volunteers/volunteer-interests')) ||
                                                 (subItem.href === '/volunteers' && volunteerDashboardHrefActive('/volunteers', pathname));
                                             return (
                                                 <motion.div

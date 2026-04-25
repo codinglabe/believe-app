@@ -160,6 +160,7 @@ use App\Http\Controllers\UnityLiveController;
 use App\Http\Controllers\UserProfileController;
 use App\Http\Controllers\UsersInterestedTopicsController;
 use App\Http\Controllers\VolunteerController;
+use App\Http\Controllers\VolunteerAvailableSupportersController;
 use App\Http\Controllers\VolunteerSupporterInterestsController;
 use App\Http\Controllers\VolunteerTimesheetController;
 use App\Http\Controllers\WalletController;
@@ -442,6 +443,9 @@ Route::get('/jobs', [JobsController::class, 'index'])->name('jobs.index');
 Route::get('/volunteer-opportunities', [JobsController::class, 'volunteerOpportunities'])->name('volunteer-opportunities.index');
 Route::post('/volunteer-opportunities/volunteer-interests', [JobsController::class, 'saveVolunteerInterestStatement'])
     ->name('volunteer-opportunities.save-interests')
+    ->middleware(['auth', 'EnsureEmailIsVerified', 'role:user']);
+Route::post('/volunteer-opportunities/saved-positions', [JobsController::class, 'saveVolunteerPreferredPositions'])
+    ->name('volunteer-opportunities.save-positions')
     ->middleware(['auth', 'EnsureEmailIsVerified', 'role:user']);
 Route::get('/jobs/{id}', [JobsController::class, 'show'])->name('jobs.show');
 Route::get('/get-job-positions', [JobsController::class, 'getJobPositions'])->name('jobs.positions.by-category');
@@ -1482,6 +1486,9 @@ Route::get('volunteers', [VolunteerController::class, 'index'])
     ->middleware(['role:organization|care_alliance', 'permission:volunteer.read']);
 Route::get('volunteers/supporter-interests', [VolunteerSupporterInterestsController::class, 'index'])
     ->name('volunteers.supporter-interests.index')
+    ->middleware(['role:organization|care_alliance', 'permission:volunteer.read']);
+Route::get('volunteers/volunteer-interests', [VolunteerAvailableSupportersController::class, 'index'])
+    ->name('volunteers.volunteer-interests')
     ->middleware(['role:organization|care_alliance', 'permission:volunteer.read']);
 
 // Volunteer Time Sheet Routes (must come before volunteers/{volunteer} to avoid route conflicts)

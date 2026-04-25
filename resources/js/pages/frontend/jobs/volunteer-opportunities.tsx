@@ -1,5 +1,6 @@
 import FrontendLayout from "@/layouts/frontend/frontend-layout";
 import { Link, router } from "@inertiajs/react";
+import toast from "react-hot-toast";
 import { PageHead } from "@/components/frontend/PageHead";
 import { Button } from "@/components/frontend/ui/button";
 import { Input } from "@/components/frontend/ui/input";
@@ -667,9 +668,15 @@ export default function VolunteerOpportunities({
   const [labelExtras, setLabelExtras] = useState<Record<string, string>>({});
   const [orgLabelExtras, setOrgLabelExtras] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
+  const [savingPreferredPositions, setSavingPreferredPositions] = useState(false);
   const [currentPage, setCurrentPage] = useState(jobs.current_page || 1);
   const [showFilters, setShowFilters] = useState(false);
   const initialRender = useRef(true);
+
+  const positionIdsFilterKey = JSON.stringify(normalizeStringArray(filters.position_ids));
+  useEffect(() => {
+    setPositionIds(normalizeStringArray(filters.position_ids));
+  }, [positionIdsFilterKey]);
 
   const positionLabelMap = useMemo(
     () => ({ ...positionLabels, ...initialPositions, ...labelExtras }),
@@ -790,6 +797,30 @@ export default function VolunteerOpportunities({
   };
 
   const clearFilters = () => {
+    if (auth?.user?.role === "user") {
+      router.post(
+        route("volunteer-opportunities.save-positions"),
+        { position_ids: [] as number[] },
+        {
+          preserveScroll: true,
+          onSuccess: () => {
+            setSearch("");
+            setLocationType("");
+            setCity("");
+            setPositionCategoryId("");
+            setOrganizationId("");
+            setPositionId("");
+            setPositionIds([]);
+            setLabelExtras({});
+            setOrgLabelExtras({});
+            setState("");
+            setCurrentPage(1);
+            router.get(route("volunteer-opportunities.index"), {}, { preserveState: false });
+          },
+        },
+      );
+      return;
+    }
     setSearch("");
     setLocationType("")
     setCity("")
@@ -801,6 +832,21 @@ export default function VolunteerOpportunities({
     setOrgLabelExtras({})
     setState("")
     setCurrentPage(1)
+  };
+
+  const handleSavePreferredPositions = () => {
+    if (auth?.user?.role !== "user") return;
+    const ids = positionIds.map((id) => parseInt(id, 10)).filter((n) => !Number.isNaN(n) && n > 0);
+    setSavingPreferredPositions(true);
+    router.post(
+      route("volunteer-opportunities.save-positions"),
+      { position_ids: ids },
+      {
+        preserveScroll: true,
+        onFinish: () => setSavingPreferredPositions(false),
+        onSuccess: () => toast.success("Your positions were saved."),
+      },
+    );
   };
 
   return (
@@ -1037,6 +1083,24 @@ export default function VolunteerOpportunities({
                       placeholder="Add positions..."
                       className="bg-white dark:bg-gray-900"
                     />
+                    <Button
+                      type="button"
+                      className="mt-3 w-full bg-violet-600 hover:bg-violet-700 text-white"
+                      disabled={savingPreferredPositions}
+                      onClick={handleSavePreferredPositions}
+                    >
+                      {savingPreferredPositions ? (
+                        <>
+                          <Loader2 className="inline-block w-4 h-4 mr-2 animate-spin" />
+                          Saving…
+                        </>
+                      ) : (
+                        "Save positions"
+                      )}
+                    </Button>
+                    <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                      Saved positions load automatically next time you visit. Use Clear all to remove them.
+                    </p>
                   </div>
                 )}
 

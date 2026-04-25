@@ -470,6 +470,13 @@ export const dashboardSidebarNavItems: (NavItem | NavGroup)[] = [
                         role: 'organization',
                     },
                     {
+                        title: 'Volunteer Interests',
+                        href: route('volunteers.volunteer-interests'),
+                        icon: Sparkles,
+                        permission: 'volunteer.read',
+                        role: 'organization',
+                    },
+                    {
                         title: 'Time sheet',
                         href: '/volunteers/timesheet',
                         icon: Clock,
