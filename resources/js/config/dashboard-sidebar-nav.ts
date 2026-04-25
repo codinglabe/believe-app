@@ -916,7 +916,7 @@ export const dashboardSidebarNavItems: (NavItem | NavGroup)[] = [
                 ],
             },
             {
-                title: 'Wallet',
+                title: 'Add Points',
                 href: '/believe-points',
                 icon: Wallet,
                 role: 'user',

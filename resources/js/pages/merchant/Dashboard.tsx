@@ -190,13 +190,13 @@ export default function MerchantDashboard({ stats, weeklyRedemptions, recentRede
                 </MerchantCard>
               </div>
 
-              {/* Total Rewards Redeemed Chart */}
+              {/* Total reward points spent on offers */}
               <div className="mt-6">
                 <MerchantCard className="transition-all duration-300">
                   <MerchantCardHeader>
                     <div className="flex items-center gap-2">
                       <TrendingUp className="w-5 h-5 text-[#2563EB]" />
-                      <MerchantCardTitle className="text-lg text-white">Total Rewards Redeemed</MerchantCardTitle>
+                      <MerchantCardTitle className="text-lg text-white">Reward points spent on offers</MerchantCardTitle>
                     </div>
                   </MerchantCardHeader>
                   <MerchantCardContent>
@@ -227,7 +227,7 @@ export default function MerchantDashboard({ stats, weeklyRedemptions, recentRede
                     <div className="pt-4 border-t mt-4">
                       <div className="flex items-center justify-between">
                         <span className="text-sm text-gray-300">
-                          Total Rewards Redeemed
+                          Reward points spent on offers
                         </span>
                         <span className="text-lg font-bold text-white">
                           {stats?.totalRewardsRedeemed?.toLocaleString() || 0}

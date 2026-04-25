@@ -266,7 +266,7 @@ PROMPT;
      *
      * @param  ?float  $temperature  Defaults to 0.35 (conservative). Pass higher (e.g. 0.7) for creative HTML/newsletter drafts.
      * @param  ?int  $maxTokensOverride  Override max output tokens for long JSON (e.g. HTML bodies).
-     * @return array{content: string, total_tokens: int, finish_reason: ?string}
+     * @return array{content: string, total_tokens: int, finish_reason: ?string, prompt_tokens: int, completion_tokens: int}
      */
     public function chatCompletionJson(array $messages, ?string $model = null, ?float $temperature = null, ?int $maxTokensOverride = null): array
     {
@@ -298,6 +298,8 @@ PROMPT;
             $content = $response->json('choices.0.message.content');
             $usage = $response->json('usage') ?? [];
             $totalTokens = (int) ($usage['total_tokens'] ?? 0);
+            $promptTokens = (int) ($usage['prompt_tokens'] ?? 0);
+            $completionTokens = (int) ($usage['completion_tokens'] ?? 0);
             $finishReason = $response->json('choices.0.finish_reason');
 
             if ($finishReason === 'length') {
@@ -314,6 +316,8 @@ PROMPT;
             return [
                 'content' => trim($content),
                 'total_tokens' => $totalTokens,
+                'prompt_tokens' => $promptTokens,
+                'completion_tokens' => $completionTokens,
                 'finish_reason' => is_string($finishReason) ? $finishReason : null,
             ];
         } catch (\Exception $e) {

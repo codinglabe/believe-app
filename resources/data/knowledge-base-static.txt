@@ -85,7 +85,7 @@ PURPOSE: Enable users to give the gift of charitable giving to friends and famil
 FEATURES:
 - Purchase digital gift cards in various denominations ($25, $50, $100, $250, $500)
 - Send gift cards via email to recipients with personalized messages
-- Recipients can redeem gift cards to donate to any verified nonprofit
+- Recipients can apply gift card codes to donate to any verified nonprofit
 - Gift cards never expire
 - Track gift card balance and usage history
 - Perfect for birthdays, holidays, and special occasions
@@ -94,14 +94,14 @@ FEATURES:
 HOW IT WORKS:
 1. Purchase a gift card from the Gift Cards page
 2. Customize with recipient's email and a personal message
-3. Recipient receives email with unique redemption code
-4. Recipient creates account or logs in to redeem
+3. Recipient receives email with unique gift card code
+4. Recipient creates account or logs in to apply the code
 5. Gift card balance added to their wallet
 6. Use balance to donate to any nonprofit on the platform
 
 ROUTES:
 /gift-cards: Browse and purchase gift cards
-/gift-cards/redeem: Redeem a gift card code
+/gift-cards/redeem: Apply a gift card code
 /gift-cards/balance: Check gift card balance
 /gift-cards/history: View gift card purchase and redemption history
 
@@ -219,8 +219,8 @@ When users ask "what do organizations get" or "organization dashboard features",
 /nonprofit-news/saved: User's saved articles
 
 --- REWARDS & WALLET ---
-/believe-points: Purchase and manage Believe Points
-/merchant-hub: Redeem points for merchant offers
+/believe-points: Add funds and manage Believe Points (BP)
+/merchant-hub: Use reward points for merchant offers
 /wallet: Digital wallet management (requires login)
 
 --- USER ACCOUNT ---
@@ -245,8 +245,8 @@ REQUIRE LOGIN (tell user before navigating - they will be redirected to /login i
 - /social-feed: Community posts (viewing and posting)
 - /find-supporters: Find and connect with supporters
 - /search: Search across the platform
-- /believe-points: Purchase and manage Believe Points
-- /merchant-hub: Redeem points for merchant offers
+- /believe-points: Add funds and manage Believe Points (BP)
+- /merchant-hub: Use reward points for merchant offers
 - /cart: Shopping cart
 - /checkout: Complete purchase
 - /nonprofit-news/saved: User's saved articles
@@ -261,7 +261,7 @@ REQUIRE LOGIN (tell user before navigating - they will be redirected to /login i
 - /jobs/{id}/apply: Apply for a job
 - /volunteer-opportunities: Some volunteer actions may require login
 - /gift-cards: Purchase gift cards
-- /gift-cards/redeem: Redeem a gift card
+- /gift-cards/redeem: Apply a gift card code
 - /gift-cards/history: Gift card purchase history
 
 REMINDER: When navigating to any page in the "REQUIRE LOGIN" list above, ALWAYS mention that login is needed. Never navigate silently - always say it first.

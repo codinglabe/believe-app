@@ -146,7 +146,7 @@ export default function MyPurchases({
                   <CardContent className="py-12 text-center">
                     <ShoppingBag className="h-12 w-12 text-muted-foreground mx-auto mb-4 opacity-60" />
                     <p className="text-muted-foreground font-medium">No offer redemptions yet</p>
-                    <p className="text-sm text-muted-foreground mt-1">Redeem offers from the Merchant Hub to see them here.</p>
+                    <p className="text-sm text-muted-foreground mt-1">Claim offers from the Merchant Hub to see them here.</p>
                     <Link href="/merchant-hub">
                       <Button className="mt-4">Browse offers</Button>
                     </Link>

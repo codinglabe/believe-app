@@ -174,10 +174,10 @@ const navigationItems = [
     color: "from-pink-500 to-rose-600",
   },
   {
-    name: "Believe Points",
+    name: "Add Points",
     href: "/believe-points",
     icon: Coins,
-    description: "Purchase and manage Believe Points",
+    description: "Fund your Believe Points wallet (1 Point = $1 USD)",
     color: "from-blue-500 to-purple-600",
   },
   {
@@ -195,10 +195,10 @@ const navigationItems = [
     color: "from-amber-500 to-yellow-600",
   },
   {
-    name: "Redemptions",
+    name: "Merchant claims",
     href: "/profile/redemptions",
     icon: QrCode,
-    description: "Merchant offer redemptions",
+    description: "Offers you claimed with reward points",
     color: "from-purple-500 to-pink-600",
   },
   // {

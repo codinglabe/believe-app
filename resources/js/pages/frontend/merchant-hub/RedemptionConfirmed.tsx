@@ -60,9 +60,9 @@ export default function RedemptionConfirmed({ redemption: propRedemption }: Prop
   if (!redemption) {
     return (
       <FrontendLayout>
-        <PageHead title="Redemption" />
+        <PageHead title="Offer claim" />
         <div className="container mx-auto px-4 py-12 text-center">
-          <p className="text-muted-foreground mb-4">Redemption not found.</p>
+          <p className="text-muted-foreground mb-4">Claim not found.</p>
           <Link href="/merchant-hub">
             <Button>Back to Merchant Hub</Button>
           </Link>
@@ -73,7 +73,7 @@ export default function RedemptionConfirmed({ redemption: propRedemption }: Prop
 
   return (
     <FrontendLayout>
-      <PageHead title="Redemption confirmed" description="Your merchant hub redemption is confirmed." />
+      <PageHead title="Offer claim confirmed" description="Your Merchant Hub claim is confirmed." />
       <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted/20">
         <div className="border-b bg-background/95 backdrop-blur sticky top-0 z-40">
           <div className="container mx-auto px-4 py-4">
@@ -91,7 +91,7 @@ export default function RedemptionConfirmed({ redemption: propRedemption }: Prop
             <CardContent className="p-6 sm:p-8">
               <div className="text-center mb-6">
                 <CheckCircle2 className="w-16 h-16 text-green-600 dark:text-green-400 mx-auto mb-4" />
-                <h1 className="text-2xl font-bold text-foreground">Redemption confirmed</h1>
+                <h1 className="text-2xl font-bold text-foreground">Offer claim confirmed</h1>
                 <p className="text-muted-foreground mt-2">Show your receipt at the merchant to complete your purchase.</p>
               </div>
 
@@ -136,7 +136,7 @@ export default function RedemptionConfirmed({ redemption: propRedemption }: Prop
                     <div className="flex flex-col items-center pt-4 border-t">
                       <img
                         src={qrCodeUrl}
-                        alt="Redemption QR code"
+                        alt="Offer claim QR code"
                         className="w-48 h-48 object-contain bg-white rounded-lg p-2"
                       />
                       <p className="text-sm text-muted-foreground mt-2">Scan at the merchant</p>

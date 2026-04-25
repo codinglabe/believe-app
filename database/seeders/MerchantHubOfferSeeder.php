@@ -32,7 +32,7 @@ class MerchantHubOfferSeeder extends Seeder
                 'merchant_hub_merchant_id' => $retailStore->id,
                 'merchant_hub_category_id' => $giftCards->id,
                 'title' => 'Gift Card - $50 Value',
-                'short_description' => 'Redeem points for a $50 gift card',
+                'short_description' => 'Use reward points toward a $50 gift card',
                 'description' => 'Get a $50 gift card that you can use for any purchase at our retail store. Perfect for yourself or as a gift for someone special.',
                 'image_url' => '/placeholder.jpg',
                 'points_required' => 5000,

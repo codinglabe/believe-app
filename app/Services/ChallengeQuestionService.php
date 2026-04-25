@@ -11,6 +11,7 @@ use App\Support\ChallengeLevelUp;
 use App\Support\ChallengePlayQuizMode;
 use App\Support\ProfileReligions;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Log;
 use InvalidArgumentException;
 
 class ChallengeQuestionService
@@ -89,9 +90,28 @@ class ChallengeQuestionService
 
         $question = $this->pickRandomUnseen($categories, $usedIds, $subcategory, $difficultyCanonical, $profileReligion);
 
-        $generatedNewCount = 0;
-        if (! $question) {
-            $generatedNewCount = $this->generator->generateBatchIfAllowed(
+        $openAiInserted = 0;
+        $scriptureInserted = 0;
+        $preferGrounded = (bool) config('services.challenge_quiz.prefer_openai_grounded_refill', true);
+        $hasOpenAiKey = ! empty(config('services.openai.api_key'));
+        $scriptureOn = (bool) config('services.challenge_quiz.scripture_mcq_enabled', true);
+
+        $tryPick = function () use ($user, $categories, &$usedIds, $subcategory, $difficultyCanonical, $profileReligion) {
+            $usedIds = $this->usedQuestionIds($user->id);
+
+            return $this->pickRandomUnseen($categories, $usedIds, $subcategory, $difficultyCanonical, $profileReligion);
+        };
+        $tryPickRelaxed = function () use ($user, $categories, &$usedIds, $subcategory, $difficultyCanonical, $profileReligion) {
+            if (! is_string($difficultyCanonical) || trim($difficultyCanonical) === '') {
+                return null;
+            }
+            $usedIds = $this->usedQuestionIds($user->id);
+
+            return $this->pickRandomUnseen($categories, $usedIds, $subcategory, null, $profileReligion);
+        };
+
+        if (! $question && ! $preferGrounded && $scriptureOn) {
+            $scriptureInserted = $this->generator->generateScriptureBatchIfAllowed(
                 $user->id,
                 $categories[0],
                 $subcategory,
@@ -101,8 +121,90 @@ class ChallengeQuestionService
                 $hubChallengeDescription,
                 $user->religion
             );
-            $usedIds = $this->usedQuestionIds($user->id);
-            $question = $this->pickRandomUnseen($categories, $usedIds, $subcategory, $difficultyCanonical, $profileReligion);
+            if ($scriptureInserted > 0) {
+                $question = $tryPick();
+            }
+            if (! $question && $scriptureInserted > 0) {
+                $question = $tryPickRelaxed();
+            }
+        }
+        if (! $question && ! $preferGrounded && (bool) config('services.challenge_quiz.openai_after_scripture', false) && $hasOpenAiKey) {
+            Log::info('Challenge quiz: OpenAI batch after scripture (legacy order, grounded on DB).', [
+                'user_id' => $user->id,
+                'track_id' => $track->id,
+                'scripture_rows_inserted' => $scriptureInserted,
+                'category' => $categories[0] ?? null,
+            ]);
+            $o = $this->generator->generateBatchIfAllowed(
+                $user->id,
+                $categories[0],
+                $subcategory,
+                $difficultyCanonical,
+                $practiceVariety,
+                $hubChallengeTitle,
+                $hubChallengeDescription,
+                $user->religion
+            );
+            $openAiInserted += $o;
+            if ($o > 0) {
+                $question = $tryPick();
+            }
+            if (! $question && $o > 0) {
+                $question = $tryPickRelaxed();
+            }
+        }
+        if (! $question && $preferGrounded && $hasOpenAiKey) {
+            Log::info('Challenge quiz: grounded OpenAI batch (database passages first, professional Q&A).', [
+                'user_id' => $user->id,
+                'track_id' => $track->id,
+                'category' => $categories[0] ?? null,
+            ]);
+            $o = $this->generator->generateBatchIfAllowed(
+                $user->id,
+                $categories[0],
+                $subcategory,
+                $difficultyCanonical,
+                $practiceVariety,
+                $hubChallengeTitle,
+                $hubChallengeDescription,
+                $user->religion
+            );
+            $openAiInserted += $o;
+            if ($o > 0) {
+                $question = $tryPick();
+            }
+            if (! $question && $o > 0) {
+                $question = $tryPickRelaxed();
+            }
+        }
+        if (! $question && $preferGrounded && $scriptureOn) {
+            $s = $this->generator->generateScriptureBatchIfAllowed(
+                $user->id,
+                $categories[0],
+                $subcategory,
+                $difficultyCanonical,
+                $practiceVariety,
+                $hubChallengeTitle,
+                $hubChallengeDescription,
+                $user->religion
+            );
+            $scriptureInserted += $s;
+            if ($s > 0) {
+                $question = $tryPick();
+            }
+            if (! $question && $s > 0) {
+                $question = $tryPickRelaxed();
+            }
+        }
+
+        $generatedNewCount = $openAiInserted + $scriptureInserted;
+        if (! $question && $generatedNewCount === 0) {
+            Log::info('Challenge quiz: could not add questions (grounded OpenAI, scripture, or no API key as configured).', [
+                'user_id' => $user->id,
+                'category' => $categories[0] ?? null,
+                'subcategory' => $subcategory,
+                'religion' => $profileReligion,
+            ]);
         }
 
         if (! $question) {

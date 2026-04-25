@@ -318,7 +318,7 @@ export default function RaffleSuccessPage({
                             {paidWithBelievePoints ? (
                                 <div className="space-y-3 text-sm">
                                     <div className="flex justify-between gap-4">
-                                        <span className="text-muted-foreground">Redeemed</span>
+                                        <span className="text-muted-foreground">Applied</span>
                                         <span className="font-medium tabular-nums text-foreground">
                                             {believePointsUsed.toFixed(2)} pts
                                         </span>

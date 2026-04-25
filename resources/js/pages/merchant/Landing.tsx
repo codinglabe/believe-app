@@ -63,7 +63,7 @@ export default function MerchantLanding() {
               </p>
 
               <p className="text-base sm:text-lg md:text-xl text-gray-300 mb-8 sm:mb-10 max-w-3xl mx-auto leading-relaxed px-2">
-                <span className="text-white font-semibold">On Your Terms</span> — Partner with nonprofits and churches to reward verified volunteers with a simple 10% discount, while staying in full control of what's offered, how often it's redeemed, and how much it costs.
+                <span className="text-white font-semibold">On Your Terms</span> — Partner with nonprofits and churches to reward verified volunteers with a simple 10% discount, while staying in full control of what's offered, how often an offer can be claimed, and how much it costs.
               </p>
 
           <motion.div
@@ -277,7 +277,7 @@ export default function MerchantLanding() {
                 {
                   icon: <BarChart3 className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8" />,
                   title: 'Quantity Limits (Optional)',
-                  description: 'Limit how many times an item can be redeemed. Example: "Only the first 100 redemptions available." When the limit is reached, the item is automatically removed.',
+                  description: 'Limit how many times an item can be claimed. Example: "Only the first 100 claims available." When the limit is reached, the item is automatically removed.',
                   gradient: 'from-[#0A2540] via-[#1F3A5F] to-[#2563EB]',
                 },
                 {

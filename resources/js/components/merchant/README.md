@@ -9,7 +9,7 @@ merchant/
 ├── components/
 │   ├── PointsDisplay.tsx      # Displays points balance with icon
 │   ├── OfferCard.tsx          # Card component for merchant offers
-│   ├── QRCodeDisplay.tsx      # QR code display for redemption
+│   ├── QRCodeDisplay.tsx      # QR code display for verifying claims
 │   ├── MerchantHeader.tsx     # Reusable header component
 │   ├── AnalyticsChart.tsx     # Chart component for analytics
 │   └── index.ts               # Barrel export file
@@ -17,7 +17,7 @@ merchant/
     ├── Welcome.tsx            # Welcome screen with points balance
     ├── Hub.tsx                # Merchant Hub - offers listing
     ├── OfferDetail.tsx        # Product/offer detail page
-    ├── RedemptionConfirmed.tsx # Redemption confirmation screen
+    ├── RedemptionConfirmed.tsx # Offer claim confirmation screen
     ├── QRCode.tsx             # QR code display page
     └── Dashboard.tsx         # Merchant dashboard with analytics
 ```
@@ -80,7 +80,7 @@ Chart component for displaying analytics data.
 ## 📄 Pages
 
 ### Welcome.tsx
-Welcome screen showing user's points balance with "Earn Points" and "Redeem Points" action buttons.
+Welcome screen showing user's points balance with "Earn Points" and "Merchant Hub" action buttons (reward offers — distinct from adding Believe Points).
 
 **Route:** `/merchant/welcome`
 
@@ -96,18 +96,18 @@ Merchant Hub listing all available offers with search and filter functionality.
 - Click to view details
 
 ### OfferDetail.tsx
-Product/offer detail page with pricing options and redemption rules.
+Product/offer detail page with pricing options and claim rules.
 
 **Route:** `/merchant/offers/:id`
 
 **Features:**
 - Product image and details
 - Points-only or Points + Cash options
-- Redemption rules display
-- Redeem button
+- Claim rules display
+- Claim offer button
 
 ### RedemptionConfirmed.tsx
-Confirmation screen after successful redemption.
+Confirmation screen after a successful offer claim.
 
 **Route:** `/merchant/redemption-confirmed`
 
@@ -133,28 +133,28 @@ Merchant dashboard with analytics and overview.
 
 **Features:**
 - Active offers count
-- Total redemptions
-- Weekly points redemptions chart
-- Recent redemptions list
-- Total rewards redeemed chart
+- Total claims
+- Weekly reward points chart
+- Recent claims list
+- Reward points spent on offers chart
 
 ## 🎯 Key Concepts
 
 ### BelieveM Points
-- Points used to redeem merchant offers
+- Reward points used to claim merchant offers
 - Cannot be cashed out
 - Cannot be transferred between supporters
 - Appear in Merchant Hub
 
-### Offer Redemption Flow
+### Merchant hub claim flow
 1. User browses Merchant Hub
 2. Selects an offer
 3. Views offer details
 4. Selects pricing option (points or points + cash)
-5. Confirms redemption
+5. Confirms claim
 6. Receives QR code
 7. Merchant scans QR code
-8. Redemption completed
+8. Claim completed at pickup or verification
 
 ## 🚀 Integration Notes
 

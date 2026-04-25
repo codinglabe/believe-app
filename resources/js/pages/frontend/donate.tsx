@@ -906,7 +906,7 @@ export default function DonatePage({
                     <span className="h-10 w-10 rounded-lg bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center shrink-0">
                       <Coins className="h-5 w-5 text-white" />
                     </span>
-                    <span className="font-semibold">Purchase Believe Points</span>
+                    <span className="font-semibold">Add Believe Points</span>
                   </span>
                   <ChevronRight className="h-5 w-5 text-slate-600/50 shrink-0 dark:text-white/70" />
                 </Link>

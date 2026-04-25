@@ -208,7 +208,7 @@ class HubController extends Controller
         if (! $userModel) {
             return response()->json([
                 'success' => false,
-                'error' => 'You must be logged in to redeem offers.',
+                'error' => 'You must be logged in to claim merchant offers.',
             ], 401);
         }
 
@@ -550,7 +550,7 @@ class HubController extends Controller
             Log::error('Offer redemption success handler error: '.$e->getMessage());
 
             return redirect()->route('hub.index')
-                ->with('error', 'An error occurred while processing your redemption. Please contact support.');
+                ->with('error', 'Something went wrong completing your claim. Please contact support.');
         }
     }
 }

@@ -118,7 +118,7 @@ export default function OfferDetail({ offerId, offer: initialOffer, redemptionEl
     merchantName: 'Retail Store',
     merchantId: '1',
     category: 'Gift Cards',
-    description: 'Redeem points for a $50 gift card',
+    description: 'Use reward points toward a $50 gift card',
     fullDescription: 'Get a $50 gift card that can be used at any of our retail locations. This gift card never expires and can be used for any purchase. Perfect for gifting or treating yourself!',
     terms: 'Gift card is valid for 12 months from date of redemption. Cannot be exchanged for cash. Terms and conditions apply.',
     validUntil: '2024-12-31',
@@ -394,12 +394,12 @@ export default function OfferDetail({ offerId, offer: initialOffer, redemptionEl
                     <div className="flex items-center gap-4 text-sm text-muted-foreground pt-4 border-t">
                       <div className="flex items-center gap-2">
                         <ShoppingBag className="h-4 w-4" />
-                        <span>{offer.redemptionCount} redemptions</span>
+                        <span>{offer.redemptionCount} claims</span>
                       </div>
                     </div>
                   )}
 
-                  {/* Redeem: points and/or pay with cash (amounts shown in calculation card above) */}
+                  {/* Claim offer: points and/or pay with cash (amounts shown in calculation card above) */}
                   {((offer.referencePrice != null && offer.referencePrice > 0) || (offer.communityCashPrice != null && offer.communityCashPrice > 0)) ? (
                     <div className="space-y-3">
                       {offer.pickupAvailable && (
@@ -449,7 +449,7 @@ export default function OfferDetail({ offerId, offer: initialOffer, redemptionEl
                       ) : (
                         <>
                           <Gift className="h-5 w-5 mr-2" />
-                          Redeem Offer
+                          Claim offer
                         </>
                       )}
                     </Button>
@@ -470,7 +470,7 @@ export default function OfferDetail({ offerId, offer: initialOffer, redemptionEl
                       <Link href="/login" className="text-blue-600 dark:text-blue-400 hover:underline">
                         Sign in
                       </Link>
-                      {' '}to redeem this offer
+                      {' '}to claim this offer
                     </p>
                   )}
                   
@@ -567,8 +567,8 @@ export default function OfferDetail({ offerId, offer: initialOffer, redemptionEl
                   >
                     <CheckCircle2 className="w-10 h-10 text-green-500" />
                   </motion.div>
-                  <h2 className="text-2xl font-bold text-white mb-2">Redemption Successful!</h2>
-                  <p className="text-green-50">Your offer has been redeemed</p>
+                  <h2 className="text-2xl font-bold text-white mb-2">Claim confirmed</h2>
+                  <p className="text-green-50">You&apos;ve claimed this offer</p>
                 </div>
 
                 {/* Content */}
