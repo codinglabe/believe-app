@@ -517,6 +517,7 @@ class UserProfileController extends Controller
                 fn (int $id) => $id > 0
             )));
             $user->supporterInterestCategories()->sync($ids);
+            app(\App\Services\CauseGroupChatService::class)->ensureForUserAndCategoryIds($user, $ids);
         }
 
         return back()->with('success', 'Profile updated successfully!');

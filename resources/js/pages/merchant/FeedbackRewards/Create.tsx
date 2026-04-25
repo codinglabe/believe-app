@@ -11,25 +11,49 @@ import { ArrowLeft, ArrowRight, Plus, Trash2, Rocket, Check, Users, AlertCircle 
 import { motion, AnimatePresence } from 'framer-motion'
 import { showSuccessToast, showErrorToast } from '@/lib/toast'
 
-interface CampaignType { value: string; label: string; default_reward: number; est_time: string }
+interface CampaignType {
+  value: string
+  label: string
+  default_reward: number
+  est_time: string
+  per_response_bp_display: number
+}
+interface LiveCalculation {
+  per_response_bp_display: number
+  max_responses: number
+  reward_matches_type_default: boolean
+  custom_max_responses: number
+  budget_usd: number
+  platform_fee_usd: number
+  processing_fee_usd: number
+  total_usd: number
+  sufficient_brp: boolean
+}
 interface Props {
   wallet: { balance_brp: number; available_brp: number }
   campaignTypes: CampaignType[]
+  liveCalculation?: LiveCalculation | null
 }
 
 const STEPS = ['Setup', 'Questions', 'Audience', 'Review & Launch']
 
-export default function CreateCampaign({ wallet, campaignTypes }: Props) {
+function formatDisplayBp(n: number): string {
+  return `${n.toFixed(2)} BP`
+}
+
+export default function CreateCampaign({ wallet, campaignTypes, liveCalculation = null }: Props) {
   const { props } = usePage<{ success?: string; error?: string }>()
   const [step, setStep] = useState(0)
   const [submitting, setSubmitting] = useState(false)
+  const [feePreviewLoading, setFeePreviewLoading] = useState(false)
 
   // Form state
   const [form, setForm] = useState({
     title: '',
     type: 'short_feedback',
     reward_per_response_brp: 10,
-    total_budget_brp: 10000,
+    // Whole BP: 1 BP = $1.00. Stored for the API as US cents (×100) on submit.
+    total_budget_brp: '50',
     question_text: '',
     question_type: 'multiple_choice' as 'yes_no' | 'true_false' | 'multiple_choice',
     options: ['', ''] as string[],
@@ -47,12 +71,45 @@ export default function CreateCampaign({ wallet, campaignTypes }: Props) {
 
   const setField = (key: string, val: any) => setForm((f) => ({ ...f, [key]: val }))
 
-  // Live calculations
+  const parsedBudget = Number.parseInt(String(form.total_budget_brp || ''), 10)
+  const budget = Number.isFinite(parsedBudget) ? parsedBudget : 0
+
   const reward = form.reward_per_response_brp || 0
-  const budget = form.total_budget_brp || 0
-  const maxResponses = reward > 0 ? Math.floor(budget / reward) : 0
   const selectedType = campaignTypes.find((t) => t.value === form.type)
-  const insufficientBalance = wallet.available_brp < budget
+  const live = liveCalculation && budget > 0 ? liveCalculation : null
+  const maxResponses = live
+    ? live.custom_max_responses
+    : (reward > 0 ? Math.floor((budget * 100) / reward) : 0)
+  const modelSupportersForSelectedType = live ? live.max_responses : 0
+  const rewardMatchesTypeDefault = live
+    ? live.reward_matches_type_default
+    : Boolean(selectedType && reward === selectedType.default_reward)
+  const insufficientBalance = live ? !live.sufficient_brp : wallet.available_brp < budget
+  const budgetHintUsd = live ? live.budget_usd : budget
+  // Donation page pattern: server fee + live calc via Inertia partial reload.
+  useEffect(() => {
+    if (budget <= 0) return
+    const t = window.setTimeout(() => {
+      router.get(
+        '/feedback-rewards/create',
+        {
+          fee_preview_budget_bp: budget,
+          fee_preview_type: form.type,
+          fee_preview_reward_brp: form.reward_per_response_brp,
+        },
+        {
+          preserveState: true,
+          preserveScroll: true,
+          replace: true,
+          only: ['liveCalculation'],
+          onStart: () => setFeePreviewLoading(true),
+          onFinish: () => setFeePreviewLoading(false),
+        },
+      )
+    }, 350)
+
+    return () => window.clearTimeout(t)
+  }, [budget, form.type, form.reward_per_response_brp])
 
   const addOption = () => { if (form.options.length < 6) setField('options', [...form.options, '']) }
   const removeOption = (i: number) => { if (form.options.length > 2) setField('options', form.options.filter((_, idx) => idx !== i)) }
@@ -63,7 +120,7 @@ export default function CreateCampaign({ wallet, campaignTypes }: Props) {
     if (s === 0) {
       if (!form.title.trim()) e.title = 'Campaign title is required'
       if (!form.reward_per_response_brp || form.reward_per_response_brp < 1) e.reward = 'Reward must be at least 1 BP'
-      if (!form.total_budget_brp || form.total_budget_brp < form.reward_per_response_brp) e.budget = 'Budget must be ≥ reward per response'
+      if (!budget || budget * 100 < reward) e.budget = 'Budget in BP (1 BP = $1) must cover the per-response cost'
     }
     if (s === 1) {
       if (!form.question_text.trim()) e.question_text = 'Question is required'
@@ -83,7 +140,7 @@ export default function CreateCampaign({ wallet, campaignTypes }: Props) {
       title: form.title,
       type: form.type,
       reward_per_response_brp: form.reward_per_response_brp,
-      total_budget_brp: form.total_budget_brp,
+      total_budget_brp: budget * 100,
       question_text: form.question_text,
       question_type: form.question_type,
       options: form.options,
@@ -150,16 +207,18 @@ export default function CreateCampaign({ wallet, campaignTypes }: Props) {
                             <button key={ct.value} type="button" onClick={() => { setField('type', ct.value); setField('reward_per_response_brp', ct.default_reward) }}
                               className={`p-3 rounded-xl border text-left transition-all ${form.type === ct.value ? 'border-[#2563EB] bg-[#2563EB]/10' : 'border-gray-700/60 bg-gray-900/40 hover:border-gray-600'}`}>
                               <p className="text-xs font-semibold text-white">{ct.label}</p>
-                              <p className="text-xs text-[#2563EB] font-bold">{ct.default_reward} BP</p>
+                              <p className="text-xs text-[#2563EB] font-bold">{formatDisplayBp(ct.per_response_bp_display)}</p>
                               <p className="text-xs text-gray-500">{ct.est_time}</p>
                             </button>
                           ))}
                         </div>
                       </div>
                       <div>
-                        <MerchantLabel>Reward Per Response (BP)</MerchantLabel>
+                        <MerchantLabel>Reward per response</MerchantLabel>
                         <MerchantInput type="number" min={1} value={form.reward_per_response_brp} onChange={(e) => setField('reward_per_response_brp', Number(e.target.value))} className={`mt-1 ${errors.reward ? 'border-red-500' : ''}`} />
-                        <p className="text-xs text-gray-500 mt-1">= ${(reward * 0.01).toFixed(2)} value</p>
+                        <p className="text-xs text-gray-500 mt-1">
+                          Default for this type: {selectedType ? formatDisplayBp(selectedType.per_response_bp_display) : '—'}. Budget above is in whole BP (1 BP = $1.00).
+                        </p>
                         {errors.reward && <p className="text-xs text-red-400 mt-1">{errors.reward}</p>}
                       </div>
                       <div>
@@ -171,7 +230,7 @@ export default function CreateCampaign({ wallet, campaignTypes }: Props) {
 
                   {/* Right: Budget & Responses */}
                   <div className="space-y-4">
-                    <MerchantCard className="shadow-xl">
+                    <MerchantCard className="shadow-xl relative">
                       <MerchantCardHeader>
                         <MerchantCardTitle className="text-white">Budget & Responses</MerchantCardTitle>
                       </MerchantCardHeader>
@@ -179,18 +238,29 @@ export default function CreateCampaign({ wallet, campaignTypes }: Props) {
                         <div>
                           <MerchantLabel>Total Budget</MerchantLabel>
                           <div className="flex gap-2 mt-1">
-                            <MerchantInput type="number" min={1} value={form.total_budget_brp} onChange={(e) => setField('total_budget_brp', Number(e.target.value))} className={errors.budget ? 'border-red-500' : ''} />
-                            <div className="px-3 py-2 rounded-lg bg-gray-900/50 border border-gray-700/50 text-gray-400 text-sm whitespace-nowrap">BRP</div>
+                            <MerchantInput
+                              type="number"
+                              min={1}
+                              value={form.total_budget_brp}
+                              onChange={(e) => setField('total_budget_brp', e.target.value)}
+                              className={errors.budget ? 'border-red-500' : ''}
+                            />
+                            <div className="px-3 py-2 rounded-lg bg-gray-900/50 border border-gray-700/50 text-gray-400 text-sm whitespace-nowrap">BP</div>
                           </div>
-                          <p className="text-xs text-gray-500 mt-1">≈ ${(budget * 0.01).toFixed(2)} value</p>
+                          <p className="text-xs text-gray-500 mt-1">1 BP = $1.00 (≈ ${budgetHintUsd.toFixed(2)} in dollars)</p>
                           {errors.budget && <p className="text-xs text-red-400 mt-1">{errors.budget}</p>}
                         </div>
                         <div>
-                          <MerchantLabel>Max Responses (Auto Calculated)</MerchantLabel>
+                          <MerchantLabel>Max Responses (by campaign type &amp; budget)</MerchantLabel>
                           <div className="mt-2 flex items-center justify-center h-20 rounded-xl bg-[#2563EB]/10 border border-[#2563EB]/30">
-                            <span className="text-4xl font-extrabold text-[#2563EB]">{maxResponses.toLocaleString()}</span>
+                            <span className="text-4xl font-extrabold text-[#2563EB]">{modelSupportersForSelectedType.toLocaleString()}</span>
                             <span className="text-sm text-gray-400 ml-2 self-end mb-1">Responses</span>
                           </div>
+                          {!rewardMatchesTypeDefault && (
+                            <p className="text-xs text-amber-400/90 mt-2 text-center">
+                              Reward field differs from this type’s default — capacity if using your value: {maxResponses.toLocaleString()}
+                            </p>
+                          )}
                         </div>
                       </MerchantCardContent>
                     </MerchantCard>
@@ -199,18 +269,40 @@ export default function CreateCampaign({ wallet, campaignTypes }: Props) {
                     <MerchantCard className="shadow-lg border border-[#2563EB]/20">
                       <MerchantCardContent className="p-4 space-y-2">
                         <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Live Calculation</p>
-                        <div className="flex justify-between text-sm"><span className="text-gray-400">✓ Earned per response</span><span className="text-white font-medium">{reward} BP</span></div>
-                        <div className="flex justify-between text-sm"><span className="text-gray-400">✓ Max participants</span><span className="text-white font-medium">{maxResponses.toLocaleString()}</span></div>
-                        <div className="flex justify-between text-sm"><span className="text-gray-400">✓ Total campaign cost</span><span className="text-white font-medium">{budget.toLocaleString()} BRP</span></div>
-                        <div className="flex justify-between text-sm"><span className="text-gray-400">✓ Estimated reach</span><span className="text-emerald-400 font-medium">High engagement</span></div>
-                        {insufficientBalance && budget > 0 && (
-                          <div className="flex items-center gap-2 pt-2 border-t border-gray-800 mt-2">
-                            <AlertCircle className="h-4 w-4 text-amber-400 flex-shrink-0" />
-                            <p className="text-xs text-amber-400">Insufficient BRP. <Link href="/wallet/brp/buy" className="underline">Buy more →</Link></p>
-                          </div>
-                        )}
-                        {!insufficientBalance && budget > 0 && (
-                          <p className="text-xs text-emerald-400 pt-1">✓ You have enough BRP to launch this campaign</p>
+                        {live ? (
+                          <>
+                            <div className="flex justify-between text-sm">
+                              <span className="text-gray-400">✓ Per-response</span>
+                              <span className="text-white font-medium text-right">{formatDisplayBp(live.per_response_bp_display)}</span>
+                            </div>
+                            <div className="flex justify-between text-sm">
+                              <span className="text-gray-400">✓ Max responses</span>
+                              <span className="text-white font-medium text-right">{modelSupportersForSelectedType.toLocaleString()}</span>
+                            </div>
+                            {!rewardMatchesTypeDefault && (
+                              <div className="flex justify-between text-sm">
+                                <span className="text-gray-400">✓ Custom reward field</span>
+                                <span className="text-white font-medium text-right">{maxResponses.toLocaleString()}</span>
+                              </div>
+                            )}
+                            <div className="flex justify-between text-sm"><span className="text-gray-400">✓ Campaign budget (rewards)</span><span className="text-white font-medium">${live.budget_usd.toFixed(2)}</span></div>
+                            <div className="flex justify-between text-sm"><span className="text-gray-400">✓ Platform fee (4.5%)</span><span className="text-white font-medium">${live.platform_fee_usd.toFixed(2)}</span></div>
+                            <div className="flex justify-between text-sm"><span className="text-gray-400">✓ Stripe fee (3.5%)</span><span className="text-white font-medium">${live.processing_fee_usd.toFixed(2)}</span></div>
+                            <div className="flex justify-between text-sm"><span className="text-gray-300 font-semibold">✓ Total charge</span><span className="text-emerald-400 font-semibold">${live.total_usd.toFixed(2)}</span></div>
+                            {insufficientBalance && (
+                              <div className="flex items-center gap-2 pt-2 border-t border-gray-800 mt-2">
+                                <AlertCircle className="h-4 w-4 text-amber-400 flex-shrink-0" />
+                                <p className="text-xs text-amber-400">Not enough BP in your wallet for this budget. <Link href="/wallet/brp/buy" className="underline">Buy BP →</Link></p>
+                              </div>
+                            )}
+                            {!insufficientBalance && (
+                              <p className="text-xs text-emerald-400 pt-1">✓ You have enough BP to reserve this campaign budget</p>
+                            )}
+                          </>
+                        ) : (
+                          <p className="text-sm text-gray-500 py-1">
+                            {budget > 0 ? (feePreviewLoading ? '…' : '—') : 'Set a total budget to calculate fees and limits.'}
+                          </p>
                         )}
                         <p className="text-xs text-gray-600 pt-1 italic">💡 Your budget will be reserved when campaign starts.</p>
                       </MerchantCardContent>
@@ -253,7 +345,7 @@ export default function CreateCampaign({ wallet, campaignTypes }: Props) {
                               <span className="text-xs text-gray-500 w-5">Option {String.fromCharCode(65 + i)}</span>
                               <MerchantInput value={opt} onChange={(e) => updateOption(i, e.target.value)} placeholder={`Option ${String.fromCharCode(65 + i)}`} className="flex-1 text-sm" />
                               {form.options.length > 2 && (
-                                <button type="button" onClick={() => removeOption(i)} className="text-red-400 hover:text-red-300"><Trash2 className="h-4 w-4" /></button>
+                                <button type="button" onClick={() => removeOption(i)} className="text-red-400 hover:text-red-300" aria-label={`Remove option ${String.fromCharCode(65 + i)}`} title={`Remove option ${String.fromCharCode(65 + i)}`}><Trash2 className="h-4 w-4" /></button>
                               )}
                             </div>
                           ))}
@@ -375,8 +467,11 @@ export default function CreateCampaign({ wallet, campaignTypes }: Props) {
                           <Users key={i} className={`h-8 w-8 ${i < 4 ? 'text-[#2563EB]' : 'text-gray-700'}`} />
                         ))}
                       </div>
-                      <p className="text-5xl font-extrabold text-white mb-1">{maxResponses.toLocaleString()}</p>
+                      <p className="text-5xl font-extrabold text-white mb-1">{modelSupportersForSelectedType.toLocaleString()}</p>
                       <p className="text-gray-400 text-sm">Estimated Reach</p>
+                      {!rewardMatchesTypeDefault && (
+                        <p className="text-xs text-amber-400/90 mt-2 text-center">With your custom reward: {maxResponses.toLocaleString()}</p>
+                      )}
                       <p className="text-xs text-gray-600 mt-3 text-center">This is an estimate of how many supporters are likely to see your feedback campaign.</p>
                     </MerchantCardContent>
                   </MerchantCard>
@@ -394,13 +489,21 @@ export default function CreateCampaign({ wallet, campaignTypes }: Props) {
                       {[
                         ['Campaign Title', form.title],
                         ['Type', campaignTypes.find(t => t.value === form.type)?.label || form.type],
-                        ['Reward Per Response', `${reward} BP (= $${(reward * 0.01).toFixed(2)})`],
-                        ['Total Budget', `${budget.toLocaleString()} BRP (= $${(budget * 0.01).toFixed(2)})`],
-                        ['Max Responses', maxResponses.toLocaleString()],
+                        ['Per-response (type)', `${selectedType ? formatDisplayBp(selectedType.per_response_bp_display) : '—'}` + (!rewardMatchesTypeDefault ? ` — custom field ${reward} (units)` : '')],
+                        ['Campaign Budget (Rewards)', `$${(live?.budget_usd ?? budget).toFixed(2)} (= ${budget.toLocaleString()} BP)`],
+                        [
+                          'Max Responses',
+                          rewardMatchesTypeDefault
+                            ? modelSupportersForSelectedType.toLocaleString()
+                            : `${modelSupportersForSelectedType.toLocaleString()} (type) / ${maxResponses.toLocaleString()} (your reward)`,
+                        ],
+                        ['Platform Fee (4.5%)', `$${(live?.platform_fee_usd ?? 0).toFixed(2)}`],
+                        ['Processing Fee (3.5%)', `$${(live?.processing_fee_usd ?? 0).toFixed(2)}`],
+                        ['Total Charge', `$${(live?.total_usd ?? 0).toFixed(2)}`],
                         ['Estimated Time', selectedType?.est_time || '—'],
                         ['Question Type', form.question_type.replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase())],
                         ['Audience', form.target_audience.replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase())],
-                        ['Estimated Reach', maxResponses.toLocaleString() + ' Supporters'],
+                        ['Estimated Reach', modelSupportersForSelectedType.toLocaleString() + ' Supporters' + (!rewardMatchesTypeDefault ? ` (${maxResponses.toLocaleString()} w/ custom reward)` : '')],
                       ].map(([k, v]) => (
                         <div key={k} className="flex justify-between text-sm border-b border-gray-800/50 pb-2 last:border-0 last:pb-0">
                           <span className="text-gray-400">{k}</span>
@@ -413,21 +516,21 @@ export default function CreateCampaign({ wallet, campaignTypes }: Props) {
                   <div className="space-y-4">
                     <MerchantCard className="shadow-xl border border-[#2563EB]/30">
                       <MerchantCardContent className="p-5 space-y-3">
-                        <p className="text-sm font-semibold text-gray-300 uppercase tracking-wide">BRP Wallet</p>
-                        <div className="flex justify-between text-sm"><span className="text-gray-400">Current Balance</span><span className="text-white font-bold">{wallet.balance_brp.toLocaleString()} BRP</span></div>
-                        <div className="flex justify-between text-sm"><span className="text-gray-400">Required for campaign</span><span className="text-amber-400 font-bold">{budget.toLocaleString()} BRP</span></div>
+                        <p className="text-sm font-semibold text-gray-300 uppercase tracking-wide">BP Wallet</p>
+                        <div className="flex justify-between text-sm"><span className="text-gray-400">Current Balance</span><span className="text-white font-bold">{wallet.balance_brp.toLocaleString()} BP</span></div>
+                        <div className="flex justify-between text-sm"><span className="text-gray-400">Required for campaign</span><span className="text-amber-400 font-bold">{budget.toLocaleString()} BP</span></div>
                         <div className="h-px bg-gray-800" />
                         <div className="flex justify-between text-sm"><span className="text-gray-400">After Launch Balance</span>
                           <span className={`font-bold ${wallet.balance_brp - budget >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                            {(wallet.balance_brp - budget).toLocaleString()} BRP
+                            {(wallet.balance_brp - budget).toLocaleString()} BP
                           </span>
                         </div>
                         {!insufficientBalance ? (
-                          <p className="text-xs text-emerald-400 flex items-center gap-1"><Check className="h-3.5 w-3.5" />You have enough BRP to launch this campaign</p>
+                          <p className="text-xs text-emerald-400 flex items-center gap-1"><Check className="h-3.5 w-3.5" />You have enough BP to launch this campaign</p>
                         ) : (
                           <div className="flex items-center gap-2">
                             <AlertCircle className="h-4 w-4 text-amber-400 flex-shrink-0" />
-                            <p className="text-xs text-amber-400">Not enough BRP. <Link href="/wallet/brp/buy" className="underline">Buy BRP →</Link></p>
+                            <p className="text-xs text-amber-400">Not enough BP. <Link href="/wallet/brp/buy" className="underline">Buy BP →</Link></p>
                           </div>
                         )}
                       </MerchantCardContent>
@@ -443,7 +546,7 @@ export default function CreateCampaign({ wallet, campaignTypes }: Props) {
                     </MerchantButton>
                     {insufficientBalance && (
                       <Link href="/wallet/brp/buy">
-                        <MerchantButton variant="outline" className="w-full border-[#2563EB] text-[#2563EB]">Buy BRP First</MerchantButton>
+                        <MerchantButton variant="outline" className="w-full border-[#2563EB] text-[#2563EB]">Buy BP First</MerchantButton>
                       </Link>
                     )}
                   </div>

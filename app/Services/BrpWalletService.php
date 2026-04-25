@@ -93,6 +93,7 @@ class BrpWalletService
             // Debit merchant reserved → spent
             $merchantWallet = $this->getOrCreateMerchantWallet($merchantId);
             $merchantWallet->decrement('reserved_brp', $amountBrp);
+            // `spent_brp` sums the same cent integers as `reward_per_response` (3 = $0.03); show sent BP/USD in UI as spent/100
             $merchantWallet->increment('spent_brp', $amountBrp);
 
             MerchantBrpTransaction::create([

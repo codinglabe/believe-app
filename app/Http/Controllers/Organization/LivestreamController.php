@@ -37,12 +37,14 @@ class LivestreamController extends Controller
         $hasYoutubeIntegrated = $orgTokens
             && (!empty($orgTokens->youtube_access_token) || !empty($orgTokens->youtube_refresh_token));
 
-        return Inertia::render('organization/Livestreams/Create', [
+        return Inertia::render('Organization/Livestreams/Create', [
             'organization' => [
                 'id' => $organization->id,
                 'name' => $organization->name,
                 'slug' => Str::slug($organization->name),
             ],
+            // Force a canonical organization display name for the UI.
+            'defaultDisplayName' => $organization->name,
             'hasYoutubeIntegrated' => $hasYoutubeIntegrated,
         ]);
     }
@@ -60,6 +62,9 @@ class LivestreamController extends Controller
             'auto_create_youtube' => 'nullable|boolean',
             'display_name' => 'nullable|string|max:255',
             'is_public' => 'nullable|boolean',
+            'require_passcode' => 'nullable|boolean',
+            'passcode' => 'nullable|string|min:6|max:100',
+            'record_meeting' => 'nullable|boolean',
         ]);
 
         $user = Auth::user();
@@ -71,7 +76,10 @@ class LivestreamController extends Controller
 
         // Generate room name and password
         $roomName = OrganizationLivestream::generateRoomName($organization);
-        $password = OrganizationLivestream::generatePassword();
+        $requirePasscode = $request->boolean('require_passcode', true);
+        $password = $requirePasscode
+            ? (string) ($request->input('passcode') ?: OrganizationLivestream::generatePassword())
+            : '';
 
         // Encrypt password
         $encryptedPassword = Crypt::encryptString($password);
@@ -125,9 +133,10 @@ class LivestreamController extends Controller
         }
 
         $baseSettings = $settings ?? [];
-        if ($request->filled('display_name')) {
-            $baseSettings['display_name'] = $request->display_name;
-        }
+        // Organization meetings always use the organization name as display name (not the auth user's name).
+        $baseSettings['display_name'] = (string) $organization->name;
+        $baseSettings['record_meeting'] = $request->boolean('record_meeting', true);
+        $baseSettings['require_passcode'] = $requirePasscode;
 
         $livestream = OrganizationLivestream::create([
             'organization_id' => $organization->id,
@@ -172,7 +181,7 @@ class LivestreamController extends Controller
         $password = $livestream->getDecryptedPassword();
         $joinUrl = url('/livestreams/join/' . $livestream->room_name);
 
-        return Inertia::render('organization/Livestreams/Ready', [
+        return Inertia::render('Organization/Livestreams/Ready', [
             'livestream' => [
                 'id' => $livestream->id,
                 'title' => $livestream->title,
@@ -239,7 +248,7 @@ class LivestreamController extends Controller
         $unityLiveUrl = url('/unity-live/' . $livestream->room_name);
         $liveViewerUrl = url('/live/' . $livestream->room_name);
 
-        return Inertia::render('organization/Livestreams/Show', [
+        return Inertia::render('Organization/Livestreams/Show', [
             'livestream' => [
                 'id' => $livestream->id,
                 'title' => $livestream->title,
@@ -377,7 +386,7 @@ class LivestreamController extends Controller
         $livestream = $invite->organizationLivestream;
 
         if (! in_array($livestream->status, ['draft', 'scheduled', 'meeting_live', 'live'], true)) {
-            return Inertia::render('organization/Livestreams/GuestJoinExpired', [
+            return Inertia::render('Organization/Livestreams/GuestJoinExpired', [
                 'title' => $livestream->title,
                 'organizationName' => $livestream->organization?->name,
             ]);
@@ -386,7 +395,7 @@ class LivestreamController extends Controller
         $participantUrl = $livestream->getParticipantUrl();
         $hasPasscode = ! empty($livestream->getDecryptedPassword());
 
-        return Inertia::render('organization/Livestreams/GuestJoinByToken', [
+        return Inertia::render('Organization/Livestreams/GuestJoinByToken', [
             'livestream' => [
                 'id' => $livestream->id,
                 'title' => $livestream->title,
@@ -783,7 +792,7 @@ class LivestreamController extends Controller
                 ];
             });
 
-        return Inertia::render('organization/Livestreams/Index', [
+        return Inertia::render('Organization/Livestreams/Index', [
             'livestreams' => $livestreams,
             'organization' => [
                 'id' => $organization->id,

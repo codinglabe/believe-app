@@ -273,7 +273,7 @@ export default function SupporterMeetJoin({
     <UnityMeetLayout>
       <PageHead
         title="Join a meeting"
-        description="Enter the meeting ID and passcode to join a Unity Meet"
+        description="Enter the meeting ID. If the host set a passcode, enter it to join."
       />
       <Head title="Join a meeting" />
       <div className="min-h-screen bg-background">
@@ -319,7 +319,7 @@ export default function SupporterMeetJoin({
                 Meeting ID & passcode
               </CardTitle>
               <CardDescription>
-                Ask the host for the meeting ID (e.g. sup_abc12345) and passcode to join.
+                Ask the host for the meeting ID. Passcode is only needed if the host enabled it.
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -338,7 +338,7 @@ export default function SupporterMeetJoin({
                   <Input
                     id="meeting-id"
                     type="text"
-                    placeholder="e.g. sup_abc12345"
+                    placeholder="e.g. uni-john-smith-50"
                     value={meetingId}
                     onChange={(e) => setMeetingId(e.target.value)}
                     className="bg-muted/50 border-border font-mono"
@@ -349,12 +349,12 @@ export default function SupporterMeetJoin({
                 <div className="space-y-2">
                   <Label htmlFor="passcode">
                     <KeyRound className="inline h-4 w-4 mr-1.5 -mt-0.5" />
-                    Passcode
+                    Passcode (optional)
                   </Label>
                   <Input
                     id="passcode"
                     type="password"
-                    placeholder="Enter passcode"
+                    placeholder="Enter passcode if required"
                     value={passcode}
                     onChange={(e) => setPasscode(e.target.value)}
                     className="bg-muted/50 border-border"
@@ -364,7 +364,7 @@ export default function SupporterMeetJoin({
                 <Button
                   type="submit"
                   className="w-full h-11 text-white"
-                  disabled={!meetingId.trim() || !passcode || isSubmitting}
+                  disabled={!meetingId.trim() || isSubmitting}
                   style={{
                     background: `linear-gradient(135deg, ${BRAND.from}, ${BRAND.to})`,
                   }}

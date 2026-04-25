@@ -3,10 +3,12 @@
 namespace App\Http\Controllers;
 
 use App\Models\OrganizationLivestream;
+use App\Models\Organization;
 use App\Models\UserLivestream;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Crypt;
+use Illuminate\Support\Str;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -15,6 +17,16 @@ use Inertia\Response;
  */
 class SupporterLivestreamController extends Controller
 {
+    private function getUnityMeetingId(Request $request): string
+    {
+        $user = $request->user();
+        $slugPart = trim((string) ($user->slug ?? ''));
+        if ($slugPart === '') {
+            $slugPart = Str::slug((string) $user->name) ?: 'supporter';
+        }
+        return 'uni-'.$slugPart.'-'.$user->id;
+    }
+
     public function index(Request $request): Response
     {
         $livestreams = UserLivestream::where('user_id', $request->user()->id)
@@ -43,8 +55,11 @@ class SupporterLivestreamController extends Controller
     public function create(Request $request): Response
     {
         $user = $request->user();
+        $organization = $user->organization ?? Organization::where('user_id', $user->id)->first();
+        $defaultDisplayName = $organization?->name ?: ($user->name ?? '');
         return Inertia::render('frontend/livestreams/Create', [
-            'authUserDisplayName' => $user->name ?? '',
+            'authUserDisplayName' => $defaultDisplayName,
+            'unityMeetingId' => $this->getUnityMeetingId($request),
         ]);
     }
 
@@ -54,11 +69,17 @@ class SupporterLivestreamController extends Controller
             'title' => 'nullable|string|max:255',
             'display_name' => 'nullable|string|max:255',
             'is_public' => 'nullable|boolean',
+            'require_passcode' => 'nullable|boolean',
+            'passcode' => 'nullable|string|min:6|max:100',
+            'record_meeting' => 'nullable|boolean',
         ]);
 
         $user = $request->user();
-        $roomName = UserLivestream::generateRoomName();
-        $password = UserLivestream::generatePassword();
+        $roomName = $this->getUnityMeetingId($request);
+        $requirePasscode = $request->boolean('require_passcode', true);
+        $password = $requirePasscode
+            ? (string) ($request->input('passcode') ?: UserLivestream::generatePassword())
+            : '';
         $encryptedPassword = Crypt::encryptString($password);
 
         $displayName = $request->filled('display_name') ? $request->display_name : ($user->name ?? null);
@@ -66,16 +87,22 @@ class SupporterLivestreamController extends Controller
         if ($displayName !== null && $displayName !== '') {
             $settings['display_name'] = $displayName;
         }
+        $settings['record_meeting'] = $request->boolean('record_meeting', true);
+        $settings['require_passcode'] = $requirePasscode;
 
-        $livestream = UserLivestream::create([
+        // Meeting ID is fixed per supporter. Reuse the same draft record instead of creating duplicates.
+        $livestream = UserLivestream::firstOrNew([
             'user_id' => $user->id,
             'room_name' => $roomName,
+        ]);
+        $livestream->fill([
             'room_password' => $encryptedPassword,
             'status' => 'draft',
             'is_public' => $request->boolean('is_public', true),
             'title' => $request->title,
             'settings' => $settings ?: null,
         ]);
+        $livestream->save();
 
         return redirect()->route('livestreams.supporter.ready', $livestream->id)
             ->with('success', 'Meeting ready!');
@@ -102,11 +129,11 @@ class SupporterLivestreamController extends Controller
     {
         $request->validate([
             'meeting_id' => 'required|string|max:100',
-            'passcode' => 'required|string|max:100',
+            'passcode' => 'nullable|string|max:100',
         ]);
 
         $roomName = trim($request->input('meeting_id'));
-        $passcode = $request->input('passcode');
+        $passcode = (string) $request->input('passcode', '');
 
         $orgStream = OrganizationLivestream::where('room_name', $roomName)
             ->whereIn('status', ['draft', 'scheduled', 'meeting_live', 'live', 'ended'])
@@ -115,7 +142,7 @@ class SupporterLivestreamController extends Controller
 
         if ($orgStream) {
             $password = $orgStream->getDecryptedPassword();
-            if ($password !== $passcode) {
+            if ($password !== '' && $password !== $passcode) {
                 return redirect()->route('livestreams.supporter.join')
                     ->withInput($request->only('meeting_id'))
                     ->withErrors(['passcode' => 'Invalid meeting ID or passcode.']);
@@ -145,7 +172,7 @@ class SupporterLivestreamController extends Controller
 
         if ($userStream) {
             $password = $userStream->getDecryptedPassword();
-            if ($password !== $passcode) {
+            if ($password !== '' && $password !== $passcode) {
                 return redirect()->route('livestreams.supporter.join')
                     ->withInput($request->only('meeting_id'))
                     ->withErrors(['passcode' => 'Invalid meeting ID or passcode.']);

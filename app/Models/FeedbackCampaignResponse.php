@@ -19,6 +19,17 @@ class FeedbackCampaignResponse extends Model
         'reward_brp' => 'integer',
     ];
 
+    /** @var list<string> */
+    protected $appends = [
+        'reward_bp_display',
+    ];
+
+    /** US cents → BP display (0.03 / …); 1 BP = $1.00 */
+    public function getRewardBpDisplayAttribute(): float
+    {
+        return round($this->reward_brp / 100, 2);
+    }
+
     public function supporter(): BelongsTo
     {
         return $this->belongsTo(User::class, 'supporter_id');

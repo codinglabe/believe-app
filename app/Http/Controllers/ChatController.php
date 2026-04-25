@@ -12,7 +12,9 @@ use App\Jobs\SendChatMessageNotification;
 use App\Models\ChatMessage;
 use App\Models\ChatRoom;
 use App\Models\ChatTopic;
+use App\Models\PrimaryActionCategory;
 use App\Models\User;
+use App\Services\CauseGroupChatService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -21,11 +23,28 @@ use Inertia\Inertia;
 
 class ChatController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
         $user = auth()->user();
 
-        // Get user's interested topic IDs
+        // For every visit: materialize and join all cause group chats the user has on their profile,
+        // so the Groups list can show every selected cause, not a single room.
+        $pacKey = (new PrimaryActionCategory)->getQualifiedKeyName();
+        $myPacIds = $user->supporterInterestCategories()->pluck($pacKey)->all();
+        if (! empty($myPacIds)) {
+            app(CauseGroupChatService::class)->ensureForUserAndCategoryIds($user, $myPacIds);
+        }
+
+        // `?cause=` is only used to join/ensure a group; do not keep it in the URL — that flag turns on
+        // single-cause (pac) UI and hides every other group. After joining, use the "all my causes" view.
+        $cause = (int) $request->query('cause', 0);
+        if ($cause > 0) {
+            app(CauseGroupChatService::class)->ensureForUserAndPrimaryActionCategory($user, $cause);
+
+            return redirect('/chat');
+        }
+
+        // Get user's interested topic IDs (after possible attachment above)
         $interestedTopicIds = $user->interestedTopics()->pluck('chat_topics.id')->toArray();
 
         // Get chat rooms the user is a member of
@@ -87,6 +106,7 @@ class ChatController extends Controller
                         'id' => $topic->id,
                         'name' => $topic->name,
                         'description' => $topic->description,
+                        'primary_action_category_id' => $topic->primary_action_category_id,
                     ];
                 }),
             ];
@@ -102,6 +122,7 @@ class ChatController extends Controller
                 'id' => $topic->id,
                 'name' => $topic->name,
                 'description' => $topic->description,
+                'primary_action_category_id' => $topic->primary_action_category_id,
             ];
         });
 
@@ -122,6 +143,8 @@ class ChatController extends Controller
                 ];
             });
 
+        $user->loadMissing('supporterInterestCategories');
+
         $currentUser = [
             'id' => $user->id,
             'name' => $user->name,
@@ -136,13 +159,32 @@ class ChatController extends Controller
                     'description' => $topic->description,
                 ];
             }),
+            'myCauseCategoryIds' => $user->supporterInterestCategories
+                ? $user->supporterInterestCategories->pluck('id')->map(fn ($id) => (int) $id)->values()->all()
+                : [],
         ];
+
+        // Default (no query string): for supporters with profile causes, same view as the old
+        // `?my_causes=1` without exposing that in the URL. Use `?all_groups=1` to list every group.
+        $myCauseCategoryIds = $currentUser['myCauseCategoryIds'] ?? [];
+        $wantsAllGroups = in_array((string) $request->query('all_groups'), ['1', 'true', 'yes'], true);
+        $wantsMyCauses = in_array((string) $request->query('my_causes'), ['1', 'true', 'yes'], true);
+
+        $chatCauseFilter = null;
+        if (! $wantsAllGroups) {
+            if (count($myCauseCategoryIds) > 0) {
+                $chatCauseFilter = ['mode' => 'my'];
+            } elseif ($wantsMyCauses) {
+                $chatCauseFilter = ['mode' => 'my'];
+            }
+        }
 
         return Inertia::render('chat/index', [
             'chatRooms' => $chatRooms,
             'allUsers' => $allUsers,
             'allTopics' => $allTopics,
             'currentUser' => $currentUser,
+            'chatCauseFilter' => $chatCauseFilter,
         ]);
     }
 
@@ -382,6 +424,7 @@ class ChatController extends Controller
                     'id' => $topic->id,
                     'name' => $topic->name,
                     'description' => $topic->description,
+                    'primary_action_category_id' => $topic->primary_action_category_id,
                 ];
             })
         ]);
@@ -428,6 +471,7 @@ class ChatController extends Controller
                     'id' => $topic->id,
                     'name' => $topic->name,
                     'description' => $topic->description,
+                    'primary_action_category_id' => $topic->primary_action_category_id,
                 ];
             })->values()->all(),
         ];

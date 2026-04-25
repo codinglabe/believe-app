@@ -345,17 +345,21 @@ export default function ExploreByCause({
                     toast.error(flash.error);
                     return;
                 }
-                router.reload({ only: ['myCauses'] });
+                router.reload({ preserveScroll: true });
             },
             onError: () => toast.error('Could not update your causes.'),
         });
     };
 
+    // Logged-in users with profile causes: dropdown lists only those (not every PAC).
+    const selectCauseOptions: InterestCategory[] =
+        auth?.user && myCauses.length > 0 ? myCauses : categories;
+
     const tabs: { key: TabType; label: string; count: number; icon: React.ReactNode }[] = [
         { key: 'all', label: 'All', count: organizations.length + events.length + courses.length + volunteers.length, icon: null },
         { key: 'organizations', label: 'Organizations', count: organizations.length, icon: <Building2 className="w-3.5 h-3.5" /> },
         { key: 'events', label: 'Events', count: events.length, icon: <Calendar className="w-3.5 h-3.5" /> },
-        { key: 'courses', label: 'Courses', count: courses.length, icon: <BookOpen className="w-3.5 h-3.5" /> },
+        { key: 'courses', label: 'Connection Hub', count: courses.length, icon: <BookOpen className="w-3.5 h-3.5" /> },
         { key: 'volunteers', label: 'Volunteers', count: volunteers.length, icon: <HandHeart className="w-3.5 h-3.5" /> },
     ];
 
@@ -391,7 +395,7 @@ export default function ExploreByCause({
                                         <SelectValue placeholder="Choose a cause…" />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        {categories.map(cat => (
+                                        {selectCauseOptions.map(cat => (
                                             <SelectItem key={cat.slug} value={cat.slug}>
                                                 {cat.name}
                                             </SelectItem>
@@ -442,10 +446,10 @@ export default function ExploreByCause({
                                         Donate
                                     </Button>
                                 </Link>
-                                <Link href="/groups">
+                                <Link href="/chat">
                                     <Button size="sm" className="bg-blue-600 hover:bg-blue-700 text-white border-0">
                                         <Users className="w-3.5 h-3.5 mr-1" />
-                                        Join Group
+                                        Go To Groups
                                     </Button>
                                 </Link>
                                 <Link href="/volunteer-opportunities">
@@ -516,7 +520,7 @@ export default function ExploreByCause({
                                         Nothing yet for {selectedCategory?.name}
                                     </h3>
                                     <p className="text-sm text-gray-500 dark:text-gray-400">
-                                        Be the first to add organizations, events, or volunteer opportunities for this cause.
+                                        Be the first to add organizations, events, Connection Hub offerings, or volunteer opportunities for this cause.
                                     </p>
                                 </div>
                             )}
@@ -565,14 +569,14 @@ export default function ExploreByCause({
                                 </section>
                             )}
 
-                            {/* Courses */}
+                            {/* Connection Hub (course listings) */}
                             {(activeTab === 'all' || activeTab === 'courses') && courses.length > 0 && (
                                 <section className="mb-6">
                                     {activeTab === 'all' && (
                                         <div className="flex items-center justify-between mb-3">
                                             <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
                                                 <BookOpen className="w-4 h-4 text-green-500" />
-                                                Courses
+                                                Connection Hub
                                             </h2>
                                             <button onClick={() => handleTabChange('courses')} className="text-xs text-blue-500 hover:underline flex items-center gap-1">
                                                 View all <ArrowRight className="w-3 h-3" />
@@ -698,7 +702,7 @@ export default function ExploreByCause({
                                                 <CheckCircle2 className="w-4 h-4 text-green-500 shrink-0" />
                                                 <span>
                                                     <strong className="text-gray-900 dark:text-white">{impactCounts.courses}</strong>
-                                                    <span className="text-gray-500 dark:text-gray-400"> Courses available</span>
+                                                    <span className="text-gray-500 dark:text-gray-400"> in Connection Hub</span>
                                                 </span>
                                             </div>
                                             <div className="flex items-center gap-2 text-sm">
@@ -721,9 +725,9 @@ export default function ExploreByCause({
                                                     <HandHeart className="w-4 h-4 mr-2" /> Volunteer
                                                 </Button>
                                             </Link>
-                                            <Link href="/groups">
+                                            <Link href="/chat">
                                                 <Button className="w-full bg-green-600 hover:bg-green-700 text-white border-0">
-                                                    <Users className="w-4 h-4 mr-2" /> Join Group
+                                                    <Users className="w-4 h-4 mr-2" /> Go To Groups
                                                 </Button>
                                             </Link>
                                         </div>

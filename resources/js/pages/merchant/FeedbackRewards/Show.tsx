@@ -16,10 +16,14 @@ interface Campaign {
   max_responses: number; responses_count: number
   status: string; created_at: string
   questions: any[]
+  reward_bp_display: number
+  total_budget_bp_display: number
+  spent_budget_bp_display: number
+  remaining_budget_bp_display: number
 }
 interface Response {
   id: number; supporter: { id: number; name: string; email: string }
-  reward_brp: number; status: string; created_at: string
+  reward_brp: number; reward_bp_display: number; status: string; created_at: string
 }
 interface Props { campaign: Campaign; insights: Insight[]; recentResponses: Response[] }
 
@@ -140,7 +144,7 @@ export default function ShowCampaign({ campaign, insights, recentResponses }: Pr
                     </MerchantButton>
                     <MerchantButton variant="outline" size="sm"
                       className="border-red-500/40 text-red-400 hover:bg-red-500/10"
-                      onClick={() => { if (confirm('End campaign? Unused BRP will be released.')) router.post(`/feedback-rewards/${campaign.id}/end`) }}>
+                      onClick={() => { if (confirm('End campaign? Unused BP will be released.')) router.post(`/feedback-rewards/${campaign.id}/end`) }}>
                       <StopCircle className="h-4 w-4 mr-1" />End
                     </MerchantButton>
                   </>
@@ -206,7 +210,7 @@ export default function ShowCampaign({ campaign, insights, recentResponses }: Pr
                             <tr key={resp.id} className="hover:bg-white/[0.02]">
                               <td className="px-5 py-3 text-sm text-gray-400">{new Date(resp.created_at).toLocaleDateString()}</td>
                               <td className="px-5 py-3 text-sm text-white">{resp.supporter?.name || 'Anonymous'}</td>
-                              <td className="px-5 py-3 text-sm text-emerald-400 font-semibold">+{resp.reward_brp} BP</td>
+                              <td className="px-5 py-3 text-sm text-emerald-400 font-semibold">+{resp.reward_bp_display.toFixed(2)} BP</td>
                               <td className="px-5 py-3"><span className="px-2 py-0.5 rounded-full text-xs bg-emerald-500/15 text-emerald-300">{resp.status}</span></td>
                             </tr>
                           ))}
@@ -226,9 +230,9 @@ export default function ShowCampaign({ campaign, insights, recentResponses }: Pr
                       <div className="flex justify-between text-xs text-gray-500 mb-1"><span>Completion</span><span>{completionRate}%</span></div>
                       <div className="w-full h-2 rounded-full bg-gray-800"><motion.div initial={{ width: 0 }} animate={{ width: `${completionRate}%` }} transition={{ duration: 0.8 }} className="h-full rounded-full bg-gradient-to-r from-[#2563EB] to-emerald-500" /></div>
                     </div>
-                    <div className="flex justify-between text-sm"><span className="text-gray-400">BRP Spent</span><span className="text-white font-bold">{campaign.spent_budget_brp.toLocaleString()}</span></div>
-                    <div className="flex justify-between text-sm"><span className="text-gray-400">Remaining</span><span className="text-emerald-400 font-bold">{campaign.remaining_budget_brp.toLocaleString()}</span></div>
-                    <div className="flex justify-between text-sm"><span className="text-gray-400">Reward/Response</span><span className="text-white font-bold">{campaign.reward_per_response_brp} BP</span></div>
+                    <div className="flex justify-between text-sm"><span className="text-gray-400">BP Spent</span><span className="text-white font-bold">{campaign.spent_budget_bp_display.toFixed(2)}</span></div>
+                    <div className="flex justify-between text-sm"><span className="text-gray-400">Remaining</span><span className="text-emerald-400 font-bold">{campaign.remaining_budget_bp_display.toFixed(2)}</span></div>
+                    <div className="flex justify-between text-sm"><span className="text-gray-400">Reward/Response</span><span className="text-white font-bold">{campaign.reward_bp_display.toFixed(2)} BP</span></div>
                     <div className="flex justify-between text-sm"><span className="text-gray-400">Status</span>
                       <span className={`px-2 py-0.5 rounded-full text-xs ${statusColors[campaign.status] || ''}`}>{campaign.status}</span>
                     </div>
