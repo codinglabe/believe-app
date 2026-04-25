@@ -1155,6 +1155,28 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|care_alli
         Route::patch('/listing/{organization_product}', [MarketplaceProductPoolController::class, 'updateListing'])->name('listing.update');
     });
 
+    // Organization Feedback & Rewards
+    Route::prefix('organization/feedback-rewards')
+        ->name('org.feedback-rewards.')
+        ->group(function () {
+            Route::get('/', [\App\Http\Controllers\Organization\OrganizationFeedbackRewardsController::class, 'index'])->name('index');
+            Route::get('/create', [\App\Http\Controllers\Organization\OrganizationFeedbackRewardsController::class, 'create'])->name('create');
+            Route::post('/', [\App\Http\Controllers\Organization\OrganizationFeedbackRewardsController::class, 'store'])->name('store');
+            Route::get('/{campaign}', [\App\Http\Controllers\Organization\OrganizationFeedbackRewardsController::class, 'show'])->name('show');
+            Route::post('/{campaign}/launch', [\App\Http\Controllers\Organization\OrganizationFeedbackRewardsController::class, 'launch'])->name('launch');
+            Route::post('/{campaign}/end', [\App\Http\Controllers\Organization\OrganizationFeedbackRewardsController::class, 'end'])->name('end');
+        });
+
+    // Organization BRP Wallet
+    Route::prefix('organization/wallet/brp')
+        ->name('org.wallet.brp.')
+        ->group(function () {
+            Route::get('/', [\App\Http\Controllers\Organization\OrganizationBrpWalletController::class, 'index'])->name('index');
+            Route::get('/buy', [\App\Http\Controllers\Organization\OrganizationBrpWalletController::class, 'buyForm'])->name('buy');
+            Route::post('/purchase', [\App\Http\Controllers\Organization\OrganizationBrpWalletController::class, 'purchase'])->name('purchase');
+            Route::get('/success', [\App\Http\Controllers\Organization\OrganizationBrpWalletController::class, 'purchaseSuccess'])->name('purchase.success');
+        });
+
     // old Facebook Integration Routes
     // Route::prefix('facebook')->group(function () {
     //     // Connection Management

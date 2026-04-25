@@ -13,6 +13,7 @@ class FeedbackCampaign extends Model
     protected $fillable = [
         'uuid',
         'merchant_id',
+        'organization_id',
         'title',
         'type',
         'reward_per_response_brp',
@@ -83,6 +84,11 @@ class FeedbackCampaign extends Model
     public function merchant(): BelongsTo
     {
         return $this->belongsTo(Merchant::class);
+    }
+
+    public function organization(): BelongsTo
+    {
+        return $this->belongsTo(Organization::class);
     }
 
     public function questions(): HasMany
