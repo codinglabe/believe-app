@@ -15,7 +15,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 
 const breadcrumbs: BreadcrumbItem[] = [
     { title: 'Dashboard', href: '/dashboard' },
-    { title: 'Volunteers', href: '/volunteers' },
+    { title: 'Approved Volunteers', href: '/volunteers' },
     { title: 'Time Sheet', href: '/volunteers/timesheet' },
     { title: 'View Entry', href: '#' },
 ];

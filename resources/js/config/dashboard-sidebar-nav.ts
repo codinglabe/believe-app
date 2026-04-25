@@ -456,7 +456,7 @@ export const dashboardSidebarNavItems: (NavItem | NavGroup)[] = [
                 icon: UserCheck,
                 items: [
                     {
-                        title: 'Volunteers',
+                        title: 'Approved Volunteers',
                         href: '/volunteers',
                         icon: UserCheck,
                         permission: 'volunteer.read',
