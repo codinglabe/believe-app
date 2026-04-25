@@ -419,6 +419,19 @@ export const dashboardSidebarNavItems: (NavItem | NavGroup)[] = [
                 role: 'organization',
             },
             {
+                title: 'Feedback & Rewards',
+                href: '/organization/feedback-rewards',
+                icon: MessageSquare,
+                role: 'organization',
+            },
+            {
+                title: 'BRP Wallet',
+                href: '/organization/wallet/brp',
+                icon: Wallet,
+                role: 'organization',
+            },
+
+            {
                 title: 'Chat',
                 icon: MessageCircle,
                 items: [
@@ -445,6 +458,7 @@ export const dashboardSidebarNavItems: (NavItem | NavGroup)[] = [
             },
         ],
     },
+
 
     {
         title: 'Opportunities',
