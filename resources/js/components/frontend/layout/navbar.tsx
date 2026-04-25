@@ -774,7 +774,24 @@ export default function Navbar() {
                                   </DropdownMenu>
                                 )}
                           </>
-                      ) : null}
+                      ) : (
+                          /* Guest CTAs in the bar from tablet up; hidden on mobile so the header stays compact and actions live in the menu sheet */
+                          <div className="hidden min-w-0 shrink-0 items-center gap-1 md:flex md:gap-2">
+                              <Link href={route('login')} className="min-w-0">
+                                  <Button variant="ghost" size="sm" className="h-9 shrink-0 px-2 sm:px-3">
+                                      Sign In
+                                  </Button>
+                              </Link>
+                              <Link href={route('register')} className="min-w-0">
+                                  <Button
+                                      size="sm"
+                                      className="h-9 shrink-0 bg-gradient-to-r from-blue-600 to-purple-600 px-2.5 hover:from-blue-700 hover:to-purple-700 sm:px-3"
+                                  >
+                                      Get Started
+                                  </Button>
+                              </Link>
+                          </div>
+                      )}
                       <Button
                           variant="ghost"
                           size="sm"
