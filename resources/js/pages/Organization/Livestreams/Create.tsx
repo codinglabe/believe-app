@@ -20,15 +20,21 @@ interface Organization {
 
 interface Props {
   organization: Organization
+  defaultDisplayName?: string
 }
 
-export default function CreateLivestream({ organization }: Props) {
+export default function CreateLivestream({ organization, defaultDisplayName }: Props) {
   const { data, setData, post, processing, errors } = useForm({
     title: "",
     description: "",
     scheduled_at: "",
     youtube_stream_key: "",
     auto_create_youtube: false,
+    display_name: defaultDisplayName ?? organization.name,
+    is_public: true,
+    require_passcode: true,
+    passcode: "",
+    record_meeting: true,
   })
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -63,6 +69,22 @@ export default function CreateLivestream({ organization }: Props) {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
+              <div>
+                <Label htmlFor="display_name">Your display name</Label>
+                <Input
+                  id="display_name"
+                  value={data.display_name}
+                  readOnly
+                  placeholder="Host name"
+                  className="mt-1"
+                />
+                <p className="text-sm text-gray-400 mt-1">
+                  This will be shown as the organization name.
+                </p>
+                {errors.display_name && (
+                  <p className="text-red-500 text-sm mt-1">{errors.display_name}</p>
+                )}
+              </div>
               <div>
                 <Label htmlFor="title">Title (Optional)</Label>
                 <Input
@@ -107,6 +129,69 @@ export default function CreateLivestream({ organization }: Props) {
                 <p className="text-sm text-gray-400 mt-1">
                   Leave empty to create a draft stream
                 </p>
+              </div>
+              <div className="rounded-lg border border-border p-4 space-y-3">
+                <div className="flex items-center justify-between gap-4">
+                  <div className="flex-1">
+                    <Label htmlFor="require_passcode" className="font-semibold cursor-pointer">
+                      Passcode
+                    </Label>
+                    <p className="text-sm text-gray-400">
+                      Require a passcode to join
+                    </p>
+                  </div>
+                  <Switch
+                    id="require_passcode"
+                    checked={data.require_passcode}
+                    onCheckedChange={(checked) => setData("require_passcode", checked)}
+                  />
+                </div>
+                {data.require_passcode && (
+                  <div>
+                    <Input
+                      value={data.passcode}
+                      onChange={(e) => setData("passcode", e.target.value)}
+                      placeholder="Enter a passcode"
+                      className="mt-1"
+                    />
+                    {errors.passcode && (
+                      <p className="text-red-500 text-sm mt-1">{errors.passcode}</p>
+                    )}
+                    <p className="text-sm text-gray-400 mt-1">
+                      Passcode must be at least 6 characters.
+                    </p>
+                  </div>
+                )}
+              </div>
+              <div className="flex items-center justify-between gap-4 rounded-lg border border-border p-4">
+                <div className="flex-1">
+                  <Label htmlFor="record_meeting" className="font-semibold cursor-pointer">
+                    Recorded meeting
+                  </Label>
+                  <p className="text-sm text-gray-400">
+                    Yes, record this meeting
+                  </p>
+                </div>
+                <Switch
+                  id="record_meeting"
+                  checked={data.record_meeting}
+                  onCheckedChange={(checked) => setData("record_meeting", checked)}
+                />
+              </div>
+              <div className="flex items-center justify-between gap-4 rounded-lg border border-border p-4">
+                <div className="flex-1">
+                  <Label htmlFor="is_public" className="font-semibold cursor-pointer">
+                    Public meeting
+                  </Label>
+                  <p className="text-sm text-gray-400">
+                    When live, show on Unity Live page. Off = private (only people with your viewer link can watch).
+                  </p>
+                </div>
+                <Switch
+                  id="is_public"
+                  checked={data.is_public}
+                  onCheckedChange={(checked) => setData("is_public", checked)}
+                />
               </div>
             </CardContent>
           </Card>
@@ -188,20 +273,21 @@ export default function CreateLivestream({ organization }: Props) {
             </CardContent>
           </Card>
 
-          <div className="flex gap-4">
-            <Button
-              type="submit"
-              disabled={processing}
-              className="bg-gradient-to-r from-[#FF1493] to-[#DC143C] hover:from-[#FF1493]/90 hover:to-[#DC143C]/90"
-            >
-              {processing ? "Creating..." : "Create Livestream"}
-            </Button>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <Button
               type="button"
               variant="outline"
               onClick={() => router.visit("/livestreams")}
+              className="sm:order-1"
             >
               Cancel
+            </Button>
+            <Button
+              type="submit"
+              disabled={processing}
+              className="bg-gradient-to-r from-[#FF1493] to-[#DC143C] hover:from-[#FF1493]/90 hover:to-[#DC143C]/90 sm:order-2"
+            >
+              {processing ? "Creating..." : "Create Livestream"}
             </Button>
           </div>
         </form>

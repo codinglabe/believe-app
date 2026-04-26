@@ -47,6 +47,8 @@ class SupporterFeedbackController extends Controller
                 'type' => $campaign->type,
                 'reward_per_response_brp' => $campaign->reward_per_response_brp,
                 'reward_dollars' => FeedbackCampaign::brpToDollars($campaign->reward_per_response_brp),
+                // Display BP (0.03 / 0.10 / …) — stored amount is US cents; 1 BP = $1.00
+                'reward_bp_display' => round($campaign->reward_per_response_brp / 100, 2),
                 'estimated_time' => FeedbackCampaign::estimatedTimeForType($campaign->type),
                 'merchant_name' => $campaign->merchant->business_name ?? $campaign->merchant->name,
                 'questions' => $campaign->questions->map(function ($q) {
@@ -89,8 +91,10 @@ class SupporterFeedbackController extends Controller
         try {
             $this->campaignService->submitResponse($campaign, $user->id, $validated['answers']);
 
+            $earnedUsd = FeedbackCampaign::brpToDollars($campaign->reward_per_response_brp);
+
             return redirect()->back()
-                ->with('success', "Thank you! You earned {$campaign->reward_per_response_brp} BP.");
+                ->with('success', 'Thank you! You earned $'.number_format($earnedUsd, 2).' to your wallet.');
         } catch (\Exception $e) {
             Log::error('Feedback submission error: ' . $e->getMessage());
 

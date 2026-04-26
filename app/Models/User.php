@@ -844,6 +844,19 @@ class User extends Authenticatable implements MustVerifyEmail
     }
 
     /**
+     * Job positions (volunteer role types) this supporter saved on /volunteer-opportunities.
+     */
+    public function volunteerPreferredJobPositions(): BelongsToMany
+    {
+        return $this->belongsToMany(
+            JobPosition::class,
+            'user_volunteer_job_positions',
+            'user_id',
+            'job_position_id'
+        )->withTimestamps();
+    }
+
+    /**
      * Get the gigs created by this user
      */
     public function gigs(): HasMany

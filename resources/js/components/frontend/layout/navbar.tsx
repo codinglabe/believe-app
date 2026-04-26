@@ -46,6 +46,7 @@ import {
   Globe,
   Heart,
   TrendingUp,
+  Briefcase,
   Monitor,
   Compass,
   Ticket,
@@ -102,7 +103,12 @@ interface SharedData extends Record<string, unknown> {
   }
 }
 
-type LandingNavItem = { name: string; href: string; icon: React.ComponentType<{ className?: string }> }
+type LandingNavItem = {
+  name: string
+  href?: string
+  icon: React.ComponentType<{ className?: string }>
+  children?: LandingNavItem[]
+}
 
 function LandingNavDropdown({ label, items }: { label: string; items: LandingNavItem[] }) {
   if (items.length === 0) return null
@@ -118,14 +124,35 @@ function LandingNavDropdown({ label, items }: { label: string; items: LandingNav
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="max-h-[min(70vh,28rem)] w-[min(100vw-2rem,18rem)] overflow-y-auto sm:w-56">
-        {items.map((item) => (
-          <DropdownMenuItem key={item.name} asChild>
-            <Link href={item.href} className="flex cursor-pointer items-center">
-              <item.icon className="mr-2 h-4 w-4 shrink-0" />
-              <span>{item.name}</span>
-            </Link>
-          </DropdownMenuItem>
-        ))}
+        {items.map((item) => {
+          if (item.children?.length) {
+            return (
+              <div key={item.name}>
+                <div className="text-muted-foreground flex items-center px-2 py-1.5 text-xs font-semibold uppercase tracking-wide">
+                  <item.icon className="mr-2 h-4 w-4 shrink-0" />
+                  <span>{item.name}</span>
+                </div>
+                {item.children.map((child) => (
+                  <DropdownMenuItem key={`${item.name}-${child.name}`} asChild>
+                    <Link href={child.href ?? "#"} className="flex cursor-pointer items-center pl-6">
+                      <child.icon className="mr-2 h-4 w-4 shrink-0" />
+                      <span>{child.name}</span>
+                    </Link>
+                  </DropdownMenuItem>
+                ))}
+              </div>
+            )
+          }
+
+          return (
+            <DropdownMenuItem key={item.name} asChild>
+              <Link href={item.href ?? "#"} className="flex cursor-pointer items-center">
+                <item.icon className="mr-2 h-4 w-4 shrink-0" />
+                <span>{item.name}</span>
+              </Link>
+            </DropdownMenuItem>
+          )
+        })}
       </DropdownMenuContent>
     </DropdownMenu>
   )
@@ -192,13 +219,20 @@ export default function Navbar() {
     { name: "Campaigns", href: route("fundme.index"), icon: Heart },
     { name: "Events", href: route("alleventsPage"), icon: Calendar },
     { name: "Volunteers", href: route("volunteer-opportunities.index"), icon: HeartHandshake },
-    { name: "Courses", href: route("course.index"), icon: GraduationCap },
+    { name: "Service Hub", href: route("service-hub.index"), icon: Handshake },
+    {
+      name: "Connection Hub",
+      icon: Link2,
+      children: [
+        { name: "Companion", href: `${route("course.index")}?type=companion`, icon: GraduationCap },
+        { name: "Learning", href: `${route("course.index")}?type=learning`, icon: GraduationCap },
+        { name: "Events", href: `${route("course.index")}?type=events`, icon: Calendar },
+        { name: "Earning", href: `${route("course.index")}?type=earning`, icon: TrendingUp },
+      ],
+    },
     ...(isLoggedIn ? [{ name: "Challenge Hub", href: route("challenge-hub.index"), icon: Trophy }] : []),
     ...(isLoggedIn ? [{ name: "Supporters", href: route("find-supporters.index"), icon: UserPlus }] : []),
     ...(isLoggedIn ? [{ name: "Groups", href: route("groups"), icon: Users }] : []),
-    ...(isLoggedIn && !showOrgOnlyNav
-      ? [{ name: "Raffles", href: route("frontend.raffles.index"), icon: Ticket }]
-      : []),
   ]
 
   const communityNavItems: LandingNavItem[] = [
@@ -223,6 +257,10 @@ export default function Navbar() {
   const earnSaveNavItems: LandingNavItem[] = [
     { name: "Marketplace", href: route("marketplace.index"), icon: Store },
     { name: "Merchant Deals", href: route("merchant-hub.index"), icon: ShoppingBag },
+    ...(showOrgOnlyNav ? [{ name: "Add Jobs", href: route("job-posts.create"), icon: Briefcase }] : []),
+    ...(isLoggedIn && !showOrgOnlyNav
+      ? [{ name: "Raffles", href: route("frontend.raffles.index"), icon: Ticket }]
+      : []),
     ...(isLoggedIn ? [{ name: "Feedback Campaigns", href: route("feedback-campaigns.index"), icon: MessageSquare }] : []),
     ...(isLoggedIn ? [{ name: "Add Points", href: route("believe-points.index"), icon: Coins }] : []),
     ...(showOrgOnlyNav
@@ -774,7 +812,24 @@ export default function Navbar() {
                                   </DropdownMenu>
                                 )}
                           </>
-                      ) : null}
+                      ) : (
+                          /* Guest CTAs in the bar from tablet up; hidden on mobile so the header stays compact and actions live in the menu sheet */
+                          <div className="hidden min-w-0 shrink-0 items-center gap-1 md:flex md:gap-2">
+                              <Link href={route('login')} className="min-w-0">
+                                  <Button variant="ghost" size="sm" className="h-9 shrink-0 px-2 sm:px-3">
+                                      Sign In
+                                  </Button>
+                              </Link>
+                              <Link href={route('register')} className="min-w-0">
+                                  <Button
+                                      size="sm"
+                                      className="h-9 shrink-0 bg-gradient-to-r from-blue-600 to-purple-600 px-2.5 hover:from-blue-700 hover:to-purple-700 sm:px-3"
+                                  >
+                                      Get Started
+                                  </Button>
+                              </Link>
+                          </div>
+                      )}
                       <Button
                           variant="ghost"
                           size="sm"
@@ -830,17 +885,41 @@ export default function Navbar() {
 
                               <div className="border-t px-3 py-2">
                                   <p className="text-muted-foreground mb-2 text-xs font-semibold tracking-wider uppercase">Explore</p>
-                                  {exploreNavItems.map((item) => (
-                                      <Link
-                                          key={item.name}
-                                          href={item.href}
-                                          className="text-foreground hover:bg-accent flex cursor-pointer items-center rounded-md px-3 py-2 text-base font-medium"
-                                          onClick={() => setIsOpen(false)}
-                                      >
-                                          <item.icon className="mr-2 h-4 w-4 shrink-0" />
-                                          {item.name}
-                                      </Link>
-                                  ))}
+                                  {exploreNavItems.map((item) => {
+                                      if (item.children?.length) {
+                                          return (
+                                              <div key={item.name}>
+                                                  <div className="text-muted-foreground flex items-center rounded-md px-3 py-2 text-sm font-semibold uppercase tracking-wide">
+                                                      <item.icon className="mr-2 h-4 w-4 shrink-0" />
+                                                      {item.name}
+                                                  </div>
+                                                  {item.children.map((child) => (
+                                                      <Link
+                                                          key={`${item.name}-${child.name}`}
+                                                          href={child.href ?? "#"}
+                                                          className="text-foreground hover:bg-accent ml-4 flex cursor-pointer items-center rounded-md px-3 py-2 text-base font-medium"
+                                                          onClick={() => setIsOpen(false)}
+                                                      >
+                                                          <child.icon className="mr-2 h-4 w-4 shrink-0" />
+                                                          {child.name}
+                                                      </Link>
+                                                  ))}
+                                              </div>
+                                          )
+                                      }
+
+                                      return (
+                                          <Link
+                                              key={item.name}
+                                              href={item.href ?? "#"}
+                                              className="text-foreground hover:bg-accent flex cursor-pointer items-center rounded-md px-3 py-2 text-base font-medium"
+                                              onClick={() => setIsOpen(false)}
+                                          >
+                                              <item.icon className="mr-2 h-4 w-4 shrink-0" />
+                                              {item.name}
+                                          </Link>
+                                      )
+                                  })}
                               </div>
 
                               <div className="border-t px-3 py-2">

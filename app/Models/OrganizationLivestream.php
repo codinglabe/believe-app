@@ -158,20 +158,22 @@ class OrganizationLivestream extends Model
         $this->loadMissing('organization');
         $settings = $this->settings ?? [];
         $displayName = $settings['display_name'] ?? null;
+        $recordEnabled = (bool) ($settings['record_meeting'] ?? true);
         $orgName = $displayName ?: ($this->organization?->name ?? 'Host');
         $label = rawurlencode($orgName);
         $password = $this->getDecryptedPassword();
         $room = rawurlencode($this->getVdoRoomName());
         $pass = rawurlencode((string) $password);
+        $passwordParam = $pass !== '' ? '&password=' . $pass : '';
 
         $layouts = $this->getVdoGridLayouts();
         $layoutsParam = '&slotmode&layouts=' . rawurlencode(json_encode($layouts));
         // openscene = allow scene viewers (e.g. Unity Live embed) to receive scene 0. showlabels=1 = names in grid (avatar labels).
         // No &record = no recording from director tab. Do NOT add &autorecordremote (value is bitrate; 0 would enable with 0 kbps and start extra recordings when guests join).
-        $base = "https://vdo.ninja/?director={$room}&password={$pass}&clearstorage&label={$label}&showlabels=1&activespeaker=1&cleandirector&openscene{$layoutsParam}";
+        $base = "https://vdo.ninja/?director={$room}{$passwordParam}&clearstorage&label={$label}&showlabels=1&activespeaker=1&cleandirector&openscene{$layoutsParam}";
 
         // Dropbox: same as host push — ensure folder exists, then add params so Director recordings save in folder (only when $recordToDropbox)
-        if ($recordToDropbox && $this->organization) {
+        if ($recordEnabled && $recordToDropbox && $this->organization) {
             $oauthService = app(\App\Services\DropboxOAuthService::class);
             $dropboxToken = $oauthService->getAccessTokenForOrganization($this->organization);
             if (! empty($dropboxToken)) {
@@ -240,8 +242,9 @@ class OrganizationLivestream extends Model
         $password = $this->getDecryptedPassword();
         $room = rawurlencode($this->getVdoRoomName());
         $pass = rawurlencode((string) $password);
+        $passwordParam = $pass !== '' ? '&password=' . $pass : '';
         $avatarInitialUrl = 'https://ui-avatars.com/api/?name=Guest&size=256&length=1';
-        return "https://vdo.ninja/?room={$room}&password={$pass}&label=&audiodevice=1&norecord&showlabels=1&showall&style=6&avatar=" . rawurlencode($avatarInitialUrl) . '&autostart&noheader';
+        return "https://vdo.ninja/?room={$room}{$passwordParam}&label=&audiodevice=1&norecord&showlabels=1&showall&style=6&avatar=" . rawurlencode($avatarInitialUrl) . '&autostart&noheader';
     }
 
     /**
@@ -354,6 +357,7 @@ class OrganizationLivestream extends Model
         $this->loadMissing('organization');
         $settings = $this->settings ?? [];
         $displayName = $settings['display_name'] ?? null;
+        $recordEnabled = (bool) ($settings['record_meeting'] ?? true);
         $hostName = $displayName ?: ($this->organization?->name ?? 'Host');
         $roomName = $this->getVdoRoomName();
         $room = rawurlencode($roomName);
@@ -370,8 +374,9 @@ class OrganizationLivestream extends Model
             $avatarParam = '&avatar=' . rawurlencode("https://ui-avatars.com/api/?name={$initial}&size=256&length=1");
         }
         // No width/height/framerate — fixed 1920x1080@30 caused "Camera failed to load" on some webcams. quality=0 + bitrate let the camera use supported resolution.
-        $base = "https://vdo.ninja/?room={$room}&push={$push}&label={$label}&record&quality=0&bitrate=6000&audiodevice=1&showlabels=1&showall&style=6{$avatarParam}&autostart&noheader{$passwordParam}";
-        if ($recordToDropbox && $this->organization) {
+        $recordParam = $recordEnabled ? '&record' : '';
+        $base = "https://vdo.ninja/?room={$room}&push={$push}&label={$label}{$recordParam}&quality=0&bitrate=6000&audiodevice=1&showlabels=1&showall&style=6{$avatarParam}&autostart&noheader{$passwordParam}";
+        if ($recordEnabled && $recordToDropbox && $this->organization) {
             $oauthService = app(\App\Services\DropboxOAuthService::class);
             $dropboxToken = $oauthService->getAccessTokenForOrganization($this->organization);
             if (! empty($dropboxToken)) {

@@ -83,10 +83,14 @@ class FeedbackCampaignService
         }
 
         return DB::transaction(function () use ($campaign) {
-            // Reserve BRP from merchant wallet
+            // Campaign budget is stored in US-cent integer (e.g. 5000 = $50.00). Wallet is whole BP: 1 BP = $1.
+            $bpToReserve = intdiv($campaign->total_budget_brp, 100);
+            if ($bpToReserve < 1) {
+                throw new \Exception('Invalid campaign budget for wallet reserve.');
+            }
             $this->walletService->reserveBrp(
                 $campaign->merchant_id,
-                $campaign->total_budget_brp,
+                $bpToReserve,
                 'feedback_campaign',
                 $campaign->id
             );
@@ -116,11 +120,14 @@ class FeedbackCampaignService
             $unusedBrp = $campaign->remaining_budget_brp;
 
             if ($unusedBrp > 0) {
-                $this->walletService->releaseBrp(
-                    $campaign->merchant_id,
-                    $unusedBrp,
-                    $campaign->id
-                );
+                $bpToRelease = intdiv($unusedBrp, 100);
+                if ($bpToRelease > 0) {
+                    $this->walletService->releaseBrp(
+                        $campaign->merchant_id,
+                        $bpToRelease,
+                        $campaign->id
+                    );
+                }
             }
 
             $campaign->update([

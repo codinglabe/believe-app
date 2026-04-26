@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button';
 
 const breadcrumbs: BreadcrumbItem[] = [
     { title: 'Dashboard', href: '/dashboard' },
-    { title: 'Volunteers', href: '/volunteers' },
+    { title: 'Approved Volunteers', href: '/volunteers' },
 ];
 
 interface Volunteer {

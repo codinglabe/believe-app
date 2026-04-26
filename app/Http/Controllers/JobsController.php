@@ -7,6 +7,7 @@ use App\Models\JobPosition;
 use App\Models\JobPost;
 use App\Models\Organization;
 use App\Models\PositionCategory;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 
@@ -96,6 +97,23 @@ class JobsController extends Controller
 
     public function volunteerOpportunities(Request $request)
     {
+        $positionIdsFromRequest = $this->parseVolunteerPositionIdsFromRequest($request);
+
+        /** @var User|null $authUser */
+        $authUser = $request->user();
+        $savedVolunteerPositionIds = [];
+        if ($authUser instanceof User && $authUser->role === 'user') {
+            $savedVolunteerPositionIds = $authUser->volunteerPreferredJobPositions()
+                ->pluck('job_positions.id')
+                ->map(static fn ($id) => (int) $id)
+                ->values()
+                ->all();
+        }
+
+        $positionIds = count($positionIdsFromRequest) > 0
+            ? $positionIdsFromRequest
+            : $savedVolunteerPositionIds;
+
         $jobs = JobPost::query()
             ->with(['organization', 'position'])
             ->where('type', 'volunteer')
@@ -123,6 +141,9 @@ class JobsController extends Controller
             ->when($request->position_id, function ($query, $positionId) {
                 $query->where('position_id', $positionId);
             })
+            ->when(count($positionIds) > 0, function ($query) use ($positionIds) {
+                $query->whereIn('position_id', $positionIds);
+            })
             ->when($request->organization_id, function ($query, $organizationId) {
                 $query->where('organization_id', $organizationId);
             })
@@ -147,31 +168,191 @@ class JobsController extends Controller
                 ->toArray();
         }
 
-        $organizations = Organization::orderBy('name')
-            ->pluck('name', 'id')
-            ->toArray();
+        $labelIds = array_values(array_unique(array_filter(array_merge(
+            $positionIds,
+            $request->position_id ? [(int) $request->position_id] : [],
+        ))));
 
-        $volunteerInterestStatement = null;
-        if ($request->user() && $request->user()->role === 'user') {
-            $volunteerInterestStatement = $request->user()->volunteer_interest_statement;
+        $positionLabels = [];
+        if (count($labelIds) > 0) {
+            $positionLabels = JobPosition::query()
+                ->whereIn('id', $labelIds)
+                ->get(['id', 'title'])
+                ->mapWithKeys(static fn (JobPosition $p) => [(string) $p->id => $p->title])
+                ->all();
         }
+
+        // Resolve label for active organization filter (picker loads options via Inertia `organizationPicker`)
+        $organizations = [];
+        if ($request->filled('organization_id')) {
+            $oid = (int) $request->organization_id;
+            if ($oid > 0) {
+                $n = Organization::query()->where('id', $oid)->value('name');
+                if (is_string($n) && $n !== '') {
+                    $organizations[$oid] = $n;
+                }
+            }
+        }
+
+        $positionPicker = null;
+        if ($request->filled('position_picker_page')) {
+            $pp = $request->validate([
+                'position_picker_page' => ['required', 'integer', 'min:1'],
+                'position_picker_q' => ['nullable', 'string', 'max:100'],
+                'position_picker_category_id' => ['nullable', 'exists:position_categories,id'],
+                'position_picker_per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
+            ]);
+            $positionPicker = $this->paginateJobPositionsForPicker(
+                isset($pp['position_picker_category_id']) ? (int) $pp['position_picker_category_id'] : null,
+                trim((string) ($pp['position_picker_q'] ?? '')),
+                (int) $pp['position_picker_page'],
+                (int) ($pp['position_picker_per_page'] ?? 30),
+            );
+        }
+
+        $organizationPicker = null;
+        if ($request->filled('organization_picker_page')) {
+            $op = $request->validate([
+                'organization_picker_page' => ['required', 'integer', 'min:1'],
+                'organization_picker_q' => ['nullable', 'string', 'max:100'],
+                'organization_picker_per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
+            ]);
+            $organizationPicker = $this->paginateVolunteerOrganizationsForPicker(
+                trim((string) ($op['organization_picker_q'] ?? '')),
+                (int) $op['organization_picker_page'],
+                (int) ($op['organization_picker_per_page'] ?? 30),
+            );
+        }
+
+        $filters = $request->only([
+            'search',
+            'location_type',
+            'city',
+            'state',
+            'organization_id',
+            'position_category_id',
+            'position_id',
+        ]);
+        $filters['position_ids'] = array_map(static fn (int $id) => (string) $id, $positionIds);
 
         return Inertia::render('frontend/jobs/volunteer-opportunities', [
             'jobs' => $jobs,
             'organizations' => $organizations,
             'positionCategories' => $positionCategories,
             'positions' => $positions,
-            'volunteerInterestStatement' => $volunteerInterestStatement,
-            'filters' => $request->only([
-                'search',
-                'location_type',
-                'city',
-                'state',
-                'organization_id',
-                'position_category_id',
-                'position_id',
-            ]),
+            'positionLabels' => $positionLabels,
+            'positionPicker' => $positionPicker,
+            'organizationPicker' => $organizationPicker,
+            'filters' => $filters,
         ]);
+    }
+
+    /**
+     * @return list<int>
+     */
+    private function parseVolunteerPositionIdsFromRequest(Request $request): array
+    {
+        $positionIdsRaw = $request->input('position_ids');
+        if (is_array($positionIdsRaw)) {
+            return array_values(array_unique(array_filter(array_map('intval', $positionIdsRaw))));
+        }
+        if (is_string($positionIdsRaw) && trim($positionIdsRaw) !== '') {
+            return array_values(array_unique(array_filter(array_map('intval', explode(',', $positionIdsRaw)))));
+        }
+
+        return [];
+    }
+
+    public function saveVolunteerPreferredPositions(Request $request)
+    {
+        $validated = $request->validate([
+            'position_ids' => ['nullable', 'array'],
+            'position_ids.*' => ['integer', 'exists:job_positions,id'],
+        ]);
+
+        /** @var User $user */
+        $user = $request->user();
+        $ids = array_values(array_unique(array_filter(
+            array_map('intval', $validated['position_ids'] ?? []),
+            static fn (int $id) => $id > 0
+        )));
+
+        $user->volunteerPreferredJobPositions()->sync($ids);
+
+        return back();
+    }
+
+    /**
+     * Paginated job positions for volunteer-opportunities picker (also used by getJobPositions JSON).
+     *
+     * @return array{data: list<array{id: int, title: string}>, current_page: int, last_page: int, per_page: int, total: int, has_more: bool}
+     */
+    private function paginateJobPositionsForPicker(?int $categoryId, string $search, int $page, int $perPage): array
+    {
+        $perPage = min(100, max(5, $perPage));
+        $page = max(1, $page);
+        $search = trim($search);
+
+        $query = JobPosition::query()
+            ->when($categoryId !== null, fn ($q) => $q->where('category_id', $categoryId))
+            ->when($search !== '', function ($q) use ($search) {
+                $escaped = addcslashes($search, '%_\\');
+                $q->where('title', 'like', '%'.$escaped.'%');
+            })
+            ->orderBy('title');
+
+        $paginator = $query->paginate($perPage, ['id', 'title'], 'page', $page);
+
+        $data = collect($paginator->items())
+            ->map(fn (JobPosition $p) => ['id' => (int) $p->id, 'title' => (string) $p->title])
+            ->values()
+            ->all();
+
+        return [
+            'data' => $data,
+            'current_page' => $paginator->currentPage(),
+            'last_page' => $paginator->lastPage(),
+            'per_page' => $paginator->perPage(),
+            'total' => $paginator->total(),
+            'has_more' => $paginator->hasMorePages(),
+        ];
+    }
+
+    /**
+     * @return array{data: list<array{id: int, name: string}>, current_page: int, last_page: int, per_page: int, total: int, has_more: bool}
+     */
+    private function paginateVolunteerOrganizationsForPicker(string $search, int $page, int $perPage): array
+    {
+        $perPage = min(100, max(5, $perPage));
+        $page = max(1, $page);
+        $search = trim($search);
+
+        $query = Organization::query()
+            ->whereHas('jobPosts', function ($q) {
+                $q->where('type', 'volunteer')
+                    ->whereIn('status', ['open', 'filled', 'closed']);
+            })
+            ->when($search !== '', function ($q) use ($search) {
+                $escaped = addcslashes($search, '%_\\');
+                $q->where('name', 'like', '%'.$escaped.'%');
+            })
+            ->orderBy('name');
+
+        $paginator = $query->paginate($perPage, ['id', 'name'], 'page', $page);
+
+        $data = collect($paginator->items())
+            ->map(fn (Organization $o) => ['id' => (int) $o->id, 'name' => (string) $o->name])
+            ->values()
+            ->all();
+
+        return [
+            'data' => $data,
+            'current_page' => $paginator->currentPage(),
+            'last_page' => $paginator->lastPage(),
+            'per_page' => $paginator->perPage(),
+            'total' => $paginator->total(),
+            'has_more' => $paginator->hasMorePages(),
+        ];
     }
 
     public function saveVolunteerInterestStatement(Request $request)
@@ -180,7 +361,9 @@ class JobsController extends Controller
             'volunteer_interest_statement' => ['nullable', 'string', 'max:2000'],
         ]);
 
-        $request->user()->update([
+        /** @var User $user */
+        $user = $request->user();
+        $user->update([
             'volunteer_interest_statement' => $validated['volunteer_interest_statement'] !== ''
                 ? $validated['volunteer_interest_statement']
                 : null,
@@ -191,15 +374,21 @@ class JobsController extends Controller
 
     public function getJobPositions(Request $request)
     {
-        $request->validate([
-            'category_id' => 'required|exists:position_categories,id',
+        $validated = $request->validate([
+            'category_id' => ['nullable', 'exists:position_categories,id'],
+            'q' => ['nullable', 'string', 'max:100'],
+            'page' => ['nullable', 'integer', 'min:1'],
+            'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
         ]);
 
-        $positions = JobPosition::where('category_id', $request->category_id)
-            ->orderBy('title')
-            ->get(['id', 'title']);
+        $perPage = (int) ($validated['per_page'] ?? 30);
+        $page = (int) ($validated['page'] ?? 1);
+        $search = trim((string) ($validated['q'] ?? ''));
+        $categoryId = isset($validated['category_id']) ? (int) $validated['category_id'] : null;
 
-        return response()->json($positions);
+        $payload = $this->paginateJobPositionsForPicker($categoryId, $search, $page, $perPage);
+
+        return response()->json($payload);
     }
 
     public function show($id)

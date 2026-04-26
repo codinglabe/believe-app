@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Organization;
 use App\Models\PrimaryActionCategory;
 use App\Models\User;
+use App\Services\CauseGroupChatService;
 use App\Models\UserFavoriteOrganization;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -19,24 +20,35 @@ class ExploreByCauseController extends Controller
             ->orderBy('sort_order')
             ->get();
 
-        $slug = $request->get('interest', optional($allCategories->first())->slug);
-
-        $selectedCategory = $allCategories->firstWhere('slug', $slug)
-            ?? $allCategories->first();
-
-        // ── User's chosen causes (from profile/edit → Supporters Interest) ─
-        $myCauses = [];
+        // ── User's profile causes (Supporters Interest). When non-empty, the page
+        // and `interest=` query are scoped to these only (dropdown + data).
+        $userMyCauses = collect();
         if (auth()->check()) {
-            $myCauses = auth()->user()
+            $userMyCauses = auth()->user()
                 ->supporterInterestCategories()
-                ->select('primary_action_categories.id', 'primary_action_categories.name', 'primary_action_categories.slug')
-                ->orderBy('sort_order')
-                ->get()
-                ->map(fn ($c) => [
-                    'id' => $c->id,
-                    'name' => $c->name,
-                    'slug' => $c->slug,
-                ]);
+                ->where('primary_action_categories.is_active', true)
+                ->orderBy('primary_action_categories.sort_order')
+                ->get();
+        }
+
+        $myCauses = $userMyCauses
+            ->map(fn ($c) => [
+                'id' => $c->id,
+                'name' => $c->name,
+                'slug' => $c->slug,
+            ])
+            ->values()
+            ->all();
+
+        if ($userMyCauses->isNotEmpty()) {
+            $defaultSlug = $userMyCauses->first()->slug;
+            $requestSlug = $request->get('interest', $defaultSlug);
+            $selectedCategory = $userMyCauses->firstWhere('slug', $requestSlug)
+                ?? $userMyCauses->first();
+        } else {
+            $slug = $request->get('interest', optional($allCategories->first())->slug);
+            $selectedCategory = $allCategories->firstWhere('slug', $slug)
+                ?? $allCategories->first();
         }
 
         // ── Content filtered by selected PAC ─────────────────────────────
@@ -191,6 +203,10 @@ class ExploreByCauseController extends Controller
         }
 
         $user->supporterInterestCategories()->toggle($category->id);
+        $user->load('supporterInterestCategories');
+        if ($user->supporterInterestCategories->pluck('id')->contains((int) $category->id)) {
+            app(CauseGroupChatService::class)->ensureForUserAndPrimaryActionCategory($user, (int) $category->id);
+        }
 
         return back()->with('success', 'Your interest has been updated.');
     }

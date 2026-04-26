@@ -8,6 +8,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
 use Laravel\Cashier\Cashier;
+use Stripe\Exception\InvalidRequestException;
 
 class MerchantSubscriptionController extends Controller
 {
@@ -121,32 +122,7 @@ class MerchantSubscriptionController extends Controller
         $plan = MerchantSubscriptionPlan::findOrFail($plan);
 
         try {
-            // Ensure Stripe price exists, create if not
-            if (! $plan->stripe_price_id) {
-                // Create Stripe product and price using Cashier
-                $stripe = Cashier::stripe();
-
-                if (! $plan->stripe_product_id) {
-                    $product = $stripe->products->create([
-                        'name' => "Merchant: {$plan->name}",
-                        'description' => $plan->description ?? '',
-                    ]);
-                    $plan->stripe_product_id = $product->id;
-                }
-
-                $interval = $plan->frequency === 'yearly' ? 'year' : 'month';
-                $price = $stripe->prices->create([
-                    'product' => $plan->stripe_product_id,
-                    'unit_amount' => (int) ($plan->price * 100),
-                    'currency' => 'usd',
-                    'recurring' => [
-                        'interval' => $interval,
-                    ],
-                ]);
-
-                $plan->stripe_price_id = $price->id;
-                $plan->save();
-            }
+            $this->ensureMerchantPlanHasStripePrice($plan);
 
             // Use Cashier's Stripe client to create checkout session
             $stripe = Cashier::stripe();
@@ -236,7 +212,26 @@ class MerchantSubscriptionController extends Controller
             ]);
 
             // Create checkout session using Cashier's Stripe client
-            $checkoutSession = $stripe->checkout->sessions->create($checkoutSessionData);
+            try {
+                $checkoutSession = $stripe->checkout->sessions->create($checkoutSessionData);
+            } catch (InvalidRequestException $e) {
+                if ($plan->stripe_price_id && str_contains($e->getMessage(), 'No such price')) {
+                    Log::warning('Merchant plan Stripe price not in this Stripe account; recreating catalog', [
+                        'plan_id' => $plan->id,
+                        'stripe_price_id' => $plan->stripe_price_id,
+                    ]);
+                    $plan->update([
+                        'stripe_price_id' => null,
+                        'stripe_product_id' => null,
+                    ]);
+                    $plan->refresh();
+                    $this->ensureMerchantPlanHasStripePrice($plan);
+                    $checkoutSessionData['line_items'][0]['price'] = $plan->stripe_price_id;
+                    $checkoutSession = $stripe->checkout->sessions->create($checkoutSessionData);
+                } else {
+                    throw $e;
+                }
+            }
 
             return Inertia::location($checkoutSession->url);
         } catch (\Exception $e) {
@@ -250,6 +245,39 @@ class MerchantSubscriptionController extends Controller
                 'message' => 'Failed to create checkout session. Please try again.',
             ]);
         }
+    }
+
+    /**
+     * Create Stripe product + recurring price when missing (wrong-env IDs must be cleared first).
+     */
+    private function ensureMerchantPlanHasStripePrice(MerchantSubscriptionPlan $plan): void
+    {
+        if ($plan->stripe_price_id) {
+            return;
+        }
+
+        $stripe = Cashier::stripe();
+
+        if (! $plan->stripe_product_id) {
+            $product = $stripe->products->create([
+                'name' => "Merchant: {$plan->name}",
+                'description' => $plan->description ?? '',
+            ]);
+            $plan->stripe_product_id = $product->id;
+        }
+
+        $interval = $plan->frequency === 'yearly' ? 'year' : 'month';
+        $price = $stripe->prices->create([
+            'product' => $plan->stripe_product_id,
+            'unit_amount' => (int) ($plan->price * 100),
+            'currency' => 'usd',
+            'recurring' => [
+                'interval' => $interval,
+            ],
+        ]);
+
+        $plan->stripe_price_id = $price->id;
+        $plan->save();
     }
 
     /**

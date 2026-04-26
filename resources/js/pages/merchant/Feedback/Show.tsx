@@ -24,6 +24,8 @@ interface Campaign {
   type: string
   reward_per_response_brp: number
   reward_dollars: number
+  /** BP label (0.03 / 0.10 / …) — 1 BP = $1.00; stored `reward_per_response_brp` is US cents */
+  reward_bp_display?: number
   estimated_time: string
   merchant_name: string
   questions: Question[]
@@ -39,6 +41,14 @@ const typeLabels: Record<string, string> = {
   short_feedback: 'Short Feedback',
   standard_survey: 'Standard Survey',
   deep_feedback: 'Deep Feedback',
+}
+
+function formatRewardBp(n: number): string {
+  return `${n.toFixed(2)} BP`
+}
+
+function rewardBpDisplay(c: Campaign): number {
+  return c.reward_bp_display ?? c.reward_per_response_brp / 100
 }
 
 export default function SupporterFeedback({ campaign, alreadyResponded }: Props) {
@@ -98,13 +108,13 @@ export default function SupporterFeedback({ campaign, alreadyResponded }: Props)
                 </h2>
                 <p className="text-gray-400 mb-4">
                   {submitted
-                    ? `You earned ${campaign.reward_per_response_brp} BP ($${campaign.reward_dollars}) for your feedback!`
+                    ? `You earned ${formatRewardBp(rewardBpDisplay(campaign))} ($${campaign.reward_dollars.toFixed(2)}) for your feedback!`
                     : 'You have already submitted your response to this campaign.'
                   }
                 </p>
                 <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-300">
                   <Gift className="h-4 w-4" />
-                  <span className="font-semibold">{campaign.reward_per_response_brp} BP Earned</span>
+                  <span className="font-semibold">{formatRewardBp(rewardBpDisplay(campaign))} earned</span>
                 </div>
               </MerchantCardContent>
             </MerchantCard>
@@ -133,7 +143,7 @@ export default function SupporterFeedback({ campaign, alreadyResponded }: Props)
             <h1 className="text-2xl font-bold text-white mb-1">{campaign.title}</h1>
             <p className="text-gray-400 text-sm mb-1">by {campaign.merchant_name}</p>
             <div className="flex items-center justify-center gap-4 text-sm text-gray-500">
-              <span className="flex items-center gap-1"><Gift className="h-3.5 w-3.5 text-emerald-400" /> Earn {campaign.reward_per_response_brp} BP</span>
+              <span className="flex items-center gap-1"><Gift className="h-3.5 w-3.5 text-emerald-400" /> Earn {formatRewardBp(rewardBpDisplay(campaign))}</span>
               <span className="flex items-center gap-1"><Clock className="h-3.5 w-3.5" /> {campaign.estimated_time}</span>
             </div>
           </div>
@@ -216,7 +226,7 @@ export default function SupporterFeedback({ campaign, alreadyResponded }: Props)
               disabled={processing || !allAnswered}
               className="w-full bg-gradient-to-r from-[#2563EB] to-[#1D4ED8] hover:from-[#FF1FA3] hover:via-[#EC1F4C] hover:to-[#F98461] py-3"
             >
-              {processing ? 'Submitting...' : `Submit & Earn ${campaign.reward_per_response_brp} BP`}
+              {processing ? 'Submitting...' : `Submit & earn ${formatRewardBp(rewardBpDisplay(campaign))}`}
             </MerchantButton>
 
             {!allAnswered && (

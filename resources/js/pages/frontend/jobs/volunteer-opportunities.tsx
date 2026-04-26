@@ -1,17 +1,19 @@
 import FrontendLayout from "@/layouts/frontend/frontend-layout";
-import { Link, router, useForm } from "@inertiajs/react";
+import { Link, router } from "@inertiajs/react";
+import toast from "react-hot-toast";
 import { PageHead } from "@/components/frontend/PageHead";
 import { Button } from "@/components/frontend/ui/button";
 import { Input } from "@/components/frontend/ui/input";
-import { Textarea } from "@/components/frontend/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/frontend/ui/select";
-import { useState, useEffect, useRef } from "react";
-import { HeartHandshake, Search, Loader2, ChevronRight, ChevronLeft, X, Filter, SlidersHorizontal, Building2 } from "lucide-react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { HeartHandshake, Search, Loader2, ChevronRight, ChevronLeft, X, Filter, SlidersHorizontal, Building2, ChevronDown } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { JobStatusBadge, LocationTypeBadge } from "@/components/frontend/jobs/badge";
 import { Badge } from "@/components/frontend/ui/badge";
 import { Label } from "@/components/frontend/ui/label";
-import axios from "axios";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/frontend/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandItem, CommandList } from "@/components/frontend/ui/command";
+import { cn } from "@/lib/utils";
 
 interface JobPost {
   id: number;
@@ -31,6 +33,45 @@ interface JobPost {
     name: string;
   };
   has_applied?: boolean;
+}
+
+type PositionPickerPayload = {
+  data: Array<{ id: number; title: string }>
+  has_more: boolean
+  current_page: number
+}
+
+type PickerBaseParams = {
+  search?: string
+  location_type?: string
+  city?: string
+  state?: string
+  position_category_id?: string
+  organization_id?: string
+  position_id?: string
+  position_ids?: string[]
+  page: number
+}
+
+type OrganizationPickerPayload = {
+  data: Array<{ id: number; name: string }>
+  has_more: boolean
+  current_page: number
+}
+
+/** List filters for volunteer-opportunities; omits `page` when 1 so the URL stays clean. */
+function volunteerOpportunitiesQuery(base: PickerBaseParams): Record<string, string | number | string[] | undefined> {
+  const o: Record<string, string | number | string[] | undefined> = {}
+  if (base.search) o.search = base.search
+  if (base.location_type) o.location_type = base.location_type
+  if (base.city) o.city = base.city
+  if (base.state) o.state = base.state
+  if (base.position_category_id) o.position_category_id = base.position_category_id
+  if (base.organization_id) o.organization_id = base.organization_id
+  if (base.position_id) o.position_id = base.position_id
+  if (base.position_ids && base.position_ids.length > 0) o.position_ids = base.position_ids
+  if (base.page > 1) o.page = base.page
+  return o
 }
 
 interface VolunteerOpportunitiesProps {
@@ -53,6 +94,11 @@ interface VolunteerOpportunitiesProps {
   };
   positionCategories: Record<string, string>;
   positions: Record<string, string>;
+  positionLabels: Record<string, string>;
+  /** Filled on partial visits with `position_picker_page`; the picker uses `onSuccess`, not this prop. */
+  positionPicker?: PositionPickerPayload | null;
+  organizationPicker?: OrganizationPickerPayload | null;
+  /** Resolved name(s) for the active organization filter (e.g. `{ "12": "ACME" }`); options load in the org combobox. */
   organizations: Record<string, string>;
   filters: {
     search?: string;
@@ -62,6 +108,7 @@ interface VolunteerOpportunitiesProps {
     position_category_id?: string;
     organization_id?: string;
     position_id?: string;
+    position_ids?: string[] | string;
   };
   auth?: {
     user: {
@@ -69,18 +116,547 @@ interface VolunteerOpportunitiesProps {
       name?: string;
     };
   };
-  volunteerInterestStatement?: string | null;
 }
 
-export default function VolunteerOpportunities({ jobs, organizations, positionCategories, positions: initialPositions, filters, auth, volunteerInterestStatement }: VolunteerOpportunitiesProps) {
-  const interestForm = useForm({
-    volunteer_interest_statement: volunteerInterestStatement ?? "",
-  });
+function normalizeStringArray(v: unknown): string[] {
+  if (Array.isArray(v)) return v.map(String).filter(Boolean);
+  if (typeof v === "string") {
+    const s = v.trim();
+    if (s === "") return [];
+    // Support either comma-separated or query-array serialization.
+    if (s.includes(",")) return s.split(",").map(x => x.trim()).filter(Boolean);
+    return [s];
+  }
+  return [];
+}
+
+function SearchableOrganizationPicker({
+  id: inputId,
+  label,
+  pickerBase,
+  organizationId,
+  onSelectOrg,
+  labelMap,
+}: {
+  id: string
+  label: string
+  pickerBase: PickerBaseParams
+  organizationId: string
+  onSelectOrg: (organizationId: string, name: string) => void
+  labelMap: Record<string, string>
+}) {
+  const [open, setOpen] = useState(false)
+  const [searchInput, setSearchInput] = useState("")
+  const [debouncedQ, setDebouncedQ] = useState("")
+  const [items, setItems] = useState<Array<{ id: number; name: string }>>([])
+  const [hasMore, setHasMore] = useState(true)
+  const [loading, setLoading] = useState(false)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const listRef = useRef<HTMLDivElement>(null)
+  const lastPageRef = useRef(0)
+  const hasMoreRef = useRef(true)
+  const loadingRef = useRef(false)
+  const loadingMoreRef = useRef(false)
+  const requestIdRef = useRef(0)
+
+  const displayName = organizationId ? labelMap[organizationId] ?? "" : ""
 
   useEffect(() => {
-    interestForm.setData("volunteer_interest_statement", volunteerInterestStatement ?? "");
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- keep form in sync when Inertia reloads page props
-  }, [volunteerInterestStatement]);
+    const t = window.setTimeout(() => setDebouncedQ(searchInput), 300)
+    return () => window.clearTimeout(t)
+  }, [searchInput])
+
+  const visitOrgPicker = useCallback(
+    (mode: "reset" | "append", base: PickerBaseParams) => {
+      if (mode === "reset") {
+        if (loadingRef.current) return
+      } else {
+        if (!hasMoreRef.current || loadingRef.current || loadingMoreRef.current) return
+        if (lastPageRef.current === 0) return
+      }
+
+      const pageToLoad = mode === "reset" ? 1 : lastPageRef.current + 1
+      const rid = ++requestIdRef.current
+      if (mode === "reset") {
+        loadingRef.current = true
+        setLoading(true)
+      } else {
+        loadingMoreRef.current = true
+        setLoadingMore(true)
+      }
+
+      router.get(
+        route("volunteer-opportunities.index"),
+        {
+          ...volunteerOpportunitiesQuery(base),
+          organization_picker_page: String(pageToLoad),
+          organization_picker_q: debouncedQ,
+          organization_picker_per_page: 30,
+        } as Record<string, string | number | string[] | undefined>,
+        {
+          only: ["organizationPicker"],
+          preserveScroll: true,
+          preserveState: true,
+          preserveUrl: true,
+          replace: true,
+          onCancel: () => {
+            if (rid !== requestIdRef.current) return
+            loadingRef.current = false
+            loadingMoreRef.current = false
+            setLoading(false)
+            setLoadingMore(false)
+          },
+          onFinish: () => {
+            if (rid !== requestIdRef.current) return
+            loadingRef.current = false
+            loadingMoreRef.current = false
+            setLoading(false)
+            setLoadingMore(false)
+          },
+          onSuccess: (pageResult) => {
+            if (rid !== requestIdRef.current) return
+            const json = (pageResult.props as { organizationPicker: OrganizationPickerPayload | null })
+              .organizationPicker
+            if (!json) {
+              if (mode === "reset") {
+                setItems([])
+                lastPageRef.current = 0
+                hasMoreRef.current = false
+              }
+              setHasMore(false)
+              return
+            }
+            lastPageRef.current = json.current_page
+            hasMoreRef.current = json.has_more
+            setHasMore(json.has_more)
+            if (mode === "reset") {
+              setItems(json.data)
+            } else {
+              setItems((prev) => {
+                const seen = new Set(prev.map((x) => x.id))
+                const next = [...prev]
+                for (const row of json.data) {
+                  if (!seen.has(row.id)) {
+                    seen.add(row.id)
+                    next.push(row)
+                  }
+                }
+                return next
+              })
+            }
+          },
+        },
+      )
+    },
+    [debouncedQ],
+  )
+
+  useEffect(() => {
+    if (!open) {
+      setSearchInput("")
+      return
+    }
+    lastPageRef.current = 0
+    hasMoreRef.current = true
+    setItems([])
+    setHasMore(true)
+    void visitOrgPicker("reset", pickerBase)
+  }, [open, debouncedQ, visitOrgPicker, pickerBase])
+
+  const handleScroll = () => {
+    const el = listRef.current
+    if (!el || !hasMoreRef.current || loadingRef.current || loadingMoreRef.current) return
+    const { scrollTop, scrollHeight, clientHeight } = el
+    if (scrollHeight - (scrollTop + clientHeight) < 48) {
+      void visitOrgPicker("append", pickerBase)
+    }
+  }
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          id={inputId}
+          aria-label={label}
+          className="flex h-10 w-full items-center justify-between gap-2 rounded-lg border border-gray-300 bg-gray-50 px-3 text-left text-sm text-gray-900 shadow-sm transition focus:outline-none focus:ring-2 focus:ring-violet-500/20 dark:border-gray-700 dark:bg-gray-800 dark:text-white"
+        >
+          <span className="flex min-w-0 flex-1 items-center gap-2">
+            <Building2 className="h-4 w-4 shrink-0 text-violet-600 dark:text-violet-400" aria-hidden />
+            <span className="truncate">
+              {displayName ? <span className="font-medium text-gray-900 dark:text-white">{displayName}</span> : <span className="text-gray-500 dark:text-gray-400">All organizations</span>}
+            </span>
+          </span>
+          <ChevronDown className="h-4 w-4 shrink-0 text-gray-400" aria-hidden />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent
+        align="start"
+        className="w-[min(100vw-2rem,var(--radix-popover-trigger-width))] max-w-md p-0"
+        onOpenAutoFocus={(e) => e.preventDefault()}
+      >
+        <div className="border-b border-gray-200/90 px-2.5 py-2 dark:border-gray-600/90">
+          <div className="relative">
+            <Search
+              className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400 dark:text-gray-500"
+              aria-hidden
+            />
+            <Input
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              placeholder="Search organizations…"
+              aria-label="Search organizations"
+              className="h-10 w-full border-0 bg-gray-100/95 pl-9 pr-3 text-sm text-gray-900 shadow-none placeholder:text-gray-500 focus-visible:ring-1 focus-visible:ring-violet-500/35 focus-visible:ring-offset-0 dark:bg-gray-700/40 dark:text-gray-100 dark:placeholder:text-gray-500"
+            />
+          </div>
+        </div>
+        <Command shouldFilter={false} className="rounded-b-lg border-0 bg-white dark:bg-gray-800">
+          <CommandList
+            ref={listRef}
+            onScroll={handleScroll}
+            className="max-h-64 overflow-y-auto p-1"
+          >
+            {loading && items.length === 0 ? (
+              <div className="py-6 text-center text-sm text-gray-500 dark:text-gray-300">Loading…</div>
+            ) : null}
+            <CommandGroup>
+              <CommandItem
+                value="__all__"
+                onSelect={() => {
+                  onSelectOrg("", "")
+                  setOpen(false)
+                }}
+                className="cursor-pointer rounded-md text-gray-700 data-[selected=true]:bg-violet-100 data-[selected=true]:text-violet-900 dark:text-gray-200 dark:data-[selected=true]:bg-violet-500/20 dark:data-[selected=true]:text-violet-100"
+              >
+                <span className="text-sm">All organizations</span>
+              </CommandItem>
+              {!loading && items.length === 0 ? (
+                <div className="px-2 py-4 text-center text-sm text-gray-500 dark:text-gray-400">No organizations found.</div>
+              ) : null}
+              {items.map((row) => (
+                <CommandItem
+                  key={row.id}
+                  value={`${row.id}-${row.name}`}
+                  onSelect={() => {
+                    onSelectOrg(String(row.id), row.name)
+                    setOpen(false)
+                  }}
+                  className="cursor-pointer rounded-md text-gray-800 hover:bg-violet-50 data-[selected=true]:bg-violet-100 data-[selected=true]:text-violet-900 dark:text-gray-200 dark:hover:bg-violet-950/40 dark:data-[selected=true]:bg-violet-500/20 dark:data-[selected=true]:text-violet-100"
+                >
+                  <span
+                    className={cn(
+                      "mr-2 h-4 w-4 inline-flex items-center justify-center text-violet-600",
+                      String(row.id) === organizationId ? "opacity-100" : "opacity-0",
+                    )}
+                    aria-hidden
+                  >
+                    ✓
+                  </span>
+                  <span className="text-sm">{row.name}</span>
+                </CommandItem>
+              ))}
+            </CommandGroup>
+            {loadingMore ? (
+              <div className="py-2 text-center text-xs text-gray-500 dark:text-gray-400">Loading more…</div>
+            ) : null}
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  )
+}
+
+function TagifyPositionPicker({
+  label,
+  categoryId,
+  pickerBase,
+  selected,
+  onChange,
+  placeholder,
+  className,
+  labelMap,
+}: {
+  label: string
+  categoryId?: string
+  /** Same query shape as the main list visit so list filters are not lost on picker requests. */
+  pickerBase: PickerBaseParams
+  selected: string[]
+  onChange: (next: string[], labelPatch: Record<string, string>) => void
+  placeholder?: string
+  className?: string
+  labelMap: Record<string, string>
+}) {
+  const [open, setOpen] = useState(false)
+  const [searchInput, setSearchInput] = useState("")
+  const [debouncedQ, setDebouncedQ] = useState("")
+  const [items, setItems] = useState<Array<{ id: number; title: string }>>([])
+  const [hasMore, setHasMore] = useState(true)
+  const [loading, setLoading] = useState(false)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const listRef = useRef<HTMLDivElement>(null)
+  const lastPageRef = useRef(0)
+  const hasMoreRef = useRef(true)
+  const loadingRef = useRef(false)
+  const loadingMoreRef = useRef(false)
+  const requestIdRef = useRef(0)
+
+  const selectedSet = new Set(selected.map((x) => String(x)))
+  const selectedRows = useMemo(
+    () =>
+      selected.map((v) => {
+        const key = String(v)
+        return { value: key, label: labelMap[key] ?? key }
+      }),
+    [selected, labelMap],
+  )
+
+  useEffect(() => {
+    const t = window.setTimeout(() => setDebouncedQ(searchInput), 300)
+    return () => window.clearTimeout(t)
+  }, [searchInput])
+
+  const visitPicker = useCallback(
+    (mode: "reset" | "append", base: PickerBaseParams) => {
+      if (mode === "reset") {
+        if (loadingRef.current) return
+      } else {
+        if (!hasMoreRef.current || loadingRef.current || loadingMoreRef.current) return
+        if (lastPageRef.current === 0) return
+      }
+
+      const pageToLoad = mode === "reset" ? 1 : lastPageRef.current + 1
+      const rid = ++requestIdRef.current
+      if (mode === "reset") {
+        loadingRef.current = true
+        setLoading(true)
+      } else {
+        loadingMoreRef.current = true
+        setLoadingMore(true)
+      }
+
+      router.get(
+        route("volunteer-opportunities.index"),
+        {
+          ...volunteerOpportunitiesQuery(base),
+          position_picker_page: String(pageToLoad),
+          position_picker_q: debouncedQ,
+          position_picker_per_page: 30,
+          ...(categoryId ? { position_picker_category_id: categoryId } : {}),
+        } as Record<string, string | number | string[] | undefined>,
+        {
+          only: ["positionPicker"],
+          preserveScroll: true,
+          preserveState: true,
+          preserveUrl: true,
+          replace: true,
+          onCancel: () => {
+            if (rid !== requestIdRef.current) return
+            loadingRef.current = false
+            loadingMoreRef.current = false
+            setLoading(false)
+            setLoadingMore(false)
+          },
+          onFinish: () => {
+            if (rid !== requestIdRef.current) return
+            loadingRef.current = false
+            loadingMoreRef.current = false
+            setLoading(false)
+            setLoadingMore(false)
+          },
+          onSuccess: (pageResult) => {
+            if (rid !== requestIdRef.current) return
+            const json = (pageResult.props as { positionPicker: PositionPickerPayload | null })
+              .positionPicker
+            if (!json) {
+              if (mode === "reset") {
+                setItems([])
+                lastPageRef.current = 0
+                hasMoreRef.current = false
+              }
+              setHasMore(false)
+              return
+            }
+            lastPageRef.current = json.current_page
+            hasMoreRef.current = json.has_more
+            setHasMore(json.has_more)
+            if (mode === "reset") {
+              setItems(json.data)
+            } else {
+              setItems((prev) => {
+                const seen = new Set(prev.map((x) => x.id))
+                const next = [...prev]
+                for (const row of json.data) {
+                  if (!seen.has(row.id)) {
+                    seen.add(row.id)
+                    next.push(row)
+                  }
+                }
+                return next
+              })
+            }
+          },
+        },
+      )
+    },
+    [categoryId, debouncedQ],
+  )
+
+  useEffect(() => {
+    if (!open) {
+      setSearchInput("")
+      return
+    }
+    lastPageRef.current = 0
+    hasMoreRef.current = true
+    setItems([])
+    setHasMore(true)
+    void visitPicker("reset", pickerBase)
+  }, [open, debouncedQ, categoryId, visitPicker, pickerBase])
+
+  const handleScroll = () => {
+    const el = listRef.current
+    if (!el || !hasMoreRef.current || loadingRef.current || loadingMoreRef.current) return
+    const { scrollTop, scrollHeight, clientHeight } = el
+    if (scrollHeight - (scrollTop + clientHeight) < 48) {
+      void visitPicker("append", pickerBase)
+    }
+  }
+
+  const toggle = (row: { id: number; title: string }) => {
+    const idStr = String(row.id)
+    const exists = selectedSet.has(idStr)
+    if (exists) {
+      onChange(
+        selected.filter((x) => x !== idStr),
+        {},
+      )
+      return
+    }
+    onChange([...selected, idStr], { [idStr]: row.title })
+  }
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          aria-label={label}
+          className={cn(
+            "flex min-h-11 w-full flex-wrap items-center gap-1.5 rounded-lg border border-gray-300 bg-gray-50 px-2.5 py-2 text-left text-sm text-gray-900 shadow-sm transition focus:outline-none focus:ring-2 focus:ring-violet-500/20 dark:border-gray-700 dark:bg-gray-900 dark:text-white",
+            className,
+          )}
+        >
+          {selectedRows.length > 0 ? (
+            selectedRows.map((row) => (
+              <span
+                key={row.value}
+                className="inline-flex max-w-full items-center gap-1 rounded-md border border-white/20 bg-gradient-to-r from-purple-600 to-blue-600 px-2 py-0.5 text-[13px] text-white shadow-md shadow-purple-500/25"
+              >
+                <span className="truncate">{row.label}</span>
+                <span
+                  role="button"
+                  tabIndex={0}
+                  onClick={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    onChange(
+                      selected.filter((x) => x !== row.value),
+                      {},
+                    )
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      onChange(
+                        selected.filter((x) => x !== row.value),
+                        {},
+                      )
+                    }
+                  }}
+                  className="inline-flex size-4 shrink-0 items-center justify-center rounded-sm text-white/90 hover:bg-white/20"
+                  aria-label={`Remove ${row.label}`}
+                >
+                  <X className="h-2.5 w-2.5" strokeWidth={2.5} />
+                </span>
+              </span>
+            ))
+          ) : (
+            <span className="text-gray-500 dark:text-gray-400">{placeholder ?? "Add positions..."}</span>
+          )}
+        </button>
+      </PopoverTrigger>
+      <PopoverContent
+        align="start"
+        className="w-[min(100vw-2rem,var(--radix-popover-trigger-width))] max-w-md p-0"
+        onOpenAutoFocus={(e) => e.preventDefault()}
+      >
+        <div className="border-b border-gray-200/90 px-2.5 py-2 dark:border-gray-600/90">
+          <div className="relative">
+            <Search
+              className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400 dark:text-gray-500"
+              aria-hidden
+            />
+            <Input
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              placeholder="Search positions…"
+              aria-label="Search positions"
+              className="h-10 w-full border-0 bg-gray-100/95 pl-9 pr-3 text-sm text-gray-900 shadow-none placeholder:text-gray-500 focus-visible:ring-1 focus-visible:ring-violet-500/35 focus-visible:ring-offset-0 dark:bg-gray-700/40 dark:text-gray-100 dark:placeholder:text-gray-500"
+            />
+          </div>
+        </div>
+        <Command shouldFilter={false} className="rounded-b-lg border-0 bg-white dark:bg-gray-800">
+          <CommandList
+            ref={listRef}
+            onScroll={handleScroll}
+            className="max-h-64 overflow-y-auto p-1"
+          >
+            {loading && items.length === 0 ? (
+              <div className="py-6 text-center text-sm text-gray-500 dark:text-gray-300">Loading positions...</div>
+            ) : null}
+            {!loading && items.length === 0 ? (
+              <CommandEmpty className="text-gray-500 dark:text-gray-300 py-6 text-sm">No positions found.</CommandEmpty>
+            ) : null}
+            <CommandGroup>
+              {items.map((row) => (
+                <CommandItem
+                  key={row.id}
+                  value={`${row.id}-${row.title}`}
+                  onSelect={() => toggle(row)}
+                  className="cursor-pointer rounded-md text-gray-800 hover:bg-violet-50 data-[selected=true]:bg-violet-100 data-[selected=true]:text-violet-900 dark:text-gray-200 dark:hover:bg-violet-950/40 dark:data-[selected=true]:bg-violet-500/20 dark:data-[selected=true]:text-violet-100"
+                >
+                  <span
+                    className={cn(
+                      "mr-2 h-4 w-4 inline-flex items-center justify-center",
+                      selectedSet.has(String(row.id)) ? "opacity-100" : "opacity-0",
+                    )}
+                  >
+                    ✓
+                  </span>
+                  <span className="text-sm">{row.title}</span>
+                </CommandItem>
+              ))}
+            </CommandGroup>
+            {loadingMore ? (
+              <div className="py-2 text-center text-xs text-gray-500 dark:text-gray-400">Loading more...</div>
+            ) : null}
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  )
+}
+
+export default function VolunteerOpportunities({
+  jobs,
+  organizations,
+  positionCategories,
+  positions: initialPositions,
+  positionLabels,
+  filters,
+  auth,
+}: VolunteerOpportunitiesProps) {
   const [search, setSearch] = useState(filters.search || '');
   const [locationType, setLocationType] = useState(filters.location_type || '');
   const [city, setCity] = useState(filters.city || '');
@@ -88,11 +664,80 @@ export default function VolunteerOpportunities({ jobs, organizations, positionCa
   const [positionCategoryId, setPositionCategoryId] = useState(filters.position_category_id || '');
   const [organizationId, setOrganizationId] = useState(filters.organization_id || '');
   const [positionId, setPositionId] = useState(filters.position_id || '');
-  const [positions, setPositions] = useState<Record<string, string>>(initialPositions || {});
+  const [positionIds, setPositionIds] = useState<string[]>(normalizeStringArray(filters.position_ids));
+  const [labelExtras, setLabelExtras] = useState<Record<string, string>>({});
+  const [orgLabelExtras, setOrgLabelExtras] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
+  const [savingPreferredPositions, setSavingPreferredPositions] = useState(false);
   const [currentPage, setCurrentPage] = useState(jobs.current_page || 1);
   const [showFilters, setShowFilters] = useState(false);
   const initialRender = useRef(true);
+
+  const positionIdsFilterKey = JSON.stringify(normalizeStringArray(filters.position_ids));
+  useEffect(() => {
+    setPositionIds(normalizeStringArray(filters.position_ids));
+  }, [positionIdsFilterKey]);
+
+  const positionLabelMap = useMemo(
+    () => ({ ...positionLabels, ...initialPositions, ...labelExtras }),
+    [positionLabels, initialPositions, labelExtras],
+  );
+
+  const organizationLabelMap = useMemo(
+    () => ({ ...orgLabelExtras, ...organizations }),
+    [orgLabelExtras, organizations],
+  );
+
+  const pickerVisitBase = useMemo<PickerBaseParams>(
+    () => ({
+      search: search || undefined,
+      location_type: locationType || undefined,
+      city: city || undefined,
+      state: state || undefined,
+      position_category_id: positionCategoryId || undefined,
+      organization_id: organizationId || undefined,
+      position_id: positionId || undefined,
+      position_ids: positionIds.length > 0 ? positionIds : undefined,
+      page: currentPage,
+    }),
+    [
+      search,
+      locationType,
+      city,
+      state,
+      positionCategoryId,
+      organizationId,
+      positionId,
+      positionIds,
+      currentPage,
+    ],
+  );
+
+  const handlePositionIdsChange = (next: string[], patch: Record<string, string>) => {
+    setLabelExtras((prev) => {
+      const merged = { ...prev, ...patch }
+      const out: Record<string, string> = {}
+      for (const id of next) {
+        const t = merged[id]
+        if (t !== undefined && t !== "") {
+          out[id] = t
+        }
+      }
+      return out
+    })
+    setPositionIds(next)
+    setCurrentPage(1)
+  };
+
+  const handleOrganizationFromPicker = (id: string, name: string) => {
+    setOrganizationId(id)
+    if (id && name) {
+      setOrgLabelExtras({ [id]: name })
+    } else {
+      setOrgLabelExtras({})
+    }
+    setCurrentPage(1)
+  }
 
   useEffect(() => {
     if (initialRender.current) {
@@ -102,41 +747,22 @@ export default function VolunteerOpportunities({ jobs, organizations, positionCa
 
     const timer = setTimeout(() => {
       setLoading(true);
-      router.get('/volunteer-opportunities', {
-        search,
-        location_type: locationType,
-        city,
-        state,
-        position_category_id: positionCategoryId,
-        organization_id: organizationId,
-        position_id: positionId,
-        page: currentPage,
-      }, {
+      router.get(
+        route("volunteer-opportunities.index"),
+        volunteerOpportunitiesQuery(pickerVisitBase),
+        {
         preserveState: true,
         preserveScroll: true,
         onFinish: () => setLoading(false),
-      });
+        },
+      );
     }, 300);
 
     return () => clearTimeout(timer);
-  }, [search, locationType, city, state, positionCategoryId, organizationId, positionId, currentPage]);
+  }, [search, locationType, city, state, positionCategoryId, organizationId, positionId, positionIds, currentPage]);
 
   useEffect(() => {
-    if (positionCategoryId) {
-      axios.get('/get-job-positions', { params: { category_id: positionCategoryId } })
-        .then(response => {
-          const positionsMap = response.data.reduce((acc: Record<string, string>, position: { id: number, title: string }) => {
-            acc[position.id] = position.title;
-            return acc;
-          }, {});
-          setPositions(positionsMap);
-        })
-        .catch(error => {
-          console.error('Error fetching positions:', error);
-          setPositions({});
-        });
-    } else {
-      setPositions({});
+    if (!positionCategoryId) {
       setPositionId('');
     }
   }, [positionCategoryId]);
@@ -171,14 +797,56 @@ export default function VolunteerOpportunities({ jobs, organizations, positionCa
   };
 
   const clearFilters = () => {
-    setSearch('');
-    setLocationType('');
-    setCity('');
-    setPositionCategoryId('');
-    setOrganizationId('');
-    setPositionId('');
-    setState('');
-    setCurrentPage(1);
+    if (auth?.user?.role === "user") {
+      router.post(
+        route("volunteer-opportunities.save-positions"),
+        { position_ids: [] as number[] },
+        {
+          preserveScroll: true,
+          onSuccess: () => {
+            setSearch("");
+            setLocationType("");
+            setCity("");
+            setPositionCategoryId("");
+            setOrganizationId("");
+            setPositionId("");
+            setPositionIds([]);
+            setLabelExtras({});
+            setOrgLabelExtras({});
+            setState("");
+            setCurrentPage(1);
+            router.get(route("volunteer-opportunities.index"), {}, { preserveState: false });
+          },
+        },
+      );
+      return;
+    }
+    setSearch("");
+    setLocationType("")
+    setCity("")
+    setPositionCategoryId("")
+    setOrganizationId("")
+    setPositionId("")
+    setPositionIds([])
+    setLabelExtras({})
+    setOrgLabelExtras({})
+    setState("")
+    setCurrentPage(1)
+  };
+
+  const handleSavePreferredPositions = () => {
+    if (auth?.user?.role !== "user") return;
+    const ids = positionIds.map((id) => parseInt(id, 10)).filter((n) => !Number.isNaN(n) && n > 0);
+    setSavingPreferredPositions(true);
+    router.post(
+      route("volunteer-opportunities.save-positions"),
+      { position_ids: ids },
+      {
+        preserveScroll: true,
+        onFinish: () => setSavingPreferredPositions(false),
+        onSuccess: () => toast.success("Your positions were saved."),
+      },
+    );
   };
 
   return (
@@ -230,16 +898,17 @@ export default function VolunteerOpportunities({ jobs, organizations, positionCa
                 >
                   <SlidersHorizontal className="h-4 w-4 sm:h-5 sm:w-5 mr-2" />
                   Filters
-                  {(locationType || city || state || positionCategoryId || positionId || organizationId) && (
+                  {(locationType || city || state || positionCategoryId || positionId || organizationId || positionIds.length > 0) && (
                     <span className="ml-1.5 px-2 py-0.5 bg-violet-600 text-white text-xs rounded-full min-w-[1.25rem] text-center">
-                      {[locationType, city, state, positionCategoryId, positionId, organizationId].filter(Boolean).length}
+                      {[locationType, city, state, positionCategoryId, positionId, organizationId].filter(Boolean).length +
+                        (positionIds.length > 0 ? 1 : 0)}
                     </span>
                   )}
                 </Button>
               </div>
 
               {/* Active Filters Chips */}
-              {(search || locationType || city || state || positionCategoryId || positionId || organizationId) && (
+              {(search || locationType || city || state || positionCategoryId || positionId || organizationId || positionIds.length > 0) && (
                 <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="text-sm font-medium text-gray-600 dark:text-gray-400">Active filters:</span>
@@ -249,6 +918,8 @@ export default function VolunteerOpportunities({ jobs, organizations, positionCa
                         <button
                           onClick={() => setSearch('')}
                           className="ml-2 hover:text-violet-900 dark:hover:text-violet-100"
+                          aria-label="Remove search filter"
+                          title="Remove"
                         >
                           <X className="h-3 w-3" />
                         </button>
@@ -260,6 +931,8 @@ export default function VolunteerOpportunities({ jobs, organizations, positionCa
                         <button
                           onClick={() => setLocationType('')}
                           className="ml-2 hover:text-blue-900 dark:hover:text-blue-100"
+                          aria-label="Remove location filter"
+                          title="Remove"
                         >
                           <X className="h-3 w-3" />
                         </button>
@@ -271,6 +944,8 @@ export default function VolunteerOpportunities({ jobs, organizations, positionCa
                         <button
                           onClick={() => setCity('')}
                           className="ml-2 hover:text-orange-900 dark:hover:text-orange-100"
+                          aria-label="Remove city filter"
+                          title="Remove"
                         >
                           <X className="h-3 w-3" />
                         </button>
@@ -282,6 +957,8 @@ export default function VolunteerOpportunities({ jobs, organizations, positionCa
                         <button
                           onClick={() => setState('')}
                           className="ml-2 hover:text-pink-900 dark:hover:text-pink-100"
+                          aria-label="Remove state filter"
+                          title="Remove"
                         >
                           <X className="h-3 w-3" />
                         </button>
@@ -296,28 +973,60 @@ export default function VolunteerOpportunities({ jobs, organizations, positionCa
                             setPositionId('')
                           }}
                           className="ml-2 hover:text-indigo-900 dark:hover:text-indigo-100"
+                          aria-label="Remove category filter"
+                          title="Remove"
                         >
                           <X className="h-3 w-3" />
                         </button>
                       </Badge>
                     )}
-                    {positionId && positions[positionId] && (
+                    {positionId && (initialPositions[positionId] ?? positionLabelMap[positionId]) && (
                       <Badge variant="secondary" className="px-3 py-1 bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-300">
-                        Position: {positions[positionId]}
+                        Position: {initialPositions[positionId] ?? positionLabelMap[positionId]}
                         <button
                           onClick={() => setPositionId('')}
                           className="ml-2 hover:text-cyan-900 dark:hover:text-cyan-100"
+                          aria-label="Remove position filter"
+                          title="Remove"
                         >
                           <X className="h-3 w-3" />
                         </button>
                       </Badge>
                     )}
-                    {organizationId && organizations[organizationId] && (
-                      <Badge variant="secondary" className="px-3 py-1 bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300">
-                        Org: {organizations[organizationId]}
+                    {positionIds.map((id) => (
+                      <Badge
+                        key={id}
+                        variant="secondary"
+                        className="px-3 py-1 bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-200"
+                      >
+                        Position: {positionLabelMap[id] ?? id}
                         <button
-                          onClick={() => setOrganizationId('')}
+                          onClick={() => {
+                            setPositionIds(positionIds.filter((x) => x !== id))
+                            setLabelExtras((prev) => {
+                              const { [id]: _removed, ...rest } = prev
+                              return rest
+                            })
+                          }}
+                          className="ml-2 hover:text-purple-900 dark:hover:text-purple-100"
+                          aria-label={`Remove position ${positionLabelMap[id] ?? id}`}
+                          title="Remove"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </Badge>
+                    ))}
+                    {organizationId && organizationLabelMap[organizationId] && (
+                      <Badge variant="secondary" className="px-3 py-1 bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300">
+                        Org: {organizationLabelMap[organizationId]}
+                        <button
+                          onClick={() => {
+                            setOrganizationId("")
+                            setOrgLabelExtras({})
+                          }}
                           className="ml-2 hover:text-teal-900 dark:hover:text-teal-100"
+                          aria-label="Remove organization filter"
+                          title="Remove"
                         >
                           <X className="h-3 w-3" />
                         </button>
@@ -362,50 +1071,36 @@ export default function VolunteerOpportunities({ jobs, organizations, positionCa
                       Hi{auth.user.name ? `, ${auth.user.name.split(" ")[0]}` : ""}! What would you like to volunteer for?
                     </h3>
                     <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
-                      Describe the roles, skills, or causes you care about—beyond the filters below.
+                      Add one or more positions you're interested in.
                     </p>
-                    <form
-                      onSubmit={(e) => {
-                        e.preventDefault();
-                        interestForm.post(route("volunteer-opportunities.save-interests"), { preserveScroll: true });
-                      }}
+                    <TagifyPositionPicker
+                      label="Positions you want to volunteer for"
+                      categoryId={positionCategoryId || undefined}
+                      pickerBase={pickerVisitBase}
+                      selected={positionIds}
+                      onChange={handlePositionIdsChange}
+                      labelMap={positionLabelMap}
+                      placeholder="Add positions..."
+                      className="bg-white dark:bg-gray-900"
+                    />
+                    <Button
+                      type="button"
+                      className="mt-3 w-full bg-violet-600 hover:bg-violet-700 text-white"
+                      disabled={savingPreferredPositions}
+                      onClick={handleSavePreferredPositions}
                     >
-                      <Label htmlFor="volunteer-interest-statement" className="sr-only">
-                        What you would like to volunteer for
-                      </Label>
-                      <Textarea
-                        id="volunteer-interest-statement"
-                        value={interestForm.data.volunteer_interest_statement}
-                        onChange={(e) => interestForm.setData("volunteer_interest_statement", e.target.value)}
-                        maxLength={2000}
-                        rows={4}
-                        placeholder="e.g. Tutoring, weekend events, remote graphic design, animal welfare outreach…"
-                        className="min-h-[100px] bg-gray-50 dark:bg-gray-900 border-gray-300 dark:border-gray-700 text-sm text-gray-900 dark:text-white resize-y"
-                      />
-                      <div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-between gap-2 mt-3">
-                        <span className="text-xs text-gray-500 dark:text-gray-400 tabular-nums">
-                          {interestForm.data.volunteer_interest_statement.length}/2000
-                        </span>
-                        <Button
-                          type="submit"
-                          disabled={interestForm.processing}
-                          size="sm"
-                          className="w-full sm:w-auto bg-blue-600 hover:bg-blue-700 text-white"
-                        >
-                          {interestForm.processing ? (
-                            <>
-                              <Loader2 className="h-4 w-4 animate-spin mr-2 inline" />
-                              Saving…
-                            </>
-                          ) : (
-                            "Save"
-                          )}
-                        </Button>
-                      </div>
-                      {interestForm.errors.volunteer_interest_statement && (
-                        <p className="text-sm text-red-600 dark:text-red-400 mt-2">{interestForm.errors.volunteer_interest_statement}</p>
+                      {savingPreferredPositions ? (
+                        <>
+                          <Loader2 className="inline-block w-4 h-4 mr-2 animate-spin" />
+                          Saving…
+                        </>
+                      ) : (
+                        "Save positions"
                       )}
-                    </form>
+                    </Button>
+                    <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                      Saved positions load automatically next time you visit. Use Clear all to remove them.
+                    </p>
                   </div>
                 )}
 
@@ -455,36 +1150,39 @@ export default function VolunteerOpportunities({ jobs, organizations, positionCa
                     </Select>
                   </div>
 
-                  {/* Position Filter */}
-                  {positionCategoryId && (
+                  {auth?.user?.role !== "user" && (
                     <div>
-                      <Label htmlFor="position-filter" className="text-sm font-medium text-gray-700 dark:text-gray-300">Position</Label>
-                      <Select value={positionId || undefined} onValueChange={(value) => setPositionId(value || '')} disabled={Object.keys(positions).length === 0}>
-                        <SelectTrigger id="position-filter" className="h-10 bg-gray-50 dark:bg-gray-800 border-gray-300 dark:border-gray-700 focus:border-violet-500 focus:ring-1 focus:ring-violet-500/20">
-                          <SelectValue placeholder="All Positions" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {Object.entries(positions).map(([id, title]) => (
-                            <SelectItem key={id} value={id}>{title}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      <Label className="text-sm font-medium text-gray-700 dark:text-gray-300">Positions</Label>
+                      <TagifyPositionPicker
+                        label="Filter by positions"
+                        categoryId={positionCategoryId || undefined}
+                        pickerBase={pickerVisitBase}
+                        selected={positionIds}
+                        onChange={handlePositionIdsChange}
+                        labelMap={positionLabelMap}
+                        placeholder="Add positions..."
+                        className="bg-gray-50 dark:bg-gray-800"
+                      />
+                      <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                        Scroll the list to load more positions, or search to jump quickly.
+                      </p>
                     </div>
                   )}
 
-                  {/* Organization Filter */}
+                  {/* Organization Filter — search + scroll (Inertia), only orgs with volunteer listings */}
                   <div>
                     <Label htmlFor="organization-filter" className="text-sm font-medium text-gray-700 dark:text-gray-300">Organization</Label>
-                    <Select value={organizationId || undefined} onValueChange={(value) => setOrganizationId(value || '')}>
-                      <SelectTrigger id="organization-filter" className="h-10 bg-gray-50 dark:bg-gray-800 border-gray-300 dark:border-gray-700 focus:border-violet-500 focus:ring-1 focus:ring-violet-500/20">
-                        <SelectValue placeholder="All Organizations" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {Object.entries(organizations).map(([id, name]) => (
-                          <SelectItem key={id} value={id}>{name}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <SearchableOrganizationPicker
+                      id="organization-filter"
+                      label="Filter by organization"
+                      pickerBase={pickerVisitBase}
+                      organizationId={organizationId}
+                      onSelectOrg={handleOrganizationFromPicker}
+                      labelMap={organizationLabelMap}
+                    />
+                    <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                      Search or scroll to load more. Only organizations with volunteer roles are listed.
+                    </p>
                   </div>
 
                   {/* Location Filters */}

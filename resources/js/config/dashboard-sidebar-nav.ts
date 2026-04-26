@@ -470,7 +470,7 @@ export const dashboardSidebarNavItems: (NavItem | NavGroup)[] = [
                 icon: UserCheck,
                 items: [
                     {
-                        title: 'Volunteers',
+                        title: 'Approved Volunteers',
                         href: '/volunteers',
                         icon: UserCheck,
                         permission: 'volunteer.read',
@@ -480,6 +480,13 @@ export const dashboardSidebarNavItems: (NavItem | NavGroup)[] = [
                         title: 'Supporter volunteer interests',
                         href: '/volunteers/supporter-interests',
                         icon: HeartHandshake,
+                        permission: 'volunteer.read',
+                        role: 'organization',
+                    },
+                    {
+                        title: 'Volunteer Interests',
+                        href: route('volunteers.volunteer-interests'),
+                        icon: Sparkles,
                         permission: 'volunteer.read',
                         role: 'organization',
                     },

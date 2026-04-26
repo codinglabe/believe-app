@@ -51,7 +51,7 @@ interface Props {
 
 const breadcrumbs: BreadcrumbItem[] = [
     { title: 'Dashboard', href: '/dashboard' },
-    { title: 'Volunteers', href: '/volunteers' },
+    { title: 'Approved Volunteers', href: '/volunteers' },
 ];
 
 export default function Show({ volunteer, totalHours }: Props) {
