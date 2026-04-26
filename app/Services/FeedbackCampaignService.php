@@ -7,6 +7,7 @@ use App\Models\FeedbackCampaignQuestion;
 use App\Models\FeedbackCampaignQuestionOption;
 use App\Models\FeedbackCampaignResponse;
 use App\Models\FeedbackCampaignResponseAnswer;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -17,6 +18,55 @@ class FeedbackCampaignService
     public function __construct(BrpWalletService $walletService)
     {
         $this->walletService = $walletService;
+    }
+
+    /**
+     * Parse a date string safely, returning null if empty/invalid.
+     */
+    protected function parseDate(?string $value): ?string
+    {
+        if (empty($value)) {
+            return null;
+        }
+        try {
+            return Carbon::parse($value)->format('Y-m-d H:i:s');
+        } catch (\Exception $e) {
+            return null;
+        }
+    }
+
+    /**
+     * Create options for a question based on its type.
+     */
+    protected function createQuestionOptions(FeedbackCampaignQuestion $question, array $data): void
+    {
+        if ($question->question_type === 'yes_no') {
+            foreach (['Yes', 'No'] as $i => $text) {
+                FeedbackCampaignQuestionOption::create([
+                    'question_id' => $question->id,
+                    'option_text' => $text,
+                    'sort_order' => $i,
+                ]);
+            }
+        } elseif ($question->question_type === 'true_false') {
+            foreach (['True', 'False'] as $i => $text) {
+                FeedbackCampaignQuestionOption::create([
+                    'question_id' => $question->id,
+                    'option_text' => $text,
+                    'sort_order' => $i,
+                ]);
+            }
+        } elseif ($question->question_type === 'multiple_choice' && !empty($data['options'])) {
+            foreach ($data['options'] as $index => $optionText) {
+                if (!empty(trim($optionText))) {
+                    FeedbackCampaignQuestionOption::create([
+                        'question_id' => $question->id,
+                        'option_text' => trim($optionText),
+                        'sort_order' => $index,
+                    ]);
+                }
+            }
+        }
     }
 
     /**
@@ -38,6 +88,8 @@ class FeedbackCampaignService
                 'remaining_budget_brp' => $totalBudget,
                 'max_responses' => $maxResponses,
                 'status' => 'draft',
+                'starts_at' => $this->parseDate($data['starts_at'] ?? null),
+                'ends_at' => $this->parseDate($data['ends_at'] ?? null),
             ]);
 
             // Create question
@@ -49,23 +101,53 @@ class FeedbackCampaignService
                     'sort_order' => 0,
                 ]);
 
-                // Create options for multiple choice
-                if ($data['question_type'] === 'multiple_choice' && !empty($data['options'])) {
-                    foreach ($data['options'] as $index => $optionText) {
-                        if (!empty(trim($optionText))) {
-                            FeedbackCampaignQuestionOption::create([
-                                'question_id' => $question->id,
-                                'option_text' => trim($optionText),
-                                'sort_order' => $index,
-                            ]);
-                        }
-                    }
-                }
+                $this->createQuestionOptions($question, $data);
             }
 
             Log::info("Campaign created: id={$campaign->id}, merchant={$merchantId}");
 
             return $campaign->load('questions.options');
+        });
+    }
+
+    /**
+     * Update a draft campaign.
+     */
+    public function updateCampaign(FeedbackCampaign $campaign, array $data): FeedbackCampaign
+    {
+        return DB::transaction(function () use ($campaign, $data) {
+            $rewardPerResponse = (int) $data['reward_per_response_brp'];
+            $totalBudget = (int) $data['total_budget_brp'];
+            $maxResponses = $rewardPerResponse > 0 ? intdiv($totalBudget, $rewardPerResponse) : 0;
+
+            $campaign->update([
+                'title' => $data['title'],
+                'type' => $data['type'],
+                'reward_per_response_brp' => $rewardPerResponse,
+                'total_budget_brp' => $totalBudget,
+                'remaining_budget_brp' => $totalBudget,
+                'max_responses' => $maxResponses,
+                'starts_at' => $this->parseDate($data['starts_at'] ?? null),
+                'ends_at' => $this->parseDate($data['ends_at'] ?? null),
+            ]);
+
+            // Replace question
+            $campaign->questions()->delete();
+
+            if (!empty($data['question_text'])) {
+                $question = FeedbackCampaignQuestion::create([
+                    'campaign_id' => $campaign->id,
+                    'question_text' => $data['question_text'],
+                    'question_type' => $data['question_type'],
+                    'sort_order' => 0,
+                ]);
+
+                $this->createQuestionOptions($question, $data);
+            }
+
+            Log::info("Campaign updated: id={$campaign->id}");
+
+            return $campaign->fresh()->load('questions.options');
         });
     }
 
@@ -296,6 +378,8 @@ class FeedbackCampaignService
                 'remaining_budget_brp' => $totalBudget,
                 'max_responses' => $maxResponses,
                 'status' => 'draft',
+                'starts_at' => $this->parseDate($data['starts_at'] ?? null),
+                'ends_at' => $this->parseDate($data['ends_at'] ?? null),
             ]);
 
             if (!empty($data['question_text'])) {
@@ -306,22 +390,52 @@ class FeedbackCampaignService
                     'sort_order' => 0,
                 ]);
 
-                if ($data['question_type'] === 'multiple_choice' && !empty($data['options'])) {
-                    foreach ($data['options'] as $index => $optionText) {
-                        if (!empty(trim($optionText))) {
-                            FeedbackCampaignQuestionOption::create([
-                                'question_id' => $question->id,
-                                'option_text' => trim($optionText),
-                                'sort_order' => $index,
-                            ]);
-                        }
-                    }
-                }
+                $this->createQuestionOptions($question, $data);
             }
 
             Log::info("Campaign created (org): id={$campaign->id}, org={$orgId}");
 
             return $campaign->load('questions.options');
+        });
+    }
+
+    /**
+     * Update a draft campaign owned by an organisation.
+     */
+    public function updateCampaignForOrg(FeedbackCampaign $campaign, array $data): FeedbackCampaign
+    {
+        return DB::transaction(function () use ($campaign, $data) {
+            $rewardPerResponse = (int) $data['reward_per_response_brp'];
+            $totalBudget = (int) $data['total_budget_brp'];
+            $maxResponses = $rewardPerResponse > 0 ? intdiv($totalBudget, $rewardPerResponse) : 0;
+
+            $campaign->update([
+                'title' => $data['title'],
+                'type' => $data['type'],
+                'reward_per_response_brp' => $rewardPerResponse,
+                'total_budget_brp' => $totalBudget,
+                'remaining_budget_brp' => $totalBudget,
+                'max_responses' => $maxResponses,
+                'starts_at' => $this->parseDate($data['starts_at'] ?? null),
+                'ends_at' => $this->parseDate($data['ends_at'] ?? null),
+            ]);
+
+            $campaign->questions()->delete();
+
+            if (!empty($data['question_text'])) {
+                $question = FeedbackCampaignQuestion::create([
+                    'campaign_id' => $campaign->id,
+                    'question_text' => $data['question_text'],
+                    'question_type' => $data['question_type'],
+                    'sort_order' => 0,
+                ]);
+
+                $this->createQuestionOptions($question, $data);
+            }
+
+            Log::info("Campaign updated (org): id={$campaign->id}");
+
+            return $campaign->fresh()->load('questions.options');
         });
     }
 

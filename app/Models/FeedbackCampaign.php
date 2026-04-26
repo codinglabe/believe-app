@@ -24,6 +24,8 @@ class FeedbackCampaign extends Model
         'max_responses',
         'responses_count',
         'status',
+        'starts_at',
+        'ends_at',
     ];
 
     protected $casts = [
@@ -34,6 +36,8 @@ class FeedbackCampaign extends Model
         'remaining_budget_brp' => 'integer',
         'max_responses' => 'integer',
         'responses_count' => 'integer',
+        'starts_at' => 'datetime',
+        'ends_at' => 'datetime',
     ];
 
     /** @var list<string> */

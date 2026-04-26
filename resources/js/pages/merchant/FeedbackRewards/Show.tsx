@@ -3,7 +3,7 @@ import { Head, Link, usePage, router } from '@inertiajs/react'
 import { MerchantCard, MerchantCardContent, MerchantCardHeader, MerchantCardTitle } from '@/components/merchant-ui'
 import { MerchantButton } from '@/components/merchant-ui'
 import { MerchantDashboardLayout } from '@/components/merchant'
-import { ArrowLeft, Rocket, StopCircle, Copy, Download } from 'lucide-react'
+import { ArrowLeft, Rocket, StopCircle, Copy, Download, Pencil } from 'lucide-react'
 import { motion } from 'framer-motion'
 import { showSuccessToast, showErrorToast } from '@/lib/toast'
 
@@ -15,6 +15,7 @@ interface Campaign {
   spent_budget_brp: number; remaining_budget_brp: number
   max_responses: number; responses_count: number
   status: string; created_at: string
+  starts_at: string | null; ends_at: string | null
   questions: any[]
   reward_bp_display: number
   total_budget_bp_display: number
@@ -131,6 +132,11 @@ export default function ShowCampaign({ campaign, insights, recentResponses }: Pr
                 <p className="text-gray-400 text-sm">{typeLabels[campaign.type]}</p>
               </div>
               <div className="flex gap-2 flex-wrap">
+                <Link href={`/feedback-rewards/${campaign.id}/edit`}>
+                  <MerchantButton variant="outline" size="sm">
+                    <Pencil className="h-4 w-4 mr-1" />Edit
+                  </MerchantButton>
+                </Link>
                 {campaign.status === 'draft' && (
                   <MerchantButton onClick={() => router.post(`/feedback-rewards/${campaign.id}/launch`)}
                     className="bg-gradient-to-r from-emerald-600 to-emerald-700">
@@ -236,6 +242,18 @@ export default function ShowCampaign({ campaign, insights, recentResponses }: Pr
                     <div className="flex justify-between text-sm"><span className="text-gray-400">Status</span>
                       <span className={`px-2 py-0.5 rounded-full text-xs ${statusColors[campaign.status] || ''}`}>{campaign.status}</span>
                     </div>
+                    {campaign.starts_at && (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-400">Start Date</span>
+                        <span className="text-gray-300 text-xs">{new Date(campaign.starts_at).toLocaleDateString()}</span>
+                      </div>
+                    )}
+                    {campaign.ends_at && (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-400">End Date</span>
+                        <span className="text-gray-300 text-xs">{new Date(campaign.ends_at).toLocaleDateString()}</span>
+                      </div>
+                    )}
                   </MerchantCardContent>
                 </MerchantCard>
 

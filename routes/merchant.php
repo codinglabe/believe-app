@@ -118,6 +118,8 @@ Route::middleware(['auth:merchant'])->group(function () {
             Route::get('/create', [MerchantFeedbackRewardsController::class, 'create'])->name('create');
             Route::post('/', [MerchantFeedbackRewardsController::class, 'store'])->name('store');
             Route::get('/{campaign}', [MerchantFeedbackRewardsController::class, 'show'])->name('show');
+            Route::get('/{campaign}/edit', [MerchantFeedbackRewardsController::class, 'edit'])->name('edit');
+            Route::put('/{campaign}', [MerchantFeedbackRewardsController::class, 'update'])->name('update');
             Route::post('/{campaign}/launch', [MerchantFeedbackRewardsController::class, 'launch'])->name('launch');
             Route::post('/{campaign}/end', [MerchantFeedbackRewardsController::class, 'end'])->name('end');
         });

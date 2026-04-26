@@ -1163,6 +1163,8 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|care_alli
             Route::get('/create', [\App\Http\Controllers\Organization\OrganizationFeedbackRewardsController::class, 'create'])->name('create');
             Route::post('/', [\App\Http\Controllers\Organization\OrganizationFeedbackRewardsController::class, 'store'])->name('store');
             Route::get('/{campaign}', [\App\Http\Controllers\Organization\OrganizationFeedbackRewardsController::class, 'show'])->name('show');
+            Route::get('/{campaign}/edit', [\App\Http\Controllers\Organization\OrganizationFeedbackRewardsController::class, 'edit'])->name('edit');
+            Route::put('/{campaign}', [\App\Http\Controllers\Organization\OrganizationFeedbackRewardsController::class, 'update'])->name('update');
             Route::post('/{campaign}/launch', [\App\Http\Controllers\Organization\OrganizationFeedbackRewardsController::class, 'launch'])->name('launch');
             Route::post('/{campaign}/end', [\App\Http\Controllers\Organization\OrganizationFeedbackRewardsController::class, 'end'])->name('end');
         });

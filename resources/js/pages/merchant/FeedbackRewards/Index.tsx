@@ -3,7 +3,7 @@ import { Head, Link, usePage, router } from '@inertiajs/react'
 import { MerchantCard, MerchantCardContent, MerchantCardHeader, MerchantCardTitle } from '@/components/merchant-ui'
 import { MerchantButton } from '@/components/merchant-ui'
 import { MerchantDashboardLayout } from '@/components/merchant'
-import { Plus, MessageSquare, Wallet, Eye, Users, DollarSign, Activity, ArrowRight, Search } from 'lucide-react'
+import { Plus, MessageSquare, Wallet, Eye, Users, DollarSign, Activity, ArrowRight, Search, Pencil } from 'lucide-react'
 import { motion } from 'framer-motion'
 import { showSuccessToast, showErrorToast } from '@/lib/toast'
 
@@ -246,17 +246,30 @@ export default function FeedbackRewardsIndex({ campaigns, stats, wallet, filters
                                 <span className="text-sm text-gray-500">{new Date(campaign.created_at).toLocaleDateString()}</span>
                               </td>
                               <td className="px-6 py-4 text-right">
-                                <Link href={`/feedback-rewards/${campaign.id}`}>
-                                  <MerchantButton
-                                    variant="ghost"
-                                    size="sm"
-                                    className="text-[#2563EB] hover:text-white"
-                                    aria-label="View campaign"
-                                    title="View campaign"
-                                  >
-                                    <Eye className="h-4 w-4" />
-                                  </MerchantButton>
-                                </Link>
+                                <div className="flex items-center justify-end gap-1">
+                                  <Link href={`/feedback-rewards/${campaign.id}/edit`}>
+                                    <MerchantButton
+                                      variant="ghost"
+                                      size="sm"
+                                      className="text-[#2563EB] hover:text-white"
+                                      aria-label="Edit campaign"
+                                      title="Edit campaign"
+                                    >
+                                      <Pencil className="h-4 w-4" />
+                                    </MerchantButton>
+                                  </Link>
+                                  <Link href={`/feedback-rewards/${campaign.id}`}>
+                                    <MerchantButton
+                                      variant="ghost"
+                                      size="sm"
+                                      className="text-[#2563EB] hover:text-white"
+                                      aria-label="View campaign"
+                                      title="View campaign"
+                                    >
+                                      <Eye className="h-4 w-4" />
+                                    </MerchantButton>
+                                  </Link>
+                                </div>
                               </td>
                             </motion.tr>
                           )

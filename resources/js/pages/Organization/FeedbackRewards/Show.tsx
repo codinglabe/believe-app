@@ -4,7 +4,7 @@ import AppLayout from '@/layouts/app-layout'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { ArrowLeft, Rocket, StopCircle, Copy } from 'lucide-react'
+import { ArrowLeft, Rocket, StopCircle, Copy, Pencil } from 'lucide-react'
 import { showSuccessToast, showErrorToast } from '@/lib/toast'
 
 interface InsightBreakdown { label: string; count: number; percentage: number }
@@ -15,6 +15,7 @@ interface Campaign {
   spent_budget_brp: number; remaining_budget_brp: number
   max_responses: number; responses_count: number
   status: string; created_at: string
+  starts_at: string | null; ends_at: string | null
   questions: any[]
 }
 interface Response {
@@ -119,6 +120,11 @@ export default function OrgShowCampaign({ campaign, insights, recentResponses, o
             <p className="text-muted-foreground text-sm">{typeLabels[campaign.type]} · {organization.name}</p>
           </div>
           <div className="flex gap-2 flex-wrap">
+            <Link href={`/organization/feedback-rewards/${campaign.id}/edit`}>
+              <Button variant="outline" size="sm">
+                <Pencil className="h-4 w-4 mr-1" />Edit
+              </Button>
+            </Link>
             {campaign.status === 'draft' && (
               <Button
                 onClick={() => router.post(`/organization/feedback-rewards/${campaign.id}/launch`)}
@@ -234,6 +240,18 @@ export default function OrgShowCampaign({ campaign, insights, recentResponses, o
                   <span className="text-muted-foreground">Created</span>
                   <span className="text-muted-foreground text-xs">{new Date(campaign.created_at).toLocaleDateString()}</span>
                 </div>
+                {campaign.starts_at && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Start Date</span>
+                    <span className="text-xs">{new Date(campaign.starts_at).toLocaleDateString()}</span>
+                  </div>
+                )}
+                {campaign.ends_at && (
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">End Date</span>
+                    <span className="text-xs">{new Date(campaign.ends_at).toLocaleDateString()}</span>
+                  </div>
+                )}
               </CardContent>
             </Card>
 
@@ -247,14 +265,21 @@ export default function OrgShowCampaign({ campaign, insights, recentResponses, o
               </div>
             )}
 
-            {campaign.status === 'draft' && (
-              <Button
-                onClick={() => router.post(`/organization/feedback-rewards/${campaign.id}/launch`)}
-                className="w-full bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-500 hover:to-emerald-600"
-              >
-                <Rocket className="h-4 w-4 mr-2" />Launch Campaign
-              </Button>
-            )}
+            <div className="space-y-2">
+              <Link href={`/organization/feedback-rewards/${campaign.id}/edit`}>
+                <Button variant="outline" className="w-full">
+                  <Pencil className="h-4 w-4 mr-2" />Edit Campaign
+                </Button>
+              </Link>
+              {campaign.status === 'draft' && (
+                <Button
+                  onClick={() => router.post(`/organization/feedback-rewards/${campaign.id}/launch`)}
+                  className="w-full bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-500 hover:to-emerald-600"
+                >
+                  <Rocket className="h-4 w-4 mr-2" />Launch Campaign
+                </Button>
+              )}
+            </div>
           </div>
         </div>
       </div>

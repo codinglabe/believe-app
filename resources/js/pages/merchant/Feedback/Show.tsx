@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { Head, useForm, usePage } from '@inertiajs/react'
+import { Head, usePage, router } from '@inertiajs/react'
 import { MerchantCard, MerchantCardContent, MerchantCardHeader, MerchantCardTitle } from '@/components/merchant-ui'
 import { MerchantButton } from '@/components/merchant-ui'
 import { MessageSquare, Gift, CheckCircle, Clock, AlertCircle } from 'lucide-react'
@@ -53,9 +53,7 @@ function rewardBpDisplay(c: Campaign): number {
 
 export default function SupporterFeedback({ campaign, alreadyResponded }: Props) {
   const [answers, setAnswers] = useState<Record<number, { answer_text: string; option_id: number | null }>>({})
-  const { post, processing, errors, transform } = useForm<{ answers: Array<{ question_id: number; answer_text: string; option_id: number | null }> }>({
-    answers: [],
-  })
+  const [processing, setProcessing] = useState(false)
   const { props } = usePage<{ success?: string; error?: string }>()
   const [submitted, setSubmitted] = useState(false)
 
@@ -78,15 +76,17 @@ export default function SupporterFeedback({ campaign, alreadyResponded }: Props)
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
+    if (!allAnswered) return
+    setProcessing(true)
     const formattedAnswers = campaign.questions.map((q) => ({
       question_id: q.id,
       answer_text: answers[q.id]?.answer_text || '',
-      option_id: answers[q.id]?.option_id || null,
+      option_id: answers[q.id]?.option_id ?? null,
     }))
-
-    transform(() => ({ answers: formattedAnswers }))
-    post(`/feedback/${campaign.uuid}`, {
+    router.post(`/feedback/${campaign.uuid}`, { answers: formattedAnswers }, {
       onSuccess: () => setSubmitted(true),
+      onError: () => setProcessing(false),
+      onFinish: () => setProcessing(false),
     })
   }
 
@@ -233,12 +233,6 @@ export default function SupporterFeedback({ campaign, alreadyResponded }: Props)
               <p className="text-center text-xs text-gray-500 mt-2 flex items-center justify-center gap-1">
                 <AlertCircle className="h-3.5 w-3.5" />
                 Please answer all questions to submit
-              </p>
-            )}
-
-            {errors.answers && (
-              <p className="text-center text-xs text-red-400 mt-2">
-                {errors.answers}
               </p>
             )}
           </form>

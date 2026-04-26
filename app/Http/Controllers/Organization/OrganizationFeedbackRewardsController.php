@@ -130,7 +130,9 @@ class OrganizationFeedbackRewardsController extends Controller
             'question_text' => 'required|string|max:1000',
             'question_type' => 'required|in:yes_no,true_false,multiple_choice',
             'options' => 'required_if:question_type,multiple_choice|array|min:2|max:6',
-            'options.*' => 'required_if:question_type,multiple_choice|string|max:255',
+            'options.*' => 'required_if:question_type,multiple_choice|nullable|string|max:255',
+            'starts_at' => 'nullable|date',
+            'ends_at' => 'nullable|date|after_or_equal:starts_at',
         ], [
             'title.required' => 'Campaign title is required.',
             'type.required' => 'Please select a campaign type.',
@@ -162,6 +164,97 @@ class OrganizationFeedbackRewardsController extends Controller
             return redirect()->back()
                 ->withInput()
                 ->with('error', 'Failed to create campaign: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Show the edit form for a draft campaign.
+     */
+    public function edit(FeedbackCampaign $campaign)
+    {
+        $org = $this->resolveOrg();
+
+        if ($campaign->organization_id !== $org->id) {
+            abort(403, 'Unauthorized access.');
+        }
+
+        $campaign->load('questions.options');
+        $wallet = $this->walletService->getOrCreateOrganizationWallet($org->id);
+        $question = $campaign->questions->first();
+
+        return Inertia::render('Organization/FeedbackRewards/Edit', [
+            'campaign' => [
+                'id' => $campaign->id,
+                'title' => $campaign->title,
+                'type' => $campaign->type,
+                'reward_per_response_brp' => $campaign->reward_per_response_brp,
+                'total_budget_brp' => $campaign->total_budget_brp,
+                'starts_at' => $campaign->starts_at?->format('Y-m-d'),
+                'ends_at' => $campaign->ends_at?->format('Y-m-d'),
+                'question_text' => $question?->question_text ?? '',
+                'question_type' => $question?->question_type ?? 'multiple_choice',
+                'options' => $question && $question->question_type === 'multiple_choice'
+                    ? $question->options->pluck('option_text')->toArray()
+                    : ['', ''],
+            ],
+            'wallet' => [
+                'balance_brp' => $wallet->balance_brp,
+                'available_brp' => $wallet->available_brp,
+            ],
+            'organization' => [
+                'id' => $org->id,
+                'name' => $org->name,
+            ],
+            'campaignTypes' => [
+                ['value' => 'quick_vote', 'label' => 'Quick Vote', 'default_reward' => 3, 'est_time' => '~10 sec'],
+                ['value' => 'short_feedback', 'label' => 'Short Feedback', 'default_reward' => 10, 'est_time' => '~1 min'],
+                ['value' => 'standard_survey', 'label' => 'Standard Survey', 'default_reward' => 25, 'est_time' => '~3 min'],
+                ['value' => 'deep_feedback', 'label' => 'Deep Feedback', 'default_reward' => 50, 'est_time' => '~5 min'],
+            ],
+        ]);
+    }
+
+    /**
+     * Update a draft campaign.
+     */
+    public function update(Request $request, FeedbackCampaign $campaign)
+    {
+        $org = $this->resolveOrg();
+
+        if ($campaign->organization_id !== $org->id) {
+            abort(403, 'Unauthorized access.');
+        }
+
+        $validated = $request->validate([
+            'title' => 'required|string|max:255',
+            'type' => 'required|in:quick_vote,short_feedback,standard_survey,deep_feedback',
+            'reward_per_response_brp' => 'required|integer|min:1',
+            'total_budget_brp' => 'required|integer|min:1',
+            'question_text' => 'required|string|max:1000',
+            'question_type' => 'required|in:yes_no,true_false,multiple_choice',
+            'options' => 'required_if:question_type,multiple_choice|array|min:2|max:6',
+            'options.*' => 'required_if:question_type,multiple_choice|nullable|string|max:255',
+            'starts_at' => 'nullable|date',
+            'ends_at' => 'nullable|date|after_or_equal:starts_at',
+        ]);
+
+        if ($validated['total_budget_brp'] < $validated['reward_per_response_brp']) {
+            return redirect()->back()
+                ->withInput()
+                ->withErrors(['total_budget_brp' => 'Budget must be at least equal to reward per response.']);
+        }
+
+        try {
+            $this->campaignService->updateCampaignForOrg($campaign, $validated);
+
+            return redirect()->route('org.feedback-rewards.show', $campaign->id)
+                ->with('success', 'Campaign updated successfully!');
+        } catch (\Exception $e) {
+            Log::error('Org campaign update error: ' . $e->getMessage());
+
+            return redirect()->back()
+                ->withInput()
+                ->with('error', 'Failed to update campaign: ' . $e->getMessage());
         }
     }
 
