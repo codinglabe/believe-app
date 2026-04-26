@@ -400,9 +400,6 @@ export default function CheckoutShipping({ offer, defaultPaymentMethod = 'cash' 
                             checked={selectedRateId === method.id}
                             onChange={() => {
                               setSelectedRateId(method.id)
-                              if (method.id === 'pickup') {
-                                setShipmentId('')
-                              }
                             }}
                           />
                           <div>

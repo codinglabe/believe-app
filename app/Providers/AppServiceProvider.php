@@ -52,7 +52,9 @@ class AppServiceProvider extends ServiceProvider
         JobApplication::observe(JobApplicationObserver::class);
         Cashier::useCustomerModel(User::class);
         Cashier::useSubscriptionModel(AppSubscription::class);
-        Cashier::calculateTaxes();
+        if ((bool) config('services.stripe.automatic_tax', false)) {
+            Cashier::calculateTaxes();
+        }
 
         // Register event listener for email verification
         Event::listen(Verified::class, AwardInviteRewardPoints::class);
