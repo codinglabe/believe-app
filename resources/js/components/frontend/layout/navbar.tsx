@@ -245,9 +245,11 @@ export default function Navbar() {
 
   const giveNavItems: LandingNavItem[] = [
     { name: "Donate", href: "/donate", icon: Heart },
+    { name: "FundMe", href: route("fundme.index"), icon: Handshake },
+    { name: "Invest in a Project", href: route("support-a-project"), icon: TrendingUp },
     ...(showOrgOnlyNav
       ? [
-          { name: "FundMe / Support a Project", href: "/fundme", icon: Handshake },
+          { name: "Manage Support Projects", href: "/fundme", icon: Handshake },
           { name: "Raffles", href: "/raffles", icon: Ticket },
         ]
       : []),

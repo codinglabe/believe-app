@@ -25,7 +25,7 @@ interface OfferSummary {
 
 interface Props {
   offer: OfferSummary
-  defaultPaymentMethod?: 'points' | 'cash'
+  defaultPaymentMethod?: 'points' | 'cash' | 'believe_points'
 }
 
 const COUNTRY_OPTIONS = [
@@ -59,10 +59,10 @@ interface ShippingMethod {
 }
 
 export default function CheckoutShipping({ offer, defaultPaymentMethod = 'cash' }: Props) {
-  const { errors } = usePage().props as { errors?: Record<string, string> }
+  const { errors, auth } = usePage().props as { errors?: Record<string, string>, auth?: { user?: { believe_points?: number | string } } }
   const [submitting, setSubmitting] = useState(false)
   const [quoting, setQuoting] = useState(false)
-  const [paymentMethod, setPaymentMethod] = useState<'points' | 'cash'>(defaultPaymentMethod)
+  const [paymentMethod, setPaymentMethod] = useState<'points' | 'cash' | 'believe_points'>(defaultPaymentMethod)
   const [shipmentId, setShipmentId] = useState('')
   const [shippingMethods, setShippingMethods] = useState<ShippingMethod[]>([])
   const [selectedRateId, setSelectedRateId] = useState('')
@@ -97,6 +97,8 @@ export default function CheckoutShipping({ offer, defaultPaymentMethod = 'cash' 
       ? Number(selectedMethod?.charged_total ?? basketTotal + stripeProcessingFeeAddon)
       : basketTotal
   const hasEnoughPoints = offer.userPoints >= offer.pointsRequired
+  const believePointsBalance = Number(auth?.user?.believe_points ?? 0)
+  const hasEnoughBelievePoints = believePointsBalance >= basketTotal
 
   const quoteRates = async () => {
     setQuoting(true)
@@ -135,6 +137,10 @@ export default function CheckoutShipping({ offer, defaultPaymentMethod = 'cash' 
     }
     if (paymentMethod === 'points' && !hasEnoughPoints) {
       setQuoteError(`You need ${offer.pointsRequired} points but only have ${offer.userPoints}.`)
+      return
+    }
+    if (paymentMethod === 'believe_points' && !hasEnoughBelievePoints) {
+      setQuoteError(`You need ${basketTotal.toFixed(2)} BP but only have ${believePointsBalance.toFixed(2)} BP.`)
       return
     }
     setSubmitting(true)
@@ -209,7 +215,7 @@ export default function CheckoutShipping({ offer, defaultPaymentMethod = 'cash' 
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div className="space-y-2">
                   <Label>Payment method</Label>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-3 gap-3">
                     <button
                       type="button"
                       onClick={() => setPaymentMethod('points')}
@@ -220,6 +226,17 @@ export default function CheckoutShipping({ offer, defaultPaymentMethod = 'cash' 
                       }`}
                     >
                       Use points ({offer.pointsRequired})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPaymentMethod('believe_points')}
+                      className={`h-10 rounded-md border text-sm font-medium ${
+                        paymentMethod === 'believe_points'
+                          ? 'border-indigo-600 text-indigo-600'
+                          : 'border-input text-foreground'
+                      }`}
+                    >
+                      Pay with BP
                     </button>
                     <button
                       type="button"
@@ -236,6 +253,11 @@ export default function CheckoutShipping({ offer, defaultPaymentMethod = 'cash' 
                   {paymentMethod === 'points' && (
                     <p className={`text-xs ${hasEnoughPoints ? 'text-emerald-600' : 'text-amber-600'}`}>
                       You have {offer.userPoints} points (need {offer.pointsRequired}).
+                    </p>
+                  )}
+                  {paymentMethod === 'believe_points' && (
+                    <p className={`text-xs ${hasEnoughBelievePoints ? 'text-emerald-600' : 'text-amber-600'}`}>
+                      You have {believePointsBalance.toFixed(2)} BP (need {basketTotal.toFixed(2)} BP).
                     </p>
                   )}
                 </div>
@@ -447,7 +469,8 @@ export default function CheckoutShipping({ offer, defaultPaymentMethod = 'cash' 
                     submitting ||
                     !selectedRateId ||
                     (!shipmentId && !isPickupRate) ||
-                    (paymentMethod === 'points' && !hasEnoughPoints)
+                    (paymentMethod === 'points' && !hasEnoughPoints) ||
+                    (paymentMethod === 'believe_points' && !hasEnoughBelievePoints)
                   }
                   className="w-full h-12 text-base"
                   size="lg"
@@ -456,7 +479,9 @@ export default function CheckoutShipping({ offer, defaultPaymentMethod = 'cash' 
                     ? 'Processing...'
                     : paymentMethod === 'points'
                       ? `Confirm with points + shipping — ${offer.currency} ${basketTotal.toFixed(2)}`
-                      : `Continue to payment — ${offer.currency} ${chargedTotal.toFixed(2)}`}
+                      : paymentMethod === 'believe_points'
+                        ? `Confirm with BP + shipping — ${offer.currency} ${basketTotal.toFixed(2)}`
+                        : `Continue to payment — ${offer.currency} ${chargedTotal.toFixed(2)}`}
                 </Button>
               </form>
             </CardContent>

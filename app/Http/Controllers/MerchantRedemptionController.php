@@ -312,7 +312,7 @@ class MerchantRedemptionController extends Controller
                 'pickupAvailable' => (bool) ($offer->pickup_available ?? false),
                 'pickupAddress' => $pickupAddress,
             ],
-            'defaultPaymentMethod' => in_array($request->string('payment_method')->toString(), ['points', 'cash'], true)
+            'defaultPaymentMethod' => in_array($request->string('payment_method')->toString(), ['points', 'cash', 'believe_points'], true)
                 ? $request->string('payment_method')->toString()
                 : 'cash',
         ]);
@@ -332,7 +332,7 @@ class MerchantRedemptionController extends Controller
             'shipping_state' => 'nullable|string|max:100',
             'shipping_postal_code' => 'required|string|max:20',
             'shipping_country' => 'required|string|size:2',
-            'payment_method' => 'required|in:points,cash',
+            'payment_method' => 'required|in:points,cash,believe_points',
         ]);
         $user = Auth::user();
         if (! $user) {
@@ -451,7 +451,7 @@ class MerchantRedemptionController extends Controller
     {
         $request->validate([
             'offer_id' => 'required|integer|exists:merchant_hub_offers,id',
-            'payment_method' => 'required|in:points,cash',
+            'payment_method' => 'required|in:points,cash,believe_points',
             'shipping_name' => 'required|string|max:255',
             'shipping_line1' => 'required|string|max:255',
             'shipping_line2' => 'nullable|string|max:255',
@@ -540,13 +540,24 @@ class MerchantRedemptionController extends Controller
 
                     return back()->withErrors(['error' => 'You do not have enough reward points for this offer.']);
                 }
+            } elseif ($paymentMethod === 'believe_points') {
+                $user->refresh();
+                $bpRequired = round($totalAmount, 2);
+                $userBeliefPoints = round((float) ($user->believe_points ?? 0), 2);
+                if ($userBeliefPoints < $bpRequired) {
+                    DB::rollBack();
+
+                    return back()->withErrors([
+                        'error' => 'Insufficient Believe Points. You need '.number_format($bpRequired, 2).' BP but only have '.number_format($userBeliefPoints, 2).' BP.',
+                    ]);
+                }
             }
 
             $redemption = MerchantHubOfferRedemption::create([
                 'merchant_hub_offer_id' => $offer->id,
                 'user_id' => $user->id,
                 'points_spent' => $paymentMethod === 'points' ? $pointsRequired : 0,
-                'cash_spent' => $paymentMethod === 'cash' ? $chargedGrossUsd : 0,
+                'cash_spent' => in_array($paymentMethod, ['cash', 'believe_points'], true) ? $chargedGrossUsd : 0,
                 'subtotal_amount' => $subtotalAmount,
                 'platform_fee_amount' => $platformFeeAmount,
                 'shipping_cost' => $shippingCost,
@@ -602,6 +613,47 @@ class MerchantRedemptionController extends Controller
                     'payment_method' => 'points',
                     'meta' => [
                         'points_spent' => $pointsRequired,
+                        'offer_id' => $offer->id,
+                        'receipt_code' => $receiptCode,
+                        'shipping_cost' => $shippingCost,
+                        'tax_amount' => $taxAmount,
+                        'platform_fee_amount' => $platformFeeAmount,
+                        'total_amount' => $totalAmount,
+                        'shippo_shipment_id' => $redemption->shippo_shipment_id,
+                        'shippo_rate_object_id' => $redemption->shippo_rate_object_id,
+                    ],
+                    'processed_at' => now(),
+                ]);
+
+                DB::commit();
+
+                return redirect()->route('merchant-hub.redemption.confirmed', $redemption->receipt_code);
+            }
+
+            if ($paymentMethod === 'believe_points') {
+                $bpRequired = round($totalAmount, 2);
+                if (! $user->deductBelievePoints($bpRequired)) {
+                    DB::rollBack();
+
+                    return back()->withErrors(['error' => 'Failed to deduct Believe Points. Please try again.']);
+                }
+
+                $redemption->update(['status' => 'approved']);
+                $this->ensureShareToken($redemption);
+                $this->attemptShippoLabelPurchaseForRedemption($redemption);
+
+                Transaction::create([
+                    'user_id' => $user->id,
+                    'related_id' => $redemption->id,
+                    'related_type' => MerchantHubOfferRedemption::class,
+                    'type' => 'purchase',
+                    'status' => 'completed',
+                    'amount' => $bpRequired,
+                    'fee' => 0,
+                    'currency' => $offer->currency ?? 'USD',
+                    'payment_method' => 'believe_points',
+                    'meta' => [
+                        'believe_points_used' => $bpRequired,
                         'offer_id' => $offer->id,
                         'receipt_code' => $receiptCode,
                         'shipping_cost' => $shippingCost,
