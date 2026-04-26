@@ -4,7 +4,7 @@ import AppLayout from '@/layouts/app-layout'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Plus, MessageSquare, Wallet, Eye, Users, DollarSign, Activity, Search, BarChart3, ShoppingCart } from 'lucide-react'
+import { Plus, MessageSquare, Wallet, Eye, Users, DollarSign, Activity, Search, BarChart3, ShoppingCart, Pencil } from 'lucide-react'
 import { showSuccessToast, showErrorToast } from '@/lib/toast'
 
 interface Campaign {
@@ -189,9 +189,18 @@ export default function OrgFeedbackRewardsIndex({ campaigns, wallet, organizatio
                               <td className="px-5 py-4"><Badge className={sc.className}>{sc.label}</Badge></td>
                               <td className="px-5 py-4"><span className="text-sm text-muted-foreground">{new Date(campaign.created_at).toLocaleDateString()}</span></td>
                               <td className="px-5 py-4 text-right">
-                                <Link href={`/organization/feedback-rewards/${campaign.id}`}>
-                                  <Button variant="ghost" size="sm" className="text-[#FF1493]"><Eye className="h-4 w-4" /></Button>
-                                </Link>
+                                <div className="flex items-center justify-end gap-1">
+                                  <Link href={`/organization/feedback-rewards/${campaign.id}/edit`}>
+                                    <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-foreground" title="Edit campaign">
+                                      <Pencil className="h-4 w-4" />
+                                    </Button>
+                                  </Link>
+                                  <Link href={`/organization/feedback-rewards/${campaign.id}`}>
+                                    <Button variant="ghost" size="sm" className="text-[#FF1493]">
+                                      <Eye className="h-4 w-4" />
+                                    </Button>
+                                  </Link>
+                                </div>
                               </td>
                             </tr>
                           )

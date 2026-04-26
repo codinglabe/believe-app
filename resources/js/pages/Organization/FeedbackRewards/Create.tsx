@@ -35,6 +35,8 @@ export default function OrgCreateCampaign({ wallet, campaignTypes, organization 
     target_audience: 'all_supporters',
     min_age: 'any',
     location: 'all_locations',
+    starts_at: '',
+    ends_at: '',
   })
   const [errors, setErrors] = useState<Record<string, string>>({})
 
@@ -84,6 +86,8 @@ export default function OrgCreateCampaign({ wallet, campaignTypes, organization 
       question_text: form.question_text,
       question_type: form.question_type,
       options: form.options,
+      starts_at: form.starts_at || null,
+      ends_at: form.ends_at || null,
     }, {
       onSuccess: () => router.visit('/organization/feedback-rewards'),
       onError: (errs) => { setErrors(errs); setSubmitting(false) },
@@ -392,6 +396,30 @@ export default function OrgCreateCampaign({ wallet, campaignTypes, organization 
             </Card>
 
             <div className="space-y-4">
+              <Card className="border-[#FF1493]/30">
+                <CardContent className="p-5 space-y-3">
+                  <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Campaign Dates (optional)</p>
+                  <div>
+                    <Label>Start Date</Label>
+                    <input
+                      type="date"
+                      value={form.starts_at}
+                      onChange={(e) => setField('starts_at', e.target.value)}
+                      className="mt-1 w-full px-3 py-2 rounded-lg border text-sm focus:outline-none focus:ring-1 focus:ring-[#FF1493] "
+                    />
+                  </div>
+                  <div>
+                    <Label>End Date</Label>
+                    <input
+                      type="date"
+                      value={form.ends_at}
+                      onChange={(e) => setField('ends_at', e.target.value)}
+                      className="mt-1 w-full px-3 py-2 rounded-lg border text-sm focus:outline-none focus:ring-1 focus:ring-[#FF1493] "
+                    />
+                  </div>
+                </CardContent>
+              </Card>
+
               <Card className="border-[#FF1493]/30">
                 <CardContent className="p-5 space-y-3">
                   <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">BRP Wallet</p>

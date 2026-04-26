@@ -61,6 +61,8 @@ export default function CreateCampaign({ wallet, campaignTypes, liveCalculation 
     target_audience: 'all_supporters',
     min_age: 'any',
     location: 'all_locations',
+    starts_at: '',
+    ends_at: '',
   })
   const [errors, setErrors] = useState<Record<string, string>>({})
 
@@ -144,6 +146,8 @@ export default function CreateCampaign({ wallet, campaignTypes, liveCalculation 
       question_text: form.question_text,
       question_type: form.question_type,
       options: form.options,
+      starts_at: form.starts_at || null,
+      ends_at: form.ends_at || null,
     }, {
       onSuccess: () => router.visit('/feedback-rewards'),
       onError: (errs) => { setErrors(errs); setSubmitting(false) },
@@ -514,6 +518,30 @@ export default function CreateCampaign({ wallet, campaignTypes, liveCalculation 
                   </MerchantCard>
 
                   <div className="space-y-4">
+                    <MerchantCard className="shadow-lg border border-[#2563EB]/20">
+                      <MerchantCardContent className="p-4 space-y-3">
+                        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Campaign Dates (optional)</p>
+                        <div>
+                          <MerchantLabel>Start Date</MerchantLabel>
+                          <input
+                            type="date"
+                            value={form.starts_at}
+                            onChange={(e) => setField('starts_at', e.target.value)}
+                            className="mt-1 w-full px-3 py-2 rounded-lg bg-gray-800 border border-gray-700/50 text-white text-sm focus:outline-none focus:border-[#2563EB] [color-scheme:dark]"
+                          />
+                        </div>
+                        <div>
+                          <MerchantLabel>End Date</MerchantLabel>
+                          <input
+                            type="date"
+                            value={form.ends_at}
+                            onChange={(e) => setField('ends_at', e.target.value)}
+                            className="mt-1 w-full px-3 py-2 rounded-lg bg-gray-800 border border-gray-700/50 text-white text-sm focus:outline-none focus:border-[#2563EB] [color-scheme:dark]"
+                          />
+                        </div>
+                      </MerchantCardContent>
+                    </MerchantCard>
+
                     <MerchantCard className="shadow-xl border border-[#2563EB]/30">
                       <MerchantCardContent className="p-5 space-y-3">
                         <p className="text-sm font-semibold text-gray-300 uppercase tracking-wide">BP Wallet</p>
