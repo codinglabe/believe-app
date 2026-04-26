@@ -137,10 +137,11 @@ const [positions, setPositions] = useState<Record<string, string>>({});
 
     useEffect(() => {
     if (positionCategoryId) {
-      axios.get('/get-job-positions', { params: { category_id: positionCategoryId } })
+      axios.get('/get-job-positions', { params: { category_id: positionCategoryId, per_page: 1000, page: 1 } })
         .then(response => {
+          const rows = Array.isArray(response.data) ? response.data : (response.data?.data ?? [])
           // Convert array to {id: title} format
-          const positionsMap = response.data.reduce((acc: Record<string, string>, position: any) => {
+          const positionsMap = rows.reduce((acc: Record<string, string>, position: any) => {
             acc[position.id] = position.title;
             return acc;
           }, {});

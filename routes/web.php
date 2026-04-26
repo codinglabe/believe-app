@@ -160,6 +160,7 @@ use App\Http\Controllers\UnityLiveController;
 use App\Http\Controllers\UserProfileController;
 use App\Http\Controllers\UsersInterestedTopicsController;
 use App\Http\Controllers\VolunteerController;
+use App\Http\Controllers\VolunteerAvailableSupportersController;
 use App\Http\Controllers\VolunteerSupporterInterestsController;
 use App\Http\Controllers\VolunteerTimesheetController;
 use App\Http\Controllers\WalletController;
@@ -442,6 +443,9 @@ Route::get('/jobs', [JobsController::class, 'index'])->name('jobs.index');
 Route::get('/volunteer-opportunities', [JobsController::class, 'volunteerOpportunities'])->name('volunteer-opportunities.index');
 Route::post('/volunteer-opportunities/volunteer-interests', [JobsController::class, 'saveVolunteerInterestStatement'])
     ->name('volunteer-opportunities.save-interests')
+    ->middleware(['auth', 'EnsureEmailIsVerified', 'role:user']);
+Route::post('/volunteer-opportunities/saved-positions', [JobsController::class, 'saveVolunteerPreferredPositions'])
+    ->name('volunteer-opportunities.save-positions')
     ->middleware(['auth', 'EnsureEmailIsVerified', 'role:user']);
 Route::get('/jobs/{id}', [JobsController::class, 'show'])->name('jobs.show');
 Route::get('/get-job-positions', [JobsController::class, 'getJobPositions'])->name('jobs.positions.by-category');
@@ -1151,6 +1155,30 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|care_alli
         Route::patch('/listing/{organization_product}', [MarketplaceProductPoolController::class, 'updateListing'])->name('listing.update');
     });
 
+    // Organization Feedback & Rewards
+    Route::prefix('organization/feedback-rewards')
+        ->name('org.feedback-rewards.')
+        ->group(function () {
+            Route::get('/', [\App\Http\Controllers\Organization\OrganizationFeedbackRewardsController::class, 'index'])->name('index');
+            Route::get('/create', [\App\Http\Controllers\Organization\OrganizationFeedbackRewardsController::class, 'create'])->name('create');
+            Route::post('/', [\App\Http\Controllers\Organization\OrganizationFeedbackRewardsController::class, 'store'])->name('store');
+            Route::get('/{campaign}', [\App\Http\Controllers\Organization\OrganizationFeedbackRewardsController::class, 'show'])->name('show');
+            Route::get('/{campaign}/edit', [\App\Http\Controllers\Organization\OrganizationFeedbackRewardsController::class, 'edit'])->name('edit');
+            Route::put('/{campaign}', [\App\Http\Controllers\Organization\OrganizationFeedbackRewardsController::class, 'update'])->name('update');
+            Route::post('/{campaign}/launch', [\App\Http\Controllers\Organization\OrganizationFeedbackRewardsController::class, 'launch'])->name('launch');
+            Route::post('/{campaign}/end', [\App\Http\Controllers\Organization\OrganizationFeedbackRewardsController::class, 'end'])->name('end');
+        });
+
+    // Organization BRP Wallet
+    Route::prefix('organization/wallet/brp')
+        ->name('org.wallet.brp.')
+        ->group(function () {
+            Route::get('/', [\App\Http\Controllers\Organization\OrganizationBrpWalletController::class, 'index'])->name('index');
+            Route::get('/buy', [\App\Http\Controllers\Organization\OrganizationBrpWalletController::class, 'buyForm'])->name('buy');
+            Route::post('/purchase', [\App\Http\Controllers\Organization\OrganizationBrpWalletController::class, 'purchase'])->name('purchase');
+            Route::get('/success', [\App\Http\Controllers\Organization\OrganizationBrpWalletController::class, 'purchaseSuccess'])->name('purchase.success');
+        });
+
     // old Facebook Integration Routes
     // Route::prefix('facebook')->group(function () {
     //     // Connection Management
@@ -1482,6 +1510,9 @@ Route::get('volunteers', [VolunteerController::class, 'index'])
     ->middleware(['role:organization|care_alliance', 'permission:volunteer.read']);
 Route::get('volunteers/supporter-interests', [VolunteerSupporterInterestsController::class, 'index'])
     ->name('volunteers.supporter-interests.index')
+    ->middleware(['role:organization|care_alliance', 'permission:volunteer.read']);
+Route::get('volunteers/volunteer-interests', [VolunteerAvailableSupportersController::class, 'index'])
+    ->name('volunteers.volunteer-interests')
     ->middleware(['role:organization|care_alliance', 'permission:volunteer.read']);
 
 // Volunteer Time Sheet Routes (must come before volunteers/{volunteer} to avoid route conflicts)

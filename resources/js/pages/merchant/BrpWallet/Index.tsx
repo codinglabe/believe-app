@@ -10,9 +10,13 @@ import { showSuccessToast, showErrorToast } from '@/lib/toast'
 interface WalletInfo {
   balance_brp: number; reserved_brp: number; spent_brp: number
   available_brp: number; balance_dollars: number; available_dollars: number
+  reserved_dollars: number
+  /** Lifetime BP/USD to supporters; raw spent_brp in DB is US-cent sum */
+  sent_bp: number; sent_dollars: number
 }
 interface Transaction {
   id: number; type: string; amount_brp: number; description: string; created_at: string
+  amount_bp_display: number; amount_dollars: number
 }
 interface Props {
   wallet: WalletInfo
@@ -35,7 +39,7 @@ export default function BrpWalletIndex({ wallet, transactions }: Props) {
 
   return (
     <>
-      <Head title="Rewards Wallet (BRP)" />
+      <Head title="Rewards Wallet (BP)" />
       <MerchantDashboardLayout>
         <div className="w-full">
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
@@ -44,11 +48,11 @@ export default function BrpWalletIndex({ wallet, transactions }: Props) {
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
               <div>
                 <h1 className="text-3xl font-bold text-white mb-1">Rewards Wallet</h1>
-                <p className="text-gray-400">Manage your BRP balance and view transactions</p>
+                <p className="text-gray-400">Manage your BP balance and view transactions. 1 BP = $1.00.</p>
               </div>
               <Link href="/wallet/brp/buy">
                 <MerchantButton className="bg-gradient-to-r from-[#2563EB] to-[#1D4ED8] hover:from-emerald-600 hover:to-emerald-700">
-                  <ShoppingCart className="h-4 w-4 mr-2" />Buy BRP
+                  <ShoppingCart className="h-4 w-4 mr-2" />Buy BP
                 </MerchantButton>
               </Link>
             </div>
@@ -59,12 +63,12 @@ export default function BrpWalletIndex({ wallet, transactions }: Props) {
               <div className="md:col-span-2">
                 <MerchantCard className="shadow-xl border border-[#2563EB]/20 h-full">
                   <MerchantCardContent className="p-6 flex flex-col justify-between h-full">
-                    <p className="text-sm text-gray-400 uppercase tracking-wide font-semibold mb-2">Current Balance</p>
-                    <p className="text-6xl font-extrabold text-white mb-1">{wallet.balance_brp.toLocaleString()}<span className="text-2xl font-normal text-gray-400 ml-2">BRP</span></p>
-                    <p className="text-lg text-gray-400 mb-6">≈ ${wallet.balance_dollars.toFixed(2)}</p>
+                    <p className="text-sm text-gray-400 uppercase tracking-wide font-semibold mb-2">Available balance</p>
+                    <p className="text-6xl font-extrabold text-white mb-1">{Number(wallet.available_brp).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })}<span className="text-2xl font-normal text-gray-400 ml-2">BP</span></p>
+                    <p className="text-lg text-gray-400 mb-6">= ${wallet.available_dollars.toFixed(2)}</p>
                     <Link href="/wallet/brp/buy">
                       <MerchantButton className="bg-gradient-to-r from-[#2563EB] to-[#1D4ED8] w-full sm:w-auto">
-                        <ShoppingCart className="h-4 w-4 mr-2" />Buy BRP
+                        <ShoppingCart className="h-4 w-4 mr-2" />Buy BP
                       </MerchantButton>
                     </Link>
                   </MerchantCardContent>
@@ -76,15 +80,16 @@ export default function BrpWalletIndex({ wallet, transactions }: Props) {
                 <MerchantCardHeader><MerchantCardTitle className="text-white">Balance Summary</MerchantCardTitle></MerchantCardHeader>
                 <MerchantCardContent className="space-y-3">
                   {[
-                    { label: 'Total Earned', value: wallet.balance_brp.toLocaleString(), sub: `$${wallet.balance_dollars.toFixed(2)}`, color: 'text-white' },
-                    { label: 'Total Spent', value: wallet.spent_brp.toLocaleString(), sub: `$${(wallet.spent_brp * 0.01).toFixed(2)}`, color: 'text-red-400' },
+                    { label: 'Total balance', value: Number(wallet.balance_brp).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 }), sub: `$${wallet.balance_dollars.toFixed(2)}`, color: 'text-white' },
+                    { label: 'Reserved', value: Number(wallet.reserved_brp).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 }), sub: `$${wallet.reserved_dollars.toFixed(2)}`, color: 'text-amber-400' },
+                    { label: 'BP sent', value: Number(wallet.sent_bp).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 }), sub: `= $${wallet.sent_dollars.toFixed(2)}`, color: 'text-red-400' },
                     { label: 'Expired', value: '0', sub: '$0.00', color: 'text-gray-500' },
-                    { label: 'Available Balance', value: wallet.available_brp.toLocaleString(), sub: `$${wallet.available_dollars.toFixed(2)}`, color: 'text-emerald-400' },
+                    { label: 'Available', value: Number(wallet.available_brp).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 }), sub: `$${wallet.available_dollars.toFixed(2)}`, color: 'text-emerald-400' },
                   ].map((item) => (
                     <div key={item.label} className="flex justify-between items-center py-1.5 border-b border-gray-800/60 last:border-0">
                       <span className="text-sm text-gray-400">{item.label}</span>
                       <div className="text-right">
-                        <p className={`text-sm font-bold ${item.color}`}>{item.value} BRP</p>
+                        <p className={`text-sm font-bold ${item.color}`}>{item.value} BP</p>
                         <p className="text-xs text-gray-600">{item.sub}</p>
                       </div>
                     </div>
@@ -103,6 +108,8 @@ export default function BrpWalletIndex({ wallet, transactions }: Props) {
                       {transactions.links?.map((link: any, i: number) => (
                         <button key={i} disabled={!link.url} onClick={() => link.url && router.get(link.url)}
                           className={`px-2.5 py-1 rounded text-xs ${link.active ? 'bg-[#2563EB] text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'} ${!link.url ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                          aria-label={String(link.label).replace(/<[^>]*>/g, '').trim() || 'Pagination'}
+                          title={String(link.label).replace(/<[^>]*>/g, '').trim() || 'Pagination'}
                           dangerouslySetInnerHTML={{ __html: link.label }} />
                       ))}
                     </div>
@@ -112,19 +119,21 @@ export default function BrpWalletIndex({ wallet, transactions }: Props) {
               <MerchantCardContent className="p-0">
                 {transactions.data.length === 0 ? (
                   <div className="text-center py-12">
-                    <p className="text-gray-400">No transactions yet. Buy BRP to get started!</p>
+                    <p className="text-gray-400">No transactions yet. Buy BP to get started!</p>
                   </div>
                 ) : (
                   <div className="overflow-x-auto">
                     <table className="w-full">
                       <thead><tr className="border-b border-gray-800">
-                        {['Date', 'Type', 'Description', 'Amount', 'Balance'].map((h) => (
+                        {['Date', 'Type', 'Description', 'Amount'].map((h) => (
                           <th key={h} className="text-left px-5 py-3 text-xs font-semibold text-gray-400 uppercase tracking-wider">{h}</th>
                         ))}
                       </tr></thead>
                       <tbody className="divide-y divide-gray-800/50">
                         {transactions.data.map((tx, i) => {
                           const cfg = typeConfig[tx.type] || typeConfig.payout
+                          const bpDisplay = tx.amount_bp_display ?? tx.amount_brp
+                          const usd = tx.amount_dollars ?? bpDisplay
                           return (
                             <motion.tr key={tx.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: i * 0.03 }}
                               className="hover:bg-white/[0.02]">
@@ -138,10 +147,10 @@ export default function BrpWalletIndex({ wallet, transactions }: Props) {
                               <td className="px-5 py-3 text-sm text-gray-300 max-w-[200px] truncate">{tx.description}</td>
                               <td className="px-5 py-3 text-sm font-bold">
                                 <span className={cfg.positive ? 'text-emerald-400' : 'text-red-400'}>
-                                  {cfg.positive ? '+' : '-'}{tx.amount_brp.toLocaleString()} BRP
+                                  {cfg.positive ? '+' : '-'}{Number(bpDisplay).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })} BP
                                 </span>
+                                <span className="block text-xs font-normal text-gray-500">${usd.toFixed(2)}</span>
                               </td>
-                              <td className="px-5 py-3 text-sm text-gray-300">—</td>
                             </motion.tr>
                           )
                         })}

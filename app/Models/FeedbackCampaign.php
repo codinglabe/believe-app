@@ -13,6 +13,7 @@ class FeedbackCampaign extends Model
     protected $fillable = [
         'uuid',
         'merchant_id',
+        'organization_id',
         'title',
         'type',
         'reward_per_response_brp',
@@ -23,6 +24,8 @@ class FeedbackCampaign extends Model
         'max_responses',
         'responses_count',
         'status',
+        'starts_at',
+        'ends_at',
     ];
 
     protected $casts = [
@@ -33,6 +36,16 @@ class FeedbackCampaign extends Model
         'remaining_budget_brp' => 'integer',
         'max_responses' => 'integer',
         'responses_count' => 'integer',
+        'starts_at' => 'datetime',
+        'ends_at' => 'datetime',
+    ];
+
+    /** @var list<string> */
+    protected $appends = [
+        'reward_bp_display',
+        'total_budget_bp_display',
+        'spent_budget_bp_display',
+        'remaining_budget_bp_display',
     ];
 
     protected static function booted(): void
@@ -77,6 +90,11 @@ class FeedbackCampaign extends Model
         return $this->belongsTo(Merchant::class);
     }
 
+    public function organization(): BelongsTo
+    {
+        return $this->belongsTo(Organization::class);
+    }
+
     public function questions(): HasMany
     {
         return $this->hasMany(FeedbackCampaignQuestion::class, 'campaign_id')->orderBy('sort_order');
@@ -93,10 +111,36 @@ class FeedbackCampaign extends Model
     }
 
     /**
-     * Dollar value of BRP amount (1 BRP = $0.01).
+     * Dollar value of stored integer (US cents: 3 = $0.03, 5000 = $50.00 for budget fields).
      */
     public static function brpToDollars(int $brp): float
     {
         return round($brp * 0.01, 2);
+    }
+
+    /**
+     * Per-response reward for UI (0.03 / 0.10 / … BP). Stored `reward_per_response_brp` is US cents.
+     */
+    public function getRewardBpDisplayAttribute(): float
+    {
+        return round($this->reward_per_response_brp / 100, 2);
+    }
+
+    /**
+     * Budget fields in whole BP (1 BP = $1.00) for UI; DB stores US-cent integers.
+     */
+    public function getTotalBudgetBpDisplayAttribute(): float
+    {
+        return round($this->total_budget_brp / 100, 2);
+    }
+
+    public function getSpentBudgetBpDisplayAttribute(): float
+    {
+        return round($this->spent_budget_brp / 100, 2);
+    }
+
+    public function getRemainingBudgetBpDisplayAttribute(): float
+    {
+        return round($this->remaining_budget_brp / 100, 2);
     }
 }

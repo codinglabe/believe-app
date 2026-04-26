@@ -419,6 +419,19 @@ export const dashboardSidebarNavItems: (NavItem | NavGroup)[] = [
                 role: 'organization',
             },
             {
+                title: 'Feedback & Rewards',
+                href: '/organization/feedback-rewards',
+                icon: MessageSquare,
+                role: 'organization',
+            },
+            {
+                title: 'BRP Wallet',
+                href: '/organization/wallet/brp',
+                icon: Wallet,
+                role: 'organization',
+            },
+
+            {
                 title: 'Chat',
                 icon: MessageCircle,
                 items: [
@@ -446,6 +459,7 @@ export const dashboardSidebarNavItems: (NavItem | NavGroup)[] = [
         ],
     },
 
+
     {
         title: 'Opportunities',
         icon: Puzzle,
@@ -456,7 +470,7 @@ export const dashboardSidebarNavItems: (NavItem | NavGroup)[] = [
                 icon: UserCheck,
                 items: [
                     {
-                        title: 'Volunteers',
+                        title: 'Approved Volunteers',
                         href: '/volunteers',
                         icon: UserCheck,
                         permission: 'volunteer.read',
@@ -466,6 +480,13 @@ export const dashboardSidebarNavItems: (NavItem | NavGroup)[] = [
                         title: 'Supporter volunteer interests',
                         href: '/volunteers/supporter-interests',
                         icon: HeartHandshake,
+                        permission: 'volunteer.read',
+                        role: 'organization',
+                    },
+                    {
+                        title: 'Volunteer Interests',
+                        href: route('volunteers.volunteer-interests'),
+                        icon: Sparkles,
                         permission: 'volunteer.read',
                         role: 'organization',
                     },

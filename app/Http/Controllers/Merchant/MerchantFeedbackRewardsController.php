@@ -13,6 +13,24 @@ use Inertia\Inertia;
 
 class MerchantFeedbackRewardsController extends Controller
 {
+    private const PLATFORM_FEE_RATE = 0.045;
+    private const PROCESSING_FEE_RATE = 0.035;
+
+    /** USD cost per response for each internal campaign type (displayed as 0.03 / 0.10 / 0.25 / 0.50 BP). */
+    private const CAMPAIGN_TYPE_COST_USD = [
+        'quick_vote' => 0.03,
+        'short_feedback' => 0.10,
+        'standard_survey' => 0.25,
+        'deep_feedback' => 0.50,
+    ];
+
+    private const CAMPAIGN_TYPE_DEFAULT_REWARD_BRP = [
+        'quick_vote' => 3,
+        'short_feedback' => 10,
+        'standard_survey' => 25,
+        'deep_feedback' => 50,
+    ];
+
     protected FeedbackCampaignService $campaignService;
     protected BrpWalletService $walletService;
 
@@ -40,19 +58,36 @@ class MerchantFeedbackRewardsController extends Controller
             $query->where('title', 'like', "%{$request->search}%");
         }
 
-        $campaigns = $query->orderBy('created_at', 'desc')
+        $totalResponsesForFilter = (clone $query)->get()->sum('responses_count');
+        $activeCampaignsForMerchant = FeedbackCampaign::where('merchant_id', $merchant->id)
+            ->where('status', 'active')
+            ->count();
+
+        $campaigns = (clone $query)->orderBy('created_at', 'desc')
             ->paginate(15)
             ->withQueryString();
 
         $wallet = $this->walletService->getOrCreateMerchantWallet($merchant->id);
 
+        // `spent_brp` column: sum of per-response reward integers in US-cents of dollars (3 = $0.03 to supporters), not whole BP. 1 BP = $1.00 in display.
+        $sentToSupportersDisplay = round($wallet->spent_brp / 100, 2);
+
         return Inertia::render('merchant/FeedbackRewards/Index', [
             'campaigns' => $campaigns,
+            'stats' => [
+                'active_campaigns' => $activeCampaignsForMerchant,
+                'total_responses' => $totalResponsesForFilter,
+            ],
             'wallet' => [
                 'balance_brp' => $wallet->balance_brp,
                 'reserved_brp' => $wallet->reserved_brp,
                 'spent_brp' => $wallet->spent_brp,
                 'available_brp' => $wallet->available_brp,
+                'balance_dollars' => round($wallet->balance_brp, 2),
+                'available_dollars' => round($wallet->available_brp, 2),
+                'sent_bp' => $sentToSupportersDisplay,
+                'sent_dollars' => $sentToSupportersDisplay,
+                'reserved_dollars' => round($wallet->reserved_brp, 2),
             ],
             'filters' => [
                 'search' => $request->search ?? '',
@@ -64,10 +99,78 @@ class MerchantFeedbackRewardsController extends Controller
     /**
      * Show the create campaign form.
      */
-    public function create()
+    public function create(Request $request)
     {
         $merchant = Auth::guard('merchant')->user();
         $wallet = $this->walletService->getOrCreateMerchantWallet($merchant->id);
+
+        // Whole-budget input in BP: 1 BP = $1.00 (same as wallet buy flow).
+        $budgetBp = (int) ($request->get('fee_preview_budget_bp') ?? 0);
+        $budgetBp = max(0, $budgetBp);
+        $budgetUsd = round((float) $budgetBp, 2);
+        $budgetCents = (int) round($budgetUsd * 100);
+        $platformFeeUsd = $budgetUsd > 0 ? round($budgetUsd * self::PLATFORM_FEE_RATE, 2) : 0.0;
+        $processingFeeUsd = $budgetUsd > 0 ? round($budgetUsd * self::PROCESSING_FEE_RATE, 2) : 0.0;
+        $totalUsd = round($budgetUsd + $platformFeeUsd + $processingFeeUsd, 2);
+
+        $previewType = (string) $request->get('fee_preview_type', 'short_feedback');
+        if (! array_key_exists($previewType, self::CAMPAIGN_TYPE_COST_USD)) {
+            $previewType = 'short_feedback';
+        }
+        $cprPreviewUsd = self::CAMPAIGN_TYPE_COST_USD[$previewType];
+        $defaultRewardBrp = self::CAMPAIGN_TYPE_DEFAULT_REWARD_BRP[$previewType];
+        $rewardInput = $request->get('fee_preview_reward_brp');
+        $rewardForPreview = (is_numeric($rewardInput) && (int) $rewardInput > 0)
+            ? (int) $rewardInput
+            : $defaultRewardBrp;
+
+        $liveCalculation = null;
+        if ($budgetBp > 0) {
+            $maxByType = $cprPreviewUsd > 0 ? (int) round($budgetUsd / $cprPreviewUsd) : 0;
+            $maxByCustom = $rewardForPreview > 0 ? (int) floor($budgetCents / $rewardForPreview) : 0;
+            $liveCalculation = [
+                'per_response_bp_display' => round($cprPreviewUsd, 2),
+                'max_responses' => $maxByType,
+                'reward_matches_type_default' => $rewardForPreview === $defaultRewardBrp,
+                'custom_max_responses' => $maxByCustom,
+                'budget_usd' => $budgetUsd,
+                'platform_fee_usd' => $platformFeeUsd,
+                'processing_fee_usd' => $processingFeeUsd,
+                'total_usd' => $totalUsd,
+                'sufficient_brp' => $wallet->available_brp >= $budgetBp,
+            ];
+        }
+
+        $feeTablePreview = null;
+        if ($budgetBp > 0) {
+            $costPerResponse = [
+                ['type' => 'Quick Vote', 'cost_per_response_usd' => 0.03],
+                ['type' => 'Short Feedback', 'cost_per_response_usd' => 0.10],
+                ['type' => 'Standard Survey', 'cost_per_response_usd' => 0.25],
+                ['type' => 'Deep Feedback', 'cost_per_response_usd' => 0.50],
+            ];
+
+            $feeTablePreview = array_map(function (array $row) use ($budgetBp, $budgetUsd, $platformFeeUsd, $processingFeeUsd, $totalUsd) {
+                $cpr = (float) $row['cost_per_response_usd'];
+                // Match client-facing preview table (example shows 50 / 0.03 => 1,667).
+                // We round for display (not for enforcing spend limits in the payout logic).
+                $supporters = $cpr > 0 ? (int) round($budgetUsd / $cpr) : 0;
+
+                return [
+                    'type' => $row['type'],
+                    // cost_per_response_brp: dollar cents for sub-dollar per-response (3 = $0.03) for legacy DB fields
+                    'cost_per_response_brp' => (int) round($cpr * 100),
+                    'cost_per_response_bp_display' => round($cpr, 2),
+                    'cost_per_response_usd' => round($cpr, 2),
+                    'budget_brp' => $budgetBp,
+                    'budget_usd' => round($budgetUsd, 2),
+                    'supporters' => $supporters,
+                    'platform_fee_usd' => $platformFeeUsd,
+                    'processing_fee_usd' => $processingFeeUsd, // Displayed as "Stripe Fee" in UI
+                    'total_usd' => $totalUsd,
+                ];
+            }, $costPerResponse);
+        }
 
         return Inertia::render('merchant/FeedbackRewards/Create', [
             'wallet' => [
@@ -75,11 +178,13 @@ class MerchantFeedbackRewardsController extends Controller
                 'available_brp' => $wallet->available_brp,
             ],
             'campaignTypes' => [
-                ['value' => 'quick_vote', 'label' => 'Quick Vote', 'default_reward' => 3, 'est_time' => '~10 sec'],
-                ['value' => 'short_feedback', 'label' => 'Short Feedback', 'default_reward' => 10, 'est_time' => '~1 min'],
-                ['value' => 'standard_survey', 'label' => 'Standard Survey', 'default_reward' => 25, 'est_time' => '~3 min'],
-                ['value' => 'deep_feedback', 'label' => 'Deep Feedback', 'default_reward' => 50, 'est_time' => '~5 min'],
+                ['value' => 'quick_vote', 'label' => 'Quick Vote', 'default_reward' => 3, 'est_time' => '~10 sec', 'per_response_bp_display' => 0.03],
+                ['value' => 'short_feedback', 'label' => 'Short Feedback', 'default_reward' => 10, 'est_time' => '~1 min', 'per_response_bp_display' => 0.10],
+                ['value' => 'standard_survey', 'label' => 'Standard Survey', 'default_reward' => 25, 'est_time' => '~3 min', 'per_response_bp_display' => 0.25],
+                ['value' => 'deep_feedback', 'label' => 'Deep Feedback', 'default_reward' => 50, 'est_time' => '~5 min', 'per_response_bp_display' => 0.50],
             ],
+            'feeTablePreview' => $feeTablePreview,
+            'liveCalculation' => $liveCalculation,
         ]);
     }
 
@@ -98,22 +203,11 @@ class MerchantFeedbackRewardsController extends Controller
             'question_text' => 'required|string|max:1000',
             'question_type' => 'required|in:yes_no,true_false,multiple_choice',
             'options' => 'required_if:question_type,multiple_choice|array|min:2|max:6',
-            'options.*' => 'required_if:question_type,multiple_choice|string|max:255',
-        ], [
-            'title.required' => 'Campaign title is required.',
-            'type.required' => 'Please select a campaign type.',
-            'reward_per_response_brp.required' => 'Reward per response is required.',
-            'reward_per_response_brp.min' => 'Reward must be at least 1 BP.',
-            'total_budget_brp.required' => 'Total budget is required.',
-            'total_budget_brp.min' => 'Budget must be at least 1 BRP.',
-            'question_text.required' => 'Please enter a question.',
-            'question_type.required' => 'Please select a question type.',
-            'options.required_if' => 'Multiple choice questions require at least 2 options.',
-            'options.min' => 'Multiple choice questions require at least 2 options.',
-            'options.max' => 'Maximum 6 options allowed.',
+            'options.*' => 'required_if:question_type,multiple_choice|nullable|string|max:255',
+            'starts_at' => 'nullable|date',
+            'ends_at' => 'nullable|date|after_or_equal:starts_at',
         ]);
 
-        // Validate budget >= reward
         if ($validated['total_budget_brp'] < $validated['reward_per_response_brp']) {
             return redirect()->back()
                 ->withInput()
@@ -131,6 +225,94 @@ class MerchantFeedbackRewardsController extends Controller
             return redirect()->back()
                 ->withInput()
                 ->with('error', 'Failed to create campaign: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Show the edit form for a draft campaign.
+     */
+    public function edit(FeedbackCampaign $campaign)
+    {
+        $merchant = Auth::guard('merchant')->user();
+
+        if ($campaign->merchant_id !== $merchant->id) {
+            abort(403, 'Unauthorized access.');
+        }
+
+        $campaign->load('questions.options');
+        $wallet = $this->walletService->getOrCreateMerchantWallet($merchant->id);
+
+        $question = $campaign->questions->first();
+
+        return Inertia::render('merchant/FeedbackRewards/Edit', [
+            'campaign' => [
+                'id' => $campaign->id,
+                'title' => $campaign->title,
+                'type' => $campaign->type,
+                'reward_per_response_brp' => $campaign->reward_per_response_brp,
+                'total_budget_brp' => $campaign->total_budget_brp,
+                'starts_at' => $campaign->starts_at?->format('Y-m-d'),
+                'ends_at' => $campaign->ends_at?->format('Y-m-d'),
+                'question_text' => $question?->question_text ?? '',
+                'question_type' => $question?->question_type ?? 'multiple_choice',
+                'options' => $question && $question->question_type === 'multiple_choice'
+                    ? $question->options->pluck('option_text')->toArray()
+                    : ['', ''],
+            ],
+            'wallet' => [
+                'balance_brp' => $wallet->balance_brp,
+                'available_brp' => $wallet->available_brp,
+            ],
+            'campaignTypes' => [
+                ['value' => 'quick_vote', 'label' => 'Quick Vote', 'default_reward' => 3, 'est_time' => '~10 sec', 'per_response_bp_display' => 0.03],
+                ['value' => 'short_feedback', 'label' => 'Short Feedback', 'default_reward' => 10, 'est_time' => '~1 min', 'per_response_bp_display' => 0.10],
+                ['value' => 'standard_survey', 'label' => 'Standard Survey', 'default_reward' => 25, 'est_time' => '~3 min', 'per_response_bp_display' => 0.25],
+                ['value' => 'deep_feedback', 'label' => 'Deep Feedback', 'default_reward' => 50, 'est_time' => '~5 min', 'per_response_bp_display' => 0.50],
+            ],
+        ]);
+    }
+
+    /**
+     * Update a draft campaign.
+     */
+    public function update(Request $request, FeedbackCampaign $campaign)
+    {
+        $merchant = Auth::guard('merchant')->user();
+
+        if ($campaign->merchant_id !== $merchant->id) {
+            abort(403, 'Unauthorized access.');
+        }
+
+        $validated = $request->validate([
+            'title' => 'required|string|max:255',
+            'type' => 'required|in:quick_vote,short_feedback,standard_survey,deep_feedback',
+            'reward_per_response_brp' => 'required|integer|min:1',
+            'total_budget_brp' => 'required|integer|min:1',
+            'question_text' => 'required|string|max:1000',
+            'question_type' => 'required|in:yes_no,true_false,multiple_choice',
+            'options' => 'required_if:question_type,multiple_choice|array|min:2|max:6',
+            'options.*' => 'required_if:question_type,multiple_choice|nullable|string|max:255',
+            'starts_at' => 'nullable|date',
+            'ends_at' => 'nullable|date|after_or_equal:starts_at',
+        ]);
+
+        if ($validated['total_budget_brp'] < $validated['reward_per_response_brp']) {
+            return redirect()->back()
+                ->withInput()
+                ->withErrors(['total_budget_brp' => 'Budget must be at least equal to reward per response.']);
+        }
+
+        try {
+            $this->campaignService->updateCampaign($campaign, $validated);
+
+            return redirect()->route('feedback-rewards.show', $campaign->id)
+                ->with('success', 'Campaign updated successfully!');
+        } catch (\Exception $e) {
+            Log::error('Campaign update error: ' . $e->getMessage());
+
+            return redirect()->back()
+                ->withInput()
+                ->with('error', 'Failed to update campaign: ' . $e->getMessage());
         }
     }
 
@@ -176,7 +358,7 @@ class MerchantFeedbackRewardsController extends Controller
             $this->campaignService->launchCampaign($campaign);
 
             return redirect()->route('feedback-rewards.show', $campaign->id)
-                ->with('success', 'Campaign launched successfully! BRP has been reserved.');
+                ->with('success', 'Campaign launched successfully! BP has been reserved.');
         } catch (\Exception $e) {
             return redirect()->back()
                 ->with('error', $e->getMessage());
@@ -198,7 +380,7 @@ class MerchantFeedbackRewardsController extends Controller
             $this->campaignService->endCampaign($campaign);
 
             return redirect()->route('feedback-rewards.show', $campaign->id)
-                ->with('success', 'Campaign ended. Unused BRP has been released to your wallet.');
+                ->with('success', 'Campaign ended. Unused BP has been released to your wallet.');
         } catch (\Exception $e) {
             return redirect()->back()
                 ->with('error', $e->getMessage());

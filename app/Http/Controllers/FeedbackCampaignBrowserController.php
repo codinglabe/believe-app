@@ -73,6 +73,7 @@ class FeedbackCampaignBrowserController extends Controller
                     'merchant_name' => $campaign->merchant->business_name ?? $campaign->merchant->name,
                     'reward_per_response_brp' => $campaign->reward_per_response_brp,
                     'reward_dollars' => FeedbackCampaign::brpToDollars($campaign->reward_per_response_brp),
+                    'reward_bp_display' => round($campaign->reward_per_response_brp / 100, 2),
                     'estimated_time' => FeedbackCampaign::estimatedTimeForType($campaign->type),
                     'responses_count' => $campaign->responses_count,
                     'questions_count' => $campaign->questions_count,

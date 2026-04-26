@@ -540,19 +540,23 @@ export default function ProfileEdit() {
             </div>
 
             <div className="min-w-0 space-y-2">
-              <Label className="text-sm font-medium text-slate-200">Supporters Interest</Label>
+              <Label className="text-sm font-medium text-slate-200">Cause groups</Label>
+              <p className="text-xs text-slate-500">
+                Each cause is its own group. When you pick one here, you <span className="font-medium text-slate-400">join</span> that
+                group (same categories as on organization profiles).
+              </p>
               {availableSupporterInterests.length === 0 ? (
                 <Alert className="border-amber-800 bg-amber-950/50">
                   <AlertCircle className="h-4 w-4 text-amber-500" />
                   <AlertDescription className="text-sm text-amber-100">
-                    No categories are available yet. An administrator must add them under Admin → Org Primary Action
+                    No cause groups are available yet. An administrator must add them under Admin → Org Primary Action
                     Categories, or run the database seeder.
                   </AlertDescription>
                 </Alert>
               ) : (
                 <div
                   role="group"
-                  aria-label="Supporters interest"
+                  aria-label="Cause groups you have joined"
                   className="flex min-h-10 w-full flex-wrap items-center gap-1 rounded-md border border-slate-600 bg-slate-800 px-2 py-1 text-sm text-slate-100"
                 >
                   {selectedSupporterInterestCategories.map((c) => (
@@ -565,7 +569,7 @@ export default function ProfileEdit() {
                         type="button"
                         onClick={() => removeSupporterInterestTag(c.id)}
                         className="tagify-tag__removeBtn ml-0.5 inline-flex size-[14px] shrink-0 cursor-pointer items-center justify-center rounded-sm text-white/85 hover:bg-white/20"
-                        aria-label={`Remove ${c.name}`}
+                        aria-label={`Leave ${c.name} group`}
                       >
                         <X className="h-2.5 w-2.5" strokeWidth={2.5} />
                       </button>
@@ -574,7 +578,7 @@ export default function ProfileEdit() {
                   {remainingSupporterInterestCategories.length > 0 ? (
                     <>
                       <label className="sr-only" htmlFor="supporter-interest-add">
-                        Add cause or interest
+                        Add another cause group
                       </label>
                       <Select
                         key={data.supporter_interests.join(",")}
@@ -586,7 +590,7 @@ export default function ProfileEdit() {
                           id="supporter-interest-add"
                           className="tagify__input h-7 min-w-[7rem] flex-1 justify-start border-0 bg-transparent px-1 py-0.5 text-sm text-slate-400 shadow-none [&_svg]:hidden"
                         >
-                          <SelectValue placeholder="Add category…" />
+                          <SelectValue placeholder="Add a group…" />
                         </SelectTrigger>
                         <SelectContent>
                           {remainingSupporterInterestCategories.map((c) => (
@@ -598,7 +602,7 @@ export default function ProfileEdit() {
                       </Select>
                     </>
                   ) : selectedSupporterInterestCategories.length > 0 ? (
-                    <span className="px-1 text-xs text-slate-400">All categories selected</span>
+                    <span className="px-1 text-xs text-slate-400">{"You're in every available cause group"}</span>
                   ) : null}
                 </div>
               )}
@@ -606,8 +610,8 @@ export default function ProfileEdit() {
                 <p className="text-sm text-red-400">{errors.supporter_interests}</p>
               )}
               <p className="text-sm text-slate-400">
-                Choose all that apply — same causes as organization profiles (Housing, Food, Mental Health, Education,
-                and more as admins add them).
+                Saving your profile updates which groups you belong to (Housing, Food, Mental Health, Education, and more
+                as admins add them).
               </p>
             </div>
           </CardContent>

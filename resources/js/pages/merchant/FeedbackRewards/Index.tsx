@@ -3,7 +3,7 @@ import { Head, Link, usePage, router } from '@inertiajs/react'
 import { MerchantCard, MerchantCardContent, MerchantCardHeader, MerchantCardTitle } from '@/components/merchant-ui'
 import { MerchantButton } from '@/components/merchant-ui'
 import { MerchantDashboardLayout } from '@/components/merchant'
-import { Plus, MessageSquare, Wallet, Eye, Users, DollarSign, Activity, ArrowRight, Search } from 'lucide-react'
+import { Plus, MessageSquare, Wallet, Eye, Users, DollarSign, Activity, ArrowRight, Search, Pencil } from 'lucide-react'
 import { motion } from 'framer-motion'
 import { showSuccessToast, showErrorToast } from '@/lib/toast'
 
@@ -19,13 +19,32 @@ interface Campaign {
   responses_count: number
   status: string
   created_at: string
+  reward_bp_display: number
+  total_budget_bp_display: number
+  remaining_budget_bp_display: number
 }
 
 interface WalletInfo {
   balance_brp: number
   reserved_brp: number
+  /** Raw sum in DB: US-cent units per response (3 = $0.03); use sent_* for display */
   spent_brp: number
   available_brp: number
+  balance_dollars: number
+  available_dollars: number
+  /** Lifetime BP/USD to supporters: 1 BP = $1.00 */
+  sent_bp: number
+  sent_dollars: number
+  reserved_dollars: number
+}
+
+interface Stats {
+  active_campaigns: number
+  total_responses: number
+}
+
+function formatBp(n: number) {
+  return Number(n).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })
 }
 
 interface Props {
@@ -35,6 +54,7 @@ interface Props {
     current_page: number
     last_page: number
   }
+  stats: Stats
   wallet: WalletInfo
   filters: {
     search: string
@@ -57,15 +77,13 @@ const statusColors: Record<string, { bg: string; text: string; dot: string }> = 
   cancelled: { bg: 'bg-red-500/15', text: 'text-red-300', dot: 'bg-red-400' },
 }
 
-export default function FeedbackRewardsIndex({ campaigns, wallet, filters }: Props) {
+export default function FeedbackRewardsIndex({ campaigns, stats, wallet, filters }: Props) {
   const { props } = usePage<{ success?: string; error?: string }>()
 
   useEffect(() => {
     if (props.success) showSuccessToast(props.success)
     if (props.error) showErrorToast(props.error)
   }, [props.success, props.error])
-
-  const activeCampaigns = campaigns.data.filter((c) => c.status === 'active').length
 
   return (
     <>
@@ -82,7 +100,7 @@ export default function FeedbackRewardsIndex({ campaigns, wallet, filters }: Pro
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
               <div>
                 <h1 className="text-3xl font-bold text-white mb-1">Feedback & Rewards</h1>
-                <p className="text-gray-400">Collect feedback and let supporters earn BP</p>
+                <p className="text-gray-400">Collect feedback and let supporters earn BP. 1 BP = $1.00.</p>
               </div>
               <Link href="/feedback-rewards/create">
                 <MerchantButton className="bg-gradient-to-r from-[#2563EB] to-[#1D4ED8] hover:from-[#FF1FA3] hover:via-[#EC1F4C] hover:to-[#F98461]">
@@ -95,10 +113,10 @@ export default function FeedbackRewardsIndex({ campaigns, wallet, filters }: Pro
             {/* Stats Cards Row — matches reference screen 1 */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               {[
-                { label: 'Active Campaigns', value: activeCampaigns, icon: Activity, color: 'text-[#2563EB]', bg: 'bg-[#2563EB]/10' },
-                { label: 'Total Responses', value: campaigns.data.reduce((s, c) => s + c.responses_count, 0), icon: Users, color: 'text-emerald-400', bg: 'bg-emerald-400/10' },
-                { label: 'BRP Spent', value: wallet.spent_brp.toLocaleString(), sub: `$${(wallet.spent_brp * 0.01).toFixed(2)}`, icon: DollarSign, color: 'text-amber-400', bg: 'bg-amber-400/10' },
-                { label: 'BRP Balance', value: wallet.balance_brp.toLocaleString(), sub: `$${(wallet.balance_brp * 0.01).toFixed(2)}`, icon: Wallet, color: 'text-white', bg: 'bg-white/10' },
+                { label: 'Active Campaigns', value: stats.active_campaigns, icon: Activity, color: 'text-[#2563EB]', bg: 'bg-[#2563EB]/10' },
+                { label: 'Total Responses', value: stats.total_responses, icon: Users, color: 'text-emerald-400', bg: 'bg-emerald-400/10' },
+                { label: 'BP sent', value: formatBp(wallet.sent_bp), sub: `= $${wallet.sent_dollars.toFixed(2)}`, icon: DollarSign, color: 'text-amber-400', bg: 'bg-amber-400/10' },
+                { label: 'Available balance', value: formatBp(wallet.available_brp), sub: `= $${wallet.available_dollars.toFixed(2)}`, icon: Wallet, color: 'text-white', bg: 'bg-white/10' },
               ].map((stat, i) => (
                 <motion.div
                   key={stat.label}
@@ -208,10 +226,12 @@ export default function FeedbackRewardsIndex({ campaigns, wallet, filters }: Pro
                                 <span className="text-sm text-gray-400">{typeLabels[campaign.type] || campaign.type}</span>
                               </td>
                               <td className="px-4 py-4">
-                                <span className="text-sm text-white font-medium">{campaign.reward_per_response_brp} BP</span>
+                                <span className="text-sm text-white font-medium">{campaign.reward_bp_display.toFixed(2)} BP</span>
                               </td>
                               <td className="px-4 py-4">
-                                <span className="text-sm text-gray-300">{campaign.remaining_budget_brp.toLocaleString()} / {campaign.total_budget_brp.toLocaleString()}</span>
+                                <span className="text-sm text-gray-300">
+                                  {campaign.remaining_budget_bp_display.toFixed(2)} / {campaign.total_budget_bp_display.toFixed(2)} BP
+                                </span>
                               </td>
                               <td className="px-4 py-4">
                                 <span className="text-sm text-white">{campaign.responses_count} / {campaign.max_responses}</span>
@@ -226,11 +246,30 @@ export default function FeedbackRewardsIndex({ campaigns, wallet, filters }: Pro
                                 <span className="text-sm text-gray-500">{new Date(campaign.created_at).toLocaleDateString()}</span>
                               </td>
                               <td className="px-6 py-4 text-right">
-                                <Link href={`/feedback-rewards/${campaign.id}`}>
-                                  <MerchantButton variant="ghost" size="sm" className="text-[#2563EB] hover:text-white">
-                                    <Eye className="h-4 w-4" />
-                                  </MerchantButton>
-                                </Link>
+                                <div className="flex items-center justify-end gap-1">
+                                  <Link href={`/feedback-rewards/${campaign.id}/edit`}>
+                                    <MerchantButton
+                                      variant="ghost"
+                                      size="sm"
+                                      className="text-[#2563EB] hover:text-white"
+                                      aria-label="Edit campaign"
+                                      title="Edit campaign"
+                                    >
+                                      <Pencil className="h-4 w-4" />
+                                    </MerchantButton>
+                                  </Link>
+                                  <Link href={`/feedback-rewards/${campaign.id}`}>
+                                    <MerchantButton
+                                      variant="ghost"
+                                      size="sm"
+                                      className="text-[#2563EB] hover:text-white"
+                                      aria-label="View campaign"
+                                      title="View campaign"
+                                    >
+                                      <Eye className="h-4 w-4" />
+                                    </MerchantButton>
+                                  </Link>
+                                </div>
                               </td>
                             </motion.tr>
                           )
@@ -257,6 +296,8 @@ export default function FeedbackRewardsIndex({ campaigns, wallet, filters }: Pro
                       className={`px-3 py-1.5 rounded text-sm ${
                         link.active ? 'bg-[#2563EB] text-white' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
                       } ${!link.url ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                      aria-label={String(link.label).replace(/<[^>]*>/g, '').trim() || 'Pagination'}
+                      title={String(link.label).replace(/<[^>]*>/g, '').trim() || 'Pagination'}
                       dangerouslySetInnerHTML={{ __html: link.label }}
                     />
                   ))}

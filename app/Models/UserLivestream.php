@@ -129,16 +129,18 @@ class UserLivestream extends Model
         $this->loadMissing('user');
         $settings = $this->settings ?? [];
         $displayName = $settings['display_name'] ?? null;
+        $recordEnabled = (bool) ($settings['record_meeting'] ?? true);
         $hostName = $displayName ?: ($this->user?->name ?? 'Host');
         $label = rawurlencode($hostName);
         $password = $this->getDecryptedPassword();
         $room = rawurlencode($this->getVdoRoomName());
         $pass = rawurlencode((string) $password);
+        $passwordParam = $pass !== '' ? '&password=' . $pass : '';
         $layouts = $this->getVdoGridLayouts();
         $layoutsParam = '&slotmode&layouts=' . rawurlencode(json_encode($layouts));
-        $base = "https://vdo.ninja/?director={$room}&password={$pass}&clearstorage&label={$label}&showlabels=1&activespeaker=1&cleandirector&openscene{$layoutsParam}";
+        $base = "https://vdo.ninja/?director={$room}{$passwordParam}&clearstorage&label={$label}&showlabels=1&activespeaker=1&cleandirector&openscene{$layoutsParam}";
 
-        if ($recordToDropbox && $this->user && ! empty($this->user->dropbox_refresh_token)) {
+        if ($recordEnabled && $recordToDropbox && $this->user && ! empty($this->user->dropbox_refresh_token)) {
             $oauthService = app(\App\Services\DropboxOAuthService::class);
             $dropboxToken = $oauthService->getAccessTokenForUser($this->user);
             if (! empty($dropboxToken)) {
@@ -178,8 +180,9 @@ class UserLivestream extends Model
         $password = $this->getDecryptedPassword();
         $room = rawurlencode($this->getVdoRoomName());
         $pass = rawurlencode((string) $password);
+        $passwordParam = $pass !== '' ? '&password=' . $pass : '';
         $avatarInitialUrl = 'https://ui-avatars.com/api/?name=Guest&size=256&length=1';
-        return "https://vdo.ninja/?room={$room}&password={$pass}&label=&audiodevice=1&norecord&showlabels=1&showall&style=6&avatar=" . rawurlencode($avatarInitialUrl) . '&autostart&noheader';
+        return "https://vdo.ninja/?room={$room}{$passwordParam}&label=&audiodevice=1&norecord&showlabels=1&showall&style=6&avatar=" . rawurlencode($avatarInitialUrl) . '&autostart&noheader';
     }
 
     public function getRoomViewUrl(): string
@@ -220,6 +223,7 @@ class UserLivestream extends Model
         $this->loadMissing('user');
         $settings = $this->settings ?? [];
         $displayName = $settings['display_name'] ?? null;
+        $recordEnabled = (bool) ($settings['record_meeting'] ?? true);
         $hostName = $displayName ?: ($this->user?->name ?? 'Host');
         $roomName = $this->getVdoRoomName();
         $room = rawurlencode($roomName);
@@ -229,9 +233,10 @@ class UserLivestream extends Model
         $passwordParam = $pass !== '' ? '&password=' . $pass : '';
         $initial = mb_substr(trim($hostName), 0, 1) ?: 'H';
         $avatarParam = '&avatar=' . rawurlencode("https://ui-avatars.com/api/?name={$initial}&size=256&length=1");
-        $base = "https://vdo.ninja/?room={$room}&push={$push}&label={$label}&record&quality=0&bitrate=6000&audiodevice=1&showlabels=1&showall&style=6{$avatarParam}&autostart&noheader{$passwordParam}";
+        $recordParam = $recordEnabled ? '&record' : '';
+        $base = "https://vdo.ninja/?room={$room}&push={$push}&label={$label}{$recordParam}&quality=0&bitrate=6000&audiodevice=1&showlabels=1&showall&style=6{$avatarParam}&autostart&noheader{$passwordParam}";
 
-        if ($recordToDropbox && $this->user && ! empty($this->user->dropbox_refresh_token)) {
+        if ($recordEnabled && $recordToDropbox && $this->user && ! empty($this->user->dropbox_refresh_token)) {
             $oauthService = app(\App\Services\DropboxOAuthService::class);
             $dropboxToken = $oauthService->getAccessTokenForUser($this->user);
             if (! empty($dropboxToken)) {
