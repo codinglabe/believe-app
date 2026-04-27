@@ -4,8 +4,6 @@ namespace App\Services;
 
 use App\Models\MerchantBrpTransaction;
 use App\Models\MerchantBrpWallet;
-use App\Models\OrganizationBrpTransaction;
-use App\Models\OrganizationBrpWallet;
 use App\Models\SupporterBrpTransaction;
 use App\Models\SupporterBrpWallet;
 use Illuminate\Support\Facades\DB;
@@ -95,7 +93,6 @@ class BrpWalletService
             // Debit merchant reserved → spent
             $merchantWallet = $this->getOrCreateMerchantWallet($merchantId);
             $merchantWallet->decrement('reserved_brp', $amountBrp);
-            // `spent_brp` sums the same cent integers as `reward_per_response` (3 = $0.03); show sent BP/USD in UI as spent/100
             $merchantWallet->increment('spent_brp', $amountBrp);
 
             MerchantBrpTransaction::create([
@@ -152,138 +149,7 @@ class BrpWalletService
     public function getAvailableBalance(int $merchantId): int
     {
         $wallet = $this->getOrCreateMerchantWallet($merchantId);
-        return $wallet->available_brp;
-    }
 
-    // ─── Organisation BRP methods ────────────────────────────────────────────
-
-    /**
-     * Get or create an organisation BRP wallet.
-     */
-    public function getOrCreateOrganizationWallet(int $orgId): OrganizationBrpWallet
-    {
-        return OrganizationBrpWallet::firstOrCreate(
-            ['organization_id' => $orgId],
-            ['balance_brp' => 0, 'reserved_brp' => 0, 'spent_brp' => 0]
-        );
-    }
-
-    /**
-     * Purchase BRP for an organisation (after Stripe payment).
-     */
-    public function purchaseBrpForOrg(int $orgId, int $amountBrp, ?string $stripePaymentId = null): OrganizationBrpWallet
-    {
-        return DB::transaction(function () use ($orgId, $amountBrp, $stripePaymentId) {
-            $wallet = $this->getOrCreateOrganizationWallet($orgId);
-            $wallet->increment('balance_brp', $amountBrp);
-
-            OrganizationBrpTransaction::create([
-                'organization_id' => $orgId,
-                'type' => 'purchase',
-                'amount_brp' => $amountBrp,
-                'description' => "Purchased {$amountBrp} BRP",
-                'stripe_payment_id' => $stripePaymentId,
-            ]);
-
-            Log::info("BRP Purchase (org): org={$orgId}, amount={$amountBrp}");
-
-            return $wallet->fresh();
-        });
-    }
-
-    /**
-     * Reserve BRP from an organisation wallet for a campaign.
-     */
-    public function reserveBrpForOrg(int $orgId, int $amountBrp, ?string $referenceType = null, ?int $referenceId = null): OrganizationBrpWallet
-    {
-        return DB::transaction(function () use ($orgId, $amountBrp, $referenceType, $referenceId) {
-            $wallet = $this->getOrCreateOrganizationWallet($orgId);
-
-            if ($wallet->available_brp < $amountBrp) {
-                throw new \Exception("Insufficient BRP balance. Available: {$wallet->available_brp}, Required: {$amountBrp}");
-            }
-
-            $wallet->increment('reserved_brp', $amountBrp);
-
-            OrganizationBrpTransaction::create([
-                'organization_id' => $orgId,
-                'type' => 'reserve',
-                'amount_brp' => $amountBrp,
-                'reference_type' => $referenceType,
-                'reference_id' => $referenceId,
-                'description' => "Reserved {$amountBrp} BRP for campaign",
-            ]);
-
-            return $wallet->fresh();
-        });
-    }
-
-    /**
-     * Payout BRP from an organisation: org reserved → spent, credit supporter.
-     */
-    public function payoutBrpFromOrg(int $orgId, int $supporterId, int $amountBrp, int $campaignId): void
-    {
-        DB::transaction(function () use ($orgId, $supporterId, $amountBrp, $campaignId) {
-            // Debit org reserved → spent
-            $orgWallet = $this->getOrCreateOrganizationWallet($orgId);
-            $orgWallet->decrement('reserved_brp', $amountBrp);
-            $orgWallet->increment('spent_brp', $amountBrp);
-
-            OrganizationBrpTransaction::create([
-                'organization_id' => $orgId,
-                'type' => 'payout',
-                'amount_brp' => $amountBrp,
-                'reference_type' => 'feedback_campaign',
-                'reference_id' => $campaignId,
-                'description' => "Payout {$amountBrp} BRP for feedback response",
-            ]);
-
-            // Credit supporter wallet
-            $supporterWallet = $this->getOrCreateSupporterWallet($supporterId);
-            $supporterWallet->increment('balance_brp', $amountBrp);
-
-            SupporterBrpTransaction::create([
-                'user_id' => $supporterId,
-                'type' => 'reward',
-                'amount_brp' => $amountBrp,
-                'reference_type' => 'feedback_campaign',
-                'reference_id' => $campaignId,
-                'description' => "Earned {$amountBrp} BRP for feedback",
-            ]);
-
-            Log::info("BRP Payout (org): org={$orgId}, supporter={$supporterId}, amount={$amountBrp}, campaign={$campaignId}");
-        });
-    }
-
-    /**
-     * Release unused reserved BRP back to an organisation's available balance.
-     */
-    public function releaseBrpForOrg(int $orgId, int $amountBrp, ?int $campaignId = null): OrganizationBrpWallet
-    {
-        return DB::transaction(function () use ($orgId, $amountBrp, $campaignId) {
-            $wallet = $this->getOrCreateOrganizationWallet($orgId);
-            $wallet->decrement('reserved_brp', $amountBrp);
-
-            OrganizationBrpTransaction::create([
-                'organization_id' => $orgId,
-                'type' => 'release',
-                'amount_brp' => $amountBrp,
-                'reference_type' => $campaignId ? 'feedback_campaign' : null,
-                'reference_id' => $campaignId,
-                'description' => "Released {$amountBrp} unused BRP",
-            ]);
-
-            return $wallet->fresh();
-        });
-    }
-
-    /**
-     * Get available balance for an organisation.
-     */
-    public function getAvailableBalanceForOrg(int $orgId): int
-    {
-        $wallet = $this->getOrCreateOrganizationWallet($orgId);
         return $wallet->available_brp;
     }
 }
-

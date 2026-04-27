@@ -441,6 +441,7 @@ class FeedbackCampaignService
 
     /**
      * Launch a campaign owned by an organisation.
+     * Deducts BP from the org owner's believe_points balance.
      */
     public function launchCampaignForOrg(FeedbackCampaign $campaign): FeedbackCampaign
     {
@@ -453,17 +454,22 @@ class FeedbackCampaignService
         }
 
         return DB::transaction(function () use ($campaign) {
-            // Same as merchant: campaign budget is US-cent integers; wallet reserve is whole BP (1 BP = $1.00)
-            $bpToReserve = intdiv($campaign->total_budget_brp, 100);
-            if ($bpToReserve < 1) {
-                throw new \Exception('Invalid campaign budget for wallet reserve.');
+            // Budget stored as US-cent integers; 1 BP = $1.00, so divide by 100 for whole BP
+            $bpToDeduct = intdiv($campaign->total_budget_brp, 100);
+            if ($bpToDeduct < 1) {
+                throw new \Exception('Invalid campaign budget.');
             }
-            $this->walletService->reserveBrpForOrg(
-                $campaign->organization_id,
-                $bpToReserve,
-                'feedback_campaign',
-                $campaign->id
-            );
+
+            $org = \App\Models\Organization::findOrFail($campaign->organization_id);
+            $owner = $org->user;
+
+            if (! $owner) {
+                throw new \Exception('No owner found for this organisation.');
+            }
+
+            if (! $owner->deductBelievePoints((float) $bpToDeduct)) {
+                throw new \Exception("Insufficient BP balance. Required: {$bpToDeduct} BP.");
+            }
 
             $campaign->update([
                 'status' => 'active',
@@ -471,14 +477,14 @@ class FeedbackCampaignService
                 'remaining_budget_brp' => $campaign->total_budget_brp,
             ]);
 
-            Log::info("Campaign launched (org): id={$campaign->id}");
+            Log::info("Campaign launched (org): id={$campaign->id}, bp_deducted={$bpToDeduct}");
 
             return $campaign->fresh();
         });
     }
 
     /**
-     * End a campaign owned by an organisation: release unused BRP, set completed.
+     * End a campaign owned by an organisation: refund unused BP, set completed.
      */
     public function endCampaignForOrg(FeedbackCampaign $campaign): FeedbackCampaign
     {
@@ -487,16 +493,16 @@ class FeedbackCampaignService
         }
 
         return DB::transaction(function () use ($campaign) {
-            $unusedBrp = $campaign->remaining_budget_brp;
+            $unusedCents = $campaign->remaining_budget_brp;
 
-            if ($unusedBrp > 0) {
-                $bpToRelease = intdiv($unusedBrp, 100);
-                if ($bpToRelease > 0) {
-                    $this->walletService->releaseBrpForOrg(
-                        $campaign->organization_id,
-                        $bpToRelease,
-                        $campaign->id
-                    );
+            if ($unusedCents > 0) {
+                $bpToRefund = intdiv($unusedCents, 100);
+                if ($bpToRefund > 0) {
+                    $org = \App\Models\Organization::findOrFail($campaign->organization_id);
+                    $owner = $org->user;
+                    if ($owner) {
+                        $owner->addBelievePoints((float) $bpToRefund);
+                    }
                 }
             }
 
@@ -506,7 +512,7 @@ class FeedbackCampaignService
                 'remaining_budget_brp' => 0,
             ]);
 
-            Log::info("Campaign ended (org): id={$campaign->id}, remaining_cents={$unusedBrp}");
+            Log::info("Campaign ended (org): id={$campaign->id}, refunded_cents={$unusedCents}");
 
             return $campaign->fresh();
         });
@@ -514,6 +520,7 @@ class FeedbackCampaignService
 
     /**
      * Submit a response for an organisation-owned campaign.
+     * Rewards the supporter with BP from the org owner's wallet.
      */
     public function submitResponseForOrg(FeedbackCampaign $campaign, int $userId, array $answers): FeedbackCampaignResponse
     {
@@ -554,12 +561,10 @@ class FeedbackCampaignService
                 ]);
             }
 
-            $this->walletService->payoutBrpFromOrg(
-                $campaign->organization_id,
-                $userId,
-                $campaign->reward_per_response_brp,
-                $campaign->id
-            );
+            // Credit supporter's BP wallet
+            $supporter = \App\Models\User::findOrFail($userId);
+            $rewardBp = $campaign->reward_per_response_brp / 100;
+            $supporter->addBelievePoints((float) $rewardBp);
 
             $campaign->increment('responses_count');
             $campaign->increment('spent_budget_brp', $campaign->reward_per_response_brp);
@@ -571,7 +576,7 @@ class FeedbackCampaignService
                 $this->endCampaignForOrg($campaign);
             }
 
-            Log::info("Response submitted (org): campaign={$campaign->id}, user={$userId}");
+            Log::info("Response submitted (org): campaign={$campaign->id}, user={$userId}, reward_bp={$rewardBp}");
 
             return $response->load('answers');
         });
