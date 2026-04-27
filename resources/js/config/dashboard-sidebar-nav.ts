@@ -424,12 +424,7 @@ export const dashboardSidebarNavItems: (NavItem | NavGroup)[] = [
                 icon: MessageSquare,
                 role: 'organization',
             },
-            {
-                title: 'BRP Wallet',
-                href: '/organization/wallet/brp',
-                icon: Wallet,
-                role: 'organization',
-            },
+           
 
             {
                 title: 'Chat',

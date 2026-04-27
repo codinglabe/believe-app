@@ -105,7 +105,7 @@ export default function OrgFeedbackRewardsIndex({ campaigns, stats, wallet, orga
             <p className="text-muted-foreground">{organization.name} · 1 BP = $1.00</p>
           </div>
           <div className="flex gap-2">
-            <Link href="/organization/wallet/brp">
+            <Link href="/believe-points">
               <Button variant="outline" className={ofb.btnOutline}>
                 <Wallet className="h-4 w-4 mr-2" />{formatBp(wallet.available_brp)} BP
               </Button>
@@ -377,7 +377,7 @@ export default function OrgFeedbackRewardsIndex({ campaigns, stats, wallet, orga
                     <p className="font-semibold">No BP available</p>
                     <p className="text-sm text-muted-foreground">Top up your wallet to launch more campaigns</p>
                   </div>
-                  <Link href="/organization/wallet/brp/buy">
+                  <Link href="/believe-points">
                     <Button className={`${ofb.btn} shrink-0`}>
                       <ShoppingCart className="h-4 w-4 mr-2" />Buy BP
                     </Button>

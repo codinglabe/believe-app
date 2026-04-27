@@ -44,7 +44,7 @@ export default function OrgBrpWalletIndex({ wallet, transactions, organization }
             <h1 className="text-3xl font-bold mb-1">Rewards Wallet</h1>
             <p className="text-muted-foreground">{organization.name} — Manage your BRP balance and view transactions</p>
           </div>
-          <Link href="/organization/wallet/brp/buy">
+          <Link href="/believe-points">
             <Button className="bg-gradient-to-r from-[#FF1493] to-[#DC143C] hover:from-[#FF1493]/90 hover:to-[#DC143C]/90">
               <ShoppingCart className="h-4 w-4 mr-2" />Buy BRP
             </Button>
@@ -65,7 +65,7 @@ export default function OrgBrpWalletIndex({ wallet, transactions, organization }
                   </p>
                   <p className="text-lg text-muted-foreground mb-6">≈ ${wallet.balance_dollars.toFixed(2)}</p>
                 </div>
-                <Link href="/organization/wallet/brp/buy">
+                <Link href="/believe-points">
                   <Button className="bg-gradient-to-r from-[#FF1493] to-[#DC143C] w-full sm:w-auto">
                     <ShoppingCart className="h-4 w-4 mr-2" />Buy BRP
                   </Button>
@@ -117,7 +117,7 @@ export default function OrgBrpWalletIndex({ wallet, transactions, organization }
               <div className="text-center py-12">
                 <ShoppingCart className="h-10 w-10 text-muted-foreground mx-auto mb-3 opacity-40" />
                 <p className="text-muted-foreground">No transactions yet.</p>
-                <Link href="/organization/wallet/brp/buy">
+                <Link href="/believe-points">
                   <Button className="mt-4 bg-gradient-to-r from-[#FF1493] to-[#DC143C]">
                     Buy BRP to get started
                   </Button>

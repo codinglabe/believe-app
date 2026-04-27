@@ -345,7 +345,7 @@ export default function OrgCreateCampaign({ wallet, campaignTypes, organization,
                           <AlertCircle className="h-4 w-4 text-amber-500 flex-shrink-0" />
                           <p className="text-xs text-amber-500">
                             Not enough BP in the organization wallet for this budget.{' '}
-                            <Link href="/organization/wallet/brp/buy" className="underline">Buy BP →</Link>
+                            <Link href="/believe-points" className="underline">Buy BP →</Link>
                           </p>
                         </div>
                       )}
@@ -608,7 +608,7 @@ export default function OrgCreateCampaign({ wallet, campaignTypes, organization,
                     <div className="flex items-center gap-2">
                       <AlertCircle className="h-4 w-4 text-amber-500 flex-shrink-0" />
                       <p className="text-xs text-amber-500">
-                        Not enough BP. <Link href="/organization/wallet/brp/buy" className="underline">Buy BP →</Link>
+                        Not enough BP. <Link href="/believe-points" className="underline">Buy BP →</Link>
                       </p>
                     </div>
                   )}
@@ -624,7 +624,7 @@ export default function OrgCreateCampaign({ wallet, campaignTypes, organization,
                 {submitting ? 'Creating Campaign...' : 'Create Campaign →'}
               </Button>
               {insufficientBalance && (
-                <Link href="/organization/wallet/brp/buy">
+                <Link href="/believe-points">
                   <Button variant="outline" className={`w-full ${ofb.btnOutline}`}>Buy BP first</Button>
                 </Link>
               )}

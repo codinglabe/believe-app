@@ -35,7 +35,7 @@ export default function OrgBuyBrp({ wallet, packages, organization }: Props) {
       return
     }
     setProcessing(true)
-    router.post('/organization/wallet/brp/purchase', { amount_brp: effectiveBrp }, {
+    router.post('/believe-points/purchase', { amount_brp: effectiveBrp }, {
       onFinish: () => setProcessing(false),
     })
   }
@@ -47,7 +47,7 @@ export default function OrgBuyBrp({ wallet, packages, organization }: Props) {
 
         {/* Header */}
         <div>
-          <Link href="/organization/wallet/brp" className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1 mb-2">
+          <Link href="/believe-points" className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1 mb-2">
             <ArrowLeft className="h-3.5 w-3.5" />Back to wallet
           </Link>
           <h1 className="text-3xl font-bold mb-1">Buy BRP</h1>
