@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { ArrowLeft, Plus, Trash2, Save, AlertCircle } from 'lucide-react'
 import { showSuccessToast, showErrorToast } from '@/lib/toast'
+import { ofb } from './theme'
 
 interface CampaignType { value: string; label: string; default_reward: number; est_time: string }
 
@@ -69,14 +70,14 @@ export default function OrgEditCampaign({ campaign, wallet, campaignTypes, organ
   return (
     <AppLayout>
       <Head title="Edit Feedback Campaign" />
-      <div className="container mx-auto py-8 px-4 max-w-5xl space-y-6">
+      <div className="w-full max-w-none py-8 px-4 sm:px-6 lg:px-8 space-y-6">
 
         <div className="flex items-center gap-4">
           <Link href={`/organization/feedback-rewards/${campaign.id}`}>
-            <Button variant="outline" size="sm"><ArrowLeft className="h-4 w-4 mr-1" />Back</Button>
+            <Button variant="outline" size="sm" className={ofb.btnOutline}><ArrowLeft className="h-4 w-4 mr-1" />Back</Button>
           </Link>
           <div>
-            <h1 className="text-2xl font-bold">Edit Campaign</h1>
+            <h1 className={`text-2xl font-bold ${ofb.titleGradient}`}>Edit Campaign</h1>
             <p className="text-sm text-muted-foreground">{organization.name}</p>
           </div>
         </div>
@@ -84,7 +85,7 @@ export default function OrgEditCampaign({ campaign, wallet, campaignTypes, organ
         <form onSubmit={submit}>
           <div className="grid md:grid-cols-2 gap-6">
             {/* Left: Setup */}
-            <Card>
+            <Card className={ofb.border}>
               <CardHeader><CardTitle>Campaign Setup</CardTitle></CardHeader>
               <CardContent className="space-y-4">
                 <div>
@@ -98,9 +99,9 @@ export default function OrgEditCampaign({ campaign, wallet, campaignTypes, organ
                     {campaignTypes.map((ct) => (
                       <button key={ct.value} type="button"
                         onClick={() => { setData('type', ct.value); setData('reward_per_response_brp', ct.default_reward) }}
-                        className={`p-3 rounded-xl border text-left transition-all ${data.type === ct.value ? 'border-[#FF1493] bg-[#FF1493]/10' : 'border-border hover:border-muted-foreground/40'}`}>
+                        className={`p-3 rounded-xl border text-left transition-all ${data.type === ct.value ? ofb.selected : 'border-border hover:border-muted-foreground/40'}`}>
                         <p className="text-xs font-semibold">{ct.label}</p>
-                        <p className="text-xs text-[#FF1493] font-bold">{ct.default_reward} BP</p>
+                        <p className={`text-xs font-bold ${ofb.text}`}>{ct.default_reward} BP</p>
                         <p className="text-xs text-muted-foreground">{ct.est_time}</p>
                       </button>
                     ))}
@@ -131,7 +132,7 @@ export default function OrgEditCampaign({ campaign, wallet, campaignTypes, organ
                       type="date"
                       value={data.starts_at}
                       onChange={(e) => setData('starts_at', e.target.value)}
-                      className="mt-1 w-full px-3 py-2 rounded-lg border text-sm focus:outline-none focus:ring-1 focus:ring-[#FF1493] "
+                      className={`mt-1 w-full px-3 py-2 rounded-lg border text-sm focus:outline-none focus:ring-1 ${ofb.focus}`}
                     />
                   </div>
                   <div>
@@ -140,7 +141,7 @@ export default function OrgEditCampaign({ campaign, wallet, campaignTypes, organ
                       type="date"
                       value={data.ends_at}
                       onChange={(e) => setData('ends_at', e.target.value)}
-                      className="mt-1 w-full px-3 py-2 rounded-lg border text-sm focus:outline-none focus:ring-1 focus:ring-[#FF1493] "
+                      className={`mt-1 w-full px-3 py-2 rounded-lg border text-sm focus:outline-none focus:ring-1 ${ofb.focus}`}
                     />
                   </div>
                 </div>
@@ -148,7 +149,7 @@ export default function OrgEditCampaign({ campaign, wallet, campaignTypes, organ
             </Card>
 
             {/* Right: Question + Save */}
-            <Card>
+            <Card className={ofb.border}>
               <CardHeader><CardTitle>Question</CardTitle></CardHeader>
               <CardContent className="space-y-4">
                 <div>
@@ -156,7 +157,7 @@ export default function OrgEditCampaign({ campaign, wallet, campaignTypes, organ
                   <div className="grid grid-cols-3 gap-2 mt-2">
                     {[{ v: 'yes_no', l: 'Yes / No' }, { v: 'true_false', l: 'True / False' }, { v: 'multiple_choice', l: 'Multiple Choice' }].map((qt) => (
                       <button key={qt.v} type="button" onClick={() => setData('question_type', qt.v as any)}
-                        className={`py-2 px-3 rounded-lg border text-xs font-medium transition-all ${data.question_type === qt.v ? 'border-[#FF1493] bg-[#FF1493]/10 text-foreground' : 'border-border text-muted-foreground hover:border-muted-foreground/40'}`}>
+                        className={`py-2 px-3 rounded-lg border text-xs font-medium transition-all ${data.question_type === qt.v ? `${ofb.selected} text-foreground` : 'border-border text-muted-foreground hover:border-muted-foreground/40'}`}>
                         {qt.l}
                       </button>
                     ))}
@@ -206,7 +207,7 @@ export default function OrgEditCampaign({ campaign, wallet, campaignTypes, organ
                     </div>
                   )}
                   <Button type="submit" disabled={processing || insufficientBalance}
-                    className="w-full bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-500 hover:to-emerald-600 disabled:opacity-50">
+                    className={`w-full disabled:opacity-50 ${ofb.btn}`}>
                     <Save className="h-4 w-4 mr-2" />
                     {processing ? 'Saving...' : 'Save Changes'}
                   </Button>

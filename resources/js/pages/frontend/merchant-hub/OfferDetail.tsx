@@ -412,28 +412,39 @@ export default function OfferDetail({ offerId, offer: initialOffer, redemptionEl
                           You have {redemptionEligibility.userPoints.toLocaleString()} points (need {offer.pointsRequired.toLocaleString()}). You can pay the full amount with cash.
                         </p>
                       )}
-                      <div className="flex flex-col sm:flex-row gap-2">
-                        <Link href={`/merchant-hub/offers/${offer.id}/checkout?payment_method=points`} className="flex-1">
+                      <div className="grid grid-cols-1 lg:grid-cols-2 2xl:grid-cols-3 gap-2">
+                        <Link href={`/merchant-hub/offers/${offer.id}/checkout?payment_method=points`} className="w-full min-w-0">
                           <Button
                             disabled={redemptionEligibility.userPoints < offer.pointsRequired}
-                            className="w-full h-12 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 disabled:opacity-50"
+                            className="w-full min-w-0 h-12 px-3 text-sm leading-tight whitespace-normal break-words bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 disabled:opacity-50"
                             size="lg"
                           >
                             {redemptionEligibility.userPoints >= offer.pointsRequired
-                              ? `Use ${offer.pointsRequired.toLocaleString()} points`
-                              : `Need ${offer.pointsRequired.toLocaleString()} points`}
+                              ? `Use ${offer.pointsRequired.toLocaleString()} pts`
+                              : `Need ${offer.pointsRequired.toLocaleString()} pts`}
                           </Button>
                         </Link>
                         {(offer.communityCashPrice ?? 0) > 0 && (
-                          <Link href={`/merchant-hub/offers/${offer.id}/checkout?payment_method=cash`}>
-                            <Button
-                              variant="outline"
-                              className="flex-1 h-12 w-full border-green-500 text-green-600 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20"
-                              size="lg"
-                            >
-                              Pay with cash
-                            </Button>
-                          </Link>
+                          <>
+                            <Link href={`/merchant-hub/offers/${offer.id}/checkout?payment_method=believe_points`} className="w-full min-w-0">
+                              <Button
+                                variant="outline"
+                                className="h-12 w-full min-w-0 px-3 text-sm leading-tight whitespace-normal break-words border-indigo-500 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20"
+                                size="lg"
+                              >
+                                Pay with BP
+                              </Button>
+                            </Link>
+                            <Link href={`/merchant-hub/offers/${offer.id}/checkout?payment_method=cash`} className="w-full min-w-0">
+                              <Button
+                                variant="outline"
+                                className="h-12 w-full min-w-0 px-3 text-sm leading-tight whitespace-normal break-words border-green-500 text-green-600 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20"
+                                size="lg"
+                              >
+                                Pay with cash
+                              </Button>
+                            </Link>
+                          </>
                         )}
                       </div>
                     </div>

@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Plus, MessageSquare, Wallet, Eye, Users, DollarSign, Activity, Search, BarChart3, ShoppingCart, Pencil } from 'lucide-react'
 import { showSuccessToast, showErrorToast } from '@/lib/toast'
+import { ofb } from './theme'
 
 interface Campaign {
   id: number
@@ -20,6 +21,10 @@ interface Campaign {
   responses_count: number
   status: string
   created_at: string
+  reward_bp_display: number
+  total_budget_bp_display: number
+  remaining_budget_bp_display: number
+  spent_budget_bp_display: number
 }
 
 interface WalletInfo {
@@ -27,10 +32,35 @@ interface WalletInfo {
   reserved_brp: number
   spent_brp: number
   available_brp: number
+  balance_dollars: number
+  available_dollars: number
+  reserved_dollars: number
+  sent_bp: number
+  sent_dollars: number
+}
+
+interface Stats {
+  active_campaigns: number
+  total_responses: number
+  filtered_campaigns: number
+  completed_in_filter: number
+}
+
+function formatBp(n: number) {
+  return Number(n).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 })
 }
 
 interface Props {
-  campaigns: { data: Campaign[]; links: any[]; current_page: number; last_page: number }
+  campaigns: {
+    data: Campaign[]
+    links: any[]
+    current_page: number
+    last_page: number
+    total: number
+    from: number | null
+    to: number | null
+  }
+  stats: Stats
   wallet: WalletInfo
   organization: { id: number; name: string }
   filters: { search: string; status: string; view: string }
@@ -43,13 +73,13 @@ const typeLabels: Record<string, string> = {
 
 const statusConfig: Record<string, { label: string; className: string }> = {
   draft:     { label: 'Draft',     className: 'bg-gray-500/20 text-gray-400' },
-  active:    { label: 'Active',    className: 'bg-emerald-500/20 text-emerald-400' },
+  active:    { label: 'Active',    className: 'bg-purple-500/15 text-purple-400' },
   paused:    { label: 'Paused',    className: 'bg-amber-500/20 text-amber-400' },
   completed: { label: 'Completed', className: 'bg-blue-500/20 text-blue-400' },
   cancelled: { label: 'Cancelled', className: 'bg-red-500/20 text-red-400' },
 }
 
-export default function OrgFeedbackRewardsIndex({ campaigns, wallet, organization, filters }: Props) {
+export default function OrgFeedbackRewardsIndex({ campaigns, stats, wallet, organization, filters }: Props) {
   const { props } = usePage<{ success?: string; error?: string }>()
   const view = filters.view || 'campaigns'
 
@@ -58,10 +88,7 @@ export default function OrgFeedbackRewardsIndex({ campaigns, wallet, organizatio
     if (props.error) showErrorToast(props.error)
   }, [props.success, props.error])
 
-  const activeCampaigns = campaigns.data.filter((c) => c.status === 'active').length
-  const totalResponses  = campaigns.data.reduce((s, c) => s + c.responses_count, 0)
-  const completedCount  = campaigns.data.filter((c) => c.status === 'completed').length
-  const topCampaigns    = [...campaigns.data].sort((a, b) => b.responses_count - a.responses_count).slice(0, 5)
+  const topCampaigns = [...campaigns.data].sort((a, b) => b.responses_count - a.responses_count).slice(0, 5)
 
   const setView = (v: string) =>
     router.get('/organization/feedback-rewards', { ...filters, view: v }, { preserveState: true, replace: true })
@@ -69,22 +96,22 @@ export default function OrgFeedbackRewardsIndex({ campaigns, wallet, organizatio
   return (
     <AppLayout>
       <Head title="Feedback & Rewards" />
-      <div className="container mx-auto py-8 px-4 max-w-6xl space-y-6">
+      <div className="w-full max-w-none py-8 px-4 sm:px-6 lg:px-8 space-y-6">
 
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-bold mb-1">Feedback & Rewards</h1>
-            <p className="text-muted-foreground">{organization.name}</p>
+            <h1 className={`text-3xl font-bold mb-1 ${ofb.titleGradient}`}>Feedback & Rewards</h1>
+            <p className="text-muted-foreground">{organization.name} · 1 BP = $1.00</p>
           </div>
           <div className="flex gap-2">
             <Link href="/organization/wallet/brp">
-              <Button variant="outline" className="border-[#FF1493]/40 text-[#FF1493] hover:bg-[#FF1493]/10">
-                <Wallet className="h-4 w-4 mr-2" />{wallet.available_brp.toLocaleString()} BRP
+              <Button variant="outline" className={ofb.btnOutline}>
+                <Wallet className="h-4 w-4 mr-2" />{formatBp(wallet.available_brp)} BP
               </Button>
             </Link>
             <Link href="/organization/feedback-rewards/create">
-              <Button className="bg-gradient-to-r from-[#FF1493] to-[#DC143C]">
+              <Button className={ofb.btn}>
                 <Plus className="h-4 w-4 mr-2" />Create Campaign
               </Button>
             </Link>
@@ -94,10 +121,10 @@ export default function OrgFeedbackRewardsIndex({ campaigns, wallet, organizatio
         {/* Stats */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {[
-            { label: 'Active Campaigns', value: activeCampaigns,                      icon: Activity,   color: 'text-[#FF1493]' },
-            { label: 'Total Responses',  value: totalResponses,                        icon: Users,      color: 'text-emerald-500' },
-            { label: 'BRP Spent',        value: wallet.spent_brp.toLocaleString(),     icon: DollarSign, color: 'text-amber-500',   sub: `$${(wallet.spent_brp * 0.01).toFixed(2)}` },
-            { label: 'BRP Available',    value: wallet.available_brp.toLocaleString(), icon: Wallet,     color: 'text-foreground',  sub: `$${(wallet.available_brp * 0.01).toFixed(2)}` },
+            { label: 'Active Campaigns', value: stats.active_campaigns, icon: Activity, color: ofb.text },
+            { label: 'Total Responses', value: stats.total_responses, icon: Users, color: 'text-blue-600 dark:text-blue-400' },
+            { label: 'BP sent', value: formatBp(wallet.sent_bp), icon: DollarSign, color: 'text-amber-600', sub: `= $${wallet.sent_dollars.toFixed(2)}` },
+            { label: 'Available balance', value: formatBp(wallet.available_brp), icon: Wallet, color: 'text-teal-600 dark:text-teal-400', sub: `= $${wallet.available_dollars.toFixed(2)}` },
           ].map((stat) => (
             <Card key={stat.label}>
               <CardContent className="p-5">
@@ -122,7 +149,7 @@ export default function OrgFeedbackRewardsIndex({ campaigns, wallet, organizatio
           ].map((tab) => (
             <button key={tab.key} onClick={() => setView(tab.key)}
               className={`flex items-center gap-2 px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${
-                view === tab.key ? 'bg-[#FF1493] text-white shadow-sm' : 'text-muted-foreground hover:text-foreground hover:bg-muted'
+                view === tab.key ? `${ofb.tabActive} shadow-sm` : 'text-muted-foreground hover:text-foreground hover:bg-muted'
               }`}
             >
               <tab.icon className="h-3.5 w-3.5" />{tab.label}
@@ -139,7 +166,7 @@ export default function OrgFeedbackRewardsIndex({ campaigns, wallet, organizatio
                   <button key={s}
                     onClick={() => router.get('/organization/feedback-rewards', { search: filters.search, status: s, view: 'campaigns' }, { preserveState: true, replace: true })}
                     className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${
-                      filters.status === s ? 'bg-[#FF1493] text-white shadow-sm' : 'text-muted-foreground hover:text-foreground hover:bg-muted'
+                      filters.status === s ? `${ofb.tabActive} shadow-sm` : 'text-muted-foreground hover:text-foreground hover:bg-muted'
                     }`}
                   >
                     {s === '' ? 'All' : s.charAt(0).toUpperCase() + s.slice(1)}
@@ -150,7 +177,8 @@ export default function OrgFeedbackRewardsIndex({ campaigns, wallet, organizatio
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <input type="text" placeholder="Search campaigns..." defaultValue={filters.search}
                   onChange={(e) => router.get('/organization/feedback-rewards', { search: e.target.value, status: filters.status, view: 'campaigns' }, { preserveState: true, replace: true })}
-                  className="w-full pl-9 pr-4 py-2 rounded-lg bg-muted/50 border text-sm focus:outline-none focus:ring-1 focus:ring-[#FF1493]/60" />
+                  className={`w-full pl-9 pr-4 py-2 rounded-lg bg-muted/50 border text-sm focus:outline-none focus:ring-1 ${ofb.focus}`}
+                  />
               </div>
             </div>
 
@@ -163,7 +191,7 @@ export default function OrgFeedbackRewardsIndex({ campaigns, wallet, organizatio
                     <h3 className="text-xl font-semibold mb-2">No campaigns yet</h3>
                     <p className="text-muted-foreground mb-6">Create your first feedback campaign to start collecting supporter insights</p>
                     <Link href="/organization/feedback-rewards/create">
-                      <Button className="bg-gradient-to-r from-[#FF1493] to-[#DC143C]"><Plus className="h-4 w-4 mr-2" />Create Campaign</Button>
+                      <Button className={ofb.btn}><Plus className="h-4 w-4 mr-2" />Create Campaign</Button>
                     </Link>
                   </div>
                 ) : (
@@ -183,8 +211,17 @@ export default function OrgFeedbackRewardsIndex({ campaigns, wallet, organizatio
                             <tr key={campaign.id} className="hover:bg-muted/30 transition-colors">
                               <td className="px-5 py-4"><p className="text-sm font-medium truncate max-w-[180px]">{campaign.title}</p></td>
                               <td className="px-5 py-4"><span className="text-sm text-muted-foreground">{typeLabels[campaign.type] || campaign.type}</span></td>
-                              <td className="px-5 py-4"><span className="text-sm font-medium">{campaign.reward_per_response_brp} BP</span></td>
-                              <td className="px-5 py-4"><span className="text-sm text-muted-foreground">{campaign.remaining_budget_brp.toLocaleString()} / {campaign.total_budget_brp.toLocaleString()}</span></td>
+                              <td className="px-5 py-4">
+                                <span className="text-sm font-medium">
+                                  {(Number(campaign.reward_bp_display) || 0).toFixed(2)} BP
+                                </span>
+                              </td>
+                              <td className="px-5 py-4">
+                                <span className="text-sm text-muted-foreground">
+                                  {(Number(campaign.remaining_budget_bp_display) || 0).toFixed(2)} /{' '}
+                                  {(Number(campaign.total_budget_bp_display) || 0).toFixed(2)} BP
+                                </span>
+                              </td>
                               <td className="px-5 py-4"><span className="text-sm">{campaign.responses_count} / {campaign.max_responses}</span></td>
                               <td className="px-5 py-4"><Badge className={sc.className}>{sc.label}</Badge></td>
                               <td className="px-5 py-4"><span className="text-sm text-muted-foreground">{new Date(campaign.created_at).toLocaleDateString()}</span></td>
@@ -196,7 +233,7 @@ export default function OrgFeedbackRewardsIndex({ campaigns, wallet, organizatio
                                     </Button>
                                   </Link>
                                   <Link href={`/organization/feedback-rewards/${campaign.id}`}>
-                                    <Button variant="ghost" size="sm" className="text-[#FF1493]">
+                                    <Button variant="ghost" size="sm" className={ofb.textGhost} title="View campaign" aria-label="View campaign">
                                       <Eye className="h-4 w-4" />
                                     </Button>
                                   </Link>
@@ -212,14 +249,35 @@ export default function OrgFeedbackRewardsIndex({ campaigns, wallet, organizatio
               </CardContent>
             </Card>
 
-            {campaigns.last_page > 1 && (
-              <div className="flex items-center justify-center gap-2">
-                {campaigns.links?.map((link: any, i: number) => (
-                  <button key={i} disabled={!link.url} onClick={() => link.url && router.get(link.url)}
-                    className={`px-3 py-1.5 rounded text-sm ${link.active ? 'bg-[#FF1493] text-white' : 'bg-muted text-muted-foreground hover:bg-muted/80'} ${!link.url ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
-                    dangerouslySetInnerHTML={{ __html: link.label }} />
-                ))}
+            {campaigns.data.length > 0 && campaigns.last_page > 1 && (
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-1">
+                <p className="text-sm text-muted-foreground text-center sm:text-left">
+                  {campaigns.total > 0 && campaigns.from != null && campaigns.to != null
+                    ? `Showing ${campaigns.from}–${campaigns.to} of ${campaigns.total} campaigns`
+                    : `${campaigns.total} ${campaigns.total === 1 ? 'campaign' : 'campaigns'}`}
+                </p>
+                <div className="flex flex-wrap items-center justify-center gap-1">
+                  {campaigns.links?.map((link: any, i: number) => (
+                    <button
+                      key={i}
+                      type="button"
+                      disabled={!link.url}
+                      onClick={() => link.url && router.get(link.url)}
+                      className={`px-3 py-1.5 rounded text-sm ${
+                        link.active ? `${ofb.tabActive} text-white` : 'bg-muted text-muted-foreground hover:bg-muted/80'
+                      } ${!link.url ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                      aria-label={String(link.label).replace(/<[^>]*>/g, '').trim() || 'Pagination'}
+                      title={String(link.label).replace(/<[^>]*>/g, '').trim() || 'Pagination'}
+                      dangerouslySetInnerHTML={{ __html: link.label }}
+                    />
+                  ))}
+                </div>
               </div>
+            )}
+            {campaigns.data.length > 0 && campaigns.last_page === 1 && (campaigns.total ?? 0) > 0 && (
+              <p className="text-sm text-muted-foreground px-1">
+                {campaigns.total} {campaigns.total === 1 ? 'campaign' : 'campaigns'}
+              </p>
             )}
           </>
         )}
@@ -229,9 +287,9 @@ export default function OrgFeedbackRewardsIndex({ campaigns, wallet, organizatio
           <div className="space-y-6">
             <div className="grid md:grid-cols-3 gap-4">
               {[
-                { label: 'Total Campaigns', value: campaigns.data.length, color: 'text-foreground' },
-                { label: 'Completed',        value: completedCount,        color: 'text-blue-500' },
-                { label: 'Total Responses',  value: totalResponses,        color: 'text-emerald-500' },
+                { label: 'Total Campaigns', value: stats.filtered_campaigns, color: 'text-foreground' },
+                { label: 'Completed', value: stats.completed_in_filter, color: 'text-blue-500' },
+                { label: 'Total Responses', value: stats.total_responses, color: 'text-teal-500' },
               ].map((s) => (
                 <Card key={s.label}>
                   <CardContent className="p-5 text-center">
@@ -243,28 +301,22 @@ export default function OrgFeedbackRewardsIndex({ campaigns, wallet, organizatio
             </div>
 
             <Card>
-              <CardHeader><CardTitle>BRP Budget Overview</CardTitle></CardHeader>
+              <CardHeader><CardTitle>Wallet overview</CardTitle></CardHeader>
               <CardContent className="space-y-4">
                 {[
-                  { label: 'Total BRP Purchased', value: wallet.balance_brp + wallet.spent_brp, color: '#FF1493' },
-                  { label: 'BRP Spent on Rewards', value: wallet.spent_brp,    color: '#10B981' },
-                  { label: 'BRP Reserved',         value: wallet.reserved_brp, color: '#F59E0B' },
-                  { label: 'BRP Available',        value: wallet.available_brp, color: '#8B5CF6' },
-                ].map((item) => {
-                  const total = (wallet.balance_brp + wallet.spent_brp) || 1
-                  const pct   = Math.round((item.value / total) * 100)
-                  return (
-                    <div key={item.label} className="space-y-1">
-                      <div className="flex justify-between text-sm">
-                        <span className="text-muted-foreground">{item.label}</span>
-                        <span className="font-bold">{item.value.toLocaleString()} BRP</span>
-                      </div>
-                      <div className="w-full h-2 rounded-full bg-muted overflow-hidden">
-                        <div className="h-full rounded-full transition-all duration-700" style={{ width: `${pct}%`, background: item.color }} />
-                      </div>
+                  { label: 'Total balance', bp: wallet.balance_brp, usd: wallet.balance_dollars, valueClass: ofb.text },
+                  { label: 'Reserved', bp: wallet.reserved_brp, usd: wallet.reserved_dollars, valueClass: 'text-amber-600' },
+                  { label: 'BP sent', bp: wallet.sent_bp, usd: wallet.sent_dollars, valueClass: 'text-blue-600 dark:text-blue-400' },
+                  { label: 'Available', bp: wallet.available_brp, usd: wallet.available_dollars, valueClass: 'text-teal-600 dark:text-teal-400' },
+                ].map((item) => (
+                  <div key={item.label} className="flex justify-between items-center gap-4 py-2 border-b last:border-0">
+                    <span className="text-sm text-muted-foreground">{item.label}</span>
+                    <div className="text-right">
+                      <p className={`text-sm font-bold ${item.valueClass}`}>{formatBp(item.bp)} BP</p>
+                      <p className="text-xs text-muted-foreground">= ${item.usd.toFixed(2)}</p>
                     </div>
-                  )
-                })}
+                  </div>
+                ))}
               </CardContent>
             </Card>
 
@@ -277,7 +329,7 @@ export default function OrgFeedbackRewardsIndex({ campaigns, wallet, organizatio
                   <table className="w-full">
                     <thead>
                       <tr className="border-b">
-                        {['Campaign', 'Status', 'Responses', 'BRP Spent', 'Completion'].map(h => (
+                        {['Campaign', 'Status', 'Responses', 'BP sent', 'Completion'].map(h => (
                           <th key={h} className="text-left px-5 py-3 text-xs font-semibold text-muted-foreground uppercase">{h}</th>
                         ))}
                       </tr>
@@ -291,18 +343,20 @@ export default function OrgFeedbackRewardsIndex({ campaigns, wallet, organizatio
                             <td className="px-5 py-3">
                               <div className="flex items-center gap-2">
                                 <span className="text-xs font-bold text-muted-foreground w-4">{i + 1}</span>
-                                <Link href={`/organization/feedback-rewards/${c.id}`} className="text-sm font-medium hover:text-[#FF1493] transition-colors truncate max-w-[160px]">
+                                <Link href={`/organization/feedback-rewards/${c.id}`} className={`text-sm font-medium ${ofb.text} hover:text-blue-600 transition-colors truncate max-w-[160px] dark:hover:text-blue-400`}>
                                   {c.title}
                                 </Link>
                               </div>
                             </td>
                             <td className="px-5 py-3"><Badge className={sc.className}>{sc.label}</Badge></td>
                             <td className="px-5 py-3 text-sm">{c.responses_count} / {c.max_responses}</td>
-                            <td className="px-5 py-3 text-sm font-medium text-[#FF1493]">{(c.spent_budget_brp ?? 0).toLocaleString()} BRP</td>
+                            <td className="px-5 py-3 text-sm font-medium text-purple-600 dark:text-purple-400">
+                              {(c.spent_budget_bp_display ?? 0).toFixed(2)} BP
+                            </td>
                             <td className="px-5 py-3">
                               <div className="flex items-center gap-2">
                                 <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden w-20">
-                                  <div className="h-full rounded-full bg-[#FF1493]" style={{ width: `${pct}%` }} />
+                                  <div className={`h-full rounded-full ${ofb.progress}`} style={{ width: `${pct}%` }} />
                                 </div>
                                 <span className="text-xs text-muted-foreground">{pct}%</span>
                               </div>
@@ -317,15 +371,15 @@ export default function OrgFeedbackRewardsIndex({ campaigns, wallet, organizatio
             </Card>
 
             {wallet.available_brp === 0 && (
-              <Card className="border-[#FF1493]/20 bg-[#FF1493]/5">
+              <Card className={ofb.surfaceSoft}>
                 <CardContent className="p-5 flex items-center justify-between gap-4">
                   <div>
-                    <p className="font-semibold">No BRP available</p>
+                    <p className="font-semibold">No BP available</p>
                     <p className="text-sm text-muted-foreground">Top up your wallet to launch more campaigns</p>
                   </div>
                   <Link href="/organization/wallet/brp/buy">
-                    <Button className="bg-gradient-to-r from-[#FF1493] to-[#DC143C] shrink-0">
-                      <ShoppingCart className="h-4 w-4 mr-2" />Buy BRP
+                    <Button className={`${ofb.btn} shrink-0`}>
+                      <ShoppingCart className="h-4 w-4 mr-2" />Buy BP
                     </Button>
                   </Link>
                 </CardContent>
