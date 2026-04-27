@@ -7,9 +7,11 @@ import { MerchantLabel } from '@/components/merchant-ui'
 import { MerchantTextarea } from '@/components/merchant-ui'
 import { MerchantDashboardLayout } from '@/components/merchant'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { ArrowLeft, ArrowRight, Plus, Trash2, Rocket, Check, Users, AlertCircle } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Plus, Trash2, Rocket, Check, Users, AlertCircle, Loader2 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { showSuccessToast, showErrorToast } from '@/lib/toast'
+import { stripInertiaFeePreviewFromUrl } from '@/lib/stripInertiaFeePreviewFromUrl'
+import { Skeleton } from '@/components/ui/skeleton'
 
 interface CampaignType {
   value: string
@@ -39,6 +41,27 @@ const STEPS = ['Setup', 'Questions', 'Audience', 'Review & Launch']
 
 function formatDisplayBp(n: number): string {
   return `${n.toFixed(2)} BP`
+}
+
+function MerchantLiveFeePreviewSkeleton() {
+  const row = (key: string) => (
+    <div key={key} className="flex items-center justify-between gap-3">
+      <Skeleton className="h-4 flex-1 max-w-[60%] bg-slate-600/50" />
+      <Skeleton className="h-4 w-20 shrink-0 bg-slate-600/50" />
+    </div>
+  )
+  return (
+    <div
+      className="space-y-2.5"
+      role="status"
+      aria-live="polite"
+      aria-busy="true"
+      aria-label="Loading fee estimate"
+    >
+      {Array.from({ length: 6 }, (_, i) => row(`s-${i}`))}
+      <Skeleton className="mt-1 h-3 max-w-xs bg-slate-600/50" />
+    </div>
+  )
 }
 
 export default function CreateCampaign({ wallet, campaignTypes, liveCalculation = null }: Props) {
@@ -105,7 +128,10 @@ export default function CreateCampaign({ wallet, campaignTypes, liveCalculation 
           replace: true,
           only: ['liveCalculation'],
           onStart: () => setFeePreviewLoading(true),
-          onFinish: () => setFeePreviewLoading(false),
+          onFinish: () => {
+            setFeePreviewLoading(false)
+            stripInertiaFeePreviewFromUrl()
+          },
         },
       )
     }, 350)
@@ -256,9 +282,11 @@ export default function CreateCampaign({ wallet, campaignTypes, liveCalculation 
                         </div>
                         <div>
                           <MerchantLabel>Max Responses (by campaign type &amp; budget)</MerchantLabel>
-                          <div className="mt-2 flex items-center justify-center h-20 rounded-xl bg-[#2563EB]/10 border border-[#2563EB]/30">
-                            <span className="text-4xl font-extrabold text-[#2563EB]">{modelSupportersForSelectedType.toLocaleString()}</span>
-                            <span className="text-sm text-gray-400 ml-2 self-end mb-1">Responses</span>
+                          <div className="mt-2 flex min-h-20 flex-col items-center justify-center gap-0.5 rounded-xl border border-[#2563EB]/30 bg-[#2563EB]/10 py-3">
+                            <span className="text-4xl font-extrabold leading-none tabular-nums text-[#2563EB]">
+                              {modelSupportersForSelectedType.toLocaleString()}
+                            </span>
+                            <span className="text-sm text-gray-400">Responses</span>
                           </div>
                           {!rewardMatchesTypeDefault && (
                             <p className="text-xs text-amber-400/90 mt-2 text-center">
@@ -272,8 +300,15 @@ export default function CreateCampaign({ wallet, campaignTypes, liveCalculation 
                     {/* Live Calculation */}
                     <MerchantCard className="shadow-lg border border-[#2563EB]/20">
                       <MerchantCardContent className="p-4 space-y-2">
-                        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">Live Calculation</p>
-                        {live ? (
+                        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2 flex items-center gap-2">
+                          Live Calculation
+                          {feePreviewLoading && budget > 0 && (
+                            <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-gray-500" aria-hidden />
+                          )}
+                        </p>
+                        {feePreviewLoading && budget > 0 ? (
+                          <MerchantLiveFeePreviewSkeleton />
+                        ) : live ? (
                           <>
                             <div className="flex justify-between text-sm">
                               <span className="text-gray-400">✓ Per-response</span>
@@ -305,7 +340,7 @@ export default function CreateCampaign({ wallet, campaignTypes, liveCalculation 
                           </>
                         ) : (
                           <p className="text-sm text-gray-500 py-1">
-                            {budget > 0 ? (feePreviewLoading ? '…' : '—') : 'Set a total budget to calculate fees and limits.'}
+                            {budget > 0 ? '—' : 'Set a total budget to calculate fees and limits.'}
                           </p>
                         )}
                         <p className="text-xs text-gray-600 pt-1 italic">💡 Your budget will be reserved when campaign starts.</p>

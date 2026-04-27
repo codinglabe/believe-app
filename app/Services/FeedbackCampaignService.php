@@ -453,9 +453,14 @@ class FeedbackCampaignService
         }
 
         return DB::transaction(function () use ($campaign) {
+            // Same as merchant: campaign budget is US-cent integers; wallet reserve is whole BP (1 BP = $1.00)
+            $bpToReserve = intdiv($campaign->total_budget_brp, 100);
+            if ($bpToReserve < 1) {
+                throw new \Exception('Invalid campaign budget for wallet reserve.');
+            }
             $this->walletService->reserveBrpForOrg(
                 $campaign->organization_id,
-                $campaign->total_budget_brp,
+                $bpToReserve,
                 'feedback_campaign',
                 $campaign->id
             );
@@ -485,11 +490,14 @@ class FeedbackCampaignService
             $unusedBrp = $campaign->remaining_budget_brp;
 
             if ($unusedBrp > 0) {
-                $this->walletService->releaseBrpForOrg(
-                    $campaign->organization_id,
-                    $unusedBrp,
-                    $campaign->id
-                );
+                $bpToRelease = intdiv($unusedBrp, 100);
+                if ($bpToRelease > 0) {
+                    $this->walletService->releaseBrpForOrg(
+                        $campaign->organization_id,
+                        $bpToRelease,
+                        $campaign->id
+                    );
+                }
             }
 
             $campaign->update([
@@ -498,7 +506,7 @@ class FeedbackCampaignService
                 'remaining_budget_brp' => 0,
             ]);
 
-            Log::info("Campaign ended (org): id={$campaign->id}, released={$unusedBrp} BRP");
+            Log::info("Campaign ended (org): id={$campaign->id}, remaining_cents={$unusedBrp}");
 
             return $campaign->fresh();
         });
