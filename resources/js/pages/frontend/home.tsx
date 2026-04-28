@@ -2,25 +2,18 @@
 
 import FrontendLayout from "@/layouts/frontend/frontend-layout"
 import { useState, useEffect, useRef } from "react"
-import { Search, Heart, Globe, ArrowRight, Star, CheckCircle, TrendingUp, Award, Shield, MapPin, Users, Building2, X, Zap, ShoppingCart, ArrowRightLeft, Handshake, Wallet, Copy, Check, RefreshCw, ArrowUpRight, ArrowDownLeft, Plus, Activity, CreditCard, Banknote, Settings } from "lucide-react"
+import { Search, Heart, Globe, ArrowRight, Star, CheckCircle, TrendingUp, Award, Shield, ShieldCheck, MapPin, Users, Building2, X, Zap, ShoppingCart, Store, ArrowRightLeft, Handshake, Wallet, Copy, Check, RefreshCw, ArrowUpRight, ArrowDownLeft, Plus, Activity, CreditCard, Banknote, Settings, Ticket, Gift, Coins, ChevronRight } from "lucide-react"
 import { Button } from "@/components/frontend/ui/button"
 import { Input } from "@/components/frontend/ui/input"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/frontend/ui/card"
 import { Badge } from "@/components/frontend/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/frontend/ui/select"
-import { motion } from "framer-motion"
+import { Progress } from "@/components/frontend/ui/progress"
+import { AnimatePresence, motion } from "framer-motion"
 import { Link, router, usePage } from "@inertiajs/react"
 import SearchSection from "@/components/frontend/SearchSection"
 import { WalletDemoPopup } from "@/components/WalletDemoPopup"
 import { PageHead } from "@/components/frontend/PageHead"
-
-const platformFeatures = [
-  "Fundraising & donations",
-  "Community & volunteers",
-  "Events, programs & courses",
-  "AI-powered nonprofit tools",
-  "Governance & operations",
-]
 
 const features = [
   {
@@ -54,13 +47,70 @@ interface PageProps {
       states: string[]
       cities: string[]
     }
+    featuredOrganizations?: Array<{
+      id: number
+      name: string
+      city?: string
+      state?: string
+      ein?: string
+      description?: string
+      total_raised?: string
+      raised?: string
+      url?: string
+    }>
+    featuredMerchants?: Array<{
+      id: number
+      name: string
+      slug: string
+      logo_url?: string | null
+      offers_count?: number
+    }>
+    giftCardBrands?: Array<{
+      name: string
+      range: string
+      purchases?: number
+    }>
+    activeRaffles?: Array<{
+      id: number
+      title: string
+      ticket_price: string
+      total_tickets: number
+      sold_tickets: number
+      progress: number
+      sold_text: string
+      percent_text: string
+      end_at_ms: number | null
+      image?: string | null
+    }>
+    stats?: {
+      totalRaised?: string
+      livesImpacted?: string
+      organizationsSupported?: string
+      merchantsPartnered?: string
+    }
   }
 
 export default function HomePage() {
-    const { seo, filterOptions, filters, featuredOrganizations = [] } = usePage<PageProps>().props
+    const { seo, filterOptions, filters, featuredOrganizations = [], featuredMerchants = [], giftCardBrands = [], activeRaffles = [], stats } =
+      usePage<PageProps>().props
     const [isLoading, setIsLoading] = useState(false)
     const [hasStartedDemo, setHasStartedDemo] = useState(false)
     const [walletPopupOpen, setWalletPopupOpen] = useState(false)
+    const [selectedPoints, setSelectedPoints] = useState(50)
+    const [activeTab, setActiveTab] = useState<"organizations" | "merchants">("organizations")
+    const [nowMs, setNowMs] = useState(() => Date.now())
+    const raffles = activeRaffles.map((r, idx) => ({
+      id: String(r.id),
+      title: r.title,
+      price: r.ticket_price ? `$${Number(r.ticket_price).toFixed(2)}` : "$0.00",
+      progress: r.progress ?? 0,
+      soldText: r.sold_text,
+      percentText: r.percent_text,
+      emoji: ["🚗", "✈️", "💻"][idx % 3],
+      endAtMs: r.end_at_ms ?? null,
+      image: r.image ?? null,
+    }))
+    const [raffleIndex, setRaffleIndex] = useState(0)
     const [demoActionView, setDemoActionView] = useState<'main' | 'send' | 'receive' | 'swap' | 'addMoney'>('main')
     const [demoSendAmount, setDemoSendAmount] = useState('')
     const [demoAddMoneyAmount, setDemoAddMoneyAmount] = useState('')
@@ -70,6 +120,19 @@ export default function HomePage() {
     const [demoSuccessMessage, setDemoSuccessMessage] = useState('')
     const [demoClickPoint, setDemoClickPoint] = useState<{ x: number; y: number; visible: boolean } | null>(null)
     const walletRef = useRef<HTMLDivElement>(null)
+
+    useEffect(() => {
+      if (raffles.length <= 1) return
+      const t = window.setInterval(() => {
+        setRaffleIndex((i) => (i + 1) % raffles.length)
+      }, 5000)
+      return () => window.clearInterval(t)
+    }, [raffles.length])
+
+    useEffect(() => {
+      const t = window.setInterval(() => setNowMs(Date.now()), 1000)
+      return () => window.clearInterval(t)
+    }, [])
 
     // Auto-start demo when wallet section is visible
     useEffect(() => {
@@ -281,200 +344,587 @@ export default function HomePage() {
       router.visit("/organizations")
     }
 
+    // TEMP: show only the hero section on homepage
+    const showOnlyHero = false
+
+    const pointOptions = [
+      { amount: 25, bp: 25 },
+      { amount: 50, bp: 50, popular: true },
+      { amount: 100, bp: 100 },
+      { amount: 250, bp: 250 },
+      { amount: 500, bp: 500 },
+    ]
+
+    const giftCards = giftCardBrands.map((b, idx) => {
+      const colors = ["bg-gray-900", "bg-blue-600", "bg-red-500", "bg-green-600", "bg-gray-100"]
+      return { name: b.name, range: b.range, color: colors[idx % colors.length] }
+    })
+
     return (
     <FrontendLayout>
       <PageHead title={seo?.title ?? "Home"} description={seo?.description} />
     <div className="min-h-screen">
-      {/* Professional Hero Section - Inspired by Global Network Theme */}
-      <section className="relative overflow-hidden min-h-[90vh] flex items-center">
-        {/* Background Image */}
-        <div 
-          className="absolute inset-0 bg-cover bg-center bg-no-repeat"
-          style={{
-            backgroundImage: 'url(/images/believe-hero.png)'
-          }}
-        >
-          {/* Dark overlay for better text readability */}
-          <div className="absolute inset-0 bg-purple-900/60 dark:bg-purple-900/80"></div>
-        </div>
+      {/* Homepage hero — Believ.Cash style (background: public/images/top-hero.png) */}
+      <section className="relative overflow-hidden min-h-[280px] pb-8 sm:min-h-[320px] sm:pb-10 md:min-h-[360px] md:pb-12 lg:min-h-[400px] lg:pb-14">
+        <div
+          className="absolute inset-0 bg-cover bg-[position:center_right_20%] bg-no-repeat sm:bg-[position:center_20%]"
+          style={{ backgroundImage: "url(/images/top-hero.png)" }}
+        />
+        {/* Readability overlay — stronger on the left where copy sits */}
+        <div
+          className="absolute inset-0 z-[1] bg-gradient-to-r from-[#0b061a]/95 via-[#13062b]/82 to-[#2d1560]/50"
+          aria-hidden
+        />
+        <div
+          className="pointer-events-none absolute inset-0 z-[1] opacity-40 bg-[radial-gradient(ellipse_80%_60%_at_70%_45%,rgba(147,51,234,0.35),transparent_65%)]"
+          aria-hidden
+        />
 
-        {/* World Map Overlay */}
-        <div className="absolute inset-0 opacity-10 z-10">
-          <svg className="w-full h-full" viewBox="0 0 1200 600" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M200,300 Q300,250 400,300 T600,300" stroke="rgba(255,255,255,0.3)" strokeWidth="2" fill="none"/>
-            <path d="M300,200 Q400,150 500,200 T700,200" stroke="rgba(255,255,255,0.3)" strokeWidth="2" fill="none"/>
-            <path d="M400,400 Q500,350 600,400 T800,400" stroke="rgba(255,255,255,0.3)" strokeWidth="2" fill="none"/>
-            <circle cx="200" cy="300" r="3" fill="rgba(255,255,255,0.5)"/>
-            <circle cx="400" cy="300" r="3" fill="rgba(255,255,255,0.5)"/>
-            <circle cx="600" cy="300" r="3" fill="rgba(255,255,255,0.5)"/>
-            <circle cx="800" cy="300" r="3" fill="rgba(255,255,255,0.5)"/>
-            <circle cx="300" cy="200" r="3" fill="rgba(255,255,255,0.5)"/>
-            <circle cx="500" cy="200" r="3" fill="rgba(255,255,255,0.5)"/>
-            <circle cx="700" cy="200" r="3" fill="rgba(255,255,255,0.5)"/>
-            <circle cx="400" cy="400" r="3" fill="rgba(255,255,255,0.5)"/>
-            <circle cx="600" cy="400" r="3" fill="rgba(255,255,255,0.5)"/>
-            <circle cx="800" cy="400" r="3" fill="rgba(255,255,255,0.5)"/>
-            <line x1="200" y1="300" x2="300" y2="200" stroke="rgba(255,255,255,0.2)" strokeWidth="1"/>
-            <line x1="400" y1="300" x2="500" y2="200" stroke="rgba(255,255,255,0.2)" strokeWidth="1"/>
-            <line x1="600" y1="300" x2="700" y2="200" stroke="rgba(255,255,255,0.2)" strokeWidth="1"/>
-            <line x1="300" y1="200" x2="400" y2="300" stroke="rgba(255,255,255,0.2)" strokeWidth="1"/>
-            <line x1="500" y1="200" x2="600" y2="300" stroke="rgba(255,255,255,0.2)" strokeWidth="1"/>
-            <line x1="400" y1="300" x2="400" y2="400" stroke="rgba(255,255,255,0.2)" strokeWidth="1"/>
-            <line x1="600" y1="300" x2="600" y2="400" stroke="rgba(255,255,255,0.2)" strokeWidth="1"/>
-          </svg>
-        </div>
-
-        {/* Network Pattern Overlay - Connected Dots */}
-        <div className="absolute inset-0 opacity-20 z-10">
-          <div className="absolute top-20 right-20 w-2 h-2 bg-white rounded-full"></div>
-          <div className="absolute top-32 right-32 w-2 h-2 bg-white rounded-full"></div>
-          <div className="absolute top-40 right-40 w-2 h-2 bg-white rounded-full"></div>
-          <div className="absolute top-60 right-60 w-2 h-2 bg-white rounded-full"></div>
-          <div className="absolute top-80 right-80 w-2 h-2 bg-white rounded-full"></div>
-          <div className="absolute bottom-40 left-40 w-2 h-2 bg-white rounded-full"></div>
-          <div className="absolute bottom-60 left-60 w-2 h-2 bg-white rounded-full"></div>
-          <div className="absolute bottom-80 left-80 w-2 h-2 bg-white rounded-full"></div>
-          <div className="absolute top-1/2 left-1/3 w-2 h-2 bg-white rounded-full"></div>
-          <div className="absolute top-1/3 right-1/3 w-2 h-2 bg-white rounded-full"></div>
-        </div>
-
-        <div className="container mx-auto px-4 sm:px-6 lg:px-8 relative z-20">
-          <div className="max-w-7xl mx-auto py-12 sm:py-16 md:py-24 lg:py-32 xl:py-40">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 md:gap-12 items-center">
-              {/* Left Column - Text Content */}
+        <div className="relative z-[2] mx-auto max-w-7xl px-4 py-8 sm:py-10 md:py-12 lg:py-16">
+          <div className="max-w-full sm:max-w-xl md:max-w-2xl">
               <motion.div
-                initial={{ opacity: 0, x: -50 }}
+                initial={{ opacity: 0, x: -24 }}
                 animate={{ opacity: 1, x: 0 }}
-                transition={{ duration: 0.8 }}
+                transition={{ duration: 0.65 }}
                 className="text-left"
               >
-                {/* Main Headline */}
                 <motion.h1
-                  initial={{ opacity: 0, y: 20 }}
+                  initial={{ opacity: 0, y: 14 }}
                   animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.8, delay: 0.2 }}
-                  className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl xl:text-7xl font-bold text-white mb-4 sm:mb-6 leading-tight"
+                  transition={{ duration: 0.55, delay: 0.08 }}
+                  className="text-2xl font-bold text-white sm:text-3xl md:text-4xl lg:text-5xl"
                 >
-                  Everything Your Nonprofit Needs
-                  <br className="hidden sm:block" />
-                  <span className="bg-gradient-to-r from-yellow-300 via-pink-300 to-purple-300 bg-clip-text text-transparent block sm:inline">
-                    to Thrive & Grow
-                  </span>
+                  Support What Matters.
                 </motion.h1>
 
-                {/* Subheadline */}
-                <motion.p
-                  initial={{ opacity: 0, y: 20 }}
+                <motion.h2
+                  initial={{ opacity: 0, y: 12 }}
                   animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.8, delay: 0.3 }}
-                  className="text-base sm:text-lg md:text-xl lg:text-2xl text-white/90 mb-6 sm:mb-8 md:mb-10 leading-relaxed"
+                  transition={{ duration: 0.55, delay: 0.14 }}
+                  className="mt-1 text-xl font-bold sm:mt-2 sm:text-2xl md:text-3xl lg:text-4xl"
                 >
-                  From fundraising and events to AI-powered content and a vibrant global community — 
-                  <span className="block mt-1 sm:mt-2">we've got everything you need to make a bigger impact, all beautifully organized in one place.</span>
-                </motion.p>
+                  <span className="bg-gradient-to-r from-violet-400 to-fuchsia-400 bg-clip-text text-transparent">
+                    Give. Win. Shop. Make Impact.
+                  </span>
+                </motion.h2>
 
-                {/* CTA Buttons */}
-                <motion.div
-                  initial={{ opacity: 0, y: 20 }}
+                <motion.p
+                  initial={{ opacity: 0, y: 12 }}
                   animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.8, delay: 0.4 }}
-                  className="flex flex-col sm:flex-row gap-3 sm:gap-4"
+                  transition={{ duration: 0.55, delay: 0.2 }}
+                  className="mt-3 text-sm text-gray-300 sm:mt-4 sm:text-base md:text-lg"
                 >
-                  <Link href="/register" className="w-full sm:w-auto">
-                    <Button
-                      size="lg"
-                      className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-6 sm:px-8 py-4 sm:py-6 text-base sm:text-lg rounded-lg shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-300 w-full sm:w-auto"
-                    >
-                      Start Making Impact
-                      <ArrowRight className="ml-2 h-4 w-4 sm:h-5 sm:w-5" />
-                    </Button>
-                  </Link>
-                  <Link href="/organizations" className="w-full sm:w-auto">
-                    <Button
-                      size="lg"
-                      variant="outline"
-                      className="bg-white text-gray-900 hover:bg-white/10 hover:text-white border-2 border-white font-bold px-6 sm:px-8 py-4 sm:py-6 text-base sm:text-lg rounded-lg shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-300 w-full sm:w-auto"
-                    >
-                      Find Organizations
-                    </Button>
-                  </Link>
-                </motion.div>
+                  Support verified organizations and amazing merchants. Your support makes a real difference.
+                </motion.p>
               </motion.div>
 
-              {/* Right Column - All-in-One Platform Feature Card */}
               <motion.div
-                initial={{ opacity: 0, x: 50 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ duration: 0.8, delay: 0.3 }}
-                className="relative mt-8 lg:mt-0"
+                initial={{ opacity: 0, y: 16 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.55, delay: 0.28 }}
+                className="mt-6 flex flex-wrap gap-2 sm:mt-8 sm:gap-3 lg:flex-nowrap"
               >
-                {/* All-in-One Nonprofit Platform Card - same bg as old stats */}
-                <motion.div
-                  initial={{ opacity: 0, scale: 0.95 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  transition={{ duration: 0.6, delay: 0.4 }}
-                  className="bg-white/10 backdrop-blur-md rounded-xl sm:rounded-2xl p-4 sm:p-5 md:p-6 border border-white/20 hover:bg-white/20 transition-all duration-300"
-                >
-                  <h3 className="text-lg sm:text-xl font-bold text-white mb-4 sm:mb-5">
-                    All-in-One Nonprofit Platform
-                  </h3>
-                  <ul className="space-y-2.5 sm:space-y-3 mb-5 sm:mb-6">
-                    {platformFeatures.map((feature, index) => (
-                      <li key={index} className="flex items-center gap-3 text-white/90 text-sm sm:text-base">
-                        <CheckCircle className="h-5 w-5 sm:h-5 sm:w-5 text-green-300 flex-shrink-0" />
-                        <span>{feature}</span>
-                      </li>
-                    ))}
-                  </ul>
+                {[
+                  {
+                    href: route("donate"),
+                    Icon: Heart,
+                    title: "Donate Now",
+                    sub: "Support Organizations",
+                    iconBg: "bg-violet-600",
+                  },
+                  {
+                    href: route("raffles.index"),
+                    Icon: Ticket,
+                    title: "Enter Raffle",
+                    sub: "Win Amazing Prizes",
+                    iconBg: "bg-blue-600",
+                  },
+                  {
+                    href: route("gift-cards.index"),
+                    Icon: Gift,
+                    title: "Buy Gift Card",
+                    sub: "For Yourself or Others",
+                    iconBg: "bg-green-600",
+                  },
+                  {
+                    href: route("believe-points.index"),
+                    Icon: Coins,
+                    title: "Add Points",
+                    sub: "1 BP = $1",
+                    iconBg: "bg-amber-600",
+                  },
+                ].map(({ href, Icon, title, sub, iconBg }) => (
                   <Link
-                    href="#features"
-                    className="inline-flex items-center gap-1.5 text-blue-300 hover:text-blue-200 font-semibold text-sm sm:text-base hover:underline focus:outline-none focus:ring-2 focus:ring-white/50 focus:ring-offset-2 focus:ring-offset-transparent rounded"
+                    key={title}
+                    href={href}
+                    className="flex w-full items-center gap-2 rounded-lg bg-white/10 px-2.5 py-2 text-left backdrop-blur-sm transition-all hover:bg-white/20 sm:w-auto sm:gap-3 sm:rounded-xl sm:px-4 sm:py-3"
                   >
-                    Explore Features
-                    <ArrowRight className="h-4 w-4" />
+                    <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${iconBg} sm:h-10 sm:w-10`}>
+                      <Icon className="h-4 w-4 text-white sm:h-5 sm:w-5" />
+                    </span>
+                    <span className="min-w-0">
+                      <span className="truncate text-xs font-semibold text-white sm:text-sm">{title}</span>
+                      <span className="hidden text-xs text-gray-300 sm:block">{sub}</span>
+                    </span>
+                    <ChevronRight className="ml-auto h-4 w-4 shrink-0 text-gray-400 sm:ml-2 sm:h-5 sm:w-5" />
                   </Link>
-                </motion.div>
-
-                {/* Additional Visual Elements */}
-                <motion.div
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ duration: 1, delay: 0.8 }}
-                  className="mt-6 sm:mt-8 flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-4 text-white/80"
-                >
-                  <div className="flex items-center gap-2">
-                    <CheckCircle className="h-4 w-4 sm:h-5 sm:w-5 text-green-300 flex-shrink-0" />
-                    <span className="text-xs sm:text-sm">Verified Organizations</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <CheckCircle className="h-4 w-4 sm:h-5 sm:w-5 text-green-300 flex-shrink-0" />
-                    <span className="text-xs sm:text-sm">Secure Platform</span>
-                  </div>
-                </motion.div>
-
-                {/* File for 501c3 Button */}
-                <motion.div
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.8, delay: 1 }}
-                  className="mt-6 sm:mt-8"
-                >
-                  <Link href="/register/organization" className="w-full sm:w-auto">
-                    <Button
-                      size="lg"
-                      className="bg-white text-gray-900 hover:bg-white/90 font-bold px-6 sm:px-8 py-4 sm:py-6 text-base sm:text-lg rounded-lg shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-300 w-full sm:w-auto"
-                    >
-                      File for your 501c3
-                      <ArrowRight className="ml-2 h-4 w-4 sm:h-5 sm:w-5" />
-                    </Button>
-                  </Link>
-                </motion.div>
+                ))}
               </motion.div>
             </div>
           </div>
-        </div>
       </section>
 
+      {!showOnlyHero && (
+        <>
+          {/* Overlapping Tabs Bar - Only Left Side */}
+          <div className="relative z-10 -mt-4 sm:-mt-5 md:-mt-6 lg:-mt-8">
+            <div className="mx-auto max-w-7xl px-3 sm:px-4">
+              <div className="grid gap-4 sm:gap-6 lg:grid-cols-3">
+                {/* Left - Tabs */}
+                <div className="lg:col-span-2">
+                  <div className="rounded-t-lg bg-gray-100 px-3 py-2 sm:px-4 sm:py-2.5 dark:bg-white/5">
+                    <div role="tablist" aria-label="Homepage tabs" className="flex w-full gap-1 sm:gap-2">
+                      <button
+                        type="button"
+                        role="tab"
+                        aria-selected={activeTab === "organizations"}
+                        onClick={() => setActiveTab("organizations")}
+                        className={[
+                          "relative overflow-hidden flex flex-1 items-center gap-2 rounded-md px-3 py-2 sm:px-4 sm:py-2.5 transition-colors",
+                          activeTab === "organizations"
+                            ? "text-violet-700"
+                            : "text-muted-foreground hover:bg-white/50 dark:hover:bg-white/10",
+                        ].join(" ")}
+                      >
+                        {activeTab === "organizations" && (
+                          <motion.span
+                            layoutId="home-tabs-active-pill"
+                            className="absolute inset-0 rounded-md bg-white shadow-sm dark:bg-white/10"
+                            transition={{ type: "spring", stiffness: 420, damping: 36 }}
+                          />
+                        )}
+                        <Building2 className={["relative z-10 h-4 w-4 shrink-0", activeTab === "organizations" ? "text-violet-600" : "text-muted-foreground"].join(" ")} />
+                        <div className="relative z-10 min-w-0 text-left">
+                          <div className={["text-xs sm:text-sm font-semibold truncate", activeTab === "organizations" ? "text-violet-600" : "text-muted-foreground"].join(" ")}>
+                            Organizations
+                          </div>
+                          <div className="hidden text-[10px] text-muted-foreground sm:block">Make a difference</div>
+                        </div>
+                      </button>
+
+                      <button
+                        type="button"
+                        role="tab"
+                        aria-selected={activeTab === "merchants"}
+                        onClick={() => setActiveTab("merchants")}
+                        className={[
+                          "relative overflow-hidden flex flex-1 items-center gap-2 rounded-md px-3 py-2 sm:px-4 sm:py-2.5 transition-colors",
+                          activeTab === "merchants"
+                            ? "text-violet-700"
+                            : "text-muted-foreground hover:bg-white/50 dark:hover:bg-white/10",
+                        ].join(" ")}
+                      >
+                        {activeTab === "merchants" && (
+                          <motion.span
+                            layoutId="home-tabs-active-pill"
+                            className="absolute inset-0 rounded-md bg-white shadow-sm dark:bg-white/10"
+                            transition={{ type: "spring", stiffness: 420, damping: 36 }}
+                          />
+                        )}
+                        <Store className={["relative z-10 h-4 w-4 shrink-0", activeTab === "merchants" ? "text-violet-600" : "text-muted-foreground"].join(" ")} />
+                        <div className="relative z-10 min-w-0 text-left">
+                          <div className={["text-xs sm:text-sm font-semibold truncate", activeTab === "merchants" ? "text-violet-600" : "text-muted-foreground"].join(" ")}>
+                            Merchants
+                          </div>
+                          <div className="hidden text-[10px] text-muted-foreground sm:block">Shop and support</div>
+                        </div>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Main Content */}
+          <main className="relative z-10 mx-auto max-w-7xl px-3 pb-8 sm:px-4 sm:pb-12">
+            <div className="grid gap-4 sm:gap-6 lg:grid-cols-3">
+              {/* Left Column - Organizations & Merchants */}
+              <div className="lg:col-span-2">
+                <Card className="rounded-t-none border-border bg-card">
+                  <CardContent className="p-4 sm:p-6">
+                    {activeTab === "organizations" ? (
+                      <div role="tabpanel" aria-label="Organizations">
+                        <div className="mb-3 flex items-center justify-between sm:mb-4">
+                          <h3 className="text-base font-semibold text-foreground sm:text-lg">Featured Organizations</h3>
+                          <Link
+                            href="/organizations"
+                            className="inline-flex items-center gap-1 rounded-full border border-violet-200 bg-white/70 px-3 py-1 text-xs font-semibold text-violet-700 shadow-sm backdrop-blur transition-colors hover:bg-white hover:border-violet-300 dark:border-white/10 dark:bg-white/5 dark:text-violet-200 dark:hover:bg-white/10"
+                          >
+                            View All
+                            <ArrowRight className="h-3.5 w-3.5" />
+                          </Link>
+                        </div>
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3 auto-rows-fr">
+                          {(featuredOrganizations as any[]).slice(0, 3).map((org) => (
+                            <div key={org.id ?? org.slug ?? org.name} className="h-full rounded-lg border border-border bg-background p-4 flex flex-col">
+                              <div className="mb-3 flex items-start justify-between">
+                                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-violet-600">
+                                  <Heart className="h-5 w-5 text-white" fill="white" />
+                                </div>
+                              {(org.verified ?? true) && (
+                                <Badge className="bg-green-100 text-xs text-green-700">
+                                  <CheckCircle className="mr-1 h-3 w-3" />
+                                  Verified
+                                </Badge>
+                              )}
+                              </div>
+                              <h4 className="font-semibold text-foreground line-clamp-2">{org.name ?? "Organization"}</h4>
+                              <p className="mt-1 text-xs text-muted-foreground line-clamp-2">
+                                {org.description ??
+                                  (`${org.city ?? ""}${org.city && org.state ? ", " : ""}${org.state ?? ""}`.trim() ||
+                                    "Support this organization and make a difference.")}
+                              </p>
+                              <div className="mt-3">
+                                <div className="text-xs text-muted-foreground">Total Raised</div>
+                                <div className="text-lg font-bold text-foreground">{org.total_raised ?? org.raised ?? "$0"}</div>
+                              </div>
+                              <Link href={org.url ?? "/donate"} className="mt-auto block">
+                                <Button className="mt-4 w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white hover:from-blue-700 hover:to-purple-700" size="sm">
+                                  <Heart className="mr-1 h-3 w-3" fill="white" />
+                                  Donate
+                                </Button>
+                              </Link>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ) : (
+                      <div role="tabpanel" aria-label="Merchants">
+                        <div className="mb-3 flex items-center justify-between sm:mb-4">
+                          <h3 className="text-base font-semibold text-foreground sm:text-lg">Featured Merchants</h3>
+                          <Link
+                            href={route("merchant-hub.index", { tab: "offers" })}
+                            className="inline-flex items-center gap-1 rounded-full border border-violet-200 bg-white/70 px-3 py-1 text-xs font-semibold text-violet-700 shadow-sm backdrop-blur transition-colors hover:bg-white hover:border-violet-300 dark:border-white/10 dark:bg-white/5 dark:text-violet-200 dark:hover:bg-white/10"
+                          >
+                            View All
+                            <ArrowRight className="h-3.5 w-3.5" />
+                          </Link>
+                        </div>
+                        <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4 auto-rows-fr">
+                          {featuredMerchants.slice(0, 4).map((merchant) => (
+                            <div key={merchant.id} className="h-full rounded-lg border border-border bg-background p-4 text-center flex flex-col">
+                              <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-lg bg-violet-600">
+                                {merchant.logo_url ? (
+                                  // eslint-disable-next-line @next/next/no-img-element
+                                  <img src={merchant.logo_url} alt={merchant.name} className="h-10 w-10 object-contain" />
+                                ) : (
+                                  <Store className="h-6 w-6 text-white" />
+                                )}
+                              </div>
+                              <h4 className="font-semibold text-foreground line-clamp-1">{merchant.name}</h4>
+                              <p className="text-xs text-muted-foreground line-clamp-1">
+                                {typeof merchant.offers_count === "number" ? `${merchant.offers_count} offers` : "Merchant"}
+                              </p>
+                              <p className="mt-1 text-xs text-violet-600 line-clamp-2">Shop and support</p>
+                              <Link
+                                href={route("merchant-hub.index", { tab: "offers", search: merchant.name })}
+                                className="mt-auto block"
+                              >
+                                <Button
+                                  className="w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white hover:from-blue-700 hover:to-purple-700"
+                                  size="sm"
+                                >
+                                  Shop Now
+                                </Button>
+                              </Link>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+
+                {/* Gift Cards and Add Points - Side by Side */}
+                <div className="mt-4 grid gap-4 sm:mt-6 sm:gap-6 md:grid-cols-2">
+                  {/* Gift Cards Section */}
+                  <Card className="border-border">
+                    <CardContent className="p-4 sm:p-6">
+                      <div className="mb-3 flex items-center justify-between sm:mb-4">
+                        <h3 className="text-base font-semibold text-foreground sm:text-lg">Gift Cards</h3>
+                        <Link
+                          href={route("gift-cards.index")}
+                          className="inline-flex items-center gap-1 rounded-full border border-violet-200 bg-white/70 px-3 py-1 text-xs font-semibold text-violet-700 shadow-sm backdrop-blur transition-colors hover:bg-white hover:border-violet-300 dark:border-white/10 dark:bg-white/5 dark:text-violet-200 dark:hover:bg-white/10"
+                        >
+                          View All
+                          <ArrowRight className="h-3.5 w-3.5" />
+                        </Link>
+                      </div>
+                      {/* Mobile: horizontal scroll. Desktop: 3-column grid */}
+                      <div className="flex gap-3 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:grid sm:grid-cols-3 sm:gap-4 sm:overflow-visible sm:pb-0">
+                        {giftCards.map((card) => (
+                          <div key={card.name} className="min-w-[92px] text-center sm:min-w-0">
+                            <div
+                              className={`mx-auto flex h-12 w-12 items-center justify-center rounded-lg sm:h-16 sm:w-16 ${card.color} ${
+                                card.color === "bg-gray-100" ? "text-gray-600" : "text-white"
+                              } text-xs font-bold`}
+                            >
+                              {card.name.charAt(0)}
+                            </div>
+                            <div className="mt-1.5 text-xs font-medium text-foreground sm:mt-2 sm:text-sm truncate">{card.name}</div>
+                            <div className="text-[10px] text-muted-foreground sm:text-xs line-clamp-2">{card.range}</div>
+                          </div>
+                        ))}
+                      </div>
+                      <Link href={route("gift-cards.index")} className="block">
+                        <Button className="mt-3 w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white hover:from-blue-700 hover:to-purple-700 sm:mt-4">
+                          <Gift className="mr-2 h-4 w-4" />
+                          Buy Gift Card
+                        </Button>
+                      </Link>
+                    </CardContent>
+                  </Card>
+
+                  {/* Add Points Section */}
+                  <Card className="border-border">
+                    <CardContent className="p-4 sm:p-6 overflow-visible">
+                      <div className="mb-3 flex items-center justify-between sm:mb-4">
+                        <h3 className="text-base font-semibold text-foreground sm:text-lg">Add Points (BP)</h3>
+                        <span className="text-xs text-violet-600 sm:text-sm">1 BP = $1</span>
+                      </div>
+                      <div className="grid grid-cols-3 gap-2 sm:gap-3">
+                        {pointOptions.slice(0, 3).map((option) => (
+                          <button
+                            key={option.amount}
+                            onClick={() => setSelectedPoints(option.amount)}
+                            className={`relative rounded-lg border-2 px-2 py-2.5 sm:px-3 sm:py-3 text-center transition-all min-h-[64px] flex flex-col items-center justify-center ${
+                              selectedPoints === option.amount
+                                ? "border-transparent bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-sm"
+                                : "border-border bg-white/0 hover:border-violet-300 hover:bg-violet-50/50"
+                            }`}
+                          >
+                            {option.popular && (
+                              <Badge className="absolute -top-2 left-1/2 -translate-x-1/2 bg-green-500 text-[10px] text-white sm:text-xs shadow-sm">
+                                Popular
+                              </Badge>
+                            )}
+                            <div className={`text-base font-bold sm:text-xl leading-none ${selectedPoints === option.amount ? "text-white" : "text-foreground"}`}>
+                              ${option.amount}
+                            </div>
+                            <div className={`mt-1 text-xs sm:text-sm leading-none ${selectedPoints === option.amount ? "text-white/85" : "text-violet-600"}`}>
+                              {option.bp} BP
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                      {pointOptions.length > 3 && (
+                        <div className="mt-3 grid grid-cols-2 gap-2 sm:gap-3">
+                          {pointOptions.slice(3).map((option) => (
+                            <button
+                              key={option.amount}
+                              onClick={() => setSelectedPoints(option.amount)}
+                              className={`relative rounded-lg border-2 px-2 py-2.5 sm:px-3 sm:py-3 text-center transition-all min-h-[64px] flex flex-col items-center justify-center ${
+                                selectedPoints === option.amount
+                                  ? "border-transparent bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-sm"
+                                  : "border-border bg-white/0 hover:border-violet-300 hover:bg-violet-50/50"
+                              }`}
+                            >
+                              <div className={`text-base font-bold sm:text-xl leading-none ${selectedPoints === option.amount ? "text-white" : "text-foreground"}`}>
+                                ${option.amount}
+                              </div>
+                              <div className={`mt-1 text-xs sm:text-sm leading-none ${selectedPoints === option.amount ? "text-white/85" : "text-violet-600"}`}>
+                                {option.bp} BP
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                      <Link href={route("believe-points.index")} className="block">
+                        <Button className="mt-3 w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white hover:from-blue-700 hover:to-purple-700 sm:mt-4">
+                          <Wallet className="mr-2 h-4 w-4" />
+                          Add Points Now
+                        </Button>
+                      </Link>
+                      <p className="mt-2 text-center text-xs text-muted-foreground sm:text-sm">
+                        Use BP for Donations, Raffles, Gift Cards & Merchants
+                      </p>
+                    </CardContent>
+                  </Card>
+                </div>
+              </div>
+
+              {/* Right Column - Raffles & Wallet */}
+              <div className="space-y-4 sm:space-y-6 lg:mt-[-5rem]">
+                {/* Active Raffles */}
+                <Card className="border-border bg-card">
+                  <CardContent className="p-4 sm:p-6">
+                    <div className="mb-3 flex items-center justify-between sm:mb-4">
+                      <h3 className="text-base font-semibold text-foreground sm:text-lg">Active Raffles</h3>
+                      <Link
+                        href={route("raffles.index")}
+                        className="inline-flex items-center gap-1 rounded-full border border-violet-200 bg-white/70 px-3 py-1 text-xs font-semibold text-violet-700 shadow-sm backdrop-blur transition-colors hover:bg-white hover:border-violet-300 dark:border-white/10 dark:bg-white/5 dark:text-violet-200 dark:hover:bg-white/10"
+                      >
+                        View All
+                        <ArrowRight className="h-3.5 w-3.5" />
+                      </Link>
+                    </div>
+                    <div className="overflow-hidden rounded-lg bg-background/60 dark:bg-white/5">
+                      <AnimatePresence mode="wait" initial={false}>
+                        <motion.div
+                          key={raffles[raffleIndex]?.id}
+                          initial={{ opacity: 0, x: 24 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          exit={{ opacity: 0, x: -24 }}
+                          transition={{ type: "spring", stiffness: 260, damping: 28, mass: 0.8 }}
+                        >
+                        {(() => {
+                          const raffle = raffles[raffleIndex]
+                          const remainingMs = Math.max(0, (raffle?.endAtMs ?? nowMs) - nowMs)
+                          const totalSeconds = Math.floor(remainingMs / 1000)
+                          const days = Math.floor(totalSeconds / (24 * 60 * 60))
+                          const hours = Math.floor((totalSeconds % (24 * 60 * 60)) / (60 * 60))
+                          const minutes = Math.floor((totalSeconds % (60 * 60)) / 60)
+                          const seconds = totalSeconds % 60
+
+                          const two = (n: number) => String(n).padStart(2, "0")
+                          const dayStr = String(days)
+                          const hourStr = two(hours)
+                          const minStr = two(minutes)
+                          const secStr = two(seconds)
+
+                          return (
+                            <div>
+                              <div className={raffle?.image ? "flex flex-col sm:flex-row" : "p-3 sm:p-4"}>
+                                {raffle?.image ? (
+                                  <div className="aspect-video w-full bg-gray-100 sm:aspect-square sm:w-32 md:w-40 dark:bg-white/10">
+                                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                                    <img
+                                      src={raffle.image}
+                                      alt={raffle.title}
+                                      className="h-full w-full object-cover"
+                                      loading="lazy"
+                                    />
+                                  </div>
+                                ) : null}
+                                <div className={raffle?.image ? "flex-1 p-3 sm:p-4" : ""}>
+                                  <h4 className="text-sm font-semibold text-foreground sm:text-base line-clamp-2">
+                                    {raffles[raffleIndex]?.title}
+                                  </h4>
+                                  <div className="mt-1 text-xs text-muted-foreground">Ticket Price</div>
+                                  <div className="text-lg font-bold text-foreground sm:text-xl">
+                                    {raffles[raffleIndex]?.price}
+                                  </div>
+
+                                  <div className="mt-3 grid grid-cols-4 gap-2 sm:mt-3 sm:gap-2">
+                                    {[
+                                      { value: dayStr, label: "DAYS" },
+                                      { value: hourStr, label: "HRS" },
+                                      { value: minStr, label: "MINS" },
+                                      { value: secStr, label: "SECS" },
+                                    ].map((t) => (
+                                      <div
+                                        key={t.label}
+                                        className="min-w-0 rounded-lg bg-violet-100/80 px-2 py-2 dark:bg-white/10 flex flex-col items-center justify-center text-center"
+                                      >
+                                        <div className="text-sm sm:text-base font-extrabold text-violet-700 dark:text-violet-200 leading-none whitespace-nowrap tabular-nums">
+                                          {t.value}
+                                        </div>
+                                        <div className="mt-1 text-[10px] text-violet-600/90 dark:text-violet-200/80 leading-none whitespace-nowrap font-semibold tracking-wide">
+                                          {t.label}
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="border-t border-border p-3 sm:p-4">
+                                <Progress value={raffles[raffleIndex]?.progress ?? 0} className="h-2 bg-gradient-to-r from-blue-200 to-purple-200" />
+                                <div className="mt-1 flex justify-between text-[10px] text-muted-foreground sm:text-xs">
+                                  <span>{raffles[raffleIndex]?.soldText}</span>
+                                  <span>{raffles[raffleIndex]?.percentText}</span>
+                                </div>
+
+                                <Link href={route("raffles.index")} className="block">
+                                  <Button className="mt-3 w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white hover:from-blue-700 hover:to-purple-700 sm:mt-4">
+                                    <Ticket className="mr-2 h-4 w-4" />
+                                    Enter Raffle
+                                  </Button>
+                                </Link>
+                              </div>
+                            </div>
+                          )
+                        })()}
+                        </motion.div>
+                      </AnimatePresence>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* My Wallet */}
+                <Card className="border-border bg-gradient-to-br from-gray-900 to-gray-800">
+                  <CardContent className="p-4 text-white sm:p-6">
+                    <div className="mb-3 flex items-center gap-2 sm:mb-4">
+                      <span className="text-xl font-bold sm:text-2xl">1 BP = $1</span>
+                    </div>
+
+                    <div className="rounded-lg bg-white/10 p-3 backdrop-blur-sm sm:p-4">
+                      <div className="flex items-center gap-2">
+                        <div className="flex h-7 w-7 items-center justify-center rounded-full bg-violet-600 sm:h-8 sm:w-8">
+                          <Heart className="h-3.5 w-3.5 text-white sm:h-4 sm:w-4" fill="white" />
+                        </div>
+                        <span className="text-sm font-medium sm:text-base">Believ.Cash</span>
+                      </div>
+                      <div className="mt-3 text-xs text-gray-400 sm:mt-4 sm:text-sm">My Wallet</div>
+                      <div className="mt-3 text-xs text-gray-400 sm:mt-4 sm:text-sm">BP Balance</div>
+                      <div className="text-2xl font-bold sm:text-3xl">
+                        1,250 <span className="text-base text-violet-400 sm:text-lg">BP</span>
+                      </div>
+                      <div className="text-xs text-gray-400 sm:text-sm">= $1,250.00</div>
+                    </div>
+
+                    <div className="mt-3 space-y-1.5 sm:mt-4 sm:space-y-2">
+                      {["Use BP to Donate", "Use BP for Raffles", "Use BP for Gift Cards", "Use BP at Merchants"].map((label) => (
+                        <div key={label} className="flex items-center gap-1.5 text-xs sm:gap-2 sm:text-sm">
+                          <Check className="h-3.5 w-3.5 shrink-0 text-violet-400 sm:h-4 sm:w-4" />
+                          <span className="text-gray-300">{label}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            </div>
+
+            {/* Stats Section */}
+            <div className="mt-8 grid gap-3 grid-cols-2 sm:mt-12 sm:gap-4 md:gap-6 lg:grid-cols-5">
+              {[
+                { Icon: Heart, value: stats?.totalRaised ?? "$0", label: "Total Raised" },
+                { Icon: Users, value: stats?.livesImpacted ?? "0", label: "Lives Impacted" },
+                { Icon: Building2, value: stats?.organizationsSupported ?? "0", label: "Organizations Supported" },
+                { Icon: Handshake, value: stats?.merchantsPartnered ?? "0", label: "Merchants Partnered" },
+                { Icon: ShieldCheck, value: "100% Secure", label: "Your donations are safe with us." },
+              ].map(({ Icon, value, label }) => (
+                <Card key={label} className="border-border">
+                  <CardContent className="flex flex-col items-center gap-2 p-3 text-center sm:flex-row sm:gap-4 sm:p-4 sm:text-left">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-violet-600 sm:h-12 sm:w-12">
+                      <Icon className="h-5 w-5 text-white sm:h-6 sm:w-6" />
+                    </div>
+                    <div>
+                      <div className="text-base font-bold text-foreground sm:text-xl">{value}</div>
+                      <div className="text-xs text-muted-foreground sm:text-sm leading-snug line-clamp-2">{label}</div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </main>
+        </>
+      )}
+
+      {false && (
+        <>
       {/* What Makes Believe Cash Different Section */}
       <section id="features" className="py-20 sm:py-24 md:py-32 bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50 dark:from-purple-950 dark:via-purple-900 dark:to-blue-950 relative overflow-visible">
         {/* Animated Background Elements */}
@@ -1191,6 +1641,8 @@ export default function HomePage() {
           </motion.div>
         </div>
       </section>
+        </>
+      )}
             </div>
     </FrontendLayout>
   )
