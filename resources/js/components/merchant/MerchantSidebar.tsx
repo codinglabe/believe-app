@@ -2,12 +2,10 @@ import React, { useState } from 'react'
 import { Link, usePage } from '@inertiajs/react'
 import {
   LayoutDashboard,
-  Gift,
   BarChart3,
   Settings,
   Menu,
   X,
-  Plus,
   ShoppingBag,
   TrendingUp,
   Package,
@@ -43,17 +41,32 @@ interface NavItem {
 
 const navigation: NavItem[] = [
   { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
-  { name: 'Offers', href: '/offers', icon: Gift },
-  { name: 'Marketplace products', href: '/marketplace-products', icon: Package },
   {
-    name: 'Pool listing approvals',
+    name: 'Products',
+    href: '/marketplace-products',
+    icon: Package,
+    children: [
+      { name: 'My Products', href: '/marketplace-products' },
+      { name: 'Add Product', href: '/marketplace-products/create' },
+    ],
+  },
+  {
+    name: 'Offers',
+    href: '/offers',
+    icon: Receipt,
+    children: [
+      { name: 'All Offers', href: '/offers' },
+      { name: 'Create Offer', href: '/offers/create' },
+    ],
+  },
+  { name: 'Orders', href: '/marketplace-orders', icon: Receipt },
+  { name: 'Redemptions', href: '/redemptions', icon: ShoppingBag },
+  {
+    name: 'Approvals',
     href: '/marketplace-pool-approvals',
     icon: ClipboardCheck,
     badgeFromAuth: 'pending_pool_approval_count',
   },
-  { name: 'Marketplace orders', href: '/marketplace-orders', icon: Receipt },
-  { name: 'Create Offer', href: '/offers/create', icon: Plus },
-  { name: 'Redemptions', href: '/redemptions', icon: ShoppingBag },
   {
     name: 'Feedback & Rewards',
     href: '/feedback-rewards',
@@ -62,7 +75,6 @@ const navigation: NavItem[] = [
       { name: 'Campaigns', href: '/feedback-rewards' },
       { name: 'Responses', href: '/feedback-rewards?status=active' },
       { name: 'Rewards Wallet', href: '/wallet/brp' },
-      { name: 'Insights', href: '/feedback-rewards?view=insights' },
     ],
   },
   { name: 'Analytics', href: '/analytics', icon: BarChart3 },
@@ -131,8 +143,12 @@ function SidebarContent({
   const hasActiveSubscription = (auth?.user?.has_active_subscription as boolean | undefined) ?? false
 
   // Track expanded groups
+  const isProductsSection = currentPath.startsWith('/marketplace-products')
+  const isOffersSection = currentPath.startsWith('/offers')
   const isFeedbackSection = currentPath.startsWith('/feedback-rewards') || currentPath.startsWith('/wallet/brp')
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({
+    Products: isProductsSection,
+    Offers: isOffersSection,
     'Feedback & Rewards': isFeedbackSection,
   })
 

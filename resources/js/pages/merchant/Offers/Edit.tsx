@@ -1,16 +1,23 @@
 "use client"
 
-import React, { useEffect } from "react"
-import { Head, useForm, Link, router, usePage } from "@inertiajs/react"
+import React, { useEffect, useMemo, useState } from "react"
+import { Head, Link, router, useForm, usePage } from "@inertiajs/react"
 import { MerchantCard, MerchantCardContent, MerchantCardHeader, MerchantCardTitle } from "@/components/merchant-ui"
 import { MerchantButton } from "@/components/merchant-ui"
 import { MerchantInput } from "@/components/merchant-ui"
 import { MerchantLabel } from "@/components/merchant-ui"
 import { MerchantTextarea } from "@/components/merchant-ui"
 import { MerchantDashboardLayout } from "@/components/merchant"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { ImageUpload } from "@/components/admin/ImageUpload"
-import { ArrowLeft } from "lucide-react"
+import {
+  CalendarDays,
+  CircleDollarSign,
+  Percent,
+  ShoppingBag,
+  Store,
+  Tag,
+  Trophy,
+} from "lucide-react"
 import { motion } from "framer-motion"
 import { showSuccessToast, showErrorToast } from "@/lib/toast"
 
@@ -21,423 +28,504 @@ interface MerchantHubCategory {
 }
 
 interface MerchantHubOffer {
-    id: number
-    merchant_hub_category_id: number
-    title: string
-    short_description: string | null
-    description: string
-    image_url: string | null
-    reference_price?: number | null
-    discount_percentage?: number | null
-    discount_cap?: number | null
-    points_required: number
-    cash_required: number | null
-    currency: string
-    inventory_qty: number | null
-    starts_at: string | null
-    ends_at: string | null
-    status: 'draft' | 'active' | 'paused' | 'expired'
-    pickup_available?: boolean
+  id: number
+  merchant_hub_category_id: number
+  title: string
+  short_description: string | null
+  description: string
+  image_url: string | null
+  reference_price?: number | null
+  discount_percentage?: number | null
+  discount_cap?: number | null
+  points_required: number
+  cash_required: number | null
+  currency: string
+  inventory_qty: number | null
+  starts_at: string | null
+  ends_at: string | null
+  status: "draft" | "active" | "paused" | "expired"
+  pickup_available?: boolean
+  category?: MerchantHubCategory
 }
 
 interface OffersEditProps {
-    offer: MerchantHubOffer
-    categories: MerchantHubCategory[]
+  offer: MerchantHubOffer
+  categories: MerchantHubCategory[]
 }
 
+type OfferType = "product" | "storewide" | "points" | "tier"
+
 export default function MerchantOffersEdit({ offer, categories }: OffersEditProps) {
-    const { data, setData, processing, errors } = useForm({
-        merchant_hub_category_id: offer.merchant_hub_category_id.toString(),
-        title: offer.title,
-        short_description: offer.short_description || '',
-        description: offer.description,
-        reference_price: offer.reference_price ?? (offer.points_required && (offer.discount_percentage ?? 10) ? (offer.points_required / 1000) * 100 / (offer.discount_percentage ?? 10) : '') as number | string,
-        discount_percentage: offer.discount_percentage ?? 10,
-        discount_cap: offer.discount_cap ?? '',
-        image: null as File | null,
-        cash_required: offer.cash_required ? offer.cash_required.toString() : '',
-        currency: offer.currency || 'USD',
-        inventory_qty: offer.inventory_qty ? offer.inventory_qty.toString() : '',
-        starts_at: offer.starts_at ? new Date(offer.starts_at).toISOString().slice(0, 16) : '',
-        ends_at: offer.ends_at ? new Date(offer.ends_at).toISOString().slice(0, 16) : '',
-        status: offer.status,
-        pickup_available: !!(offer.pickup_available ?? false),
-    })
+  const inferType = (): OfferType => {
+    const raw = (offer.category?.name || "").toLowerCase()
+    if (raw.includes("tier") || raw.includes("reward")) return "tier"
+    if (raw.includes("store")) return "storewide"
+    if (raw.includes("point")) return "points"
+    return "product"
+  }
 
-    const price = Number(data.reference_price) || 0
-    const pct = Number(data.discount_percentage) || 0
-    const discountAmount = price > 0 && pct >= 1 && pct <= 10 ? Math.round(price * (pct / 100) * 100) / 100 : 0
-    const pointsRequired = Math.round(discountAmount * 1000)
-    const customerPays = Math.round((price - discountAmount) * 100) / 100
+  const dateFrom = (dt: string | null) => (dt ? new Date(dt).toISOString().slice(0, 10) : "")
+  const timeFrom = (dt: string | null) => (dt ? new Date(dt).toISOString().slice(11, 16) : "00:00")
 
-    const { props } = usePage<{ success?: string; error?: string }>()
+  const [offerType, setOfferType] = useState<OfferType>(inferType())
+  const [discountMode, setDiscountMode] = useState<"percentage" | "fixed">("percentage")
+  const [startDate, setStartDate] = useState(dateFrom(offer.starts_at))
+  const [startTime, setStartTime] = useState(timeFrom(offer.starts_at))
+  const [endDate, setEndDate] = useState(dateFrom(offer.ends_at))
+  const [endTime, setEndTime] = useState(timeFrom(offer.ends_at))
+  const [limitEnabled, setLimitEnabled] = useState(offer.inventory_qty != null)
+  const [redemptionLimit, setRedemptionLimit] = useState(offer.inventory_qty != null ? String(offer.inventory_qty) : "200")
+  const [showMarketplace, setShowMarketplace] = useState(offer.status === "active")
+  const [featuredOffer, setFeaturedOffer] = useState(false)
+  const [showPointsMarketplace, setShowPointsMarketplace] = useState(true)
 
-    // Show flash messages
-    useEffect(() => {
-        if (props.success) {
-            showSuccessToast(props.success)
-        }
-        if (props.error) {
-            showErrorToast(props.error)
-        }
-    }, [props.success, props.error])
+  const { data, setData, processing, errors } = useForm({
+    merchant_hub_category_id: String(offer.merchant_hub_category_id ?? ""),
+    title: offer.title ?? "",
+    short_description: offer.short_description ?? "",
+    description: offer.description ?? "",
+    reference_price:
+      offer.reference_price ??
+      (offer.points_required && (offer.discount_percentage ?? 10)
+        ? (offer.points_required / 1000) * 100 / (offer.discount_percentage ?? 10)
+        : ""),
+    discount_percentage: offer.discount_percentage ?? 5,
+    discount_cap: offer.discount_cap ?? "",
+    image: null as File | null,
+    currency: offer.currency || "USD",
+    inventory_qty: offer.inventory_qty != null ? String(offer.inventory_qty) : "",
+    starts_at: offer.starts_at ? new Date(offer.starts_at).toISOString().slice(0, 16) : "",
+    ends_at: offer.ends_at ? new Date(offer.ends_at).toISOString().slice(0, 16) : "",
+    status: offer.status,
+    pickup_available: !!(offer.pickup_available ?? false),
+  })
 
-    const handleSubmit = (e: React.FormEvent) => {
-        e.preventDefault()
+  const price = Number(data.reference_price) || 0
+  const pct = Number(data.discount_percentage) || 0
+  const discountAmount = price > 0 && pct >= 1 && pct <= 10 ? Math.round(price * (pct / 100) * 100) / 100 : 0
+  const pointsRequired = Math.round(discountAmount * 1000)
+  const customerPays = Math.round((price - discountAmount) * 100) / 100
+  const finalStatus = showMarketplace ? "active" : "draft"
+  const typeTitle = useMemo(() => {
+    if (offerType === "storewide") return "Storewide Discount"
+    if (offerType === "points") return "Points Redemption (BRP)"
+    if (offerType === "tier") return "Tier Reward (BRP)"
+    return "Product Discount"
+  }, [offerType])
 
-        // Prepare FormData for file upload with method spoofing
-        const formData = new FormData()
+  const { props } = usePage<{ success?: string; error?: string }>()
 
-        // Add all form fields
-        Object.keys(data).forEach(key => {
-            const value = data[key as keyof typeof data]
-            if (value === null || value === undefined || value === '') {
-                if (key === 'inventory_qty' || key === 'cash_required' || key === 'starts_at' || key === 'ends_at' || key === 'short_description' || key === 'discount_cap') {
-                    return
-                }
-                return
-            }
+  useEffect(() => {
+    if (props.success) showSuccessToast(props.success)
+    if (props.error) showErrorToast(props.error)
+  }, [props.success, props.error])
 
-            if (value instanceof File) {
-                formData.append(key, value)
-            } else if (typeof value === 'boolean') {
-                formData.append(key, value ? '1' : '0')
-            } else {
-                formData.append(key, String(value))
-            }
-        })
+  useEffect(() => {
+    setData("starts_at", startDate ? `${startDate}T${startTime}` : "")
+    setData("ends_at", endDate ? `${endDate}T${endTime}` : "")
+  }, [startDate, startTime, endDate, endTime, setData])
 
-        // Add method spoofing for PUT request
-        formData.append('_method', 'PUT')
+  useEffect(() => {
+    setData("status", finalStatus)
+  }, [finalStatus, setData])
 
-        // Use router.post with FormData for proper file upload handling
-        // Backend will redirect to index page after successful update
-        router.post(`/offers/${offer.id}`, formData, {
-            forceFormData: true,
-        })
+  useEffect(() => {
+    if (limitEnabled) {
+      setData("inventory_qty", redemptionLimit)
+    } else {
+      setData("inventory_qty", "")
     }
+  }, [limitEnabled, redemptionLimit, setData])
 
-    // Convert image_url to full URL for preview
-    const imageUrl = offer.image_url
-        ? (offer.image_url.startsWith('http')
-            ? offer.image_url
-            : offer.image_url.startsWith('/storage')
-            ? offer.image_url
-            : `/storage/${offer.image_url}`)
-        : null
+  const selectClass =
+    "w-full rounded-md border border-[#2563EB]/30 bg-black/40 px-3 py-2 text-sm text-white outline-none transition focus:border-[#2563EB] focus:ring-2 focus:ring-[#2563EB]/30"
 
-    return (
-        <>
-            <Head title={`Edit Offer - Merchant Dashboard`} />
-            <MerchantDashboardLayout>
-                <div className="w-full">
-                    <motion.div
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ duration: 0.3 }}
-                        className="space-y-6"
-                    >
-                        {/* Header */}
-                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
-                            <div>
-                                <h1 className="text-3xl font-bold text-white mb-2">Edit Offer</h1>
-                                <p className="text-gray-400">Update the details for your offer</p>
-                            </div>
-                            <Link href="/offers">
-                                <MerchantButton type="button" variant="outline">
-                                    <ArrowLeft className="h-4 w-4 mr-2" />
-                                    Back to Offers
-                                </MerchantButton>
-                            </Link>
-                        </div>
+  const imageUrl = offer.image_url
+    ? offer.image_url.startsWith("http")
+      ? offer.image_url
+      : offer.image_url.startsWith("/storage")
+        ? offer.image_url
+        : `/storage/${offer.image_url}`
+    : null
 
-                        <form onSubmit={handleSubmit} className="space-y-6">
-                            <MerchantCard className="shadow-2xl">
-                                <MerchantCardHeader>
-                                    <MerchantCardTitle className="text-white">Offer Details</MerchantCardTitle>
-                                </MerchantCardHeader>
-                                <MerchantCardContent className="space-y-6">
-                                    {/* Category */}
-                                    <div>
-                                        <MerchantLabel htmlFor="merchant_hub_category_id">Category *</MerchantLabel>
-                                        <Select
-                                            value={data.merchant_hub_category_id}
-                                            onValueChange={(value) => setData('merchant_hub_category_id', value)}
-                                        >
-                                            <SelectTrigger className={`mt-1 bg-gray-900/50 border-[#2563EB]/40 text-white ${errors.merchant_hub_category_id ? 'border-red-500' : ''}`}>
-                                                <SelectValue placeholder="Select a category" />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                {categories.map((category) => (
-                                                    <SelectItem key={category.id} value={category.id.toString()}>
-                                                        {category.name}
-                                                    </SelectItem>
-                                                ))}
-                                            </SelectContent>
-                                        </Select>
-                                        {errors.merchant_hub_category_id && (
-                                            <p className="mt-1 text-sm text-red-400">{errors.merchant_hub_category_id}</p>
-                                        )}
-                                    </div>
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    const formData = new FormData()
+    Object.entries(data).forEach(([key, value]) => {
+      if (value === null || value === undefined || value === "") return
+      if (value instanceof File) {
+        formData.append(key, value)
+      } else if (typeof value === "boolean") {
+        formData.append(key, value ? "1" : "0")
+      } else {
+        formData.append(key, String(value))
+      }
+    })
+    formData.append("_method", "PUT")
+    router.post(`/offers/${offer.id}`, formData, { forceFormData: true })
+  }
 
-                                    {/* Title */}
-                                    <div>
-                                        <MerchantLabel htmlFor="title">Title *</MerchantLabel>
-                                        <MerchantInput
-                                            id="title"
-                                            value={data.title}
-                                            onChange={(e) => setData('title', e.target.value)}
-                                            placeholder="e.g., 50% Off Electronics"
-                                            className={`mt-1 ${errors.title ? 'border-red-500' : ''}`}
-                                            required
-                                        />
-                                        {errors.title && (
-                                            <p className="mt-1 text-sm text-red-400">{errors.title}</p>
-                                        )}
-                                    </div>
+  return (
+    <>
+      <Head title="Edit Offer - Merchant Dashboard" />
+      <MerchantDashboardLayout>
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3 }}
+          className="space-y-6"
+        >
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <h1 className="text-3xl font-bold text-white">Edit Offer</h1>
+              <p className="mt-1 text-sm text-white/60">
+                Offers <span className="mx-2">/</span> Edit Offer <span className="mx-2">/</span> {typeTitle}
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <Link href="/offers">
+                <MerchantButton type="button" variant="outline">
+                  Cancel
+                </MerchantButton>
+              </Link>
+              <MerchantButton type="submit" form="offer-edit-form" disabled={processing}>
+                {processing ? "Saving..." : "Save & Review"}
+              </MerchantButton>
+            </div>
+          </div>
 
-                                    {/* Short Description */}
-                                    <div>
-                                        <MerchantLabel htmlFor="short_description">Short Description</MerchantLabel>
-                                        <MerchantInput
-                                            id="short_description"
-                                            value={data.short_description}
-                                            onChange={(e) => setData('short_description', e.target.value)}
-                                            placeholder="Brief description (max 500 characters)"
-                                            maxLength={500}
-                                            className={`mt-1 ${errors.short_description ? 'border-red-500' : ''}`}
-                                        />
-                                        {errors.short_description && (
-                                            <p className="mt-1 text-sm text-red-400">{errors.short_description}</p>
-                                        )}
-                                    </div>
+          <form id="offer-edit-form" onSubmit={handleSubmit} className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_330px]">
+            <div className="space-y-5">
+              <MerchantCard className="gap-4 py-4">
+                <MerchantCardHeader>
+                  <MerchantCardTitle className="text-white">1. Offer Type</MerchantCardTitle>
+                  <p className="text-sm text-white/60">Select the type of offer you want to create.</p>
+                </MerchantCardHeader>
+                <MerchantCardContent>
+                  <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                    {[
+                      { key: "product", title: "Product Discount", icon: Tag, sub: "Offer a discount on a specific product." },
+                      { key: "storewide", title: "Storewide Discount", icon: Store, sub: "Offer a discount on all your products." },
+                      { key: "points", title: "Points Redemption", icon: CircleDollarSign, sub: "Customers redeem using BP/BRP points." },
+                      { key: "tier", title: "Tier Reward (BRP)", icon: Trophy, sub: "Unlock rewards based on customer activity." },
+                    ].map((item) => {
+                      const Icon = item.icon
+                      const active = offerType === item.key
+                      return (
+                        <button
+                          key={item.key}
+                          type="button"
+                          onClick={() => setOfferType(item.key as OfferType)}
+                          className={`rounded-xl border px-4 py-3 text-left transition ${
+                            active
+                              ? "border-[#2563EB]/80 bg-[#2563EB]/15 ring-1 ring-[#2563EB]/50"
+                              : "border-[#2563EB]/25 bg-black/20 hover:border-[#2563EB]/50"
+                          }`}
+                        >
+                          <div className="mb-2 flex h-8 w-8 items-center justify-center rounded-md bg-black/30">
+                            <Icon className="h-4 w-4 text-white" />
+                          </div>
+                          <p className="text-sm font-semibold text-white">{item.title}</p>
+                          <p className="mt-1 text-xs text-white/60">{item.sub}</p>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </MerchantCardContent>
+              </MerchantCard>
 
-                                    {/* Description */}
-                                    <div>
-                                        <MerchantLabel htmlFor="description">Description *</MerchantLabel>
-                                        <MerchantTextarea
-                                            id="description"
-                                            value={data.description}
-                                            onChange={(e) => setData('description', e.target.value)}
-                                            placeholder="Full description of the offer"
-                                            rows={6}
-                                            className={`mt-1 ${errors.description ? 'border-red-500' : ''}`}
-                                            required
-                                        />
-                                        {errors.description && (
-                                            <p className="mt-1 text-sm text-red-400">{errors.description}</p>
-                                        )}
-                                    </div>
+              <MerchantCard className="gap-4 py-4">
+                <MerchantCardHeader>
+                  <MerchantCardTitle className="text-white">
+                    {offerType === "points" ? "2. Redemption Details" : offerType === "tier" ? "2. Tier & Reward Details" : "2. Discount Details"}
+                  </MerchantCardTitle>
+                </MerchantCardHeader>
+                <MerchantCardContent className="space-y-4">
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div>
+                      <MerchantLabel>Category *</MerchantLabel>
+                      <select
+                        value={data.merchant_hub_category_id}
+                        onChange={(e) => setData("merchant_hub_category_id", e.target.value)}
+                        className={selectClass}
+                      >
+                        <option value="">Select category</option>
+                        {categories.map((category) => (
+                          <option key={category.id} value={String(category.id)}>
+                            {category.name}
+                          </option>
+                        ))}
+                      </select>
+                      {errors.merchant_hub_category_id && <p className="mt-1 text-sm text-red-400">{errors.merchant_hub_category_id}</p>}
+                    </div>
+                    <div>
+                      <MerchantLabel>Offer Title *</MerchantLabel>
+                      <MerchantInput
+                        value={data.title}
+                        onChange={(e) => setData("title", e.target.value)}
+                        placeholder="e.g. 20% OFF Pecan Candy"
+                      />
+                      {errors.title && <p className="mt-1 text-sm text-red-400">{errors.title}</p>}
+                    </div>
+                  </div>
 
-                                    {/* Image Upload */}
-                                    <div>
-                                        <ImageUpload
-                                            label="Offer Image"
-                                            value={imageUrl}
-                                            onChange={(file) => setData('image', file)}
-                                            processing={processing}
-                                        />
-                                        <p className="text-xs text-gray-400 mt-1">
-                                            Upload a new image to replace the existing one (max 5MB)
-                                        </p>
-                                        {errors.image && (
-                                            <p className="mt-1 text-sm text-red-400">{errors.image}</p>
-                                        )}
-                                    </div>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div>
+                      <MerchantLabel>Discount Type</MerchantLabel>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setDiscountMode("percentage")}
+                          className={`rounded-md border px-3 py-2 text-left text-sm ${
+                            discountMode === "percentage"
+                              ? "border-[#2563EB]/70 bg-[#2563EB]/15 text-white"
+                              : "border-[#2563EB]/25 bg-black/25 text-white/70"
+                          }`}
+                        >
+                          <Percent className="mb-1 h-4 w-4" />
+                          Percentage (%)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setDiscountMode("fixed")}
+                          className={`rounded-md border px-3 py-2 text-left text-sm ${
+                            discountMode === "fixed"
+                              ? "border-[#2563EB]/70 bg-[#2563EB]/15 text-white"
+                              : "border-[#2563EB]/25 bg-black/25 text-white/70"
+                          }`}
+                        >
+                          <CircleDollarSign className="mb-1 h-4 w-4" />
+                          Fixed Amount
+                        </button>
+                      </div>
+                    </div>
+                    <div>
+                      <MerchantLabel>Discount Percentage *</MerchantLabel>
+                      <div className="relative">
+                        <MerchantInput
+                          type="number"
+                          min="1"
+                          max="10"
+                          step="1"
+                          value={data.discount_percentage}
+                          onChange={(e) => setData("discount_percentage", Number(e.target.value || 0))}
+                        />
+                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-white/60">%</span>
+                      </div>
+                      <p className="mt-1 text-xs text-white/55">System supports 1-10% discount range.</p>
+                      {errors.discount_percentage && <p className="mt-1 text-sm text-red-400">{errors.discount_percentage}</p>}
+                    </div>
+                  </div>
 
-                                    {/* BIU: Retail price + discount 1–10%; points auto-calculated */}
-                                    <div className="rounded-xl border border-[#2563EB]/30 bg-gray-900/50 p-4 space-y-4">
-                                        <p className="text-sm font-medium text-gray-300">Pricing &amp; Discount (1–10% only; points calculated automatically)</p>
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                            <div>
-                                                <MerchantLabel htmlFor="reference_price">Retail / Product Price *</MerchantLabel>
-                                                <MerchantInput
-                                                    id="reference_price"
-                                                    type="number"
-                                                    min="0.01"
-                                                    step="0.01"
-                                                    value={data.reference_price === '' ? '' : data.reference_price}
-                                                    onChange={(e) => setData('reference_price', e.target.value ? Number(e.target.value) : '')}
-                                                    placeholder="e.g. 100"
-                                                    className={`mt-1 ${errors.reference_price ? 'border-red-500' : ''}`}
-                                                    required
-                                                />
-                                                {errors.reference_price && (
-                                                    <p className="mt-1 text-sm text-red-400">{errors.reference_price}</p>
-                                                )}
-                                            </div>
-                                            <div>
-                                                <MerchantLabel htmlFor="discount_percentage">Discount % * (1–10% only)</MerchantLabel>
-                                                <Select
-                                                    value={String(data.discount_percentage)}
-                                                    onValueChange={(value) => setData('discount_percentage', Number(value))}
-                                                >
-                                                    <SelectTrigger className={`mt-1 bg-gray-900/50 border-[#2563EB]/40 text-white ${errors.discount_percentage ? 'border-red-500' : ''}`}>
-                                                        <SelectValue placeholder="Select %" />
-                                                    </SelectTrigger>
-                                                    <SelectContent>
-                                                        {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => (
-                                                            <SelectItem key={n} value={String(n)}>{n}%</SelectItem>
-                                                        ))}
-                                                    </SelectContent>
-                                                </Select>
-                                                {errors.discount_percentage && (
-                                                    <p className="mt-1 text-sm text-red-400">{errors.discount_percentage}</p>
-                                                )}
-                                            </div>
-                                        </div>
-                                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 border-t border-gray-700">
-                                            <div className="bg-gray-800/60 rounded-lg p-3">
-                                                <p className="text-xs text-gray-400 uppercase tracking-wide">Discount amount</p>
-                                                <p className="text-lg font-bold text-[#2563EB]">${discountAmount.toFixed(2)}</p>
-                                            </div>
-                                            <div className="bg-gray-800/60 rounded-lg p-3">
-                                                <p className="text-xs text-gray-400 uppercase tracking-wide">Points required</p>
-                                                <p className="text-lg font-bold text-white">{pointsRequired.toLocaleString()}</p>
-                                            </div>
-                                            <div className="bg-gray-800/60 rounded-lg p-3">
-                                                <p className="text-xs text-gray-400 uppercase tracking-wide">Customer pays (with points)</p>
-                                                <p className="text-lg font-bold text-green-400">${customerPays.toFixed(2)}</p>
-                                            </div>
-                                        </div>
-                                    </div>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div>
+                      <MerchantLabel>Reference Price *</MerchantLabel>
+                      <MerchantInput
+                        type="number"
+                        min="0.01"
+                        step="0.01"
+                        value={data.reference_price === "" ? "" : data.reference_price}
+                        onChange={(e) => setData("reference_price", e.target.value ? Number(e.target.value) : "")}
+                        placeholder="0.00"
+                      />
+                      {errors.reference_price && <p className="mt-1 text-sm text-red-400">{errors.reference_price}</p>}
+                    </div>
+                    <div>
+                      <MerchantLabel>Discount Cap (optional)</MerchantLabel>
+                      <MerchantInput
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={data.discount_cap}
+                        onChange={(e) => setData("discount_cap", e.target.value)}
+                        placeholder="Optional"
+                      />
+                    </div>
+                  </div>
 
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                        <div>
-                                            <MerchantLabel htmlFor="cash_required">Cash Required (Optional)</MerchantLabel>
-                                            <MerchantInput
-                                                id="cash_required"
-                                                type="number"
-                                                min="0"
-                                                step="0.01"
-                                                value={data.cash_required}
-                                                onChange={(e) => setData('cash_required', e.target.value)}
-                                                placeholder="0.00"
-                                                className={`mt-1 ${errors.cash_required ? 'border-red-500' : ''}`}
-                                            />
-                                            {errors.cash_required && (
-                                                <p className="mt-1 text-sm text-red-400">{errors.cash_required}</p>
-                                            )}
-                                        </div>
-                                        <div>
-                                            <MerchantLabel htmlFor="currency">Currency</MerchantLabel>
-                                            <Select
-                                                value={data.currency}
-                                                onValueChange={(value) => setData('currency', value)}
-                                            >
-                                                <SelectTrigger className="mt-1 bg-gray-900/50 border-[#2563EB]/40 text-white">
-                                                    <SelectValue />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    <SelectItem value="USD">USD</SelectItem>
-                                                    <SelectItem value="EUR">EUR</SelectItem>
-                                                    <SelectItem value="GBP">GBP</SelectItem>
-                                                </SelectContent>
-                                            </Select>
-                                        </div>
-                                    </div>
+                  <div>
+                    <MerchantLabel>Description *</MerchantLabel>
+                    <MerchantTextarea
+                      value={data.description}
+                      onChange={(e) => setData("description", e.target.value)}
+                      rows={4}
+                      className="bg-black/40 text-white placeholder:text-white/40 border-[#2563EB]/30"
+                      placeholder="Describe your offer details"
+                    />
+                    {errors.description && <p className="mt-1 text-sm text-red-400">{errors.description}</p>}
+                  </div>
 
-                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                        {/* Inventory Quantity */}
-                                        <div>
-                                            <MerchantLabel htmlFor="inventory_qty">Inventory Quantity (Optional)</MerchantLabel>
-                                            <MerchantInput
-                                                id="inventory_qty"
-                                                type="number"
-                                                min="0"
-                                                value={data.inventory_qty}
-                                                onChange={(e) => setData('inventory_qty', e.target.value)}
-                                                placeholder="Leave empty for unlimited"
-                                                className={`mt-1 ${errors.inventory_qty ? 'border-red-500' : ''}`}
-                                            />
-                                            {errors.inventory_qty && (
-                                                <p className="mt-1 text-sm text-red-400">{errors.inventory_qty}</p>
-                                            )}
-                                        </div>
+                  <div>
+                    <MerchantLabel>Short Description</MerchantLabel>
+                    <MerchantInput
+                      value={data.short_description}
+                      onChange={(e) => setData("short_description", e.target.value)}
+                      maxLength={500}
+                      placeholder="Brief summary visible on listing"
+                    />
+                  </div>
 
-                                        {/* Starts At */}
-                                        <div>
-                                            <MerchantLabel htmlFor="starts_at">Starts At (Optional)</MerchantLabel>
-                                            <MerchantInput
-                                                id="starts_at"
-                                                type="datetime-local"
-                                                value={data.starts_at}
-                                                onChange={(e) => setData('starts_at', e.target.value)}
-                                                className={`mt-1 ${errors.starts_at ? 'border-red-500' : ''}`}
-                                            />
-                                            {errors.starts_at && (
-                                                <p className="mt-1 text-sm text-red-400">{errors.starts_at}</p>
-                                            )}
-                                        </div>
+                  <div>
+                    <ImageUpload label="Offer Image" value={imageUrl} onChange={(file) => setData("image", file)} processing={processing} />
+                    {errors.image && <p className="mt-1 text-sm text-red-400">{errors.image}</p>}
+                  </div>
+                </MerchantCardContent>
+              </MerchantCard>
 
-                                        {/* Ends At */}
-                                        <div>
-                                            <MerchantLabel htmlFor="ends_at">Ends At (Optional)</MerchantLabel>
-                                            <MerchantInput
-                                                id="ends_at"
-                                                type="datetime-local"
-                                                value={data.ends_at}
-                                                onChange={(e) => setData('ends_at', e.target.value)}
-                                                className={`mt-1 ${errors.ends_at ? 'border-red-500' : ''}`}
-                                            />
-                                            {errors.ends_at && (
-                                                <p className="mt-1 text-sm text-red-400">{errors.ends_at}</p>
-                                            )}
-                                        </div>
-                                    </div>
+              <MerchantCard className="gap-4 py-4">
+                <MerchantCardHeader>
+                  <MerchantCardTitle className="text-white">3. Offer Schedule</MerchantCardTitle>
+                  <p className="text-sm text-white/60">Choose when your offer is active.</p>
+                </MerchantCardHeader>
+                <MerchantCardContent className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                  <div>
+                    <MerchantLabel>Start Date</MerchantLabel>
+                    <MerchantInput type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+                  </div>
+                  <div>
+                    <MerchantLabel>Start Time</MerchantLabel>
+                    <MerchantInput type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} />
+                  </div>
+                  <div>
+                    <MerchantLabel>End Date</MerchantLabel>
+                    <MerchantInput type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+                  </div>
+                  <div>
+                    <MerchantLabel>End Time</MerchantLabel>
+                    <MerchantInput type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} />
+                  </div>
+                </MerchantCardContent>
+              </MerchantCard>
 
-                                    <div className="flex items-center gap-2 pt-1">
-                                        <input
-                                            id="pickup_available"
-                                            type="checkbox"
-                                            checked={!!data.pickup_available}
-                                            onChange={(e) => setData('pickup_available', e.target.checked)}
-                                            className="rounded border-gray-600"
-                                        />
-                                        <label htmlFor="pickup_available" className="text-sm text-gray-300">
-                                            Allow local pickup (no shipping; your business address is shown at checkout)
-                                        </label>
-                                    </div>
+              <MerchantCard className="gap-4 py-4">
+                <MerchantCardHeader>
+                  <MerchantCardTitle className="text-white">4. Usage Limits (Optional)</MerchantCardTitle>
+                </MerchantCardHeader>
+                <MerchantCardContent className="space-y-4">
+                  <label className="flex items-center justify-between rounded-md border border-[#2563EB]/20 bg-black/25 px-3 py-2">
+                    <span className="text-sm text-white">Set usage limit</span>
+                    <input type="checkbox" checked={limitEnabled} onChange={(e) => setLimitEnabled(e.target.checked)} className="h-4 w-4 accent-[#2563EB]" />
+                  </label>
+                  <div className="grid gap-4 md:grid-cols-3">
+                    <div>
+                      <MerchantLabel>Redemption Limit</MerchantLabel>
+                      <MerchantInput
+                        type="number"
+                        min="0"
+                        value={redemptionLimit}
+                        onChange={(e) => setRedemptionLimit(e.target.value)}
+                        disabled={!limitEnabled}
+                      />
+                    </div>
+                    <div>
+                      <MerchantLabel>Current Redemptions</MerchantLabel>
+                      <MerchantInput value="0" disabled />
+                    </div>
+                    <div>
+                      <MerchantLabel>Status</MerchantLabel>
+                      <select value={data.status} onChange={(e) => setData("status", e.target.value as "draft" | "active" | "paused" | "expired")} className={selectClass}>
+                        <option value="draft">Draft</option>
+                        <option value="active">Active</option>
+                        <option value="paused">Paused</option>
+                        <option value="expired">Expired</option>
+                      </select>
+                    </div>
+                  </div>
+                </MerchantCardContent>
+              </MerchantCard>
 
-                                    {/* Status */}
-                                    <div>
-                                        <MerchantLabel htmlFor="status">Status *</MerchantLabel>
-                                        <Select
-                                            value={data.status}
-                                            onValueChange={(value) => setData('status', value as 'draft' | 'active' | 'paused' | 'expired')}
-                                        >
-                                            <SelectTrigger className={`mt-1 bg-gray-900/50 border-[#2563EB]/40 text-white ${errors.status ? 'border-red-500' : ''}`}>
-                                                <SelectValue />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem value="draft">Draft</SelectItem>
-                                                <SelectItem value="active">Active</SelectItem>
-                                                <SelectItem value="paused">Paused</SelectItem>
-                                                <SelectItem value="expired">Expired</SelectItem>
-                                            </SelectContent>
-                                        </Select>
-                                        {errors.status && (
-                                            <p className="mt-1 text-sm text-red-400">{errors.status}</p>
-                                        )}
-                                    </div>
-                                </MerchantCardContent>
-                            </MerchantCard>
+              <MerchantCard className="gap-4 py-4">
+                <MerchantCardHeader>
+                  <MerchantCardTitle className="text-white">5. Visibility</MerchantCardTitle>
+                </MerchantCardHeader>
+                <MerchantCardContent className="space-y-3">
+                  <label className="flex items-center justify-between rounded-md border border-[#2563EB]/20 bg-black/25 px-3 py-2">
+                    <div>
+                      <p className="text-sm text-white">Show on Marketplace</p>
+                      <p className="text-xs text-white/55">Make this offer visible to customers.</p>
+                    </div>
+                    <input type="checkbox" checked={showMarketplace} onChange={(e) => setShowMarketplace(e.target.checked)} className="h-4 w-4 accent-[#2563EB]" />
+                  </label>
+                  <label className="flex items-center justify-between rounded-md border border-[#2563EB]/20 bg-black/25 px-3 py-2">
+                    <div>
+                      <p className="text-sm text-white">Featured Offer</p>
+                      <p className="text-xs text-white/55">Highlight this offer on top sections.</p>
+                    </div>
+                    <input type="checkbox" checked={featuredOffer} onChange={(e) => setFeaturedOffer(e.target.checked)} className="h-4 w-4 accent-[#2563EB]" />
+                  </label>
+                  {(offerType === "points" || offerType === "tier") && (
+                    <label className="flex items-center justify-between rounded-md border border-[#2563EB]/20 bg-black/25 px-3 py-2">
+                      <div>
+                        <p className="text-sm text-white">Show in Points Marketplace</p>
+                        <p className="text-xs text-white/55">Display this offer in points redemption feed.</p>
+                      </div>
+                      <input type="checkbox" checked={showPointsMarketplace} onChange={(e) => setShowPointsMarketplace(e.target.checked)} className="h-4 w-4 accent-[#2563EB]" />
+                    </label>
+                  )}
+                </MerchantCardContent>
+              </MerchantCard>
+            </div>
 
-                            {/* Submit Buttons */}
-                            <div className="flex justify-end gap-3">
-                                <Link href="/offers">
-                                    <MerchantButton type="button" variant="outline">
-                                        Cancel
-                                    </MerchantButton>
-                                </Link>
-                                <MerchantButton type="submit" disabled={processing} className="bg-gradient-to-r from-[#2563EB] to-[#1D4ED8] hover:from-[#FF1FA3] hover:via-[#EC1F4C] hover:to-[#F98461]">
-                                    {processing ? 'Updating...' : 'Update Offer'}
-                                </MerchantButton>
-                            </div>
-                        </form>
-                    </motion.div>
-                </div>
-            </MerchantDashboardLayout>
-        </>
-    )
+            <div className="space-y-5">
+              <MerchantCard>
+                <MerchantCardHeader>
+                  <MerchantCardTitle className="text-white">Offer Summary</MerchantCardTitle>
+                </MerchantCardHeader>
+                <MerchantCardContent className="space-y-3 text-sm">
+                  <div className="rounded-md border border-[#2563EB]/20 bg-black/30 p-3">
+                    <p className="font-semibold text-white">{data.title || `${data.discount_percentage}% OFF Offer`}</p>
+                    <p className="mt-0.5 text-xs text-[#93C5FD]">{typeTitle}</p>
+                  </div>
+                  <div className="flex items-center justify-between text-white/75">
+                    <span>Discount</span>
+                    <span className="font-semibold text-white">{data.discount_percentage}%</span>
+                  </div>
+                  <div className="flex items-center justify-between text-white/75">
+                    <span>Points Required</span>
+                    <span className="font-semibold text-white">{pointsRequired.toLocaleString()} BRP</span>
+                  </div>
+                  <div className="flex items-center justify-between text-white/75">
+                    <span>Discount Amount</span>
+                    <span className="font-semibold text-emerald-300">${discountAmount.toFixed(2)}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-white/75">
+                    <span>Final Price</span>
+                    <span className="font-semibold text-white">${customerPays.toFixed(2)}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-white/75">
+                    <span>Status</span>
+                    <span className="rounded bg-emerald-500/20 px-2 py-0.5 text-xs font-medium text-emerald-300">{finalStatus}</span>
+                  </div>
+                </MerchantCardContent>
+              </MerchantCard>
+
+              <MerchantCard>
+                <MerchantCardHeader>
+                  <MerchantCardTitle className="text-white">Schedule & Limits</MerchantCardTitle>
+                </MerchantCardHeader>
+                <MerchantCardContent className="space-y-3 text-sm text-white/75">
+                  <div className="flex items-center gap-2">
+                    <CalendarDays className="h-4 w-4 text-[#93C5FD]" />
+                    <span>
+                      {startDate || "No start date"} {startDate ? startTime : ""}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <CalendarDays className="h-4 w-4 text-[#93C5FD]" />
+                    <span>
+                      {endDate || "No end date"} {endDate ? endTime : ""}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <ShoppingBag className="h-4 w-4 text-[#93C5FD]" />
+                    <span>{limitEnabled ? `${redemptionLimit || 0} redemption limit` : "Unlimited redemptions"}</span>
+                  </div>
+                </MerchantCardContent>
+              </MerchantCard>
+            </div>
+          </form>
+        </motion.div>
+      </MerchantDashboardLayout>
+    </>
+  )
 }
