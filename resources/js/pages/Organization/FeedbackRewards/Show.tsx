@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { ArrowLeft, Rocket, StopCircle, Copy, Pencil } from 'lucide-react'
 import { showSuccessToast, showErrorToast } from '@/lib/toast'
+import { ofb, ofbChartColors } from './theme'
 
 interface InsightBreakdown { label: string; count: number; percentage: number }
 interface Insight { question: string; type: string; total: number; breakdown: InsightBreakdown[] }
@@ -36,12 +37,10 @@ const typeLabels: Record<string, string> = {
 
 const statusConfig: Record<string, { label: string; className: string }> = {
   draft: { label: 'Draft', className: 'bg-gray-500/20 text-gray-400' },
-  active: { label: 'Active', className: 'bg-emerald-500/20 text-emerald-400 animate-pulse' },
+  active: { label: 'Active', className: 'bg-purple-500/20 text-purple-400 animate-pulse' },
   paused: { label: 'Paused', className: 'bg-amber-500/20 text-amber-400' },
   completed: { label: 'Completed', className: 'bg-blue-500/20 text-blue-400' },
 }
-
-const CHART_COLORS = ['#FF1493', '#10B981', '#F59E0B', '#8B5CF6', '#DC143C', '#06B6D4']
 
 function DonutChart({ breakdown, total }: { breakdown: InsightBreakdown[]; total: number }) {
   const size = 140; const r = 54; const cx = 70; const cy = 70
@@ -50,7 +49,7 @@ function DonutChart({ breakdown, total }: { breakdown: InsightBreakdown[]; total
   const arcs = breakdown.map((item, i) => {
     const dash = (item.percentage / 100) * circ
     const gap = circ - dash
-    const arc = { offset, dash, gap, color: CHART_COLORS[i % CHART_COLORS.length] }
+    const arc = { offset, dash, gap, color: ofbChartColors[i % ofbChartColors.length] }
     offset += dash
     return arc
   })
@@ -71,7 +70,7 @@ function DonutChart({ breakdown, total }: { breakdown: InsightBreakdown[]; total
       <div className="space-y-1.5 flex-1">
         {breakdown.map((item, i) => (
           <div key={i} className="flex items-center gap-2 text-xs">
-            <span className="w-2.5 h-2.5 rounded flex-shrink-0" style={{ background: CHART_COLORS[i % CHART_COLORS.length] }} />
+            <span className="w-2.5 h-2.5 rounded flex-shrink-0" style={{ background: ofbChartColors[i % ofbChartColors.length] }} />
             <span className="text-muted-foreground flex-1 truncate">{item.label}</span>
             <span className="font-bold">{item.count}</span>
             <span className="text-muted-foreground w-10 text-right">{item.percentage}%</span>
@@ -105,16 +104,16 @@ export default function OrgShowCampaign({ campaign, insights, recentResponses, o
   return (
     <AppLayout>
       <Head title={`${campaign.title} — Feedback & Rewards`} />
-      <div className="container mx-auto py-8 px-4 max-w-6xl space-y-6">
+      <div className="w-full max-w-none py-8 px-4 sm:px-6 lg:px-8 space-y-6">
 
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div>
-            <Link href="/organization/feedback-rewards" className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1 mb-1">
+            <Link href="/organization/feedback-rewards" className="text-sm text-muted-foreground hover:text-purple-600 dark:hover:text-purple-400 flex items-center gap-1 mb-1 transition-colors">
               <ArrowLeft className="h-3.5 w-3.5" />Back to Campaigns
             </Link>
             <div className="flex items-center flex-wrap gap-2">
-              <h1 className="text-2xl font-bold">{campaign.title}</h1>
+              <h1 className={`text-2xl font-bold ${ofb.titleGradient}`}>{campaign.title}</h1>
               <Badge className={sc.className}>{sc.label}</Badge>
             </div>
             <p className="text-muted-foreground text-sm">{typeLabels[campaign.type]} · {organization.name}</p>
@@ -128,14 +127,14 @@ export default function OrgShowCampaign({ campaign, insights, recentResponses, o
             {campaign.status === 'draft' && (
               <Button
                 onClick={() => router.post(`/organization/feedback-rewards/${campaign.id}/launch`)}
-                className="bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-500 hover:to-emerald-600"
+                className={ofb.btn}
               >
                 <Rocket className="h-4 w-4 mr-1" />Launch Campaign
               </Button>
             )}
             {campaign.status === 'active' && (
               <>
-                <Button variant="outline" size="sm" onClick={copyShareUrl}>
+                <Button variant="outline" size="sm" className={ofb.btnOutline} onClick={copyShareUrl}>
                   <Copy className="h-4 w-4 mr-1" />Copy Link
                 </Button>
                 <Button
@@ -154,7 +153,7 @@ export default function OrgShowCampaign({ campaign, insights, recentResponses, o
         <div className="grid md:grid-cols-3 gap-6">
           {/* Main: Insights */}
           <div className="md:col-span-2 space-y-4">
-            <Card>
+            <Card className={ofb.border}>
               <CardHeader>
                 <CardTitle>Response Insights</CardTitle>
                 <p className="text-sm text-muted-foreground">Analysis of all responses collected so far</p>
@@ -178,7 +177,7 @@ export default function OrgShowCampaign({ campaign, insights, recentResponses, o
                           <div key={bi} className="flex items-center gap-3">
                             <span className="text-sm text-muted-foreground w-16">{item.label}</span>
                             <div className="flex-1 h-5 rounded-full bg-muted overflow-hidden">
-                              <div className="h-full rounded-full transition-all duration-700" style={{ width: `${item.percentage}%`, background: CHART_COLORS[bi] }} />
+                              <div className="h-full rounded-full transition-all duration-700" style={{ width: `${item.percentage}%`, background: ofbChartColors[bi % ofbChartColors.length] }} />
                             </div>
                             <span className="text-sm font-medium w-12 text-right">{item.percentage}%</span>
                           </div>
@@ -191,7 +190,7 @@ export default function OrgShowCampaign({ campaign, insights, recentResponses, o
             </Card>
 
             {recentResponses.length > 0 && (
-              <Card>
+              <Card className={ofb.border}>
                 <CardHeader><CardTitle>Recent Responses</CardTitle></CardHeader>
                 <CardContent className="p-0">
                   <table className="w-full">
@@ -207,9 +206,9 @@ export default function OrgShowCampaign({ campaign, insights, recentResponses, o
                         <tr key={resp.id} className="hover:bg-muted/30">
                           <td className="px-5 py-3 text-sm text-muted-foreground">{new Date(resp.created_at).toLocaleDateString()}</td>
                           <td className="px-5 py-3 text-sm">{resp.supporter?.name || 'Anonymous'}</td>
-                          <td className="px-5 py-3 text-sm text-emerald-500 font-semibold">+{resp.reward_brp} BP</td>
+                          <td className={`px-5 py-3 text-sm font-semibold ${ofb.kpi}`}>+{resp.reward_brp} BP</td>
                           <td className="px-5 py-3">
-                            <Badge className="bg-emerald-500/15 text-emerald-500">{resp.status}</Badge>
+                            <Badge className="bg-purple-500/15 text-purple-600 dark:text-purple-400">{resp.status}</Badge>
                           </td>
                         </tr>
                       ))}
@@ -222,18 +221,18 @@ export default function OrgShowCampaign({ campaign, insights, recentResponses, o
 
           {/* Sidebar */}
           <div className="space-y-4">
-            <Card>
+            <Card className={ofb.border}>
               <CardContent className="p-5 space-y-3.5">
                 <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Campaign Stats</p>
                 <div className="flex justify-between text-sm"><span className="text-muted-foreground">Responses</span><span className="font-bold">{campaign.responses_count} / {campaign.max_responses}</span></div>
                 <div>
                   <div className="flex justify-between text-xs text-muted-foreground mb-1"><span>Completion</span><span>{completionRate}%</span></div>
                   <div className="w-full h-2 rounded-full bg-muted overflow-hidden">
-                    <div className="h-full rounded-full bg-gradient-to-r from-[#FF1493] to-emerald-500 transition-all duration-700" style={{ width: `${completionRate}%` }} />
+                    <div className={`h-full rounded-full ${ofb.progress} transition-all duration-700`} style={{ width: `${completionRate}%` }} />
                   </div>
                 </div>
                 <div className="flex justify-between text-sm"><span className="text-muted-foreground">BRP Spent</span><span className="font-bold">{campaign.spent_budget_brp.toLocaleString()}</span></div>
-                <div className="flex justify-between text-sm"><span className="text-muted-foreground">BRP Remaining</span><span className="font-bold text-emerald-500">{campaign.remaining_budget_brp.toLocaleString()}</span></div>
+                <div className="flex justify-between text-sm"><span className="text-muted-foreground">BRP Remaining</span><span className={`font-bold ${ofb.textStrong}`}>{campaign.remaining_budget_brp.toLocaleString()}</span></div>
                 <div className="flex justify-between text-sm"><span className="text-muted-foreground">Reward/Response</span><span className="font-bold">{campaign.reward_per_response_brp} BP</span></div>
                 <div className="flex justify-between text-sm"><span className="text-muted-foreground">Total Budget</span><span className="font-bold">{campaign.total_budget_brp.toLocaleString()} BRP</span></div>
                 <div className="flex justify-between text-sm">
@@ -256,10 +255,10 @@ export default function OrgShowCampaign({ campaign, insights, recentResponses, o
             </Card>
 
             {campaign.status === 'active' && (
-              <div className="p-4 rounded-xl bg-[#FF1493]/10 border border-[#FF1493]/20 space-y-2">
+              <div className={`p-4 rounded-xl space-y-2 ${ofb.surface}`}>
                 <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wide">Share Link</p>
-                <p className="text-xs text-[#FF1493] break-all">{shareUrl}</p>
-                <Button variant="ghost" size="sm" className="w-full text-xs" onClick={copyShareUrl}>
+                <p className={`text-xs break-all ${ofb.text}`}>{shareUrl}</p>
+                <Button variant="ghost" size="sm" className={`w-full text-xs ${ofb.text}`} onClick={copyShareUrl}>
                   <Copy className="h-3 w-3 mr-1" />Copy Link
                 </Button>
               </div>
@@ -267,14 +266,14 @@ export default function OrgShowCampaign({ campaign, insights, recentResponses, o
 
             <div className="space-y-2">
               <Link href={`/organization/feedback-rewards/${campaign.id}/edit`}>
-                <Button variant="outline" className="w-full">
+                <Button variant="outline" className={`w-full ${ofb.btnOutline}`}>
                   <Pencil className="h-4 w-4 mr-2" />Edit Campaign
                 </Button>
               </Link>
               {campaign.status === 'draft' && (
                 <Button
                   onClick={() => router.post(`/organization/feedback-rewards/${campaign.id}/launch`)}
-                  className="w-full bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-500 hover:to-emerald-600"
+                  className={`w-full ${ofb.btn}`}
                 >
                   <Rocket className="h-4 w-4 mr-2" />Launch Campaign
                 </Button>

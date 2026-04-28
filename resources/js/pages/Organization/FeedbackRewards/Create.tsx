@@ -7,28 +7,77 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { ArrowLeft, ArrowRight, Plus, Trash2, Rocket, Check, Users, AlertCircle } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Plus, Trash2, Rocket, Check, Users, AlertCircle, Loader2 } from 'lucide-react'
 import { showSuccessToast, showErrorToast } from '@/lib/toast'
+import { stripInertiaFeePreviewFromUrl } from '@/lib/stripInertiaFeePreviewFromUrl'
+import { Skeleton } from '@/components/ui/skeleton'
+import { ofb } from './theme'
 
-interface CampaignType { value: string; label: string; default_reward: number; est_time: string }
+interface CampaignType {
+  value: string
+  label: string
+  default_reward: number
+  est_time: string
+  per_response_bp_display: number
+}
+
+interface LiveCalculation {
+  per_response_bp_display: number
+  max_responses: number
+  reward_matches_type_default: boolean
+  custom_max_responses: number
+  budget_usd: number
+  platform_fee_usd: number
+  processing_fee_usd: number
+  total_usd: number
+  sufficient_brp: boolean
+}
+
 interface Props {
   wallet: { balance_brp: number; available_brp: number }
   campaignTypes: CampaignType[]
   organization: { id: number; name: string }
+  liveCalculation?: LiveCalculation | null
 }
 
 const STEPS = ['Setup', 'Questions', 'Audience', 'Review & Launch']
 
-export default function OrgCreateCampaign({ wallet, campaignTypes, organization }: Props) {
+function formatDisplayBp(n: number): string {
+  return `${n.toFixed(2)} BP`
+}
+
+function LiveFeePreviewSkeleton() {
+  return (
+    <div
+      className="space-y-2.5"
+      role="status"
+      aria-live="polite"
+      aria-busy="true"
+      aria-label="Loading fee estimate"
+    >
+      {Array.from({ length: 6 }, (_, i) => (
+        <div key={i} className="flex items-center justify-between gap-3">
+          <Skeleton className="h-4 flex-1 max-w-[60%]" />
+          <Skeleton className="h-4 w-20 shrink-0" />
+        </div>
+      ))}
+      <Skeleton className="mt-1 h-3 max-w-xs" />
+    </div>
+  )
+}
+
+export default function OrgCreateCampaign({ wallet, campaignTypes, organization, liveCalculation = null }: Props) {
   const { props } = usePage<{ success?: string; error?: string }>()
   const [step, setStep] = useState(0)
   const [submitting, setSubmitting] = useState(false)
+  const [feePreviewLoading, setFeePreviewLoading] = useState(false)
 
   const [form, setForm] = useState({
     title: '',
     type: 'short_feedback',
     reward_per_response_brp: 10,
-    total_budget_brp: 10000,
+    // Whole BP; API stores US cents (×100) on submit — same as merchant hub
+    total_budget_brp: '50',
     question_text: '',
     question_type: 'multiple_choice' as 'yes_no' | 'true_false' | 'multiple_choice',
     options: ['', ''] as string[],
@@ -47,11 +96,48 @@ export default function OrgCreateCampaign({ wallet, campaignTypes, organization 
 
   const setField = (key: string, val: any) => setForm((f) => ({ ...f, [key]: val }))
 
+  const parsedBudget = Number.parseInt(String(form.total_budget_brp || ''), 10)
+  const budget = Number.isFinite(parsedBudget) ? parsedBudget : 0
+
   const reward = form.reward_per_response_brp || 0
-  const budget = form.total_budget_brp || 0
-  const maxResponses = reward > 0 ? Math.floor(budget / reward) : 0
   const selectedType = campaignTypes.find((t) => t.value === form.type)
-  const insufficientBalance = wallet.available_brp < budget
+  const live = liveCalculation && budget > 0 ? liveCalculation : null
+  const maxResponses = live
+    ? live.custom_max_responses
+    : (reward > 0 ? Math.floor((budget * 100) / reward) : 0)
+  const modelSupportersForSelectedType = live ? live.max_responses : 0
+  const rewardMatchesTypeDefault = live
+    ? live.reward_matches_type_default
+    : Boolean(selectedType && reward === selectedType.default_reward)
+  const insufficientBalance = live ? !live.sufficient_brp : wallet.available_brp < budget
+  const budgetHintUsd = live ? live.budget_usd : budget
+
+  useEffect(() => {
+    if (budget <= 0) return
+    const t = window.setTimeout(() => {
+      router.get(
+        '/organization/feedback-rewards/create',
+        {
+          fee_preview_budget_bp: budget,
+          fee_preview_type: form.type,
+          fee_preview_reward_brp: form.reward_per_response_brp,
+        },
+        {
+          preserveState: true,
+          preserveScroll: true,
+          replace: true,
+          only: ['liveCalculation'],
+          onStart: () => setFeePreviewLoading(true),
+          onFinish: () => {
+            setFeePreviewLoading(false)
+            stripInertiaFeePreviewFromUrl()
+          },
+        },
+      )
+    }, 350)
+
+    return () => window.clearTimeout(t)
+  }, [budget, form.type, form.reward_per_response_brp])
 
   const addOption = () => { if (form.options.length < 6) setField('options', [...form.options, '']) }
   const removeOption = (i: number) => { if (form.options.length > 2) setField('options', form.options.filter((_, idx) => idx !== i)) }
@@ -62,7 +148,7 @@ export default function OrgCreateCampaign({ wallet, campaignTypes, organization 
     if (s === 0) {
       if (!form.title.trim()) e.title = 'Campaign title is required'
       if (!form.reward_per_response_brp || form.reward_per_response_brp < 1) e.reward = 'Reward must be at least 1 BP'
-      if (!form.total_budget_brp || form.total_budget_brp < form.reward_per_response_brp) e.budget = 'Budget must be ≥ reward per response'
+      if (!budget || budget * 100 < reward) e.budget = 'Budget in BP (1 BP = $1) must cover the per-response cost'
     }
     if (s === 1) {
       if (!form.question_text.trim()) e.question_text = 'Question is required'
@@ -82,7 +168,7 @@ export default function OrgCreateCampaign({ wallet, campaignTypes, organization 
       title: form.title,
       type: form.type,
       reward_per_response_brp: form.reward_per_response_brp,
-      total_budget_brp: form.total_budget_brp,
+      total_budget_brp: budget * 100,
       question_text: form.question_text,
       question_type: form.question_type,
       options: form.options,
@@ -106,8 +192,8 @@ export default function OrgCreateCampaign({ wallet, campaignTypes, organization 
             <Button variant="outline" size="sm"><ArrowLeft className="h-4 w-4 mr-1" />Back</Button>
           </Link>
           <div>
-            <h1 className="text-2xl font-bold">Create Feedback Campaign</h1>
-            <p className="text-sm text-muted-foreground">{organization.name}</p>
+            <h1 className={`text-2xl font-bold ${ofb.titleGradient}`}>Create Feedback Campaign</h1>
+            <p className="text-sm text-muted-foreground">{organization.name} · 1 BP = $1.00</p>
           </div>
         </div>
 
@@ -116,15 +202,22 @@ export default function OrgCreateCampaign({ wallet, campaignTypes, organization 
           {STEPS.map((s, i) => (
             <React.Fragment key={s}>
               <div className="flex items-center gap-2">
-                <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-all ${
-                  i < step ? 'bg-emerald-500 border-emerald-500 text-white'
-                  : i === step ? 'bg-[#FF1493] border-[#FF1493] text-white'
-                  : 'bg-transparent border-muted-foreground/40 text-muted-foreground'}`}>
-                  {i < step ? <Check className="h-3.5 w-3.5" /> : i + 1}
+                <div
+                  className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-all ${
+                    i < step ? ofb.stepDone : i === step ? `${ofb.stepActive} ${ofb.stepActiveRing}` : ofb.stepTodo
+                  }`}
+                >
+                  {i < step ? <Check className="h-3.5 w-3.5" strokeWidth={2.5} /> : i + 1}
                 </div>
-                <span className={`text-sm font-medium hidden sm:block ${i === step ? 'text-foreground' : i < step ? 'text-emerald-500' : 'text-muted-foreground'}`}>{s}</span>
+                <span
+                  className={`text-sm font-medium hidden sm:block ${
+                    i === step ? 'text-foreground' : i < step ? ofb.stepLabelDone : 'text-muted-foreground'
+                  }`}
+                >
+                  {s}
+                </span>
               </div>
-              {i < STEPS.length - 1 && <div className={`flex-1 h-px mx-3 ${i < step ? 'bg-emerald-500' : 'bg-border'}`} />}
+              {i < STEPS.length - 1 && <div className={`flex-1 h-px mx-3 ${i < step ? ofb.stepLine : 'bg-border'}`} />}
             </React.Fragment>
           ))}
         </div>
@@ -148,9 +241,9 @@ export default function OrgCreateCampaign({ wallet, campaignTypes, organization 
                   <div className="grid grid-cols-2 gap-2 mt-2">
                     {campaignTypes.map((ct) => (
                       <button key={ct.value} type="button" onClick={() => { setField('type', ct.value); setField('reward_per_response_brp', ct.default_reward) }}
-                        className={`p-3 rounded-xl border text-left transition-all ${form.type === ct.value ? 'border-[#FF1493] bg-[#FF1493]/10' : 'border-border hover:border-muted-foreground/40'}`}>
+                        className={`p-3 rounded-xl border text-left transition-all ${form.type === ct.value ? ofb.selected : 'border-border hover:border-muted-foreground/40'}`}>
                         <p className="text-xs font-semibold">{ct.label}</p>
-                        <p className="text-xs text-[#FF1493] font-bold">{ct.default_reward} BP</p>
+                        <p className={`text-xs font-bold ${ofb.text}`}>{ct.per_response_bp_display.toFixed(2)} BP</p>
                         <p className="text-xs text-muted-foreground">{ct.est_time}</p>
                       </button>
                     ))}
@@ -159,7 +252,7 @@ export default function OrgCreateCampaign({ wallet, campaignTypes, organization 
                 <div>
                   <Label>Reward Per Response (BP)</Label>
                   <Input type="number" min={1} value={form.reward_per_response_brp} onChange={(e) => setField('reward_per_response_brp', Number(e.target.value))} className={`mt-1 ${errors.reward ? 'border-destructive' : ''}`} />
-                  <p className="text-xs text-muted-foreground mt-1">= ${(reward * 0.01).toFixed(2)} value</p>
+                  <p className="text-xs text-muted-foreground mt-1">= ${(reward / 100).toFixed(2)} per response (stored units)</p>
                   {errors.reward && <p className="text-xs text-destructive mt-1">{errors.reward}</p>}
                 </div>
                 <div>
@@ -174,40 +267,98 @@ export default function OrgCreateCampaign({ wallet, campaignTypes, organization 
                 <CardHeader><CardTitle>Budget & Responses</CardTitle></CardHeader>
                 <CardContent className="space-y-4">
                   <div>
-                    <Label>Total Budget</Label>
+                    <Label>Total budget (BP)</Label>
                     <div className="flex gap-2 mt-1">
-                      <Input type="number" min={1} value={form.total_budget_brp} onChange={(e) => setField('total_budget_brp', Number(e.target.value))} className={errors.budget ? 'border-destructive' : ''} />
-                      <div className="px-3 py-2 rounded-lg bg-muted/50 border text-sm whitespace-nowrap">BRP</div>
+                      <Input
+                        type="number"
+                        min={1}
+                        value={form.total_budget_brp}
+                        onChange={(e) => setField('total_budget_brp', e.target.value)}
+                        className={errors.budget ? 'border-destructive' : ''}
+                      />
+                      <div className="px-3 py-2 rounded-lg bg-muted/50 border text-sm whitespace-nowrap">BP</div>
                     </div>
-                    <p className="text-xs text-muted-foreground mt-1">≈ ${(budget * 0.01).toFixed(2)} value</p>
+                    <p className="text-xs text-muted-foreground mt-1">1 BP = $1.00 (≈ ${budgetHintUsd.toFixed(2)} in dollars)</p>
                     {errors.budget && <p className="text-xs text-destructive mt-1">{errors.budget}</p>}
                   </div>
                   <div>
-                    <Label>Max Responses (Auto Calculated)</Label>
-                    <div className="mt-2 flex items-center justify-center h-20 rounded-xl bg-[#FF1493]/10 border border-[#FF1493]/30">
-                      <span className="text-4xl font-extrabold text-[#FF1493]">{maxResponses.toLocaleString()}</span>
-                      <span className="text-sm text-muted-foreground ml-2 self-end mb-1">Responses</span>
+                    <Label>Max Responses (by campaign type &amp; budget)</Label>
+                    <div className={`mt-2 flex min-h-20 flex-col items-center justify-center gap-0.5 rounded-xl py-3 ${ofb.surface}`}>
+                      <span className={`text-4xl font-extrabold leading-none tabular-nums ${ofb.kpi}`}>
+                        {modelSupportersForSelectedType.toLocaleString()}
+                      </span>
+                      <span className="text-sm text-muted-foreground">Responses</span>
                     </div>
+                    {!rewardMatchesTypeDefault && (
+                      <p className="text-xs text-amber-500/90 mt-2 text-center">
+                        Reward field differs from this type’s default — capacity if using your value: {maxResponses.toLocaleString()}
+                      </p>
+                    )}
                   </div>
                 </CardContent>
               </Card>
 
-              <Card className="border-[#FF1493]/20">
+              <Card className={ofb.border}>
                 <CardContent className="p-4 space-y-2">
-                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Live Calculation</p>
-                  <div className="flex justify-between text-sm"><span className="text-muted-foreground">✓ Earned per response</span><span className="font-medium">{reward} BP</span></div>
-                  <div className="flex justify-between text-sm"><span className="text-muted-foreground">✓ Max participants</span><span className="font-medium">{maxResponses.toLocaleString()}</span></div>
-                  <div className="flex justify-between text-sm"><span className="text-muted-foreground">✓ Total campaign cost</span><span className="font-medium">{budget.toLocaleString()} BRP</span></div>
-                  {insufficientBalance && budget > 0 && (
-                    <div className="flex items-center gap-2 pt-2 border-t mt-2">
-                      <AlertCircle className="h-4 w-4 text-amber-500 flex-shrink-0" />
-                      <p className="text-xs text-amber-500">Insufficient BRP balance.</p>
-                    </div>
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 flex items-center gap-2">
+                    Live calculation
+                    {feePreviewLoading && budget > 0 && (
+                      <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-muted-foreground" aria-hidden />
+                    )}
+                  </p>
+                  {feePreviewLoading && budget > 0 ? (
+                    <LiveFeePreviewSkeleton />
+                  ) : live ? (
+                    <>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">✓ Per-response</span>
+                        <span className="font-medium text-right">{formatDisplayBp(live.per_response_bp_display)}</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">✓ Max responses</span>
+                        <span className="font-medium text-right">{modelSupportersForSelectedType.toLocaleString()}</span>
+                      </div>
+                      {!rewardMatchesTypeDefault && (
+                        <div className="flex justify-between text-sm">
+                          <span className="text-muted-foreground">✓ Custom reward field</span>
+                          <span className="font-medium text-right">{maxResponses.toLocaleString()}</span>
+                        </div>
+                      )}
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">✓ Campaign budget (rewards)</span>
+                        <span className="font-medium">${live.budget_usd.toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">✓ Platform fee (4.5%)</span>
+                        <span className="font-medium">${live.platform_fee_usd.toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground">✓ Stripe fee (3.5%)</span>
+                        <span className="font-medium">${live.processing_fee_usd.toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-muted-foreground font-semibold">✓ Total charge</span>
+                        <span className={`font-semibold ${ofb.textStrong}`}>${live.total_usd.toFixed(2)}</span>
+                      </div>
+                      {insufficientBalance && (
+                        <div className="flex items-center gap-2 pt-2 border-t mt-2">
+                          <AlertCircle className="h-4 w-4 text-amber-500 flex-shrink-0" />
+                          <p className="text-xs text-amber-500">
+                            Not enough BP in the organization wallet for this budget.{' '}
+                            <Link href="/believe-points" className="underline">Buy BP →</Link>
+                          </p>
+                        </div>
+                      )}
+                      {!insufficientBalance && (
+                        <p className="text-xs text-teal-600 dark:text-teal-400 pt-1">✓ You have enough BP to reserve this campaign budget</p>
+                      )}
+                    </>
+                  ) : (
+                    <p className="text-sm text-muted-foreground py-1">
+                      {budget > 0 ? '—' : 'Set a total budget to calculate fees and limits.'}
+                    </p>
                   )}
-                  {!insufficientBalance && budget > 0 && (
-                    <p className="text-xs text-emerald-500 pt-1">✓ You have enough BRP to launch this campaign</p>
-                  )}
-                  <p className="text-xs text-muted-foreground/60 pt-1 italic">💡 Your budget will be reserved when campaign starts.</p>
+                  <p className="text-xs text-muted-foreground/60 pt-1 italic">💡 Your budget will be reserved when the campaign starts.</p>
                 </CardContent>
               </Card>
             </div>
@@ -228,7 +379,7 @@ export default function OrgCreateCampaign({ wallet, campaignTypes, organization 
                   <div className="grid grid-cols-3 gap-2 mt-2">
                     {[{ v: 'yes_no', l: 'Yes / No' }, { v: 'true_false', l: 'True / False' }, { v: 'multiple_choice', l: 'Multiple Choice' }].map((qt) => (
                       <button key={qt.v} type="button" onClick={() => setField('question_type', qt.v)}
-                        className={`py-2 px-3 rounded-lg border text-xs font-medium transition-all ${form.question_type === qt.v ? 'border-[#FF1493] bg-[#FF1493]/10 text-foreground' : 'border-border text-muted-foreground hover:border-muted-foreground/40'}`}>
+                        className={`py-2 px-3 rounded-lg border text-xs font-medium transition-all ${form.question_type === qt.v ? `${ofb.selected} text-foreground` : 'border-border text-muted-foreground hover:border-muted-foreground/40'}`}>
                         {qt.l}
                       </button>
                     ))}
@@ -315,9 +466,9 @@ export default function OrgCreateCampaign({ wallet, campaignTypes, organization 
                       { v: 'by_cause', l: 'By Cause', d: 'Show to supporters interested in your cause' },
                     ].map((opt) => (
                       <button key={opt.v} type="button" onClick={() => setField('target_audience', opt.v)}
-                        className={`w-full flex items-start gap-3 p-3 rounded-lg border text-left transition-all ${form.target_audience === opt.v ? 'border-[#FF1493] bg-[#FF1493]/10' : 'border-border hover:border-muted-foreground/40'}`}>
-                        <div className={`mt-0.5 w-4 h-4 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${form.target_audience === opt.v ? 'border-[#FF1493]' : 'border-muted-foreground/40'}`}>
-                          {form.target_audience === opt.v && <div className="w-2 h-2 rounded-full bg-[#FF1493]" />}
+                        className={`w-full flex items-start gap-3 p-3 rounded-lg border text-left transition-all ${form.target_audience === opt.v ? ofb.selected : 'border-border hover:border-muted-foreground/40'}`}>
+                        <div className={`mt-0.5 w-4 h-4 rounded-full border-2 flex items-center justify-center flex-shrink-0 ${form.target_audience === opt.v ? 'border-purple-500' : 'border-muted-foreground/40'}`}>
+                          {form.target_audience === opt.v && <div className="w-2 h-2 rounded-full bg-purple-500" />}
                         </div>
                         <div>
                           <p className="text-sm font-medium">{opt.l}</p>
@@ -360,11 +511,14 @@ export default function OrgCreateCampaign({ wallet, campaignTypes, organization 
               <CardContent className="flex flex-col items-center justify-center py-8">
                 <div className="flex gap-1 mb-4">
                   {[...Array(5)].map((_, i) => (
-                    <Users key={i} className={`h-8 w-8 ${i < 4 ? 'text-[#FF1493]' : 'text-muted-foreground/20'}`} />
+                    <Users key={i} className={`h-8 w-8 ${i < 4 ? ofb.kpi : 'text-muted-foreground/20'}`} />
                   ))}
                 </div>
-                <p className="text-5xl font-extrabold mb-1">{maxResponses.toLocaleString()}</p>
+                <p className="text-5xl font-extrabold mb-1">{modelSupportersForSelectedType.toLocaleString()}</p>
                 <p className="text-muted-foreground text-sm">Estimated Reach</p>
+                {!rewardMatchesTypeDefault && (
+                  <p className="text-xs text-amber-500/90 mt-2 text-center">With your custom reward: {maxResponses.toLocaleString()}</p>
+                )}
                 <p className="text-xs text-muted-foreground/60 mt-3 text-center">Based on your budget and reward, this many supporters could respond to your campaign.</p>
               </CardContent>
             </Card>
@@ -380,12 +534,28 @@ export default function OrgCreateCampaign({ wallet, campaignTypes, organization 
                 {[
                   ['Campaign Title', form.title],
                   ['Type', campaignTypes.find(t => t.value === form.type)?.label || form.type],
-                  ['Reward Per Response', `${reward} BP (= $${(reward * 0.01).toFixed(2)})`],
-                  ['Total Budget', `${budget.toLocaleString()} BRP (= $${(budget * 0.01).toFixed(2)})`],
-                  ['Max Responses', maxResponses.toLocaleString()],
+                  [
+                    'Per-response (type)',
+                    `${selectedType ? formatDisplayBp(selectedType.per_response_bp_display) : '—'}` + (!rewardMatchesTypeDefault ? ` — custom field ${reward} (units)` : ''),
+                  ],
+                  ['Campaign budget (rewards)', `$${(live?.budget_usd ?? budget).toFixed(2)} (= ${budget.toLocaleString()} BP)`],
+                  [
+                    'Max responses',
+                    rewardMatchesTypeDefault
+                      ? modelSupportersForSelectedType.toLocaleString()
+                      : `${modelSupportersForSelectedType.toLocaleString()} (type) / ${maxResponses.toLocaleString()} (your reward)`,
+                  ],
+                  ['Platform fee (4.5%)', `$${(live?.platform_fee_usd ?? 0).toFixed(2)}`],
+                  ['Processing fee (3.5%)', `$${(live?.processing_fee_usd ?? 0).toFixed(2)}`],
+                  ['Total charge', `$${(live?.total_usd ?? 0).toFixed(2)}`],
                   ['Estimated Time', selectedType?.est_time || '—'],
                   ['Question Type', form.question_type.replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase())],
                   ['Audience', form.target_audience.replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase())],
+                  [
+                    'Estimated reach',
+                    modelSupportersForSelectedType.toLocaleString() + ' supporters'
+                    + (!rewardMatchesTypeDefault ? ` (${maxResponses.toLocaleString()} w/ custom reward)` : ''),
+                  ],
                 ].map(([k, v]) => (
                   <div key={k} className="flex justify-between text-sm border-b pb-2 last:border-0 last:pb-0">
                     <span className="text-muted-foreground">{k}</span>
@@ -396,7 +566,7 @@ export default function OrgCreateCampaign({ wallet, campaignTypes, organization 
             </Card>
 
             <div className="space-y-4">
-              <Card className="border-[#FF1493]/30">
+              <Card className={ofb.borderStrong}>
                 <CardContent className="p-5 space-y-3">
                   <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">Campaign Dates (optional)</p>
                   <div>
@@ -405,7 +575,7 @@ export default function OrgCreateCampaign({ wallet, campaignTypes, organization 
                       type="date"
                       value={form.starts_at}
                       onChange={(e) => setField('starts_at', e.target.value)}
-                      className="mt-1 w-full px-3 py-2 rounded-lg border text-sm focus:outline-none focus:ring-1 focus:ring-[#FF1493] "
+                      className={`mt-1 w-full px-3 py-2 rounded-lg border text-sm focus:outline-none focus:ring-1 ${ofb.focus}`}
                     />
                   </div>
                   <div>
@@ -414,30 +584,32 @@ export default function OrgCreateCampaign({ wallet, campaignTypes, organization 
                       type="date"
                       value={form.ends_at}
                       onChange={(e) => setField('ends_at', e.target.value)}
-                      className="mt-1 w-full px-3 py-2 rounded-lg border text-sm focus:outline-none focus:ring-1 focus:ring-[#FF1493] "
+                      className={`mt-1 w-full px-3 py-2 rounded-lg border text-sm focus:outline-none focus:ring-1 ${ofb.focus}`}
                     />
                   </div>
                 </CardContent>
               </Card>
 
-              <Card className="border-[#FF1493]/30">
+              <Card className={ofb.borderStrong}>
                 <CardContent className="p-5 space-y-3">
-                  <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">BRP Wallet</p>
-                  <div className="flex justify-between text-sm"><span className="text-muted-foreground">Available Balance</span><span className="font-bold">{wallet.available_brp.toLocaleString()} BRP</span></div>
-                  <div className="flex justify-between text-sm"><span className="text-muted-foreground">Required for campaign</span><span className="text-amber-500 font-bold">{budget.toLocaleString()} BRP</span></div>
+                  <p className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">BP wallet</p>
+                  <div className="flex justify-between text-sm"><span className="text-muted-foreground">Available balance</span><span className="font-bold">{wallet.available_brp.toLocaleString()} BP</span></div>
+                  <div className="flex justify-between text-sm"><span className="text-muted-foreground">Required for campaign</span><span className="text-amber-500 font-bold">{budget.toLocaleString()} BP</span></div>
                   <div className="h-px bg-border" />
                   <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">After Launch Balance</span>
-                    <span className={`font-bold ${wallet.available_brp - budget >= 0 ? 'text-emerald-500' : 'text-destructive'}`}>
-                      {(wallet.available_brp - budget).toLocaleString()} BRP
+                    <span className="text-muted-foreground">After launch (est.)</span>
+                    <span className={`font-bold ${wallet.available_brp - budget >= 0 ? 'text-teal-600' : 'text-destructive'}`}>
+                      {(wallet.available_brp - budget).toLocaleString()} BP
                     </span>
                   </div>
                   {!insufficientBalance ? (
-                    <p className="text-xs text-emerald-500 flex items-center gap-1"><Check className="h-3.5 w-3.5" />You have enough BRP to launch this campaign</p>
+                    <p className="text-xs text-teal-600 flex items-center gap-1 dark:text-teal-400"><Check className="h-3.5 w-3.5" />You have enough BP to launch this campaign</p>
                   ) : (
                     <div className="flex items-center gap-2">
                       <AlertCircle className="h-4 w-4 text-amber-500 flex-shrink-0" />
-                      <p className="text-xs text-amber-500">Not enough BRP. Contact admin to top up your wallet.</p>
+                      <p className="text-xs text-amber-500">
+                        Not enough BP. <Link href="/believe-points" className="underline">Buy BP →</Link>
+                      </p>
                     </div>
                   )}
                 </CardContent>
@@ -446,11 +618,16 @@ export default function OrgCreateCampaign({ wallet, campaignTypes, organization 
               <Button
                 onClick={submit}
                 disabled={submitting || insufficientBalance}
-                className="w-full py-4 text-base font-bold bg-gradient-to-r from-emerald-600 to-emerald-700 hover:from-emerald-500 hover:to-emerald-600 disabled:opacity-50"
+                className={`w-full py-4 text-base font-bold disabled:opacity-50 ${ofb.btn}`}
               >
                 <Rocket className="h-5 w-5 mr-2" />
                 {submitting ? 'Creating Campaign...' : 'Create Campaign →'}
               </Button>
+              {insufficientBalance && (
+                <Link href="/believe-points">
+                  <Button variant="outline" className={`w-full ${ofb.btnOutline}`}>Buy BP first</Button>
+                </Link>
+              )}
             </div>
           </div>
         )}
@@ -461,7 +638,7 @@ export default function OrgCreateCampaign({ wallet, campaignTypes, organization 
             <ArrowLeft className="h-4 w-4 mr-2" />Back
           </Button>
           {step < 3 ? (
-            <Button type="button" onClick={next} className="bg-gradient-to-r from-[#FF1493] to-[#DC143C]">
+            <Button type="button" onClick={next} className={ofb.btn}>
               Next: {STEPS[step + 1]} <ArrowRight className="h-4 w-4 ml-2" />
             </Button>
           ) : null}

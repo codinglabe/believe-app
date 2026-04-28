@@ -1169,15 +1169,7 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|care_alli
             Route::post('/{campaign}/end', [\App\Http\Controllers\Organization\OrganizationFeedbackRewardsController::class, 'end'])->name('end');
         });
 
-    // Organization BRP Wallet
-    Route::prefix('organization/wallet/brp')
-        ->name('org.wallet.brp.')
-        ->group(function () {
-            Route::get('/', [\App\Http\Controllers\Organization\OrganizationBrpWalletController::class, 'index'])->name('index');
-            Route::get('/buy', [\App\Http\Controllers\Organization\OrganizationBrpWalletController::class, 'buyForm'])->name('buy');
-            Route::post('/purchase', [\App\Http\Controllers\Organization\OrganizationBrpWalletController::class, 'purchase'])->name('purchase');
-            Route::get('/success', [\App\Http\Controllers\Organization\OrganizationBrpWalletController::class, 'purchaseSuccess'])->name('purchase.success');
-        });
+    // Organization BRP Wallet routes removed — organizations use the existing Believe Points (BP) wallet
 
     // old Facebook Integration Routes
     // Route::prefix('facebook')->group(function () {

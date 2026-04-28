@@ -5,7 +5,6 @@ namespace App\Http\Controllers\Organization;
 use App\Http\Controllers\Controller;
 use App\Models\FeedbackCampaign;
 use App\Models\Organization;
-use App\Services\BrpWalletService;
 use App\Services\FeedbackCampaignService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -14,13 +13,30 @@ use Inertia\Inertia;
 
 class OrganizationFeedbackRewardsController extends Controller
 {
-    protected FeedbackCampaignService $campaignService;
-    protected BrpWalletService $walletService;
+    private const PLATFORM_FEE_RATE = 0.045;
 
-    public function __construct(FeedbackCampaignService $campaignService, BrpWalletService $walletService)
+    private const PROCESSING_FEE_RATE = 0.035;
+
+    /** USD cost per response for each internal campaign type (displayed as 0.03 / 0.10 / 0.25 / 0.50 BP). */
+    private const CAMPAIGN_TYPE_COST_USD = [
+        'quick_vote' => 0.03,
+        'short_feedback' => 0.10,
+        'standard_survey' => 0.25,
+        'deep_feedback' => 0.50,
+    ];
+
+    private const CAMPAIGN_TYPE_DEFAULT_REWARD_BP = [
+        'quick_vote' => 3,
+        'short_feedback' => 10,
+        'standard_survey' => 25,
+        'deep_feedback' => 50,
+    ];
+
+    protected FeedbackCampaignService $campaignService;
+
+    public function __construct(FeedbackCampaignService $campaignService)
     {
         $this->campaignService = $campaignService;
-        $this->walletService = $walletService;
     }
 
     /**
@@ -62,19 +78,44 @@ class OrganizationFeedbackRewardsController extends Controller
             $query->where('title', 'like', "%{$request->search}%");
         }
 
-        $campaigns = $query->orderBy('created_at', 'desc')
+        $matchingCampaigns = (clone $query)->get();
+        $totalResponsesForFilter = $matchingCampaigns->sum('responses_count');
+        $filteredCampaignCount = $matchingCampaigns->count();
+        $completedInFilter = $matchingCampaigns->where('status', 'completed')->count();
+
+        $activeCampaignsForOrg = FeedbackCampaign::where('organization_id', $org->id)
+            ->where('status', 'active')
+            ->count();
+
+        $campaigns = (clone $query)->orderBy('created_at', 'desc')
             ->paginate(15)
             ->withQueryString();
 
-        $wallet = $this->walletService->getOrCreateOrganizationWallet($org->id);
+        $owner = $org->user;
+        $bpBalance = $owner ? (float) ($owner->believe_points ?? 0) : 0.0;
+
+        // spent_budget_brp stored as US-cent integers; divide by 100 for BP display
+        $spentCents = FeedbackCampaign::where('organization_id', $org->id)->sum('spent_budget_brp');
+        $sentBp = round($spentCents / 100, 2);
 
         return Inertia::render('Organization/FeedbackRewards/Index', [
             'campaigns' => $campaigns,
+            'stats' => [
+                'active_campaigns' => $activeCampaignsForOrg,
+                'total_responses' => $totalResponsesForFilter,
+                'filtered_campaigns' => $filteredCampaignCount,
+                'completed_in_filter' => $completedInFilter,
+            ],
             'wallet' => [
-                'balance_brp' => $wallet->balance_brp,
-                'reserved_brp' => $wallet->reserved_brp,
-                'spent_brp' => $wallet->spent_brp,
-                'available_brp' => $wallet->available_brp,
+                'balance_brp'      => $bpBalance,
+                'reserved_brp'     => 0,
+                'spent_brp'        => $sentBp,
+                'available_brp'    => $bpBalance,
+                'balance_dollars'  => $bpBalance,
+                'available_dollars' => $bpBalance,
+                'reserved_dollars' => 0.0,
+                'sent_bp'          => $sentBp,
+                'sent_dollars'     => $sentBp,
             ],
             'organization' => [
                 'id' => $org->id,
@@ -85,33 +126,71 @@ class OrganizationFeedbackRewardsController extends Controller
                 'status' => $request->status ?? '',
                 'view'   => $request->view ?? 'campaigns',
             ],
-
         ]);
     }
 
     /**
      * Show the create campaign form.
+     * Same fee + live-calculation model as the merchant create flow; GET params for Inertia partial reloads.
      */
-    public function create()
+    public function create(Request $request)
     {
         $org = $this->resolveOrg();
-        $wallet = $this->walletService->getOrCreateOrganizationWallet($org->id);
+        $owner = $org->user;
+        $bpBalance = $owner ? (float) ($owner->believe_points ?? 0) : 0.0;
+
+        $budgetBp = (int) ($request->get('fee_preview_budget_bp') ?? 0);
+        $budgetBp = max(0, $budgetBp);
+        $budgetUsd = round((float) $budgetBp, 2);
+        $budgetCents = (int) round($budgetUsd * 100);
+        $platformFeeUsd = $budgetUsd > 0 ? round($budgetUsd * self::PLATFORM_FEE_RATE, 2) : 0.0;
+        $processingFeeUsd = $budgetUsd > 0 ? round($budgetUsd * self::PROCESSING_FEE_RATE, 2) : 0.0;
+        $totalUsd = round($budgetUsd + $platformFeeUsd + $processingFeeUsd, 2);
+
+        $previewType = (string) $request->get('fee_preview_type', 'short_feedback');
+        if (! array_key_exists($previewType, self::CAMPAIGN_TYPE_COST_USD)) {
+            $previewType = 'short_feedback';
+        }
+        $cprPreviewUsd = self::CAMPAIGN_TYPE_COST_USD[$previewType];
+        $defaultRewardBp = self::CAMPAIGN_TYPE_DEFAULT_REWARD_BP[$previewType];
+        $rewardInput = $request->get('fee_preview_reward_bp');
+        $rewardForPreview = (is_numeric($rewardInput) && (int) $rewardInput > 0)
+            ? (int) $rewardInput
+            : $defaultRewardBp;
+
+        $liveCalculation = null;
+        if ($budgetBp > 0) {
+            $maxByType = $cprPreviewUsd > 0 ? (int) round($budgetUsd / $cprPreviewUsd) : 0;
+            $maxByCustom = $rewardForPreview > 0 ? (int) floor($budgetCents / $rewardForPreview) : 0;
+            $liveCalculation = [
+                'per_response_bp_display' => round($cprPreviewUsd, 2),
+                'max_responses' => $maxByType,
+                'reward_matches_type_default' => $rewardForPreview === $defaultRewardBp,
+                'custom_max_responses' => $maxByCustom,
+                'budget_usd' => $budgetUsd,
+                'platform_fee_usd' => $platformFeeUsd,
+                'processing_fee_usd' => $processingFeeUsd,
+                'total_usd' => $totalUsd,
+                'sufficient_bp' => $bpBalance >= $budgetBp,
+            ];
+        }
 
         return Inertia::render('Organization/FeedbackRewards/Create', [
             'wallet' => [
-                'balance_brp' => $wallet->balance_brp,
-                'available_brp' => $wallet->available_brp,
+                'balance_brp'    => $bpBalance,
+                'available_brp'  => $bpBalance,
             ],
             'organization' => [
                 'id' => $org->id,
                 'name' => $org->name,
             ],
             'campaignTypes' => [
-                ['value' => 'quick_vote', 'label' => 'Quick Vote', 'default_reward' => 3, 'est_time' => '~10 sec'],
-                ['value' => 'short_feedback', 'label' => 'Short Feedback', 'default_reward' => 10, 'est_time' => '~1 min'],
-                ['value' => 'standard_survey', 'label' => 'Standard Survey', 'default_reward' => 25, 'est_time' => '~3 min'],
-                ['value' => 'deep_feedback', 'label' => 'Deep Feedback', 'default_reward' => 50, 'est_time' => '~5 min'],
+                ['value' => 'quick_vote', 'label' => 'Quick Vote', 'default_reward' => 3, 'est_time' => '~10 sec', 'per_response_bp_display' => 0.03],
+                ['value' => 'short_feedback', 'label' => 'Short Feedback', 'default_reward' => 10, 'est_time' => '~1 min', 'per_response_bp_display' => 0.10],
+                ['value' => 'standard_survey', 'label' => 'Standard Survey', 'default_reward' => 25, 'est_time' => '~3 min', 'per_response_bp_display' => 0.25],
+                ['value' => 'deep_feedback', 'label' => 'Deep Feedback', 'default_reward' => 50, 'est_time' => '~5 min', 'per_response_bp_display' => 0.50],
             ],
+            'liveCalculation' => $liveCalculation,
         ]);
     }
 
@@ -139,7 +218,7 @@ class OrganizationFeedbackRewardsController extends Controller
             'reward_per_response_brp.required' => 'Reward per response is required.',
             'reward_per_response_brp.min' => 'Reward must be at least 1 BP.',
             'total_budget_brp.required' => 'Total budget is required.',
-            'total_budget_brp.min' => 'Budget must be at least 1 BRP.',
+            'total_budget_brp.min' => 'Budget must be at least 1 BP.',
             'question_text.required' => 'Please enter a question.',
             'question_type.required' => 'Please select a question type.',
             'options.required_if' => 'Multiple choice questions require at least 2 options.',
@@ -179,7 +258,8 @@ class OrganizationFeedbackRewardsController extends Controller
         }
 
         $campaign->load('questions.options');
-        $wallet = $this->walletService->getOrCreateOrganizationWallet($org->id);
+        $owner = $org->user;
+        $bpBalance = $owner ? (float) ($owner->believe_points ?? 0) : 0.0;
         $question = $campaign->questions->first();
 
         return Inertia::render('Organization/FeedbackRewards/Edit', [
@@ -198,18 +278,18 @@ class OrganizationFeedbackRewardsController extends Controller
                     : ['', ''],
             ],
             'wallet' => [
-                'balance_brp' => $wallet->balance_brp,
-                'available_brp' => $wallet->available_brp,
+                'balance_brp'  => $bpBalance,
+                'available_brp' => $bpBalance,
             ],
             'organization' => [
                 'id' => $org->id,
                 'name' => $org->name,
             ],
             'campaignTypes' => [
-                ['value' => 'quick_vote', 'label' => 'Quick Vote', 'default_reward' => 3, 'est_time' => '~10 sec'],
-                ['value' => 'short_feedback', 'label' => 'Short Feedback', 'default_reward' => 10, 'est_time' => '~1 min'],
-                ['value' => 'standard_survey', 'label' => 'Standard Survey', 'default_reward' => 25, 'est_time' => '~3 min'],
-                ['value' => 'deep_feedback', 'label' => 'Deep Feedback', 'default_reward' => 50, 'est_time' => '~5 min'],
+                ['value' => 'quick_vote', 'label' => 'Quick Vote', 'default_reward' => 3, 'est_time' => '~10 sec', 'per_response_bp_display' => 0.03],
+                ['value' => 'short_feedback', 'label' => 'Short Feedback', 'default_reward' => 10, 'est_time' => '~1 min', 'per_response_bp_display' => 0.10],
+                ['value' => 'standard_survey', 'label' => 'Standard Survey', 'default_reward' => 25, 'est_time' => '~3 min', 'per_response_bp_display' => 0.25],
+                ['value' => 'deep_feedback', 'label' => 'Deep Feedback', 'default_reward' => 50, 'est_time' => '~5 min', 'per_response_bp_display' => 0.50],
             ],
         ]);
     }
@@ -304,7 +384,7 @@ class OrganizationFeedbackRewardsController extends Controller
             $this->campaignService->launchCampaignForOrg($campaign);
 
             return redirect()->route('org.feedback-rewards.show', $campaign->id)
-                ->with('success', 'Campaign launched successfully! BRP has been reserved.');
+                ->with('success', 'Campaign launched successfully! BP has been reserved.');
         } catch (\Exception $e) {
             return redirect()->back()
                 ->with('error', $e->getMessage());
@@ -326,7 +406,7 @@ class OrganizationFeedbackRewardsController extends Controller
             $this->campaignService->endCampaignForOrg($campaign);
 
             return redirect()->route('org.feedback-rewards.show', $campaign->id)
-                ->with('success', 'Campaign ended. Unused BRP has been released to your wallet.');
+                ->with('success', 'Campaign ended. Unused BP has been returned to your wallet.');
         } catch (\Exception $e) {
             return redirect()->back()
                 ->with('error', $e->getMessage());
