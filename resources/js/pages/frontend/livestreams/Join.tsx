@@ -82,7 +82,7 @@ export default function SupporterMeetJoin({
 
   const errorMsg = (errors?.passcode?.[0] ?? errors?.meeting_id?.[0]) ?? null
 
-  const canJoin = livestream && ["draft", "scheduled", "meeting_live", "live"].includes(livestream.status)
+  const canJoin = livestream && ["draft", "meeting_live", "live"].includes(livestream.status)
 
   const iframeUrl = useMemo(() => {
     if (!livestream?.participantUrl || !joined) return null

@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\OrganizationLivestream;
 use App\Models\Organization;
 use App\Models\UserLivestream;
+use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Crypt;
@@ -106,6 +107,77 @@ class SupporterLivestreamController extends Controller
 
         return redirect()->route('livestreams.supporter.ready', $livestream->id)
             ->with('success', 'Meeting ready!');
+    }
+
+    /**
+     * Schedule a meeting (supporter flow): saves scheduled_at and participant email.
+     */
+    public function schedule(Request $request): RedirectResponse
+    {
+        $validated = $request->validate([
+            'title' => 'nullable|string|max:255',
+            'display_name' => 'nullable|string|max:255',
+            'is_public' => 'nullable|boolean',
+            'require_passcode' => 'nullable|boolean',
+            'passcode' => 'nullable|string|min:6|max:100',
+            'record_meeting' => 'nullable|boolean',
+            'schedule_date' => 'required|date_format:Y-m-d',
+            'schedule_time' => 'required|date_format:H:i',
+            // Accept multiple participants (tagify-like): send as array of emails.
+            'participant_emails' => 'required|array|min:1|max:50',
+            'participant_emails.*' => 'required|email|max:255',
+            // Backward compatibility for older clients sending a single email string.
+            'participant_email' => 'nullable|email|max:255',
+        ]);
+
+        $user = $request->user();
+        $roomName = $this->getUnityMeetingId($request);
+
+        $scheduledAt = Carbon::createFromFormat(
+            'Y-m-d H:i',
+            $validated['schedule_date'].' '.$validated['schedule_time'],
+            config('app.timezone')
+        );
+        if (! $scheduledAt || $scheduledAt->isPast()) {
+            return back()->withErrors(['schedule_date' => 'Schedule time must be in the future.'])->withInput();
+        }
+
+        $requirePasscode = $request->boolean('require_passcode', true);
+        $password = $requirePasscode
+            ? (string) ($request->input('passcode') ?: UserLivestream::generatePassword())
+            : '';
+        $encryptedPassword = Crypt::encryptString($password);
+
+        $displayName = $request->filled('display_name') ? (string) $request->display_name : ($user->name ?? null);
+        $settings = [];
+        if ($displayName !== null && $displayName !== '') {
+            $settings['display_name'] = $displayName;
+        }
+        $settings['record_meeting'] = $request->boolean('record_meeting', true);
+        $settings['require_passcode'] = $requirePasscode;
+        $emails = $validated['participant_emails'] ?? [];
+        if (empty($emails) && ! empty($validated['participant_email'])) {
+            $emails = [(string) $validated['participant_email']];
+        }
+        $emails = array_values(array_unique(array_filter(array_map('strval', $emails))));
+        $settings['participant_emails'] = $emails;
+
+        $livestream = UserLivestream::firstOrNew([
+            'user_id' => $user->id,
+            'room_name' => $roomName,
+        ]);
+        $livestream->fill([
+            'room_password' => $encryptedPassword,
+            'status' => 'scheduled',
+            'is_public' => $request->boolean('is_public', true),
+            'title' => $request->input('title'),
+            'scheduled_at' => $scheduledAt,
+            'settings' => $settings ?: null,
+        ]);
+        $livestream->save();
+
+        return redirect()->route('livestreams.supporter.ready', $livestream->id)
+            ->with('success', 'Meeting scheduled!');
     }
 
     /**

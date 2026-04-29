@@ -1,21 +1,44 @@
 "use client"
+
 import FrontendLayout from "@/layouts/frontend/frontend-layout"
 import { useState, useEffect, useCallback } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import { Heart, Search, X, Loader2, BookOpen, Users, Clock, Calendar, Globe, MapPin, Star, Award, Filter, ChevronDown, ChevronLeft, ChevronRight } from "lucide-react"
+import {
+  Search,
+  X,
+  Loader2,
+  Filter,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  Users,
+} from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardFooter } from "@/components/frontend/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Progress } from "@/components/ui/progress"
 import { router, usePage, Link } from "@inertiajs/react"
 import { useNotification } from "@/components/frontend/notification-provider"
 import { PageHead } from "@/components/frontend/PageHead"
 import { connectionHubTypeLabel, isEventsHubType } from "@/lib/connection-hub-type"
 import type { ConnectionHubType } from "@/lib/connection-hub-type"
-import parse from 'html-react-parser';
+import { CauseBadge, type CauseBadgeCause } from "@/components/frontend/cause-badge"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/frontend/ui/table"
+import { cn } from "@/lib/utils"
+
+interface PrimaryActionCategoryRef {
+  id: number
+  name: string
+  slug?: string | null
+}
+
 interface Topic {
   id: number
   name: string
@@ -76,6 +99,8 @@ interface Course {
   updated_at: string
   topic: Topic | null
   event_type: EventType | null
+  /** Causes chosen at create (primary_action_categories); snake_case from Laravel */
+  primary_action_categories?: PrimaryActionCategoryRef[]
   organization: Organization
   organization_name: string | null
   creator: Creator
@@ -92,6 +117,7 @@ interface CourseListUser {
 }
 
 interface FrontendCoursesListPageProps {
+  seo?: { title?: string; description?: string }
   organizations: Organization[]
   courses: {
     data: Course[]
@@ -99,11 +125,11 @@ interface FrontendCoursesListPageProps {
     last_page: number
     per_page: number
     total: number
-    from: number
-    to: number
+    from: number | null
+    to: number | null
   }
-  topics: Topic[]
-  eventTypes: EventType[]
+  /** Every active primary-action category for the Cause(s) filter dropdown */
+  causesForFilter?: PrimaryActionCategoryRef[]
   user?: CourseListUser | null
   message?: string
   filters: {
@@ -114,77 +140,112 @@ interface FrontendCoursesListPageProps {
     type?: string
     event_type_id?: string
     organization?: string
+    /** Filter listings that include this primary-action category (cause) */
+    cause_id?: string
   }
 }
+
+function stripHtmlToText(html: string, maxLen = 140): string {
+  if (typeof window === "undefined") {
+    const text = html.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim()
+    return text.length > maxLen ? `${text.slice(0, maxLen)}…` : text
+  }
+  const doc = new DOMParser().parseFromString(html, "text/html")
+  const text = doc.body.textContent?.replace(/\s+/g, " ").trim() ?? ""
+  return text.length > maxLen ? `${text.slice(0, maxLen)}…` : text
+}
+
+/** Causes actually saved on this listing (course_pac), not the filter catalog. */
+function coursePrimaryCauses(course: Course): CauseBadgeCause[] {
+  const raw =
+    course.primary_action_categories ??
+    (course as unknown as { primaryActionCategories?: PrimaryActionCategoryRef[] }).primaryActionCategories
+  if (!raw?.length) return []
+  return raw.map((c) => ({
+    id: c.id,
+    name: c.name,
+    slug: c.slug ?? undefined,
+  }))
+}
+
+/** Event type or legacy topic — the required “Topic” field on the listing form (not PAC causes). */
+function courseTopicLabel(course: Course): string | null {
+  if (isEventsHubType(course.type) && course.event_type) {
+    const et = course.event_type
+    return et.category ? `${et.category} · ${et.name}` : et.name
+  }
+  if (course.topic?.name) {
+    return course.topic.name
+  }
+  return null
+}
+
+function listingStatus(course: Course): { label: string; variant: "live" | "muted" } {
+  const now = new Date()
+  const end = course.end_date ? new Date(course.end_date) : null
+  if (end && end < now) {
+    return { label: "Ended", variant: "muted" }
+  }
+  const start = new Date(course.start_date)
+  if (start > now) {
+    return { label: "Upcoming", variant: "live" }
+  }
+  return { label: "Active", variant: "live" }
+}
+
+const PER_PAGE_OPTIONS = [6, 9, 12, 18] as const
 
 export default function FrontendCoursesListPage({
   seo,
   courses: initialCourses,
-  topics,
-  eventTypes,
-  organizations,
-  user,
+  causesForFilter = [],
   filters,
 }: FrontendCoursesListPageProps) {
   const flash = usePage().props
   const { showNotification } = useNotification()
   const [searchQuery, setSearchQuery] = useState(filters.search || "")
   const [selectedType, setSelectedType] = useState(filters.type || "all")
-  const [selectedTopicId, setSelectedTopicId] = useState<number | null>(
-    filters.topic_id ? Number.parseInt(filters.topic_id) : null,
+  const [selectedCauseId, setSelectedCauseId] = useState<number | null>(
+    filters.cause_id ? Number.parseInt(filters.cause_id, 10) : null,
   )
-  const [selectedEventTypeId, setSelectedEventTypeId] = useState<number | null>(
-    filters.event_type_id ? Number.parseInt(filters.event_type_id) : null,
-  )
-  const [selectedOrganization, setSelectedOrganization] = useState<string | null>(
-    filters.organization ? filters.organization : null,
-  )
-  const [selectedFormat, setSelectedFormat] = useState(filters.format || "all")
   const [selectedPricing, setSelectedPricing] = useState(filters.pricing_type || "all")
   const [isSearching, setIsSearching] = useState(false)
-  /** Filter panel expanded by default; user can collapse with the Filters toggle only. */
   const [showFilters, setShowFilters] = useState(true)
 
-  // Perform search with debouncing
-  const performSearch = useCallback(async (query: string, type: string, topicId: number | null, eventTypeId: number | null, format: string, pricing: string, organization: string) => {
-    setIsSearching(true)
+  const performSearch = useCallback(
+    (query: string, type: string, causeId: number | null, pricing: string) => {
+      setIsSearching(true)
 
-    const params: any = {}
-    if (query) params.search = query
-    if (type !== "all") params.type = type
-    if (topicId) params.topic_id = topicId.toString()
-    if (eventTypeId) params.event_type_id = eventTypeId.toString()
-    if (organization) {
-      params.organization = organization
-      setSelectedOrganization(params.organization)
-    }
-    if (format !== "all") params.format = format
-    if (pricing !== "all") params.pricing_type = pricing
+      const params: Record<string, string> = { page: "1" }
+      if (query) params.search = query
+      if (type !== "all") params.type = type
+      if (causeId) params.cause_id = causeId.toString()
+      if (pricing !== "all") params.pricing_type = pricing
 
-    router.get("/courses", params, {
-      preserveScroll: true,
-      preserveState: true,
-      replace: true,
-      onFinish: () => setIsSearching(false),
-    })
-  }, [])
+      const urlParams = new URLSearchParams(window.location.search)
+      const perPage = urlParams.get("per_page")
+      if (perPage && PER_PAGE_OPTIONS.includes(Number(perPage) as (typeof PER_PAGE_OPTIONS)[number])) {
+        params.per_page = perPage
+      }
 
-  // Clear topic/event type when type changes
-  useEffect(() => {
-    setSelectedTopicId(null)
-    setSelectedEventTypeId(null)
-  }, [selectedType])
+      router.get("/courses", params, {
+        preserveScroll: true,
+        preserveState: true,
+        replace: true,
+        onFinish: () => setIsSearching(false),
+      })
+    },
+    [],
+  )
 
-  // Debounced search effect
   useEffect(() => {
     const timer = setTimeout(() => {
-      performSearch(searchQuery, selectedType, selectedTopicId, selectedEventTypeId, selectedFormat, selectedPricing, selectedOrganization)
+      performSearch(searchQuery, selectedType, selectedCauseId, selectedPricing)
     }, 500)
 
     return () => clearTimeout(timer)
-  }, [searchQuery, selectedType, selectedTopicId, selectedEventTypeId, selectedFormat, selectedPricing, selectedOrganization, performSearch])
+  }, [searchQuery, selectedType, selectedCauseId, selectedPricing, performSearch])
 
-  // Show flash notifications
   useEffect(() => {
     if (flash?.success) {
       showNotification({
@@ -203,573 +264,434 @@ export default function FrontendCoursesListPage({
   const handlePageChange = (page: number) => {
     const params = new URLSearchParams(window.location.search)
     params.set("page", page.toString())
-
-    router.get(
-      `${window.location.pathname}?${params.toString()}`,
-      {},
-      {
-        preserveState: true,
-      },
-    )
-
+    router.get(`${window.location.pathname}?${params.toString()}`, {}, { preserveState: true })
     window.scrollTo({ top: 0, behavior: "smooth" })
+  }
+
+  const handlePerPageChange = (perPage: number) => {
+    const params = new URLSearchParams(window.location.search)
+    params.set("per_page", String(perPage))
+    params.set("page", "1")
+    router.get(`${window.location.pathname}?${params.toString()}`, {}, { preserveState: true })
   }
 
   const clearFilters = () => {
     setSearchQuery("")
     setSelectedType("all")
-    setSelectedTopicId(null)
-    setSelectedEventTypeId(null)
-    setSelectedOrganization(null)
-    setSelectedFormat("all")
+    setSelectedCauseId(null)
     setSelectedPricing("all")
-  }
-
-  const getFormatIcon = (format: string) => {
-    switch (format) {
-      case "online":
-        return <Globe className="w-4 h-4" />
-      case "in_person":
-        return <MapPin className="w-4 h-4" />
-      case "hybrid":
-        return <Users className="w-4 h-4" />
-      default:
-        return <Globe className="w-4 h-4" />
-    }
-  }
-
-  const getFormatColor = (format: string) => {
-    switch (format) {
-      case "online":
-        return "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200"
-      case "in_person":
-        return "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"
-      case "hybrid":
-        return "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200"
-      default:
-        return "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200"
-    }
+    router.get("/courses", {}, { preserveScroll: true, replace: true })
   }
 
   const hasActiveFilters =
-    Boolean(searchQuery) ||
+    Boolean(searchQuery.trim()) ||
     selectedType !== "all" ||
-    selectedTopicId != null ||
-    selectedEventTypeId != null ||
-    Boolean(selectedOrganization) ||
-    selectedFormat !== "all" ||
+    selectedCauseId != null ||
     selectedPricing !== "all"
+
+  const shellClass =
+    "min-h-screen bg-slate-50 text-slate-900 dark:bg-[#0B0E14] dark:text-slate-100"
+
+  const panelClass =
+    "rounded-xl border border-slate-200/90 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900/80 dark:shadow-none"
+
+  const inputClass =
+    "h-12 w-full rounded-lg border border-slate-200 bg-white pl-12 pr-12 text-slate-900 shadow-sm placeholder:text-slate-400 focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20 dark:border-slate-700 dark:bg-slate-950/80 dark:text-slate-100 dark:placeholder:text-slate-500"
+
+  const selectClass =
+    "h-12 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-900 shadow-sm focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20 dark:border-slate-700 dark:bg-slate-950/80 dark:text-slate-100"
+
+  const tableHeaderClass =
+    "border-slate-200 bg-slate-100/90 text-xs font-semibold uppercase tracking-wide text-slate-600 dark:border-slate-800 dark:bg-slate-900/90 dark:text-slate-400"
+
+  const tableRowClass =
+    "border-slate-100 hover:bg-slate-50/80 dark:border-slate-800/90 dark:hover:bg-slate-900/60"
 
   return (
     <FrontendLayout>
       <PageHead title={seo?.title ?? "Connection Hub"} description={seo?.description} />
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
-        {/* Hero Section */}
-        <section className="bg-gradient-to-br from-purple-600 via-blue-600 to-purple-700 dark:from-gray-900 dark:via-gray-800 dark:to-purple-900 py-12 sm:py-16 md:py-20">
-          <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-            <motion.div
-              initial={{ opacity: 0, y: 30 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.8 }}
-              className="text-center max-w-4xl mx-auto"
-            >
-              <div className="inline-flex items-center justify-center mb-4">
-                <div className="p-3 bg-white/20 backdrop-blur-sm rounded-2xl shadow-lg">
-                  <BookOpen className="h-8 w-8 sm:h-10 sm:w-10 text-white" />
-                </div>
-              </div>
-              <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold text-white mb-4">
-                Connection Hub
-              </h1>
-              <p className="text-base sm:text-lg md:text-xl text-white/90 max-w-2xl mx-auto">
-                Discover courses and events that make a difference. Learn new skills while contributing to your community's growth
-                and development.
-              </p>
-            </motion.div>
-          </div>
-        </section>
-
-        <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12">
-          {/* Search and Filter Section */}
+      <div className={shellClass}>
+        <div className="container mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 lg:py-10">
           <motion.section
-            initial={{ opacity: 0, y: 30 }}
+            initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8, delay: 0.1 }}
-            className="mb-8"
+            transition={{ duration: 0.35 }}
+            className={cn("mb-8 p-5 sm:p-6", panelClass)}
           >
-            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 sm:p-8 border border-gray-200 dark:border-gray-700">
-              <div className="mb-4 flex items-center justify-between">
-                <h2 className="text-lg font-bold text-gray-900 dark:text-white">Search & Filter</h2>
-                {hasActiveFilters && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={clearFilters}
-                    className="text-purple-600 hover:text-purple-700 dark:text-purple-400 dark:hover:text-purple-300 text-sm font-medium"
-                  >
-                    <X className="h-4 w-4 mr-1" />
-                    Clear all
-                  </Button>
-                )}
-              </div>
-              <div className="space-y-4">
-                {/* Search Bar */}
-                <div className="relative">
-                  <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 h-5 w-5" />
-                  <Input
-                    type="text"
-                    placeholder="Search courses, events, topics, organizations..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full pl-12 pr-12 h-12 sm:h-14 rounded-lg border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 transition-all duration-200 shadow-sm"
-                  />
-                  {searchQuery && (
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => setSearchQuery("")}
-                      className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500 hover:bg-transparent"
-                    >
-                      <X className="h-4 w-4" />
-                    </Button>
-                  )}
-                  {isSearching && (
-                    <div className="absolute right-12 top-1/2 transform -translate-y-1/2">
-                      <Loader2 className="h-5 w-5 animate-spin text-purple-600" />
-                    </div>
-                  )}
-                </div>
+            <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+              <h2 className="text-base font-semibold text-slate-900 dark:text-white">Search &amp; Filter</h2>
+              {hasActiveFilters && (
+                <button
+                  type="button"
+                  onClick={clearFilters}
+                  className="inline-flex items-center gap-1 text-sm font-medium text-violet-600 hover:text-violet-700 dark:text-violet-400 dark:hover:text-violet-300"
+                >
+                  Clear all
+                  <X className="h-4 w-4" aria-hidden />
+                </button>
+              )}
+            </div>
 
-                {/* Filter Toggle */}
-                <div className="flex items-center gap-3">
+            <div className="space-y-4">
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400 dark:text-slate-500" />
+                <Input
+                  type="text"
+                  placeholder="Search courses, events, topics, organizations..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className={inputClass}
+                />
+                {searchQuery && (
                   <Button
                     type="button"
-                    variant="outline"
-                    aria-expanded={showFilters}
-                    aria-controls="courses-filter-panel"
-                    id="courses-filters-toggle"
-                    onClick={() => setShowFilters((open) => !open)}
-                    className="flex h-12 items-center gap-2 border-gray-300 dark:border-gray-600"
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setSearchQuery("")}
+                    className="absolute right-2 top-1/2 h-9 w-9 -translate-y-1/2 text-slate-500 hover:bg-transparent dark:text-slate-400"
                   >
-                    <Filter className="h-4 w-4 shrink-0" aria-hidden />
-                    <span>Filters</span>
-                    {hasActiveFilters && (
-                      <Badge variant="secondary" className="ml-0.5 bg-purple-600 text-white">
-                        Active
-                      </Badge>
-                    )}
-                    <ChevronDown
-                      className={`h-4 w-4 shrink-0 transition-transform duration-200 ${showFilters ? "rotate-180" : ""}`}
-                      aria-hidden
-                    />
+                    <X className="h-4 w-4" />
                   </Button>
-                </div>
-
-                {/* Expandable Filters */}
-                <AnimatePresence>
-                  {showFilters && (
-                    <motion.div
-                      id="courses-filter-panel"
-                      role="region"
-                      aria-labelledby="courses-filters-toggle"
-                      initial={{ opacity: 0, height: 0 }}
-                      animate={{ opacity: 1, height: "auto" }}
-                      exit={{ opacity: 0, height: 0 }}
-                      transition={{ duration: 0.3 }}
-                      className="grid grid-cols-1 gap-4 border-t border-gray-200 pt-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 dark:border-gray-600"
-                    >
-                      {/* Type Filter */}
-                      <div>
-                        <Label className="text-sm font-semibold text-gray-900 dark:text-white mb-2 block">Type</Label>
-                        <select
-                          value={selectedType}
-                          onChange={(e) => setSelectedType(e.target.value)}
-                          className="w-full px-3 py-2.5 h-12 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 transition-all duration-200"
-                        >
-                          <option value="all">All Types</option>
-                          <option value="companion">Companion</option>
-                          <option value="learning">Learning</option>
-                          <option value="events">Events</option>
-                          <option value="earning">Earning</option>
-                        </select>
-                      </div>
-
-                      {/* Topic/Event Type Filter - Dynamic */}
-                      {selectedType === "events" ? (
-                        <div>
-                          <Label className="text-sm font-semibold text-gray-900 dark:text-white mb-2 block">Event Topic</Label>
-                          <select
-                            value={selectedEventTypeId || ""}
-                            onChange={(e) => setSelectedEventTypeId(e.target.value ? Number.parseInt(e.target.value) : null)}
-                            className="w-full px-3 py-2.5 h-12 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 transition-all duration-200"
-                          >
-                            <option value="">All Event Topics</option>
-                            {eventTypes.map((eventType) => (
-                              <option key={eventType.id} value={eventType.id}>
-                                {eventType.category ? `${eventType.category} - ${eventType.name}` : eventType.name}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                      ) : (
-                        <div>
-                          <Label className="text-sm font-semibold text-gray-900 dark:text-white mb-2 block">Course Topic</Label>
-                          <select
-                            value={selectedTopicId || ""}
-                            onChange={(e) => setSelectedTopicId(e.target.value ? Number.parseInt(e.target.value) : null)}
-                            className="w-full px-3 py-2.5 h-12 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 transition-all duration-200"
-                          >
-                            <option value="">All Topics</option>
-                            {topics.map((topic) => (
-                              <option key={topic.id} value={topic.id}>
-                                {topic.name}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                      )}
-
-                      <div>
-                        <Label className="text-sm font-semibold text-gray-900 dark:text-white mb-2 block">Organization</Label>
-                        <select
-                          value={selectedOrganization || ""}
-                          onChange={(e) => setSelectedOrganization(e.target.value ? e.target.value : null)}
-                          className="w-full px-3 py-2.5 h-12 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 transition-all duration-200"
-                        >
-                          <option value="">All Organizations</option>
-                          {organizations.map((organization) => (
-                            <option key={organization.slug} value={organization.slug}>
-                              {organization.name}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-
-                      {/* Format Filter */}
-                      <div>
-                        <Label className="text-sm font-semibold text-gray-900 dark:text-white mb-2 block">
-                          Format
-                        </Label>
-                        <select
-                          value={selectedFormat}
-                          onChange={(e) => setSelectedFormat(e.target.value)}
-                          className="w-full px-3 py-2.5 h-12 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 transition-all duration-200"
-                        >
-                          <option value="all">All Formats</option>
-                          <option value="online">Online</option>
-                          <option value="in_person">In-Person</option>
-                          <option value="hybrid">Hybrid</option>
-                        </select>
-                      </div>
-
-                      {/* Pricing Filter */}
-                      <div>
-                        <Label className="text-sm font-semibold text-gray-900 dark:text-white mb-2 block">
-                          Pricing
-                        </Label>
-                        <select
-                          value={selectedPricing}
-                          onChange={(e) => setSelectedPricing(e.target.value)}
-                          className="w-full px-3 py-2.5 h-12 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 transition-all duration-200"
-                        >
-                          <option value="all">All Pricing</option>
-                          <option value="free">Free</option>
-                          <option value="paid">Paid</option>
-                        </select>
-                      </div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
+                )}
+                {isSearching && (
+                  <div className="absolute right-11 top-1/2 -translate-y-1/2">
+                    <Loader2 className="h-5 w-5 animate-spin text-violet-600 dark:text-violet-400" />
+                  </div>
+                )}
               </div>
+
+              <div className="flex flex-wrap items-center gap-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  aria-expanded={showFilters}
+                  aria-controls="courses-filter-panel"
+                  id="courses-filters-toggle"
+                  onClick={() => setShowFilters((open) => !open)}
+                  className="flex h-11 items-center gap-2 border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-950/80"
+                >
+                  <Filter className="h-4 w-4 shrink-0" aria-hidden />
+                  <span>Filters</span>
+                  {hasActiveFilters && (
+                    <Badge className="border-0 bg-violet-600 px-2 py-0.5 text-[11px] text-white hover:bg-violet-600">
+                      Active
+                    </Badge>
+                  )}
+                  <ChevronDown
+                    className={cn(
+                      "h-4 w-4 shrink-0 transition-transform duration-200",
+                      showFilters ? "rotate-180" : "",
+                    )}
+                    aria-hidden
+                  />
+                </Button>
+              </div>
+
+              <AnimatePresence>
+                {showFilters && (
+                  <motion.div
+                    id="courses-filter-panel"
+                    role="region"
+                    aria-labelledby="courses-filters-toggle"
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: "auto" }}
+                    exit={{ opacity: 0, height: 0 }}
+                    transition={{ duration: 0.25 }}
+                    className="grid grid-cols-1 gap-4 border-t border-slate-200 pt-4 sm:grid-cols-3 dark:border-slate-800"
+                  >
+                    <div>
+                      <Label className="mb-2 block text-sm font-semibold text-slate-800 dark:text-slate-200">
+                        Type
+                      </Label>
+                      <select
+                        value={selectedType}
+                        onChange={(e) => setSelectedType(e.target.value)}
+                        className={selectClass}
+                      >
+                        <option value="all">All Types</option>
+                        <option value="companion">Companion</option>
+                        <option value="learning">Learning</option>
+                        <option value="events">Events</option>
+                        <option value="earning">Earning</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <Label className="mb-2 block text-sm font-semibold text-slate-800 dark:text-slate-200">
+                        Cause(s)
+                      </Label>
+                      <select
+                        value={selectedCauseId ?? ""}
+                        onChange={(e) =>
+                          setSelectedCauseId(e.target.value ? Number.parseInt(e.target.value, 10) : null)
+                        }
+                        className={selectClass}
+                      >
+                        <option value="">All Causes</option>
+                        {causesForFilter.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <Label className="mb-2 block text-sm font-semibold text-slate-800 dark:text-slate-200">
+                        Pricing
+                      </Label>
+                      <select
+                        value={selectedPricing}
+                        onChange={(e) => setSelectedPricing(e.target.value)}
+                        className={selectClass}
+                      >
+                        <option value="all">All Pricing</option>
+                        <option value="free">Free</option>
+                        <option value="paid">Paid</option>
+                      </select>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
           </motion.section>
 
-          {/* Results Info */}
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-6 pb-4 border-b border-gray-200 dark:border-gray-700">
+          <div className="mb-5 flex flex-col gap-3 border-b border-slate-200 pb-4 sm:flex-row sm:items-end sm:justify-between dark:border-slate-800">
             <div>
-              <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white">
-                Connection Hub {initialCourses.total > 0 && <span className="text-purple-600 dark:text-purple-400">({initialCourses.total})</span>}
+              <h2 className="text-xl font-bold tracking-tight text-slate-900 dark:text-white sm:text-2xl">
+                Connection Hub{" "}
+                {initialCourses.total > 0 && (
+                  <span className="text-violet-600 dark:text-violet-400">({initialCourses.total})</span>
+                )}
               </h2>
               {hasActiveFilters && (
-                <p className="text-sm text-gray-600 dark:text-gray-400 mt-2">
-                  Filtered results •{" "}
-                  <button onClick={clearFilters} className="text-purple-600 hover:text-purple-700 dark:text-purple-400 dark:hover:text-purple-300 underline font-medium">
+                <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">
+                  Filtered results ·{" "}
+                  <button
+                    type="button"
+                    onClick={clearFilters}
+                    className="font-medium text-violet-600 hover:underline dark:text-violet-400"
+                  >
                     Show all
                   </button>
                 </p>
               )}
             </div>
-            <div className="text-sm text-gray-600 dark:text-gray-400 font-medium">
-              Showing {initialCourses.from}-{initialCourses.to} of {initialCourses.total}
-            </div>
+            <p className="text-sm font-medium text-slate-600 dark:text-slate-400">
+              {initialCourses.total === 0
+                ? "Showing 0 of 0"
+                : `Showing ${initialCourses.from ?? 0}-${initialCourses.to ?? 0} of ${initialCourses.total}`}
+            </p>
           </div>
 
-          {/* Courses Grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6 mb-8">
-            {initialCourses.data.map((course, index) => (
-              <motion.div
-                key={course.id}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: index * 0.1 }}
-                className="group"
-              >
-                <Card className="h-full bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 hover:shadow-xl transition-all duration-300 overflow-hidden hover:border-purple-300 dark:hover:border-purple-600">
-                  {/* Course Image */}
-                  <div className="relative overflow-hidden">
-                    <img
-                      src={course.image_url || "/placeholder.svg?height=200&width=300&query=community course"}
-                      alt={course.name}
-                      className="w-full h-56 object-cover group-hover:scale-110 transition-transform duration-500"
-                    />
-                    <div className="absolute top-3 left-3">
-                      <Badge className={course.pricing_type === "free" ? "bg-green-500 text-white shadow-md" : "bg-purple-600 text-white shadow-md"}>
-                        {course.formatted_price}
-                      </Badge>
-                    </div>
-                    <div className="absolute top-3 right-3">
-                      <Badge className={`${getFormatColor(course.format)} shadow-md backdrop-blur-sm`}>
-                        <span className="flex items-center gap-1">
-                          {getFormatIcon(course.format)}
-                          {course.format.replace("_", " ")}
-                        </span>
-                      </Badge>
-                    </div>
-                    <div className="absolute bottom-3 right-3">
-                      <Badge className="bg-indigo-600 text-white shadow-md">
-                        {connectionHubTypeLabel(course.type)}
-                      </Badge>
-                    </div>
-                  </div>
+          {initialCourses.data.length > 0 ? (
+            <div className={cn("overflow-hidden rounded-xl border border-slate-200 dark:border-slate-800", panelClass)}>
+              <Table>
+                <TableHeader>
+                  <TableRow className="hover:bg-transparent dark:hover:bg-transparent">
+                    <TableHead className={cn("min-w-[140px] pl-5", tableHeaderClass)}>Type</TableHead>
+                    <TableHead className={cn("min-w-[180px]", tableHeaderClass)}>Cause(s)</TableHead>
+                    <TableHead className={cn("min-w-[280px]", tableHeaderClass)}>
+                      Course / Event / Organization
+                    </TableHead>
+                    <TableHead className={cn("min-w-[100px]", tableHeaderClass)}>Pricing</TableHead>
+                    <TableHead className={cn("min-w-[110px]", tableHeaderClass)}>Status</TableHead>
+                    <TableHead className={cn("min-w-[130px] pr-5 text-right", tableHeaderClass)}>
+                      View Details
+                    </TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {initialCourses.data.map((course) => {
+                    const causes = coursePrimaryCauses(course)
+                    const topicLabel = courseTopicLabel(course)
+                    const status = listingStatus(course)
+                    const orgLabel = course.organization_name ?? course.organization.name
 
-                  <CardContent className="p-5 sm:p-6 space-y-4">
-                    <div>
-                      <h3 className="font-bold text-lg text-gray-900 dark:text-white line-clamp-2 mb-2 group-hover:text-purple-600 dark:group-hover:text-purple-400 transition-colors">
-                        {course.name}
-                      </h3>
-                      <CardDescription className="line-clamp-3 text-sm text-gray-600 dark:text-gray-300 min-h-[3.75rem]">{parse(course.description)}</CardDescription>
-                    </div>
-
-                    <div className="flex justify-between items-start mb-2">
-                      {!isEventsHubType(course.type) && course.topic && (
-                        <Badge variant="outline" className="text-xs">
-                          {course.topic.name}
-                        </Badge>
-                      )}
-                      {isEventsHubType(course.type) && course.event_type && (
-                        <Badge variant="outline" className="text-xs">
-                          {course.event_type.name}
-                        </Badge>
-                      )}
-                    </div>
-
-                    {/* Target Audience */}
-                    <div className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 pb-3 border-b border-gray-100 dark:border-gray-700">
-                      <Users className="w-4 h-4 text-purple-600 dark:text-purple-400 flex-shrink-0" />
-                      <span className="truncate">{course.target_audience}</span>
-                    </div>
-
-                    {/* Organization */}
-                    <div className="flex items-center gap-3 pb-3 border-b border-gray-100 dark:border-gray-700">
-                      <Avatar className="w-8 h-8 border-2 border-purple-200 dark:border-purple-800">
-                        <AvatarImage src={`/placeholder.svg?height=32&width=32&query=${course.organization.name}`} />
-                        <AvatarFallback className="text-xs bg-purple-100 dark:bg-purple-900 text-purple-800 dark:text-purple-200">
-                          {course.organization.name}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">
-                          {course?.organization_name ? course?.organization_name:course?.organization.name}
-                        </p>
-                        <p className="text-xs text-gray-500 dark:text-gray-400 capitalize">{course?.creator?.role}</p>
-                      </div>
-                    </div>
-
-                    {/* Course Stats */}
-                    <div className="grid grid-cols-2 gap-3 text-sm pb-3 border-b border-gray-100 dark:border-gray-700">
-                      <div className="flex items-center gap-2 text-gray-700 dark:text-gray-300">
-                        <Users className="w-4 h-4 text-purple-600 dark:text-purple-400 flex-shrink-0" />
-                        <span>
-                          {course.enrolled}/{course.max_participants}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-2 text-gray-700 dark:text-gray-300">
-                        <Calendar className="w-4 h-4 text-purple-600 dark:text-purple-400 flex-shrink-0" />
-                        <span>{new Date(course.start_date).toLocaleDateString()}</span>
-                      </div>
-                      <div className="flex items-start gap-2 text-gray-700 dark:text-gray-300">
-                        <Clock className="w-4 h-4 text-purple-600 dark:text-purple-400 flex-shrink-0 mt-0.5" />
-                        <div className="min-w-0 flex flex-col gap-0.5">
-                          <span>
-                            {course.start_time}
-                            {course.formatted_duration ? ` · ${course.formatted_duration}` : ""}
-                          </span>
-                          {course.formatted_program_length ? (
-                            <span className="text-xs text-gray-500 dark:text-gray-400">
-                              Program: {course.formatted_program_length}
+                    return (
+                      <TableRow key={course.id} className={tableRowClass}>
+                        <TableCell className="pl-5 align-middle">
+                          <div className="flex items-center gap-2">
+                            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-violet-500/15 text-violet-600 dark:bg-violet-500/20 dark:text-violet-300">
+                              <Users className="h-4 w-4" aria-hidden />
                             </span>
-                          ) : null}
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2 text-gray-700 dark:text-gray-300">
-                        <Globe className="w-4 h-4 text-purple-600 dark:text-purple-400 flex-shrink-0" />
-                        <span>{course.language}</span>
-                      </div>
-                    </div>
-
-                    {/* Enrollment Progress */}
-                    <div className="space-y-2 pb-3 border-b border-gray-100 dark:border-gray-700">
-                      <div className="flex justify-between text-sm">
-                        <span className="text-gray-600 dark:text-gray-400 font-medium">Enrollment</span>
-                        <span className="text-gray-900 dark:text-white font-bold text-purple-600 dark:text-purple-400">
-                          {course.max_participants > 0 
-                            ? Math.round((course.enrolled / course.max_participants) * 100)
-                            : 0}%
-                        </span>
-                      </div>
-                      <Progress 
-                        value={course.max_participants > 0 
-                          ? (course.enrolled / course.max_participants) * 100 
-                          : 0} 
-                        className="h-2" 
-                      />
-                    </div>
-
-                    {/* Features */}
-                    <div className="flex flex-wrap gap-1">
-                      {course.certificate_provided && (
-                        <Badge variant="secondary" className="text-xs px-2 py-1">
-                          <Award className="w-3 h-3 mr-1" />
-                          Certificate
-                        </Badge>
-                      )}
-                      {course.volunteer_opportunities && (
-                        <Badge variant="secondary" className="text-xs px-2 py-1">
-                          <Heart className="w-3 h-3 mr-1" />
-                          Volunteer Ops
-                        </Badge>
-                      )}
-                      {(course.learning_outcomes?.length ?? 0) > 0 && (
-                        <Badge variant="secondary" className="text-xs px-2 py-1">
-                          {course.learning_outcomes?.length ?? 0} Outcomes
-                        </Badge>
-                      )}
-                      {(course.accessibility_features?.length ?? 0) > 0 && (
-                        <Badge variant="secondary" className="text-xs px-2 py-1">
-                          Accessible
-                        </Badge>
-                      )}
-                    </div>
-                  </CardContent>
-
-                  <CardFooter className="pt-0 pb-5">
-                    <div className="flex justify-between items-center w-full gap-3">
-                      <div className="flex items-center gap-1">
-                        {course.pricing_type === "free" ? (
-                          <span className="text-2xl font-bold text-purple-600 dark:text-purple-400">Free</span>
-                        ) : (
-                          <span className="text-2xl font-bold text-purple-600 dark:text-purple-400">${course.course_fee}</span>
-                        )}
-                      </div>
-                      <Link href={`/courses/${course.slug}`} className="flex-1">
-                        <Button className="w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white font-semibold shadow-md hover:shadow-lg transition-all duration-300">
-                          View Details
-                        </Button>
-                      </Link>
-                    </div>
-                  </CardFooter>
-                </Card>
-              </motion.div>
-            ))}
-          </div>
-
-          {/* No Results */}
-          {initialCourses.data.length === 0 && (
-            <div className="text-center py-16 sm:py-20">
-              <div className="inline-flex items-center justify-center w-20 h-20 bg-gray-100 dark:bg-gray-800 rounded-full mb-6">
-                <BookOpen className="h-10 w-10 text-gray-400" />
-              </div>
-              <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-3">
-                No courses found
-              </h3>
-              <p className="text-gray-600 dark:text-gray-400 mb-8 max-w-md mx-auto">
-                Try adjusting your search or filter criteria to find the perfect course for you.
+                            <Badge
+                              className={cn(
+                                "max-w-[10rem] truncate border-0 font-medium",
+                                course.pricing_type === "free"
+                                  ? "bg-emerald-500/15 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-200"
+                                  : "bg-violet-500/15 text-violet-800 dark:bg-violet-500/25 dark:text-violet-100",
+                              )}
+                            >
+                              {course.pricing_type === "free"
+                                ? "Free"
+                                : connectionHubTypeLabel(course.type)}
+                            </Badge>
+                          </div>
+                        </TableCell>
+                        <TableCell className="align-top">
+                          <div className="flex max-w-[min(22rem,42vw)] flex-wrap gap-1.5">
+                            {causes.map((c) => (
+                              <CauseBadge key={`${course.id}-cause-${c.id}`} c={c} />
+                            ))}
+                            {causes.length === 0 && (
+                              <span className="text-sm text-slate-400 dark:text-slate-500">—</span>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell className="align-top">
+                          <div className="flex gap-3">
+                            <img
+                              src={course.image_url || "/placeholder.svg?height=80&width=112&query=course"}
+                              alt=""
+                              className="h-16 w-28 shrink-0 rounded-md border border-slate-200 object-cover dark:border-slate-700"
+                            />
+                            <div className="min-w-0">
+                              <p className="font-semibold leading-snug text-slate-900 dark:text-white">{course.name}</p>
+                              <p className="mt-0.5 text-sm leading-relaxed text-slate-600 dark:text-slate-400">
+                                {stripHtmlToText(course.description)}
+                              </p>
+                              <p className="mt-1 text-xs font-medium text-slate-500 dark:text-slate-500">{orgLabel}</p>
+                              {topicLabel ? (
+                                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                                  <span className="font-medium text-slate-600 dark:text-slate-300">Topic:</span>{" "}
+                                  {topicLabel}
+                                </p>
+                              ) : null}
+                            </div>
+                          </div>
+                        </TableCell>
+                        <TableCell className="align-middle">
+                          <span className="text-base font-bold text-violet-600 dark:text-violet-400">
+                            {course.pricing_type === "free" ? "Free" : course.formatted_price}
+                          </span>
+                        </TableCell>
+                        <TableCell className="align-middle">
+                          <div className="flex items-center gap-2">
+                            <span
+                              className={cn(
+                                "h-2 w-2 shrink-0 rounded-full",
+                                status.variant === "live"
+                                  ? "bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.6)]"
+                                  : "bg-slate-400",
+                              )}
+                              aria-hidden
+                            />
+                            <span className="text-sm font-medium text-slate-800 dark:text-slate-100">{status.label}</span>
+                          </div>
+                        </TableCell>
+                        <TableCell className="pr-5 text-right align-middle">
+                          <Button
+                            asChild
+                            variant="outline"
+                            size="sm"
+                            className="border-violet-300 bg-transparent font-medium text-violet-700 shadow-none hover:bg-violet-50 dark:border-violet-500/50 dark:text-violet-100 dark:hover:bg-violet-500/10"
+                          >
+                            <Link href={route("course.show", course.slug)}>View Details</Link>
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    )
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+          ) : (
+            <div className="rounded-xl border border-dashed border-slate-200 bg-white px-6 py-16 text-center dark:border-slate-800 dark:bg-slate-900/40">
+              <h3 className="text-lg font-semibold text-slate-900 dark:text-white">No courses found</h3>
+              <p className="mt-2 max-w-md mx-auto text-sm text-slate-600 dark:text-slate-400">
+                Try adjusting your search or filters to find courses and events.
               </p>
               {hasActiveFilters && (
-                <Button onClick={clearFilters} variant="outline" className="border-purple-600 text-purple-600 hover:bg-purple-50 dark:border-purple-400 dark:text-purple-400 dark:hover:bg-purple-900/20 h-11 px-6">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="mt-6 border-violet-300 text-violet-700 hover:bg-violet-50 dark:border-violet-500/50 dark:text-violet-200 dark:hover:bg-violet-500/10"
+                  onClick={clearFilters}
+                >
                   Clear all filters
                 </Button>
               )}
             </div>
           )}
 
-          {/* Pagination */}
-          {initialCourses.last_page > 1 && (
-            <div className="flex flex-col sm:flex-row justify-center items-center gap-4 pt-8 mt-8 border-t border-gray-200 dark:border-gray-700">
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  onClick={() => handlePageChange(initialCourses.current_page - 1)}
-                  disabled={initialCourses.current_page === 1}
-                  className="bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 h-10"
+          {initialCourses.total > 0 && (
+            <div className="mt-8 flex flex-col gap-4 border-t border-slate-200 pt-6 sm:flex-row sm:items-center sm:justify-between dark:border-slate-800">
+              <div className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400">
+                <span className="whitespace-nowrap">Results per page</span>
+                <select
+                  value={initialCourses.per_page}
+                  onChange={(e) => handlePerPageChange(Number.parseInt(e.target.value, 10))}
+                  className={cn(selectClass, "h-10 w-[4.5rem] py-0")}
                 >
-                  <ChevronLeft className="h-4 w-4 mr-1" />
+                  {PER_PAGE_OPTIONS.map((n) => (
+                    <option key={n} value={n}>
+                      {n}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex flex-wrap items-center justify-center gap-2 sm:justify-end">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handlePageChange(initialCourses.current_page - 1)}
+                  disabled={initialCourses.current_page <= 1}
+                  className="border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-950/80"
+                >
+                  <ChevronLeft className="mr-1 h-4 w-4" />
                   Previous
                 </Button>
 
-                <div className="flex gap-1 flex-wrap justify-center max-w-full">
+                <div className="flex flex-wrap justify-center gap-1">
                   {(() => {
-                    const maxVisible = 10;
-                    const pages: number[] = [];
-                    
-                    if (initialCourses.last_page <= maxVisible) {
-                      // Show all pages if total is less than max
-                      for (let i = 1; i <= initialCourses.last_page; i++) {
-                        pages.push(i);
-                      }
+                    const maxVisible = 7
+                    const pages: number[] = []
+                    const last = initialCourses.last_page
+                    if (last <= maxVisible) {
+                      for (let i = 1; i <= last; i++) pages.push(i)
                     } else {
-                      // Show pages around current page
-                      const current = initialCourses.current_page;
-                      const half = Math.floor(maxVisible / 2);
-                      
-                      let start = Math.max(1, current - half);
-                      let end = Math.min(initialCourses.last_page, start + maxVisible - 1);
-                      
-                      // Adjust if we're near the end
+                      const cur = initialCourses.current_page
+                      const half = Math.floor(maxVisible / 2)
+                      let start = Math.max(1, cur - half)
+                      let end = Math.min(last, start + maxVisible - 1)
                       if (end - start < maxVisible - 1) {
-                        start = Math.max(1, end - maxVisible + 1);
+                        start = Math.max(1, end - maxVisible + 1)
                       }
-                      
-                      for (let i = start; i <= end; i++) {
-                        pages.push(i);
-                      }
+                      for (let i = start; i <= end; i++) pages.push(i)
                     }
-                    
                     return pages.map((page) => (
                       <Button
                         key={page}
+                        type="button"
                         variant={initialCourses.current_page === page ? "default" : "outline"}
+                        size="sm"
                         onClick={() => handlePageChange(page)}
-                        className={`h-10 min-w-[2.5rem] ${
+                        className={cn(
+                          "min-w-[2.25rem]",
                           initialCourses.current_page === page
-                            ? "bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white shadow-md"
-                            : "bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700"
-                        }`}
+                            ? "border-violet-600 bg-violet-600 text-white hover:bg-violet-600 dark:border-violet-500 dark:bg-violet-600"
+                            : "border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-950/80",
+                        )}
                       >
                         {page}
                       </Button>
-                    ));
+                    ))
                   })()}
                 </div>
 
                 <Button
+                  type="button"
                   variant="outline"
+                  size="sm"
                   onClick={() => handlePageChange(initialCourses.current_page + 1)}
-                  disabled={initialCourses.current_page === initialCourses.last_page}
-                  className="bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 h-10"
+                  disabled={initialCourses.current_page >= initialCourses.last_page}
+                  className="border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-950/80"
                 >
                   Next
-                  <ChevronRight className="h-4 w-4 ml-1" />
+                  <ChevronRight className="ml-1 h-4 w-4" />
                 </Button>
               </div>
             </div>

@@ -24,25 +24,27 @@ class FindSupportersController extends Controller
     {
         $currentUser = Auth::user();
 
-        // Show all supporters: any user who is not admin or organization (no role required)
+        // Only real supporter accounts: personal `user` role (RegisteredUserController) — not admin,
+        // organization, organization_pending, or care_alliance. Require verified email.
         $query = User::query()
-            ->whereDoesntHave('roles', function ($q) {
-                $q->whereIn('name', ['admin', 'organization', 'organization_pending']);
-            });
+            ->role('user')
+            ->whereNotNull('users.email_verified_at');
 
         if ($currentUser) {
-            $query->where('id', '!=', $currentUser->id);
+            $query->where('users.id', '!=', $currentUser->id);
         }
 
         // Search (q)
         $search = trim((string) $request->get('q', ''));
         if ($search !== '') {
             $query->where(function ($q) use ($search) {
-                $q->where('name', 'LIKE', '%'.$search.'%')
-                    ->orWhere('email', 'LIKE', '%'.$search.'%')
-                    ->orWhere('slug', 'LIKE', '%'.$search.'%')
-                    ->orWhere('city', 'LIKE', '%'.$search.'%')
-                    ->orWhere('state', 'LIKE', '%'.$search.'%');
+                $like = '%'.$search.'%';
+                $q->where('users.name', 'LIKE', $like)
+                    ->orWhere('users.email', 'LIKE', $like)
+                    ->orWhere('users.slug', 'LIKE', $like)
+                    ->orWhere('users.city', 'LIKE', $like)
+                    ->orWhere('users.state', 'LIKE', $like)
+                    ->orWhere('users.zipcode', 'LIKE', $like);
             });
         }
 
@@ -80,10 +82,6 @@ class FindSupportersController extends Controller
                 });
             }
         }
-
-        $query->with(['supporterInterestCategories' => function ($q) {
-            $q->where('is_active', true)->orderBy('sort_order')->orderBy('name');
-        }]);
 
         // Location filter (city or state contains text)
         $location = trim((string) $request->get('location', ''));
@@ -129,7 +127,11 @@ class FindSupportersController extends Controller
                     ->exists();
             }
 
-            $causeNames = $user->supporterInterestCategories->pluck('name')->toArray();
+            $interestsPayload = $user->supporterInterestCategories->map(fn ($c) => [
+                'id' => (int) $c->id,
+                'name' => (string) $c->name,
+                'slug' => (string) $c->slug,
+            ])->values()->all();
             $sharedOrgsCount = 0;
             if ($currentUser && ! empty($currentUserFavoriteOrgIds)) {
                 $sharedOrgsCount = UserFavoriteOrganization::where('user_id', $user->id)
@@ -156,7 +158,7 @@ class FindSupportersController extends Controller
                 'image' => $user->image ? Storage::url($user->image) : null,
                 'is_following' => $isFollowing,
                 'location' => $locationDisplay,
-                'interests' => $causeNames,
+                'interests' => $interestsPayload,
                 'shared_organizations_count' => $sharedOrgsCount,
                 'reactions_count' => $reactionsCount,
                 'comments_count' => $commentsCount,
@@ -164,12 +166,31 @@ class FindSupportersController extends Controller
             ];
         });
 
-        $interestOptions = PrimaryActionCategory::query()
-            ->where('is_active', true)
-            ->orderBy('sort_order')
-            ->orderBy('name')
-            ->get(['id', 'name'])
-            ->map(fn ($row) => ['id' => $row->id, 'name' => $row->name]);
+        // Popular causes for this page = what supporters chose most often (`primary_action_category_user`),
+        // not the current user's profile interests (always community-wide top picks).
+        $topIds = DB::table('primary_action_category_user')
+            ->selectRaw('primary_action_category_id, COUNT(*) as cnt')
+            ->groupBy('primary_action_category_id')
+            ->orderByDesc('cnt')
+            ->limit(12)
+            ->pluck('primary_action_category_id');
+
+        $popularCauses = collect();
+        if ($topIds->isNotEmpty()) {
+            $cats = PrimaryActionCategory::query()
+                ->whereIn('id', $topIds->all())
+                ->where('is_active', true)
+                ->get(['id', 'name', 'slug'])
+                ->keyBy('id');
+
+            $popularCauses = $topIds->map(fn ($id) => $cats->get($id))->filter()->values();
+        }
+
+        $popularCausesArray = $popularCauses->map(fn ($c) => [
+            'id' => (int) $c->id,
+            'name' => (string) $c->name,
+            'slug' => (string) $c->slug,
+        ])->values();
 
         return Inertia::render('frontend/find-supporters', [
             'seo' => \App\Services\SeoService::forPage('find_supporters'),
@@ -182,7 +203,7 @@ class FindSupportersController extends Controller
                 'radius' => $request->get('radius', ''),
                 'sort' => $sort,
             ],
-            'interestOptions' => $interestOptions,
+            'popularCauses' => $popularCausesArray,
         ]);
     }
 }
