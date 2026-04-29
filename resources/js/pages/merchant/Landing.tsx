@@ -1,977 +1,225 @@
 import React from 'react'
 import { Head, Link } from '@inertiajs/react'
 import { MerchantButton } from '@/components/merchant-ui'
-import { MerchantCard, MerchantCardContent } from '@/components/merchant-ui'
 import { MerchantHeader, MerchantFooter } from '@/components/merchant'
 import {
-  TrendingUp,
-  Shield,
-  CheckCircle2,
   ArrowRight,
-  Zap,
+  HeartHandshake,
+  LineChart,
+  Megaphone,
+  ShieldCheck,
+  SlidersHorizontal,
   Store,
-  BarChart3,
-  X,
-  Star,
-  Target,
+  Tag,
+  UserPlus,
+  Users,
 } from 'lucide-react'
-import { motion } from 'framer-motion'
+
+const howItWorksCards = [
+  {
+    title: 'Join The Hub',
+    text: 'Signup and get approved into the 10% volunteer discount merchant network.',
+    icon: Store,
+  },
+  {
+    title: 'Create Your Offers',
+    text: "Set your item, discount, limits and what's tracked in your dashboard.",
+    icon: Tag,
+  },
+  {
+    title: 'Volunteers Claim',
+    text: 'Verified volunteers redeem your offer and show proof in-store or online.',
+    icon: ShieldCheck,
+  },
+  {
+    title: 'You Gain Customers',
+    text: 'New customers come for value, and stronger community impact.',
+    icon: Users,
+  },
+]
+
+const merchantValueCards = [
+  {
+    title: 'Get New Customers',
+    text: 'Reach engaged volunteers who love supporting community-minded businesses.',
+    icon: UserPlus,
+  },
+  {
+    title: 'You Stay in Control',
+    text: "You decide the terms, usage limits, and what's included in the discount.",
+    icon: SlidersHorizontal,
+  },
+  {
+    title: 'Track What Matters',
+    text: 'See claims, repeat customer impact, and discount payouts in your dashboard.',
+    icon: LineChart,
+  },
+  {
+    title: 'Strengthen Community',
+    text: 'Show your support for volunteers and make a positive local impact.',
+    icon: HeartHandshake,
+  },
+]
 
 export default function MerchantLanding() {
   return (
     <>
-      <Head title="The 10% Discount Merchant Hub - Turn Community Service Into New Customers" />
-      <div className="min-h-screen bg-gradient-to-br from-[#020617] via-[#0A2540] to-[#1F3A5F] dark:from-[#020617] dark:via-[#0A2540] dark:to-[#1F3A5F]">
-        {/* Header */}
+      <Head title="Reward Service. Grow Together." />
+
+      <div className="min-h-screen bg-[#050B1D] text-white">
         <MerchantHeader variant="public" />
 
-        {/* Hero Section */}
-        <section className="relative overflow-hidden">
-          {/* Animated Background Elements */}
-          <div className="absolute inset-0 overflow-hidden pointer-events-none">
-            <div className="absolute top-0 left-1/4 w-48 h-48 sm:w-64 sm:h-64 md:w-80 md:h-80 lg:w-96 lg:h-96 bg-[#2563EB]/20 rounded-full blur-3xl animate-pulse"></div>
-            <div className="absolute bottom-0 right-1/4 w-48 h-48 sm:w-64 sm:h-64 md:w-80 md:h-80 lg:w-96 lg:h-96 bg-[#0A2540]/20 rounded-full blur-3xl animate-pulse delay-1000"></div>
-            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[300px] h-[300px] sm:w-[400px] sm:h-[400px] md:w-[500px] md:h-[500px] lg:w-[600px] lg:h-[600px] bg-[#1F3A5F]/10 rounded-full blur-3xl"></div>
-          </div>
-
-          <div className="container mx-auto px-4 sm:px-6 lg:px-8 pt-24 sm:pt-32 md:pt-40 lg:pt-48 pb-16 sm:pb-20 md:pb-24 lg:pb-32 relative z-10">
-            <motion.div
-              initial={{ opacity: 0, y: 30 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.8, ease: "easeOut" }}
-              className="max-w-5xl mx-auto text-center"
-            >
-              {/* Badge */}
-              <motion.div
-                initial={{ opacity: 0, scale: 0.8 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ duration: 0.6, delay: 0.2 }}
-                className="inline-flex items-center gap-2 px-3 py-1.5 sm:px-4 sm:py-2 rounded-full bg-gradient-to-r from-[#2563EB]/20 via-[#0A2540]/20 to-[#1F3A5F]/20 border border-[#2563EB]/30 mb-6 sm:mb-8"
-              >
-                <Target className="w-3 h-3 sm:w-4 sm:h-4 text-[#2563EB]" />
-                <span className="text-xs sm:text-sm font-medium text-gray-200">Simple • Transparent • Merchant-Friendly</span>
-              </motion.div>
-
-              <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl xl:text-8xl font-extrabold text-white mb-4 sm:mb-6 leading-tight px-2">
-                <span className="block bg-gradient-to-r from-white via-gray-100 to-white bg-clip-text text-transparent">
-                  The 10% Discount Merchant Hub
-                </span>
-              </h1>
-
-              <p className="text-xl sm:text-2xl md:text-3xl lg:text-4xl text-gray-200 mb-4 sm:mb-6 max-w-4xl mx-auto font-light leading-relaxed px-2">
-                Turn Community Service Into New Customers
-              </p>
-
-              <p className="text-base sm:text-lg md:text-xl text-gray-300 mb-8 sm:mb-10 max-w-3xl mx-auto leading-relaxed px-2">
-                <span className="text-white font-semibold">On Your Terms</span> — Partner with nonprofits and churches to reward verified volunteers with a simple 10% discount, while staying in full control of what's offered, how often an offer can be claimed, and how much it costs.
-              </p>
-
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.6, delay: 0.4 }}
-                className="flex flex-col sm:flex-row gap-3 sm:gap-4 justify-center items-center px-2"
-              >
-                <Link href="/register" className="w-full sm:w-auto">
-                  <MerchantButton size="lg" className="w-full sm:w-auto text-base sm:text-lg px-6 sm:px-8 md:px-10 py-5 sm:py-6 md:py-7 shadow-2xl shadow-[#2563EB]/50 hover:shadow-[#2563EB]/70 transition-all duration-300">
-                    Join the 10% Discount Merchant Hub
-                    <ArrowRight className="ml-2 w-4 h-4 sm:w-5 sm:h-5" />
-                </MerchantButton>
-              </Link>
-                <Link href="/hub" className="w-full sm:w-auto">
-                  <MerchantButton size="lg" variant="outline" className="w-full sm:w-auto text-base sm:text-lg px-6 sm:px-8 md:px-10 py-5 sm:py-6 md:py-7">
-                  Browse Offers
-                </MerchantButton>
-              </Link>
-              </motion.div>
-            </motion.div>
-            </div>
-          {/* Home section bottom border */}
-          <div className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-[#2563EB]/50 to-transparent" />
-        </section>
-
-        {/* Merchant Hub Image Section - after home section bottom border */}
-        <section className="relative py-12 sm:py-16 md:py-20 lg:py-24 overflow-hidden">
+        <main className="pt-24 pb-14">
           <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.6 }}
-              className="max-w-5xl mx-auto"
-            >
-              <motion.img
-                src="/merchant/merchant-hub-loop.png"
-                alt="Merchant Hub"
-                className="w-full h-auto rounded-2xl shadow-2xl object-contain"
-                animate={{ y: [0, -10, 0] }}
-                transition={{
-                  duration: 3.5,
-                  repeat: Infinity,
-                  ease: 'easeInOut',
-                }}
-              />
-            </motion.div>
-          </div>
-        </section>
+            <section className="rounded-3xl border border-indigo-400/20 bg-gradient-to-br from-[#0A122D] via-[#0D1735] to-[#111A3D] p-6 shadow-[0_0_80px_rgba(56,65,162,0.28)] sm:p-8 lg:p-10">
+              <div className="grid gap-7 lg:grid-cols-2 lg:gap-8">
+                <div className="space-y-5">
+                  <div className="inline-flex items-center gap-2 rounded-full border border-indigo-300/25 bg-indigo-300/10 px-3 py-1 text-xs font-semibold text-indigo-200">
+                    <span className="h-1.5 w-1.5 rounded-full bg-indigo-300" />
+                    10% Discount For Verified Volunteers
+                  </div>
 
-        {/* The One Rule - Centerpiece */}
-        <section className="relative py-12 sm:py-16 md:py-24 lg:py-32 xl:py-40 overflow-hidden">
-          {/* Animated Background Elements */}
-          <div className="absolute inset-0">
-            <div className="absolute top-1/4 left-1/4 w-48 h-48 sm:w-64 sm:h-64 md:w-80 md:h-80 lg:w-96 lg:h-96 bg-[#2563EB]/10 rounded-full blur-3xl animate-pulse"></div>
-            <div className="absolute bottom-1/4 right-1/4 w-48 h-48 sm:w-64 sm:h-64 md:w-80 md:h-80 lg:w-96 lg:h-96 bg-[#0A2540]/10 rounded-full blur-3xl animate-pulse delay-1000"></div>
-            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[400px] h-[400px] sm:w-[500px] sm:h-[500px] md:w-[600px] md:h-[600px] lg:w-[700px] lg:h-[700px] xl:w-[800px] xl:h-[800px] bg-[#1F3A5F]/5 rounded-full blur-3xl"></div>
-          </div>
+                  <h1 className="text-4xl font-extrabold leading-tight sm:text-5xl">
+                    Reward Service.
+                    <span className="mt-1 block bg-gradient-to-r from-violet-400 to-blue-400 bg-clip-text text-transparent">
+                      Grow Together.
+                    </span>
+                  </h1>
 
-          {/* Decorative Lines */}
-          <div className="absolute top-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-[#2563EB]/50 to-transparent"></div>
-          <div className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-[#2563EB]/50 to-transparent"></div>
+                  <p className="max-w-xl text-base leading-7 text-slate-300 sm:text-lg">
+                    BIU Merchant Hub helps nonprofits and churches reward verified volunteers with a 10% discount,
+                    turning your community service into new customers for your business.
+                  </p>
 
-          <div className="container mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
-            <motion.div
-              initial={{ opacity: 0, y: 30 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.8 }}
-              className="max-w-6xl mx-auto"
-            >
-              {/* Header Section */}
-          <div className="text-center mb-10 sm:mb-12 md:mb-16">
-                <motion.div
-                  initial={{ scale: 0, rotate: -180 }}
-                  whileInView={{ scale: 1, rotate: 0 }}
-                  viewport={{ once: true }}
-                  transition={{ duration: 0.6, delay: 0.2, type: "spring" }}
-                  className="inline-flex items-center justify-center w-16 h-16 sm:w-20 sm:h-20 md:w-24 md:h-24 bg-gradient-to-br from-[#2563EB] via-[#0A2540] to-[#1F3A5F] rounded-2xl sm:rounded-3xl mb-4 sm:mb-6 md:mb-8 shadow-2xl shadow-[#2563EB]/50 relative"
-                >
-                  <Target className="w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 text-white" />
-                  <div className="absolute inset-0 rounded-2xl sm:rounded-3xl bg-gradient-to-br from-[#2563EB] via-[#0A2540] to-[#1F3A5F] opacity-0 hover:opacity-100 transition-opacity duration-300 blur-xl"></div>
-                </motion.div>
-                <h2 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl xl:text-7xl font-black text-white mb-4 sm:mb-6 tracking-tight px-2">
-                  <span className="block bg-gradient-to-r from-white via-gray-100 to-white bg-clip-text text-transparent">
-                    The One Rule
-                  </span>
-            </h2>
-                <p className="text-lg sm:text-xl md:text-2xl lg:text-3xl text-gray-300 font-medium px-2">How the Discount Works</p>
+                  <div className="flex flex-col gap-3 sm:flex-row">
+                    <Link href="/register">
+                      <MerchantButton className="w-full sm:w-auto">
+                        Join the 10% Discount Merchant Hub
+                        <ArrowRight className="ml-2 h-4 w-4" />
+                      </MerchantButton>
+                    </Link>
+                    <Link href="/hub">
+                      <MerchantButton variant="outline" className="w-full border-slate-600/80 bg-transparent sm:w-auto">
+                        Browse Offers
+                      </MerchantButton>
+                    </Link>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-3 pt-2 text-xs text-slate-300 sm:text-sm">
+                    <div className="rounded-xl border border-slate-700/70 bg-slate-900/40 px-3 py-2 text-center">Simple Setup</div>
+                    <div className="rounded-xl border border-slate-700/70 bg-slate-900/40 px-3 py-2 text-center">No Hidden Fees</div>
+                    <div className="rounded-xl border border-slate-700/70 bg-slate-900/40 px-3 py-2 text-center">Full Control</div>
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-indigo-300/20 bg-[#081229] p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
+                  <div className="mb-4 flex items-center justify-between">
+                    <p className="text-sm font-semibold text-slate-100">Welcome back, Merchant</p>
+                    <span className="rounded-full bg-emerald-500/20 px-2.5 py-1 text-xs text-emerald-300">Live</span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="rounded-xl border border-slate-700/60 bg-slate-900/45 p-3">
+                      <p className="text-xs text-slate-400">Total Offers</p>
+                      <p className="mt-1 text-xl font-bold">24</p>
+                    </div>
+                    <div className="rounded-xl border border-slate-700/60 bg-slate-900/45 p-3">
+                      <p className="text-xs text-slate-400">Total Claims</p>
+                      <p className="mt-1 text-xl font-bold">1,248</p>
+                    </div>
+                    <div className="rounded-xl border border-slate-700/60 bg-slate-900/45 p-3">
+                      <p className="text-xs text-slate-400">New Customers</p>
+                      <p className="mt-1 text-xl font-bold">312</p>
+                    </div>
+                  </div>
+                  <div className="mt-4 rounded-xl border border-slate-700/60 bg-slate-900/45 p-4">
+                    <p className="text-xs text-slate-400">Claims Trend</p>
+                    <div className="mt-3 h-24 rounded-lg bg-gradient-to-b from-indigo-400/20 to-transparent p-2">
+                      <div className="h-full w-full rounded-md border border-dashed border-indigo-300/35" />
+                    </div>
+                    <p className="mt-3 text-xs text-slate-300">You paid out $2,481 discounts this month</p>
+                  </div>
+                </div>
               </div>
+            </section>
 
-              {/* Rules List */}
-              <div className="space-y-4 sm:space-y-5 md:space-y-6 mb-8 sm:mb-10 md:mb-12">
-                {[
-                  { text: 'Volunteers earn points by serving nonprofits and churches', highlight: false, icon: CheckCircle2 },
-                  { text: '100 points = 10% off one eligible purchase', highlight: true, icon: CheckCircle2 },
-                  { text: 'Redemptions follow the offer limits set by each merchant', highlight: false, icon: CheckCircle2 },
-                ].map((item, index) => {
-                  const Icon = item.icon
+            <section className="pt-14">
+              <h2 className="text-center text-3xl font-bold sm:text-4xl">How It Works</h2>
+              <p className="mx-auto mt-2 max-w-xl text-center text-slate-300">Simple steps to start rewarding volunteers and growing your business.</p>
+
+              <div className="mt-7 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                {howItWorksCards.map((card) => {
+                  const Icon = card.icon
                   return (
-                    <motion.div
-                      key={index}
-                      initial={{ opacity: 0, x: -40 }}
-                      whileInView={{ opacity: 1, x: 0 }}
-                      viewport={{ once: true }}
-                      transition={{ duration: 0.6, delay: 0.3 + index * 0.1, type: "spring" }}
-                      className={`relative group ${
-                        item.highlight
-                          ? 'bg-gradient-to-r from-[#2563EB]/20 via-[#0A2540]/20 to-[#1F3A5F]/20 border-l-4 border-[#2563EB]'
-                          : 'bg-gray-900/40 border-l-4 border-gray-700'
-                      } rounded-r-xl sm:rounded-r-2xl p-4 sm:p-5 md:p-6 backdrop-blur-sm hover:scale-[1.02] transition-all duration-300`}
-                    >
-                      <div className="flex items-start gap-3 sm:gap-4 md:gap-6">
-                        <div className={`shrink-0 mt-1 ${
-                          item.highlight
-                            ? 'w-8 h-8 sm:w-9 sm:h-9 md:w-10 md:h-10 rounded-lg sm:rounded-xl bg-gradient-to-br from-[#2563EB] to-[#0A2540] shadow-lg shadow-[#2563EB]/50'
-                            : 'w-8 h-8 sm:w-9 sm:h-9 md:w-10 md:h-10 rounded-lg sm:rounded-xl bg-gray-800 border border-gray-700'
-                        } flex items-center justify-center group-hover:scale-110 transition-transform duration-300`}>
-                          <Icon className={`w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 ${item.highlight ? 'text-white' : 'text-gray-400'}`} />
-                        </div>
-                        <p className={`text-base sm:text-lg md:text-xl lg:text-2xl leading-relaxed pt-1 ${
-                          item.highlight
-                            ? 'text-white font-bold'
-                            : 'text-gray-300'
-                        }`}>
-                          {item.text}
-                        </p>
+                    <div key={card.title} className="rounded-2xl border border-slate-700/70 bg-[#0A132B] p-5">
+                      <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-lg border border-violet-400/40 bg-violet-500/10">
+                        <Icon className="h-5 w-5 text-violet-300" />
                       </div>
-                      {item.highlight && (
-                        <div className="absolute inset-0 rounded-r-xl sm:rounded-r-2xl bg-gradient-to-r from-[#2563EB]/10 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none"></div>
-                      )}
-                    </motion.div>
+                      <h3 className="text-lg font-semibold">{card.title}</h3>
+                      <p className="mt-2 text-sm leading-6 text-slate-300">{card.text}</p>
+                    </div>
                   )
                 })}
-
-                <motion.div
-                  initial={{ opacity: 0, x: -40 }}
-                  whileInView={{ opacity: 1, x: 0 }}
-                  viewport={{ once: true }}
-                  transition={{ duration: 0.6, delay: 0.7, type: "spring" }}
-                  className="relative bg-gradient-to-r from-[#0A2540]/35 via-[#0A2540]/25 to-[#0A2540]/35 border-l-4 border-[#2563EB]/50 rounded-r-xl sm:rounded-r-2xl p-4 sm:p-5 md:p-6 backdrop-blur-sm"
-                >
-                  <div className="flex items-start gap-3 sm:gap-4 md:gap-6">
-                    <div className="shrink-0 mt-1 w-8 h-8 sm:w-9 sm:h-9 md:w-10 md:h-10 rounded-lg sm:rounded-xl bg-[#2563EB]/15 border-2 border-[#2563EB]/50/50 flex items-center justify-center">
-                      <X className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 text-[#2563EB]" />
-                    </div>
-                    <p className="text-base sm:text-lg md:text-xl lg:text-2xl text-gray-200 font-semibold leading-relaxed pt-1">
-                      No stacking. No tiers. No exceptions.
-                    </p>
-                  </div>
-                </motion.div>
               </div>
+            </section>
 
-              {/* Bottom Statement */}
-              <motion.div
-                initial={{ opacity: 0, y: 30 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ duration: 0.8, delay: 0.9 }}
-                className="relative"
-              >
-                <div className="relative bg-gradient-to-r from-[#2563EB]/10 via-[#0A2540]/10 to-[#1F3A5F]/10 rounded-2xl sm:rounded-3xl p-6 sm:p-8 md:p-12 lg:p-16 border-2 border-[#2563EB]/30 backdrop-blur-xl">
-                  <div className="absolute inset-0 rounded-2xl sm:rounded-3xl bg-gradient-to-br from-[#2563EB]/5 via-transparent to-[#1F3A5F]/5"></div>
-                  <div className="relative text-center">
-                    <div className="inline-block mb-4 sm:mb-6">
-                      <div className="h-1 w-16 sm:w-20 md:w-24 bg-gradient-to-r from-[#2563EB] via-[#0A2540] to-[#1F3A5F] rounded-full mx-auto"></div>
-                    </div>
-                    <p className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl xl:text-6xl font-black italic leading-tight tracking-tight px-2">
-                      <span className="bg-gradient-to-r from-white via-blue-100 to-white bg-clip-text text-transparent drop-shadow-[0_2px_12px_rgba(37,99,235,0.45)]">
-                        That's the entire program.
-                      </span>
-                    </p>
-                    <div className="inline-block mt-4 sm:mt-6">
-                      <div className="h-1 w-16 sm:w-20 md:w-24 bg-gradient-to-r from-[#2563EB] via-[#0A2540] to-[#1F3A5F] rounded-full mx-auto"></div>
-                    </div>
-                  </div>
-                </div>
-              </motion.div>
-            </motion.div>
-          </div>
-        </section>
-
-        {/* You Control the Offer */}
-        <section className="relative py-12 sm:py-16 md:py-20 lg:py-24 xl:py-32">
-          <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.6 }}
-              className="text-center mb-10 sm:mb-12 md:mb-16"
-            >
-              <h2 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-extrabold text-white mb-4 sm:mb-6 px-2">
-                You Control the Offer
-                <span className="block text-2xl sm:text-3xl md:text-4xl text-[#2563EB] mt-2">Completely</span>
-              </h2>
-              <p className="text-lg sm:text-xl md:text-2xl text-gray-300 max-w-3xl mx-auto leading-relaxed px-2">
-                As a Merchant Partner, <span className="text-white font-semibold">you decide everything that matters</span>
+            <section className="pt-14">
+              <h2 className="text-center text-3xl font-bold sm:text-4xl">Why Merchants Love It</h2>
+              <p className="mx-auto mt-2 max-w-2xl text-center text-slate-300">
+                Drive growth while supporting the people who support your community.
               </p>
-            </motion.div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 sm:gap-8 max-w-6xl mx-auto mb-8 sm:mb-10 md:mb-12">
-              {[
-                {
-                  icon: <Store className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8" />,
-                  title: 'Eligible Items & Services',
-                  description: 'Choose any number of items or services to qualify for the 10% discount. Merchandise, services, or both. Update or remove items at any time.',
-                  gradient: 'from-[#2563EB] via-[#0A2540] to-[#1F3A5F]',
-                },
-                {
-                  icon: <BarChart3 className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8" />,
-                  title: 'Quantity Limits (Optional)',
-                  description: 'Limit how many times an item can be claimed. Example: "Only the first 100 claims available." When the limit is reached, the item is automatically removed.',
-                  gradient: 'from-[#0A2540] via-[#1F3A5F] to-[#2563EB]',
-                },
-                {
-                  icon: <Shield className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8" />,
-                  title: 'Discount Amount Cap (Optional)',
-                  description: 'Cap how much the discount can be worth. Example: "10% off, up to a maximum of $20."',
-                  gradient: 'from-[#1F3A5F] via-[#2563EB] to-[#0A2540]',
-                }
-              ].map((feature, index) => (
-                <motion.div
-                  key={index}
-                  initial={{ opacity: 0, y: 30 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true }}
-                  transition={{ duration: 0.6, delay: index * 0.15 }}
-                >
-                  <MerchantCard className="h-full group relative overflow-hidden border border-gray-700/50 bg-gradient-to-br from-gray-900/80 to-gray-800/80 hover:border-[#2563EB]/50 transition-all duration-500 hover:shadow-2xl hover:shadow-[#2563EB]/20">
-                    <div className={`absolute inset-0 bg-gradient-to-br ${feature.gradient} opacity-0 group-hover:opacity-10 transition-opacity duration-500`}></div>
-                    <MerchantCardContent className="relative p-6 sm:p-7 md:p-8">
-                      <div className={`w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16 bg-gradient-to-br ${feature.gradient} rounded-lg sm:rounded-xl flex items-center justify-center text-white mb-4 sm:mb-5 md:mb-6 shadow-lg group-hover:scale-110 transition-transform duration-300`}>
-                        {feature.icon}
+              <div className="mt-7 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+                {merchantValueCards.map((card) => {
+                  const Icon = card.icon
+                  return (
+                    <div key={card.title} className="rounded-2xl border border-slate-700/70 bg-[#0A132B] p-5">
+                      <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-lg border border-blue-400/40 bg-blue-500/10">
+                        <Icon className="h-5 w-5 text-blue-300" />
                       </div>
-                      <h3 className="text-xl sm:text-2xl font-bold text-white mb-3 sm:mb-4 group-hover:text-[#2563EB] transition-colors">
-                        {feature.title}
-                      </h3>
-                      <p className="text-gray-300 leading-relaxed text-sm sm:text-base">
-                        {feature.description}
-                      </p>
-                    </MerchantCardContent>
-                  </MerchantCard>
-                </motion.div>
-              ))}
-            </div>
-
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.6, delay: 0.5 }}
-              className="text-center"
-            >
-              <MerchantCard className="max-w-3xl mx-auto border-2 border-[#2563EB]/40 bg-gradient-to-r from-[#2563EB]/10 via-[#0A2540]/10 to-[#1F3A5F]/10 backdrop-blur-sm">
-                <MerchantCardContent className="p-6 sm:p-7 md:p-8">
-                  <p className="text-xl sm:text-2xl md:text-3xl text-white font-semibold italic px-2">
-                    You always control your exposure — by item, by quantity, and by cost.
-                  </p>
-                </MerchantCardContent>
-              </MerchantCard>
-            </motion.div>
-          </div>
-        </section>
-
-        {/* Why Merchants Like This Model */}
-        <section className="relative py-12 sm:py-16 md:py-20 lg:py-24 xl:py-32 bg-gradient-to-b from-transparent via-gray-900/30 to-transparent">
-          <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.6 }}
-              className="text-center mb-10 sm:mb-12 md:mb-16"
-            >
-              <h2 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-extrabold text-white mb-4 sm:mb-6 px-2">
-                Why Merchants Like This Model
-              </h2>
-            </motion.div>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 sm:gap-8 max-w-6xl mx-auto mb-8 sm:mb-10 md:mb-12">
-              {[
-              {
-                icon: <BarChart3 className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8" />,
-                title: 'Predictable',
-                description: 'One discount. One visit. Once per month.',
-                iconBg: 'from-blue-500 to-cyan-500',
-                cardHover: 'from-blue-500/10 to-cyan-500/10',
-              },
-              {
-                icon: <Shield className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8" />,
-                title: 'Protected',
-                description: 'No coupon abuse. No repeat redemptions. No margin surprises.',
-                iconBg: 'from-green-500 to-emerald-500',
-                cardHover: 'from-green-500/10 to-emerald-500/10',
-              },
-              {
-                icon: <Zap className="w-6 h-6 sm:w-7 sm:h-7 md:w-8 md:h-8" />,
-                title: 'Simple',
-                description: 'No training complexity. No negotiations. No ad spend.',
-                iconBg: 'from-yellow-500 to-orange-500',
-                cardHover: 'from-yellow-500/10 to-orange-500/10',
-              }
-            ].map((feature, index) => (
-              <motion.div
-                key={index}
-                initial={{ opacity: 0, y: 30 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ duration: 0.6, delay: index * 0.15 }}
-              >
-                <MerchantCard className="h-full group relative overflow-hidden border border-gray-700/50 bg-gradient-to-br from-gray-900/90 to-gray-800/90 hover:border-[#2563EB]/50 transition-all duration-500 hover:shadow-2xl hover:shadow-[#2563EB]/20">
-                  <div className={`absolute inset-0 bg-gradient-to-br ${feature.cardHover} opacity-0 group-hover:opacity-100 transition-opacity duration-500`}></div>
-                  <MerchantCardContent className="relative p-6 sm:p-7 md:p-8 text-center">
-                    <div className={`w-16 h-16 sm:w-18 sm:h-18 md:w-20 md:h-20 bg-gradient-to-br ${feature.iconBg} rounded-xl sm:rounded-2xl flex items-center justify-center text-white mb-4 sm:mb-5 md:mb-6 mx-auto shadow-lg group-hover:scale-110 group-hover:rotate-3 transition-all duration-300`}>
-                      {feature.icon}
+                      <h3 className="text-lg font-semibold">{card.title}</h3>
+                      <p className="mt-2 text-sm leading-6 text-slate-300">{card.text}</p>
                     </div>
-                    <h3 className="text-xl sm:text-2xl md:text-3xl font-bold text-white mb-3 sm:mb-4 group-hover:text-[#2563EB] transition-colors">
-                      {feature.title}
+                  )
+                })}
+              </div>
+            </section>
+
+            <section className="pt-14">
+              <div className="rounded-3xl border border-indigo-400/30 bg-gradient-to-r from-[#0F1D46] via-[#182B65] to-[#0E1F4B] px-6 py-8 sm:px-8 sm:py-10">
+                <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-violet-300">Ready to make an impact?</p>
+                    <h3 className="mt-2 text-3xl font-bold leading-tight sm:text-4xl">
+                      Let's grow your business
+                      <span className="block">and our community.</span>
                     </h3>
-                    <p className="text-gray-300 text-base sm:text-lg leading-relaxed">
-                      {feature.description}
-                    </p>
-                  </MerchantCardContent>
-                </MerchantCard>
-              </motion.div>
-            ))}
-            </div>
-
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.6, delay: 0.5 }}
-              className="text-center"
-            >
-              <MerchantCard className="max-w-3xl mx-auto border-2 border-[#2563EB]/40 bg-gradient-to-r from-[#2563EB]/10 via-[#0A2540]/10 to-[#1F3A5F]/10 backdrop-blur-sm">
-                <MerchantCardContent className="p-6 sm:p-7 md:p-8">
-                  <p className="text-xl sm:text-2xl md:text-3xl text-white font-semibold italic px-2">
-                    This feels like customer acquisition — not a giveaway.
-                  </p>
-                </MerchantCardContent>
-              </MerchantCard>
-            </motion.div>
-          </div>
-        </section>
-
-        {/* Why This Works Better Than Coupons */}
-        <section className="relative py-12 sm:py-16 md:py-20 lg:py-24 xl:py-32">
-          <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.6 }}
-              className="max-w-5xl mx-auto"
-            >
-              <div className="text-center mb-10 sm:mb-12 md:mb-16">
-                <h2 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-extrabold text-white mb-4 sm:mb-6 px-2">
-                  Why This Works Better Than Coupons
-                </h2>
-                <p className="text-lg sm:text-xl md:text-2xl text-gray-300 font-medium px-2">
-                  These aren't random deal-seekers.
+                    <p className="mt-3 text-slate-200">
+                      Join the BIU Merchant Hub and start rewarding volunteers today.
                     </p>
                   </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5 md:gap-6 mb-8 sm:mb-10">
-                {[
-                  'Volunteers earned their reward through real service',
-                  'Redemptions are verified',
-                  'Customers arrive with positive intent',
-                  'Community trust is built in',
-                ].map((point, index) => (
-                  <motion.div
-                    key={index}
-                    initial={{ opacity: 0, x: index % 2 === 0 ? -30 : 30 }}
-                    whileInView={{ opacity: 1, x: 0 }}
-                    viewport={{ once: true }}
-                    transition={{ duration: 0.6, delay: index * 0.1 }}
-                  >
-                    <MerchantCard className="h-full group border border-gray-700/50 bg-gradient-to-br from-gray-900/80 to-gray-800/80 hover:border-[#2563EB]/50 transition-all duration-300">
-                      <MerchantCardContent className="p-5 sm:p-6">
-                        <div className="flex items-start gap-3 sm:gap-4">
-                          <div className="shrink-0 w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-gradient-to-br from-[#2563EB] to-[#0A2540] flex items-center justify-center group-hover:scale-110 transition-transform">
-                            <CheckCircle2 className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
-                          </div>
-                          <p className="text-gray-200 text-base sm:text-lg leading-relaxed pt-1">{point}</p>
-                        </div>
-                      </MerchantCardContent>
-                    </MerchantCard>
-                  </motion.div>
-                ))}
-              </div>
-
-              <MerchantCard className="border-2 border-[#2563EB]/40 bg-gradient-to-br from-[#2563EB]/10 via-[#0A2540]/10 to-[#1F3A5F]/10 backdrop-blur-sm">
-                <MerchantCardContent className="p-6 sm:p-8 md:p-10">
-                  <h3 className="text-2xl sm:text-3xl font-bold text-white mb-6 sm:mb-8 text-center">This leads to:</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-5 md:gap-6">
-                    {[
-                      'Higher-quality customers',
-                      'Better repeat behavior',
-                      'Stronger brand loyalty',
-                    ].map((benefit, index) => (
-                      <motion.div
-                        key={index}
-                        initial={{ opacity: 0, y: 20 }}
-                        whileInView={{ opacity: 1, y: 0 }}
-                        viewport={{ once: true }}
-                        transition={{ duration: 0.5, delay: 0.4 + index * 0.1 }}
-                        className="flex flex-col items-center text-center p-3 sm:p-4 rounded-lg bg-gray-900/50 hover:bg-gray-900/70 transition-colors"
-                      >
-                        <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-gradient-to-br from-[#2563EB] to-[#0A2540] flex items-center justify-center mb-2 sm:mb-3">
-                          <TrendingUp className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
-                        </div>
-                        <p className="text-gray-200 font-semibold text-base sm:text-lg">{benefit}</p>
-                      </motion.div>
-                    ))}
-                  </div>
-                </MerchantCardContent>
-              </MerchantCard>
-            </motion.div>
-          </div>
-        </section>
-
-        {/* How Redemption Works */}
-        <section className="relative py-12 sm:py-16 md:py-20 lg:py-24 xl:py-32 bg-gradient-to-b from-transparent via-gray-900/30 to-transparent">
-          <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.6 }}
-              className="max-w-5xl mx-auto"
-            >
-              <div className="text-center mb-10 sm:mb-12 md:mb-16">
-                <h2 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-extrabold text-white mb-4 sm:mb-6 px-2">
-                  How Redemption Works
-                </h2>
-              </div>
-
-              <div className="space-y-3 sm:space-y-4 mb-8 sm:mb-10">
-                {[
-                  'Volunteer selects your business in the Merchant Hub',
-                  'System checks monthly eligibility',
-                  'QR code is generated',
-                  'You apply 10% off to an eligible item',
-                  'Redemption is logged automatically',
-                ].map((step, index) => (
-                  <motion.div
-                    key={index}
-                    initial={{ opacity: 0, x: -30 }}
-                    whileInView={{ opacity: 1, x: 0 }}
-                    viewport={{ once: true }}
-                    transition={{ duration: 0.6, delay: index * 0.1 }}
-                  >
-                    <MerchantCard className="group border border-gray-700/50 bg-gradient-to-br from-gray-900/80 to-gray-800/80 hover:border-[#2563EB]/50 transition-all duration-300">
-                      <MerchantCardContent className="p-4 sm:p-5 md:p-6">
-                        <div className="flex items-center gap-4 sm:gap-5 md:gap-6">
-                          <div className="shrink-0 w-12 h-12 sm:w-13 sm:h-13 md:w-14 md:h-14 bg-gradient-to-br from-[#2563EB] via-[#0A2540] to-[#1F3A5F] rounded-lg sm:rounded-xl flex items-center justify-center text-white font-bold text-lg sm:text-xl shadow-lg group-hover:scale-110 group-hover:rotate-3 transition-all duration-300">
-                            {index + 1}
-                          </div>
-                          <p className="text-base sm:text-lg md:text-xl text-gray-200 leading-relaxed">{step}</p>
-                      </div>
-                      </MerchantCardContent>
-                    </MerchantCard>
-                  </motion.div>
-                    ))}
-                  </div>
-
-              <MerchantCard className="border-2 border-[#2563EB]/35 bg-gradient-to-br from-[#0A2540]/35 to-[#1F3A5F]/30 backdrop-blur-sm">
-                <MerchantCardContent className="p-6 sm:p-7 md:p-8">
-                  <div className="flex flex-col sm:flex-row items-center gap-3 sm:gap-4 text-center justify-center">
-                    <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-[#2563EB]/15 border border-[#2563EB]/50/50 flex items-center justify-center">
-                      <X className="w-5 h-5 sm:w-6 sm:h-6 text-[#2563EB]" />
-                    </div>
-                    <p className="text-lg sm:text-xl md:text-2xl text-gray-200 font-semibold">No cash. No coupons. No confusion.</p>
-                  </div>
-                </MerchantCardContent>
-              </MerchantCard>
-            </motion.div>
-          </div>
-        </section>
-
-        {/* What You Don't Have to Do */}
-        <section className="relative py-12 sm:py-16 md:py-20 lg:py-24 xl:py-32">
-          <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.6 }}
-              className="max-w-5xl mx-auto"
-            >
-              <div className="text-center mb-10 sm:mb-12 md:mb-16">
-                <h2 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-extrabold text-white mb-4 sm:mb-6 px-2">
-                  What You Don't Have to Do
-                </h2>
-              </div>
-
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3 sm:gap-4 mb-8 sm:mb-10 md:mb-12">
-                {[
-                  'Track points',
-                  'Manage volunteers',
-                  'Verify nonprofits',
-                  'Run promotions',
-                  'Spend on ads',
-                ].map((item, index) => (
-                  <motion.div
-                    key={index}
-                    initial={{ opacity: 0, scale: 0.8, rotate: -10 }}
-                    whileInView={{ opacity: 1, scale: 1, rotate: 0 }}
-                    viewport={{ once: true }}
-                    transition={{ duration: 0.5, delay: index * 0.1 }}
-                    className="h-full"
-                  >
-                    <MerchantCard className="text-center group border border-gray-700/50 bg-gradient-to-br from-gray-900/80 to-gray-800/80 hover:border-[#2563EB]/50/50 transition-all duration-300 h-full flex flex-col">
-                      <MerchantCardContent className="p-4 sm:p-5 md:p-6 flex flex-col flex-1 items-center justify-center">
-                        <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-[#2563EB]/15 border border-[#2563EB]/40 flex items-center justify-center mb-3 sm:mb-4 group-hover:scale-110 group-hover:bg-[#1F3A5F]/40 transition-all">
-                          <X className="w-5 h-5 sm:w-6 sm:h-6 text-[#2563EB]" />
-                        </div>
-                        <p className="text-xs sm:text-sm md:text-base text-gray-200 font-medium leading-tight">{item}</p>
-                      </MerchantCardContent>
-                    </MerchantCard>
-                  </motion.div>
-                ))}
-              </div>
-
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ duration: 0.6, delay: 0.6 }}
-                className="text-center"
-              >
-                <MerchantCard className="max-w-3xl mx-auto border-2 border-[#2563EB]/50 bg-gradient-to-br from-[#2563EB]/10 via-[#0A2540]/10 to-[#1F3A5F]/10 backdrop-blur-sm">
-                  <MerchantCardContent className="p-6 sm:p-8 md:p-10">
-                    <p className="text-xl sm:text-2xl md:text-3xl text-white font-bold mb-3 sm:mb-4 px-2">
-                      Believe In Unity handles the platform.
-                    </p>
-                    <p className="text-lg sm:text-xl md:text-2xl text-gray-200 font-medium px-2">
-                      You just honor the discount.
-                    </p>
-                  </MerchantCardContent>
-                </MerchantCard>
-              </motion.div>
-            </motion.div>
-          </div>
-        </section>
-
-        {/* Pricing Section */}
-        <section className="relative py-12 sm:py-16 md:py-20 lg:py-24 xl:py-32 bg-gradient-to-b from-transparent via-gray-900/30 to-transparent">
-          <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.6 }}
-              className="text-center mb-10 sm:mb-12 md:mb-16"
-            >
-              <h2 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-extrabold text-white mb-4 sm:mb-6 px-2">
-                Simple, Transparent Pricing
-              </h2>
-              <p className="text-lg sm:text-xl md:text-2xl text-gray-300 max-w-3xl mx-auto mb-3 sm:mb-4 font-medium px-2">
-                Platform Subscription (Covers Operating Costs)
-              </p>
-              <p className="text-base sm:text-lg text-gray-400 max-w-3xl mx-auto leading-relaxed px-2">
-                We charge a small subscription fee to maintain the platform, verification systems, and merchant tools.
-              </p>
-            </motion.div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 sm:gap-8 max-w-5xl mx-auto mb-8 sm:mb-10 md:mb-12">
-              {[
-                {
-                  period: 'Monthly',
-                  price: '$9',
-                  description: 'per month',
-                  popular: false,
-                },
-                {
-                  period: 'Annual',
-                  price: '$100',
-                  description: 'per year (save $8 annually)',
-                  popular: true,
-                }
-              ].map((plan, index) => (
-                <motion.div
-                  key={index}
-                  initial={{ opacity: 0, y: 30 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true }}
-                  transition={{ duration: 0.6, delay: index * 0.15 }}
-                >
-                  <MerchantCard className={`h-full flex flex-col relative overflow-hidden transition-all duration-500 hover:scale-105 hover:shadow-2xl ${
-                    plan.popular
-                      ? 'border-2 border-[#2563EB]/60 bg-gradient-to-br from-gray-900/95 to-gray-800/95 shadow-2xl shadow-[#2563EB]/30'
-                      : 'border border-gray-700/50 bg-gradient-to-br from-gray-900/80 to-gray-800/80'
-                  }`}>
-                    {plan.popular && (
-                      <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-[#2563EB] via-[#0A2540] to-[#1F3A5F]"></div>
-                    )}
-                    {plan.popular && (
-                      <div className="absolute top-4 right-4 sm:top-6 sm:right-6 z-10">
-                        <div className="flex items-center gap-1 sm:gap-1.5 bg-gradient-to-r from-[#2563EB] via-[#0A2540] to-[#1F3A5F] px-3 sm:px-4 py-1 sm:py-1.5 rounded-full shadow-lg">
-                    <Star className="w-3 h-3 sm:w-4 sm:h-4 text-white fill-white" />
-                          <span className="text-xs font-bold text-white">Best Value</span>
+                  <div className="flex min-w-[260px] flex-col gap-3">
+                    <Link href="/register">
+                      <MerchantButton className="w-full">
+                        Join the 10% Discount Merchant Hub
+                        <ArrowRight className="ml-2 h-4 w-4" />
+                      </MerchantButton>
+                    </Link>
+                    <Link href="/hub">
+                      <MerchantButton variant="outline" className="w-full border-slate-300/30 text-white">
+                        Browse Offers
+                      </MerchantButton>
+                    </Link>
                   </div>
                 </div>
-                    )}
-                    <MerchantCardContent className="p-6 sm:p-8 md:p-10 flex flex-col flex-1">
-                      <div className="text-center mb-6 sm:mb-8">
-                        <h3 className="text-2xl sm:text-3xl font-bold text-white mb-3 sm:mb-4">
-                          {plan.period}
-                    </h3>
-                        <div className="flex items-baseline justify-center gap-2 mb-2 sm:mb-3">
-                          <span className={plan.popular
-                            ? 'text-5xl sm:text-6xl md:text-7xl font-extrabold bg-gradient-to-r from-[#2563EB] via-[#0A2540] to-[#1F3A5F] bg-clip-text text-transparent'
-                            : 'text-5xl sm:text-6xl md:text-7xl font-extrabold text-white'
-                          }>
-                            {plan.price}
-                      </span>
-                    </div>
-                        <p className="text-gray-300 text-sm sm:text-base font-medium">
-                          {plan.description}
-                        </p>
-                      </div>
-                      <div className="mt-auto">
-                        <Link href="/register" className="block">
-                          <MerchantButton variant={plan.popular ? "default" : "outline"} className="w-full py-4 sm:py-5 md:py-6 text-sm sm:text-base font-semibold">
-                            Get Started
-                            <ArrowRight className="ml-2 w-4 h-4 sm:w-5 sm:h-5" />
-                          </MerchantButton>
-                        </Link>
-                      </div>
-                    </MerchantCardContent>
-                  </MerchantCard>
-                </motion.div>
-              ))}
-                  </div>
-
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.6, delay: 0.3 }}
-              className="max-w-4xl mx-auto"
-            >
-              <MerchantCard className="border-2 border-[#2563EB]/40 bg-gradient-to-br from-gray-900/90 to-gray-800/90 backdrop-blur-sm">
-                <MerchantCardContent className="p-6 sm:p-8 md:p-10">
-                  <h3 className="text-xl sm:text-2xl md:text-3xl font-bold text-white mb-6 sm:mb-8 text-center">What's Included</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4 mb-6 sm:mb-8">
-                    {[
-                      'Merchant Hub listing',
-                      'Unlimited eligible items',
-                      'Monthly discount enforcement',
-                      'QR-code redemption',
-                      'Redemption tracking & controls',
-                      'Nonprofit & volunteer verification',
-                      'Ongoing platform support',
-                    ].map((feature, index) => (
-                      <motion.div
-                        key={index}
-                        initial={{ opacity: 0, x: -20 }}
-                        whileInView={{ opacity: 1, x: 0 }}
-                        viewport={{ once: true }}
-                        transition={{ duration: 0.4, delay: 0.4 + index * 0.05 }}
-                        className="flex items-start gap-3 p-2 sm:p-3 rounded-lg hover:bg-gray-800/50 transition-colors"
-                      >
-                        <div className="shrink-0 w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-gradient-to-br from-[#2563EB] to-[#0A2540] flex items-center justify-center mt-0.5">
-                          <CheckCircle2 className="w-3 h-3 sm:w-4 sm:h-4 text-white" />
-                        </div>
-                        <span className="text-gray-200 text-sm sm:text-base leading-relaxed">{feature}</span>
-                      </motion.div>
-                    ))}
-                  </div>
-                  <div className="pt-6 sm:pt-8 border-t-2 border-[#2563EB]/30">
-                    <p className="text-lg sm:text-xl md:text-2xl text-white font-bold text-center mb-2 sm:mb-3 px-2">
-                      No commissions. No per-redemption fees. No hidden charges.
-                    </p>
-                    <p className="text-gray-300 text-center text-base sm:text-lg italic px-2">
-                      This fee exists only to support platform operations.
-                    </p>
-                  </div>
-                </MerchantCardContent>
-              </MerchantCard>
-            </motion.div>
-          </div>
-        </section>
-
-        {/* Who This Is For */}
-        <section className="relative py-12 sm:py-16 md:py-20 lg:py-24 xl:py-32">
-          <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.6 }}
-              className="max-w-6xl mx-auto"
-            >
-              <div className="text-center mb-10 sm:mb-12 md:mb-16">
-                <h2 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-extrabold text-white mb-4 sm:mb-6 px-2">
-                  Who This Is For
-                </h2>
-                <p className="text-lg sm:text-xl md:text-2xl text-gray-300 font-medium px-2">
-                  The 10% Discount Merchant Hub works especially well for:
-                </p>
-              </div>
-
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 sm:gap-4 mb-8 sm:mb-10 md:mb-12">
-                {[
-                  'Restaurants & cafés',
-                  'Barbershops & salons',
-                  'Auto & home services',
-                  'Gyms & wellness providers',
-                  'Professional services',
-                  'Digital & creative businesses',
-                  'Faith-owned businesses',
-                  'Minority-owned businesses',
-                ].map((business, index) => (
-                  <motion.div
-                    key={index}
-                    initial={{ opacity: 0, scale: 0.8, y: 20 }}
-                    whileInView={{ opacity: 1, scale: 1, y: 0 }}
-                    viewport={{ once: true }}
-                    transition={{ duration: 0.5, delay: index * 0.05 }}
-                  >
-                    <MerchantCard className="text-center h-full group border border-gray-700/50 bg-gradient-to-br from-gray-900/80 to-gray-800/80 hover:border-[#2563EB]/50 transition-all duration-300 hover:shadow-lg">
-                      <MerchantCardContent className="p-4 sm:p-5 md:p-6">
-                        <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-lg sm:rounded-xl bg-gradient-to-br from-[#2563EB] to-[#0A2540] flex items-center justify-center mx-auto mb-3 sm:mb-4 group-hover:scale-110 group-hover:rotate-3 transition-all duration-300">
-                          <Store className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
-                        </div>
-                        <p className="text-xs sm:text-sm md:text-base text-gray-200 font-medium leading-relaxed">{business}</p>
-                      </MerchantCardContent>
-                    </MerchantCard>
-                  </motion.div>
-                ))}
-                    </div>
-
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ duration: 0.6, delay: 0.5 }}
-                className="text-center"
-              >
-                <MerchantCard className="max-w-3xl mx-auto border-2 border-[#2563EB]/40 bg-gradient-to-r from-[#2563EB]/10 via-[#0A2540]/10 to-[#1F3A5F]/10 backdrop-blur-sm">
-                  <MerchantCardContent className="p-6 sm:p-7 md:p-8">
-                    <p className="text-lg sm:text-xl md:text-2xl text-white font-semibold px-2">
-                      If you serve your local community, this fits your business.
-                    </p>
-                  </MerchantCardContent>
-                </MerchantCard>
-              </motion.div>
-            </motion.div>
-          </div>
-        </section>
-
-        {/* Trust & Accountability */}
-        <section className="relative py-12 sm:py-16 md:py-20 lg:py-24 xl:py-32 bg-gradient-to-b from-transparent via-gray-900/30 to-transparent">
-          <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.6 }}
-              className="max-w-5xl mx-auto"
-            >
-              <div className="text-center mb-10 sm:mb-12 md:mb-16">
-                <h2 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-extrabold text-white mb-4 sm:mb-6 px-2">
-                  Trust & Accountability
-                </h2>
-                  </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5 md:gap-6 mb-8 sm:mb-10">
-                {[
-                  'Nonprofits are reviewed before participating',
-                  'Volunteer activity is verified',
-                  'Redemptions are limited and logged',
-                  'No cash transactions — points only',
-                ].map((point, index) => (
-                  <motion.div
-                    key={index}
-                    initial={{ opacity: 0, x: index % 2 === 0 ? -30 : 30 }}
-                    whileInView={{ opacity: 1, x: 0 }}
-                    viewport={{ once: true }}
-                    transition={{ duration: 0.6, delay: index * 0.1 }}
-                  >
-                    <MerchantCard className="h-full group border border-gray-700/50 bg-gradient-to-br from-gray-900/80 to-gray-800/80 hover:border-[#2563EB]/50 transition-all duration-300">
-                      <MerchantCardContent className="p-5 sm:p-6">
-                        <div className="flex items-start gap-3 sm:gap-4">
-                          <div className="shrink-0 w-10 h-10 sm:w-12 sm:h-12 rounded-lg sm:rounded-xl bg-gradient-to-br from-[#2563EB] to-[#0A2540] flex items-center justify-center group-hover:scale-110 transition-transform">
-                            <Shield className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
-                          </div>
-                          <p className="text-gray-200 text-base sm:text-lg leading-relaxed pt-1 sm:pt-2">{point}</p>
-                        </div>
-                      </MerchantCardContent>
-                    </MerchantCard>
-                  </motion.div>
-                    ))}
-                  </div>
-
-              <MerchantCard className="border-2 border-[#2563EB]/40 bg-gradient-to-r from-[#2563EB]/10 via-[#0A2540]/10 to-[#1F3A5F]/10 backdrop-blur-sm">
-                <MerchantCardContent className="p-6 sm:p-7 md:p-8">
-                  <p className="text-center text-lg sm:text-xl md:text-2xl text-white font-semibold px-2">
-                    This keeps the system fair, secure, and abuse-resistant.
-                  </p>
-                </MerchantCardContent>
-              </MerchantCard>
-            </motion.div>
-          </div>
-        </section>
-
-        {/* Why Believe In Unity Exists */}
-        <section className="relative py-12 sm:py-16 md:py-20 lg:py-24 xl:py-32">
-          <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.6 }}
-              className="max-w-5xl mx-auto"
-            >
-              <div className="text-center mb-8 sm:mb-10 md:mb-12">
-                <h2 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-extrabold text-white mb-4 sm:mb-6 px-2">
-                  Why Believe In Unity Exists
-                </h2>
-              </div>
-
-              <MerchantCard className="border-2 border-[#2563EB]/50 bg-gradient-to-br from-[#2563EB]/10 via-[#0A2540]/10 to-[#1F3A5F]/10 backdrop-blur-sm relative overflow-hidden">
-                <div className="absolute inset-0 bg-gradient-to-br from-[#2563EB]/5 via-transparent to-[#1F3A5F]/5"></div>
-                <MerchantCardContent className="relative p-6 sm:p-8 md:p-10 lg:p-12">
-                  <div className="space-y-4 sm:space-y-5 md:space-y-6 text-center">
-                    <p className="text-xl sm:text-2xl md:text-3xl text-gray-200 mb-6 sm:mb-8 font-medium px-2">We believe:</p>
-                    <div className="space-y-3 sm:space-y-4 max-w-3xl mx-auto">
-                      {[
-                        'Service should be rewarded',
-                        'Businesses should grow without predatory advertising',
-                        'Communities thrive when everyone participates',
-                      ].map((belief, index) => (
-                        <motion.div
-                          key={index}
-                          initial={{ opacity: 0, y: 20 }}
-                          whileInView={{ opacity: 1, y: 0 }}
-                          viewport={{ once: true }}
-                          transition={{ duration: 0.5, delay: 0.2 + index * 0.1 }}
-                          className="flex items-center justify-center gap-2 sm:gap-3"
-                        >
-                          <div className="w-2 h-2 rounded-full bg-[#2563EB] shrink-0"></div>
-                          <p className="text-lg sm:text-xl md:text-2xl text-white font-semibold px-2">{belief}</p>
-                        </motion.div>
-                      ))}
-                    </div>
-                    <div className="mt-8 sm:mt-10 md:mt-12 pt-6 sm:pt-8 md:pt-10 border-t-2 border-[#2563EB]/30">
-                      <p className="text-xl sm:text-2xl md:text-3xl text-white font-bold italic mb-2 sm:mb-3 px-2">
-                        We don't sell discounts.
-                      </p>
-                      <p className="text-xl sm:text-2xl md:text-3xl text-white font-bold italic px-2">
-                        We convert service into loyalty.
-                      </p>
-                    </div>
-                  </div>
-                </MerchantCardContent>
-              </MerchantCard>
-            </motion.div>
-          </div>
-        </section>
-
-        {/* Final CTA */}
-        <section className="relative py-12 sm:py-16 md:py-20 lg:py-24 overflow-hidden">
-          <div className="absolute inset-0 bg-gradient-to-br from-[#2563EB]/20 via-[#0A2540]/20 to-[#1F3A5F]/20"></div>
-          <div className="absolute inset-0">
-            <div className="absolute top-0 left-1/4 w-64 h-64 sm:w-80 sm:h-80 md:w-96 md:h-96 bg-[#2563EB]/30 rounded-full blur-3xl animate-pulse"></div>
-            <div className="absolute bottom-0 right-1/4 w-64 h-64 sm:w-80 sm:h-80 md:w-96 md:h-96 bg-[#0A2540]/30 rounded-full blur-3xl animate-pulse delay-1000"></div>
-          </div>
-          <div className="container mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
-          <motion.div
-              initial={{ opacity: 0, y: 30 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.8 }}
-              className="bg-gradient-to-r from-[#2563EB] via-[#0A2540] to-[#1F3A5F] rounded-2xl sm:rounded-3xl p-6 sm:p-8 md:p-12 lg:p-16 text-center text-white shadow-2xl max-w-5xl mx-auto relative overflow-hidden"
-            >
-              <div className="absolute inset-0 bg-gradient-to-br from-white/10 to-transparent"></div>
-              <div className="relative z-10">
-                <h2 className="text-xl sm:text-2xl md:text-3xl lg:text-4xl xl:text-5xl font-extrabold mb-4 sm:mb-6 leading-tight px-2">
-                  Ready to Join the 10% Discount Merchant Hub?
-            </h2>
-                <div className="space-y-1 sm:space-y-2 mb-6 sm:mb-8 md:mb-10 text-base sm:text-lg md:text-xl lg:text-2xl font-medium px-2">
-                  <p>Support your community.</p>
-                  <p>Attract new customers.</p>
-                  <p>Stay in control.</p>
+                <div className="mt-6 flex items-center gap-2 text-sm text-violet-200">
+                  <Megaphone className="h-4 w-4" />
+                  Built for community-minded merchants.
                 </div>
-                <Link href="/register" className="inline-block w-full sm:w-auto">
-                  <MerchantButton
-                    size="lg"
-                    variant="secondary"
-                    className="w-full sm:w-auto text-base sm:text-lg md:text-xl px-6 sm:px-8 md:px-10 py-4 sm:py-5 md:py-7 bg-white/20 hover:bg-white/30 text-white border-2 border-white/40 shadow-xl hover:shadow-2xl transition-all duration-300"
-                  >
-                    <span className="block sm:inline">Join for $9/month or $100/year</span>
-                    <ArrowRight className="ml-2 w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 inline-block" />
-              </MerchantButton>
-            </Link>
               </div>
-          </motion.div>
+            </section>
           </div>
-        </section>
+        </main>
 
-        {/* Footer */}
         <MerchantFooter />
       </div>
     </>
