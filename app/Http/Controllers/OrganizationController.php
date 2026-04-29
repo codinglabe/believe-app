@@ -10,6 +10,7 @@ use App\Models\FollowerPosition;
 use App\Models\FollowingUserPosition;
 use App\Models\NteeCode;
 use App\Models\Organization;
+use App\Models\PrimaryActionCategory;
 use App\Models\User;
 use App\Models\UserFavoriteOrganization;
 use App\Services\CareAlliancePublicPageService;
@@ -22,6 +23,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
+use Illuminate\Support\Str;
 
 class OrganizationController extends BaseController
 {
@@ -41,8 +43,9 @@ class OrganizationController extends BaseController
         $state = $request->get('state');
         $city = $request->get('city');
         $zip = $request->get('zip');
+        $causeId = $request->integer('cause_id');
         $page = $request->get('page', 1);
-        $sort = $request->get('sort', 'id');
+        $sort = $request->get('sort', 'relevance');
         $perPage = min($request->get('per_page', 6), 50);
 
         // Optimized query
@@ -50,11 +53,15 @@ class OrganizationController extends BaseController
             ->where('ein', '!=', 'EIN')
             ->whereNotNull('ein');
 
-        // Optimized search
+        // Main search: org name + city / state / ZIP (same box as dedicated location filters)
         if ($search) {
-            $query->where(function ($q) use ($search) {
-                $q->where('name_virtual', 'LIKE', '%'.$search.'%')
-                    ->orWhere('sort_name_virtual', 'LIKE', '%'.$search.'%');
+            $like = '%'.$search.'%';
+            $query->where(function ($q) use ($like) {
+                $q->where('excel_data.name_virtual', 'LIKE', $like)
+                    ->orWhere('excel_data.sort_name_virtual', 'LIKE', $like)
+                    ->orWhere('excel_data.city_virtual', 'LIKE', $like)
+                    ->orWhere('excel_data.state_virtual', 'LIKE', $like)
+                    ->orWhere('excel_data.zip_virtual', 'LIKE', $like);
             });
         }
 
@@ -90,6 +97,32 @@ class OrganizationController extends BaseController
             }
         }
 
+        // Registered orgs that list this Primary Action Category → match spreadsheet rows by EIN variants
+        if ($causeId > 0) {
+            $einList = Organization::query()
+                ->where('registration_status', 'approved')
+                ->excludingCareAllianceHubs()
+                ->whereHas('primaryActionCategories', static fn ($q) => $q->where('primary_action_categories.id', $causeId))
+                ->pluck('ein')
+                ->filter()
+                ->values()
+                ->all();
+
+            $variantSet = [];
+            foreach ($einList as $ein) {
+                foreach ($this->einLookupStringVariants([$ein]) as $v) {
+                    $variantSet[$v] = true;
+                }
+            }
+            $variants = array_keys($variantSet);
+
+            if ($variants === []) {
+                $query->whereRaw('0 = 1');
+            } else {
+                $query->whereIn('ein', $variants);
+            }
+        }
+
         // Continue with the rest of your existing code...
         $query->select([
             'excel_data.id',
@@ -116,6 +149,7 @@ class OrganizationController extends BaseController
             case 'city':
                 $query->orderBy('city_virtual', 'asc');
                 break;
+            case 'relevance':
             default:
                 $query->orderBy('id', 'asc');
                 break;
@@ -127,17 +161,31 @@ class OrganizationController extends BaseController
         // Get all EINs from the excel data results
         $eins = $organizations->pluck('ein')->filter()->toArray();
 
-        // Find registered organizations with these EINs
+        // Match registered nonprofits by canonical 9-digit EIN (spreadsheet rows may use XX-XXXXXXX vs XXXXXXXXX).
+        /** @var array<string, Organization> */
         $registeredOrgs = [];
         $userFavoriteOrgIds = [];
         $userFavoriteExcelIds = [];
 
-        if (! empty($eins)) {
-            $registeredOrgs = Organization::whereIn('ein', $eins)
+        if ($eins !== []) {
+            $einVariantsForQuery = $this->einLookupStringVariants($eins);
+            $rows = Organization::query()
                 ->where('registration_status', 'approved')
                 ->excludingCareAllianceHubs()
-                ->get()
-                ->keyBy('ein');
+                ->whereIn('ein', $einVariantsForQuery)
+                ->with([
+                    'primaryActionCategories' => fn ($q) => $q
+                        ->orderBy('sort_order')
+                        ->orderBy('name'),
+                    'user:id,registered_user_image,image,name',
+                ])
+                ->get();
+            foreach ($rows as $o) {
+                $k = $this->canonicalEin($o->ein);
+                if ($k !== null && ! isset($registeredOrgs[$k])) {
+                    $registeredOrgs[$k] = $o;
+                }
+            }
         }
 
         $pageExcelIds = $organizations->pluck('id')->filter()->map(fn ($id) => (int) $id)->values()->all();
@@ -194,14 +242,42 @@ class OrganizationController extends BaseController
                 $formattedNteeCode = $nteeCode.' - '.$nteeCategory;
             }
 
-            // Check if this excel data organization is registered
-            $isRegistered = isset($registeredOrgs[$item->ein]);
+            // Resolve registered Organization by canonical EIN (spreadsheet formatting may differ from organizations.ein)
+            $canonicalRowEin = $this->canonicalEin($item->ein);
+            $registeredOrg = ($canonicalRowEin !== null && isset($registeredOrgs[$canonicalRowEin]))
+                ? $registeredOrgs[$canonicalRowEin]
+                : null;
+            $isRegistered = $registeredOrg !== null;
+
+            $logoUrl = null;
+            if ($registeredOrg !== null) {
+                /** Prefer fresh `users.image` (profile-photos/* from ProfilePhotoController), then legacy uploads — mirrors Api\UserController / profile UI. */
+                $candidates = [
+                    $registeredOrg->user?->image,
+                    $registeredOrg->user?->registered_user_image,
+                    $registeredOrg->registered_user_image,
+                ];
+                foreach ($candidates as $path) {
+                    $logoUrl = $this->publicStorageHref(is_string($path) ? $path : null);
+                    if ($logoUrl !== null) {
+                        break;
+                    }
+                }
+            }
+
+            $primaryCauseRows = [];
+            if ($registeredOrg !== null && $registeredOrg->relationLoaded('primaryActionCategories')) {
+                $primaryCauseRows = $registeredOrg->primaryActionCategories->map(fn ($c) => [
+                    'id' => (int) $c->id,
+                    'name' => (string) $c->name,
+                    'slug' => (string) $c->slug,
+                ])->values()->all();
+            }
 
             $isFavorited = false;
             if (Auth::check()) {
                 $excelRowId = (int) $item->id;
                 if ($isRegistered) {
-                    $registeredOrg = $registeredOrgs[$item->ein];
                     $isFavorited = in_array((int) $registeredOrg->id, $userFavoriteOrgIds, true)
                         || in_array($excelRowId, $userFavoriteExcelIds, true);
                 } else {
@@ -224,6 +300,9 @@ class OrganizationController extends BaseController
                 'created_at' => $item->created_at,
                 'is_registered' => $isRegistered,
                 'is_favorited' => $isFavorited,
+                'logo_url' => $logoUrl,
+                'verified' => $isRegistered,
+                'primary_action_categories' => $primaryCauseRows,
             ];
         });
 
@@ -253,9 +332,49 @@ class OrganizationController extends BaseController
 
         $organizations->setCollection($transformedOrganizations);
 
+        // How many supporters saved each cause on their profile (popularity for ordering chips).
+        $supporterCountsByCause = DB::table('primary_action_category_user')
+            ->selectRaw('primary_action_category_id, COUNT(*) as cnt')
+            ->groupBy('primary_action_category_id')
+            ->pluck('cnt', 'primary_action_category_id');
+
+        $myCauses = collect();
+        if (Auth::check()) {
+            $myCauses = Auth::user()
+                ->supporterInterestCategories()
+                ->get(['primary_action_categories.id', 'primary_action_categories.name', 'primary_action_categories.slug']);
+            $myCauses = $myCauses->sortByDesc(fn ($c) => (int) $supporterCountsByCause->get($c->id, 0))
+                ->values();
+        }
+
+        // Logged-out (or no profile interests): show global top causes by supporter picks.
+        if ($myCauses->isEmpty()) {
+            $topIds = DB::table('primary_action_category_user')
+                ->selectRaw('primary_action_category_id, COUNT(*) as cnt')
+                ->groupBy('primary_action_category_id')
+                ->orderByDesc('cnt')
+                ->limit(12)
+                ->pluck('primary_action_category_id');
+
+            if ($topIds->isNotEmpty()) {
+                $cats = PrimaryActionCategory::query()
+                    ->whereIn('id', $topIds->all())
+                    ->where('is_active', true)
+                    ->get(['id', 'name', 'slug'])
+                    ->keyBy('id');
+
+                $myCauses = $topIds->map(fn ($id) => $cats->get($id))->filter()->values();
+            }
+        }
+
         return Inertia::render('frontend/organization/organizations', [
             'seo' => \App\Services\SeoService::forPage('organizations'),
             'organizations' => $organizations,
+            'myCauses' => $myCauses->map(fn ($c) => [
+                'id' => (int) $c->id,
+                'name' => (string) $c->name,
+                'slug' => (string) $c->slug,
+            ])->values(),
             'filters' => [
                 'search' => $search,
                 'category' => $category,
@@ -263,6 +382,7 @@ class OrganizationController extends BaseController
                 'state' => $state,
                 'city' => $city,
                 'zip' => $zip,
+                'cause_id' => $causeId > 0 ? (string) $causeId : null,
                 'sort' => $sort,
                 'per_page' => $perPage,
             ],
@@ -270,8 +390,75 @@ class OrganizationController extends BaseController
             'hasActiveFilters' => $search || ($category && $category !== 'All Categories') ||
                 ($categoryDescription && $categoryDescription !== 'All Descriptions') || // Add this
                 ($state && $state !== 'All States') ||
-                ($city && $city !== 'All Cities') || $zip,
+                ($city && $city !== 'All Cities') || $zip ||
+                $causeId > 0,
         ]);
+    }
+
+    /** Canonical 9-digit EIN digits-only (matches IRS lookups regardless of hyphenation in spreadsheets). */
+    private function canonicalEin(?string $ein): ?string
+    {
+        if ($ein === null) {
+            return null;
+        }
+        $digits = preg_replace('/\D+/', '', (string) $ein);
+
+        return strlen($digits) === 9 ? $digits : null;
+    }
+
+    /**
+     * @param  array<int, mixed>  $einsFromSpreadsheetRows
+     * @return array<int, string>
+     */
+    private function einLookupStringVariants(array $einsFromSpreadsheetRows): array
+    {
+        $variants = [];
+        foreach ($einsFromSpreadsheetRows as $ein) {
+            if (! is_string($ein) && ! is_numeric($ein)) {
+                continue;
+            }
+            $s = trim((string) $ein);
+            if ($s === '' || strtoupper($s) === 'EIN') {
+                continue;
+            }
+            $variants[] = $s;
+            $c = $this->canonicalEin($s);
+            if ($c !== null) {
+                $variants[] = $c;
+                $variants[] = substr($c, 0, 2).'-'.substr($c, 2);
+            }
+        }
+
+        return array_values(array_unique($variants));
+    }
+
+    /**
+     * Build a browser-safe URL for public-disk stored paths — matches shared auth payloads (`'/storage/'.$path`).
+     * Avoids Storage::url() absolute URLs pointing at APP_URL when the app is opened from another host/port.
+     */
+    private function publicStorageHref(?string $path): ?string
+    {
+        if ($path === null) {
+            return null;
+        }
+        $path = trim(str_replace('\\', '/', $path));
+        if ($path === '') {
+            return null;
+        }
+        if (Str::startsWith($path, ['http://', 'https://', '//'])) {
+            return $path;
+        }
+        // Already routed to public disk
+        if (Str::startsWith($path, '/storage/')) {
+            return $path;
+        }
+        // Strip duplicated "storage/" sometimes saved in legacy data
+        $path = ltrim($path, '/');
+        if (Str::startsWith($path, 'storage/')) {
+            $path = substr($path, strlen('storage/'));
+        }
+
+        return '/storage/'.ltrim($path, '/');
     }
 
     private function getStates()

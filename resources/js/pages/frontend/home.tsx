@@ -2,14 +2,14 @@
 
 import FrontendLayout from "@/layouts/frontend/frontend-layout"
 import { useState, useEffect, useRef } from "react"
-import { Search, Heart, Globe, ArrowRight, Star, CheckCircle, TrendingUp, Award, Shield, ShieldCheck, MapPin, Users, Building2, X, Zap, ShoppingCart, Store, ArrowRightLeft, Handshake, Wallet, Copy, Check, RefreshCw, ArrowUpRight, ArrowDownLeft, Plus, Activity, CreditCard, Banknote, Settings, Ticket, Gift, Coins, ChevronRight } from "lucide-react"
+import { Search, Heart, Globe, ArrowRight, Star, CheckCircle, TrendingUp, Award, Shield, ShieldCheck, MapPin, Users, Building2, X, Zap, ShoppingCart, Store, ArrowRightLeft, Handshake, Wallet, Copy, Check, RefreshCw, ArrowUpRight, ArrowDownLeft, Plus, Activity, CreditCard, Banknote, Settings, Ticket, Gift, Coins, ChevronRight, UtensilsCrossed, Gamepad2, Plane, Music, PawPrint, GraduationCap, Leaf } from "lucide-react"
 import { Button } from "@/components/frontend/ui/button"
 import { Input } from "@/components/frontend/ui/input"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/frontend/ui/card"
 import { Badge } from "@/components/frontend/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/frontend/ui/select"
 import { Progress } from "@/components/frontend/ui/progress"
-import { AnimatePresence, motion } from "framer-motion"
+import { motion } from "framer-motion"
 import { Link, router, usePage } from "@inertiajs/react"
 import SearchSection from "@/components/frontend/SearchSection"
 import { WalletDemoPopup } from "@/components/WalletDemoPopup"
@@ -47,70 +47,15 @@ interface PageProps {
       states: string[]
       cities: string[]
     }
-    featuredOrganizations?: Array<{
-      id: number
-      name: string
-      city?: string
-      state?: string
-      ein?: string
-      description?: string
-      total_raised?: string
-      raised?: string
-      url?: string
-    }>
-    featuredMerchants?: Array<{
-      id: number
-      name: string
-      slug: string
-      logo_url?: string | null
-      offers_count?: number
-    }>
-    giftCardBrands?: Array<{
-      name: string
-      range: string
-      purchases?: number
-    }>
-    activeRaffles?: Array<{
-      id: number
-      title: string
-      ticket_price: string
-      total_tickets: number
-      sold_tickets: number
-      progress: number
-      sold_text: string
-      percent_text: string
-      end_at_ms: number | null
-      image?: string | null
-    }>
-    stats?: {
-      totalRaised?: string
-      livesImpacted?: string
-      organizationsSupported?: string
-      merchantsPartnered?: string
-    }
   }
 
 export default function HomePage() {
-    const { seo, filterOptions, filters, featuredOrganizations = [], featuredMerchants = [], giftCardBrands = [], activeRaffles = [], stats } =
-      usePage<PageProps>().props
+    const { seo } = usePage<PageProps>().props
     const [isLoading, setIsLoading] = useState(false)
     const [hasStartedDemo, setHasStartedDemo] = useState(false)
     const [walletPopupOpen, setWalletPopupOpen] = useState(false)
     const [selectedPoints, setSelectedPoints] = useState(50)
     const [activeTab, setActiveTab] = useState<"organizations" | "merchants">("organizations")
-    const [nowMs, setNowMs] = useState(() => Date.now())
-    const raffles = activeRaffles.map((r, idx) => ({
-      id: String(r.id),
-      title: r.title,
-      price: r.ticket_price ? `$${Number(r.ticket_price).toFixed(2)}` : "$0.00",
-      progress: r.progress ?? 0,
-      soldText: r.sold_text,
-      percentText: r.percent_text,
-      emoji: ["🚗", "✈️", "💻"][idx % 3],
-      endAtMs: r.end_at_ms ?? null,
-      image: r.image ?? null,
-    }))
-    const [raffleIndex, setRaffleIndex] = useState(0)
     const [demoActionView, setDemoActionView] = useState<'main' | 'send' | 'receive' | 'swap' | 'addMoney'>('main')
     const [demoSendAmount, setDemoSendAmount] = useState('')
     const [demoAddMoneyAmount, setDemoAddMoneyAmount] = useState('')
@@ -120,19 +65,6 @@ export default function HomePage() {
     const [demoSuccessMessage, setDemoSuccessMessage] = useState('')
     const [demoClickPoint, setDemoClickPoint] = useState<{ x: number; y: number; visible: boolean } | null>(null)
     const walletRef = useRef<HTMLDivElement>(null)
-
-    useEffect(() => {
-      if (raffles.length <= 1) return
-      const t = window.setInterval(() => {
-        setRaffleIndex((i) => (i + 1) % raffles.length)
-      }, 5000)
-      return () => window.clearInterval(t)
-    }, [raffles.length])
-
-    useEffect(() => {
-      const t = window.setInterval(() => setNowMs(Date.now()), 1000)
-      return () => window.clearInterval(t)
-    }, [])
 
     // Auto-start demo when wallet section is visible
     useEffect(() => {
@@ -347,18 +279,53 @@ export default function HomePage() {
     // TEMP: show only the hero section on homepage
     const showOnlyHero = false
 
+    const staticOrganizations = [
+      {
+        name: "Helping Paws Shelter",
+        verified: true,
+        description: "Providing rescue, care, and adoption for homeless pets.",
+        raised: "$4,785",
+        Icon: PawPrint,
+      },
+      {
+        name: "Bright Futures Fund",
+        verified: true,
+        description: "Empowering students through education and scholarships.",
+        raised: "$7,320",
+        Icon: GraduationCap,
+      },
+      {
+        name: "Green Earth Initiative",
+        verified: true,
+        description: "Working for a cleaner, greener and sustainable future.",
+        raised: "$3,210",
+        Icon: Leaf,
+      },
+    ]
+
+    const staticMerchants = [
+      { name: "Smart Watch Series 9", category: "Raffle", impact: "Enter Raffle" },
+      { name: "FitWear", category: "Activewear", impact: "Shop Now" },
+      { name: "TasteBite", category: "Food & Dining", impact: "Shop Now" },
+    ]
+
     const pointOptions = [
-      { amount: 25, bp: 25 },
-      { amount: 50, bp: 50, popular: true },
+      { amount: 10, bp: 10 },
+      { amount: 25, bp: 25, popular: true },
+      { amount: 50, bp: 50 },
       { amount: 100, bp: 100 },
       { amount: 250, bp: 250 },
       { amount: 500, bp: 500 },
     ]
 
-    const giftCards = giftCardBrands.map((b, idx) => {
-      const colors = ["bg-gray-900", "bg-blue-600", "bg-red-500", "bg-green-600", "bg-gray-100"]
-      return { name: b.name, range: b.range, color: colors[idx % colors.length] }
-    })
+    const giftCards = [
+      { name: "ShopHub", range: "From $10 - $500", color: "bg-blue-600", Icon: ShoppingCart },
+      { name: "Foodie", range: "From $10 - $250", color: "bg-red-600", Icon: UtensilsCrossed },
+      { name: "GameZone", range: "From $10 - $100", color: "bg-green-600", Icon: Gamepad2 },
+      { name: "QuickMart", range: "From $10 - $500", color: "bg-gray-900", Icon: Store },
+      { name: "FlyNext", range: "From $25 - $500", color: "bg-sky-500", Icon: Plane },
+      { name: "TuneWave", range: "From $10 - $200", color: "bg-violet-600", Icon: Music },
+    ]
 
     return (
     <FrontendLayout>
@@ -426,37 +393,33 @@ export default function HomePage() {
               >
                 {[
                   {
-                    href: route("donate"),
                     Icon: Heart,
                     title: "Donate Now",
                     sub: "Support Organizations",
                     iconBg: "bg-violet-600",
                   },
                   {
-                    href: route("raffles.index"),
                     Icon: Ticket,
                     title: "Enter Raffle",
                     sub: "Win Amazing Prizes",
                     iconBg: "bg-blue-600",
                   },
                   {
-                    href: route("gift-cards.index"),
                     Icon: Gift,
                     title: "Buy Gift Card",
                     sub: "For Yourself or Others",
                     iconBg: "bg-green-600",
                   },
                   {
-                    href: route("believe-points.index"),
                     Icon: Coins,
                     title: "Add Points",
                     sub: "1 BP = $1",
                     iconBg: "bg-amber-600",
                   },
-                ].map(({ href, Icon, title, sub, iconBg }) => (
-                  <Link
+                ].map(({ Icon, title, sub, iconBg }) => (
+                  <button
+                    type="button"
                     key={title}
-                    href={href}
                     className="flex w-full items-center gap-2 rounded-lg bg-white/10 px-2.5 py-2 text-left backdrop-blur-sm transition-all hover:bg-white/20 sm:w-auto sm:gap-3 sm:rounded-xl sm:px-4 sm:py-3"
                   >
                     <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${iconBg} sm:h-10 sm:w-10`}>
@@ -467,7 +430,7 @@ export default function HomePage() {
                       <span className="hidden text-xs text-gray-300 sm:block">{sub}</span>
                     </span>
                     <ChevronRight className="ml-auto h-4 w-4 shrink-0 text-gray-400 sm:ml-2 sm:h-5 sm:w-5" />
-                  </Link>
+                  </button>
                 ))}
               </motion.div>
             </div>
@@ -557,44 +520,38 @@ export default function HomePage() {
                       <div role="tabpanel" aria-label="Organizations">
                         <div className="mb-3 flex items-center justify-between sm:mb-4">
                           <h3 className="text-base font-semibold text-foreground sm:text-lg">Featured Organizations</h3>
-                          <Link
-                            href="/organizations"
-                            className="inline-flex items-center gap-1 rounded-full border border-violet-200 bg-white/70 px-3 py-1 text-xs font-semibold text-violet-700 shadow-sm backdrop-blur transition-colors hover:bg-white hover:border-violet-300 dark:border-white/10 dark:bg-white/5 dark:text-violet-200 dark:hover:bg-white/10"
-                          >
+                      <button type="button" className="text-xs font-medium text-violet-600 hover:underline sm:text-sm">
                             View All
-                            <ArrowRight className="h-3.5 w-3.5" />
-                          </Link>
+                      </button>
                         </div>
                         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3 auto-rows-fr">
-                          {(featuredOrganizations as any[]).slice(0, 3).map((org) => (
-                            <div key={org.id ?? org.slug ?? org.name} className="h-full rounded-lg border border-border bg-background p-4 flex flex-col">
+                      {staticOrganizations.map((org) => (
+                        <div key={org.name} className="h-full rounded-lg border border-border bg-card p-4 flex flex-col">
                               <div className="mb-3 flex items-start justify-between">
                                 <div className="flex h-10 w-10 items-center justify-center rounded-full bg-violet-600">
-                                  <Heart className="h-5 w-5 text-white" fill="white" />
+                              <org.Icon className="h-5 w-5 text-white" />
                                 </div>
-                              {(org.verified ?? true) && (
-                                <Badge className="bg-green-100 text-xs text-green-700">
-                                  <CheckCircle className="mr-1 h-3 w-3" />
-                                  Verified
-                                </Badge>
-                              )}
+                            {org.verified && (
+                              <Badge className="bg-green-100 text-xs text-green-700">
+                                <CheckCircle className="mr-1 h-3 w-3" />
+                                Verified
+                              </Badge>
+                            )}
                               </div>
-                              <h4 className="font-semibold text-foreground line-clamp-2">{org.name ?? "Organization"}</h4>
+                          <h4 className="font-semibold text-foreground line-clamp-2">{org.name}</h4>
                               <p className="mt-1 text-xs text-muted-foreground line-clamp-2">
-                                {org.description ??
-                                  (`${org.city ?? ""}${org.city && org.state ? ", " : ""}${org.state ?? ""}`.trim() ||
-                                    "Support this organization and make a difference.")}
+                            {org.description}
                               </p>
                               <div className="mt-3">
                                 <div className="text-xs text-muted-foreground">Total Raised</div>
-                                <div className="text-lg font-bold text-foreground">{org.total_raised ?? org.raised ?? "$0"}</div>
+                            <div className="text-lg font-bold text-foreground">{org.raised}</div>
                               </div>
-                              <Link href={org.url ?? "/donate"} className="mt-auto block">
+                          <div className="mt-auto">
                                 <Button className="mt-4 w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white hover:from-blue-700 hover:to-purple-700" size="sm">
                                   <Heart className="mr-1 h-3 w-3" fill="white" />
                                   Donate
                                 </Button>
-                              </Link>
+                          </div>
                             </div>
                           ))}
                         </div>
@@ -603,41 +560,27 @@ export default function HomePage() {
                       <div role="tabpanel" aria-label="Merchants">
                         <div className="mb-3 flex items-center justify-between sm:mb-4">
                           <h3 className="text-base font-semibold text-foreground sm:text-lg">Featured Merchants</h3>
-                          <Link
-                            href={route("merchant-hub.index", { tab: "offers" })}
-                            className="inline-flex items-center gap-1 rounded-full border border-violet-200 bg-white/70 px-3 py-1 text-xs font-semibold text-violet-700 shadow-sm backdrop-blur transition-colors hover:bg-white hover:border-violet-300 dark:border-white/10 dark:bg-white/5 dark:text-violet-200 dark:hover:bg-white/10"
-                          >
+                          <button type="button" className="text-xs font-medium text-violet-600 hover:underline sm:text-sm">
                             View All
-                            <ArrowRight className="h-3.5 w-3.5" />
-                          </Link>
+                          </button>
                         </div>
                         <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4 auto-rows-fr">
-                          {featuredMerchants.slice(0, 4).map((merchant) => (
-                            <div key={merchant.id} className="h-full rounded-lg border border-border bg-background p-4 text-center flex flex-col">
+                          {[
+                            { name: "Urban Style", category: "Fashion & Apparel", impact: "10%" },
+                            { name: "Brew House", category: "Coffee & Beverages", impact: "5%" },
+                            { name: "Pawfect Pets", category: "Pet Supplies", impact: "5%" },
+                            { name: "Fit Life", category: "Health & Fitness", impact: "8%" },
+                          ].map((merchant) => (
+                            <div key={merchant.name} className="h-full rounded-lg border border-border bg-card p-4 text-center flex flex-col">
                               <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-lg bg-violet-600">
-                                {merchant.logo_url ? (
-                                  // eslint-disable-next-line @next/next/no-img-element
-                                  <img src={merchant.logo_url} alt={merchant.name} className="h-10 w-10 object-contain" />
-                                ) : (
-                                  <Store className="h-6 w-6 text-white" />
-                                )}
+                                <Store className="h-6 w-6 text-white" />
                               </div>
                               <h4 className="font-semibold text-foreground line-clamp-1">{merchant.name}</h4>
-                              <p className="text-xs text-muted-foreground line-clamp-1">
-                                {typeof merchant.offers_count === "number" ? `${merchant.offers_count} offers` : "Merchant"}
-                              </p>
-                              <p className="mt-1 text-xs text-violet-600 line-clamp-2">Shop and support</p>
-                              <Link
-                                href={route("merchant-hub.index", { tab: "offers", search: merchant.name })}
-                                className="mt-auto block"
-                              >
-                                <Button
-                                  className="w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white hover:from-blue-700 hover:to-purple-700"
-                                  size="sm"
-                                >
-                                  Shop Now
-                                </Button>
-                              </Link>
+                              <p className="text-xs text-muted-foreground line-clamp-1">{merchant.category}</p>
+                              <p className="mt-1 text-xs text-violet-600 line-clamp-2">{merchant.impact} of sales go to impact</p>
+                              <Button type="button" className="mt-auto w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white hover:from-blue-700 hover:to-purple-700" size="sm">
+                                Shop Now
+                              </Button>
                             </div>
                           ))}
                         </div>
@@ -653,36 +596,32 @@ export default function HomePage() {
                     <CardContent className="p-4 sm:p-6">
                       <div className="mb-3 flex items-center justify-between sm:mb-4">
                         <h3 className="text-base font-semibold text-foreground sm:text-lg">Gift Cards</h3>
-                        <Link
-                          href={route("gift-cards.index")}
-                          className="inline-flex items-center gap-1 rounded-full border border-violet-200 bg-white/70 px-3 py-1 text-xs font-semibold text-violet-700 shadow-sm backdrop-blur transition-colors hover:bg-white hover:border-violet-300 dark:border-white/10 dark:bg-white/5 dark:text-violet-200 dark:hover:bg-white/10"
-                        >
+                      <button type="button" className="text-xs font-medium text-violet-600 hover:underline sm:text-sm">
                           View All
-                          <ArrowRight className="h-3.5 w-3.5" />
-                        </Link>
+                      </button>
                       </div>
-                      {/* Mobile: horizontal scroll. Desktop: 3-column grid */}
-                      <div className="flex gap-3 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:grid sm:grid-cols-3 sm:gap-4 sm:overflow-visible sm:pb-0">
+                      {/* 3 columns like the mockup */}
+                      <div className="grid grid-cols-3 gap-3 sm:gap-4">
                         {giftCards.map((card) => (
-                          <div key={card.name} className="min-w-[92px] text-center sm:min-w-0">
+                          <div key={card.name} className="text-center">
                             <div
                               className={`mx-auto flex h-12 w-12 items-center justify-center rounded-lg sm:h-16 sm:w-16 ${card.color} ${
                                 card.color === "bg-gray-100" ? "text-gray-600" : "text-white"
                               } text-xs font-bold`}
                             >
-                              {card.name.charAt(0)}
+                              <card.Icon className="h-6 w-6 sm:h-7 sm:w-7 text-white" />
                             </div>
                             <div className="mt-1.5 text-xs font-medium text-foreground sm:mt-2 sm:text-sm truncate">{card.name}</div>
                             <div className="text-[10px] text-muted-foreground sm:text-xs line-clamp-2">{card.range}</div>
                           </div>
                         ))}
                       </div>
-                      <Link href={route("gift-cards.index")} className="block">
-                        <Button className="mt-3 w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white hover:from-blue-700 hover:to-purple-700 sm:mt-4">
+                      <div className="block">
+                        <Button type="button" className="mt-3 w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white hover:from-blue-700 hover:to-purple-700 sm:mt-4">
                           <Gift className="mr-2 h-4 w-4" />
                           Buy Gift Card
                         </Button>
-                      </Link>
+                      </div>
                     </CardContent>
                   </Card>
 
@@ -740,12 +679,12 @@ export default function HomePage() {
                           ))}
                         </div>
                       )}
-                      <Link href={route("believe-points.index")} className="block">
-                        <Button className="mt-3 w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white hover:from-blue-700 hover:to-purple-700 sm:mt-4">
+                      <div className="block">
+                        <Button type="button" className="mt-3 w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white hover:from-blue-700 hover:to-purple-700 sm:mt-4">
                           <Wallet className="mr-2 h-4 w-4" />
                           Add Points Now
                         </Button>
-                      </Link>
+                      </div>
                       <p className="mt-2 text-center text-xs text-muted-foreground sm:text-sm">
                         Use BP for Donations, Raffles, Gift Cards & Merchants
                       </p>
@@ -761,103 +700,58 @@ export default function HomePage() {
                   <CardContent className="p-4 sm:p-6">
                     <div className="mb-3 flex items-center justify-between sm:mb-4">
                       <h3 className="text-base font-semibold text-foreground sm:text-lg">Active Raffles</h3>
-                      <Link
-                        href={route("raffles.index")}
-                        className="inline-flex items-center gap-1 rounded-full border border-violet-200 bg-white/70 px-3 py-1 text-xs font-semibold text-violet-700 shadow-sm backdrop-blur transition-colors hover:bg-white hover:border-violet-300 dark:border-white/10 dark:bg-white/5 dark:text-violet-200 dark:hover:bg-white/10"
-                      >
+                      <button type="button" className="text-xs font-medium text-violet-600 hover:underline sm:text-sm">
                         View All
-                        <ArrowRight className="h-3.5 w-3.5" />
-                      </Link>
+                      </button>
                     </div>
-                    <div className="overflow-hidden rounded-lg bg-background/60 dark:bg-white/5">
-                      <AnimatePresence mode="wait" initial={false}>
-                        <motion.div
-                          key={raffles[raffleIndex]?.id}
-                          initial={{ opacity: 0, x: 24 }}
-                          animate={{ opacity: 1, x: 0 }}
-                          exit={{ opacity: 0, x: -24 }}
-                          transition={{ type: "spring", stiffness: 260, damping: 28, mass: 0.8 }}
-                        >
-                        {(() => {
-                          const raffle = raffles[raffleIndex]
-                          const remainingMs = Math.max(0, (raffle?.endAtMs ?? nowMs) - nowMs)
-                          const totalSeconds = Math.floor(remainingMs / 1000)
-                          const days = Math.floor(totalSeconds / (24 * 60 * 60))
-                          const hours = Math.floor((totalSeconds % (24 * 60 * 60)) / (60 * 60))
-                          const minutes = Math.floor((totalSeconds % (60 * 60)) / 60)
-                          const seconds = totalSeconds % 60
+                    <div className="overflow-hidden rounded-lg border border-border">
+                      <div className="flex flex-col sm:flex-row">
+                        <div className="aspect-video w-full bg-gray-100 sm:aspect-square sm:w-32 md:w-40 dark:bg-white/10" />
+                        <div className="flex-1 p-3 sm:p-4">
+                          <h4 className="text-sm font-semibold text-foreground sm:text-base line-clamp-2">
+                            Smart Watch Series 9
+                            <br />
+                            Raffle
+                          </h4>
+                          <div className="mt-1 text-xs text-muted-foreground">Ticket Price</div>
+                          <div className="text-lg font-bold text-foreground sm:text-xl">$2.00</div>
 
-                          const two = (n: number) => String(n).padStart(2, "0")
-                          const dayStr = String(days)
-                          const hourStr = two(hours)
-                          const minStr = two(minutes)
-                          const secStr = two(seconds)
-
-                          return (
-                            <div>
-                              <div className={raffle?.image ? "flex flex-col sm:flex-row" : "p-3 sm:p-4"}>
-                                {raffle?.image ? (
-                                  <div className="aspect-video w-full bg-gray-100 sm:aspect-square sm:w-32 md:w-40 dark:bg-white/10">
-                                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                                    <img
-                                      src={raffle.image}
-                                      alt={raffle.title}
-                                      className="h-full w-full object-cover"
-                                      loading="lazy"
-                                    />
-                                  </div>
-                                ) : null}
-                                <div className={raffle?.image ? "flex-1 p-3 sm:p-4" : ""}>
-                                  <h4 className="text-sm font-semibold text-foreground sm:text-base line-clamp-2">
-                                    {raffles[raffleIndex]?.title}
-                                  </h4>
-                                  <div className="mt-1 text-xs text-muted-foreground">Ticket Price</div>
-                                  <div className="text-lg font-bold text-foreground sm:text-xl">
-                                    {raffles[raffleIndex]?.price}
-                                  </div>
-
-                                  <div className="mt-3 grid grid-cols-4 gap-2 sm:mt-3 sm:gap-2">
-                                    {[
-                                      { value: dayStr, label: "DAYS" },
-                                      { value: hourStr, label: "HRS" },
-                                      { value: minStr, label: "MINS" },
-                                      { value: secStr, label: "SECS" },
-                                    ].map((t) => (
-                                      <div
-                                        key={t.label}
-                                        className="min-w-0 rounded-lg bg-violet-100/80 px-2 py-2 dark:bg-white/10 flex flex-col items-center justify-center text-center"
-                                      >
-                                        <div className="text-sm sm:text-base font-extrabold text-violet-700 dark:text-violet-200 leading-none whitespace-nowrap tabular-nums">
-                                          {t.value}
-                                        </div>
-                                        <div className="mt-1 text-[10px] text-violet-600/90 dark:text-violet-200/80 leading-none whitespace-nowrap font-semibold tracking-wide">
-                                          {t.label}
-                                        </div>
-                                      </div>
-                                    ))}
-                                  </div>
+                          <div className="mt-2 grid grid-cols-2 gap-2 sm:mt-3 sm:grid-cols-4 sm:gap-2">
+                            {[
+                              { value: "12", label: "DAYS" },
+                              { value: "08", label: "HRS" },
+                              { value: "34", label: "MINS" },
+                              { value: "19", label: "SECS" },
+                            ].map((t) => (
+                              <div
+                                key={t.label}
+                                className="min-w-0 w-full aspect-square rounded-md bg-violet-100 p-1.5 sm:rounded-lg sm:p-2 dark:bg-white/10 flex flex-col items-center justify-center text-center"
+                              >
+                                <div className="text-base font-bold text-violet-600 sm:text-lg leading-none whitespace-nowrap">{t.value}</div>
+                                <div className="mt-1 text-[8px] sm:text-[10px] text-violet-500 leading-none whitespace-nowrap">
+                                  {t.label}
                                 </div>
                               </div>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
 
-                              <div className="border-t border-border p-3 sm:p-4">
-                                <Progress value={raffles[raffleIndex]?.progress ?? 0} className="h-2 bg-gradient-to-r from-blue-200 to-purple-200" />
-                                <div className="mt-1 flex justify-between text-[10px] text-muted-foreground sm:text-xs">
-                                  <span>{raffles[raffleIndex]?.soldText}</span>
-                                  <span>{raffles[raffleIndex]?.percentText}</span>
-                                </div>
+                      {/* Progress and Button */}
+                      <div className="border-t border-border p-3 sm:p-4">
+                        <Progress value={3} className="h-2 bg-red-100" />
+                        <div className="mt-1 flex justify-between text-[10px] text-muted-foreground sm:text-xs">
+                          <span>148 / 5,000 Tickets Sold</span>
+                          <span>3% Sold</span>
+                        </div>
 
-                                <Link href={route("raffles.index")} className="block">
-                                  <Button className="mt-3 w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white hover:from-blue-700 hover:to-purple-700 sm:mt-4">
-                                    <Ticket className="mr-2 h-4 w-4" />
-                                    Enter Raffle
-                                  </Button>
-                                </Link>
-                              </div>
-                            </div>
-                          )
-                        })()}
-                        </motion.div>
-                      </AnimatePresence>
+                        <div className="block">
+                          <Button type="button" className="mt-3 w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white hover:from-blue-700 hover:to-purple-700 sm:mt-4">
+                            <Ticket className="mr-2 h-4 w-4" />
+                            Enter Raffle
+                          </Button>
+                        </div>
+                      </div>
                     </div>
                   </CardContent>
                 </Card>
@@ -874,14 +768,14 @@ export default function HomePage() {
                         <div className="flex h-7 w-7 items-center justify-center rounded-full bg-violet-600 sm:h-8 sm:w-8">
                           <Heart className="h-3.5 w-3.5 text-white sm:h-4 sm:w-4" fill="white" />
                         </div>
-                        <span className="text-sm font-medium sm:text-base">Believ.Cash</span>
+                        <span className="text-sm font-medium sm:text-base">HappySupporter</span>
                       </div>
                       <div className="mt-3 text-xs text-gray-400 sm:mt-4 sm:text-sm">My Wallet</div>
                       <div className="mt-3 text-xs text-gray-400 sm:mt-4 sm:text-sm">BP Balance</div>
                       <div className="text-2xl font-bold sm:text-3xl">
-                        1,250 <span className="text-base text-violet-400 sm:text-lg">BP</span>
+                        850 <span className="text-base text-violet-400 sm:text-lg">BP</span>
                       </div>
-                      <div className="text-xs text-gray-400 sm:text-sm">= $1,250.00</div>
+                      <div className="text-xs text-gray-400 sm:text-sm">= $850.00</div>
                     </div>
 
                     <div className="mt-3 space-y-1.5 sm:mt-4 sm:space-y-2">
@@ -900,16 +794,16 @@ export default function HomePage() {
             {/* Stats Section */}
             <div className="mt-8 grid gap-3 grid-cols-2 sm:mt-12 sm:gap-4 md:gap-6 lg:grid-cols-5">
               {[
-                { Icon: Heart, value: stats?.totalRaised ?? "$0", label: "Total Raised" },
-                { Icon: Users, value: stats?.livesImpacted ?? "0", label: "Lives Impacted" },
-                { Icon: Building2, value: stats?.organizationsSupported ?? "0", label: "Organizations Supported" },
-                { Icon: Handshake, value: stats?.merchantsPartnered ?? "0", label: "Merchants Partnered" },
-                { Icon: ShieldCheck, value: "100% Secure", label: "Your donations are safe with us." },
-              ].map(({ Icon, value, label }) => (
+                { Icon: Heart, value: "$2,541,230", label: "Total Raised", iconColor: "text-violet-600", iconBg: "bg-violet-100" },
+                { Icon: Users, value: "18,693", label: "Lives Impacted", iconColor: "text-blue-600", iconBg: "bg-blue-100" },
+                { Icon: Building2, value: "152", label: "Organizations Supported", iconColor: "text-orange-600", iconBg: "bg-orange-100" },
+                { Icon: Handshake, value: "342", label: "Merchants Partnered", iconColor: "text-amber-600", iconBg: "bg-amber-100" },
+                { Icon: ShieldCheck, value: "100% Secure", label: "Your donations are safe with us.", iconColor: "text-green-600", iconBg: "bg-green-100" },
+              ].map(({ Icon, value, label, iconColor, iconBg }) => (
                 <Card key={label} className="border-border">
                   <CardContent className="flex flex-col items-center gap-2 p-3 text-center sm:flex-row sm:gap-4 sm:p-4 sm:text-left">
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-violet-600 sm:h-12 sm:w-12">
-                      <Icon className="h-5 w-5 text-white sm:h-6 sm:w-6" />
+                    <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full sm:h-12 sm:w-12 ${iconBg}`}>
+                      <Icon className={`h-5 w-5 sm:h-6 sm:w-6 ${iconColor}`} />
                     </div>
                     <div>
                       <div className="text-base font-bold text-foreground sm:text-xl">{value}</div>

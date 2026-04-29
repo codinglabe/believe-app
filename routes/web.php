@@ -419,6 +419,7 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:user|organization|orga
     Route::get('/livestreams/supporter', [SupporterLivestreamController::class, 'index'])->name('livestreams.supporter.index');
     Route::get('/livestreams/supporter/create', [SupporterLivestreamController::class, 'create'])->name('livestreams.supporter.create');
     Route::post('/livestreams/supporter', [SupporterLivestreamController::class, 'store'])->name('livestreams.supporter.store');
+    Route::post('/livestreams/supporter/schedule', [SupporterLivestreamController::class, 'schedule'])->name('livestreams.supporter.schedule');
     Route::get('/livestreams/supporter/ready/{id}', [SupporterLivestreamController::class, 'ready'])->name('livestreams.supporter.ready')->where('id', '[0-9]+');
     Route::get('/livestreams/supporter/join', [SupporterLivestreamController::class, 'joinPage'])->name('livestreams.supporter.join');
     Route::post('/livestreams/supporter/join', [SupporterLivestreamController::class, 'joinWithPasscode'])->name('livestreams.supporter.join.submit');
@@ -778,7 +779,7 @@ Route::get('/organizations/{slug}/contact', [OrganizationController::class, 'con
 
 // Public livestream guest join (no auth) — registered first so /livestreams/join/{roomName} is not matched by /livestreams/{id}
 Route::get('/livestreams/join/{roomName}', [LivestreamController::class, 'guestJoin'])
-    ->where('roomName', '[a-zA-Z0-9_]+')
+    ->where('roomName', '[a-zA-Z0-9_-]+')
     ->name('livestreams.guest-join');
 
 // API route for inviting unregistered organizations (requires auth)

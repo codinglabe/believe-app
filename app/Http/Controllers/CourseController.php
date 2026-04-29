@@ -6,6 +6,7 @@ use App\Jobs\SendCourseNotification;
 use App\Models\Course;
 use App\Models\Enrollment;
 use App\Models\Organization;
+use App\Models\PrimaryActionCategory;
 use App\Models\Topic;
 use App\Services\CourseTaxClassificationService;
 use App\Services\SeoService;
@@ -27,10 +28,32 @@ class CourseController extends BaseController
      */
     public function publicIndex(Request $request)
     {
-        $filters = $request->only(['search', 'topic_id', 'format', 'pricing_type', 'organization', 'type', 'event_type_id']);
+        $filters = $request->only([
+            'search',
+            'topic_id',
+            'format',
+            'pricing_type',
+            'organization',
+            'type',
+            'event_type_id',
+            'cause_id',
+        ]);
+
+        $perPage = (int) $request->query('per_page', 6);
+        if (! in_array($perPage, [6, 9, 12, 18], true)) {
+            $perPage = 6;
+        }
 
         $courses = Course::query()
-            ->with(['topic', 'eventType', 'organization.organization', 'creator'])
+            ->with([
+                'topic',
+                'eventType',
+                'organization.organization',
+                'creator',
+                'primaryActionCategories' => function ($q) {
+                    $q->orderBy('primary_action_categories.name');
+                },
+            ])
             ->withCount(['enrollmentsCount as enrolled_count'])
             ->when($filters['search'] ?? null, function ($query, $search) {
                 $query->where(function ($q) use ($search) {
@@ -71,15 +94,37 @@ class CourseController extends BaseController
                     $query->where('pricing_type', $pricingType);
                 }
             })
+            ->when($filters['cause_id'] ?? null, function ($query, $causeId) {
+                if ($causeId !== '' && $causeId !== 'all') {
+                    $id = (int) $causeId;
+                    if ($id > 0) {
+                        $query->whereHas('primaryActionCategories', function ($q) use ($id) {
+                            $q->where('primary_action_categories.id', $id);
+                        });
+                    }
+                }
+            })
             ->orderBy('start_date', 'desc')
-            ->paginate(9)
+            ->paginate($perPage)
             ->withQueryString();
 
         // Add 'organization_name' attribute to each course for frontend
         // Replace enrolled count with actual count from enrollments table
+        // Expose only this listing’s chosen causes (course_pac), not the global catalog
         $courses->getCollection()->transform(function ($course) {
             $course->organization_name = optional($course->organization->organization)->name;
             $course->enrolled = $course->enrolled_count ?? 0;
+
+            $chosenCauses = $course->relationLoaded('primaryActionCategories')
+                ? $course->primaryActionCategories->map(fn ($c) => [
+                    'id' => $c->id,
+                    'name' => $c->name,
+                    'slug' => $c->slug,
+                ])->values()->all()
+                : [];
+
+            $course->unsetRelation('primaryActionCategories');
+            $course->setAttribute('primary_action_categories', $chosenCauses);
 
             return $course;
         });
@@ -100,6 +145,12 @@ class CourseController extends BaseController
                     'slug' => $org->user->slug ?? null,
                 ];
             });
+
+        $causesForFilter = PrimaryActionCategory::query()
+            ->where('is_active', true)
+            ->orderBy('sort_order')
+            ->orderBy('name')
+            ->get(['id', 'name', 'slug']);
 
         // Dynamic SEO: base from settings, override title when filters applied
         $baseSeo = SeoService::forPage('courses');
@@ -134,6 +185,7 @@ class CourseController extends BaseController
             'courses' => $courses,
             'topics' => $topics,
             'eventTypes' => $eventTypes,
+            'causesForFilter' => $causesForFilter,
             'organizations' => $organizations,
             'filters' => $filters,
         ]);

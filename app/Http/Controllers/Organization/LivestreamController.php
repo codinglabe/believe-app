@@ -304,6 +304,14 @@ class LivestreamController extends Controller
         if ($orgStream) {
             $participantUrl = $orgStream->getParticipantUrl();
             $password = $orgStream->getDecryptedPassword();
+            $settings = $orgStream->settings ?? [];
+            $participantEmails = [];
+            if (is_array($settings)) {
+                $raw = $settings['participant_emails'] ?? $settings['participantEmails'] ?? [];
+                if (is_array($raw)) {
+                    $participantEmails = array_values(array_unique(array_filter(array_map('strval', $raw))));
+                }
+            }
             return Inertia::render('Organization/Livestreams/GuestJoin', [
                 'livestream' => [
                     'id' => $orgStream->id,
@@ -313,6 +321,8 @@ class LivestreamController extends Controller
                     'roomPassword' => $password,
                     'participantUrl' => $participantUrl,
                     'status' => $orgStream->status,
+                    'scheduledAt' => $orgStream->scheduled_at?->toIso8601String(),
+                    'participantEmails' => $participantEmails,
                 ],
                 'organization' => [
                     'id' => $orgStream->organization->id,
@@ -329,6 +339,14 @@ class LivestreamController extends Controller
         if ($userStream) {
             $participantUrl = $userStream->getParticipantUrl();
             $password = $userStream->getDecryptedPassword();
+            $settings = $userStream->settings ?? [];
+            $participantEmails = [];
+            if (is_array($settings)) {
+                $raw = $settings['participant_emails'] ?? $settings['participantEmails'] ?? [];
+                if (is_array($raw)) {
+                    $participantEmails = array_values(array_unique(array_filter(array_map('strval', $raw))));
+                }
+            }
             return Inertia::render('Organization/Livestreams/GuestJoin', [
                 'livestream' => [
                     'id' => $userStream->id,
@@ -338,6 +356,8 @@ class LivestreamController extends Controller
                     'roomPassword' => $password,
                     'participantUrl' => $participantUrl,
                     'status' => $userStream->status,
+                    'scheduledAt' => $userStream->scheduled_at?->toIso8601String(),
+                    'participantEmails' => $participantEmails,
                 ],
                 'organization' => [
                     'id' => 0,
@@ -385,7 +405,7 @@ class LivestreamController extends Controller
 
         $livestream = $invite->organizationLivestream;
 
-        if (! in_array($livestream->status, ['draft', 'scheduled', 'meeting_live', 'live'], true)) {
+        if (! in_array($livestream->status, ['draft', 'meeting_live', 'live'], true)) {
             return Inertia::render('Organization/Livestreams/GuestJoinExpired', [
                 'title' => $livestream->title,
                 'organizationName' => $livestream->organization?->name,
