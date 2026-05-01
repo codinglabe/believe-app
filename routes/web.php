@@ -132,6 +132,7 @@ use App\Http\Controllers\Organization\LivestreamController;
 use App\Http\Controllers\Organization\MarketplaceProductPoolController;
 use App\Http\Controllers\Organization\OrganizationKioskProviderController;
 use App\Http\Controllers\OrganizationController;
+use App\Http\Controllers\OrganizationStripeConnectController;
 use App\Http\Controllers\OwnershipVerificationController;
 use App\Http\Controllers\PaymentMethodSettingController;
 use App\Http\Controllers\PhazeWebhookController;
@@ -159,8 +160,8 @@ use App\Http\Controllers\TransactionController;
 use App\Http\Controllers\UnityLiveController;
 use App\Http\Controllers\UserProfileController;
 use App\Http\Controllers\UsersInterestedTopicsController;
-use App\Http\Controllers\VolunteerController;
 use App\Http\Controllers\VolunteerAvailableSupportersController;
+use App\Http\Controllers\VolunteerController;
 use App\Http\Controllers\VolunteerSupporterInterestsController;
 use App\Http\Controllers\VolunteerTimesheetController;
 use App\Http\Controllers\WalletController;
@@ -2008,6 +2009,11 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin|org
     Route::get('/dropbox/download', [IntegrationsController::class, 'downloadFile'])->name('dropbox.download');
     Route::delete('/dropbox/file', [IntegrationsController::class, 'deleteFile'])->name('dropbox.file.delete');
     Route::put('/dropbox/file', [IntegrationsController::class, 'renameFile'])->name('dropbox.file.rename');
+
+    Route::get('/stripe-connect', [OrganizationStripeConnectController::class, 'show'])->name('stripe-connect');
+    Route::get('/stripe-connect/start', [OrganizationStripeConnectController::class, 'start'])->name('stripe-connect.start');
+    Route::get('/stripe-connect/return', [OrganizationStripeConnectController::class, 'onboardingReturn'])->name('stripe-connect.return');
+    Route::get('/stripe-connect/refresh', [OrganizationStripeConnectController::class, 'onboardingRefresh'])->name('stripe-connect.refresh');
 });
 
 // YouTube integration: organization + supporter (outside dashboard group so role:user can access)

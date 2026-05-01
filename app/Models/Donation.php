@@ -10,6 +10,7 @@ class Donation extends Model
     protected $fillable = [
         'user_id',
         'organization_id',
+        'stripe_connect_account_id',
         'care_alliance_id',
         'amount',
         'donor_covers_processing_fees',
@@ -18,6 +19,7 @@ class Donation extends Model
         'frequency',
         'payment_method',
         'transaction_id',
+        'stripe_checkout_session_id',
         'status',
         'messages',
         'message',

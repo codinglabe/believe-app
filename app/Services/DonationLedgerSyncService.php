@@ -160,6 +160,12 @@ class DonationLedgerSyncService
             $meta['net_to_organization'] = round($amountDollars, 2);
         }
 
+        $connectId = isset($donation->stripe_connect_account_id) ? trim((string) $donation->stripe_connect_account_id) : '';
+        if ($connectId !== '') {
+            $meta['stripe_connect_account_id'] = $connectId;
+            $meta['funds_routed_via_stripe_connect'] = true;
+        }
+
         return $meta;
     }
 

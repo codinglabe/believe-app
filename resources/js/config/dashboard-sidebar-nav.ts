@@ -49,6 +49,7 @@ import {
     Send,
     Store,
     CreditCard,
+    Landmark,
     FolderOpen,
     ShoppingBag,
     Search,
@@ -928,6 +929,12 @@ export const dashboardSidebarNavItems: (NavItem | NavGroup)[] = [
                         title: 'YouTube',
                         href: route('integrations.youtube'),
                         icon: Youtube,
+                        role: 'organization',
+                    },
+                    {
+                        title: 'Stripe payouts (donations)',
+                        href: route('integrations.stripe-connect'),
+                        icon: Landmark,
                         role: 'organization',
                     },
                     {

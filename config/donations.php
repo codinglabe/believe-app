@@ -4,13 +4,16 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Stripe Checkout — automatic tax (Stripe Tax)
+    | Require Stripe Connect for “plain” organization donations (not Care Alliance splits)
     |--------------------------------------------------------------------------
     |
-    | When true, donation Checkout Sessions will set automatic_tax.enabled.
-    | Requires Stripe Tax to be configured in the Stripe Dashboard.
+    | When true, one-time Stripe gifts to nonprofits that are not routed through
+    | Care Alliance financial distribution require Connect onboarding before checkout.
+    | When false, the app falls back to the legacy platform Checkout flow until the
+    | organization connects Stripe Express.
     |
     */
-    'stripe_automatic_tax' => env('DONATIONS_STRIPE_AUTOMATIC_TAX', false),
+
+    'require_org_stripe_connect_for_direct_donations' => env('DONATIONS_REQUIRE_ORG_STRIPE_CONNECT', false),
 
 ];
