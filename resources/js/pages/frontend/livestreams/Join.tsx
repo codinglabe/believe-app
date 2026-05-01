@@ -46,6 +46,9 @@ interface Organization {
 interface Props {
   errors?: Record<string, string[]>
   oldMeetingId?: string
+  /** True after server found the meeting and a passcode is required (or after wrong passcode). */
+  requiresPasscodeStep?: boolean
+  pendingMeetingTitle?: string | null
   livestream?: Livestream
   organization?: Organization
 }
@@ -53,14 +56,21 @@ interface Props {
 export default function SupporterMeetJoin({
   errors: propsErrors,
   oldMeetingId,
+  requiresPasscodeStep: requiresPasscodeStepProp,
+  pendingMeetingTitle,
   livestream,
   organization,
 }: Props) {
   const pageProps = usePage().props as Props
   const errors = propsErrors ?? pageProps.errors
+  const requiresPasscodeStep =
+    requiresPasscodeStepProp ?? pageProps.requiresPasscodeStep ?? false
   const [meetingId, setMeetingId] = useState(oldMeetingId ?? "")
   const [passcode, setPasscode] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
+
+  const showPasscodeStep =
+    requiresPasscodeStep || (!!errors?.passcode?.[0] && !!(oldMeetingId ?? "").trim())
 
   // Step 2: after ID+passcode validated — enter name and join in-page
   const [displayName, setDisplayName] = useState("")
@@ -80,7 +90,8 @@ export default function SupporterMeetJoin({
     })
   }
 
-  const errorMsg = (errors?.passcode?.[0] ?? errors?.meeting_id?.[0]) ?? null
+  const meetingIdError = errors?.meeting_id?.[0] ?? null
+  const passcodeError = errors?.passcode?.[0] ?? null
 
   const canJoin = livestream && ["draft", "meeting_live", "live"].includes(livestream.status)
 
@@ -89,8 +100,22 @@ export default function SupporterMeetJoin({
     const url = new URL(livestream.participantUrl)
     const name = (displayName || "Guest").trim()
     if (name) url.searchParams.set("label", name)
-    if (!cameraOn) url.searchParams.set("novideo", "1")
-    if (!micOn) url.searchParams.set("nomicrophone", "1")
+    if (cameraOn) {
+      url.searchParams.set("videodevice", "1")
+      url.searchParams.delete("novideo")
+    } else {
+      url.searchParams.set("novideo", "1")
+      url.searchParams.delete("videodevice")
+      url.searchParams.delete("vd")
+    }
+    if (micOn) {
+      url.searchParams.set("audiodevice", "1")
+      url.searchParams.delete("nomicrophone")
+    } else {
+      url.searchParams.set("nomicrophone", "1")
+      url.searchParams.delete("audiodevice")
+      url.searchParams.delete("ad")
+    }
     return url.toString()
   }, [livestream?.participantUrl, joined, displayName, cameraOn, micOn])
 
@@ -273,7 +298,7 @@ export default function SupporterMeetJoin({
     <UnityMeetLayout>
       <PageHead
         title="Join a meeting"
-        description="Enter the meeting ID. If the host set a passcode, enter it to join."
+        description="Enter the meeting ID first; enter a passcode only when your host secured the meeting."
       />
       <Head title="Join a meeting" />
       <div className="min-h-screen bg-background">
@@ -304,7 +329,7 @@ export default function SupporterMeetJoin({
                   Join a meeting
                 </h1>
                 <p className="text-sm text-muted-foreground">
-                  Enter the meeting ID and passcode from your host
+                  Enter the meeting ID from your host — passcode only if the meeting is locked
                 </p>
               </div>
             </div>
@@ -316,62 +341,116 @@ export default function SupporterMeetJoin({
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <LogIn className="h-5 w-5" />
-                Meeting ID & passcode
+                {showPasscodeStep ? "Enter passcode" : "Meeting ID"}
               </CardTitle>
               <CardDescription>
-                Ask the host for the meeting ID. Passcode is only needed if the host enabled it.
+                {showPasscodeStep
+                  ? "This meeting is protected. Enter the passcode from your host."
+                  : "Enter the meeting ID from your host. You’ll only be asked for a passcode if the host enabled one."}
               </CardDescription>
             </CardHeader>
             <CardContent>
               <form onSubmit={handleSubmit} className="space-y-4">
-                {errorMsg && (
+                {meetingIdError && !showPasscodeStep && (
                   <Alert variant="destructive">
                     <AlertCircle className="h-4 w-4" />
-                    <AlertDescription>{errorMsg}</AlertDescription>
+                    <AlertDescription>{meetingIdError}</AlertDescription>
                   </Alert>
                 )}
-                <div className="space-y-2">
-                  <Label htmlFor="meeting-id">
-                    <Hash className="inline h-4 w-4 mr-1.5 -mt-0.5" />
-                    Meeting ID
-                  </Label>
-                  <Input
-                    id="meeting-id"
-                    type="text"
-                    placeholder="e.g. uni-john-smith-50"
-                    value={meetingId}
-                    onChange={(e) => setMeetingId(e.target.value)}
-                    className="bg-muted/50 border-border font-mono"
-                    autoComplete="off"
-                    autoFocus
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="passcode">
-                    <KeyRound className="inline h-4 w-4 mr-1.5 -mt-0.5" />
-                    Passcode (optional)
-                  </Label>
-                  <Input
-                    id="passcode"
-                    type="password"
-                    placeholder="Enter passcode if required"
-                    value={passcode}
-                    onChange={(e) => setPasscode(e.target.value)}
-                    className="bg-muted/50 border-border"
-                    autoComplete="off"
-                  />
-                </div>
-                <Button
-                  type="submit"
-                  className="w-full h-11 text-white"
-                  disabled={!meetingId.trim() || isSubmitting}
-                  style={{
-                    background: `linear-gradient(135deg, ${BRAND.from}, ${BRAND.to})`,
-                  }}
-                >
-                  <LogIn className="mr-2 h-4 w-4" />
-                  {isSubmitting ? "Joining…" : "Join meeting"}
-                </Button>
+                {passcodeError && showPasscodeStep && (
+                  <Alert variant="destructive">
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertDescription>{passcodeError}</AlertDescription>
+                  </Alert>
+                )}
+                {!showPasscodeStep ? (
+                  <>
+                    <div className="space-y-2">
+                      <Label htmlFor="meeting-id">
+                        <Hash className="inline h-4 w-4 mr-1.5 -mt-0.5" />
+                        Meeting ID
+                      </Label>
+                      <Input
+                        id="meeting-id"
+                        type="text"
+                        placeholder="e.g. uni-john-smith-50"
+                        value={meetingId}
+                        onChange={(e) => setMeetingId(e.target.value)}
+                        className="bg-muted/50 border-border font-mono"
+                        autoComplete="off"
+                        autoFocus
+                      />
+                    </div>
+                    <Button
+                      type="submit"
+                      className="w-full h-11 text-white"
+                      disabled={!meetingId.trim() || isSubmitting}
+                      style={{
+                        background: `linear-gradient(135deg, ${BRAND.from}, ${BRAND.to})`,
+                      }}
+                    >
+                      <LogIn className="mr-2 h-4 w-4" />
+                      {isSubmitting ? "Checking…" : "Continue"}
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    {(pendingMeetingTitle ?? "").trim().length > 0 && (
+                      <p className="rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm text-foreground">
+                        <span className="text-muted-foreground">Meeting: </span>
+                        {pendingMeetingTitle}
+                      </p>
+                    )}
+                    <div className="space-y-2">
+                      <Label htmlFor="meeting-id-readonly">
+                        <Hash className="inline h-4 w-4 mr-1.5 -mt-0.5" />
+                        Meeting ID
+                      </Label>
+                      <Input
+                        id="meeting-id-readonly"
+                        type="text"
+                        readOnly
+                        value={meetingId}
+                        className="bg-muted/50 border-border font-mono text-muted-foreground"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="passcode">
+                        <KeyRound className="inline h-4 w-4 mr-1.5 -mt-0.5" />
+                        Passcode
+                      </Label>
+                      <Input
+                        id="passcode"
+                        type="password"
+                        placeholder="Enter passcode"
+                        value={passcode}
+                        onChange={(e) => setPasscode(e.target.value)}
+                        className="bg-muted/50 border-border"
+                        autoComplete="off"
+                        autoFocus
+                      />
+                    </div>
+                    <Button
+                      type="submit"
+                      className="w-full h-11 text-white"
+                      disabled={!meetingId.trim() || !passcode.trim() || isSubmitting}
+                      style={{
+                        background: `linear-gradient(135deg, ${BRAND.from}, ${BRAND.to})`,
+                      }}
+                    >
+                      <LogIn className="mr-2 h-4 w-4" />
+                      {isSubmitting ? "Joining…" : "Join meeting"}
+                    </Button>
+                    <div className="text-center">
+                      <Link
+                        href="/livestreams/supporter/join"
+                        className="text-sm text-muted-foreground hover:text-foreground underline-offset-4 hover:underline"
+                      >
+                        Use a different meeting ID
+                      </Link>
+                    </div>
+                  </>
+                )}
               </form>
             </CardContent>
           </Card>

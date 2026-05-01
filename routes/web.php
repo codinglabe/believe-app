@@ -417,6 +417,12 @@ Route::get('/unity-live/{slug}', [UnityLiveController::class, 'show'])->name('un
 // Unity Meet (supporter UI): personal meetings — also available to org / care alliance accounts from dashboard Tools
 Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:user|organization|organization_pending|care_alliance'])->group(function () {
     Route::get('/livestreams/supporter', [SupporterLivestreamController::class, 'index'])->name('livestreams.supporter.index');
+    Route::get('/livestreams/supporter/live', [SupporterLivestreamController::class, 'live'])->name('livestreams.supporter.live');
+    Route::get('/livestreams/supporter/recordings/search', [SupporterLivestreamController::class, 'recordingsSearch'])->name('livestreams.supporter.recordings.search');
+    Route::get('/livestreams/supporter/recordings/download', [SupporterLivestreamController::class, 'recordingDownload'])->name('livestreams.supporter.recordings.download');
+    Route::delete('/livestreams/supporter/recordings/file', [SupporterLivestreamController::class, 'recordingDelete'])->name('livestreams.supporter.recordings.file.delete');
+    Route::put('/livestreams/supporter/recordings/file', [SupporterLivestreamController::class, 'recordingRename'])->name('livestreams.supporter.recordings.file.rename');
+    Route::get('/livestreams/supporter/recordings', [SupporterLivestreamController::class, 'recordings'])->name('livestreams.supporter.recordings');
     Route::get('/livestreams/supporter/create', [SupporterLivestreamController::class, 'create'])->name('livestreams.supporter.create');
     Route::post('/livestreams/supporter', [SupporterLivestreamController::class, 'store'])->name('livestreams.supporter.store');
     Route::post('/livestreams/supporter/schedule', [SupporterLivestreamController::class, 'schedule'])->name('livestreams.supporter.schedule');
@@ -1100,6 +1106,7 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|care_alli
     // Credit Purchase Routes
     Route::get('/credits/purchase', [CreditPurchaseController::class, 'index'])->name('credits.purchase');
     Route::post('/credits/checkout', [CreditPurchaseController::class, 'checkout'])->name('credits.checkout');
+    Route::post('/credits/pay-believe-points', [CreditPurchaseController::class, 'payWithBelievePoints'])->name('credits.pay-believe-points');
     Route::get('/credits/success', [CreditPurchaseController::class, 'success'])->name('credits.success');
     Route::get('/credits/cancel', [CreditPurchaseController::class, 'cancel'])->name('credits.cancel');
 

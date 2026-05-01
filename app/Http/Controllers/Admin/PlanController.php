@@ -8,7 +8,9 @@ use App\Models\PlanFeature;
 use App\Models\Transaction;
 use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Laravel\Cashier\Cashier;
 
@@ -61,7 +63,7 @@ class PlanController extends BaseController
             'custom_fields' => 'nullable|array',
             'custom_fields.*.key' => 'required|string',
             'custom_fields.*.label' => 'required|string|max:255',
-            'custom_fields.*.value' => 'required|string',
+            'custom_fields.*.value' => ['required'],
             'custom_fields.*.type' => 'required|string|in:text,number,currency,boolean',
             'custom_fields.*.icon' => 'nullable|string|max:255',
             'custom_fields.*.description' => 'nullable|string|max:500',
@@ -72,6 +74,10 @@ class PlanController extends BaseController
             'features.*.is_unlimited' => 'boolean',
             'features.*.sort_order' => 'nullable|integer|min:0',
         ]);
+
+        if (isset($validated['custom_fields'])) {
+            $validated['custom_fields'] = $this->normalizeCustomFieldsForStorage($validated['custom_fields']);
+        }
 
         try {
             // Create Stripe product and price dynamically if not provided
@@ -189,11 +195,29 @@ class PlanController extends BaseController
             'custom_fields' => 'nullable|array',
             'custom_fields.*.key' => 'required|string',
             'custom_fields.*.label' => 'required|string|max:255',
-            'custom_fields.*.value' => 'required|string',
+            'custom_fields.*.value' => ['required'],
             'custom_fields.*.type' => 'required|string|in:text,number,currency,boolean',
             'custom_fields.*.icon' => 'nullable|string|max:255',
             'custom_fields.*.description' => 'nullable|string|max:500',
+            'features' => 'nullable|array',
+            'features.*.id' => [
+                'nullable',
+                'integer',
+                Rule::exists('plan_features', 'id')->where(fn ($q) => $q->where('plan_id', $plan->id)),
+            ],
+            'features.*.name' => 'required|string|max:255',
+            'features.*.description' => 'nullable|string',
+            'features.*.icon' => 'nullable|string|max:255',
+            'features.*.is_unlimited' => 'boolean',
+            'features.*.sort_order' => 'nullable|integer|min:0',
         ]);
+
+        if (isset($validated['custom_fields'])) {
+            $validated['custom_fields'] = $this->normalizeCustomFieldsForStorage($validated['custom_fields']);
+        }
+
+        $featuresPayload = $validated['features'] ?? [];
+        unset($validated['features']);
 
         try {
             // Create or update Stripe product and price dynamically if needed
@@ -256,7 +280,10 @@ class PlanController extends BaseController
                 }
             }
 
-            $plan->update($validated);
+            DB::transaction(function () use ($plan, $validated, $featuresPayload) {
+                $plan->update($validated);
+                $this->syncPlanFeatures($plan, $featuresPayload);
+            });
 
             return redirect()->route('admin.plans.index')
                 ->with('success', 'Plan updated successfully.');
@@ -487,5 +514,58 @@ class PlanController extends BaseController
                 'status' => $statusFilter,
             ],
         ]);
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $fields
+     * @return array<int, array<string, mixed>>
+     */
+    protected function normalizeCustomFieldsForStorage(array $fields): array
+    {
+        return array_map(function (array $row): array {
+            $v = $row['value'] ?? '';
+            $row['value'] = is_scalar($v) ? (string) $v : '';
+
+            return $row;
+        }, $fields);
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $features
+     */
+    protected function syncPlanFeatures(Plan $plan, array $features): void
+    {
+        $incomingIds = collect($features)
+            ->pluck('id')
+            ->filter(fn ($id) => $id !== null && $id !== '')
+            ->map(fn ($id) => (int) $id)
+            ->values()
+            ->all();
+
+        if ($incomingIds === []) {
+            $plan->features()->delete();
+        } else {
+            $plan->features()->whereNotIn('id', $incomingIds)->delete();
+        }
+
+        foreach ($features as $index => $feature) {
+            $payload = [
+                'name' => $feature['name'],
+                'description' => $feature['description'] ?? null,
+                'icon' => ! empty($feature['icon']) ? $feature['icon'] : null,
+                'is_unlimited' => (bool) ($feature['is_unlimited'] ?? false),
+                'sort_order' => (int) ($feature['sort_order'] ?? $index),
+            ];
+
+            $id = $feature['id'] ?? null;
+            if ($id !== null && $id !== '') {
+                PlanFeature::query()
+                    ->where('plan_id', $plan->id)
+                    ->where('id', (int) $id)
+                    ->update($payload);
+            } else {
+                PlanFeature::query()->create(array_merge($payload, ['plan_id' => $plan->id]));
+            }
+        }
     }
 }

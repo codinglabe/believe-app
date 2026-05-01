@@ -19,12 +19,16 @@ class OrganizationInvite extends Model
         'sent_at',
         'accepted_at',
         'points_awarded_at',
+        'believe_points_schedule_started_at',
+        'believe_points_installments_credited',
     ];
 
     protected $casts = [
         'sent_at' => 'datetime',
         'accepted_at' => 'datetime',
         'points_awarded_at' => 'datetime',
+        'believe_points_schedule_started_at' => 'datetime',
+        'believe_points_installments_credited' => 'integer',
     ];
 
     protected static function boot()

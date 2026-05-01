@@ -323,10 +323,31 @@ class EventController extends BaseController
         $monthFilter = $request->input('month_filter');
         $dayFilter = $request->input('day_filter');
         $dateFilter = $request->input('date_filter');
+        $sort = $request->input('sort');
+        $allowedSorts = ['most_recent', 'start_soonest', 'start_latest', 'name_az'];
+        if (! is_string($sort) || ! in_array($sort, $allowedSorts, true)) {
+            $sort = 'most_recent';
+        }
 
         $user = Auth::user();
         $eventTypes = EventType::where('is_active', true)->orderBy('category')->orderBy('name')->get();
-        $organizations = Organization::orderBy('name')->get();
+        $organizations = Organization::query()
+            ->whereHas('events', function ($q) use ($user) {
+                if (! $user || $user->role !== 'admin') {
+                    $q->where('visibility', 'public');
+                }
+            })
+            ->orderBy('name')
+            ->get();
+
+        $validOrgIds = $organizations->pluck('id')->map(fn ($id) => (string) $id)->all();
+        if (
+            filled($organizationId)
+            && $organizationId !== 'all'
+            && ! in_array((string) $organizationId, $validOrgIds, true)
+        ) {
+            $organizationId = null;
+        }
 
         // Get unique values for filters
         $cities = Event::whereNotNull('city')
@@ -388,7 +409,14 @@ class EventController extends BaseController
             $events->where('visibility', 'public');
         }
 
-        $events = $events->get();
+        match ($sort) {
+            'start_soonest' => $events->orderBy('start_date')->orderBy('name'),
+            'start_latest' => $events->orderByDesc('start_date')->orderBy('name'),
+            'name_az' => $events->orderBy('name'),
+            default => $events->orderByDesc('created_at')->orderByDesc('start_date'),
+        };
+
+        $events = $events->paginate(6)->withQueryString();
 
         // Dynamic SEO: base from settings, override title when filters applied
         $baseSeo = SeoService::forPage('all_events');
@@ -438,9 +466,8 @@ class EventController extends BaseController
             'cityFilter' => $cityFilter,
             'stateFilter' => $stateFilter,
             'zipFilter' => $zipFilter,
-            'monthFilter' => $monthFilter,
-            'dayFilter' => $dayFilter,
             'dateFilter' => $dateFilter,
+            'sort' => $sort,
         ]);
     }
 

@@ -275,7 +275,7 @@ export default function SupporterShowLivestream({ livestream }: Props) {
         </p>
         {!livestream.dropboxRecordingAvailable && (
           <Link
-            href="/integrations/dropbox"
+            href="/livestreams/supporter/recordings"
             className="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:underline"
           >
             <Cloud className="h-3.5 w-3.5" />

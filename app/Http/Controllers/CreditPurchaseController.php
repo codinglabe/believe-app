@@ -5,7 +5,10 @@ namespace App\Http\Controllers;
 use App\Models\Transaction;
 use App\Support\StripeCustomerChargeAmount;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Route;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Laravel\Cashier\Cashier;
 
@@ -30,16 +33,37 @@ class CreditPurchaseController extends Controller
      */
     public function checkout(Request $request)
     {
-        $request->validate([
-            'amount' => ['required', 'numeric', 'min:1'],
-            'return_route' => ['nullable', 'string'],
-        ]);
+        $packages = [
+            'legacy_50k' => ['amount' => 1.0, 'credits' => 50000],
+            'addon_10k' => ['amount' => 2.0, 'credits' => 10000],
+            'addon_25k' => ['amount' => 4.5, 'credits' => 25000],
+            'addon_50k' => ['amount' => 8.0, 'credits' => 50000],
+        ];
+
+        $returnRoute = $request->input('return_route', 'ai-chat.index');
+        $packageKey = $request->input('package');
+
+        if ($packageKey !== null && $packageKey !== '') {
+            $request->validate([
+                'package' => ['required', 'string', 'in:'.implode(',', array_keys($packages))],
+                'return_route' => ['nullable', 'string'],
+            ]);
+            $amount = $packages[$packageKey]['amount'];
+            $creditsToAdd = $packages[$packageKey]['credits'];
+        } else {
+            $request->validate([
+                'amount' => ['required', 'numeric', 'min:1'],
+                'return_route' => ['nullable', 'string'],
+            ]);
+            $packageKey = null;
+            $userAmount = (float) $request->input('amount');
+            $amount = $userAmount;
+            // Legacy: charge requested USD amount and grant fixed 50k wallet credits per checkout (existing behaviour).
+            $creditsToAdd = 50000;
+        }
 
         try {
             $user = $request->user();
-            $amount = $request->amount; // $1
-            $creditsToAdd = 50000; // 50000 credits per $1
-            $returnRoute = $request->input('return_route', 'ai-chat.index'); // Default to AI chat
 
             $amountInCents = StripeCustomerChargeAmount::chargeCentsFromNetUsd((float) $amount, 'card');
 
@@ -51,6 +75,7 @@ class CreditPurchaseController extends Controller
                 'status' => 'pending',
                 'meta' => [
                     'credits_to_add' => $creditsToAdd,
+                    'package' => $packageKey ?? 'legacy_amount',
                     'description' => "Purchase {$creditsToAdd} credits",
                 ],
             ]);
@@ -70,6 +95,7 @@ class CreditPurchaseController extends Controller
                         'credits_to_add' => $creditsToAdd,
                         'amount' => $amount,
                         'return_route' => $returnRoute,
+                        'package' => (string) ($packageKey ?? 'legacy_amount'),
                     ],
                     'payment_method_types' => ['card'],
                 ]
@@ -89,6 +115,83 @@ class CreditPurchaseController extends Controller
                 'error' => $e->getMessage(),
             ]);
         }
+    }
+
+    /**
+     * Purchase AI token / wallet credit add-ons using Believe Points (no Stripe redirect).
+     */
+    public function payWithBelievePoints(Request $request)
+    {
+        $packages = [
+            'addon_10k' => ['amount' => 2.0, 'credits' => 10000],
+            'addon_25k' => ['amount' => 4.5, 'credits' => 25000],
+            'addon_50k' => ['amount' => 8.0, 'credits' => 50000],
+        ];
+
+        $request->validate([
+            'package' => ['required', 'string', 'in:'.implode(',', array_keys($packages))],
+            'return_route' => ['nullable', 'string'],
+        ]);
+
+        $user = $request->user();
+        $packageKey = $request->input('package');
+        $amountUsd = $packages[$packageKey]['amount'];
+        $creditsToAdd = $packages[$packageKey]['credits'];
+
+        $returnRoute = $request->input('return_route', 'ai-chat.index');
+        if (! is_string($returnRoute) || $returnRoute === '' || ! Route::has($returnRoute)) {
+            $returnRoute = 'ai-chat.index';
+        }
+
+        return DB::transaction(function () use ($user, $amountUsd, $creditsToAdd, $packageKey, $returnRoute) {
+            $user->refresh();
+
+            $deducted = $user->deductBelievePointsForGiftCard($amountUsd, true);
+            if ($deducted === null) {
+                throw ValidationException::withMessages([
+                    'message' => 'Insufficient Believe Points balance.',
+                ]);
+            }
+
+            $user->increment('credits', $creditsToAdd);
+
+            $aiTokensIncludedAdded = 0;
+            $includedBefore = (int) ($user->fresh()->ai_tokens_included ?? 0);
+            if ($includedBefore > 0) {
+                $user->increment('ai_tokens_included', $creditsToAdd);
+                $aiTokensIncludedAdded = $creditsToAdd;
+            }
+
+            $user->recordTransaction([
+                'type' => 'credit_purchase',
+                'amount' => $amountUsd,
+                'payment_method' => 'believe_points',
+                'status' => 'completed',
+                'meta' => [
+                    'credits_to_add' => $creditsToAdd,
+                    'package' => $packageKey,
+                    'description' => "Purchase {$creditsToAdd} credits (Believe Points)",
+                    'bip_from_gifted' => $deducted['from_gifted'],
+                    'bip_from_purchased' => $deducted['from_purchased'],
+                    'credits_added' => $creditsToAdd,
+                    'ai_tokens_included_added' => $aiTokensIncludedAdded,
+                ],
+            ]);
+
+            Log::info('Credits purchased with Believe Points', [
+                'user_id' => $user->id,
+                'package' => $packageKey,
+                'amount_usd' => $amountUsd,
+                'credits_added' => $creditsToAdd,
+            ]);
+
+            $successMsg = "Successfully purchased {$creditsToAdd} wallet credits with Believe Points.";
+            if ($aiTokensIncludedAdded > 0) {
+                $successMsg .= " Your plan AI token allowance increased by {$aiTokensIncludedAdded} (same pool as AI Chat).";
+            }
+
+            return redirect()->route($returnRoute)->with('success', $successMsg);
+        });
     }
 
     /**

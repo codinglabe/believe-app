@@ -6,27 +6,9 @@ import AppSidebarLayout from "@/layouts/app/app-sidebar-layout"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { 
-    Sparkles, 
-    Star,
-    Zap,
-    Crown,
-    ArrowLeft,
-    ArrowRight,
-    Mail,
-    Bot,
-    Shield,
-    Users,
-    Calendar,
-    GraduationCap,
-    ShoppingCart,
-    Heart,
-    Bell,
-    FileText,
-    Check,
-    Gift
-} from "lucide-react"
+import { Star, Zap, Crown, ArrowLeft, ArrowRight, Check } from "lucide-react"
 import { motion } from "framer-motion"
+import { getPlanCustomFieldLucideIcon } from "@/lib/plan-custom-field-icons"
 
 interface PlanFeature {
     id: number
@@ -153,21 +135,7 @@ export default function PlansShow({ plan }: PlansShowProps) {
                                     <div className="space-y-2 sm:space-y-3">
                                         <h3 className="text-base sm:text-lg font-semibold">What's Included:</h3>
                                         {plan.custom_fields.map((field) => {
-                                            const getIconComponent = (iconName: string | undefined) => {
-                                                if (!iconName) return Mail
-                                                const iconMap: Record<string, React.ComponentType<any>> = {
-                                                    Mail, Bot, Shield, Users, Calendar, GraduationCap, Heart, ShoppingCart, FileText, Bell, Gift, Sparkles, Star, Zap, Crown
-                                                }
-                                                const lowerName = iconName.toLowerCase()
-                                                for (const [key, value] of Object.entries(iconMap)) {
-                                                    if (key.toLowerCase() === lowerName) {
-                                                        return value
-                                                    }
-                                                }
-                                                return Mail
-                                            }
-                                            
-                                            const IconComponent = getIconComponent(field.icon)
+                                            const IconComponent = getPlanCustomFieldLucideIcon(field.icon)
                                             
                                             return (
                                                 <div key={field.key} className="flex items-start gap-2 sm:gap-3 p-3 sm:p-4 rounded-lg bg-muted/50">

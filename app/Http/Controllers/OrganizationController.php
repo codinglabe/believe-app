@@ -21,6 +21,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
 use Illuminate\Support\Str;
@@ -44,6 +45,7 @@ class OrganizationController extends BaseController
         $city = $request->get('city');
         $zip = $request->get('zip');
         $causeId = $request->integer('cause_id');
+        $status = $request->get('status');
         $page = $request->get('page', 1);
         $sort = $request->get('sort', 'relevance');
         $perPage = min($request->get('per_page', 6), 50);
@@ -120,6 +122,35 @@ class OrganizationController extends BaseController
                 $query->whereRaw('0 = 1');
             } else {
                 $query->whereIn('ein', $variants);
+            }
+        }
+
+        // Filter by platform join status (registered org match by canonical EIN digits, hyphen-insensitive)
+        if ($status === 'joined' || $status === 'not_joined') {
+            $existsSub = function ($sub) {
+                $sub->from('organizations')
+                    ->where('registration_status', 'approved')
+                    ->whereRaw("REPLACE(organizations.ein,'-','') = REPLACE(excel_data.ein,'-','')");
+
+                if (Schema::hasTable('care_alliances') && Schema::hasColumn('care_alliances', 'hub_organization_id')) {
+                    $sub->whereNotExists(function ($hub) {
+                        $hub->from('care_alliances')
+                            ->whereColumn('care_alliances.hub_organization_id', 'organizations.id')
+                            ->whereNotNull('care_alliances.hub_organization_id');
+                    });
+                }
+            };
+
+            if ($status === 'joined') {
+                $query->whereExists(function ($sub) use ($existsSub) {
+                    $sub->selectRaw('1');
+                    $existsSub($sub);
+                });
+            } else {
+                $query->whereNotExists(function ($sub) use ($existsSub) {
+                    $sub->selectRaw('1');
+                    $existsSub($sub);
+                });
             }
         }
 
@@ -323,11 +354,25 @@ class OrganizationController extends BaseController
                 ->prepend('All Descriptions');
         });
 
+        $causeFilterOptions = cache()->remember('orgs_primary_action_categories_active_v1', 3600, function () {
+            return PrimaryActionCategory::query()
+                ->where('is_active', true)
+                ->orderBy('name')
+                ->get(['id', 'name'])
+                ->map(fn ($c) => [
+                    'id' => (int) $c->id,
+                    'name' => (string) $c->name,
+                ])
+                ->values()
+                ->all();
+        });
+
         $filterOptions = [
             'categories' => $categories,
             'categoryDescriptions' => $categoryDescriptions, // Add this
             'states' => $this->getStates(),
             'cities' => ['All Cities'],
+            'causes' => $causeFilterOptions,
         ];
 
         $organizations->setCollection($transformedOrganizations);
@@ -383,6 +428,7 @@ class OrganizationController extends BaseController
                 'city' => $city,
                 'zip' => $zip,
                 'cause_id' => $causeId > 0 ? (string) $causeId : null,
+                'status' => $status,
                 'sort' => $sort,
                 'per_page' => $perPage,
             ],
@@ -391,7 +437,7 @@ class OrganizationController extends BaseController
                 ($categoryDescription && $categoryDescription !== 'All Descriptions') || // Add this
                 ($state && $state !== 'All States') ||
                 ($city && $city !== 'All Cities') || $zip ||
-                $causeId > 0,
+                $causeId > 0 || ($status && $status !== 'All Status'),
         ]);
     }
 
@@ -2622,7 +2668,11 @@ class OrganizationController extends BaseController
     }
 
     /**
-     * Invite an unregistered organization via email
+     * Invite an unregistered organization via email.
+     *
+     * After the invite is accepted and the organization verifies email, the inviter's Believe Points
+     * schedule starts (AwardInviteRewardPoints listener). Remaining installments are credited daily by
+     * the `organizations:process-invite-believe-point-schedule` Artisan command.
      */
     public function inviteOrganization(Request $request)
     {
