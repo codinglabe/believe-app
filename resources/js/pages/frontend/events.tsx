@@ -5,11 +5,9 @@ import type React from "react"
 import FrontendLayout from "@/layouts/frontend/frontend-layout"
 import { motion } from "framer-motion"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { useState, useEffect, useCallback, useRef } from "react"
 import { debounce } from "lodash"
-import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import {
   MapPin,
@@ -18,17 +16,13 @@ import {
   ChevronRight,
   Building,
   Users,
-  X,
   Search,
   Filter,
   CalendarDays,
-  Clock,
-  Star,
-  Eye,
   DollarSign,
+  ArrowUpDown,
 } from "lucide-react"
 import { Link, router } from "@inertiajs/react"
-import { route } from "ziggy-js"
 import { PageHead } from "@/components/frontend/PageHead"
 
 interface EventType {
@@ -76,9 +70,62 @@ interface Organization {
   name: string
 }
 
+const DEFAULT_SORT = "most_recent"
+
+/** Matches `SiteTitle` logo gradient (purple → blue) */
+const BRAND_GRADIENT_HERO =
+  "bg-gradient-to-br from-purple-600 via-purple-700 to-blue-600 dark:from-purple-950 dark:via-purple-900 dark:to-blue-950"
+
+type PaginationLink = { url: string | null; label: string; active: boolean }
+type Paginated<T> = {
+  data: T[]
+  current_page: number
+  last_page: number
+  per_page: number
+  total: number
+  from: number | null
+  to: number | null
+  links: PaginationLink[]
+}
+
+const SORT_OPTIONS = [
+  { value: "most_recent", label: "Most recent" },
+  { value: "start_soonest", label: "Start date (soonest first)" },
+  { value: "start_latest", label: "Start date (latest first)" },
+  { value: "name_az", label: "Name (A–Z)" },
+] as const
+
+function EventsSortSelect({
+  value,
+  onChange,
+  id,
+}: {
+  value: string
+  onChange: (v: string) => void
+  id?: string
+}) {
+  return (
+    <Select value={value} onValueChange={onChange}>
+      <SelectTrigger
+        id={id}
+        className="w-full h-11 rounded-xl border-slate-200 dark:border-gray-700 bg-slate-50/50 dark:bg-gray-800/50 text-slate-900 dark:text-white"
+      >
+        <SelectValue placeholder="Sort" />
+      </SelectTrigger>
+      <SelectContent className="rounded-xl border-slate-200 dark:border-gray-700">
+        {SORT_OPTIONS.map((opt) => (
+          <SelectItem key={opt.value} value={opt.value}>
+            {opt.label}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  )
+}
+
 interface EventsPageProps {
     seo?: { title: string; description?: string }
-    events: Event[];
+    events: Paginated<Event>;
     eventTypes: EventType[];
     organizations: Organization[];
     cities: string[];
@@ -91,21 +138,34 @@ interface EventsPageProps {
     cityFilter?: string;
     stateFilter?: string;
     zipFilter?: string;
-    monthFilter?: string;
-    dayFilter?: string;
     dateFilter?: string;
+    sort?: string;
 }
 
-export default function EventsPage({ seo, events, eventTypes, organizations, cities, states, zips, search, status, eventTypeId, organizationId, cityFilter, stateFilter, zipFilter, monthFilter, dayFilter, dateFilter }: EventsPageProps) {
-    const [currentPage, setCurrentPage] = useState(1)
-    const eventsPerPage = 6
-
-  // Calculate pagination for events
-  const totalEvents = events?.length || 0
-  const totalPages = Math.ceil(totalEvents / eventsPerPage)
-  const startIndex = (currentPage - 1) * eventsPerPage
-  const endIndex = Math.min(startIndex + eventsPerPage, totalEvents)
-  const currentEvents = events?.slice(startIndex, endIndex) || []
+export default function EventsPage({
+    seo,
+    events,
+    eventTypes,
+    organizations,
+    cities,
+    states,
+    zips,
+    search,
+    status,
+    eventTypeId,
+    organizationId,
+    cityFilter,
+    stateFilter,
+    zipFilter,
+    dateFilter,
+    sort: sortProp,
+}: EventsPageProps) {
+  const totalEvents = events?.total || 0
+  const totalPages = events?.last_page || 1
+  const currentPage = events?.current_page || 1
+  const startIndex = (events?.from ?? 0) || 0
+  const endIndex = (events?.to ?? 0) || 0
+  const currentEvents = events?.data || []
 
     const [filters, setFilters] = useState<{
         search: string
@@ -115,9 +175,8 @@ export default function EventsPage({ seo, events, eventTypes, organizations, cit
         city_filter: string
         state_filter: string
         zip_filter: string
-        month_filter: string
-        day_filter: string
         date_filter: string
+        sort: string
     }>({
         search: search || '',
         status: status || 'all',
@@ -126,9 +185,8 @@ export default function EventsPage({ seo, events, eventTypes, organizations, cit
         city_filter: cityFilter || 'all',
         state_filter: stateFilter || 'all',
         zip_filter: zipFilter || 'all',
-        month_filter: monthFilter || 'all',
-        day_filter: dayFilter || 'all',
-        date_filter: dateFilter || ''
+        date_filter: dateFilter || '',
+        sort: sortProp && SORT_OPTIONS.some((o) => o.value === sortProp) ? sortProp : DEFAULT_SORT,
     })
 
     const statusOptions = [
@@ -139,41 +197,10 @@ export default function EventsPage({ seo, events, eventTypes, organizations, cit
         { value: 'cancelled', label: 'Cancelled' }
     ]
 
-    const monthOptions = [
-        { value: 'all', label: 'All Months' },
-        { value: '1', label: 'January' },
-        { value: '2', label: 'February' },
-        { value: '3', label: 'March' },
-        { value: '4', label: 'April' },
-        { value: '5', label: 'May' },
-        { value: '6', label: 'June' },
-        { value: '7', label: 'July' },
-        { value: '8', label: 'August' },
-        { value: '9', label: 'September' },
-        { value: '10', label: 'October' },
-        { value: '11', label: 'November' },
-        { value: '12', label: 'December' }
-    ]
-
-    const dayOptions = [
-        { value: 'all', label: 'All Days' },
-        ...Array.from({ length: 31 }, (_, i) => ({
-            value: (i + 1).toString(),
-            label: (i + 1).toString()
-        }))
-    ]
-
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFilters((prev) => ({
       ...prev,
       search: e.target.value,
-    }))
-  }
-
-  const handleStatusChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    setFilters((prev) => ({
-      ...prev,
-      status: e.target.value,
     }))
   }
 
@@ -193,13 +220,10 @@ export default function EventsPage({ seo, events, eventTypes, organizations, cit
             city_filter: 'all',
             state_filter: 'all',
             zip_filter: 'all',
-            month_filter: 'all',
-            day_filter: 'all',
-            date_filter: ''
+            date_filter: '',
+            sort: DEFAULT_SORT,
         })
-        setCurrentPage(1)
-        const url = typeof route !== "undefined" ? route("alleventsPage") : "/all-events"
-        router.get(url, {}, { preserveState: true, preserveScroll: true, replace: true })
+        router.get(route("alleventsPage"), {}, { preserveState: true, preserveScroll: true, replace: true })
     }
 
   const handleOrganizationChange = (value: string) => {
@@ -230,20 +254,6 @@ export default function EventsPage({ seo, events, eventTypes, organizations, cit
         }))
     }
 
-    const handleMonthFilterChange = (value: string) => {
-        setFilters((prev) => ({
-            ...prev,
-            month_filter: value
-        }))
-    }
-
-    const handleDayFilterChange = (value: string) => {
-        setFilters((prev) => ({
-            ...prev,
-            day_filter: value
-        }))
-    }
-
     const handleDateFilterChange = (value: string) => {
         setFilters((prev) => ({
             ...prev,
@@ -252,17 +262,30 @@ export default function EventsPage({ seo, events, eventTypes, organizations, cit
     }
 
   const cleanFilterQuery = (query: Record<string, string>) => {
-    return Object.fromEntries(
+    const out = Object.fromEntries(
       Object.entries(query).filter(
         ([_, value]) => value != null && value !== "all" && value !== ""
       )
+    )
+    if (out.sort === DEFAULT_SORT) {
+      delete out.sort
+    }
+    return out
+  }
+
+  const goToPage = (page: number) => {
+    router.get(
+      route("alleventsPage"),
+      cleanFilterQuery({ ...filters, page: String(page) }),
+      { preserveState: true, preserveScroll: true, replace: true },
     )
   }
 
   const debouncedFilter = useCallback(
     debounce((query: Record<string, string>) => {
-      const url = typeof route !== "undefined" ? route("alleventsPage") : "/all-events"
-      router.get(url, cleanFilterQuery(query), {
+      // Reset to page 1 when filters change
+      const { page, ...rest } = query
+      router.get(route("alleventsPage"), cleanFilterQuery(rest), {
         preserveState: true,
         preserveScroll: true,
         replace: true,
@@ -277,19 +300,11 @@ export default function EventsPage({ seo, events, eventTypes, organizations, cit
       isInitialMount.current = false
       return
     }
-    setCurrentPage(1)
     debouncedFilter({ ...filters })
   }, [filters, debouncedFilter])
 
   const handlePageChange = (page: number) => {
-    setCurrentPage(page)
-  }
-
-  const submitSearch = (e?: React.FormEvent) => {
-    e?.preventDefault()
-    setCurrentPage(1)
-    const url = typeof route !== "undefined" ? route("alleventsPage") : "/all-events"
-    router.get(url, cleanFilterQuery({ ...filters }), { preserveState: true, preserveScroll: true, replace: true })
+    goToPage(page)
   }
 
   const hasActiveFilters =
@@ -301,18 +316,17 @@ export default function EventsPage({ seo, events, eventTypes, organizations, cit
     filters.state_filter !== "all" ||
     filters.zip_filter !== "all" ||
     filters.date_filter ||
-    filters.month_filter !== "all" ||
-    filters.year_filter !== "all"
+    filters.sort !== DEFAULT_SORT
 
     return (
         <FrontendLayout>
             <PageHead title={seo?.title ?? "All Events"} description={seo?.description} />
             <div className="min-h-screen bg-slate-50 dark:bg-gray-950">
                 {/* Hero */}
-                <section className="relative overflow-hidden bg-gradient-to-br from-violet-500 via-fuchsia-500 to-rose-500 dark:from-violet-900/90 dark:via-fuchsia-900/80 dark:to-rose-900/90 py-14 md:py-20">
+                <section className={`relative overflow-hidden py-14 md:py-20 ${BRAND_GRADIENT_HERO}`}>
                     <div className="absolute inset-0 bg-[radial-gradient(ellipse_80%_80%_at_50%_-20%,rgba(255,255,255,0.25),transparent)] dark:bg-[radial-gradient(ellipse_80%_80%_at_50%_-20%,rgba(255,255,255,0.08),transparent)]" />
                     <div className="absolute inset-0 opacity-30 dark:opacity-20" style={{ backgroundImage: "url(\"data:image/svg+xml,%3Csvg width='40' height='40' viewBox='0 0 40 40' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23fff' fill-opacity='0.4' fill-rule='evenodd'%3E%3Cpath d='m0 40 40-40H0v40zM40 0 0 40V0h40z'/%3E%3C/g%3E%3C/svg%3E\")" }} />
-                    <div className="container mx-auto px-4 sm:px-6 relative z-10">
+                    <div className="container mx-auto px-4 relative z-10">
                         <motion.div
                             initial={{ opacity: 0, y: 24 }}
                             animate={{ opacity: 1, y: 0 }}
@@ -337,50 +351,35 @@ export default function EventsPage({ seo, events, eventTypes, organizations, cit
                     </div>
                 </section>
 
-                <div className="container mx-auto px-4 sm:px-6 py-8 md:py-12 max-w-7xl">
-                    {/* Search & Filters */}
-                    <form onSubmit={submitSearch} className="mb-8 md:mb-10">
-                        <div className="rounded-2xl border border-slate-200/80 dark:border-gray-800 bg-white dark:bg-gray-900/80 shadow-sm dark:shadow-none overflow-hidden">
-                            <div className="px-5 py-4 md:px-6 md:py-5 border-b border-slate-100 dark:border-gray-800">
-                                <div className="flex items-center gap-2">
-                                    <Filter className="w-5 h-5 text-violet-600 dark:text-violet-400" />
-                                    <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Search & filters</h2>
-                                </div>
-                            </div>
-                            <div className="p-5 md:p-6">
-                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-5">
-                                    {/* Search + primary actions */}
-                                    <div className="sm:col-span-2 lg:col-span-3 xl:col-span-4 flex flex-col sm:flex-row gap-3">
-                                        <div className="flex-1 relative">
-                                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400 dark:text-gray-500 pointer-events-none" />
-                                            <Input
-                                                type="text"
-                                                placeholder="Search by name, location, or description..."
-                                                value={filters.search}
-                                                onChange={handleSearchChange}
-                                                className="pl-10 h-11 rounded-xl border-slate-200 dark:border-gray-700 bg-slate-50/50 dark:bg-gray-800/50 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-gray-500 focus-visible:ring-violet-500 dark:focus-visible:ring-violet-400 focus-visible:border-violet-500 dark:focus-visible:border-violet-400 transition-colors"
-                                            />
-                                        </div>
-                                        <div className="flex gap-2 shrink-0">
-                                            <Button
-                                                type="submit"
-                                                className="h-11 px-5 rounded-xl bg-violet-600 hover:bg-violet-700 dark:bg-violet-600 dark:hover:bg-violet-500 text-white font-medium shadow-sm transition-colors flex items-center gap-2"
-                                            >
-                                                <Search className="w-4 h-4" />
-                                                Search
-                                            </Button>
-                                            <Button
-                                                type="button"
-                                                onClick={clearAllFilters}
-                                                variant="outline"
-                                                disabled={!filters.search && filters.status === 'all' && filters.event_type_id === 'all' && filters.organization_id === 'all' && filters.city_filter === 'all' && filters.state_filter === 'all' && filters.zip_filter === 'all' && filters.month_filter === 'all' && filters.day_filter === 'all' && !filters.date_filter}
-                                                className="h-11 px-4 rounded-xl border-slate-200 dark:border-gray-700 text-slate-700 dark:text-gray-300 hover:bg-slate-50 dark:hover:bg-gray-800 hover:border-slate-300 dark:hover:border-gray-600 transition-colors flex items-center gap-2"
-                                            >
-                                                <X className="w-4 h-4" />
-                                                Clear
-                                            </Button>
+                <div className="container mx-auto px-4 py-8 md:py-12">
+                    <div className="flex flex-col lg:flex-row gap-8 lg:gap-10 lg:items-start">
+                        {/* Filters — left on large screens */}
+                        <aside className="w-full lg:w-72 xl:w-80 shrink-0 lg:sticky lg:top-24 lg:z-10 lg:self-start">
+                            <div className="rounded-2xl border border-slate-200/80 dark:border-gray-800 bg-white dark:bg-gray-900/80 shadow-sm dark:shadow-none overflow-hidden">
+                                    <div className="px-4 py-4 border-b border-slate-100 dark:border-gray-800">
+                                        <div className="flex items-center gap-2">
+                                            <Filter className="w-5 h-5 text-violet-600 dark:text-violet-400 shrink-0" />
+                                            <h2 className="text-base font-semibold text-slate-900 dark:text-white">Search & filters</h2>
                                         </div>
                                     </div>
+                                    <div className="p-4 space-y-4">
+                                        <div className="space-y-1.5">
+                                            <label htmlFor="events-search" className="text-sm font-medium text-slate-700 dark:text-gray-300">
+                                                Search
+                                            </label>
+                                            <div className="relative">
+                                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-gray-500 pointer-events-none" />
+                                                <Input
+                                                    id="events-search"
+                                                    type="search"
+                                                    autoComplete="off"
+                                                    placeholder="Search by name, location, or description..."
+                                                    value={filters.search}
+                                                    onChange={handleSearchChange}
+                                                    className="pl-9 h-11 rounded-xl border-slate-200 dark:border-gray-700 bg-slate-50/50 dark:bg-gray-800/50 text-slate-900 dark:text-white text-sm placeholder:text-slate-400 dark:placeholder:text-gray-500 focus-visible:ring-violet-500 dark:focus-visible:ring-violet-400 focus-visible:border-violet-500 dark:focus-visible:border-violet-400 transition-colors"
+                                                />
+                                            </div>
+                                        </div>
                                     {/* Event Type */}
                                     <div className="space-y-1.5">
                                         <label className="text-sm font-medium text-slate-700 dark:text-gray-300">Event topic</label>
@@ -500,65 +499,63 @@ export default function EventsPage({ seo, events, eventTypes, organizations, cit
                                 </Select>
                             </div>
 
-                                    {/* Month */}
+                                    {/* Date range (single day — matches listing filter) */}
                                     <div className="space-y-1.5">
-                                        <label className="text-sm font-medium text-slate-700 dark:text-gray-300">Month</label>
-                                        <Select value={filters.month_filter} onValueChange={handleMonthFilterChange}>
-                                            <SelectTrigger className="w-full h-11 rounded-xl border-slate-200 dark:border-gray-700 bg-slate-50/50 dark:bg-gray-800/50 text-slate-900 dark:text-white">
-                                                <SelectValue placeholder="All months" />
-                                            </SelectTrigger>
-                                    <SelectContent>
-                                        {monthOptions.map((option) => (
-                                            <SelectItem key={option.value} value={option.value}>
-                                                {option.label}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                            </div>
+                                        <label htmlFor="events-date-range" className="text-sm font-medium text-slate-700 dark:text-gray-300">
+                                            Date range
+                                        </label>
+                                        <div className="relative">
+                                            <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 dark:text-gray-500 pointer-events-none z-[1]" />
+                                            <Input
+                                                id="events-date-range"
+                                                type="date"
+                                                value={filters.date_filter}
+                                                onChange={(e) => handleDateFilterChange(e.target.value)}
+                                                className="h-11 pl-10 rounded-xl border-slate-200 dark:border-gray-700 bg-slate-50/50 dark:bg-gray-800/50 text-slate-900 dark:text-white [color-scheme:light] dark:[color-scheme:dark]"
+                                            />
+                                        </div>
+                                    </div>
 
-                                    {/* Day */}
                                     <div className="space-y-1.5">
-                                        <label className="text-sm font-medium text-slate-700 dark:text-gray-300">Day</label>
-                                        <Select value={filters.day_filter} onValueChange={handleDayFilterChange}>
-                                            <SelectTrigger className="w-full h-11 rounded-xl border-slate-200 dark:border-gray-700 bg-slate-50/50 dark:bg-gray-800/50 text-slate-900 dark:text-white">
-                                                <SelectValue placeholder="All days" />
-                                            </SelectTrigger>
-                                    <SelectContent>
-                                        {dayOptions.map((option) => (
-                                            <SelectItem key={option.value} value={option.value}>
-                                                {option.label}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                            </div>
-
-                                    {/* Exact date */}
-                                    <div className="space-y-1.5">
-                                        <label className="text-sm font-medium text-slate-700 dark:text-gray-300">Date</label>
-                                        <Input
-                                            type="date"
-                                            value={filters.date_filter}
-                                            onChange={(e) => handleDateFilterChange(e.target.value)}
-                                            className="h-11 rounded-xl border-slate-200 dark:border-gray-700 bg-slate-50/50 dark:bg-gray-800/50 text-slate-900 dark:text-white"
+                                        <label htmlFor="events-sort-sidebar" className="flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-gray-300">
+                                            <ArrowUpDown className="w-4 h-4 text-slate-500 dark:text-gray-400 shrink-0" />
+                                            Sort by
+                                        </label>
+                                        <EventsSortSelect
+                                            id="events-sort-sidebar"
+                                            value={filters.sort}
+                                            onChange={(sort) => setFilters((prev) => ({ ...prev, sort }))}
                                         />
                                     </div>
-                                </div>
+                                    </div>
                             </div>
-                        </div>
-                    </form>
+                        </aside>
 
-                    {/* Results */}
-                    <div className="space-y-6 md:space-y-8">
-                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                            <h2 className="text-xl md:text-2xl font-bold text-slate-900 dark:text-white">
-                                {totalEvents > 0 ? (
-                                    <span>{totalEvents} event{totalEvents !== 1 ? 's' : ''} found</span>
-                                ) : (
-                                    <span>Events</span>
-                                )}
-                            </h2>
+                        {/* Results */}
+                        <div className="flex-1 min-w-0 space-y-6 md:space-y-8">
+                        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                            <div className="min-w-0 space-y-1">
+                                <h2 className="text-xl md:text-2xl font-bold text-violet-600 dark:text-violet-400">
+                                    {totalEvents > 0 ? (
+                                        <span>{totalEvents} event{totalEvents !== 1 ? 's' : ''} found</span>
+                                    ) : (
+                                        <span>Events</span>
+                                    )}
+                                </h2>
+                                <p className="text-sm text-slate-600 dark:text-gray-400 max-w-2xl">
+                                    Discover upcoming events and opportunities to get involved.
+                                </p>
+                            </div>
+                            <div className="w-full space-y-1.5 sm:w-56 shrink-0">
+                                <label htmlFor="events-sort-toolbar" className="text-sm font-medium text-slate-700 dark:text-gray-300">
+                                    Sort by
+                                </label>
+                                <EventsSortSelect
+                                    id="events-sort-toolbar"
+                                    value={filters.sort}
+                                    onChange={(sort) => setFilters((prev) => ({ ...prev, sort }))}
+                                />
+                            </div>
                         </div>
 
                         <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}>
@@ -573,7 +570,7 @@ export default function EventsPage({ seo, events, eventTypes, organizations, cit
                                                 transition={{ duration: 0.35, delay: index * 0.05 }}
                                                 className="group h-full"
                                             >
-                                                <Link href={route('viewEvent', event.id)} className="block h-full rounded-2xl border border-slate-200/80 dark:border-gray-800 bg-white dark:bg-gray-900/80 shadow-sm dark:shadow-none overflow-hidden hover:shadow-lg hover:shadow-violet-500/10 dark:hover:shadow-violet-500/5 hover:border-violet-300 dark:hover:border-violet-700/50 hover:-translate-y-0.5 transition-all duration-300 flex flex-col h-full">
+                                                <Link href={route("viewEvent", event.id)} className="block h-full rounded-2xl border border-slate-200/80 dark:border-gray-800 bg-white dark:bg-gray-900/80 shadow-sm dark:shadow-none overflow-hidden hover:shadow-lg hover:shadow-violet-500/10 dark:hover:shadow-violet-500/5 hover:border-violet-300 dark:hover:border-violet-700/50 hover:-translate-y-0.5 transition-all duration-300 flex flex-col h-full">
                                                     <div className="relative h-52 sm:h-56 overflow-hidden bg-slate-100 dark:bg-gray-800">
                                                         <img
                                                             src={event.poster_image ? '/storage/' + event.poster_image : "/placeholder.svg"}
@@ -634,7 +631,7 @@ export default function EventsPage({ seo, events, eventTypes, organizations, cit
                                                                 </div>
                                                             )}
                                                         </div>
-                                                        <span className="inline-flex items-center justify-center gap-2 w-full py-2.5 rounded-xl bg-violet-600 hover:bg-violet-700 dark:bg-violet-600 dark:hover:bg-violet-500 text-white text-sm font-semibold transition-colors">
+                                                        <span className="inline-flex items-center justify-center gap-2 w-full py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-blue-600 text-white text-sm font-semibold shadow-sm transition-opacity hover:opacity-95 active:opacity-90 dark:from-purple-600 dark:to-blue-600">
                                                             View event
                                                             <ChevronRight className="w-4 h-4" />
                                                         </span>
@@ -649,7 +646,7 @@ export default function EventsPage({ seo, events, eventTypes, organizations, cit
                                         <div className="mt-10 pt-8 border-t border-slate-200 dark:border-gray-800">
                                             <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
                                                 <p className="text-sm text-slate-600 dark:text-gray-400">
-                                                    Showing <span className="font-medium text-slate-900 dark:text-white">{startIndex + 1}</span>–<span className="font-medium text-slate-900 dark:text-white">{endIndex}</span> of <span className="font-medium text-slate-900 dark:text-white">{totalEvents}</span>
+                                                    Showing <span className="font-medium text-slate-900 dark:text-white">{startIndex}</span>–<span className="font-medium text-slate-900 dark:text-white">{endIndex}</span> of <span className="font-medium text-slate-900 dark:text-white">{totalEvents}</span>
                                                 </p>
                                                 <div className="flex items-center gap-1.5">
                                                     <Button
@@ -670,7 +667,7 @@ export default function EventsPage({ seo, events, eventTypes, organizations, cit
                                                                 onClick={() => handlePageChange(page)}
                                                                 className={`h-9 min-w-[36px] rounded-lg ${
                                                                     currentPage === page
-                                                                        ? "bg-violet-600 border-violet-600 text-white hover:bg-violet-700 hover:border-violet-700 dark:bg-violet-600 dark:border-violet-600 dark:hover:bg-violet-500"
+                                                                        ? "bg-gradient-to-r from-purple-600 to-blue-600 border-transparent text-white shadow-sm transition-opacity hover:opacity-95 active:opacity-90 dark:from-purple-600 dark:to-blue-600"
                                                                         : "border-slate-200 dark:border-gray-700 text-slate-700 dark:text-gray-300 hover:bg-slate-50 dark:hover:bg-gray-800"
                                                                 }`}
                                                             >
@@ -714,6 +711,7 @@ export default function EventsPage({ seo, events, eventTypes, organizations, cit
                                 </div>
                             )}
                         </motion.div>
+                        </div>
                     </div>
                 </div>
             </div>

@@ -1,7 +1,7 @@
 "use client"
 
 import type React from "react"
-import { useState, useEffect } from "react"
+import { useEffect, useRef, useState } from "react"
 import { Search, X } from "lucide-react"
 import { Button } from "@/components/frontend/ui/button"
 import { Input } from "@/components/frontend/ui/input"
@@ -26,6 +26,7 @@ interface SearchSectionProps {
     city?: string
     zip?: string
     cause_id?: string | null
+    status?: string
     sort?: string
     per_page?: string
   }
@@ -34,6 +35,7 @@ interface SearchSectionProps {
     categoryDescriptions: string[] // Add this
     states: string[]
     cities: string[]
+    causes?: { id: number; name: string }[]
   }
   hasActiveFilters: boolean
   onSearch: (params: Record<string, string>) => void
@@ -42,11 +44,42 @@ interface SearchSectionProps {
   showQuickFilters?: boolean
   /** When false, hides the NTEE "category" combobox (Organizations directory mock). */
   showCategoryFilter?: boolean
+  /** When false, hides the NTEE "category description" combobox. */
+  showCategoryDescriptionFilter?: boolean
+  /** When false, hides the ZIP code input. */
+  showZipFilter?: boolean
+  /** When true, shows Joined/Not-yet-joined status filter. */
+  showStatusFilter?: boolean
+  /** When true, shows Primary Action Category (cause) combobox in the filters row. */
+  showCauseFilter?: boolean
   /** Visual skin: `directory` matches the dark nonprofits directory mockup. */
   variant?: "default" | "directory"
   quickFilterTags?: string[]
   /** Profile “Causes & Interest” — shown as chips inside the search card (directory). */
   popularCauses?: PopularCauseChip[]
+  /**
+   * When set to a positive number, hides the Search button and automatically calls `onSearch`
+   * after the user stops changing filters (debounced). Enter still runs an immediate search.
+   */
+  autoSearchDebounceMs?: number
+}
+
+function localSearchParamsMatchFiltersProps(
+  local: Record<string, string>,
+  f: SearchSectionProps["filters"],
+): boolean {
+  const norm = (s: string | undefined | null) => (typeof s === "string" ? s.trim() : "")
+  if (norm(local.search) !== norm(f.search)) return false
+  if ((local.category || "All Categories") !== (f.category || "All Categories")) return false
+  if ((local.category_description || "All Descriptions") !== (f.category_description || "All Descriptions")) return false
+  if ((local.state || "All States") !== (f.state || "All States")) return false
+  if ((local.city || "All Cities") !== (f.city || "All Cities")) return false
+  if (norm(local.zip) !== norm(f.zip)) return false
+  if ((local.status || "All Status") !== (f.status || "All Status")) return false
+  const lCause = local.cause_id && local.cause_id !== "0" ? String(local.cause_id) : ""
+  const fCause = f.cause_id && String(f.cause_id) !== "0" ? String(f.cause_id) : ""
+  if (lCause !== fCause) return false
+  return true
 }
 
 export default function SearchSection({
@@ -58,11 +91,22 @@ export default function SearchSection({
   isLoading = false,
   showQuickFilters = true,
   showCategoryFilter = true,
+  showCategoryDescriptionFilter = true,
+  showZipFilter = true,
+  showStatusFilter = false,
+  showCauseFilter = false,
   variant = "default",
   quickFilterTags = ["Education", "Environment", "Health", "Emergency Relief"],
   popularCauses = [],
+  autoSearchDebounceMs = 0,
 }: SearchSectionProps) {
   const isDirectory = variant === "directory"
+  const useAutoDebouncedSearch = typeof autoSearchDebounceMs === "number" && autoSearchDebounceMs > 0
+
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const latestParamsRef = useRef<Record<string, string>>({})
+  const filtersRef = useRef(filters)
+  const onSearchRef = useRef(onSearch)
 
   // State for search inputs
   const [searchQuery, setSearchQuery] = useState(filters.search || "")
@@ -71,6 +115,10 @@ export default function SearchSection({
   const [selectedState, setSelectedState] = useState(filters.state || "All States")
   const [selectedCity, setSelectedCity] = useState(filters.city || "All Cities")
   const [zipCode, setZipCode] = useState(filters.zip || "")
+  const [selectedStatus, setSelectedStatus] = useState(filters.status || "All Status")
+  const [selectedCauseId, setSelectedCauseId] = useState(
+    filters.cause_id && filters.cause_id !== "0" ? String(filters.cause_id) : "All Causes"
+  )
   const [cities, setCities] = useState<string[]>(filterOptions.cities || ["All Cities"])
   const [isLoadingCities, setIsLoadingCities] = useState(false)
 
@@ -104,29 +152,87 @@ export default function SearchSection({
       state: selectedState,
       city: selectedCity,
       zip: zipCode,
+      status: selectedStatus,
     }
-    if (filters.cause_id) {
-      params.cause_id = filters.cause_id
+    if (selectedCauseId && selectedCauseId !== "All Causes") {
+      params.cause_id = selectedCauseId
     }
     return params
   }
+
+  latestParamsRef.current = baseSearchParams()
+  filtersRef.current = filters
+  onSearchRef.current = onSearch
 
   // Handle search
   const handleSearch = () => {
     onSearch(baseSearchParams())
   }
 
+  const flushDebouncedSearchNow = () => {
+    if (!useAutoDebouncedSearch) return
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current)
+      debounceTimerRef.current = null
+    }
+    const next = latestParamsRef.current
+    if (localSearchParamsMatchFiltersProps(next, filtersRef.current)) return
+    onSearchRef.current(next)
+  }
+
   const handlePopularCauseClick = (causeId: number) => {
-    onSearch({
-      ...baseSearchParams(),
-      cause_id: String(causeId),
-    })
+    setSelectedCauseId(String(causeId))
+    if (!useAutoDebouncedSearch) {
+      onSearch({
+        ...baseSearchParams(),
+        cause_id: String(causeId),
+      })
+    }
   }
 
   // Handle quick filter
   const handleQuickFilter = (category: string) => {
     setSelectedCategory(category)
   }
+
+  useEffect(() => {
+    setSelectedCauseId(filters.cause_id && filters.cause_id !== "0" ? String(filters.cause_id) : "All Causes")
+  }, [filters.cause_id])
+
+  useEffect(() => {
+    if (!useAutoDebouncedSearch) return undefined
+
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current)
+      debounceTimerRef.current = null
+    }
+
+    debounceTimerRef.current = setTimeout(() => {
+      debounceTimerRef.current = null
+      const next = latestParamsRef.current
+      if (localSearchParamsMatchFiltersProps(next, filtersRef.current)) return
+      onSearchRef.current(next)
+    }, autoSearchDebounceMs)
+
+    return () => {
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current)
+        debounceTimerRef.current = null
+      }
+    }
+  }, [
+    useAutoDebouncedSearch,
+    autoSearchDebounceMs,
+    searchQuery,
+    selectedCategory,
+    selectedCategoryDescription,
+    selectedState,
+    selectedCity,
+    zipCode,
+    selectedStatus,
+    selectedCauseId,
+    filters,
+  ])
 
   // Reset form when clear filters is clicked
   useEffect(() => {
@@ -137,6 +243,8 @@ export default function SearchSection({
       setSelectedState("All States")
       setSelectedCity("All Cities")
       setZipCode("")
+      setSelectedStatus("All Status")
+      setSelectedCauseId("All Causes")
       setCities(["All Cities"])
     }
   }, [hasActiveFilters])
@@ -174,7 +282,12 @@ export default function SearchSection({
                 placeholder="Search by name, keywords, city, state, or ZIP..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                onKeyPress={(e) => e.key === "Enter" && handleSearch()}
+                onKeyDown={(e) => {
+                  if (e.key !== "Enter") return
+                  e.preventDefault()
+                  if (useAutoDebouncedSearch) flushDebouncedSearchNow()
+                  else handleSearch()
+                }}
                 className={`pl-12 pr-4 h-14 text-lg rounded-xl ${
                   isDirectory
                     ? "border-slate-200 bg-white text-slate-900 placeholder:text-slate-500 focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20 dark:border-white/10 dark:bg-slate-950/60 dark:text-white dark:placeholder:text-slate-400 dark:focus:border-violet-400 dark:focus:ring-violet-500/25"
@@ -184,8 +297,33 @@ export default function SearchSection({
             </div>
           </div>
 
-          {/* Filters and Search Button */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3 sm:gap-4 mb-6">
+          {/* Filters (+ optional Search button) */}
+          <div
+            className={`grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 mb-6 ${
+              useAutoDebouncedSearch ? "lg:grid-cols-5" : "lg:grid-cols-6"
+            }`}
+          >
+            {showCauseFilter && (filterOptions.causes?.length ?? 0) > 0 ? (
+              <Combobox
+                options={[
+                  { value: "All Causes", label: "All Causes" },
+                  ...(filterOptions.causes ?? []).map((c) => ({
+                    value: String(c.id),
+                    label: c.name,
+                  })),
+                ]}
+                value={selectedCauseId}
+                onChange={(value) => setSelectedCauseId(value?.trim() ? value : "All Causes")}
+                placeholder="Cause"
+                searchPlaceholder="Search causes..."
+                className={
+                  isDirectory
+                    ? "h-12 border-slate-200 bg-white text-slate-900 hover:bg-slate-50 dark:border-white/10 dark:bg-slate-950/50 dark:text-white dark:hover:bg-slate-900/60"
+                    : undefined
+                }
+              />
+            ) : null}
+
             {showCategoryFilter && (
               <Combobox
                 options={[
@@ -210,26 +348,28 @@ export default function SearchSection({
             )}
 
             {/* Category Description Filter */}
-            <Combobox
-              options={[
-                { value: "All Descriptions", label: "All Descriptions" },
-                ...(filterOptions.categoryDescriptions || [])
-                  .filter((description) => description !== "All Descriptions")
-                  .map((description) => ({
-                    value: description,
-                    label: description,
-                  })),
-              ]}
-              value={selectedCategoryDescription}
-              onChange={(value) => setSelectedCategoryDescription(value || "All Descriptions")}
-              placeholder="All Descriptions"
-              searchPlaceholder="Search descriptions..."
-              className={
-                isDirectory
-                  ? "h-12 border-slate-200 bg-white text-slate-900 hover:bg-slate-50 dark:border-white/10 dark:bg-slate-950/50 dark:text-white dark:hover:bg-slate-900/60"
-                  : undefined
-              }
-            />
+            {showCategoryDescriptionFilter && (
+              <Combobox
+                options={[
+                  { value: "All Descriptions", label: "All Descriptions" },
+                  ...(filterOptions.categoryDescriptions || [])
+                    .filter((description) => description !== "All Descriptions")
+                    .map((description) => ({
+                      value: description,
+                      label: description,
+                    })),
+                ]}
+                value={selectedCategoryDescription}
+                onChange={(value) => setSelectedCategoryDescription(value || "All Descriptions")}
+                placeholder="All Descriptions"
+                searchPlaceholder="Search descriptions..."
+                className={
+                  isDirectory
+                    ? "h-12 border-slate-200 bg-white text-slate-900 hover:bg-slate-50 dark:border-white/10 dark:bg-slate-950/50 dark:text-white dark:hover:bg-slate-900/60"
+                    : undefined
+                }
+              />
+            )}
 
             <Combobox
               options={[
@@ -271,32 +411,66 @@ export default function SearchSection({
               </SelectContent>
             </Select>
 
-            <Input
-              type="text"
-              placeholder="ZIP Code"
-              value={zipCode}
-              onChange={(e) => setZipCode(e.target.value)}
-              onKeyPress={(e) => e.key === "Enter" && handleSearch()}
-              className={`h-12 rounded-xl ${
-                isDirectory
-                  ? "border-slate-200 bg-white text-slate-900 placeholder:text-slate-500 dark:border-white/10 dark:bg-slate-950/50 dark:text-white dark:placeholder:text-slate-400"
-                  : "bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white"
-              }`}
-            />
+            {showZipFilter && (
+              <Input
+                type="text"
+                placeholder="ZIP Code"
+                value={zipCode}
+                onChange={(e) => setZipCode(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key !== "Enter") return
+                  e.preventDefault()
+                  if (useAutoDebouncedSearch) flushDebouncedSearchNow()
+                  else handleSearch()
+                }}
+                className={`h-12 rounded-xl ${
+                  isDirectory
+                    ? "border-slate-200 bg-white text-slate-900 placeholder:text-slate-500 dark:border-white/10 dark:bg-slate-950/50 dark:text-white dark:placeholder:text-slate-400"
+                    : "bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white"
+                }`}
+              />
+            )}
 
-            <Button
-              onClick={handleSearch}
-              disabled={isLoading}
-              size="lg"
-              className="h-12 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 font-semibold rounded-xl text-white shadow-lg shadow-violet-500/25 dark:shadow-violet-600/20"
-            >
-              {isLoading ? (
-                <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent mr-2" />
-              ) : (
-                <Search className="mr-2 h-5 w-5" />
-              )}
-              Search
-            </Button>
+            {showStatusFilter && (
+              <Select value={selectedStatus} onValueChange={setSelectedStatus}>
+                <SelectTrigger
+                  className={`h-12 rounded-xl ${
+                    isDirectory
+                      ? "border-slate-200 bg-white text-slate-900 dark:border-white/10 dark:bg-slate-950/50 dark:text-white"
+                      : "bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white"
+                  }`}
+                >
+                  <SelectValue placeholder="All Status" />
+                </SelectTrigger>
+                <SelectContent className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
+                  <SelectItem value="All Status" className="text-gray-900 dark:text-white">
+                    All Status
+                  </SelectItem>
+                  <SelectItem value="joined" className="text-gray-900 dark:text-white">
+                    Joined BIU
+                  </SelectItem>
+                  <SelectItem value="not_joined" className="text-gray-900 dark:text-white">
+                    Not Yet Joined
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            )}
+
+            {!useAutoDebouncedSearch ? (
+              <Button
+                onClick={handleSearch}
+                disabled={isLoading}
+                size="lg"
+                className="h-12 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 font-semibold rounded-xl text-white shadow-lg shadow-violet-500/25 dark:shadow-violet-600/20"
+              >
+                {isLoading ? (
+                  <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent mr-2" />
+                ) : (
+                  <Search className="mr-2 h-5 w-5" />
+                )}
+                Search
+              </Button>
+            ) : null}
           </div>
 
           {/* Popular Quick Filters */}
@@ -362,10 +536,19 @@ export default function SearchSection({
                         Zip: {filters.zip}
                       </Badge>
                     ) : null}
+                    {filters.status && filters.status !== "All Status" ? (
+                      <Badge
+                        variant="secondary"
+                        className={`px-3 py-1 ${isDirectory ? "border-slate-200 bg-slate-100 text-slate-800 dark:border-white/10 dark:bg-slate-800 dark:text-slate-100" : ""}`}
+                      >
+                        Status: {filters.status === "joined" ? "Joined BIU" : "Not Yet Joined"}
+                      </Badge>
+                    ) : null}
                     {filters.cause_id ? (
                       <Badge variant="secondary" className={`px-3 py-1 ${isDirectory ? "border-slate-200 bg-slate-100 text-slate-800 dark:border-white/10 dark:bg-slate-800 dark:text-slate-100" : ""}`}>
                         Cause:{" "}
                         {popularCauses.find((c) => c.id === Number(filters.cause_id))?.name ??
+                          filterOptions.causes?.find((c) => String(c.id) === String(filters.cause_id))?.name ??
                           `Cause #${filters.cause_id}`}
                       </Badge>
                     ) : null}

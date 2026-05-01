@@ -102,3 +102,9 @@ Schedule::command('care-alliance:release-pending-distributions')
     ->hourly()
     ->withoutOverlapping()
     ->runInBackground();
+
+// Organization directory invites: Believe Points installments 2–24 for referrers (month 1 credits on email verification)
+Schedule::command('organizations:process-invite-believe-point-schedule')
+    ->dailyAt('06:05')
+    ->withoutOverlapping()
+    ->runInBackground();

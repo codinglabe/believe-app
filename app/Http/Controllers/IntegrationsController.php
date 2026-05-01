@@ -323,6 +323,10 @@ class IntegrationsController extends Controller
             'dropboxFolderPath' => $dropboxFolderPath,
             'dropboxFiles' => $dropboxFiles,
             'backUrl' => $backUrl,
+            'unityMeetRecordings' => false,
+            'recordingsDisconnectAvailable' => true,
+            'recordingsBackedByOrganization' => false,
+            'meetingTitleHints' => [],
         ];
 
         if ($isSupporter) {
