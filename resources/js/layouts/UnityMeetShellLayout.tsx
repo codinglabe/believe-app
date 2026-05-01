@@ -8,7 +8,7 @@ import Footer from "@/components/frontend/layout/footer"
 import {
   LayoutDashboard,
   Calendar,
-  Settings,
+  Radio,
   Video,
   Play,
 } from "lucide-react"
@@ -91,10 +91,10 @@ export default function UnityMeetShellLayout({ children }: { children: ReactNode
               active={pathname === "/livestreams/supporter/recordings"}
             />
             <NavItem
-              href="/profile"
-              icon={<Settings className="h-4 w-4" />}
-              label="Settings"
-              active={pathname === "/profile"}
+              href="/livestreams/supporter/live"
+              icon={<Radio className="h-4 w-4" />}
+              label="Live"
+              active={pathname === "/livestreams/supporter/live"}
             />
           </nav>
 

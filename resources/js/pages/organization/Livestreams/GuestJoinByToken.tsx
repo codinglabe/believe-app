@@ -38,8 +38,22 @@ export default function GuestJoinByToken({ livestream, organization }: Props) {
     const url = new URL(livestream.participantUrl)
     const name = (displayName || "Guest").trim()
     if (name) url.searchParams.set("label", name)
-    if (!cameraOn) url.searchParams.set("novideo", "1")
-    if (!micOn) url.searchParams.set("nomicrophone", "1")
+    if (cameraOn) {
+      url.searchParams.set("videodevice", "1")
+      url.searchParams.delete("novideo")
+    } else {
+      url.searchParams.set("novideo", "1")
+      url.searchParams.delete("videodevice")
+      url.searchParams.delete("vd")
+    }
+    if (micOn) {
+      url.searchParams.set("audiodevice", "1")
+      url.searchParams.delete("nomicrophone")
+    } else {
+      url.searchParams.set("nomicrophone", "1")
+      url.searchParams.delete("audiodevice")
+      url.searchParams.delete("ad")
+    }
     return url.toString()
   }, [livestream.participantUrl, displayName, cameraOn, micOn])
 

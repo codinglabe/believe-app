@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Switch } from "@/components/admin/ui/switch"
 import { Badge } from "@/components/ui/badge"
-import { 
+import {
     ArrowLeft,
     Plus,
     Trash2,
@@ -18,15 +18,11 @@ import {
     Edit,
     CheckCircle,
     XCircle,
-    Mail,
-    Bot,
-    Shield,
-    Users,
-    DollarSign,
-    Package,
-    Star
+    Star,
 } from "lucide-react"
 import type { BreadcrumbItem } from "@/types"
+import { getPlanCustomFieldLucideIcon } from "@/lib/plan-custom-field-icons"
+import { CustomFieldLucideIconPicker } from "@/components/admin/CustomFieldLucideIconPicker"
 const breadcrumbs: BreadcrumbItem[] = [
     { title: 'Dashboard', href: '/dashboard' },
     { title: 'Plans Management', href: '/admin/plans' },
@@ -184,20 +180,7 @@ export default function AdminPlansShow({ plan }: ShowPlanProps) {
                                         <Label className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-3 block">Plan Details</Label>
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                             {plan.custom_fields.map((field) => {
-                                                const getIconComponent = (iconName: string | undefined) => {
-                                                    if (!iconName) return Package
-                                                    const iconMap: Record<string, React.ComponentType<any>> = {
-                                                        Mail, Bot, Shield, Users, DollarSign, Package, Sparkles, Star
-                                                    }
-                                                    const lowerName = iconName.toLowerCase()
-                                                    for (const [key, value] of Object.entries(iconMap)) {
-                                                        if (key.toLowerCase() === lowerName) {
-                                                            return value
-                                                        }
-                                                    }
-                                                    return Package
-                                                }
-                                                const IconComponent = getIconComponent(field.icon)
+                                                const IconComponent = getPlanCustomFieldLucideIcon(field.icon)
                                                 
                                                 return (
                                                     <div key={field.key} className="flex items-start gap-3 p-4 rounded-lg bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-800">
@@ -273,11 +256,13 @@ export default function AdminPlansShow({ plan }: ShowPlanProps) {
                                                     required
                                                 />
                                             </div>
-                                            <div className="space-y-2">
-                                                <Label>Icon (Lucide icon name)</Label>
-                                                <Input
+                                            <div className="min-w-0 w-full space-y-2">
+                                                <Label>Icon</Label>
+                                                <CustomFieldLucideIconPicker
                                                     value={featureData.icon}
-                                                    onChange={(e) => setFeatureData('icon', e.target.value)}
+                                                    onChange={(iconName) =>
+                                                        setFeatureData('icon', iconName)
+                                                    }
                                                 />
                                             </div>
                                         </div>
@@ -322,20 +307,7 @@ export default function AdminPlansShow({ plan }: ShowPlanProps) {
                                 ) : (
                                     <div className="space-y-3">
                                         {plan.features.map((feature) => {
-                                            const getIconComponent = (iconName: string | null | undefined) => {
-                                                if (!iconName) return Package
-                                                const iconMap: Record<string, React.ComponentType<any>> = {
-                                                    Mail, Bot, Shield, Users, DollarSign, Package, Sparkles, Star, CheckCircle
-                                                }
-                                                const lowerName = iconName.toLowerCase()
-                                                for (const [key, value] of Object.entries(iconMap)) {
-                                                    if (key.toLowerCase() === lowerName) {
-                                                        return value
-                                                    }
-                                                }
-                                                return Package
-                                            }
-                                            const IconComponent = getIconComponent(feature.icon)
+                                            const IconComponent = getPlanCustomFieldLucideIcon(feature.icon)
                                             
                                             return (
                                                 <div key={feature.id} className="flex items-start justify-between p-4 rounded-lg bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-800">

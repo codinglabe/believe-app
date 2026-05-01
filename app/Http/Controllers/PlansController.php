@@ -15,6 +15,42 @@ use Laravel\Cashier\Cashier;
 class PlansController extends Controller
 {
     /**
+     * Shape sent to Inertia / JSON for plan pickers and pricing (features ordered for UI lists).
+     *
+     * @return array<string, mixed>
+     */
+    private function planToFrontendArray(Plan $plan): array
+    {
+        $features = $plan->features
+            ->sortBy(fn ($feature) => sprintf('%09d-%09d', (int) ($feature->sort_order ?? 0), $feature->id))
+            ->values()
+            ->map(function ($feature) {
+                return [
+                    'id' => $feature->id,
+                    'name' => $feature->name,
+                    'description' => $feature->description,
+                    'icon' => $feature->icon,
+                    'is_unlimited' => (bool) $feature->is_unlimited,
+                    'sort_order' => (int) ($feature->sort_order ?? 0),
+                ];
+            })
+            ->values()
+            ->all();
+
+        return [
+            'id' => $plan->id,
+            'name' => $plan->name,
+            'price' => (float) $plan->price,
+            'frequency' => $plan->frequency,
+            'is_popular' => (bool) $plan->is_popular,
+            'description' => $plan->description,
+            'trial_days' => (int) ($plan->trial_days ?? 0),
+            'custom_fields' => $plan->custom_fields ?? [],
+            'features' => $features,
+        ];
+    }
+
+    /**
      * Display the plans page
      */
     public function index(Request $request)
@@ -39,27 +75,7 @@ class PlansController extends Controller
                 $query->whereNotIn('stripe_price_id', $walletPlanPriceIds);
             })
             ->get()
-            ->map(function ($plan) {
-                return [
-                    'id' => $plan->id,
-                    'name' => $plan->name,
-                    'price' => (float) $plan->price,
-                    'frequency' => $plan->frequency,
-                    'is_popular' => $plan->is_popular,
-                    'description' => $plan->description,
-                    'trial_days' => (int) ($plan->trial_days ?? 0),
-                    'custom_fields' => $plan->custom_fields ?? [],
-                    'features' => $plan->features->map(function ($feature) {
-                        return [
-                            'id' => $feature->id,
-                            'name' => $feature->name,
-                            'description' => $feature->description,
-                            'icon' => $feature->icon,
-                            'is_unlimited' => $feature->is_unlimited,
-                        ];
-                    }),
-                ];
-            });
+            ->map(fn (Plan $plan) => $this->planToFrontendArray($plan));
 
         // If API request (but NOT Inertia request), return JSON
         // Inertia requests also send X-Requested-With header, so we need to check for X-Inertia header
@@ -87,11 +103,6 @@ class PlansController extends Controller
                 'name' => 'SMS',
                 'price' => '$0.015 per text',
                 'description' => 'Opt-in only',
-            ],
-            [
-                'name' => 'Extra Storage',
-                'price' => '$0.20/GB',
-                'description' => 'For big media orgs',
             ],
             [
                 'name' => 'Raffles Platform Fee',
@@ -160,33 +171,12 @@ class PlansController extends Controller
                 $query->whereNotIn('stripe_price_id', $walletPlanPriceIds);
             })
             ->get()
-            ->map(function ($plan) {
-                return [
-                    'id' => $plan->id,
-                    'name' => $plan->name,
-                    'price' => (float) $plan->price,
-                    'frequency' => $plan->frequency,
-                    'is_popular' => $plan->is_popular,
-                    'description' => $plan->description,
-                    'trial_days' => (int) ($plan->trial_days ?? 0),
-                    'custom_fields' => $plan->custom_fields ?? [],
-                    'features' => $plan->features->map(function ($feature) {
-                        return [
-                            'id' => $feature->id,
-                            'name' => $feature->name,
-                            'description' => $feature->description,
-                            'icon' => $feature->icon,
-                            'is_unlimited' => $feature->is_unlimited,
-                        ];
-                    }),
-                ];
-            });
+            ->map(fn (Plan $plan) => $this->planToFrontendArray($plan));
 
         $addOns = [
             ['name' => 'Email Re-Ups', 'price' => '$1 per 1,000 emails', 'description' => 'Perfect for growth and newsletters'],
             ['name' => 'AI Packs', 'price' => '$5 per 50,000 tokens', 'description' => 'High margin; encourages use'],
             ['name' => 'SMS', 'price' => '$0.015 per text', 'description' => 'Opt-in only'],
-            ['name' => 'Extra Storage', 'price' => '$0.20/GB', 'description' => 'For big media orgs'],
             ['name' => 'Raffles Platform Fee', 'price' => '4% of raised funds', 'description' => 'Direct revenue'],
             ['name' => 'Volunteer Background Checks', 'price' => '$6 each', 'description' => 'Optional'],
         ];

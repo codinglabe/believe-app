@@ -175,6 +175,10 @@ class UserLivestream extends Model
         return 'BIU Meeting Recordings';
     }
 
+    /**
+     * Guest / participant link. &audiodevice=1 and &videodevice=1 = VDO.Ninja auto-picks the system default
+     * microphone and camera (not a specific index). Do not use =0 — that disables audio/video.
+     */
     public function getParticipantUrl(): string
     {
         $password = $this->getDecryptedPassword();
@@ -182,7 +186,7 @@ class UserLivestream extends Model
         $pass = rawurlencode((string) $password);
         $passwordParam = $pass !== '' ? '&password=' . $pass : '';
         $avatarInitialUrl = 'https://ui-avatars.com/api/?name=Guest&size=256&length=1';
-        return "https://vdo.ninja/?room={$room}{$passwordParam}&label=&audiodevice=1&norecord&showlabels=1&showall&style=6&avatar=" . rawurlencode($avatarInitialUrl) . '&autostart&noheader';
+        return "https://vdo.ninja/?room={$room}{$passwordParam}&label=&audiodevice=1&videodevice=1&norecord&showlabels=1&showall&style=6&avatar=" . rawurlencode($avatarInitialUrl) . '&autostart&noheader';
     }
 
     public function getRoomViewUrl(): string
@@ -234,7 +238,7 @@ class UserLivestream extends Model
         $initial = mb_substr(trim($hostName), 0, 1) ?: 'H';
         $avatarParam = '&avatar=' . rawurlencode("https://ui-avatars.com/api/?name={$initial}&size=256&length=1");
         $recordParam = $recordEnabled ? '&record' : '';
-        $base = "https://vdo.ninja/?room={$room}&push={$push}&label={$label}{$recordParam}&quality=0&bitrate=6000&audiodevice=1&showlabels=1&showall&style=6{$avatarParam}&autostart&noheader{$passwordParam}";
+        $base = "https://vdo.ninja/?room={$room}&push={$push}&label={$label}{$recordParam}&quality=0&bitrate=6000&audiodevice=1&videodevice=1&showlabels=1&showall&style=6{$avatarParam}&autostart&noheader{$passwordParam}";
 
         if ($recordEnabled && $recordToDropbox && $this->user && ! empty($this->user->dropbox_refresh_token)) {
             $oauthService = app(\App\Services\DropboxOAuthService::class);

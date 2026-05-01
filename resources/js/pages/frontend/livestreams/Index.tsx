@@ -23,7 +23,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
-import { Plus, Calendar, Users, Link2, MoreVertical, Play, Check, Pencil, Trash2 } from "lucide-react"
+import { Plus, Calendar, Users, Link2, MoreVertical, Play, Check, Pencil, Trash2, LogIn } from "lucide-react"
 import { router } from "@inertiajs/react"
 import { cn } from "@/lib/utils"
 import UnityMeetLayout from "@/layouts/UnityMeetLayout"
@@ -206,7 +206,7 @@ export default function SupporterLivestreamsIndex({
               <p className="text-sm text-muted-foreground">Start or join a meeting in just a few clicks.</p>
             </div>
 
-            <div className="grid gap-4 md:grid-cols-3">
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
               <Link href="/livestreams/supporter/create" className="block">
                 <Card className="h-full border-border bg-card transition-colors hover:bg-accent/20">
                   <CardContent className="flex h-full flex-col items-center justify-center gap-3 py-10 text-center">
@@ -232,6 +232,21 @@ export default function SupporterLivestreamsIndex({
                       <p className="text-lg font-semibold text-foreground">Schedule</p>
                       <p className="text-lg font-semibold text-foreground">Meeting</p>
                       <p className="text-sm text-muted-foreground">Plan for later</p>
+                    </div>
+                  </CardContent>
+                </Card>
+              </Link>
+
+              <Link href="/livestreams/supporter/join" className="block">
+                <Card className="h-full border-border bg-card transition-colors hover:bg-accent/20">
+                  <CardContent className="flex h-full flex-col items-center justify-center gap-3 py-10 text-center">
+                    <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-amber-600 text-white">
+                      <LogIn className="h-7 w-7" />
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-lg font-semibold text-foreground">Join</p>
+                      <p className="text-lg font-semibold text-foreground">Meeting</p>
+                      <p className="text-sm text-muted-foreground">Meeting ID &amp; passcode if needed</p>
                     </div>
                   </CardContent>
                 </Card>

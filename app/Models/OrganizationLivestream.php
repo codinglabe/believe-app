@@ -232,7 +232,7 @@ class OrganizationLivestream extends Model
     /**
      * Get the VDO.Ninja participant/guest URL.
      * &label= (empty) prompts for display name. &showall &showlabels=1 &style=6 = grid.
-     * Omitted videodevice = VDO.Ninja uses system default camera. Do NOT use videodevice=0 — vd=0 disables the camera.
+     * &videodevice=1 = auto-select system default camera (same idea as &audiodevice=1). Do NOT use =0 — that disables video.
      * &audiodevice=1 = auto-select system default microphone.
      * &norecord = no recording for participants; only the host/director should record.
      * &avatar= shows initial until they enable camera. Participants can turn on webcam from the UI.
@@ -244,7 +244,7 @@ class OrganizationLivestream extends Model
         $pass = rawurlencode((string) $password);
         $passwordParam = $pass !== '' ? '&password=' . $pass : '';
         $avatarInitialUrl = 'https://ui-avatars.com/api/?name=Guest&size=256&length=1';
-        return "https://vdo.ninja/?room={$room}{$passwordParam}&label=&audiodevice=1&norecord&showlabels=1&showall&style=6&avatar=" . rawurlencode($avatarInitialUrl) . '&autostart&noheader';
+        return "https://vdo.ninja/?room={$room}{$passwordParam}&label=&audiodevice=1&videodevice=1&norecord&showlabels=1&showall&style=6&avatar=" . rawurlencode($avatarInitialUrl) . '&autostart&noheader';
     }
 
     /**
@@ -347,7 +347,7 @@ class OrganizationLivestream extends Model
      * &record = host can record. &showlabels=1 &showall = grid; &style=6 = avatar (initial) until video.
      * quality=0 = let VDO.Ninja/browser pick resolution and framerate (avoids "Camera failed to load" on webcams that don't support fixed 1080p30).
      * No fixed width/height/framerate so the camera can load with its native or negotiated settings.
-     * Omitted videodevice = VDO.Ninja uses system default camera. Do NOT use videodevice=0 — vd=0 disables the camera.
+     * &videodevice=1 = auto-select system default camera (pairs with &audiodevice=1). Do NOT use videodevice=0 — that disables the camera.
      * Custom host avatar: set livestream settings['host_avatar_url'] to a full image URL; otherwise no avatar param.
      * Do not use &novideo for host — it blocks receiving video (participant screen shares would not show).
      * @param bool $recordToDropbox If true and org has Dropbox, add dropbox params so recordings save to Dropbox. If false, recording is local only (browser download).
@@ -375,7 +375,7 @@ class OrganizationLivestream extends Model
         }
         // No width/height/framerate — fixed 1920x1080@30 caused "Camera failed to load" on some webcams. quality=0 + bitrate let the camera use supported resolution.
         $recordParam = $recordEnabled ? '&record' : '';
-        $base = "https://vdo.ninja/?room={$room}&push={$push}&label={$label}{$recordParam}&quality=0&bitrate=6000&audiodevice=1&showlabels=1&showall&style=6{$avatarParam}&autostart&noheader{$passwordParam}";
+        $base = "https://vdo.ninja/?room={$room}&push={$push}&label={$label}{$recordParam}&quality=0&bitrate=6000&audiodevice=1&videodevice=1&showlabels=1&showall&style=6{$avatarParam}&autostart&noheader{$passwordParam}";
         if ($recordEnabled && $recordToDropbox && $this->organization) {
             $oauthService = app(\App\Services\DropboxOAuthService::class);
             $dropboxToken = $oauthService->getAccessTokenForOrganization($this->organization);

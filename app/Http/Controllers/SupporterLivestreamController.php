@@ -99,6 +99,119 @@ class SupporterLivestreamController extends Controller
         ]);
     }
 
+    /**
+     * Hub for going live: YouTube/OBS, Dropbox recordings, and links into meetings.
+     */
+    public function live(Request $request): Response
+    {
+        $user = $request->user();
+        $user->loadMissing('organization');
+        $organization = $user->organization ?? Organization::where('user_id', $user->id)->first();
+
+        if ($organization) {
+            $youtubeConnected = ! empty($organization->youtube_refresh_token) || ! empty($organization->youtube_access_token);
+            $youtubeChannelUrl = $organization->youtube_channel_url;
+            $dropboxConnected = ! empty($organization->dropbox_refresh_token);
+            $youtubeManageUrl = route('integrations.youtube');
+        } else {
+            $youtubeConnected = ! empty($user->youtube_refresh_token) || ! empty($user->youtube_access_token);
+            $youtubeChannelUrl = $user->youtube_channel_url;
+            $dropboxConnected = ! empty($user->dropbox_refresh_token);
+            $youtubeManageUrl = route('integrations.youtube.connect');
+        }
+
+        return Inertia::render('frontend/livestreams/Live', [
+            'youtubeConnected' => $youtubeConnected,
+            'youtubeChannelUrl' => $youtubeChannelUrl ? (string) $youtubeChannelUrl : null,
+            'dropboxConnected' => $dropboxConnected,
+            'youtubeManageUrl' => $youtubeManageUrl,
+            'dropboxUrl' => route('integrations.dropbox'),
+            'meetingsUrl' => route('livestreams.supporter.index'),
+            'createMeetingUrl' => route('livestreams.supporter.create'),
+            'unityMeetHomeUrl' => route('livestreams.supporter.index'),
+            'publicLivestreams' => $this->buildPublicUnityLivestreamList(),
+        ]);
+    }
+
+    /**
+     * Same discovery list as {@see UnityLiveController::index()}: all org + supporter streams that are public and live.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    private function buildPublicUnityLivestreamList(): array
+    {
+        $orgStreams = OrganizationLivestream::query()
+            ->where('status', 'live')
+            ->where('is_public', true)
+            ->with('organization:id,name')
+            ->orderByDesc('started_at')
+            ->get()
+            ->map(fn (OrganizationLivestream $ls) => $this->toPublicUnityLiveOrgItem($ls))
+            ->filter()
+            ->values()
+            ->all();
+
+        $userStreams = UserLivestream::query()
+            ->where('status', 'live')
+            ->where('is_public', true)
+            ->with('user:id,name')
+            ->orderByDesc('started_at')
+            ->get()
+            ->map(fn (UserLivestream $ls) => $this->toPublicUnityLiveUserItem($ls))
+            ->filter()
+            ->values()
+            ->all();
+
+        return collect(array_merge($orgStreams, $userStreams))
+            ->sortByDesc(fn ($s) => $s['startedAt'] ?? '')
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function toPublicUnityLiveOrgItem(OrganizationLivestream $ls): ?array
+    {
+        $viewUrl = $ls->getPublicViewUrl();
+        if (! $viewUrl) {
+            return null;
+        }
+
+        return [
+            'id' => 'org_'.$ls->id,
+            'slug' => $ls->room_name,
+            'title' => $ls->title ?: 'Live Stream',
+            'organizationName' => $ls->organization?->name ?? 'Organization',
+            'viewUrl' => $viewUrl,
+            'viewUrlMuted' => $ls->getPublicViewUrlMuted(),
+            'viewUrlFallback' => $ls->getPublicViewUrlFallback(),
+            'startedAt' => $ls->started_at?->toIso8601String(),
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function toPublicUnityLiveUserItem(UserLivestream $ls): ?array
+    {
+        $viewUrl = $ls->getPublicViewUrl();
+        if (! $viewUrl) {
+            return null;
+        }
+
+        return [
+            'id' => 'user_'.$ls->id,
+            'slug' => $ls->room_name,
+            'title' => $ls->title ?: 'Live Stream',
+            'organizationName' => $ls->user?->name ?? 'Host',
+            'viewUrl' => $viewUrl,
+            'viewUrlMuted' => $ls->getPublicViewUrlMuted(),
+            'viewUrlFallback' => $ls->getPublicViewUrlFallback(),
+            'startedAt' => $ls->started_at?->toIso8601String(),
+        ];
+    }
+
     public function create(Request $request): Response
     {
         $user = $request->user();
@@ -237,6 +350,8 @@ class SupporterLivestreamController extends Controller
         return Inertia::render('frontend/livestreams/Join', [
             'oldMeetingId' => $request->old('meeting_id'),
             'errors' => $errorBag,
+            'requiresPasscodeStep' => (bool) $request->session()->pull('join_requires_passcode', false),
+            'pendingMeetingTitle' => $request->session()->pull('join_pending_title'),
         ]);
     }
 
@@ -260,10 +375,24 @@ class SupporterLivestreamController extends Controller
 
         if ($orgStream) {
             $password = $orgStream->getDecryptedPassword();
-            if ($password !== '' && $password !== $passcode) {
-                return redirect()->route('livestreams.supporter.join')
-                    ->withInput($request->only('meeting_id'))
-                    ->withErrors(['passcode' => 'Invalid meeting ID or passcode.']);
+            if ($password !== '') {
+                if ($passcode === '') {
+                    return redirect()->route('livestreams.supporter.join')
+                        ->withInput($request->only('meeting_id'))
+                        ->with([
+                            'join_requires_passcode' => true,
+                            'join_pending_title' => $orgStream->title,
+                        ]);
+                }
+                if ($password !== $passcode) {
+                    return redirect()->route('livestreams.supporter.join')
+                        ->withInput($request->only('meeting_id'))
+                        ->with([
+                            'join_requires_passcode' => true,
+                            'join_pending_title' => $orgStream->title,
+                        ])
+                        ->withErrors(['passcode' => 'Invalid passcode. Try again.']);
+                }
             }
             $participantUrl = $orgStream->getParticipantUrl();
             return Inertia::render('frontend/livestreams/Join', [
@@ -290,10 +419,24 @@ class SupporterLivestreamController extends Controller
 
         if ($userStream) {
             $password = $userStream->getDecryptedPassword();
-            if ($password !== '' && $password !== $passcode) {
-                return redirect()->route('livestreams.supporter.join')
-                    ->withInput($request->only('meeting_id'))
-                    ->withErrors(['passcode' => 'Invalid meeting ID or passcode.']);
+            if ($password !== '') {
+                if ($passcode === '') {
+                    return redirect()->route('livestreams.supporter.join')
+                        ->withInput($request->only('meeting_id'))
+                        ->with([
+                            'join_requires_passcode' => true,
+                            'join_pending_title' => $userStream->title,
+                        ]);
+                }
+                if ($password !== $passcode) {
+                    return redirect()->route('livestreams.supporter.join')
+                        ->withInput($request->only('meeting_id'))
+                        ->with([
+                            'join_requires_passcode' => true,
+                            'join_pending_title' => $userStream->title,
+                        ])
+                        ->withErrors(['passcode' => 'Invalid passcode. Try again.']);
+                }
             }
             $participantUrl = $userStream->getParticipantUrl();
             return Inertia::render('frontend/livestreams/Join', [
