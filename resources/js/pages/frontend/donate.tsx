@@ -810,9 +810,9 @@ export default function DonatePage({
                     </div>
                     <div className="flex items-center justify-between gap-3">
                       <div className="min-w-0">
-                        <div className="text-sm font-semibold text-slate-900 dark:text-white">Cover processing fees</div>
+                        <div className="text-sm font-semibold text-slate-900 dark:text-white">Make Full Impact</div>
                         <p className="text-xs text-slate-600/85 dark:text-white/60 mt-0.5 leading-snug">
-                          On: your charge is adjusted so the nonprofit keeps your full gift. Off: fees come out of your
+                          On: cover fees so 100% of your donation goes to the nonprofit. Off: fees are deducted from your
                           donation. Final total is confirmed in Stripe Checkout.
                         </p>
                       </div>

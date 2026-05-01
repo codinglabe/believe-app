@@ -87,7 +87,7 @@ export default function MerchantLanding() {
                   </h1>
 
                   <p className="max-w-xl text-base leading-7 text-slate-300 sm:text-lg">
-                    BIU Merchant Hub helps nonprofits and churches reward verified volunteers with a 10% discount,
+                    BIU Merchant Hub helps nonprofits and churches reward verified volunteers with up to a 10% discount,
                     turning your community service into new customers for your business.
                   </p>
 

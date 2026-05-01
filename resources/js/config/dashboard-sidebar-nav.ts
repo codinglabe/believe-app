@@ -169,6 +169,19 @@ export const dashboardSidebarNavItems: (NavItem | NavGroup)[] = [
                 permission: 'newsletter.read',
             },
             {
+                title: 'Email',
+                href: '/newsletter',
+                icon: Mail,
+                permission: 'newsletter.read',
+                role: ['organization', 'organization_pending', 'care_alliance', 'admin'],
+            },
+            {
+                title: 'Email Packages',
+                href: '/admin/email-packages',
+                icon: Mail,
+                role: 'admin',
+            },
+            {
                 title: 'Social',
                 icon: Facebook,
                 role: 'organization',
@@ -949,7 +962,13 @@ export const dashboardSidebarNavItems: (NavItem | NavGroup)[] = [
                 href: '/ai-chat',
                 icon: Bot,
                 permission: 'ai.chat.use',
-                role: 'organization',
+                role: ['organization', 'care_alliance'],
+            },
+            {
+                title: 'AI Top Up',
+                href: '/credits/purchase',
+                icon: Coins,
+                role: ['organization', 'care_alliance'],
             },
             {
                 title: 'Livestream',
