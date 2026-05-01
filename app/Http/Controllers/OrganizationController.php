@@ -5,26 +5,42 @@ namespace App\Http\Controllers;
 use App\Jobs\SendOrganizationInviteJob;
 use App\Models\CareAlliance;
 use App\Models\CareAllianceMembership;
+use App\Models\Course;
+use App\Models\Donation;
+use App\Models\Enrollment;
+use App\Models\Event;
 use App\Models\ExcelData;
+use App\Models\FacebookPost;
 use App\Models\FollowerPosition;
 use App\Models\FollowingUserPosition;
+use App\Models\JobPost;
 use App\Models\NteeCode;
 use App\Models\Organization;
+use App\Models\OrganizationInvite;
+use App\Models\Post;
+use App\Models\PostComment;
+use App\Models\PostReaction;
 use App\Models\PrimaryActionCategory;
+use App\Models\Product;
 use App\Models\User;
 use App\Models\UserFavoriteOrganization;
 use App\Services\CareAlliancePublicPageService;
 use App\Services\ExcelDataTransformer;
 use App\Services\ImpactScoreService;
 use App\Services\OpenAiService;
+use App\Services\SeoService;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
-use Inertia\Inertia;
 use Illuminate\Support\Str;
+use Inertia\Inertia;
 
 class OrganizationController extends BaseController
 {
@@ -55,30 +71,17 @@ class OrganizationController extends BaseController
             ->where('ein', '!=', 'EIN')
             ->whereNotNull('ein');
 
-        // Main search: org name + city / state / ZIP (same box as dedicated location filters)
-        if ($search) {
-            $like = '%'.$search.'%';
-            $query->where(function ($q) use ($like) {
-                $q->where('excel_data.name_virtual', 'LIKE', $like)
-                    ->orWhere('excel_data.sort_name_virtual', 'LIKE', $like)
-                    ->orWhere('excel_data.city_virtual', 'LIKE', $like)
-                    ->orWhere('excel_data.state_virtual', 'LIKE', $like)
-                    ->orWhere('excel_data.zip_virtual', 'LIKE', $like);
-            });
-        }
+        $this->applyOrganizationDirectoryTextSearch($query, $search);
 
-        // Optimized category filter
+        $needsNteeJoin = ($category && $category !== 'All Categories')
+            || ($categoryDescription && $categoryDescription !== 'All Descriptions');
+        if ($needsNteeJoin) {
+            $query->join('ntee_codes', 'excel_data.ntee_code_virtual', '=', 'ntee_codes.ntee_codes');
+        }
         if ($category && $category !== 'All Categories') {
-            $query->join('ntee_codes', 'excel_data.ntee_code_virtual', '=', 'ntee_codes.ntee_codes')
-                ->where('ntee_codes.category', $category);
+            $query->where('ntee_codes.category', $category);
         }
-
-        // NEW: Filter by category description
         if ($categoryDescription && $categoryDescription !== 'All Descriptions') {
-            // If not already joined for category filter, join the table
-            if (! str_contains($query->toSql(), 'ntee_codes')) {
-                $query->join('ntee_codes', 'excel_data.ntee_code_virtual', '=', 'ntee_codes.ntee_codes');
-            }
             $query->where('ntee_codes.description', $categoryDescription);
         }
 
@@ -127,10 +130,15 @@ class OrganizationController extends BaseController
 
         // Filter by platform join status (registered org match by canonical EIN digits, hyphen-insensitive)
         if ($status === 'joined' || $status === 'not_joined') {
-            $existsSub = function ($sub) {
+            $useEinDigits = Schema::hasColumn('excel_data', 'ein_digits');
+            $existsSub = function ($sub) use ($useEinDigits) {
                 $sub->from('organizations')
-                    ->where('registration_status', 'approved')
-                    ->whereRaw("REPLACE(organizations.ein,'-','') = REPLACE(excel_data.ein,'-','')");
+                    ->where('registration_status', 'approved');
+                if ($useEinDigits) {
+                    $sub->whereColumn('organizations.ein', 'excel_data.ein_digits');
+                } else {
+                    $sub->whereRaw("REPLACE(organizations.ein,'-','') = REPLACE(excel_data.ein,'-','')");
+                }
 
                 if (Schema::hasTable('care_alliances') && Schema::hasColumn('care_alliances', 'hub_organization_id')) {
                     $sub->whereNotExists(function ($hub) {
@@ -186,7 +194,8 @@ class OrganizationController extends BaseController
                 break;
         }
 
-        // Get organizations with pagination
+        // Length-aware pagination (numbered steps + total count). Requires COUNT(*) — can be slow on huge filtered sets;
+        // use DB indexes / completed FTS migration to keep the underlying query fast.
         $organizations = $query->paginate($perPage);
 
         // Get all EINs from the excel data results
@@ -413,7 +422,7 @@ class OrganizationController extends BaseController
         }
 
         return Inertia::render('frontend/organization/organizations', [
-            'seo' => \App\Services\SeoService::forPage('organizations'),
+            'seo' => SeoService::forPage('organizations'),
             'organizations' => $organizations,
             'myCauses' => $myCauses->map(fn ($c) => [
                 'id' => (int) $c->id,
@@ -439,6 +448,93 @@ class OrganizationController extends BaseController
                 ($city && $city !== 'All Cities') || $zip ||
                 $causeId > 0 || ($status && $status !== 'All Status'),
         ]);
+    }
+
+    /**
+     * Directory keyword search: MySQL/MariaDB/PostgreSQL use FULLTEXT when available (see migration
+     * excel_data_search_fulltext); otherwise LIKE across virtual columns. Short queries (<3 chars) use LIKE
+     * so behavior stays predictable vs InnoDB minimum token length.
+     *
+     * @param  Builder<ExcelData>  $query
+     */
+    private function applyOrganizationDirectoryTextSearch(Builder $query, ?string $search): void
+    {
+        if ($search === null || trim($search) === '') {
+            return;
+        }
+
+        $trimmed = trim($search);
+        $driver = Schema::getConnection()->getDriverName();
+
+        if (Schema::hasColumn('excel_data', 'org_directory_fts') && mb_strlen($trimmed) >= 3) {
+            if (in_array($driver, ['mysql', 'mariadb'], true)) {
+                $boolean = $this->mysqlOrganizationDirectoryFulltextBoolean($trimmed);
+                if ($boolean !== null && $boolean !== '') {
+                    $query->whereFullText(
+                        ['excel_data.org_directory_fts'],
+                        $boolean,
+                        ['mode' => 'boolean'],
+                        'and'
+                    );
+
+                    return;
+                }
+
+                $query->whereFullText(
+                    ['excel_data.org_directory_fts'],
+                    $trimmed,
+                    [],
+                    'and'
+                );
+
+                return;
+            }
+
+            if ($driver === 'pgsql') {
+                $query->whereFullText(
+                    ['excel_data.org_directory_fts'],
+                    $trimmed,
+                    ['mode' => 'websearch'],
+                    'and'
+                );
+
+                return;
+            }
+        }
+
+        $like = '%'.$trimmed.'%';
+        $query->where(function ($q) use ($like) {
+            $q->where('excel_data.name_virtual', 'LIKE', $like)
+                ->orWhere('excel_data.sort_name_virtual', 'LIKE', $like)
+                ->orWhere('excel_data.city_virtual', 'LIKE', $like)
+                ->orWhere('excel_data.state_virtual', 'LIKE', $like)
+                ->orWhere('excel_data.zip_virtual', 'LIKE', $like);
+        });
+    }
+
+    /**
+     * BOOLEAN MODE with required prefix wildcards per token — tends to use the InnoDB FTS index much better
+     * than NATURAL LANGUAGE on a 1.8M-row table. Tokens shorter than 3 chars are skipped (InnoDB ft_min_token_size).
+     *
+     * @return non-empty-string|null
+     */
+    private function mysqlOrganizationDirectoryFulltextBoolean(string $trimmed): ?string
+    {
+        $tokens = preg_split('/\s+/u', $trimmed, -1, PREG_SPLIT_NO_EMPTY);
+        $parts = [];
+        foreach ($tokens as $token) {
+            $word = preg_replace('/[^\p{L}\p{N}]+/u', '', $token);
+            if ($word === '' || mb_strlen($word) < 3) {
+                continue;
+            }
+            $parts[] = '+'.mb_substr($word, 0, 64).'*';
+        }
+
+        if ($parts === []) {
+            return null;
+        }
+
+        return implode(' ', $parts);
     }
 
     /** Canonical 9-digit EIN digits-only (matches IRS lookups regardless of hyphenation in spreadsheets). */
@@ -663,7 +759,7 @@ class OrganizationController extends BaseController
                 ->first();
         } else {
             // Fallback: Try by user slug (less common)
-            $user = \App\Models\User::where('slug', $id)->select('id', 'slug')->first();
+            $user = User::where('slug', $id)->select('id', 'slug')->first();
 
             if ($user) {
                 $registeredOrg = Organization::where('user_id', $user->id)
@@ -779,20 +875,20 @@ class OrganizationController extends BaseController
 
         if ($registeredOrg) {
             // Get posts count - use single query with union for faster counting
-            $postsCount = \App\Models\Post::where('user_id', $registeredOrg->user_id)->count()
-                + \App\Models\FacebookPost::where('organization_id', $registeredOrg->id)
+            $postsCount = Post::where('user_id', $registeredOrg->user_id)->count()
+                + FacebookPost::where('organization_id', $registeredOrg->id)
                     ->where('status', 'published')
                     ->count();
 
             // Get supporters count only - defer loading supporter details
-            $supportersCount = \App\Models\UserFavoriteOrganization::where('organization_id', $registeredOrg->id)->count();
+            $supportersCount = UserFavoriteOrganization::where('organization_id', $registeredOrg->id)->count();
             $supporters = []; // Load on demand when supporters tab is accessed
 
             // Get jobs count
-            $jobsCount = \App\Models\JobPost::where('organization_id', $registeredOrg->id)->count();
+            $jobsCount = JobPost::where('organization_id', $registeredOrg->id)->count();
         } else {
             // For unregistered organizations, count supporters by excel_data_id
-            $supportersCount = \App\Models\UserFavoriteOrganization::where('excel_data_id', $organization->id)->count();
+            $supportersCount = UserFavoriteOrganization::where('excel_data_id', $organization->id)->count();
             $supporters = []; // Load on demand when supporters tab is accessed
         }
 
@@ -806,7 +902,7 @@ class OrganizationController extends BaseController
             // Load posts with reactions and comments data
             // Don't eager load user.organization to avoid ambiguous column error
             // We'll load organization data manually in the map function
-            $postsQuery = \App\Models\Post::select('id', 'content', 'images', 'created_at', 'user_id')
+            $postsQuery = Post::select('id', 'content', 'images', 'created_at', 'user_id')
                 ->with(['user:id,name,image,slug,role'])
                 ->withCount(['reactions', 'comments']);
 
@@ -860,7 +956,7 @@ class OrganizationController extends BaseController
                     // Get user's reaction if authenticated
                     $userReaction = null;
                     if ($userId) {
-                        $reaction = \App\Models\PostReaction::where('post_id', $post->id)
+                        $reaction = PostReaction::where('post_id', $post->id)
                             ->where('user_id', $userId)
                             ->first();
                         if ($reaction) {
@@ -873,7 +969,7 @@ class OrganizationController extends BaseController
                     }
 
                     // Load recent reactions with user data (limit to 10 for performance)
-                    $reactions = \App\Models\PostReaction::where('post_id', $post->id)
+                    $reactions = PostReaction::where('post_id', $post->id)
                         ->with('user:id,name,image')
                         ->latest()
                         ->limit(10)
@@ -892,7 +988,7 @@ class OrganizationController extends BaseController
                         });
 
                     // Load recent comments with user data (limit to 5 for initial load)
-                    $comments = \App\Models\PostComment::where('post_id', $post->id)
+                    $comments = PostComment::where('post_id', $post->id)
                         ->with('user:id,name,image')
                         ->latest()
                         ->limit(5)
@@ -979,7 +1075,7 @@ class OrganizationController extends BaseController
             // Load Facebook posts (only if showing organization posts)
             $facebookPosts = collect([]);
             if ($postFilter === 'organization') {
-                $facebookPosts = \App\Models\FacebookPost::where('organization_id', $registeredOrg->id)
+                $facebookPosts = FacebookPost::where('organization_id', $registeredOrg->id)
                     ->where('status', 'published')
                     ->select('id', 'message', 'image', 'published_at', 'created_at')
                     ->latest()
@@ -1011,7 +1107,7 @@ class OrganizationController extends BaseController
         $sidebarData = $this->getSidebarData($registeredOrg);
         $peopleYouMayKnow = $sidebarData['peopleYouMayKnow'];
         $trendingOrganizations = $sidebarData['trendingOrganizations'];
-        $eventsCount = $registeredOrg ? \App\Models\Event::where('organization_id', $registeredOrg->id)->count() : 0;
+        $eventsCount = $registeredOrg ? Event::where('organization_id', $registeredOrg->id)->count() : 0;
 
         return Inertia::render('frontend/organization/organization-show', [
             'organization' => $transformedOrganization,
@@ -1038,21 +1134,21 @@ class OrganizationController extends BaseController
     public function enrollments(Request $request, string $slug)
     {
         // Find organization by user slug
-        $user = \App\Models\User::where('slug', $slug)
+        $user = User::where('slug', $slug)
             ->where('role', 'organization')
             ->firstOrFail();
 
         $organization = Organization::where('user_id', $user->id)->firstOrFail();
 
         // Get all courses/events created by this organization
-        $courses = \App\Models\Course::where('organization_id', $user->id)
+        $courses = Course::where('organization_id', $user->id)
             ->with(['topic', 'eventType'])
             ->get();
 
         // Get all enrollments grouped by course/event
         $enrollmentsByCourse = [];
         foreach ($courses as $course) {
-            $enrollments = \App\Models\Enrollment::where('course_id', $course->id)
+            $enrollments = Enrollment::where('course_id', $course->id)
                 ->whereIn('status', ['active', 'completed', 'pending'])
                 ->with('user:id,name,email')
                 ->orderBy('enrolled_at', 'desc')
@@ -1149,7 +1245,7 @@ class OrganizationController extends BaseController
     }
 
     /**
-     * @return \Illuminate\Http\RedirectResponse|\Illuminate\Http\JsonResponse
+     * @return RedirectResponse|JsonResponse
      */
     private function favoriteForbiddenForNonSupporterResponse(Request $request): mixed
     {
@@ -1896,7 +1992,7 @@ class OrganizationController extends BaseController
                 ->first();
         } else {
             // Fallback: Try by user slug
-            $user = \App\Models\User::where('slug', $id)->select('id', 'slug')->first();
+            $user = User::where('slug', $id)->select('id', 'slug')->first();
 
             if ($user) {
                 $registeredOrg = Organization::where('user_id', $user->id)
@@ -2043,7 +2139,7 @@ class OrganizationController extends BaseController
         $excelDataId = (int) $organizationData['id'];
 
         if ($registeredOrg) {
-            $products = \App\Models\Product::where('organization_id', $registeredOrg->id)
+            $products = Product::where('organization_id', $registeredOrg->id)
                 ->where('publish_status', 'published')
                 ->with(['categories', 'variants'])
                 ->latest()
@@ -2051,16 +2147,16 @@ class OrganizationController extends BaseController
                 ->items();
 
             // Get counts only - defer loading full data
-            $postsCount = \App\Models\Post::where('user_id', $registeredOrg->user_id)->count()
-                + \App\Models\FacebookPost::where('organization_id', $registeredOrg->id)
+            $postsCount = Post::where('user_id', $registeredOrg->user_id)->count()
+                + FacebookPost::where('organization_id', $registeredOrg->id)
                     ->where('status', 'published')
                     ->count();
-            $supportersCount = \App\Models\UserFavoriteOrganization::where('organization_id', $registeredOrg->id)->count();
-            $jobsCount = \App\Models\JobPost::where('organization_id', $registeredOrg->id)->count();
+            $supportersCount = UserFavoriteOrganization::where('organization_id', $registeredOrg->id)->count();
+            $jobsCount = JobPost::where('organization_id', $registeredOrg->id)->count();
             $supporters = []; // Defer loading - only needed for supporters tab
         } else {
             // For unregistered organizations, count supporters by excel_data_id
-            $supportersCount = \App\Models\UserFavoriteOrganization::where('excel_data_id', $excelDataId)->count();
+            $supportersCount = UserFavoriteOrganization::where('excel_data_id', $excelDataId)->count();
         }
 
         $sidebarData = $this->getSidebarData($registeredOrg);
@@ -2102,7 +2198,7 @@ class OrganizationController extends BaseController
         $excelDataId = (int) $organizationData['id'];
 
         if ($registeredOrg) {
-            $jobsQuery = \App\Models\JobPost::where('organization_id', $registeredOrg->id)
+            $jobsQuery = JobPost::where('organization_id', $registeredOrg->id)
                 ->with(['position', 'organization'])
                 ->latest();
 
@@ -2120,10 +2216,10 @@ class OrganizationController extends BaseController
             $jobs = $jobsQuery->paginate(12)->items();
 
             // Get all data needed for the main organization page
-            $postsCount = \App\Models\Post::where('user_id', $registeredOrg->user_id)->count();
-            $postsCount += \App\Models\FacebookPost::where('organization_id', $registeredOrg->id)->where('status', 'published')->count();
-            $supportersCount = \App\Models\UserFavoriteOrganization::where('organization_id', $registeredOrg->id)->count();
-            $supporters = \App\Models\UserFavoriteOrganization::where('organization_id', $registeredOrg->id)
+            $postsCount = Post::where('user_id', $registeredOrg->user_id)->count();
+            $postsCount += FacebookPost::where('organization_id', $registeredOrg->id)->where('status', 'published')->count();
+            $supportersCount = UserFavoriteOrganization::where('organization_id', $registeredOrg->id)->count();
+            $supporters = UserFavoriteOrganization::where('organization_id', $registeredOrg->id)
                 ->with('user:id,name,email,image,slug,role')
                 ->latest()
                 ->get()
@@ -2146,7 +2242,7 @@ class OrganizationController extends BaseController
                 ->toArray();
         } else {
             // For unregistered organizations, count supporters by excel_data_id
-            $supportersCount = \App\Models\UserFavoriteOrganization::where('excel_data_id', $excelDataId)->count();
+            $supportersCount = UserFavoriteOrganization::where('excel_data_id', $excelDataId)->count();
         }
 
         $believePoints = $this->believePointsForOrganizationViewer(
@@ -2180,7 +2276,7 @@ class OrganizationController extends BaseController
             ->where('registration_status', 'approved')->excludingCareAllianceHubs()
             ->first();
 
-        $eventsPaginator = new \Illuminate\Pagination\LengthAwarePaginator([], 0, 12);
+        $eventsPaginator = new LengthAwarePaginator([], 0, 12);
         $postsCount = 0;
         $supportersCount = 0;
         $jobsCount = 0;
@@ -2188,22 +2284,22 @@ class OrganizationController extends BaseController
         $excelDataId = (int) $organizationData['id'];
 
         if ($registeredOrg) {
-            $eventsPaginator = \App\Models\Event::where('organization_id', $registeredOrg->id)
+            $eventsPaginator = Event::where('organization_id', $registeredOrg->id)
                 ->with(['eventType', 'organization'])
                 ->latest()
                 ->paginate(12);
 
             // Get counts only - defer loading full data
-            $postsCount = \App\Models\Post::where('user_id', $registeredOrg->user_id)->count()
-                + \App\Models\FacebookPost::where('organization_id', $registeredOrg->id)
+            $postsCount = Post::where('user_id', $registeredOrg->user_id)->count()
+                + FacebookPost::where('organization_id', $registeredOrg->id)
                     ->where('status', 'published')
                     ->count();
-            $supportersCount = \App\Models\UserFavoriteOrganization::where('organization_id', $registeredOrg->id)->count();
-            $jobsCount = \App\Models\JobPost::where('organization_id', $registeredOrg->id)->count();
+            $supportersCount = UserFavoriteOrganization::where('organization_id', $registeredOrg->id)->count();
+            $jobsCount = JobPost::where('organization_id', $registeredOrg->id)->count();
             $supporters = []; // Defer loading - only needed for supporters tab
         } else {
             // For unregistered organizations, count supporters by excel_data_id
-            $supportersCount = \App\Models\UserFavoriteOrganization::where('excel_data_id', $excelDataId)->count();
+            $supportersCount = UserFavoriteOrganization::where('excel_data_id', $excelDataId)->count();
         }
 
         $sidebarData = $this->getSidebarData($registeredOrg);
@@ -2237,7 +2333,7 @@ class OrganizationController extends BaseController
         }
 
         // Get Facebook posts
-        $facebookPosts = \App\Models\FacebookPost::where('organization_id', $registeredOrg->id)
+        $facebookPosts = FacebookPost::where('organization_id', $registeredOrg->id)
             ->where('status', 'published')
             ->with('facebookAccount')
             ->latest()
@@ -2274,16 +2370,16 @@ class OrganizationController extends BaseController
 
         if ($registeredOrg) {
             // Get counts only - defer loading full data
-            $postsCount = \App\Models\Post::where('user_id', $registeredOrg->user_id)->count()
-                + \App\Models\FacebookPost::where('organization_id', $registeredOrg->id)
+            $postsCount = Post::where('user_id', $registeredOrg->user_id)->count()
+                + FacebookPost::where('organization_id', $registeredOrg->id)
                     ->where('status', 'published')
                     ->count();
-            $supportersCount = \App\Models\UserFavoriteOrganization::where('organization_id', $registeredOrg->id)->count();
-            $jobsCount = \App\Models\JobPost::where('organization_id', $registeredOrg->id)->count();
+            $supportersCount = UserFavoriteOrganization::where('organization_id', $registeredOrg->id)->count();
+            $jobsCount = JobPost::where('organization_id', $registeredOrg->id)->count();
             $supporters = []; // Defer loading - only needed for supporters tab
         } else {
             // For unregistered organizations, count supporters by excel_data_id
-            $supportersCount = \App\Models\UserFavoriteOrganization::where('excel_data_id', $excelDataId)->count();
+            $supportersCount = UserFavoriteOrganization::where('excel_data_id', $excelDataId)->count();
         }
 
         $believePoints = $this->believePointsForOrganizationViewer(
@@ -2361,16 +2457,16 @@ class OrganizationController extends BaseController
 
         if ($registeredOrg) {
             // Get counts only - defer loading full data
-            $postsCount = \App\Models\Post::where('user_id', $registeredOrg->user_id)->count()
-                + \App\Models\FacebookPost::where('organization_id', $registeredOrg->id)
+            $postsCount = Post::where('user_id', $registeredOrg->user_id)->count()
+                + FacebookPost::where('organization_id', $registeredOrg->id)
                     ->where('status', 'published')
                     ->count();
-            $supportersCount = \App\Models\UserFavoriteOrganization::where('organization_id', $registeredOrg->id)->count();
-            $jobsCount = \App\Models\JobPost::where('organization_id', $registeredOrg->id)->count();
+            $supportersCount = UserFavoriteOrganization::where('organization_id', $registeredOrg->id)->count();
+            $jobsCount = JobPost::where('organization_id', $registeredOrg->id)->count();
             $supporters = []; // Defer loading - only needed for supporters tab
         } else {
             // For unregistered organizations, count supporters by excel_data_id
-            $supportersCount = \App\Models\UserFavoriteOrganization::where('excel_data_id', $excelDataId)->count();
+            $supportersCount = UserFavoriteOrganization::where('excel_data_id', $excelDataId)->count();
         }
 
         $sidebarData = $this->getSidebarData($registeredOrg);
@@ -2415,15 +2511,15 @@ class OrganizationController extends BaseController
 
         if ($registeredOrg) {
             // Get counts only - defer loading full data for faster tab switching
-            $postsCount = \App\Models\Post::where('user_id', $registeredOrg->user_id)->count()
-                + \App\Models\FacebookPost::where('organization_id', $registeredOrg->id)
+            $postsCount = Post::where('user_id', $registeredOrg->user_id)->count()
+                + FacebookPost::where('organization_id', $registeredOrg->id)
                     ->where('status', 'published')
                     ->count();
-            $supportersCount = \App\Models\UserFavoriteOrganization::where('organization_id', $registeredOrg->id)->count();
-            $jobsCount = \App\Models\JobPost::where('organization_id', $registeredOrg->id)->count();
+            $supportersCount = UserFavoriteOrganization::where('organization_id', $registeredOrg->id)->count();
+            $jobsCount = JobPost::where('organization_id', $registeredOrg->id)->count();
 
             // Only load supporters data for supporters tab (limit to 50 for performance)
-            $supporters = \App\Models\UserFavoriteOrganization::where('organization_id', $registeredOrg->id)
+            $supporters = UserFavoriteOrganization::where('organization_id', $registeredOrg->id)
                 ->with('user:id,name,email,image,slug,role')
                 ->latest()
                 ->limit(50)
@@ -2447,11 +2543,11 @@ class OrganizationController extends BaseController
                 ->toArray();
         } else {
             // For unregistered organizations, get supporters by excel_data_id
-            $supportersCount = \App\Models\UserFavoriteOrganization::where('excel_data_id', $excelDataId)->count();
+            $supportersCount = UserFavoriteOrganization::where('excel_data_id', $excelDataId)->count();
             $jobsCount = 0; // Unregistered orgs don't have jobs
 
             // Load supporters data for unregistered organizations
-            $favoriteRecords = \App\Models\UserFavoriteOrganization::where('excel_data_id', $excelDataId)
+            $favoriteRecords = UserFavoriteOrganization::where('excel_data_id', $excelDataId)
                 ->with('user:id,name,email,image,slug,role')
                 ->latest()
                 ->limit(50)
@@ -2554,7 +2650,7 @@ class OrganizationController extends BaseController
      */
     private function calculateBelievePoints($organizationId)
     {
-        $believePointsEarned = \App\Models\Donation::where('organization_id', $organizationId)
+        $believePointsEarned = Donation::where('organization_id', $organizationId)
             ->where('payment_method', 'believe_points')
             ->where('status', 'completed')
             ->sum('amount');
@@ -2579,11 +2675,11 @@ class OrganizationController extends BaseController
         $peopleYouMayKnow = [];
         if (Auth::check()) {
             // Get other organizations the user might be interested in
-            $userFavoriteOrgIds = \App\Models\UserFavoriteOrganization::where('user_id', Auth::id())
+            $userFavoriteOrgIds = UserFavoriteOrganization::where('user_id', Auth::id())
                 ->pluck('organization_id')
                 ->toArray();
 
-            $suggestedOrgs = \App\Models\Organization::where('registration_status', 'approved')
+            $suggestedOrgs = Organization::where('registration_status', 'approved')
                 ->excludingCareAllianceHubs()
                 ->whereNotIn('id', $userFavoriteOrgIds)
                 ->when($registeredOrg, function ($query) use ($registeredOrg) {
@@ -2598,7 +2694,7 @@ class OrganizationController extends BaseController
                 $eins = $suggestedOrgs->pluck('ein')->filter()->unique()->toArray();
 
                 // Get ExcelData IDs in bulk - use latest record per EIN (much faster, no subquery)
-                $excelDataMap = \App\Models\ExcelData::whereIn('ein', $eins)
+                $excelDataMap = ExcelData::whereIn('ein', $eins)
                     ->where('status', 'complete')
                     ->orderBy('id', 'desc')
                     ->get()
@@ -2613,7 +2709,7 @@ class OrganizationController extends BaseController
                         'excel_data_id' => $excelDataMap->get($org->ein) ?? null,
                         'slug' => $org->user?->slug ?? null,
                         'name' => $org->name,
-                        'org' => $org->description ? \Illuminate\Support\Str::limit($org->description, 30) : 'Organization',
+                        'org' => $org->description ? Str::limit($org->description, 30) : 'Organization',
                         'avatar' => $org->user?->image ? '/storage/'.$org->user->image : null,
                     ];
                 })->toArray();
@@ -2621,7 +2717,7 @@ class OrganizationController extends BaseController
         }
 
         // Get trending organizations (by follower count)
-        $trendingOrgs = \App\Models\Organization::where('registration_status', 'approved')
+        $trendingOrgs = Organization::where('registration_status', 'approved')
             ->excludingCareAllianceHubs()
             ->withCount('followers')
             ->with('user:id,slug,name')
@@ -2635,7 +2731,7 @@ class OrganizationController extends BaseController
             $eins = $trendingOrgs->pluck('ein')->filter()->unique()->toArray();
 
             // Get ExcelData IDs in bulk - use latest record per EIN (much faster)
-            $excelDataMap = \App\Models\ExcelData::whereIn('ein', $eins)
+            $excelDataMap = ExcelData::whereIn('ein', $eins)
                 ->where('status', 'complete')
                 ->orderBy('id', 'desc')
                 ->get()
@@ -2652,13 +2748,13 @@ class OrganizationController extends BaseController
                     'excel_data_id' => $excelDataMap->get($org->ein) ?? null,
                     'slug' => $org->user?->slug ?? null,
                     'name' => $org->name,
-                    'desc' => $org->description ? \Illuminate\Support\Str::limit($org->description, 50) : 'Organization description',
+                    'desc' => $org->description ? Str::limit($org->description, 50) : 'Organization description',
                     'color' => $colors[$index % count($colors)],
                 ];
             })->toArray();
         }
 
-        $eventsCount = $registeredOrg ? \App\Models\Event::where('organization_id', $registeredOrg->id)->count() : 0;
+        $eventsCount = $registeredOrg ? Event::where('organization_id', $registeredOrg->id)->count() : 0;
 
         return [
             'peopleYouMayKnow' => $peopleYouMayKnow,
@@ -2707,7 +2803,7 @@ class OrganizationController extends BaseController
             }
 
             // Check if user has already invited this organization
-            $existingInvite = \App\Models\OrganizationInvite::where('excel_data_id', $organization->id)
+            $existingInvite = OrganizationInvite::where('excel_data_id', $organization->id)
                 ->where('inviter_id', $user->id)
                 ->where('email', $request->email)
                 ->first();
@@ -2720,7 +2816,7 @@ class OrganizationController extends BaseController
             }
 
             // Create invite record
-            $invite = \App\Models\OrganizationInvite::create([
+            $invite = OrganizationInvite::create([
                 'excel_data_id' => $organization->id,
                 'inviter_id' => $user->id,
                 'email' => $request->email,
