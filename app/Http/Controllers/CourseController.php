@@ -47,23 +47,9 @@ class CourseController extends BaseController
             }
         }
 
-        // Learning hub “Explore by Category”: prefer `topics` + `topic_id`. When the topic catalog is
-        // empty or no learning listings use `topic_id`, fall back to active event types + `event_type_id`
-        // (same taxonomy many listings use) so the strip matches how events hub behaves.
-        $learningExploreUsesEventTypes = false;
-        if (($filters['type'] ?? null) === 'learning') {
-            $hasLearningTopicAssignments = Course::query()
-                ->where('type', 'learning')
-                ->whereNotNull('topic_id')
-                ->exists();
-            $hasLearningEventTypeAssignments = Course::query()
-                ->where('type', 'learning')
-                ->whereNotNull('event_type_id')
-                ->exists();
-            $topicsCatalogExists = Topic::query()->exists();
-            $learningExploreUsesEventTypes = (! $hasLearningTopicAssignments && $hasLearningEventTypeAssignments)
-                || (! $topicsCatalogExists && $hasLearningEventTypeAssignments);
-        }
+        // Learning hub “Explore by Category” uses the same EventType catalog + counts as the events hub
+        // (`event_type_id` on courses), not the separate `topics` table.
+        $learningExploreUsesEventTypes = (($filters['type'] ?? null) === 'learning');
 
         $perPage = (int) $request->query('per_page', 6);
         if (! in_array($perPage, [6, 9, 12, 18], true)) {
@@ -93,13 +79,12 @@ class CourseController extends BaseController
                     $query->where('type', $type);
                 }
             })
-            // Learning hub “Explore by Category” uses `topic_id` on `courses`. Event listings use
-            // `event_type_id` (event types from / admin event-types), not `topic_id` — never AND both
-            // when `type=events` still has a stale `topic_id` from a prior learning visit.
+            // Learning + events hub “Explore by Category” both filter by `event_type_id` (event types).
+            // Ignore `topic_id` on the learning hub so a stale topic from the searchable table does not apply.
             ->when(
                 ($filters['topic_id'] ?? null)
                 && (($filters['type'] ?? null) !== 'events')
-                && ! (($filters['type'] ?? null) === 'learning' && $learningExploreUsesEventTypes),
+                && (($filters['type'] ?? null) !== 'learning'),
                 function ($query) use ($filters) {
                     $topicId = $filters['topic_id'];
                     if ($topicId !== 'all') {
@@ -109,10 +94,7 @@ class CourseController extends BaseController
             )
             ->when(
                 ($filters['event_type_id'] ?? null) && ($filters['event_type_id'] !== 'all'),
-                function ($query) use ($filters, $learningExploreUsesEventTypes) {
-                    if (($filters['type'] ?? null) === 'learning' && ! $learningExploreUsesEventTypes) {
-                        return;
-                    }
+                function ($query) use ($filters) {
                     $query->where('event_type_id', $filters['event_type_id']);
                 }
             )
@@ -222,55 +204,7 @@ class CourseController extends BaseController
         $learningStats = null;
 
         if (($filters['type'] ?? null) === 'learning') {
-            if ($learningExploreUsesEventTypes) {
-                $learningTopicCounts = EventType::query()
-                    ->where('is_active', true)
-                    ->withCount(['courses as learning_count' => function ($q) {
-                        $q->where('type', 'learning');
-                    }])
-                    ->orderByDesc('learning_count')
-                    ->orderBy('category')
-                    ->orderBy('name')
-                    ->get(['id', 'name', 'category'])
-                    ->map(fn ($et) => [
-                        'id' => $et->id,
-                        'name' => $et->category ? $et->category.' · '.$et->name : $et->name,
-                        'count' => (int) $et->learning_count,
-                    ])
-                    ->filter(fn ($row) => $row['count'] > 0)
-                    ->values()
-                    ->all();
-            } else {
-                // Every row in `topics` (same catalog as the Cause/Topic filter), with learning counts.
-                // Uses an explicit aggregate instead of withCount() so we never get an empty list when
-                // topics exist but the relationship subquery behaves unexpectedly on some DBs.
-                $topicRows = Topic::query()->orderBy('name')->get(['id', 'name']);
-
-                $countsByTopicId = Course::query()
-                    ->where('type', 'learning')
-                    ->whereNotNull('topic_id')
-                    ->groupBy('topic_id')
-                    ->selectRaw('topic_id, COUNT(*) as learning_aggregate')
-                    ->pluck('learning_aggregate', 'topic_id');
-
-                $learningTopicCounts = $topicRows
-                    ->map(function ($topic) use ($countsByTopicId) {
-                        $tid = $topic->id;
-                        $raw = $countsByTopicId->get($tid);
-                        if ($raw === null) {
-                            $raw = $countsByTopicId->get((string) $tid);
-                        }
-
-                        return [
-                            'id' => $topic->id,
-                            'name' => $topic->name,
-                            'count' => (int) ($raw ?? 0),
-                        ];
-                    })
-                    ->sortByDesc('count')
-                    ->values()
-                    ->all();
-            }
+            $learningTopicCounts = $this->connectionHubEventTypeCountsFor('learning');
 
             $today = now()->toDateString();
 
@@ -370,23 +304,7 @@ class CourseController extends BaseController
         $eventsStats = null;
 
         if (($filters['type'] ?? null) === 'events') {
-            $eventsEventTypeCounts = EventType::query()
-                ->where('is_active', true)
-                ->withCount(['courses as events_count' => function ($q) {
-                    $q->where('type', 'events');
-                }])
-                ->orderByDesc('events_count')
-                ->orderBy('category')
-                ->orderBy('name')
-                ->get(['id', 'name', 'category'])
-                ->map(fn ($et) => [
-                    'id' => $et->id,
-                    'name' => $et->category ? $et->category.' · '.$et->name : $et->name,
-                    'count' => (int) $et->events_count,
-                ])
-                ->filter(fn ($row) => $row['count'] > 0)
-                ->values()
-                ->all();
+            $eventsEventTypeCounts = $this->connectionHubEventTypeCountsFor('events');
 
             $today = now()->toDateString();
 
@@ -1380,5 +1298,38 @@ class CourseController extends BaseController
 
             return redirect()->back()->with('error', 'Failed to delete course. An unexpected error occurred.');
         }
+    }
+
+    /**
+     * Shared “Explore by Category” payload for Connection Hub learning + events landings.
+     *
+     * @param  string  $courseType  `learning` or `events` — must match `courses.type`
+     * @return array<int, array{id: int, name: string, count: int}>
+     */
+    protected function connectionHubEventTypeCountsFor(string $courseType): array
+    {
+        $alias = match ($courseType) {
+            'learning' => 'learning_count',
+            'events' => 'events_count',
+            default => 'hub_count',
+        };
+
+        return EventType::query()
+            ->where('is_active', true)
+            ->withCount(['courses as '.$alias => function ($q) use ($courseType) {
+                $q->where('type', $courseType);
+            }])
+            ->orderByDesc($alias)
+            ->orderBy('category')
+            ->orderBy('name')
+            ->get(['id', 'name', 'category'])
+            ->map(fn ($et) => [
+                'id' => $et->id,
+                'name' => $et->category ? $et->category.' · '.$et->name : $et->name,
+                'count' => (int) ($et->{$alias} ?? 0),
+            ])
+            ->filter(fn ($row) => $row['count'] > 0)
+            ->values()
+            ->all();
     }
 }

@@ -367,12 +367,11 @@ export default function FrontendCoursesListPage({
   /** Hub landings are standalone; do not stack the searchable table + pagination below. */
   const showConnectionHubTable = !showLearningLanding && !showEventsLanding
 
-  /** If hub payload is empty (stale merge, edge case), still show chips from global `topics`. */
+  /** Server sends only categories with learning listings; do not inject zero-count chips from `topics`. */
   const learningHubTopicRows = useMemo((): LearningTopicCount[] => {
     if (!showLearningLanding) return learningTopicCounts
-    if (learningTopicCounts.length > 0) return learningTopicCounts
-    return topics.map((t) => ({ id: t.id, name: t.name, count: 0 }))
-  }, [showLearningLanding, learningTopicCounts, topics])
+    return learningTopicCounts
+  }, [showLearningLanding, learningTopicCounts])
 
   return (
     <FrontendLayout>
