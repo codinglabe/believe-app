@@ -7,6 +7,7 @@ use App\Models\Course;
 use App\Models\Enrollment;
 use App\Models\Organization;
 use App\Models\PrimaryActionCategory;
+use App\Models\EventType;
 use App\Models\Topic;
 use App\Services\CourseTaxClassificationService;
 use App\Services\SeoService;
@@ -39,6 +40,31 @@ class CourseController extends BaseController
             'cause_id',
         ]);
 
+        if (isset($filters['type']) && is_string($filters['type'])) {
+            $filters['type'] = strtolower(trim($filters['type']));
+            if ($filters['type'] === '') {
+                unset($filters['type']);
+            }
+        }
+
+        // Learning hub “Explore by Category”: prefer `topics` + `topic_id`. When the topic catalog is
+        // empty or no learning listings use `topic_id`, fall back to active event types + `event_type_id`
+        // (same taxonomy many listings use) so the strip matches how events hub behaves.
+        $learningExploreUsesEventTypes = false;
+        if (($filters['type'] ?? null) === 'learning') {
+            $hasLearningTopicAssignments = Course::query()
+                ->where('type', 'learning')
+                ->whereNotNull('topic_id')
+                ->exists();
+            $hasLearningEventTypeAssignments = Course::query()
+                ->where('type', 'learning')
+                ->whereNotNull('event_type_id')
+                ->exists();
+            $topicsCatalogExists = Topic::query()->exists();
+            $learningExploreUsesEventTypes = (! $hasLearningTopicAssignments && $hasLearningEventTypeAssignments)
+                || (! $topicsCatalogExists && $hasLearningEventTypeAssignments);
+        }
+
         $perPage = (int) $request->query('per_page', 6);
         if (! in_array($perPage, [6, 9, 12, 18], true)) {
             $perPage = 6;
@@ -67,16 +93,29 @@ class CourseController extends BaseController
                     $query->where('type', $type);
                 }
             })
-            ->when($filters['topic_id'] ?? null, function ($query, $topicId) {
-                if ($topicId !== 'all') {
-                    $query->where('topic_id', $topicId);
+            // Learning hub “Explore by Category” uses `topic_id` on `courses`. Event listings use
+            // `event_type_id` (event types from / admin event-types), not `topic_id` — never AND both
+            // when `type=events` still has a stale `topic_id` from a prior learning visit.
+            ->when(
+                ($filters['topic_id'] ?? null)
+                && (($filters['type'] ?? null) !== 'events')
+                && ! (($filters['type'] ?? null) === 'learning' && $learningExploreUsesEventTypes),
+                function ($query) use ($filters) {
+                    $topicId = $filters['topic_id'];
+                    if ($topicId !== 'all') {
+                        $query->where('topic_id', $topicId);
+                    }
                 }
-            })
-            ->when($filters['event_type_id'] ?? null, function ($query, $eventTypeId) {
-                if ($eventTypeId !== 'all') {
-                    $query->where('event_type_id', $eventTypeId);
+            )
+            ->when(
+                ($filters['event_type_id'] ?? null) && ($filters['event_type_id'] !== 'all'),
+                function ($query) use ($filters, $learningExploreUsesEventTypes) {
+                    if (($filters['type'] ?? null) === 'learning' && ! $learningExploreUsesEventTypes) {
+                        return;
+                    }
+                    $query->where('event_type_id', $filters['event_type_id']);
                 }
-            })
+            )
             ->when($filters['organization'] ?? null, function ($query, $organization) {
                 if ($organization !== 'all') {
                     $query->whereHas('organization', function ($query) use ($organization) {
@@ -177,6 +216,263 @@ class CourseController extends BaseController
             $seoDescription = 'Find courses and events matching your search. '.$seoDescription;
         }
 
+        $learningTopicCounts = [];
+        $learningSpotlightCourses = collect();
+        $learningFeaturedCourses = collect();
+        $learningStats = null;
+
+        if (($filters['type'] ?? null) === 'learning') {
+            if ($learningExploreUsesEventTypes) {
+                $learningTopicCounts = EventType::query()
+                    ->where('is_active', true)
+                    ->withCount(['courses as learning_count' => function ($q) {
+                        $q->where('type', 'learning');
+                    }])
+                    ->orderByDesc('learning_count')
+                    ->orderBy('category')
+                    ->orderBy('name')
+                    ->get(['id', 'name', 'category'])
+                    ->map(fn ($et) => [
+                        'id' => $et->id,
+                        'name' => $et->category ? $et->category.' · '.$et->name : $et->name,
+                        'count' => (int) $et->learning_count,
+                    ])
+                    ->filter(fn ($row) => $row['count'] > 0)
+                    ->values()
+                    ->all();
+            } else {
+                // Every row in `topics` (same catalog as the Cause/Topic filter), with learning counts.
+                // Uses an explicit aggregate instead of withCount() so we never get an empty list when
+                // topics exist but the relationship subquery behaves unexpectedly on some DBs.
+                $topicRows = Topic::query()->orderBy('name')->get(['id', 'name']);
+
+                $countsByTopicId = Course::query()
+                    ->where('type', 'learning')
+                    ->whereNotNull('topic_id')
+                    ->groupBy('topic_id')
+                    ->selectRaw('topic_id, COUNT(*) as learning_aggregate')
+                    ->pluck('learning_aggregate', 'topic_id');
+
+                $learningTopicCounts = $topicRows
+                    ->map(function ($topic) use ($countsByTopicId) {
+                        $tid = $topic->id;
+                        $raw = $countsByTopicId->get($tid);
+                        if ($raw === null) {
+                            $raw = $countsByTopicId->get((string) $tid);
+                        }
+
+                        return [
+                            'id' => $topic->id,
+                            'name' => $topic->name,
+                            'count' => (int) ($raw ?? 0),
+                        ];
+                    })
+                    ->sortByDesc('count')
+                    ->values()
+                    ->all();
+            }
+
+            $today = now()->toDateString();
+
+            // “Live Learning Now”: listings that have started and not ended (same window as public table “Active”).
+            $liveLearning = Course::query()
+                ->where('type', 'learning')
+                ->where('start_date', '<=', $today)
+                ->where(function ($q) use ($today) {
+                    $q->whereNull('end_date')
+                        ->orWhere('end_date', '>=', $today);
+                })
+                ->with(['creator', 'organization.organization'])
+                ->withCount(['enrollmentsCount as enrolled_count'])
+                ->orderBy('start_date', 'desc')
+                ->limit(5)
+                ->get();
+
+            foreach ($liveLearning as $course) {
+                $course->organization_name = optional($course->organization->organization)->name;
+                $course->enrolled = $course->enrolled_count ?? 0;
+            }
+
+            $learningSpotlightCourses = $liveLearning;
+
+            // “Featured” learning: upcoming or in date window (same logic as events hub featured strip).
+            $learningFeatured = Course::query()
+                ->where('type', 'learning')
+                ->where(function ($q) use ($today) {
+                    $q->where('start_date', '>=', $today)
+                        ->orWhere(function ($q2) use ($today) {
+                            $q2->where('start_date', '<=', $today)
+                                ->where(function ($q3) use ($today) {
+                                    $q3->whereNull('end_date')
+                                        ->orWhere('end_date', '>=', $today);
+                                });
+                        });
+                })
+                ->with(['creator', 'topic', 'organization.organization'])
+                ->withCount(['enrollmentsCount as enrolled_count'])
+                ->orderBy('start_date', 'asc')
+                ->limit(4)
+                ->get();
+
+            if ($learningFeatured->isEmpty()) {
+                $learningFeatured = Course::query()
+                    ->where('type', 'learning')
+                    ->with(['creator', 'topic', 'organization.organization'])
+                    ->withCount(['enrollmentsCount as enrolled_count'])
+                    ->orderBy('start_date', 'desc')
+                    ->limit(4)
+                    ->get();
+            }
+
+            foreach ($learningFeatured as $course) {
+                $course->organization_name = optional($course->organization->organization)->name;
+                $course->enrolled = $course->enrolled_count ?? 0;
+            }
+            $learningFeaturedCourses = $learningFeatured;
+
+            $learningCourseIds = Course::where('type', 'learning')->pluck('id');
+
+            if ($learningCourseIds->isEmpty()) {
+                $learningStats = [
+                    'active_learners' => 0,
+                    'courses_available' => 0,
+                    'expert_mentors' => 0,
+                    'lessons_completed' => 0,
+                    'lives_impacted' => 0,
+                ];
+            } else {
+                $activeLearners = (int) DB::table('enrollments')
+                    ->whereIn('course_id', $learningCourseIds)
+                    ->selectRaw('count(distinct user_id) as c')
+                    ->value('c');
+
+                $learningStats = [
+                    'active_learners' => $activeLearners,
+                    'courses_available' => (int) Course::where('type', 'learning')->count(),
+                    'expert_mentors' => (int) DB::table('courses')
+                        ->where('type', 'learning')
+                        ->selectRaw('count(distinct user_id) as c')
+                        ->value('c'),
+                    'lessons_completed' => (int) Enrollment::query()
+                        ->whereIn('course_id', $learningCourseIds)
+                        ->where('status', Enrollment::STATUS_COMPLETED)
+                        ->count(),
+                    'lives_impacted' => (int) Enrollment::query()
+                        ->whereIn('course_id', $learningCourseIds)
+                        ->count(),
+                ];
+            }
+        }
+
+        $eventsEventTypeCounts = [];
+        $eventsFeaturedCourses = collect();
+        $eventsLiveCourses = collect();
+        $eventsStats = null;
+
+        if (($filters['type'] ?? null) === 'events') {
+            $eventsEventTypeCounts = EventType::query()
+                ->where('is_active', true)
+                ->withCount(['courses as events_count' => function ($q) {
+                    $q->where('type', 'events');
+                }])
+                ->orderByDesc('events_count')
+                ->orderBy('category')
+                ->orderBy('name')
+                ->get(['id', 'name', 'category'])
+                ->map(fn ($et) => [
+                    'id' => $et->id,
+                    'name' => $et->category ? $et->category.' · '.$et->name : $et->name,
+                    'count' => (int) $et->events_count,
+                ])
+                ->filter(fn ($row) => $row['count'] > 0)
+                ->values()
+                ->all();
+
+            $today = now()->toDateString();
+
+            // “Featured”: upcoming or still in its date window. If none match (e.g. every event has ended),
+            // fall back to the most recent event listings so the hub isn’t empty when data exists.
+            $featured = Course::query()
+                ->where('type', 'events')
+                ->where(function ($q) use ($today) {
+                    $q->where('start_date', '>=', $today)
+                        ->orWhere(function ($q2) use ($today) {
+                            $q2->where('start_date', '<=', $today)
+                                ->where(function ($q3) use ($today) {
+                                    $q3->whereNull('end_date')
+                                        ->orWhere('end_date', '>=', $today);
+                                });
+                        });
+                })
+                ->with(['creator', 'eventType', 'organization.organization'])
+                ->withCount(['enrollmentsCount as enrolled_count'])
+                ->orderBy('start_date', 'asc')
+                ->limit(4)
+                ->get();
+
+            if ($featured->isEmpty()) {
+                $featured = Course::query()
+                    ->where('type', 'events')
+                    ->with(['creator', 'eventType', 'organization.organization'])
+                    ->withCount(['enrollmentsCount as enrolled_count'])
+                    ->orderBy('start_date', 'desc')
+                    ->limit(4)
+                    ->get();
+            }
+
+            foreach ($featured as $course) {
+                $course->organization_name = optional($course->organization->organization)->name;
+                $course->enrolled = $course->enrolled_count ?? 0;
+            }
+            $eventsFeaturedCourses = $featured;
+
+            $live = Course::query()
+                ->where('type', 'events')
+                ->where('start_date', '<=', $today)
+                ->where(function ($q) use ($today) {
+                    $q->whereNull('end_date')
+                        ->orWhere('end_date', '>=', $today);
+                })
+                ->with(['creator', 'eventType', 'organization.organization'])
+                ->withCount(['enrollmentsCount as enrolled_count'])
+                ->orderBy('start_date', 'desc')
+                ->limit(5)
+                ->get();
+
+            foreach ($live as $course) {
+                $course->organization_name = optional($course->organization->organization)->name;
+                $course->enrolled = $course->enrolled_count ?? 0;
+            }
+            $eventsLiveCourses = $live;
+
+            $eventCourseIds = Course::where('type', 'events')->pluck('id');
+
+            if ($eventCourseIds->isEmpty()) {
+                $eventsStats = [
+                    'events_hosted' => 0,
+                    'total_attendees' => 0,
+                    'upcoming_events' => 0,
+                    'lives_impacted' => 0,
+                ];
+            } else {
+                $upcomingEvents = (int) Course::where('type', 'events')
+                    ->where('start_date', '>', $today)
+                    ->count();
+
+                $eventsStats = [
+                    'events_hosted' => (int) Course::where('type', 'events')->count(),
+                    'total_attendees' => (int) Enrollment::query()
+                        ->whereIn('course_id', $eventCourseIds)
+                        ->count(),
+                    'upcoming_events' => $upcomingEvents,
+                    'lives_impacted' => (int) DB::table('enrollments')
+                        ->whereIn('course_id', $eventCourseIds)
+                        ->selectRaw('count(distinct user_id) as c')
+                        ->value('c'),
+                ];
+            }
+        }
+
         return Inertia::render('frontend/course/Index', [
             'seo' => [
                 'title' => $seoTitle,
@@ -188,6 +484,15 @@ class CourseController extends BaseController
             'causesForFilter' => $causesForFilter,
             'organizations' => $organizations,
             'filters' => $filters,
+            'learningExploreUsesEventTypes' => $learningExploreUsesEventTypes,
+            'learningTopicCounts' => $learningTopicCounts,
+            'learningSpotlightCourses' => $learningSpotlightCourses->values()->all(),
+            'learningFeaturedCourses' => $learningFeaturedCourses->values()->all(),
+            'learningStats' => $learningStats,
+            'eventsEventTypeCounts' => $eventsEventTypeCounts,
+            'eventsFeaturedCourses' => $eventsFeaturedCourses->values()->all(),
+            'eventsLiveCourses' => $eventsLiveCourses->values()->all(),
+            'eventsStats' => $eventsStats,
         ]);
     }
 

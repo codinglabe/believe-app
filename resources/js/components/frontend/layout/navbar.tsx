@@ -227,7 +227,6 @@ export default function Navbar() {
         { name: "Companion", href: `${route("course.index")}?type=companion`, icon: GraduationCap },
         { name: "Learning", href: `${route("course.index")}?type=learning`, icon: GraduationCap },
         { name: "Events", href: `${route("course.index")}?type=events`, icon: Calendar },
-        { name: "Earning", href: `${route("course.index")}?type=earning`, icon: TrendingUp },
       ],
     },
     ...(isLoggedIn ? [{ name: "Challenge Hub", href: route("challenge-hub.index"), icon: Trophy }] : []),

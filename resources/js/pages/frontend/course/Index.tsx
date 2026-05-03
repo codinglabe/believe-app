@@ -1,7 +1,7 @@
 "use client"
 
 import FrontendLayout from "@/layouts/frontend/frontend-layout"
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef, useMemo } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import {
   Search,
@@ -32,6 +32,17 @@ import {
   TableRow,
 } from "@/components/frontend/ui/table"
 import { cn } from "@/lib/utils"
+import LearningConnectionHubLanding, {
+  type LearningFeaturedCourse,
+  type LearningHubStats,
+  type LearningSpotlightCourse,
+  type LearningTopicCount,
+} from "@/components/frontend/course/LearningConnectionHubLanding"
+import EventsConnectionHubLanding, {
+  type EventsHubCourse,
+  type EventsHubStats,
+  type EventsEventTypeCount,
+} from "@/components/frontend/course/EventsConnectionHubLanding"
 
 interface PrimaryActionCategoryRef {
   id: number
@@ -118,6 +129,8 @@ interface CourseListUser {
 
 interface FrontendCoursesListPageProps {
   seo?: { title?: string; description?: string }
+  /** Catalog topics (same as backend `Topic::orderBy('name')`); used as fallback for learning hub categories */
+  topics?: Topic[]
   organizations: Organization[]
   courses: {
     data: Course[]
@@ -143,6 +156,16 @@ interface FrontendCoursesListPageProps {
     /** Filter listings that include this primary-action category (cause) */
     cause_id?: string
   }
+  learningTopicCounts?: LearningTopicCount[]
+  /** Learning hub category strip uses event types + `event_type_id` instead of topics */
+  learningExploreUsesEventTypes?: boolean
+  learningSpotlightCourses?: LearningSpotlightCourse[]
+  learningFeaturedCourses?: LearningFeaturedCourse[]
+  learningStats?: LearningHubStats | null
+  eventsEventTypeCounts?: EventsEventTypeCount[]
+  eventsFeaturedCourses?: EventsHubCourse[]
+  eventsLiveCourses?: EventsHubCourse[]
+  eventsStats?: EventsHubStats | null
 }
 
 function stripHtmlToText(html: string, maxLen = 140): string {
@@ -198,8 +221,18 @@ const PER_PAGE_OPTIONS = [6, 9, 12, 18] as const
 export default function FrontendCoursesListPage({
   seo,
   courses: initialCourses,
+  topics = [],
   causesForFilter = [],
   filters,
+  learningTopicCounts = [],
+  learningExploreUsesEventTypes = false,
+  learningSpotlightCourses = [],
+  learningFeaturedCourses = [],
+  learningStats = null,
+  eventsEventTypeCounts = [],
+  eventsFeaturedCourses = [],
+  eventsLiveCourses = [],
+  eventsStats = null,
 }: FrontendCoursesListPageProps) {
   const flash = usePage().props
   const { showNotification } = useNotification()
@@ -211,6 +244,18 @@ export default function FrontendCoursesListPage({
   const [selectedPricing, setSelectedPricing] = useState(filters.pricing_type || "all")
   const [isSearching, setIsSearching] = useState(false)
   const [showFilters, setShowFilters] = useState(true)
+  /** Avoid Inertia remount + preserveState merge right after load (causes stale UI / scroll glitches). */
+  const skipInitialDebouncedFetch = useRef(true)
+
+  /** Keep type filter in sync with URL/server so `?type=learning` always drives hub + requests. */
+  useEffect(() => {
+    setSelectedType(filters.type || "all")
+  }, [filters.type])
+
+  /** Full navigation from another route often keeps scroll position; reset once per mount. */
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" })
+  }, [])
 
   const performSearch = useCallback(
     (query: string, type: string, causeId: number | null, pricing: string) => {
@@ -230,7 +275,7 @@ export default function FrontendCoursesListPage({
 
       router.get("/courses", params, {
         preserveScroll: true,
-        preserveState: true,
+        preserveState: false,
         replace: true,
         onFinish: () => setIsSearching(false),
       })
@@ -239,6 +284,10 @@ export default function FrontendCoursesListPage({
   )
 
   useEffect(() => {
+    if (skipInitialDebouncedFetch.current) {
+      skipInitialDebouncedFetch.current = false
+      return
+    }
     const timer = setTimeout(() => {
       performSearch(searchQuery, selectedType, selectedCauseId, selectedPricing)
     }, 500)
@@ -264,7 +313,10 @@ export default function FrontendCoursesListPage({
   const handlePageChange = (page: number) => {
     const params = new URLSearchParams(window.location.search)
     params.set("page", page.toString())
-    router.get(`${window.location.pathname}?${params.toString()}`, {}, { preserveState: true })
+    router.get(`${window.location.pathname}?${params.toString()}`, {}, {
+      preserveScroll: false,
+      preserveState: false,
+    })
     window.scrollTo({ top: 0, behavior: "smooth" })
   }
 
@@ -272,7 +324,10 @@ export default function FrontendCoursesListPage({
     const params = new URLSearchParams(window.location.search)
     params.set("per_page", String(perPage))
     params.set("page", "1")
-    router.get(`${window.location.pathname}?${params.toString()}`, {}, { preserveState: true })
+    router.get(`${window.location.pathname}?${params.toString()}`, {}, {
+      preserveScroll: false,
+      preserveState: false,
+    })
   }
 
   const clearFilters = () => {
@@ -280,7 +335,7 @@ export default function FrontendCoursesListPage({
     setSelectedType("all")
     setSelectedCauseId(null)
     setSelectedPricing("all")
-    router.get("/courses", {}, { preserveScroll: true, replace: true })
+    router.get("/courses", {}, { preserveScroll: false, replace: true, preserveState: false })
   }
 
   const hasActiveFilters =
@@ -290,7 +345,7 @@ export default function FrontendCoursesListPage({
     selectedPricing !== "all"
 
   const shellClass =
-    "min-h-screen bg-slate-50 text-slate-900 dark:bg-[#0B0E14] dark:text-slate-100"
+    "relative isolate min-h-screen bg-slate-50 text-slate-900 dark:bg-[#0B0E14] dark:text-slate-100"
 
   const panelClass =
     "rounded-xl border border-slate-200/90 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900/80 dark:shadow-none"
@@ -307,12 +362,43 @@ export default function FrontendCoursesListPage({
   const tableRowClass =
     "border-slate-100 hover:bg-slate-50/80 dark:border-slate-800/90 dark:hover:bg-slate-900/60"
 
+  const showLearningLanding = filters.type === "learning"
+  const showEventsLanding = filters.type === "events"
+  /** Hub landings are standalone; do not stack the searchable table + pagination below. */
+  const showConnectionHubTable = !showLearningLanding && !showEventsLanding
+
+  /** If hub payload is empty (stale merge, edge case), still show chips from global `topics`. */
+  const learningHubTopicRows = useMemo((): LearningTopicCount[] => {
+    if (!showLearningLanding) return learningTopicCounts
+    if (learningTopicCounts.length > 0) return learningTopicCounts
+    return topics.map((t) => ({ id: t.id, name: t.name, count: 0 }))
+  }, [showLearningLanding, learningTopicCounts, topics])
+
   return (
     <FrontendLayout>
       <PageHead title={seo?.title ?? "Connection Hub"} description={seo?.description} />
       <div className={shellClass}>
-        <div className="container mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8 lg:py-10">
+        {showLearningLanding && (
+          <LearningConnectionHubLanding
+            learningTopicCounts={learningHubTopicRows}
+            learningExploreUsesEventTypes={learningExploreUsesEventTypes}
+            learningSpotlightCourses={learningSpotlightCourses}
+            learningFeaturedCourses={learningFeaturedCourses}
+            learningStats={learningStats}
+          />
+        )}
+        {showEventsLanding && (
+          <EventsConnectionHubLanding
+            eventsEventTypeCounts={eventsEventTypeCounts}
+            eventsFeaturedCourses={eventsFeaturedCourses}
+            eventsLiveCourses={eventsLiveCourses}
+            eventsStats={eventsStats}
+          />
+        )}
+        {showConnectionHubTable && (
+        <div className="container mx-auto px-4 py-8 lg:py-10">
           <motion.section
+            id="browse-courses"
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.35 }}
@@ -412,7 +498,6 @@ export default function FrontendCoursesListPage({
                         <option value="companion">Companion</option>
                         <option value="learning">Learning</option>
                         <option value="events">Events</option>
-                        <option value="earning">Earning</option>
                       </select>
                     </div>
 
@@ -697,6 +782,7 @@ export default function FrontendCoursesListPage({
             </div>
           )}
         </div>
+        )}
       </div>
     </FrontendLayout>
   )

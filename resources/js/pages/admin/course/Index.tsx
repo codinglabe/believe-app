@@ -364,13 +364,13 @@ export default function CoursesIndex({ courses, eventTypes, filters, statistics 
 
   return (
     <AppLayout>
-      <Head title="Connections" />
+      <Head title="Connection Hub" />
       <div className="space-y-6 sm:space-y-8 animate-in fade-in duration-500 m-10">
         {/* Header */}
         <div className="flex flex-col space-y-4 sm:space-y-0 sm:flex-row sm:items-center sm:justify-between">
           <div className="space-y-2 animate-in slide-in-from-left duration-700">
             <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-gray-900 dark:text-white">
-              Connections
+              Connection Hub
             </h1>
             <p className="text-sm sm:text-base lg:text-lg text-gray-600 dark:text-gray-400">
               Manage Connection Hub listings and track enrollment
@@ -488,7 +488,7 @@ export default function CoursesIndex({ courses, eventTypes, filters, statistics 
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
               <CardTitle className="flex items-center gap-2 text-lg sm:text-xl text-gray-900 dark:text-white">
                 <Heart className="h-5 w-5 text-red-500" />
-                Connections ({courses.total})
+                Connection Hub ({courses.total})
               </CardTitle>
             </div>
 
@@ -513,7 +513,6 @@ export default function CoursesIndex({ courses, eventTypes, filters, statistics 
                   <option value="companion">Companion</option>
                   <option value="learning">Learning</option>
                   <option value="events">Events</option>
-                  <option value="earning">Earning</option>
                 </select>
                 {/* Topic filter — courses and events both use event types */}
                 {coursesCourseType ? (

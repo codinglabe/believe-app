@@ -6,6 +6,7 @@ use App\Jobs\SendCourseNotification;
 use App\Models\Course;
 use App\Models\Enrollment;
 use App\Models\Organization;
+use App\Models\User;
 use App\Models\Topic;
 use App\Services\CourseTaxClassificationService;
 use App\Support\ConnectionHubType;
@@ -629,7 +630,7 @@ class FrontendCourseController extends BaseController
             'volunteer_opportunities' => 'boolean',
 
             'image' => 'nullable|image|mimes:jpeg,png,jpg,gif,svg|max:2048',
-        ], CourseTaxClassificationService::validationRules(), $this->connectionHubProfilePrimaryActionCategoryValidation($request)), [
+        ], CourseTaxClassificationService::validationRules(), $this->connectionHubProfilePrimaryActionCategoryValidation($request, $course)), [
             'name.required' => "The {$typeLabelCapital} name is required.",
             'name.unique' => "A {$typeLabel} with this name already exists.",
             'name.max' => "The {$typeLabelCapital} name may not be greater than 255 characters.",
@@ -810,12 +811,22 @@ class FrontendCourseController extends BaseController
 
     /**
      * PAC validation: org grid when org has categories; otherwise user's supporter-interest pivot.
+     * When updating a listing, also allow causes already saved on that listing (so saves do not fail
+     * after the org removes a cause from their grid or the catalog is narrowed).
      */
-    private function connectionHubProfilePrimaryActionCategoryValidation(Request $request): array
+    private function connectionHubProfilePrimaryActionCategoryValidation(Request $request, ?Course $course = null): array
     {
         $org = Organization::forAuthUser($request->user());
         if ($org !== null && $this->organizationHasPrimaryActionCategorySelections($org)) {
+            if ($course !== null) {
+                return $this->primaryActionCategoryIdsValidationForCourseUpdate($org, $course);
+            }
+
             return $this->primaryActionCategoryIdsValidation($request);
+        }
+
+        if ($course !== null) {
+            return $this->primaryActionCategoryIdsValidationSupporterForCourseUpdate($request->user(), $course);
         }
 
         $userId = (int) $request->user()->id;
@@ -829,6 +840,54 @@ class FrontendCourseController extends BaseController
                     fn ($q) => $q->where('user_id', $userId)
                 ),
             ],
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function primaryActionCategoryIdsValidationForCourseUpdate(Organization $org, Course $course): array
+    {
+        $orgIds = $org->primaryActionCategories()
+            ->where('primary_action_categories.is_active', true)
+            ->pluck('primary_action_categories.id')
+            ->map(fn ($id) => (int) $id)
+            ->all();
+
+        $onCourseIds = $course->primaryActionCategories()
+            ->pluck('primary_action_categories.id')
+            ->map(fn ($id) => (int) $id)
+            ->all();
+
+        $allowed = array_values(array_unique(array_merge($orgIds, $onCourseIds)));
+
+        return [
+            'primary_action_category_ids' => ['nullable', 'array'],
+            'primary_action_category_ids.*' => ['integer', Rule::in($allowed)],
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function primaryActionCategoryIdsValidationSupporterForCourseUpdate(User $user, Course $course): array
+    {
+        $interestIds = $user->supporterInterestCategories()
+            ->where('primary_action_categories.is_active', true)
+            ->pluck('primary_action_categories.id')
+            ->map(fn ($id) => (int) $id)
+            ->all();
+
+        $onCourseIds = $course->primaryActionCategories()
+            ->pluck('primary_action_categories.id')
+            ->map(fn ($id) => (int) $id)
+            ->all();
+
+        $allowed = array_values(array_unique(array_merge($interestIds, $onCourseIds)));
+
+        return [
+            'primary_action_category_ids' => ['nullable', 'array'],
+            'primary_action_category_ids.*' => ['integer', Rule::in($allowed)],
         ];
     }
 
