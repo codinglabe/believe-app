@@ -17,6 +17,9 @@ import {
   ListChecks,
   Inbox,
   PieChart,
+  BookOpen,
+  Coins,
+  Megaphone,
 } from 'lucide-react'
 import { MerchantButton } from '@/components/merchant-ui'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -41,6 +44,7 @@ interface NavItem {
 
 const navigation: NavItem[] = [
   { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
+  { name: 'Playbooks', href: '/playbooks', icon: BookOpen },
   {
     name: 'Products',
     href: '/marketplace-products',
@@ -59,6 +63,8 @@ const navigation: NavItem[] = [
       { name: 'Create Offer', href: '/offers/create' },
     ],
   },
+  { name: 'BRP Funding', href: '/brp-funding', icon: Coins },
+  { name: 'BRP Campaigns', href: '/brp-campaigns', icon: Megaphone },
   { name: 'Orders', href: '/marketplace-orders', icon: Receipt },
   { name: 'Redemptions', href: '/redemptions', icon: ShoppingBag },
   {
@@ -182,7 +188,7 @@ function SidebarContent({
       <div className="flex items-center gap-3 px-6 py-4 border-b border-[#2563EB]/20">
         <img src="/merchant/merchant.png" alt="BIU Merchant" className="w-10 h-10 object-contain" />
         <div className="flex flex-col">
-          <span className="text-sm font-bold text-white">BIU Merchant</span>
+          <span className="text-sm font-bold text-white">BIU Merchant Hub</span>
           <span className="text-xs text-white/60">Dashboard</span>
         </div>
       </div>

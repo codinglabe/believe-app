@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Merchant\Auth\MerchantAuthController;
+use App\Http\Controllers\Merchant\MerchantBrpCampaignController;
 use App\Http\Controllers\Merchant\MerchantBrpWalletController;
 use App\Http\Controllers\Merchant\MerchantFeedbackRewardsController;
 use App\Http\Controllers\Merchant\MerchantMarketplacePoolApprovalController;
@@ -123,6 +124,15 @@ Route::middleware(['auth:merchant'])->group(function () {
             Route::post('/{campaign}/launch', [MerchantFeedbackRewardsController::class, 'launch'])->name('launch');
             Route::post('/{campaign}/end', [MerchantFeedbackRewardsController::class, 'end'])->name('end');
         });
+
+        // Merchant playbooks (marketing patterns using BRP)
+        Route::get('/playbooks', [MerchantBrpCampaignController::class, 'playbooks'])->name('merchant.playbooks');
+
+        // Fund BRP campaigns + listing
+        Route::get('/brp-funding', [MerchantBrpCampaignController::class, 'create'])->name('merchant.brp-funding');
+        Route::post('/brp-funding/checkout', [MerchantBrpCampaignController::class, 'startCheckout'])->name('merchant.brp-funding.checkout');
+        Route::get('/brp-funding/success', [MerchantBrpCampaignController::class, 'fundingSuccess'])->name('merchant.brp-funding.success');
+        Route::get('/brp-campaigns', [MerchantBrpCampaignController::class, 'index'])->name('merchant.brp-campaigns.index');
 
         // BRP Wallet
         Route::prefix('wallet/brp')->name('wallet.brp.')->group(function () {
