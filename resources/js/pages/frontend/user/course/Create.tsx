@@ -349,9 +349,8 @@ export default function NonprofitCoursesCreate() {
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="companion">Companion</SelectItem>
-                          <SelectItem value="learning">Learning</SelectItem>
+                          <SelectItem value="learning">{connectionHubTypeLabel("learning")}</SelectItem>
                           <SelectItem value="events">Events</SelectItem>
-                          <SelectItem value="earning">Earning</SelectItem>
                         </SelectContent>
                       </Select>
                       {errors.type && <p className="text-sm text-destructive">{errors.type}</p>}

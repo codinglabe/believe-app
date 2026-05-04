@@ -254,7 +254,7 @@ export default function NonprofitCoursesCreate() {
 
   return (
     <AppLayout>
-      <Head title={`Create ${connectionHubTypeLabel(data.type)} - Connections`} />
+      <Head title={`Create ${connectionHubTypeLabel(data.type)} - Connection Hub`} />
 
       <div className="space-y-6 m-6">
         <div className="flex items-center gap-4">
@@ -319,7 +319,6 @@ export default function NonprofitCoursesCreate() {
                           <SelectItem value="companion">Companion</SelectItem>
                           <SelectItem value="learning">Learning</SelectItem>
                           <SelectItem value="events">Events</SelectItem>
-                          <SelectItem value="earning">Earning</SelectItem>
                         </SelectContent>
                       </Select>
                       {errors.type && <p className="text-sm text-destructive">{errors.type}</p>}

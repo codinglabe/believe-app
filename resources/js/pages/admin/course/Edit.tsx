@@ -354,7 +354,7 @@ export default function AdminCoursesEdit() {
 
   return (
     <AppLayout>
-      <Head title={`Edit ${connectionHubTypeLabel(data.type)} - ${course.name} - Connections`} />
+      <Head title={`Edit ${connectionHubTypeLabel(data.type)} - ${course.name} - Connection Hub`} />
 
       <div className="space-y-6 m-6">
         <div className="flex items-center gap-4">
@@ -441,7 +441,9 @@ export default function AdminCoursesEdit() {
                           <SelectItem value="companion">Companion</SelectItem>
                           <SelectItem value="learning">Learning</SelectItem>
                           <SelectItem value="events">Events</SelectItem>
-                          <SelectItem value="earning">Earning</SelectItem>
+                          {data.type === "earning" && (
+                            <SelectItem value="earning">Earning</SelectItem>
+                          )}
                         </SelectContent>
                       </Select>
                       {errors.type && <p className="text-sm text-destructive">{errors.type}</p>}
