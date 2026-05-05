@@ -149,12 +149,13 @@ export default function LearningConnectionHubLanding({
 
   /** Full searchable catalog (all types) — hub pages no longer embed the table below. */
   const goToFullCatalog = () => {
-    router.get(route("course.index"), {}, { preserveState: false, preserveScroll: false })
+    router.get(route("course.index"), { type: "learning", view: "catalog" }, { preserveState: false, preserveScroll: false })
   }
 
   const filterTopic = (id: number) => {
     const params = new URLSearchParams(window.location.search)
     params.set("type", "learning")
+    params.set("view", "catalog")
     params.set("page", "1")
     if (learningExploreUsesEventTypes) {
       params.delete("topic_id")

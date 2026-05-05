@@ -128,6 +128,7 @@ use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\NteeCodeController;
 use App\Http\Controllers\OrderController;
 use App\Http\Controllers\OrderItemController;
+use App\Http\Controllers\LivestreamRecordingDeclineController;
 use App\Http\Controllers\Organization\LivestreamController;
 use App\Http\Controllers\Organization\MarketplaceProductPoolController;
 use App\Http\Controllers\Organization\OrganizationKioskProviderController;
@@ -788,6 +789,10 @@ Route::get('/organizations/{slug}/contact', [OrganizationController::class, 'con
 Route::get('/livestreams/join/{roomName}', [LivestreamController::class, 'guestJoin'])
     ->where('roomName', '[a-zA-Z0-9_-]+')
     ->name('livestreams.guest-join');
+
+Route::post('/livestreams/recording-decline', [LivestreamRecordingDeclineController::class, 'store'])
+    ->middleware('throttle:30,1')
+    ->name('livestreams.recording-decline.store');
 
 // API route for inviting unregistered organizations (requires auth)
 Route::middleware(['auth', 'web'])->post('/api/organizations/invite', [OrganizationController::class, 'inviteOrganization'])->name('api.organizations.invite');

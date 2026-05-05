@@ -2,10 +2,12 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\LivestreamRecordingDecline;
 use App\Models\Organization;
 use App\Models\OrganizationLivestream;
 use App\Models\User;
 use App\Models\UserLivestream;
+use App\Support\MeetingRecordingPreference;
 use App\Services\DropboxOAuthService;
 use App\Services\DropboxOrgApi;
 use Carbon\Carbon;
@@ -230,13 +232,29 @@ class SupporterLivestreamController extends Controller
             'display_name' => 'nullable|string|max:255',
             'is_public' => 'nullable|boolean',
             'require_passcode' => 'nullable|boolean',
-            'passcode' => 'nullable|string|min:6|max:100',
+            'passcode' => [
+                'nullable',
+                'string',
+                'max:100',
+                function (string $_attribute, mixed $value, \Closure $fail) use ($request): void {
+                    if (! $request->boolean('require_passcode')) {
+                        return;
+                    }
+                    if ($value === null || $value === '') {
+                        return;
+                    }
+                    if (strlen((string) $value) < 6) {
+                        $fail(__('Passcode must be at least 6 characters.'));
+                    }
+                },
+            ],
             'record_meeting' => 'nullable|boolean',
+            'go_live' => 'nullable|boolean',
         ]);
 
         $user = $request->user();
         $roomName = $this->getUnityMeetingId($request);
-        $requirePasscode = $request->boolean('require_passcode', true);
+        $requirePasscode = $request->boolean('require_passcode');
         $password = $requirePasscode
             ? (string) ($request->input('passcode') ?: UserLivestream::generatePassword())
             : '';
@@ -247,8 +265,9 @@ class SupporterLivestreamController extends Controller
         if ($displayName !== null && $displayName !== '') {
             $settings['display_name'] = $displayName;
         }
-        $settings['record_meeting'] = $request->boolean('record_meeting', true);
+        $settings['record_meeting'] = $request->boolean('record_meeting');
         $settings['require_passcode'] = $requirePasscode;
+        $settings['go_live'] = $request->boolean('go_live');
 
         // Meeting ID is fixed per supporter. Reuse the same draft record instead of creating duplicates.
         $livestream = UserLivestream::firstOrNew([
@@ -258,7 +277,7 @@ class SupporterLivestreamController extends Controller
         $livestream->fill([
             'room_password' => $encryptedPassword,
             'status' => 'draft',
-            'is_public' => $request->boolean('is_public', true),
+            'is_public' => $request->boolean('is_public'),
             'title' => $request->title,
             'settings' => $settings ?: null,
         ]);
@@ -278,7 +297,22 @@ class SupporterLivestreamController extends Controller
             'display_name' => 'nullable|string|max:255',
             'is_public' => 'nullable|boolean',
             'require_passcode' => 'nullable|boolean',
-            'passcode' => 'nullable|string|min:6|max:100',
+            'passcode' => [
+                'nullable',
+                'string',
+                'max:100',
+                function (string $_attribute, mixed $value, \Closure $fail) use ($request): void {
+                    if (! $request->boolean('require_passcode')) {
+                        return;
+                    }
+                    if ($value === null || $value === '') {
+                        return;
+                    }
+                    if (strlen((string) $value) < 6) {
+                        $fail(__('Passcode must be at least 6 characters.'));
+                    }
+                },
+            ],
             'record_meeting' => 'nullable|boolean',
             'schedule_date' => 'required|date_format:Y-m-d',
             'schedule_time' => 'required|date_format:H:i',
@@ -301,7 +335,7 @@ class SupporterLivestreamController extends Controller
             return back()->withErrors(['schedule_date' => 'Schedule time must be in the future.'])->withInput();
         }
 
-        $requirePasscode = $request->boolean('require_passcode', true);
+        $requirePasscode = $request->boolean('require_passcode');
         $password = $requirePasscode
             ? (string) ($request->input('passcode') ?: UserLivestream::generatePassword())
             : '';
@@ -312,7 +346,7 @@ class SupporterLivestreamController extends Controller
         if ($displayName !== null && $displayName !== '') {
             $settings['display_name'] = $displayName;
         }
-        $settings['record_meeting'] = $request->boolean('record_meeting', true);
+        $settings['record_meeting'] = $request->boolean('record_meeting');
         $settings['require_passcode'] = $requirePasscode;
         $emails = $validated['participant_emails'] ?? [];
         if (empty($emails) && ! empty($validated['participant_email'])) {
@@ -328,7 +362,7 @@ class SupporterLivestreamController extends Controller
         $livestream->fill([
             'room_password' => $encryptedPassword,
             'status' => 'scheduled',
-            'is_public' => $request->boolean('is_public', true),
+            'is_public' => $request->boolean('is_public'),
             'title' => $request->input('title'),
             'scheduled_at' => $scheduledAt,
             'settings' => $settings ?: null,
@@ -395,6 +429,7 @@ class SupporterLivestreamController extends Controller
                 }
             }
             $participantUrl = $orgStream->getParticipantUrl();
+            $settings = is_array($orgStream->settings) ? $orgStream->settings : [];
             return Inertia::render('frontend/livestreams/Join', [
                 'livestream' => [
                     'id' => $orgStream->id,
@@ -404,6 +439,11 @@ class SupporterLivestreamController extends Controller
                     'roomPassword' => $password,
                     'participantUrl' => $participantUrl,
                     'status' => $orgStream->status,
+                    'recordingEnabled' => MeetingRecordingPreference::isEnabled($settings, true),
+                    'declineContext' => [
+                        'kind' => 'organization',
+                        'id' => $orgStream->id,
+                    ],
                 ],
                 'organization' => [
                     'id' => $orgStream->organization->id,
@@ -439,6 +479,7 @@ class SupporterLivestreamController extends Controller
                 }
             }
             $participantUrl = $userStream->getParticipantUrl();
+            $userSettings = is_array($userStream->settings) ? $userStream->settings : [];
             return Inertia::render('frontend/livestreams/Join', [
                 'livestream' => [
                     'id' => $userStream->id,
@@ -448,6 +489,11 @@ class SupporterLivestreamController extends Controller
                     'roomPassword' => $password,
                     'participantUrl' => $participantUrl,
                     'status' => $userStream->status,
+                    'recordingEnabled' => MeetingRecordingPreference::isEnabled($userSettings, false),
+                    'declineContext' => [
+                        'kind' => 'user',
+                        'id' => $userStream->id,
+                    ],
                 ],
                 'organization' => [
                     'id' => 0,
@@ -509,7 +555,22 @@ class SupporterLivestreamController extends Controller
         $streamKeyDisplay = $youtubeGoLiveEnabled ? $livestream->getDecryptedStreamKey() : null;
         $rtmpUrl = 'rtmp://a.rtmp.youtube.com/live2';
 
+        $recordingConsentDeclines = LivestreamRecordingDecline::query()
+            ->where('livestream_kind', 'user')
+            ->where('livestream_id', $livestream->id)
+            ->orderByDesc('id')
+            ->limit(50)
+            ->get()
+            ->map(fn (LivestreamRecordingDecline $r) => [
+                'id' => $r->id,
+                'guestLabel' => $r->guest_label,
+                'createdAt' => $r->created_at?->toIso8601String(),
+            ])
+            ->values()
+            ->all();
+
         return Inertia::render('frontend/livestreams/Show', [
+            'recordingConsentDeclines' => $recordingConsentDeclines,
             'livestream' => [
                 'id' => $livestream->id,
                 'title' => $livestream->title,

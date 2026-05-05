@@ -110,13 +110,14 @@ export default function EventsConnectionHubLanding({
     connectionHubMyButtonHref(auth) ?? loginWithRedirect(route("enrollments.my"))
 
   const goToFullCatalog = () => {
-    router.get(route("course.index"), {}, { preserveState: false, preserveScroll: false })
+    router.get(route("course.index"), { type: "events", view: "catalog" }, { preserveState: false, preserveScroll: false })
   }
 
   const filterEventType = (eventTypeId: number) => {
     const params = new URLSearchParams(window.location.search)
     params.delete("topic_id")
     params.set("type", "events")
+    params.set("view", "catalog")
     params.set("event_type_id", String(eventTypeId))
     params.set("page", "1")
     router.get(`/courses?${params.toString()}`, {}, { preserveState: false, preserveScroll: false })

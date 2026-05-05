@@ -1,11 +1,11 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useState, useMemo, useEffect } from "react"
 import { Head } from "@inertiajs/react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Checkbox } from "@/components/ui/checkbox"
 import FrontendLayout from "@/layouts/frontend/frontend-layout"
+import { RecordingConsentBarrier } from "@/components/livestreams/RecordingConsentBarrier"
 import { Video, VideoOff, Mic, MicOff } from "lucide-react"
 
 interface Livestream {
@@ -15,6 +15,8 @@ interface Livestream {
   participantUrl: string
   status: string
   hasPasscode: boolean
+  recordingEnabled?: boolean
+  declineContext?: { kind: "user" | "organization"; id: number }
 }
 
 interface Organization {
@@ -25,14 +27,20 @@ interface Organization {
 interface Props {
   livestream: Livestream
   organization: Organization
+  recordingDeclineReturnTo: string
 }
 
-export default function GuestJoinByToken({ livestream, organization }: Props) {
+export default function GuestJoinByToken({ livestream, organization, recordingDeclineReturnTo }: Props) {
   const [displayName, setDisplayName] = useState("")
   const [joined, setJoined] = useState(false)
   const [cameraOn, setCameraOn] = useState(true)
   const [micOn, setMicOn] = useState(true)
-  const [consentToRecording, setConsentToRecording] = useState(false)
+  const recordingOn = !!(livestream.recordingEnabled ?? false)
+  const [recordingConsentOk, setRecordingConsentOk] = useState(!recordingOn)
+
+  useEffect(() => {
+    setRecordingConsentOk(!recordingOn)
+  }, [livestream.id, recordingOn])
 
   const iframeUrl = useMemo(() => {
     const url = new URL(livestream.participantUrl)
@@ -60,14 +68,34 @@ export default function GuestJoinByToken({ livestream, organization }: Props) {
   const displayLabel = (displayName || "Guest").trim()
   const initial = displayLabel.charAt(0).toUpperCase() || "G"
 
+  const needBarrier =
+    !joined &&
+    recordingOn &&
+    !!livestream.declineContext &&
+    !recordingConsentOk
+
+  const showLobby = !joined && (!recordingOn || recordingConsentOk)
+
   return (
     <FrontendLayout>
       <Head title={`Join: ${livestream.title || "Meeting"}`} />
       <div className="min-h-screen flex flex-col bg-[#f0f4f8] dark:bg-neutral-950">
-        {!joined ? (
+        {needBarrier && livestream.declineContext && (
+          <RecordingConsentBarrier
+            open
+            appearance="light"
+            meetingTitle={livestream.title}
+            organizerLabel={organization.name}
+            livestreamKind={livestream.declineContext.kind}
+            livestreamId={livestream.declineContext.id}
+            guestLabel={displayLabel !== "Guest" ? displayLabel : null}
+            onAccepted={() => setRecordingConsentOk(true)}
+            returnToAfterDecline={recordingDeclineReturnTo}
+          />
+        )}
+        {showLobby ? (
           <div className="flex-1 flex flex-col items-center justify-center p-4 sm:p-6 lg:p-8">
             <div className="w-full max-w-[420px]">
-              {/* Meeting title block — like Meet/Zoom */}
               <div className="text-center mb-8">
                 <p className="text-sm text-neutral-600 dark:text-neutral-400 mb-1">
                   {organization.name} is inviting you to a meeting
@@ -75,11 +103,15 @@ export default function GuestJoinByToken({ livestream, organization }: Props) {
                 <h1 className="text-2xl sm:text-3xl font-semibold text-neutral-900 dark:text-white break-words">
                   {livestream.title || "Meeting"}
                 </h1>
+                {recordingOn && (
+                  <p className="mt-3 inline-flex items-center gap-2 rounded-full bg-purple-100 px-3 py-1 text-xs font-semibold text-purple-800 dark:bg-purple-950/80 dark:text-purple-200">
+                    <Video className="h-3.5 w-3.5" aria-hidden />
+                    Recording enabled — you’ll confirm before joining
+                  </p>
+                )}
               </div>
 
-              {/* Join card */}
               <div className="rounded-2xl bg-white dark:bg-neutral-900 shadow-xl border border-neutral-200/80 dark:border-white/10 overflow-hidden">
-                {/* Preview: "YOU'LL JOIN AS" */}
                 <div className="px-6 pt-6 pb-4">
                   <p className="text-xs font-medium uppercase tracking-wider text-neutral-500 dark:text-neutral-400 mb-3">
                     You’ll join as
@@ -98,7 +130,6 @@ export default function GuestJoinByToken({ livestream, organization }: Props) {
                   </div>
                 </div>
 
-                {/* Camera & mic toggles — like Meet */}
                 <div className="px-6 py-4 border-t border-neutral-100 dark:border-white/10 flex items-center justify-center gap-6">
                   <button
                     type="button"
@@ -110,11 +141,7 @@ export default function GuestJoinByToken({ livestream, organization }: Props) {
                     }`}
                     aria-label={cameraOn ? "Turn off camera" : "Turn on camera"}
                   >
-                    {cameraOn ? (
-                      <Video className="h-6 w-6" />
-                    ) : (
-                      <VideoOff className="h-6 w-6" />
-                    )}
+                    {cameraOn ? <Video className="h-6 w-6" /> : <VideoOff className="h-6 w-6" />}
                     <span className="text-xs font-medium">{cameraOn ? "Camera on" : "Camera off"}</span>
                   </button>
                   <button
@@ -127,21 +154,15 @@ export default function GuestJoinByToken({ livestream, organization }: Props) {
                     }`}
                     aria-label={micOn ? "Turn off microphone" : "Turn on microphone"}
                   >
-                    {micOn ? (
-                      <Mic className="h-6 w-6" />
-                    ) : (
-                      <MicOff className="h-6 w-6" />
-                    )}
+                    {micOn ? <Mic className="h-6 w-6" /> : <MicOff className="h-6 w-6" />}
                     <span className="text-xs font-medium">{micOn ? "Mic on" : "Mic off"}</span>
                   </button>
                 </div>
 
-                {/* Join button */}
                 <div className="p-6 pt-4">
                   <Button
                     className="w-full h-12 text-base font-medium rounded-xl bg-neutral-900 hover:bg-neutral-800 dark:bg-white dark:hover:bg-neutral-100 text-white dark:text-neutral-900 shadow-sm"
                     onClick={() => setJoined(true)}
-                    disabled={!consentToRecording}
                   >
                     Join now
                   </Button>
@@ -151,32 +172,12 @@ export default function GuestJoinByToken({ livestream, organization }: Props) {
                 </div>
               </div>
 
-              {/* Recording & Consent Disclosure */}
-              <div className="mt-6 rounded-2xl bg-white dark:bg-neutral-900 shadow-xl border border-neutral-200/80 dark:border-white/10 overflow-hidden p-6">
-                <h2 className="text-base font-semibold text-neutral-900 dark:text-white mb-3">
-                  Recording &amp; Consent Disclosure
-                </h2>
-                <p className="text-sm text-neutral-600 dark:text-neutral-400 leading-relaxed mb-4">
-                  This meeting may be recorded, stored, and/or streamed live for organizational, training, archival, or public broadcast purposes. By joining or remaining in this meeting, you provide your consent to be recorded and/or streamed.
-                </p>
-                <label className="flex items-start gap-3 cursor-pointer group">
-                  <Checkbox
-                    checked={consentToRecording}
-                    onCheckedChange={(checked) => setConsentToRecording(checked === true)}
-                    className="mt-0.5 shrink-0"
-                  />
-                  <span className="text-sm text-neutral-700 dark:text-neutral-300 group-hover:text-neutral-900 dark:group-hover:text-white">
-                    I consent to being recorded and/or streamed live.
-                  </span>
-                </label>
-              </div>
-
-              <p className="text-center text-xs text-neutral-400 dark:text-neutral-500 mt-8">
-                Believe In Unity
-              </p>
+              <p className="text-center text-xs text-neutral-400 dark:text-neutral-500 mt-8">Believe In Unity</p>
             </div>
           </div>
-        ) : (
+        ) : null}
+
+        {joined ? (
           <div className="flex-1 flex flex-col min-h-0">
             <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-neutral-200 dark:border-white/10 bg-white dark:bg-neutral-900 shrink-0">
               <div className="flex items-center gap-3 min-w-0">
@@ -205,7 +206,7 @@ export default function GuestJoinByToken({ livestream, organization }: Props) {
               />
             </div>
           </div>
-        )}
+        ) : null}
       </div>
     </FrontendLayout>
   )

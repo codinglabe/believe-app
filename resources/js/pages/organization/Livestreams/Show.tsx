@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Head, router } from "@inertiajs/react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -51,12 +51,25 @@ interface Organization {
   youtubeChannelUrl: string | null
 }
 
+interface RecordingConsentDecline {
+  id: number
+  guestLabel: string | null
+  createdAt: string | null
+}
+
 interface Props {
   livestream: Livestream
   organization: Organization
+  recordingConsentDeclines: RecordingConsentDecline[]
 }
 
-export default function ShowLivestream({ livestream, organization }: Props) {
+function formatDeclineTime(iso: string | null): string {
+  if (!iso) return "—"
+  const d = new Date(iso)
+  return Number.isNaN(d.getTime()) ? iso : d.toLocaleString()
+}
+
+export default function ShowLivestream({ livestream, organization, recordingConsentDeclines }: Props) {
   const [copied, setCopied] = useState<string | null>(null)
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false)
   const [streamKey, setStreamKey] = useState("")
@@ -96,6 +109,17 @@ export default function ShowLivestream({ livestream, organization }: Props) {
     )
   }
 
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      router.reload({
+        only: ["recordingConsentDeclines"],
+        preserveScroll: true,
+        preserveState: true,
+      })
+    }, 12000)
+    return () => window.clearInterval(id)
+  }, [])
+
   const getStatusBadge = () => {
     const statusConfig = {
       draft: { label: "Draft", className: "bg-gray-500/20 text-gray-400" },
@@ -125,6 +149,28 @@ export default function ShowLivestream({ livestream, organization }: Props) {
           </div>
           {getStatusBadge()}
         </div>
+
+        {recordingConsentDeclines.length > 0 && (
+          <Alert className="mb-6 border-amber-500/40 bg-amber-500/10">
+            <AlertCircle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+            <AlertDescription className="text-foreground">
+              <p className="font-medium text-sm mb-2">Guests who declined recording consent</p>
+              <p className="text-xs text-muted-foreground mb-3">
+                They were not admitted to the meeting. This list updates every few seconds while you keep this page open.
+              </p>
+              <ul className="text-sm space-y-1 max-h-48 overflow-y-auto">
+                {recordingConsentDeclines.map((row) => (
+                  <li key={row.id} className="flex justify-between gap-3 py-1 border-b border-white/10 last:border-0">
+                    <span className="truncate">{(row.guestLabel ?? "").trim() || "Guest"}</span>
+                    <span className="shrink-0 text-muted-foreground text-xs tabular-nums">
+                      {formatDeclineTime(row.createdAt)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </AlertDescription>
+          </Alert>
+        )}
 
         <Tabs defaultValue="dashboard" className="space-y-6">
           <TabsList>

@@ -4,9 +4,11 @@ namespace App\Http\Controllers\Organization;
 
 use App\Http\Controllers\Controller;
 use App\Models\LivestreamInviteToken;
+use App\Models\LivestreamRecordingDecline;
 use App\Models\Organization;
 use App\Models\OrganizationLivestream;
 use App\Models\UserLivestream;
+use App\Support\MeetingRecordingPreference;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Crypt;
@@ -248,7 +250,22 @@ class LivestreamController extends Controller
         $unityLiveUrl = url('/unity-live/' . $livestream->room_name);
         $liveViewerUrl = url('/live/' . $livestream->room_name);
 
+        $recordingConsentDeclines = LivestreamRecordingDecline::query()
+            ->where('livestream_kind', 'organization')
+            ->where('livestream_id', $livestream->id)
+            ->orderByDesc('id')
+            ->limit(50)
+            ->get()
+            ->map(fn (LivestreamRecordingDecline $r) => [
+                'id' => $r->id,
+                'guestLabel' => $r->guest_label,
+                'createdAt' => $r->created_at?->toIso8601String(),
+            ])
+            ->values()
+            ->all();
+
         return Inertia::render('Organization/Livestreams/Show', [
+            'recordingConsentDeclines' => $recordingConsentDeclines,
             'livestream' => [
                 'id' => $livestream->id,
                 'title' => $livestream->title,
@@ -294,7 +311,7 @@ class LivestreamController extends Controller
     /**
      * Show the guest join page (public, by room name). Supports both org and supporter livestreams.
      */
-    public function guestJoin(string $roomName): Response
+    public function guestJoin(Request $request, string $roomName): Response
     {
         $orgStream = OrganizationLivestream::where('room_name', $roomName)
             ->whereIn('status', ['draft', 'scheduled', 'meeting_live', 'live', 'ended'])
@@ -312,6 +329,7 @@ class LivestreamController extends Controller
                     $participantEmails = array_values(array_unique(array_filter(array_map('strval', $raw))));
                 }
             }
+            $orgSettingsJoin = is_array($orgStream->settings) ? $orgStream->settings : [];
             return Inertia::render('Organization/Livestreams/GuestJoin', [
                 'livestream' => [
                     'id' => $orgStream->id,
@@ -323,11 +341,17 @@ class LivestreamController extends Controller
                     'status' => $orgStream->status,
                     'scheduledAt' => $orgStream->scheduled_at?->toIso8601String(),
                     'participantEmails' => $participantEmails,
+                    'recordingEnabled' => MeetingRecordingPreference::isEnabled($orgSettingsJoin, true),
+                    'declineContext' => [
+                        'kind' => 'organization',
+                        'id' => $orgStream->id,
+                    ],
                 ],
                 'organization' => [
                     'id' => $orgStream->organization->id,
                     'name' => $orgStream->organization->name,
                 ],
+                'recordingDeclineReturnTo' => '/'.$request->path(),
             ]);
         }
 
@@ -347,6 +371,7 @@ class LivestreamController extends Controller
                     $participantEmails = array_values(array_unique(array_filter(array_map('strval', $raw))));
                 }
             }
+            $userSettingsJoin = is_array($userStream->settings) ? $userStream->settings : [];
             return Inertia::render('Organization/Livestreams/GuestJoin', [
                 'livestream' => [
                     'id' => $userStream->id,
@@ -358,11 +383,17 @@ class LivestreamController extends Controller
                     'status' => $userStream->status,
                     'scheduledAt' => $userStream->scheduled_at?->toIso8601String(),
                     'participantEmails' => $participantEmails,
+                    'recordingEnabled' => MeetingRecordingPreference::isEnabled($userSettingsJoin, false),
+                    'declineContext' => [
+                        'kind' => 'user',
+                        'id' => $userStream->id,
+                    ],
                 ],
                 'organization' => [
                     'id' => 0,
                     'name' => $userStream->user?->name ?? 'Meeting',
                 ],
+                'recordingDeclineReturnTo' => '/'.$request->path(),
             ]);
         }
 
@@ -414,6 +445,7 @@ class LivestreamController extends Controller
 
         $participantUrl = $livestream->getParticipantUrl();
         $hasPasscode = ! empty($livestream->getDecryptedPassword());
+        $inviteSettings = is_array($livestream->settings) ? $livestream->settings : [];
 
         return Inertia::render('Organization/Livestreams/GuestJoinByToken', [
             'livestream' => [
@@ -423,11 +455,17 @@ class LivestreamController extends Controller
                 'participantUrl' => $participantUrl,
                 'status' => $livestream->status,
                 'hasPasscode' => $hasPasscode,
+                'recordingEnabled' => MeetingRecordingPreference::isEnabled($inviteSettings, true),
+                'declineContext' => [
+                    'kind' => 'organization',
+                    'id' => $livestream->id,
+                ],
             ],
             'organization' => [
                 'id' => $livestream->organization->id,
                 'name' => $livestream->organization->name,
             ],
+            'recordingDeclineReturnTo' => '/'.$request->path(),
         ]);
     }
 

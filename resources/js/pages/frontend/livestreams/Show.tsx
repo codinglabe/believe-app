@@ -86,11 +86,24 @@ interface Livestream {
   rtmpUrl?: string | null
 }
 
-interface Props {
-  livestream: Livestream
+interface RecordingConsentDecline {
+  id: number
+  guestLabel: string | null
+  createdAt: string | null
 }
 
-export default function SupporterShowLivestream({ livestream }: Props) {
+interface Props {
+  livestream: Livestream
+  recordingConsentDeclines: RecordingConsentDecline[]
+}
+
+function formatDeclineTime(iso: string | null): string {
+  if (!iso) return "—"
+  const d = new Date(iso)
+  return Number.isNaN(d.getTime()) ? iso : d.toLocaleString()
+}
+
+export default function SupporterShowLivestream({ livestream, recordingConsentDeclines }: Props) {
   const [copied, setCopied] = useState<string | null>(null)
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false)
   const [infoOpen, setInfoOpen] = useState(false)
@@ -131,6 +144,17 @@ export default function SupporterShowLivestream({ livestream }: Props) {
       html.style.overflow = prevHtml
       body.style.overflow = prevBody
     }
+  }, [])
+
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      router.reload({
+        only: ["recordingConsentDeclines"],
+        preserveScroll: true,
+        preserveState: true,
+      })
+    }, 12000)
+    return () => window.clearInterval(id)
   }, [])
 
   const copyToClipboard = (text: string, key: string) => {
@@ -235,6 +259,24 @@ export default function SupporterShowLivestream({ livestream }: Props) {
 
   const meetingInfoContent = (
     <div className="w-full min-w-0 space-y-4">
+      {recordingConsentDeclines.length > 0 && (
+        <div className="rounded-lg border border-amber-500/35 bg-amber-500/10 p-3.5 space-y-2">
+          <p className="text-xs font-semibold uppercase tracking-wider text-amber-800 dark:text-amber-200">
+            Recording consent declined
+          </p>
+          <p className="text-[11px] text-muted-foreground">
+            These people chose not to join while recording is on. They were not admitted to the room.
+          </p>
+          <ul className="text-xs space-y-1.5 text-foreground max-h-40 overflow-y-auto">
+            {recordingConsentDeclines.map((row) => (
+              <li key={row.id} className="flex justify-between gap-2 border-b border-amber-500/15 pb-1.5 last:border-0">
+                <span className="font-medium truncate">{(row.guestLabel ?? "").trim() || "Guest"}</span>
+                <span className="shrink-0 text-muted-foreground tabular-nums">{formatDeclineTime(row.createdAt)}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       {/* Recording saved to: Local / Dropbox — always show so user can see options and connect Dropbox */}
       <div className="rounded-lg border border-border bg-muted/30 p-3.5 space-y-2">
         <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
@@ -560,6 +602,20 @@ export default function SupporterShowLivestream({ livestream }: Props) {
               </Button>
             </div>
           </div>
+
+          {recordingConsentDeclines.length > 0 && (
+            <div className="shrink-0 border-b border-amber-500/35 bg-amber-500/10 px-3 py-2 sm:px-4">
+              <p className="text-xs font-semibold text-amber-900 dark:text-amber-100">Someone declined recording consent</p>
+              <p className="text-[11px] text-muted-foreground truncate">
+                {recordingConsentDeclines
+                  .slice(0, 4)
+                  .map((r) => (r.guestLabel ?? "").trim() || "Guest")
+                  .join(" · ")}
+                {recordingConsentDeclines.length > 4 ? ` · +${recordingConsentDeclines.length - 4} more` : ""}
+              </p>
+              <p className="text-[10px] text-muted-foreground mt-0.5">Full list refreshes periodically under Meeting info.</p>
+            </div>
+          )}
 
           <div className="flex flex-1 min-h-0 overflow-hidden">
             <aside className="hidden md:flex w-64 lg:w-72 shrink-0 flex-col border-r border-border bg-linear-to-b from-muted/30 to-muted/10 p-0">
