@@ -20,6 +20,17 @@ final class ConnectionHubType
         self::EARNING,
     ];
 
+    /**
+     * Hub hero create links pass `?type=` to lock the Connection Hub listing type (not Earning).
+     *
+     * @var list<string>
+     */
+    public const LISTING_LOCK_VALUES = [
+        self::COMPANION,
+        self::LEARNING,
+        self::EVENTS,
+    ];
+
     /** @return array<string, string> */
     public static function labels(): array
     {
@@ -40,5 +51,16 @@ final class ConnectionHubType
     public static function usesEventSemantics(string $type): bool
     {
         return $type === self::EVENTS;
+    }
+
+    /** Normalize `?type=` from create URL; invalid or empty → null. */
+    public static function normalizedListingTypeLockFromQuery(mixed $value): ?string
+    {
+        if (! is_string($value)) {
+            return null;
+        }
+        $t = strtolower(trim($value));
+
+        return in_array($t, self::LISTING_LOCK_VALUES, true) ? $t : null;
     }
 }

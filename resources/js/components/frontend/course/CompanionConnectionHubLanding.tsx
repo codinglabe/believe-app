@@ -11,13 +11,16 @@ import {
   MessageCircle,
   Shield,
   Sparkles,
-  UserRoundSearch,
   Users,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import { formatCourseStartDisplay } from "@/lib/course-start-datetime"
-import { connectionHubTeachButtonHref, type ConnectionHubAuth } from "@/lib/connection-hub-hero-hrefs"
+import {
+  appendConnectionHubListingTypeQuery,
+  connectionHubTeachButtonHref,
+  type ConnectionHubAuth,
+} from "@/lib/connection-hub-hero-hrefs"
 import type { EventsHubCourse } from "@/components/frontend/course/EventsConnectionHubLanding"
 
 export interface CompanionEventTypeCount {
@@ -90,7 +93,8 @@ export default function CompanionConnectionHubLanding({
     `${route("login")}?redirect=${encodeURIComponent(path)}`
 
   const teachHref =
-    connectionHubTeachButtonHref(auth) ?? loginWithRedirect(route("profile.course.create"))
+    connectionHubTeachButtonHref(auth, "companion") ??
+    loginWithRedirect(appendConnectionHubListingTypeQuery(route("profile.course.create"), "companion"))
 
   const chatAiHref = auth?.user ? route("chat.index") : loginWithRedirect(route("chat.index"))
 
@@ -170,17 +174,6 @@ export default function CompanionConnectionHubLanding({
               >
                 <MessageCircle className="mr-2 h-5 w-5" aria-hidden />
                 Join a Companion
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                asChild
-                className="h-12 rounded-xl border-slate-300 bg-white/80 px-6 text-base font-semibold text-slate-800 hover:bg-slate-100 dark:border-slate-600 dark:bg-transparent dark:text-white dark:hover:bg-white/10"
-              >
-                <Link href={route("find-supporters.index")}>
-                  <UserRoundSearch className="mr-2 h-5 w-5" aria-hidden />
-                  Find a Companion
-                </Link>
               </Button>
               <Button
                 type="button"

@@ -118,6 +118,7 @@ interface Props {
   auth: Auth
   courses: LaravelPagination<Course>
   eventTypes: EventType[]
+  companionEventTypes?: EventType[]
   filters: {
     courses_search: string
     courses_status: string
@@ -128,7 +129,13 @@ interface Props {
   statistics: Statistics
 }
 
-export default function CoursesIndex({ courses, eventTypes, filters, statistics }: Props) {
+export default function CoursesIndex({
+  courses,
+  eventTypes,
+  companionEventTypes = [],
+  filters,
+  statistics,
+}: Props) {
   const [isLoading, setIsLoading] = useState(false)
   const [copiedLink, setCopiedLink] = useState<string | null>(null)
 
@@ -144,17 +151,20 @@ export default function CoursesIndex({ courses, eventTypes, filters, statistics 
     setCoursesTopic("")
   }, [coursesCourseType])
 
-  // Group event types by category
+  const topicCatalogForFilter = useMemo(() => {
+    if (coursesCourseType === "companion") return companionEventTypes
+    if (coursesCourseType === "learning" || coursesCourseType === "events") return eventTypes
+    return []
+  }, [coursesCourseType, companionEventTypes, eventTypes])
+
   const groupedEventTypes = useMemo(() => {
-    return eventTypes.reduce((acc, type) => {
-      const category = type.category || 'Other'
-      if (!acc[category]) {
-        acc[category] = []
-      }
+    return topicCatalogForFilter.reduce((acc, type) => {
+      const category = type.category || "Other"
+      if (!acc[category]) acc[category] = []
       acc[category].push(type)
       return acc
     }, {} as Record<string, EventType[]>)
-  }, [eventTypes])
+  }, [topicCatalogForFilter])
 
   // Modal states
   const [deleteModal, setDeleteModal] = useState<{

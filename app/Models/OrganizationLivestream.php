@@ -426,7 +426,7 @@ class OrganizationLivestream extends Model
      */
     public function canGoLive(): bool
     {
-        return in_array($this->status, ['draft', 'scheduled', 'meeting_live']);
+        return in_array($this->status, ['draft', 'scheduled', 'meeting_live', 'ended'], true);
     }
 
     /**

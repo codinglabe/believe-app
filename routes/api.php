@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\CardController;
 use App\Http\Controllers\Api\KycController;
 use App\Http\Controllers\Api\OrganizationLookupController;
 use App\Http\Controllers\Api\ShippoWebhookController;
+use App\Http\Controllers\Api\StreamingStatusCallbackController;
 use App\Http\Controllers\Api\TransactionController;
 use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\WalletController;
@@ -22,6 +23,7 @@ Route::get('/health', function () {
 
 // Shippo webhook (no auth; Shippo will call it directly)
 Route::post('/webhooks/shippo', [ShippoWebhookController::class, 'handle']);
+Route::post('/streaming/status', StreamingStatusCallbackController::class)->name('api.streaming.status');
 
 // Authentication routes
 Route::post('/auth/register', [AuthController::class, 'register']);

@@ -52,3 +52,20 @@ if (! function_exists('is_livestock_domain')) {
         return strtolower(request()->getHost()) === strtolower($domainHost);
     }
 }
+
+if (! function_exists('streaming_status_callback_url')) {
+    /**
+     * Absolute URL enqueued for the AWS streaming worker to report status.
+     * When STREAMING_CALLBACK_BASE_URL is set (e.g. ngrok), AWS can reach your local Laravel.
+     */
+    function streaming_status_callback_url(): string
+    {
+        $base = trim((string) config('streaming.callback_base_url'));
+
+        if ($base !== '') {
+            return rtrim($base, '/').'/api/streaming/status';
+        }
+
+        return route('api.streaming.status');
+    }
+}

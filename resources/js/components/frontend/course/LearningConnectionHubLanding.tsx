@@ -24,6 +24,7 @@ import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import { formatCourseMonthDayBadge, formatCourseStartDisplay } from "@/lib/course-start-datetime"
 import {
+  appendConnectionHubListingTypeQuery,
   connectionHubMyButtonHref,
   connectionHubTeachButtonHref,
   type ConnectionHubAuth,
@@ -142,8 +143,8 @@ export default function LearningConnectionHubLanding({
     `${route("login")}?redirect=${encodeURIComponent(path)}`
 
   const teachHref =
-    connectionHubTeachButtonHref(auth) ??
-    loginWithRedirect(route("profile.course.create"))
+    connectionHubTeachButtonHref(auth, "learning") ??
+    loginWithRedirect(appendConnectionHubListingTypeQuery(route("profile.course.create"), "learning"))
   const myLearningHref =
     connectionHubMyButtonHref(auth) ?? loginWithRedirect(route("enrollments.my"))
 

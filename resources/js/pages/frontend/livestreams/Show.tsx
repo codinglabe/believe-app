@@ -1,8 +1,8 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Head, router } from "@inertiajs/react"
-import { startOBSStream, stopOBSStream } from "@/lib/obsLivestream"
+import { Head, router, usePage } from "@inertiajs/react"
+import { stopOBSStream } from "@/lib/obsLivestream"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -46,14 +46,11 @@ import {
   Radio,
   Youtube,
   HelpCircle,
-  Settings,
   Download,
   HardDrive,
   Cloud,
 } from "lucide-react"
 import { Link } from "@inertiajs/react"
-
-const DEFAULT_OBS_WS = "ws://127.0.0.1:4455"
 
 interface Livestream {
   id: number
@@ -74,6 +71,7 @@ interface Livestream {
   endedAt: string | null
   isPublic?: boolean
   canStartMeeting?: boolean
+  /** When false, queueing a cloud stream is blocked server-side (e.g. already live or cancelled). */
   canGoLive?: boolean
   latestInviteUrl?: string | null
   dropboxRecordingAvailable?: boolean
@@ -84,6 +82,16 @@ interface Livestream {
   viewLink?: string | null
   streamKeyDisplay?: string | null
   rtmpUrl?: string | null
+  youtubeConnected?: boolean
+  youtubeChannelUrl?: string | null
+  streamingQueueStatus?: StreamingQueueStatus | null
+  youtubeBroadcastId?: string | null
+}
+
+interface StreamingQueueStatus {
+  status: "queued" | "starting" | "live" | "completed" | "failed" | "stopped" | "meeting_live" | "draft" | "scheduled" | string
+  updatedAt: string | null
+  failureReason?: string | null
 }
 
 interface RecordingConsentDecline {
@@ -104,6 +112,15 @@ function formatDeclineTime(iso: string | null): string {
 }
 
 export default function SupporterShowLivestream({ livestream, recordingConsentDeclines }: Props) {
+  const { props: inertiaProps } = usePage<{ errors?: Record<string, string | string[]> }>()
+  const prepareYoutubeError = inertiaProps.errors?.youtube
+  const prepareYoutubeErrorText = Array.isArray(prepareYoutubeError)
+    ? prepareYoutubeError[0]
+    : prepareYoutubeError
+
+  const queueStreamError = inertiaProps.errors?.go_live
+  const queueStreamErrorText = Array.isArray(queueStreamError) ? queueStreamError[0] : queueStreamError
+
   const [copied, setCopied] = useState<string | null>(null)
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false)
   const [infoOpen, setInfoOpen] = useState(false)
@@ -111,13 +128,11 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
   const [isStartingMeeting, setIsStartingMeeting] = useState(false)
   const [sidebarTab, setSidebarTab] = useState<"meeting-info" | "invite-link">("meeting-info")
   const [goLiveOpen, setGoLiveOpen] = useState(false)
+  const [goLivePrecheckOpen, setGoLivePrecheckOpen] = useState(false)
+  const [isPrepareYoutubeLive, setIsPrepareYoutubeLive] = useState(false)
   const [goLiveTab, setGoLiveTab] = useState("streaming")
   const [streamKey, setStreamKey] = useState("")
   const [isUpdatingStreamKey, setIsUpdatingStreamKey] = useState(false)
-  const [isGoingLiveOBS, setIsGoingLiveOBS] = useState(false)
-  const [obsError, setObsError] = useState<string | null>(null)
-  const [obsUrl, setObsUrl] = useState(DEFAULT_OBS_WS)
-  const [obsPassword, setObsPassword] = useState("")
   const [recordingDestination, setRecordingDestination] = useState<"local" | "dropbox">(
     () => (livestream.dropboxRecordingAvailable ? "dropbox" : "local")
   )
@@ -126,8 +141,6 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
     recordingDestination === "dropbox" && livestream.hostPushUrlDropbox
       ? livestream.hostPushUrlDropbox
       : (livestream.hostPushUrl || livestream.directorUrl)
-
-  const canGoLiveWithOBS = !!(livestream.youtubeGoLiveEnabled && livestream.viewLink && livestream.streamKeyDisplay)
 
   const joinUrl = livestream.latestInviteUrl ?? livestream.joinUrl ?? (typeof window !== "undefined" ? `${window.location.origin}/livestreams/join/${livestream.roomName}` : "")
   const unityLiveUrl = livestream.unityLiveUrl ?? (typeof window !== "undefined" ? `${window.location.origin}/unity-live/${livestream.roomName}` : "")
@@ -149,7 +162,7 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
   useEffect(() => {
     const id = window.setInterval(() => {
       router.reload({
-        only: ["recordingConsentDeclines"],
+        only: ["recordingConsentDeclines", "livestream"],
         preserveScroll: true,
         preserveState: true,
       })
@@ -184,43 +197,20 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
     })
   }
 
-  const handleGoLiveClick = () => {
+  const queueCloudStream = () => {
+    if (!livestream.hasStreamKey) {
+      setGoLivePrecheckOpen(true)
+      return
+    }
     setIsUpdatingStatus(true)
-    router.post(`/livestreams/supporter/${livestream.id}/set-live`, {}, {
+    router.post(`/livestreams/supporter/${livestream.id}/queue-stream-relay`, {}, {
       preserveScroll: true,
       onFinish: () => setIsUpdatingStatus(false),
     })
   }
 
-  const handleOBSLiveClick = () => setGoLiveOpen(true)
-
-  const handleGoLiveWithOBS = async () => {
-    if (!livestream.viewLink || !livestream.streamKeyDisplay) {
-      setObsError("Missing stream key or view link. Add your YouTube stream key in the Settings tab.")
-      return
-    }
-    const rtmpServer = livestream.rtmpUrl || "rtmp://a.rtmp.youtube.com/live2"
-    setObsError(null)
-    setIsGoingLiveOBS(true)
-    try {
-      await startOBSStream({
-        obsUrl: obsUrl || DEFAULT_OBS_WS,
-        obsPassword: obsPassword || undefined,
-        rtmpServer,
-        streamKey: livestream.streamKeyDisplay,
-        viewUrl: livestream.viewLink,
-      })
-      router.post(`/livestreams/supporter/${livestream.id}/go-live-obs-auto`, {}, { preserveScroll: true })
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e)
-      if (msg && typeof msg === "string" && (msg.includes("authentication") || msg.includes("missing"))) {
-        setObsError('OBS is asking for a password. In OBS go to Tools → WebSocket Server Settings and uncheck "Enable Authentication", then try again.')
-      } else {
-        setObsError(msg || "Could not connect to OBS. Is OBS open? In OBS: Tools → WebSocket Server Settings → enable the server and uncheck \"Enable Authentication\".")
-      }
-    } finally {
-      setIsGoingLiveOBS(false)
-    }
+  const handleGoLiveClick = () => {
+    queueCloudStream()
   }
 
   const updateStreamKey = (e: React.FormEvent) => {
@@ -259,6 +249,42 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
 
   const meetingInfoContent = (
     <div className="w-full min-w-0 space-y-4">
+      <div className="rounded-lg border border-border bg-muted/30 p-3.5 space-y-2">
+        <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+          <Youtube className="h-3.5 w-3.5 text-primary" />
+          YouTube readiness
+        </div>
+        <div className="space-y-1.5 text-xs">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-muted-foreground">Channel connected</span>
+            <span className={livestream.youtubeConnected ? "text-green-600 dark:text-green-400 font-medium" : "text-amber-600 dark:text-amber-400 font-medium"}>
+              {livestream.youtubeConnected ? "Yes" : "No"}
+            </span>
+          </div>
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-muted-foreground">Stream key configured</span>
+            <span className={livestream.hasStreamKey ? "text-green-600 dark:text-green-400 font-medium" : "text-amber-600 dark:text-amber-400 font-medium"}>
+              {livestream.hasStreamKey ? "Yes" : "No"}
+            </span>
+          </div>
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-muted-foreground">Queue status</span>
+            <Badge variant="outline" className="h-6 px-2 text-[10px] uppercase">
+              {livestream.streamingQueueStatus?.status ?? "not queued"}
+            </Badge>
+          </div>
+        </div>
+        {(livestream.youtubeChannelUrl ?? "").trim().length > 0 && (
+          <p className="text-[11px] text-muted-foreground truncate">
+            Channel: {livestream.youtubeChannelUrl}
+          </p>
+        )}
+        {livestream.streamingQueueStatus?.failureReason && (
+          <p className="text-[11px] text-red-600 dark:text-red-400">
+            Last failure: {livestream.streamingQueueStatus.failureReason}
+          </p>
+        )}
+      </div>
       {recordingConsentDeclines.length > 0 && (
         <div className="rounded-lg border border-amber-500/35 bg-amber-500/10 p-3.5 space-y-2">
           <p className="text-xs font-semibold uppercase tracking-wider text-amber-800 dark:text-amber-200">
@@ -491,22 +517,10 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
                       className="h-8 w-8 rounded-md bg-red-600 hover:bg-red-700 touch-manipulation"
                       onClick={handleGoLiveClick}
                       disabled={isUpdatingStatus}
-                      aria-label="Go Live"
+                      aria-label="Queue cloud stream to YouTube"
                     >
                       <Play className="h-4 w-4" />
                     </Button>
-                    {canGoLiveWithOBS && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-8 px-2.5 rounded-md border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700 dark:border-red-500/40 dark:text-red-400 dark:hover:bg-red-500/10 touch-manipulation text-xs font-medium"
-                        onClick={handleOBSLiveClick}
-                        disabled={isGoingLiveOBS}
-                        aria-label="Start with OBS to YouTube"
-                      >
-                        {isGoingLiveOBS ? "…" : "OBS Live"}
-                      </Button>
-                    )}
                   </>
                 )}
                 <Button variant="outline" size="sm" className="h-8 px-2.5 rounded-md md:hidden" onClick={() => setGoLiveOpen(true)}>
@@ -523,14 +537,8 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
                       <>
                         <DropdownMenuItem onClick={handleGoLiveClick} disabled={isUpdatingStatus}>
                           <Play className="h-4 w-4 mr-2" />
-                          Go Live
+                          Go Live (cloud relay)
                         </DropdownMenuItem>
-                        {canGoLiveWithOBS && (
-                          <DropdownMenuItem onClick={handleOBSLiveClick} disabled={isGoingLiveOBS}>
-                            <Radio className="h-4 w-4 mr-2" />
-                            {isGoingLiveOBS ? "Starting…" : "OBS Live"}
-                          </DropdownMenuItem>
-                        )}
                       </>
                     )}
                     <DropdownMenuItem onClick={() => setGoLiveOpen(true)}>
@@ -566,18 +574,6 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
                       <Play className="h-4 w-4 mr-1.5" />
                       Go Live
                     </Button>
-                    {canGoLiveWithOBS && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-8 px-3 border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700 dark:border-red-500/40 dark:text-red-400 dark:hover:bg-red-500/10"
-                        onClick={handleOBSLiveClick}
-                        disabled={isGoingLiveOBS}
-                      >
-                        <Radio className="h-4 w-4 mr-1.5" />
-                        {isGoingLiveOBS ? "…" : "OBS Live"}
-                      </Button>
-                    )}
                   </>
                 )}
                 <Button variant="outline" size="sm" className="h-8 px-3" onClick={() => setGoLiveOpen(true)}>
@@ -618,9 +614,9 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
           )}
 
           <div className="flex flex-1 min-h-0 overflow-hidden">
-            <aside className="hidden md:flex w-64 lg:w-72 shrink-0 flex-col border-r border-border bg-linear-to-b from-muted/30 to-muted/10 p-0">
+            <aside className="hidden md:flex w-64 lg:w-72 shrink-0 min-h-0 flex-col overflow-hidden border-r border-border bg-linear-to-b from-muted/30 to-muted/10 p-0">
               <Tabs value={sidebarTab} onValueChange={(v) => setSidebarTab(v as "meeting-info" | "invite-link")} className="w-full flex flex-col min-h-0">
-                <Card className="rounded-none border-0 border-b border-border shadow-none bg-transparent p-0">
+                <Card className="flex min-h-0 flex-1 flex-col rounded-none border-0 border-b border-border bg-transparent p-0 shadow-none">
                   <CardHeader className="p-0 py-3 px-3">
                     <TabsList className="grid w-full grid-cols-2 h-9">
                       <TabsTrigger value="meeting-info" className="text-xs gap-1.5">
@@ -633,7 +629,7 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
                       </TabsTrigger>
                     </TabsList>
                   </CardHeader>
-                  <CardContent className="p-0 pb-3 px-3 overflow-y-auto">
+                  <CardContent className="min-h-0 flex-1 overflow-y-auto p-0 px-3 pb-3 [scrollbar-width:thin] [scrollbar-color:rgb(147_51_234_/_0.45)_transparent] [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-gradient-to-b [&::-webkit-scrollbar-thumb]:from-purple-400/70 [&::-webkit-scrollbar-thumb]:to-blue-500/70 dark:[&::-webkit-scrollbar-thumb]:from-purple-500/70 dark:[&::-webkit-scrollbar-thumb]:to-blue-600/70 [&::-webkit-scrollbar-thumb:hover]:from-purple-500/90 [&::-webkit-scrollbar-thumb:hover]:to-blue-600/90">
                     <TabsContent value="meeting-info" className="mt-3 mb-0">
                       {meetingInfoContent}
                     </TabsContent>
@@ -693,17 +689,26 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
               <TabsTrigger value="help" className="text-xs sm:text-sm">Help</TabsTrigger>
             </TabsList>
             <TabsContent value="streaming" className="space-y-4 mt-4">
-              <p className="text-sm text-muted-foreground">Stream to YouTube using OBS. Add your stream key in Settings first.</p>
-              {(obsError) && (
-                <Alert variant="destructive"><AlertDescription>{obsError}</AlertDescription></Alert>
+              <p className="text-sm text-muted-foreground">
+                Go Live queues our cloud relay (AWS): video from your VDO meeting is sent to your YouTube stream key. Stay in this host view so the relay has video to grab.
+              </p>
+              {queueStreamErrorText && (
+                <Alert variant="destructive"><AlertDescription>{queueStreamErrorText}</AlertDescription></Alert>
               )}
-              {livestream.youtubeGoLiveEnabled && livestream.viewLink && livestream.streamKeyDisplay && (
-                <Button className="w-full bg-red-600 hover:bg-red-700" onClick={handleGoLiveWithOBS} disabled={isGoingLiveOBS}>
-                  {isGoingLiveOBS ? "Starting…" : "Go Live with OBS (auto)"}
+              {livestream.hasStreamKey && livestream.canGoLive && livestream.status !== "live" && (
+                <Button className="w-full bg-red-600 hover:bg-red-700" onClick={handleGoLiveClick} disabled={isUpdatingStatus}>
+                  {isUpdatingStatus ? "Queuing…" : "Start cloud stream to YouTube"}
                 </Button>
               )}
-              {!livestream.youtubeGoLiveEnabled && (
-                <p className="text-sm text-muted-foreground">Add your YouTube stream key in the Settings tab to enable OBS Live.</p>
+              {livestream.hasStreamKey && (!livestream.canGoLive || livestream.status === "live") && (
+                <p className="text-sm text-muted-foreground">
+                  {livestream.status === "live"
+                    ? "You are already live. Use End stream to stop, then you can queue again."
+                    : "This meeting can’t start a new cloud relay in its current state. Refresh the page or end/reset the meeting and try again."}
+                </p>
+              )}
+              {!livestream.hasStreamKey && (
+                <p className="text-sm text-muted-foreground">Use Create live on YouTube or paste a stream key in Settings first.</p>
               )}
               {livestream.status === "live" && (
                 <Button variant="destructive" className="w-full" onClick={handleEndStream} disabled={isUpdatingStatus}>
@@ -730,36 +735,20 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
             <TabsContent value="help" className="mt-4 space-y-4">
               <div className="flex items-center gap-2 text-foreground font-semibold">
                 <HelpCircle className="h-5 w-5 text-primary" />
-                How to go live with OBS
+                How cloud streaming works
               </div>
               <p className="text-sm text-muted-foreground">
-                One-time setup in OBS, then use the Go Live button to start streaming to YouTube.
+                Unity Meet relays your meeting picture to YouTube through our AWS worker queue — no OBS required on your computer.
               </p>
-              <div className="rounded-lg border border-border bg-muted/30 p-4 space-y-3">
-                <div className="flex items-start gap-3">
-                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10">
-                    <Settings className="h-4 w-4 text-primary" />
-                  </div>
-                  <div>
-                    <h4 className="text-sm font-semibold text-foreground">1. One-time OBS setup</h4>
-                    <ul className="mt-1.5 list-inside list-disc space-y-1 text-sm text-muted-foreground">
-                      <li>In OBS: <strong className="text-foreground">Tools</strong> → <strong className="text-foreground">WebSocket Server Settings</strong></li>
-                      <li>Enable the server and set port to <strong className="text-foreground">4455</strong></li>
-                      <li>Uncheck <strong className="text-foreground">Enable Authentication</strong></li>
-                    </ul>
-                  </div>
-                </div>
-              </div>
               <div className="rounded-lg border border-border bg-muted/30 p-4 space-y-3">
                 <div className="flex items-start gap-3">
                   <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10">
                     <Youtube className="h-4 w-4 text-red-600" />
                   </div>
                   <div>
-                    <h4 className="text-sm font-semibold text-foreground">2. Get your YouTube stream key</h4>
+                    <h4 className="text-sm font-semibold text-foreground">1. YouTube stream key</h4>
                     <ul className="mt-1.5 list-inside list-disc space-y-1 text-sm text-muted-foreground">
-                      <li>Go to YouTube Studio → Create → Go live</li>
-                      <li>Copy your stream key and paste it in the <strong className="text-foreground">Settings</strong> tab above</li>
+                      <li>Connect your channel in Integrations, then use <strong className="text-foreground">Create live on YouTube</strong> on this page, or paste a key in <strong className="text-foreground">Settings</strong>.</li>
                     </ul>
                   </div>
                 </div>
@@ -767,19 +756,100 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
               <div className="rounded-lg border border-border bg-muted/30 p-4 space-y-3">
                 <div className="flex items-start gap-3">
                   <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10">
-                    <Radio className="h-4 w-4 text-primary" />
+                    <Cloud className="h-4 w-4 text-primary" />
                   </div>
                   <div>
-                    <h4 className="text-sm font-semibold text-foreground">3. Go live</h4>
+                    <h4 className="text-sm font-semibold text-foreground">2. Host here, then Go Live</h4>
                     <ul className="mt-1.5 list-inside list-disc space-y-1 text-sm text-muted-foreground">
-                      <li>Open OBS and add your sources if needed</li>
-                      <li>Click the red <strong className="text-foreground">Go Live with OBS (auto)</strong> button — we’ll connect OBS and start the stream to YouTube</li>
+                      <li>Open this meeting as host (iframe above).</li>
+                      <li>Click <strong className="text-foreground">Go Live</strong> — that queues an AWS relay to YouTube.</li>
+                      <li>Watch <strong className="text-foreground">Queue status</strong> in Meeting info; it switches to live when the worker attaches.</li>
                     </ul>
                   </div>
                 </div>
               </div>
             </TabsContent>
           </Tabs>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={goLivePrecheckOpen} onOpenChange={setGoLivePrecheckOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>
+              {livestream.youtubeConnected ? "Prepare YouTube Live" : "Add a stream key"}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 text-sm">
+            {prepareYoutubeErrorText && (
+              <p className="text-sm text-destructive">{prepareYoutubeErrorText}</p>
+            )}
+            {livestream.youtubeConnected ? (
+              <>
+                <p className="text-muted-foreground">
+                  Your YouTube channel is connected to Believe. Create the live broadcast on that channel — we&apos;ll save the stream key automatically.
+                </p>
+                <div className="flex flex-col sm:flex-row gap-2 sm:justify-end">
+                  <Button
+                    variant="outline"
+                    disabled={isPrepareYoutubeLive}
+                    onClick={() => {
+                      setGoLivePrecheckOpen(false)
+                      setGoLiveTab("settings")
+                      setGoLiveOpen(true)
+                    }}
+                  >
+                    Paste key manually
+                  </Button>
+                  <Button
+                    disabled={isPrepareYoutubeLive}
+                    onClick={() => {
+                      setIsPrepareYoutubeLive(true)
+                      router.post(
+                        `/livestreams/supporter/${livestream.id}/prepare-youtube-live`,
+                        {},
+                        {
+                          preserveScroll: true,
+                          onSuccess: () => setGoLivePrecheckOpen(false),
+                          onFinish: () => setIsPrepareYoutubeLive(false),
+                        }
+                      )
+                    }}
+                  >
+                    {isPrepareYoutubeLive ? "Creating…" : "Create live on YouTube"}
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="text-muted-foreground">
+                  Connect YouTube under Integrations, or create a stream in Studio and paste the stream key below.
+                </p>
+                <ol className="list-decimal list-inside space-y-1 text-muted-foreground">
+                  <li>(Optional) Open YouTube Studio and create a live stream.</li>
+                  <li>Copy the stream key.</li>
+                  <li>Paste it in Settings on this page, then try Go Live again.</li>
+                </ol>
+                <div className="flex flex-col sm:flex-row gap-2 sm:justify-end">
+                  <Button
+                    variant="outline"
+                    onClick={() => window.open("https://studio.youtube.com", "_blank", "noopener,noreferrer")}
+                  >
+                    Open YouTube Studio
+                  </Button>
+                  <Button
+                    onClick={() => {
+                      setGoLivePrecheckOpen(false)
+                      setGoLiveTab("settings")
+                      setGoLiveOpen(true)
+                    }}
+                  >
+                    Add Stream Key
+                  </Button>
+                </div>
+              </>
+            )}
+          </div>
         </DialogContent>
       </Dialog>
     </UnityMeetLayout>

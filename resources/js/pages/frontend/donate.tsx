@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import type { PageProps as InertiaPageProps } from "@inertiajs/core"
 import { router, usePage, Link } from "@inertiajs/react"
 import { PageHead } from "@/components/frontend/PageHead"
 import { useNotification } from "@/components/frontend/notification-provider"
@@ -110,7 +111,7 @@ const DEFAULT_PROCESSING_FEE_RATES: ProcessingFeeRates = {
   ach_fee_cap_usd: 5,
 }
 
-interface DonatePageProps {
+interface DonatePageProps extends InertiaPageProps {
   seo?: { title: string; description?: string }
   organizations: DonateCause[]
   /** Causes the current user has donated to (with totals); empty when logged out. */
@@ -122,6 +123,8 @@ interface DonatePageProps {
   givingGoal?: number
   topOrganizations?: TopOrganization[]
   feePreview?: FeePreviewFromServer | null
+  /** Checkout total for each rail (same gift + “Make Full Impact” as active preview). */
+  feePreviewCheckoutTotalsByRail?: { card: number; bank: number } | null
 }
 
 const amountConfig = [
@@ -170,6 +173,7 @@ export default function DonatePage({
   const page = usePage<DonatePageProps & { processingFeeRates?: ProcessingFeeRates }>()
   const processingFeeRates = page.props.processingFeeRates ?? DEFAULT_PROCESSING_FEE_RATES
   const feePreview = page.props.feePreview ?? null
+  const feePreviewCheckoutTotalsByRail = page.props.feePreviewCheckoutTotalsByRail ?? null
   const flash = page.props
   const { showNotification } = useNotification()
 
@@ -245,7 +249,7 @@ export default function DonatePage({
         preserveScroll: true,
         preserveState: true,
         replace: true,
-        only: ["organizations", "searchQuery", "feePreview"],
+        only: ["organizations", "searchQuery", "feePreview", "feePreviewCheckoutTotalsByRail"],
         onFinish: () => {
           setFeePreviewLoading(false)
           setIsSearchingOrganizations(false)
@@ -782,24 +786,34 @@ export default function DonatePage({
                         <button
                           type="button"
                           onClick={() => setFeePreviewRail("card")}
-                          className={`rounded-xl border-2 px-3 py-2.5 text-sm font-semibold transition-all ${
+                          className={`flex flex-col items-center justify-center rounded-xl border-2 px-3 py-2.5 text-center text-sm font-semibold transition-all ${
                             feePreviewRail === "card"
                               ? "border-purple-400 bg-purple-500/25 text-slate-900 dark:text-white"
                               : "border-slate-200/60 bg-white/50 text-slate-700 hover:border-purple-400/40 dark:border-white/15 dark:bg-white/5 dark:text-white/90"
                           }`}
                         >
-                          Card
+                          <span>Card</span>
+                          {feePreviewCheckoutTotalsByRail ? (
+                            <span className="mt-1 text-xs font-medium tabular-nums text-slate-600 dark:text-white/75">
+                              Total Charged: ${feePreviewCheckoutTotalsByRail.card.toFixed(2)}
+                            </span>
+                          ) : null}
                         </button>
                         <button
                           type="button"
                           onClick={() => setFeePreviewRail("bank")}
-                          className={`rounded-xl border-2 px-3 py-2.5 text-sm font-semibold transition-all ${
+                          className={`flex flex-col items-center justify-center rounded-xl border-2 px-3 py-2.5 text-center text-sm font-semibold transition-all ${
                             feePreviewRail === "bank"
                               ? "border-purple-400 bg-purple-500/25 text-slate-900 dark:text-white"
                               : "border-slate-200/60 bg-white/50 text-slate-700 hover:border-purple-400/40 dark:border-white/15 dark:bg-white/5 dark:text-white/90"
                           }`}
                         >
-                          Bank (ACH)
+                          <span>Bank (ACH)</span>
+                          {feePreviewCheckoutTotalsByRail ? (
+                            <span className="mt-1 text-xs font-medium tabular-nums text-slate-600 dark:text-white/75">
+                              Total Charged: ${feePreviewCheckoutTotalsByRail.bank.toFixed(2)}
+                            </span>
+                          ) : null}
                         </button>
                       </div>
                       <p className="text-[11px] text-slate-500 dark:text-white/45 mt-2 leading-snug">

@@ -147,8 +147,10 @@ interface FrontendCoursesListPageProps {
   }
   /** Every active primary-action category for the Cause(s) filter dropdown */
   causesForFilter?: PrimaryActionCategoryRef[]
-  /** Active event types for the Category filter (same catalog as listing “Topic” field) */
+  /** Non–companion-only event types (Learning / Events / Earning topic catalog) */
   eventTypes?: EventType[]
+  /** Companion hub topic catalog only (shown when Type = Companion) */
+  companionEventTypes?: EventType[]
   user?: CourseListUser | null
   message?: string
   filters: {
@@ -231,11 +233,21 @@ function listingStatus(course: Course): { label: string; variant: "live" | "mute
 
 const PER_PAGE_OPTIONS = [6, 9, 12, 18] as const
 
+const COMPANION_CATEGORY_LABEL_PREFIX = "Companion · "
+
+function formatCategoryFilterLabel(et: EventType): string {
+  const c = et.category
+  if (!c) return et.name
+  const group = c.startsWith(COMPANION_CATEGORY_LABEL_PREFIX) ? c.slice(COMPANION_CATEGORY_LABEL_PREFIX.length) : c
+  return `${group} · ${et.name}`
+}
+
 export default function FrontendCoursesListPage({
   seo,
   courses: initialCourses,
   causesForFilter = [],
   eventTypes = [],
+  companionEventTypes = [],
   filters,
   learningTopicCounts = [],
   learningExploreUsesEventTypes = false,
@@ -409,6 +421,23 @@ export default function FrontendCoursesListPage({
     return learningTopicCounts
   }, [showLearningLanding, learningTopicCounts])
 
+  const categoryFilterOptions = useMemo(() => {
+    if (selectedType === "companion") return companionEventTypes
+    if (selectedType === "learning" || selectedType === "events") return eventTypes
+    const byId = new Map<number, EventType>()
+    for (const et of companionEventTypes) byId.set(et.id, et)
+    for (const et of eventTypes) byId.set(et.id, et)
+    return Array.from(byId.values())
+  }, [selectedType, companionEventTypes, eventTypes])
+
+  useEffect(() => {
+    const ids = new Set(categoryFilterOptions.map((e) => String(e.id)))
+    setSelectedEventTypeId((prev) => {
+      if (!prev || ids.has(prev)) return prev
+      return ""
+    })
+  }, [selectedType, categoryFilterOptions])
+
   return (
     <FrontendLayout>
       <PageHead title={seo?.title ?? "Connection Hub"} description={seo?.description} />
@@ -555,9 +584,9 @@ export default function FrontendCoursesListPage({
                         className={selectClass}
                       >
                         <option value="">All categories</option>
-                        {eventTypes.map((et) => (
+                        {categoryFilterOptions.map((et) => (
                           <option key={et.id} value={String(et.id)}>
-                            {et.category ? `${et.category} · ${et.name}` : et.name}
+                            {formatCategoryFilterLabel(et)}
                           </option>
                         ))}
                       </select>

@@ -162,10 +162,8 @@ class CourseController extends BaseController
         });
 
         $topics = Topic::orderBy('name')->get(['id', 'name']);
-        $eventTypes = \App\Models\EventType::where('is_active', true)
-            ->orderBy('category')
-            ->orderBy('name')
-            ->get(['id', 'name', 'category']);
+        $eventTypes = EventType::generalCatalogForProps();
+        $companionEventTypes = EventType::companionCatalogForProps();
 
         $organizations = Organization::with('user:id,slug')
             ->orderBy('name')
@@ -507,6 +505,7 @@ class CourseController extends BaseController
             'courses' => $courses,
             'topics' => $topics,
             'eventTypes' => $eventTypes,
+            'companionEventTypes' => $companionEventTypes,
             'causesForFilter' => $causesForFilter,
             'organizations' => $organizations,
             'filters' => $filters,
@@ -618,10 +617,8 @@ class CourseController extends BaseController
             return $course;
         });
 
-        $eventTypes = \App\Models\EventType::where('is_active', true)
-            ->orderBy('category')
-            ->orderBy('name')
-            ->get(['id', 'name', 'category']);
+        $eventTypes = EventType::generalCatalogForProps();
+        $companionEventTypes = EventType::companionCatalogForProps();
 
         // ✅ Calculate statistics only for authenticated organization
         // For organization users, use their user_id as organization_id
@@ -632,6 +629,7 @@ class CourseController extends BaseController
         return Inertia::render('admin/course/Index', [
             'courses' => $courses,
             'eventTypes' => $eventTypes,
+            'companionEventTypes' => $companionEventTypes,
             'filters' => $filters,
             'statistics' => $statistics,
         ]);
@@ -671,17 +669,19 @@ class CourseController extends BaseController
     public function create(Request $request)
     {
         $this->authorizePermission($request, 'course.create');
-        $eventTypes = \App\Models\EventType::where('is_active', true)
-            ->orderBy('category')
-            ->orderBy('name')
-            ->get(['id', 'name', 'category']);
+        $eventTypes = EventType::generalCatalogForProps();
+        $companionEventTypes = EventType::companionCatalogForProps();
 
         $seller = Organization::biuSellerDisplayForUser($request->user());
 
+        $lockedHubListingType = ConnectionHubType::normalizedListingTypeLockFromQuery($request->query('type'));
+
         return Inertia::render('admin/course/Create', array_merge([
             'eventTypes' => $eventTypes,
+            'companionEventTypes' => $companionEventTypes,
             'organizationName' => $seller['name'],
             'sellerNameLabel' => $seller['label'],
+            'lockedHubListingType' => $lockedHubListingType,
         ], $this->organizationPrimaryActionCategoriesPageProps($request)));
     }
 
@@ -701,12 +701,30 @@ class CourseController extends BaseController
             // Basic Information
             'name' => 'required|string|max:255|unique:courses,name',
             'description' => 'required|string',
-            'type' => ['required', Rule::in(ConnectionHubType::VALUES)],
-            'topic_id' => ['nullable', 'exists:topics,id'],
-            'event_type_id' => [
+            'type' => [
                 'required',
-                'exists:event_types,id',
+                Rule::in(ConnectionHubType::VALUES),
+                function (string $attribute, mixed $value, \Closure $fail) use ($request): void {
+                    if (! is_string($value)) {
+                        return;
+                    }
+                    $raw = $request->input('locked_hub_type');
+                    if (! is_string($raw) || trim($raw) === '') {
+                        return;
+                    }
+                    $lock = ConnectionHubType::normalizedListingTypeLockFromQuery($raw);
+                    if ($lock === null) {
+                        $fail(__('Invalid listing type lock.'));
+
+                        return;
+                    }
+                    if ($value !== $lock) {
+                        $fail(__('The listing type cannot be changed for this create flow.'));
+                    }
+                },
             ],
+            'topic_id' => ['nullable', 'exists:topics,id'],
+            'event_type_id' => EventType::validationRulesForHubType($type),
             'meeting_link' => 'nullable|url|max:500', // Added meeting_link validation
 
             // Pricing
@@ -1128,10 +1146,8 @@ class CourseController extends BaseController
             abort(403, 'Unauthorized access to this course.');
         }
 
-        $eventTypes = \App\Models\EventType::where('is_active', true)
-            ->orderBy('category')
-            ->orderBy('name')
-            ->get(['id', 'name', 'category']);
+        $eventTypes = EventType::generalCatalogForProps();
+        $companionEventTypes = EventType::companionCatalogForProps();
 
         // Format the course data properly for the form
         $courseData = $course->load(['topic', 'eventType', 'organization', 'creator', 'primaryActionCategories']);
@@ -1158,6 +1174,7 @@ class CourseController extends BaseController
         return Inertia::render('admin/course/Edit', array_merge([
             'course' => $courseData,
             'eventTypes' => $eventTypes,
+            'companionEventTypes' => $companionEventTypes,
             'organizationName' => $seller['name'],
             'sellerNameLabel' => $seller['label'],
         ], $this->organizationPrimaryActionCategoriesPageProps($request)));
@@ -1190,10 +1207,7 @@ class CourseController extends BaseController
             'description' => 'required|string',
             'type' => ['required', Rule::in(ConnectionHubType::VALUES)],
             'topic_id' => ['nullable', 'exists:topics,id'],
-            'event_type_id' => [
-                'required',
-                'exists:event_types,id',
-            ],
+            'event_type_id' => EventType::validationRulesForHubType($type),
             'meeting_link' => 'nullable|url|max:500', // Added meeting_link validation
 
             // Pricing
@@ -1428,8 +1442,11 @@ class CourseController extends BaseController
             default => 'hub_count',
         };
 
+        $prefix = EventType::COMPANION_HUB_CATEGORY_PREFIX;
+
         return EventType::query()
             ->where('is_active', true)
+            ->when($courseType === 'companion', fn ($q) => $q->where('category', 'like', $prefix.'%'))
             ->withCount(['courses as '.$alias => function ($q) use ($courseType) {
                 $q->where('type', $courseType);
             }])
@@ -1437,11 +1454,19 @@ class CourseController extends BaseController
             ->orderBy('category')
             ->orderBy('name')
             ->get(['id', 'name', 'category'])
-            ->map(fn ($et) => [
-                'id' => $et->id,
-                'name' => $et->category ? $et->category.' · '.$et->name : $et->name,
-                'count' => (int) ($et->{$alias} ?? 0),
-            ])
+            ->map(function ($et) use ($courseType, $prefix, $alias) {
+                $cat = $et->category ?? '';
+                if ($courseType === 'companion' && str_starts_with((string) $cat, $prefix)) {
+                    $cat = substr($cat, strlen($prefix));
+                }
+                $display = $cat !== '' ? $cat.' · '.$et->name : $et->name;
+
+                return [
+                    'id' => $et->id,
+                    'name' => $display,
+                    'count' => (int) ($et->{$alias} ?? 0),
+                ];
+            })
             ->filter(fn ($row) => $row['count'] > 0)
             ->values()
             ->all();
