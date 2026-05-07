@@ -8,10 +8,22 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Post extends Model
 {
+    public const POST_TYPE_STANDARD = 'standard';
+
+    public const POST_TYPE_YOUTUBE_SHORT = 'youtube_short';
+
     protected $fillable = [
         'user_id',
+        'post_type',
         'content',
         'images',
+        'youtube_url',
+        'youtube_video_id',
+        'thumbnail_url',
+        'caption',
+        'organization_id',
+        'campaign_id',
+        'fundme_id',
         'is_edited',
     ];
 
@@ -19,6 +31,30 @@ class Post extends Model
         'images' => 'array',
         'is_edited' => 'boolean',
     ];
+
+    /**
+     * @var list<string>
+     */
+    protected $hidden = [
+        'attachedOrganization',
+        'attachedCampaign',
+        'attachedFundMe',
+    ];
+
+    public function attachedOrganization(): BelongsTo
+    {
+        return $this->belongsTo(Organization::class, 'organization_id');
+    }
+
+    public function attachedCampaign(): BelongsTo
+    {
+        return $this->belongsTo(Campaign::class, 'campaign_id');
+    }
+
+    public function attachedFundMe(): BelongsTo
+    {
+        return $this->belongsTo(FundMeCampaign::class, 'fundme_id');
+    }
 
     public function user(): BelongsTo
     {
