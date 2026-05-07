@@ -47,7 +47,10 @@ export function MerchantDashboardLayout({ children }: MerchantDashboardLayoutPro
           },
         }}
       />
-      <div className="min-h-screen bg-gradient-to-br from-[#0A2540] via-[#061a2f] to-black text-white">
+      <div
+        data-merchant-dashboard
+        className="min-h-screen bg-gradient-to-br from-[#0A2540] via-[#061a2f] to-black text-white scheme-dark"
+      >
         <div className="absolute inset-0 bg-gradient-to-r from-[#2563EB]/10 via-transparent to-transparent pointer-events-none" />
 
         {/* Sidebar */}

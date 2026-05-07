@@ -630,6 +630,8 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin|use
 });
 
 Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin|user|care_alliance'])->group(function () {
+    Route::get('/brp-campaigns', [\App\Http\Controllers\BrpCampaignBrowserController::class, 'index'])
+        ->name('frontend.brp-campaigns.index');
     Route::get('/feedback-campaigns', [\App\Http\Controllers\FeedbackCampaignBrowserController::class, 'index'])
         ->name('feedback-campaigns.index');
     Route::get('/feedback/{uuid}', [\App\Http\Controllers\SupporterFeedbackController::class, 'show'])

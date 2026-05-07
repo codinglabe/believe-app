@@ -16,8 +16,6 @@ import {
   ChevronDown,
   ListChecks,
   Inbox,
-  PieChart,
-  BookOpen,
   Coins,
   Megaphone,
 } from 'lucide-react'
@@ -44,7 +42,6 @@ interface NavItem {
 
 const navigation: NavItem[] = [
   { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
-  { name: 'Playbooks', href: '/playbooks', icon: BookOpen },
   {
     name: 'Products',
     href: '/marketplace-products',

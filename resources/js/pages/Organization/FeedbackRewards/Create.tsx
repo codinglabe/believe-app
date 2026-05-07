@@ -100,6 +100,7 @@ export default function OrgCreateCampaign({ wallet, campaignTypes, organization,
   const budget = Number.isFinite(parsedBudget) ? parsedBudget : 0
 
   const reward = form.reward_per_response_brp || 0
+  const rewardBpDisplay = Number.isFinite(reward) && reward > 0 ? reward / 100 : 0
   const selectedType = campaignTypes.find((t) => t.value === form.type)
   const live = liveCalculation && budget > 0 ? liveCalculation : null
   const maxResponses = live
@@ -111,6 +112,7 @@ export default function OrgCreateCampaign({ wallet, campaignTypes, organization,
     : Boolean(selectedType && reward === selectedType.default_reward)
   const insufficientBalance = live ? !live.sufficient_brp : wallet.available_brp < budget
   const budgetHintUsd = live ? live.budget_usd : budget
+  const typeDefaultPerResponseDisplay = live?.per_response_bp_display ?? selectedType?.per_response_bp_display
 
   useEffect(() => {
     if (budget <= 0) return
@@ -252,7 +254,12 @@ export default function OrgCreateCampaign({ wallet, campaignTypes, organization,
                 <div>
                   <Label>Reward Per Response (BP)</Label>
                   <Input type="number" min={1} value={form.reward_per_response_brp} onChange={(e) => setField('reward_per_response_brp', Number(e.target.value))} className={`mt-1 ${errors.reward ? 'border-destructive' : ''}`} />
-                  <p className="text-xs text-muted-foreground mt-1">= ${(reward / 100).toFixed(2)} per response (stored units)</p>
+                  <p className={`text-xs mt-1 font-semibold tabular-nums ${ofb.text}`} aria-live="polite">
+                    {formatDisplayBp(rewardBpDisplay)} per response
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Default for this type: {typeDefaultPerResponseDisplay != null ? formatDisplayBp(typeDefaultPerResponseDisplay) : '—'}
+                  </p>
                   {errors.reward && <p className="text-xs text-destructive mt-1">{errors.reward}</p>}
                 </div>
                 <div>

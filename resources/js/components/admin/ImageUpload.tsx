@@ -12,10 +12,13 @@ interface ImageUploadProps {
   onChange: (file: File | null) => void // Callback for when a file is selected/cleared
   disabled?: boolean
   processing?: boolean
+  /** Laravel-style limit in kilobytes (e.g. 5120 for 5MB). If set, rejects larger files before POST so nginx cannot return 413. */
+  maxFileSizeKb?: number
 }
 
-export function ImageUpload({ label, value, onChange, disabled, processing }: ImageUploadProps) {
+export function ImageUpload({ label, value, onChange, disabled, processing, maxFileSizeKb }: ImageUploadProps) {
   const [previewUrl, setPreviewUrl] = useState<string | null>(value)
+  const [sizeError, setSizeError] = useState<string | null>(null)
 
   // Update preview when value prop changes (e.g., on initial load or form reset)
   React.useEffect(() => {
@@ -25,6 +28,17 @@ export function ImageUpload({ label, value, onChange, disabled, processing }: Im
   const handleFileChange = useCallback(
     (event: React.ChangeEvent<HTMLInputElement>) => {
       const file = event.target.files?.[0] || null
+      setSizeError(null)
+
+      if (file && maxFileSizeKb != null && file.size > maxFileSizeKb * 1024) {
+        const mb = Math.round((maxFileSizeKb / 1024) * 10) / 10
+        setSizeError(`File is too large. Maximum size is ${mb} MB.`)
+        onChange(null)
+        setPreviewUrl(value ?? null)
+        event.target.value = ""
+        return
+      }
+
       onChange(file) // Pass the file object to the parent form
 
       if (file) {
@@ -37,10 +51,11 @@ export function ImageUpload({ label, value, onChange, disabled, processing }: Im
         setPreviewUrl(null)
       }
     },
-    [onChange],
+    [onChange, maxFileSizeKb, value],
   )
 
   const handleClearImage = useCallback(() => {
+    setSizeError(null)
     onChange(null) // Clear the file in the parent form
     setPreviewUrl(null) // Clear the preview
     // Reset the input element value to allow re-uploading the same file
@@ -97,6 +112,12 @@ export function ImageUpload({ label, value, onChange, disabled, processing }: Im
           </>
         )}
       </div>
+      {sizeError && <p className="text-sm text-red-600 dark:text-red-400">{sizeError}</p>}
+      {maxFileSizeKb != null && !sizeError && (
+        <p className="text-xs text-slate-500 dark:text-slate-400">
+          Maximum file size {Math.round((maxFileSizeKb / 1024) * 10) / 10} MB.
+        </p>
+      )}
       {(disabled || processing) && (
         <p className="text-sm text-slate-500 dark:text-slate-400">
           {processing ? "Uploading..." : "Disabled during form submission."}

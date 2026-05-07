@@ -100,6 +100,7 @@ export default function CreateCampaign({ wallet, campaignTypes, liveCalculation 
   const budget = Number.isFinite(parsedBudget) ? parsedBudget : 0
 
   const reward = form.reward_per_response_brp || 0
+  const rewardBpDisplay = Number.isFinite(reward) && reward > 0 ? reward / 100 : 0
   const selectedType = campaignTypes.find((t) => t.value === form.type)
   const live = liveCalculation && budget > 0 ? liveCalculation : null
   const maxResponses = live
@@ -111,6 +112,7 @@ export default function CreateCampaign({ wallet, campaignTypes, liveCalculation 
     : Boolean(selectedType && reward === selectedType.default_reward)
   const insufficientBalance = live ? !live.sufficient_brp : wallet.available_brp < budget
   const budgetHintUsd = live ? live.budget_usd : budget
+  const typeDefaultPerResponseDisplay = live?.per_response_bp_display ?? selectedType?.per_response_bp_display
   // Donation page pattern: server fee + live calc via Inertia partial reload.
   useEffect(() => {
     if (budget <= 0) return
@@ -246,8 +248,11 @@ export default function CreateCampaign({ wallet, campaignTypes, liveCalculation 
                       <div>
                         <MerchantLabel>Reward per response</MerchantLabel>
                         <MerchantInput type="number" min={1} value={form.reward_per_response_brp} onChange={(e) => setField('reward_per_response_brp', Number(e.target.value))} className={`mt-1 ${errors.reward ? 'border-red-500' : ''}`} />
+                        <p className="text-xs mt-1 text-[#2563EB] font-semibold tabular-nums" aria-live="polite">
+                          {formatDisplayBp(rewardBpDisplay)} per response
+                        </p>
                         <p className="text-xs text-gray-500 mt-1">
-                          Default for this type: {selectedType ? formatDisplayBp(selectedType.per_response_bp_display) : '—'}. Budget above is in whole BP (1 BP = $1.00).
+                          Default for this type: {typeDefaultPerResponseDisplay != null ? formatDisplayBp(typeDefaultPerResponseDisplay) : '—'}
                         </p>
                         {errors.reward && <p className="text-xs text-red-400 mt-1">{errors.reward}</p>}
                       </div>

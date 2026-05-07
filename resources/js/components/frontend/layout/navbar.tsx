@@ -262,6 +262,7 @@ export default function Navbar() {
     ...(isLoggedIn && !showOrgOnlyNav
       ? [{ name: "Raffles", href: route("frontend.raffles.index"), icon: Ticket }]
       : []),
+    ...(isLoggedIn ? [{ name: "Merchant Brp Campaigns", href: route("frontend.brp-campaigns.index"), icon: Sparkles }] : []),
     ...(isLoggedIn ? [{ name: "Feedback Campaigns", href: route("feedback-campaigns.index"), icon: MessageSquare }] : []),
     ...(isLoggedIn ? [{ name: "Add Points", href: route("believe-points.index"), icon: Coins }] : []),
     ...(showOrgOnlyNav
