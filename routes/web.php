@@ -128,6 +128,7 @@ use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\NteeCodeController;
 use App\Http\Controllers\OrderController;
 use App\Http\Controllers\OrderItemController;
+use App\Http\Controllers\LivestreamRecordingDeclineController;
 use App\Http\Controllers\Organization\LivestreamController;
 use App\Http\Controllers\Organization\MarketplaceProductPoolController;
 use App\Http\Controllers\Organization\OrganizationKioskProviderController;
@@ -439,7 +440,9 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:user|organization|orga
     Route::post('/livestreams/supporter/{id}/end-stream', [SupporterLivestreamController::class, 'endStream'])->name('livestreams.supporter.end-stream')->where('id', '[0-9]+');
     Route::patch('/livestreams/supporter/{id}/visibility', [SupporterLivestreamController::class, 'updateVisibility'])->name('livestreams.supporter.update-visibility')->where('id', '[0-9]+');
     Route::patch('/livestreams/supporter/{id}/stream-key', [SupporterLivestreamController::class, 'updateStreamKey'])->name('livestreams.supporter.update-stream-key')->where('id', '[0-9]+');
-    Route::post('/livestreams/supporter/{id}/go-live-obs-auto', [SupporterLivestreamController::class, 'goLiveOBSAuto'])->name('livestreams.supporter.go-live-obs-auto')->where('id', '[0-9]+');
+    Route::post('/livestreams/supporter/{id}/prepare-youtube-live', [SupporterLivestreamController::class, 'prepareYouTubeLive'])->name('livestreams.supporter.prepare-youtube-live')->where('id', '[0-9]+');
+    Route::post('/livestreams/supporter/{id}/queue-stream-relay', [SupporterLivestreamController::class, 'queueStreamRelayJob'])->name('livestreams.supporter.queue-stream-relay')->where('id', '[0-9]+');
+    Route::post('/livestreams/supporter/{id}/go-live-obs-auto', [SupporterLivestreamController::class, 'queueStreamRelayJob'])->name('livestreams.supporter.go-live-obs-auto')->where('id', '[0-9]+');
 });
 
 // VDO.Ninja meeting: guest join by secure token (public)
@@ -790,6 +793,10 @@ Route::get('/organizations/{slug}/contact', [OrganizationController::class, 'con
 Route::get('/livestreams/join/{roomName}', [LivestreamController::class, 'guestJoin'])
     ->where('roomName', '[a-zA-Z0-9_-]+')
     ->name('livestreams.guest-join');
+
+Route::post('/livestreams/recording-decline', [LivestreamRecordingDeclineController::class, 'store'])
+    ->middleware('throttle:30,1')
+    ->name('livestreams.recording-decline.store');
 
 // API route for inviting unregistered organizations (requires auth)
 Route::middleware(['auth', 'web'])->post('/api/organizations/invite', [OrganizationController::class, 'inviteOrganization'])->name('api.organizations.invite');
@@ -1241,11 +1248,13 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin|org
         Route::post('/{id}/generate-invite', [LivestreamController::class, 'generateInviteToken'])->name('generate-invite');
         Route::post('/{id}/go-live', [LivestreamController::class, 'goLive'])->name('go-live');
         Route::post('/{id}/set-live', [LivestreamController::class, 'setLive'])->name('set-live');
-        Route::post('/{id}/go-live-obs-auto', [LivestreamController::class, 'goLiveOBSAuto'])->name('go-live-obs-auto');
+        Route::post('/{id}/queue-stream-relay', [LivestreamController::class, 'queueStreamRelayJob'])->name('queue-stream-relay');
+        Route::post('/{id}/go-live-obs-auto', [LivestreamController::class, 'queueStreamRelayJob'])->name('go-live-obs-auto');
         Route::post('/{id}/go-live-browser', [LivestreamController::class, 'goLiveBrowser'])->name('go-live-browser');
         Route::post('/{id}/end-stream', [LivestreamController::class, 'endStream'])->name('end-stream');
         Route::patch('/{id}/status', [LivestreamController::class, 'updateStatus'])->name('update-status');
         Route::patch('/{id}/stream-key', [LivestreamController::class, 'updateStreamKey'])->name('update-stream-key');
+        Route::post('/{id}/prepare-youtube-live', [LivestreamController::class, 'prepareYouTubeLive'])->name('prepare-youtube-live');
         Route::patch('/{id}/visibility', [LivestreamController::class, 'updateVisibility'])->name('update-visibility');
         Route::delete('/{id}', [LivestreamController::class, 'destroy'])->name('destroy');
     });

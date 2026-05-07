@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useState, useMemo, useEffect } from "react"
 import { Head, router, usePage } from "@inertiajs/react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -22,6 +22,7 @@ import {
   ChevronDown,
 } from "lucide-react"
 import { Link } from "@inertiajs/react"
+import { RecordingConsentBarrier } from "@/components/livestreams/RecordingConsentBarrier"
 
 const BRAND = {
   from: "#9333ea",
@@ -36,6 +37,8 @@ interface Livestream {
   roomName: string
   participantUrl: string
   status: string
+  recordingEnabled?: boolean
+  declineContext?: { kind: "user" | "organization"; id: number }
 }
 
 interface Organization {
@@ -61,7 +64,7 @@ export default function SupporterMeetJoin({
   livestream,
   organization,
 }: Props) {
-  const pageProps = usePage().props as Props
+  const pageProps = usePage().props as unknown as Props
   const errors = propsErrors ?? pageProps.errors
   const requiresPasscodeStep =
     requiresPasscodeStepProp ?? pageProps.requiresPasscodeStep ?? false
@@ -77,6 +80,15 @@ export default function SupporterMeetJoin({
   const [cameraOn, setCameraOn] = useState(true)
   const [micOn, setMicOn] = useState(true)
   const [joined, setJoined] = useState(false)
+  const [recordingConsentAccepted, setRecordingConsentAccepted] = useState(false)
+
+  useEffect(() => {
+    if (!livestream) {
+      setRecordingConsentAccepted(false)
+      return
+    }
+    setRecordingConsentAccepted(!(livestream.recordingEnabled ?? false))
+  }, [livestream?.id, livestream?.recordingEnabled])
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -187,7 +199,27 @@ export default function SupporterMeetJoin({
     )
   }
 
-  // Step 2a: Livestream validated — enter name and join (same page)
+  // Step 2a: Livestream validated — recording consent first when the host enabled recording
+  if (livestream && canJoin && (livestream.recordingEnabled ?? false) && livestream.declineContext && !recordingConsentAccepted) {
+    return (
+      <UnityMeetLayout>
+        <Head title={`Join: ${livestream.title || "Meeting"}`} />
+        <RecordingConsentBarrier
+          open
+          appearance="dark"
+          meetingTitle={livestream.title}
+          organizerLabel={organization?.name ?? null}
+          livestreamKind={livestream.declineContext.kind}
+          livestreamId={livestream.declineContext.id}
+          guestLabel={(displayName || "").trim() || null}
+          onAccepted={() => setRecordingConsentAccepted(true)}
+          returnToAfterDecline="/livestreams/supporter/join"
+        />
+      </UnityMeetLayout>
+    )
+  }
+
+  // Step 2b: enter name and join (same page)
   if (livestream && canJoin) {
     return (
       <UnityMeetLayout>

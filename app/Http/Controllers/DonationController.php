@@ -364,6 +364,7 @@ class DonationController extends Controller
         }
 
         $feePreview = null;
+        $feePreviewCheckoutTotalsByRail = null;
         if ($request->filled('fee_preview_amount')) {
             $validator = Validator::make($request->only(['fee_preview_amount', 'fee_preview_donor_covers', 'fee_preview_rail']), [
                 'fee_preview_amount' => 'required|numeric|min:0.01',
@@ -372,9 +373,16 @@ class DonationController extends Controller
             ]);
             if (! $validator->fails()) {
                 $base = round((float) $validator->validated()['fee_preview_amount'], 2);
+                $donorCovers = $request->boolean('fee_preview_donor_covers');
                 $rail = $request->input('fee_preview_rail', 'card');
                 $rail = in_array($rail, ['card', 'bank'], true) ? $rail : 'card';
-                $feePreview = StripeProcessingFeeEstimator::giftFeePreviewPayload($base, $request->boolean('fee_preview_donor_covers'), $rail);
+                $feePreview = StripeProcessingFeeEstimator::giftFeePreviewPayload($base, $donorCovers, $rail);
+                $cardPreview = StripeProcessingFeeEstimator::giftFeePreviewPayload($base, $donorCovers, 'card');
+                $bankPreview = StripeProcessingFeeEstimator::giftFeePreviewPayload($base, $donorCovers, 'bank');
+                $feePreviewCheckoutTotalsByRail = [
+                    'card' => $cardPreview['checkout_total_usd'],
+                    'bank' => $bankPreview['checkout_total_usd'],
+                ];
             }
         }
 
@@ -392,6 +400,7 @@ class DonationController extends Controller
             'topOrganizations' => $topOrganizations,
             'donatedCauses' => $donatedCauses,
             'feePreview' => $feePreview,
+            'feePreviewCheckoutTotalsByRail' => $feePreviewCheckoutTotalsByRail,
         ]);
     }
 

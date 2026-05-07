@@ -2,12 +2,18 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\LivestreamRecordingDecline;
 use App\Models\Organization;
 use App\Models\OrganizationLivestream;
+use App\Models\StreamingJob;
 use App\Models\User;
 use App\Models\UserLivestream;
+use App\Services\Streaming\StreamingQueueService;
+use App\Support\MeetingRecordingPreference;
+use App\Support\StreamingWorkerSourceUrl;
 use App\Services\DropboxOAuthService;
 use App\Services\DropboxOrgApi;
+use App\Services\YouTubeService;
 use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -230,13 +236,29 @@ class SupporterLivestreamController extends Controller
             'display_name' => 'nullable|string|max:255',
             'is_public' => 'nullable|boolean',
             'require_passcode' => 'nullable|boolean',
-            'passcode' => 'nullable|string|min:6|max:100',
+            'passcode' => [
+                'nullable',
+                'string',
+                'max:100',
+                function (string $_attribute, mixed $value, \Closure $fail) use ($request): void {
+                    if (! $request->boolean('require_passcode')) {
+                        return;
+                    }
+                    if ($value === null || $value === '') {
+                        return;
+                    }
+                    if (strlen((string) $value) < 6) {
+                        $fail(__('Passcode must be at least 6 characters.'));
+                    }
+                },
+            ],
             'record_meeting' => 'nullable|boolean',
+            'go_live' => 'nullable|boolean',
         ]);
 
         $user = $request->user();
         $roomName = $this->getUnityMeetingId($request);
-        $requirePasscode = $request->boolean('require_passcode', true);
+        $requirePasscode = $request->boolean('require_passcode');
         $password = $requirePasscode
             ? (string) ($request->input('passcode') ?: UserLivestream::generatePassword())
             : '';
@@ -247,8 +269,9 @@ class SupporterLivestreamController extends Controller
         if ($displayName !== null && $displayName !== '') {
             $settings['display_name'] = $displayName;
         }
-        $settings['record_meeting'] = $request->boolean('record_meeting', true);
+        $settings['record_meeting'] = $request->boolean('record_meeting');
         $settings['require_passcode'] = $requirePasscode;
+        $settings['go_live'] = $request->boolean('go_live');
 
         // Meeting ID is fixed per supporter. Reuse the same draft record instead of creating duplicates.
         $livestream = UserLivestream::firstOrNew([
@@ -258,7 +281,7 @@ class SupporterLivestreamController extends Controller
         $livestream->fill([
             'room_password' => $encryptedPassword,
             'status' => 'draft',
-            'is_public' => $request->boolean('is_public', true),
+            'is_public' => $request->boolean('is_public'),
             'title' => $request->title,
             'settings' => $settings ?: null,
         ]);
@@ -278,7 +301,22 @@ class SupporterLivestreamController extends Controller
             'display_name' => 'nullable|string|max:255',
             'is_public' => 'nullable|boolean',
             'require_passcode' => 'nullable|boolean',
-            'passcode' => 'nullable|string|min:6|max:100',
+            'passcode' => [
+                'nullable',
+                'string',
+                'max:100',
+                function (string $_attribute, mixed $value, \Closure $fail) use ($request): void {
+                    if (! $request->boolean('require_passcode')) {
+                        return;
+                    }
+                    if ($value === null || $value === '') {
+                        return;
+                    }
+                    if (strlen((string) $value) < 6) {
+                        $fail(__('Passcode must be at least 6 characters.'));
+                    }
+                },
+            ],
             'record_meeting' => 'nullable|boolean',
             'schedule_date' => 'required|date_format:Y-m-d',
             'schedule_time' => 'required|date_format:H:i',
@@ -301,7 +339,7 @@ class SupporterLivestreamController extends Controller
             return back()->withErrors(['schedule_date' => 'Schedule time must be in the future.'])->withInput();
         }
 
-        $requirePasscode = $request->boolean('require_passcode', true);
+        $requirePasscode = $request->boolean('require_passcode');
         $password = $requirePasscode
             ? (string) ($request->input('passcode') ?: UserLivestream::generatePassword())
             : '';
@@ -312,7 +350,7 @@ class SupporterLivestreamController extends Controller
         if ($displayName !== null && $displayName !== '') {
             $settings['display_name'] = $displayName;
         }
-        $settings['record_meeting'] = $request->boolean('record_meeting', true);
+        $settings['record_meeting'] = $request->boolean('record_meeting');
         $settings['require_passcode'] = $requirePasscode;
         $emails = $validated['participant_emails'] ?? [];
         if (empty($emails) && ! empty($validated['participant_email'])) {
@@ -328,7 +366,7 @@ class SupporterLivestreamController extends Controller
         $livestream->fill([
             'room_password' => $encryptedPassword,
             'status' => 'scheduled',
-            'is_public' => $request->boolean('is_public', true),
+            'is_public' => $request->boolean('is_public'),
             'title' => $request->input('title'),
             'scheduled_at' => $scheduledAt,
             'settings' => $settings ?: null,
@@ -395,6 +433,7 @@ class SupporterLivestreamController extends Controller
                 }
             }
             $participantUrl = $orgStream->getParticipantUrl();
+            $settings = is_array($orgStream->settings) ? $orgStream->settings : [];
             return Inertia::render('frontend/livestreams/Join', [
                 'livestream' => [
                     'id' => $orgStream->id,
@@ -404,6 +443,11 @@ class SupporterLivestreamController extends Controller
                     'roomPassword' => $password,
                     'participantUrl' => $participantUrl,
                     'status' => $orgStream->status,
+                    'recordingEnabled' => MeetingRecordingPreference::isEnabled($settings, true),
+                    'declineContext' => [
+                        'kind' => 'organization',
+                        'id' => $orgStream->id,
+                    ],
                 ],
                 'organization' => [
                     'id' => $orgStream->organization->id,
@@ -439,6 +483,7 @@ class SupporterLivestreamController extends Controller
                 }
             }
             $participantUrl = $userStream->getParticipantUrl();
+            $userSettings = is_array($userStream->settings) ? $userStream->settings : [];
             return Inertia::render('frontend/livestreams/Join', [
                 'livestream' => [
                     'id' => $userStream->id,
@@ -448,6 +493,11 @@ class SupporterLivestreamController extends Controller
                     'roomPassword' => $password,
                     'participantUrl' => $participantUrl,
                     'status' => $userStream->status,
+                    'recordingEnabled' => MeetingRecordingPreference::isEnabled($userSettings, false),
+                    'declineContext' => [
+                        'kind' => 'user',
+                        'id' => $userStream->id,
+                    ],
                 ],
                 'organization' => [
                     'id' => 0,
@@ -480,9 +530,14 @@ class SupporterLivestreamController extends Controller
 
     public function show(Request $request, int $id): Response
     {
-        $livestream = UserLivestream::where('user_id', $request->user()->id)->with('user')->findOrFail($id);
+        $livestream = UserLivestream::where('user_id', $request->user()->id)->with(['user.organization'])->findOrFail($id);
 
-        $dropboxConnected = ! empty($request->user()->dropbox_refresh_token);
+        $authUser = $request->user()->loadMissing('organization');
+        $dropboxConnected = ! empty($authUser->dropbox_refresh_token)
+            || ($authUser->organization && ! empty($authUser->organization->dropbox_refresh_token));
+        $youtubeConnected = ($authUser->organization && (! empty($authUser->organization->youtube_refresh_token) || ! empty($authUser->organization->youtube_access_token)))
+            || (! empty($authUser->youtube_refresh_token) || ! empty($authUser->youtube_access_token));
+        $youtubeChannelUrl = $authUser->organization?->youtube_channel_url ?: $authUser->youtube_channel_url;
         $password = $livestream->getDecryptedPassword();
         $directorUrl = $livestream->getDirectorUrl(false);
         $directorUrlDropbox = $dropboxConnected ? $livestream->getDirectorUrl(true) : null;
@@ -499,6 +554,7 @@ class SupporterLivestreamController extends Controller
         $settings = $livestream->settings ?? [];
         $displayName = $settings['display_name'] ?? $request->user()->name ?? 'Host';
         $directorLabel = '&label=' . rawurlencode($displayName);
+        $rtmpUrl = $settings['rtmp_url'] ?? 'rtmp://a.rtmp.youtube.com/live2';
         $youtubeGoLiveEnabled = ! empty($livestream->youtube_stream_key);
         $pushLink = $youtubeGoLiveEnabled
             ? 'https://vdo.ninja/?push=' . rawurlencode($vdoRoom) . '&cleanoutput' . $passwordParam . $directorLabel
@@ -507,9 +563,29 @@ class SupporterLivestreamController extends Controller
             ? 'https://vdo.ninja/?director=' . rawurlencode($vdoRoom) . $passwordParam . '&output&autostart&cleanoutput'
             : null;
         $streamKeyDisplay = $youtubeGoLiveEnabled ? $livestream->getDecryptedStreamKey() : null;
-        $rtmpUrl = 'rtmp://a.rtmp.youtube.com/live2';
+
+        $recordingConsentDeclines = LivestreamRecordingDecline::query()
+            ->where('livestream_kind', 'user')
+            ->where('livestream_id', $livestream->id)
+            ->orderByDesc('id')
+            ->limit(50)
+            ->get()
+            ->map(fn (LivestreamRecordingDecline $r) => [
+                'id' => $r->id,
+                'guestLabel' => $r->guest_label,
+                'createdAt' => $r->created_at?->toIso8601String(),
+            ])
+            ->values()
+            ->all();
+
+        $latestStreamingJob = StreamingJob::query()
+            ->where('livestream_kind', 'user')
+            ->where('livestream_id', $livestream->id)
+            ->latest('id')
+            ->first();
 
         return Inertia::render('frontend/livestreams/Show', [
+            'recordingConsentDeclines' => $recordingConsentDeclines,
             'livestream' => [
                 'id' => $livestream->id,
                 'title' => $livestream->title,
@@ -540,6 +616,14 @@ class SupporterLivestreamController extends Controller
                 'viewLink' => $viewLink,
                 'streamKeyDisplay' => $streamKeyDisplay,
                 'rtmpUrl' => $rtmpUrl,
+                'youtubeBroadcastId' => $livestream->youtube_broadcast_id,
+                'youtubeConnected' => $youtubeConnected,
+                'youtubeChannelUrl' => $youtubeChannelUrl,
+                'streamingQueueStatus' => $latestStreamingJob ? [
+                    'status' => $latestStreamingJob->status,
+                    'updatedAt' => optional($latestStreamingJob->updated_at)->toIso8601String(),
+                    'failureReason' => $latestStreamingJob->failure_reason,
+                ] : null,
             ],
         ]);
     }
@@ -562,7 +646,9 @@ class SupporterLivestreamController extends Controller
         $livestream = UserLivestream::where('user_id', $request->user()->id)->findOrFail($id);
 
         if (! $livestream->canGoLive()) {
-            return redirect()->back()->withErrors(['error' => 'Stream cannot go live in current state.']);
+            return redirect()->back()->withErrors([
+                'error' => 'Cannot mark live in this state (status: '.$livestream->status.'). Use End stream if you are already broadcasting, or open a new meeting.',
+            ]);
         }
 
         $livestream->update([
@@ -678,23 +764,139 @@ class SupporterLivestreamController extends Controller
             'youtube_stream_key' => Crypt::encryptString($request->youtube_stream_key),
         ]);
 
-        return redirect()->back()->with('success', 'YouTube stream key saved. You can go live with OBS when ready.');
+        return redirect()->back()->with('success', 'YouTube stream key saved. You can start your cloud stream when ready.');
     }
 
-    public function goLiveOBSAuto(Request $request, int $id): RedirectResponse
+    /**
+     * Create a YouTube live broadcast on the connected account (user OAuth first, else organization) and save stream key.
+     */
+    public function prepareYouTubeLive(Request $request, int $id, YouTubeService $youtubeService): RedirectResponse
+    {
+        $livestream = UserLivestream::where('user_id', $request->user()->id)->findOrFail($id);
+
+        if (! empty($livestream->youtube_stream_key)) {
+            return redirect()->back()->with('success', 'This meeting already has a stream key.');
+        }
+
+        $authUser = $request->user()->loadMissing('organization');
+        $accessToken = null;
+        if (! empty($authUser->youtube_access_token) || ! empty($authUser->youtube_refresh_token)) {
+            $accessToken = $youtubeService->getValidAccessTokenForUser($authUser);
+        }
+        if (! $accessToken && $authUser->organization
+            && (! empty($authUser->organization->youtube_access_token) || ! empty($authUser->organization->youtube_refresh_token))) {
+            $accessToken = $youtubeService->getValidAccessToken($authUser->organization);
+        }
+
+        if (! $accessToken) {
+            return redirect()->back()->withErrors([
+                'youtube' => 'Connect YouTube in Integrations (your account or organization), then try again.',
+            ]);
+        }
+
+        $title = $livestream->title ?: 'Unity Meet';
+        $scheduledStart = $livestream->scheduled_at && $livestream->scheduled_at->isFuture()
+            ? $livestream->scheduled_at
+            : null;
+
+        $broadcastData = $youtubeService->createLiveBroadcast(
+            $accessToken,
+            $title,
+            $livestream->description,
+            $scheduledStart
+        );
+
+        if (! $broadcastData) {
+            return redirect()->back()->withErrors([
+                'youtube' => 'Could not create a YouTube live broadcast. Try again or paste a stream key from YouTube Studio.',
+            ]);
+        }
+
+        $settings = $livestream->settings ?? [];
+        $settings['rtmp_url'] = $broadcastData['rtmp_url'] ?? ($settings['rtmp_url'] ?? null);
+
+        $livestream->update([
+            'youtube_stream_key' => Crypt::encryptString($broadcastData['stream_key']),
+            'youtube_broadcast_id' => $broadcastData['broadcast_id'],
+            'settings' => $settings ?: null,
+        ]);
+
+        return redirect()->back()->with(
+            'success',
+            'YouTube live is ready on your connected channel. Your stream key was saved — click Go Live when you are ready.'
+        );
+    }
+
+    /**
+     * Enqueue AWS streaming worker (SQS): pull meeting video from the host VDO URL and push RTMP to YouTube.
+     * Legacy route name "go-live-obs-auto" is kept as an alias — this path does not use OBS.
+     */
+    public function queueStreamRelayJob(Request $request, int $id, StreamingQueueService $streamingQueue): RedirectResponse
     {
         $livestream = UserLivestream::where('user_id', $request->user()->id)->findOrFail($id);
 
         if (! $livestream->canGoLive()) {
-            return redirect()->back()->withErrors(['go_live' => 'Stream cannot go live in current state.']);
+            return redirect()->back()->withErrors([
+                'go_live' => 'Cannot queue the cloud stream in this state (status: '.$livestream->status.'). End any active stream or open a new meeting.',
+            ]);
+        }
+
+        $streamKey = $livestream->getDecryptedStreamKey();
+        if (! $streamKey) {
+            return redirect()->back()->withErrors(['go_live' => 'Missing YouTube stream key. Add it first in settings.']);
+        }
+
+        if ($streamingQueue->willUseRealSqs() && ! StreamingWorkerSourceUrl::hasWorkerIngestConfigured()) {
+            return redirect()->back()->withErrors([
+                'go_live' => 'Cloud relay source is not configured. Set MEDIAMTX_RTMP_PUBLIC or STREAMING_WORKER_RTMP_PULL_BASE (or STREAMING_WORKER_SOURCE_URL_TEMPLATE), then retry.',
+            ]);
+        }
+
+        $organizationId = (string) $request->user()->id;
+        $meetingId = (string) $livestream->id;
+        $sourceUrl = StreamingWorkerSourceUrl::resolve($livestream);
+        $destinationUrl = 'rtmp://a.rtmp.youtube.com/live2/'.$streamKey;
+        $callbackUrl = streaming_status_callback_url();
+        $maxDurationMinutes = (int) config('streaming.max_duration_minutes', 120);
+
+        $job = StreamingJob::create([
+            'livestream_kind' => 'user',
+            'livestream_id' => $livestream->id,
+            'meeting_id' => $meetingId,
+            'organization_id' => $organizationId,
+            'source_url' => $sourceUrl,
+            'destination_url' => $destinationUrl,
+            'callback_url' => $callbackUrl,
+            'max_duration_minutes' => $maxDurationMinutes,
+            'status' => 'queued',
+        ]);
+
+        try {
+            $streamingQueue->enqueue($job, [
+                'meeting_id' => $meetingId,
+                'organization_id' => $organizationId,
+                'source_url' => $sourceUrl,
+                'destination_url' => $destinationUrl,
+                'callback_url' => $callbackUrl,
+                'max_duration_minutes' => $maxDurationMinutes,
+            ]);
+        } catch (\Throwable $e) {
+            $job->update([
+                'status' => 'failed',
+                'failure_reason' => $e->getMessage(),
+            ]);
+
+            return redirect()->back()->withErrors(['go_live' => 'Could not queue the cloud stream job. Check AWS/SQS configuration and try again.']);
         }
 
         $livestream->update([
-            'status' => 'live',
-            'started_at' => $livestream->started_at ?? now(),
+            'status' => 'meeting_live',
         ]);
 
-        return redirect()->back()->with('success', 'You are now live. Your stream is being sent to YouTube via OBS.');
+        return redirect()->back()->with(
+            'success',
+            'Cloud stream queued (AWS). Keep this meeting open as host; status will move to live when the worker connects.'
+        );
     }
 
     /**

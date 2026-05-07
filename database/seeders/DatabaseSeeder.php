@@ -53,6 +53,7 @@ class DatabaseSeeder extends Seeder
         $this->callUnlessSeeded(CategorySeeder::class);
         $this->callUnlessSeeded(PositionCategoriesAndJobPositionsSeeder::class);
         $this->callUnlessSeeded(EventTypesTableSeeder::class);
+        $this->callUnlessSeeded(CompanionEventTypesSeeder::class);
         $this->callUnlessSeeded(ChatRoomsSeeder::class);
         $this->callUnlessSeeded(PlanSeeder::class);
         $this->callUnlessSeeded(WalletPlanSeeder::class);

@@ -20,6 +20,7 @@ import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
 import { formatCourseMonthDayBadge, formatCourseStartDisplay } from "@/lib/course-start-datetime"
 import {
+  appendConnectionHubListingTypeQuery,
   connectionHubMyButtonHref,
   connectionHubTeachButtonHref,
   type ConnectionHubAuth,
@@ -104,19 +105,20 @@ export default function EventsConnectionHubLanding({
     `${route("login")}?redirect=${encodeURIComponent(path)}`
 
   const createHref =
-    connectionHubTeachButtonHref(auth) ??
-    loginWithRedirect(route("profile.course.create"))
+    connectionHubTeachButtonHref(auth, "events") ??
+    loginWithRedirect(appendConnectionHubListingTypeQuery(route("profile.course.create"), "events"))
   const myEventsHref =
     connectionHubMyButtonHref(auth) ?? loginWithRedirect(route("enrollments.my"))
 
   const goToFullCatalog = () => {
-    router.get(route("course.index"), {}, { preserveState: false, preserveScroll: false })
+    router.get(route("course.index"), { type: "events", view: "catalog" }, { preserveState: false, preserveScroll: false })
   }
 
   const filterEventType = (eventTypeId: number) => {
     const params = new URLSearchParams(window.location.search)
     params.delete("topic_id")
     params.set("type", "events")
+    params.set("view", "catalog")
     params.set("event_type_id", String(eventTypeId))
     params.set("page", "1")
     router.get(`/courses?${params.toString()}`, {}, { preserveState: false, preserveScroll: false })

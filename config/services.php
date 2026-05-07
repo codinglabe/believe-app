@@ -249,6 +249,8 @@ return [
         'publish_url' => env('MEDIAMTX_PUBLISH_URL', ''),
         // Internal RTMP URL for FFmpeg to pull from (e.g. rtmp://127.0.0.1:1935). Same server as MediaMTX.
         'rtmp_internal' => env('MEDIAMTX_RTMP_INTERNAL', 'rtmp://127.0.0.1:1935'),
+        // Public RTMP base reachable from AWS workers (e.g. rtmp://stream.yourapp.com:1935).
+        'rtmp_public' => env('MEDIAMTX_RTMP_PUBLIC', ''),
     ],
 
     'dropbox' => [

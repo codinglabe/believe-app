@@ -38,7 +38,17 @@ class CourseController extends BaseController
             'type',
             'event_type_id',
             'cause_id',
+            'view',
         ]);
+
+        if (isset($filters['view'])) {
+            $view = strtolower(trim((string) $filters['view']));
+            if ($view === 'catalog') {
+                $filters['view'] = 'catalog';
+            } else {
+                unset($filters['view']);
+            }
+        }
 
         if (isset($filters['type']) && is_string($filters['type'])) {
             $filters['type'] = strtolower(trim($filters['type']));
@@ -47,9 +57,9 @@ class CourseController extends BaseController
             }
         }
 
-        // Learning hub “Explore by Category” uses the same EventType catalog + counts as the events hub
-        // (`event_type_id` on courses), not the separate `topics` table.
+        // Learning + companion hubs: “Explore by Category” uses EventType + `event_type_id` (not `topics`).
         $learningExploreUsesEventTypes = (($filters['type'] ?? null) === 'learning');
+        $companionExploreUsesEventTypes = (($filters['type'] ?? null) === 'companion');
 
         $perPage = (int) $request->query('per_page', 6);
         if (! in_array($perPage, [6, 9, 12, 18], true)) {
@@ -84,7 +94,8 @@ class CourseController extends BaseController
             ->when(
                 ($filters['topic_id'] ?? null)
                 && (($filters['type'] ?? null) !== 'events')
-                && (($filters['type'] ?? null) !== 'learning'),
+                && (($filters['type'] ?? null) !== 'learning')
+                && (($filters['type'] ?? null) !== 'companion'),
                 function ($query) use ($filters) {
                     $topicId = $filters['topic_id'];
                     if ($topicId !== 'all') {
@@ -151,10 +162,8 @@ class CourseController extends BaseController
         });
 
         $topics = Topic::orderBy('name')->get(['id', 'name']);
-        $eventTypes = \App\Models\EventType::where('is_active', true)
-            ->orderBy('category')
-            ->orderBy('name')
-            ->get(['id', 'name', 'category']);
+        $eventTypes = EventType::generalCatalogForProps();
+        $companionEventTypes = EventType::companionCatalogForProps();
 
         $organizations = Organization::with('user:id,slug')
             ->orderBy('name')
@@ -298,6 +307,103 @@ class CourseController extends BaseController
             }
         }
 
+        $companionEventTypeCounts = [];
+        $companionFeaturedCourses = collect();
+        $companionLiveCourses = collect();
+        $companionStats = null;
+
+        if (($filters['type'] ?? null) === 'companion') {
+            $companionEventTypeCounts = $this->connectionHubEventTypeCountsFor('companion');
+
+            $today = now()->toDateString();
+
+            $companionFeatured = Course::query()
+                ->where('type', 'companion')
+                ->where(function ($q) use ($today) {
+                    $q->where('start_date', '>=', $today)
+                        ->orWhere(function ($q2) use ($today) {
+                            $q2->where('start_date', '<=', $today)
+                                ->where(function ($q3) use ($today) {
+                                    $q3->whereNull('end_date')
+                                        ->orWhere('end_date', '>=', $today);
+                                });
+                        });
+                })
+                ->with(['creator', 'eventType', 'organization.organization'])
+                ->withCount(['enrollmentsCount as enrolled_count'])
+                ->orderBy('start_date', 'asc')
+                ->limit(4)
+                ->get();
+
+            if ($companionFeatured->isEmpty()) {
+                $companionFeatured = Course::query()
+                    ->where('type', 'companion')
+                    ->with(['creator', 'eventType', 'organization.organization'])
+                    ->withCount(['enrollmentsCount as enrolled_count'])
+                    ->orderBy('start_date', 'desc')
+                    ->limit(4)
+                    ->get();
+            }
+
+            foreach ($companionFeatured as $course) {
+                $course->organization_name = optional($course->organization->organization)->name;
+                $course->enrolled = $course->enrolled_count ?? 0;
+            }
+            $companionFeaturedCourses = $companionFeatured;
+
+            $companionLive = Course::query()
+                ->where('type', 'companion')
+                ->where('start_date', '<=', $today)
+                ->where(function ($q) use ($today) {
+                    $q->whereNull('end_date')
+                        ->orWhere('end_date', '>=', $today);
+                })
+                ->with(['creator', 'eventType', 'organization.organization'])
+                ->withCount(['enrollmentsCount as enrolled_count'])
+                ->orderBy('start_date', 'desc')
+                ->limit(5)
+                ->get();
+
+            foreach ($companionLive as $course) {
+                $course->organization_name = optional($course->organization->organization)->name;
+                $course->enrolled = $course->enrolled_count ?? 0;
+            }
+            $companionLiveCourses = $companionLive;
+
+            $companionCourseIds = Course::where('type', 'companion')->pluck('id');
+
+            if ($companionCourseIds->isEmpty()) {
+                $companionStats = [
+                    'active_companions' => 0,
+                    'conversations_today' => 0,
+                    'lives_impacted' => 0,
+                    'companion_volunteers' => 0,
+                ];
+            } else {
+                $activeCompanions = (int) DB::table('enrollments')
+                    ->whereIn('course_id', $companionCourseIds)
+                    ->selectRaw('count(distinct user_id) as c')
+                    ->value('c');
+
+                $conversationsToday = (int) Enrollment::query()
+                    ->whereIn('course_id', $companionCourseIds)
+                    ->whereDate('created_at', $today)
+                    ->count();
+
+                $companionStats = [
+                    'active_companions' => $activeCompanions,
+                    'conversations_today' => $conversationsToday,
+                    'lives_impacted' => (int) Enrollment::query()
+                        ->whereIn('course_id', $companionCourseIds)
+                        ->count(),
+                    'companion_volunteers' => (int) DB::table('courses')
+                        ->where('type', 'companion')
+                        ->selectRaw('count(distinct user_id) as c')
+                        ->value('c'),
+                ];
+            }
+        }
+
         $eventsEventTypeCounts = [];
         $eventsFeaturedCourses = collect();
         $eventsLiveCourses = collect();
@@ -399,11 +505,17 @@ class CourseController extends BaseController
             'courses' => $courses,
             'topics' => $topics,
             'eventTypes' => $eventTypes,
+            'companionEventTypes' => $companionEventTypes,
             'causesForFilter' => $causesForFilter,
             'organizations' => $organizations,
             'filters' => $filters,
             'learningExploreUsesEventTypes' => $learningExploreUsesEventTypes,
+            'companionExploreUsesEventTypes' => $companionExploreUsesEventTypes,
             'learningTopicCounts' => $learningTopicCounts,
+            'companionEventTypeCounts' => $companionEventTypeCounts,
+            'companionFeaturedCourses' => $companionFeaturedCourses->values()->all(),
+            'companionLiveCourses' => $companionLiveCourses->values()->all(),
+            'companionStats' => $companionStats,
             'learningSpotlightCourses' => $learningSpotlightCourses->values()->all(),
             'learningFeaturedCourses' => $learningFeaturedCourses->values()->all(),
             'learningStats' => $learningStats,
@@ -505,10 +617,8 @@ class CourseController extends BaseController
             return $course;
         });
 
-        $eventTypes = \App\Models\EventType::where('is_active', true)
-            ->orderBy('category')
-            ->orderBy('name')
-            ->get(['id', 'name', 'category']);
+        $eventTypes = EventType::generalCatalogForProps();
+        $companionEventTypes = EventType::companionCatalogForProps();
 
         // ✅ Calculate statistics only for authenticated organization
         // For organization users, use their user_id as organization_id
@@ -519,6 +629,7 @@ class CourseController extends BaseController
         return Inertia::render('admin/course/Index', [
             'courses' => $courses,
             'eventTypes' => $eventTypes,
+            'companionEventTypes' => $companionEventTypes,
             'filters' => $filters,
             'statistics' => $statistics,
         ]);
@@ -558,17 +669,19 @@ class CourseController extends BaseController
     public function create(Request $request)
     {
         $this->authorizePermission($request, 'course.create');
-        $eventTypes = \App\Models\EventType::where('is_active', true)
-            ->orderBy('category')
-            ->orderBy('name')
-            ->get(['id', 'name', 'category']);
+        $eventTypes = EventType::generalCatalogForProps();
+        $companionEventTypes = EventType::companionCatalogForProps();
 
         $seller = Organization::biuSellerDisplayForUser($request->user());
 
+        $lockedHubListingType = ConnectionHubType::normalizedListingTypeLockFromQuery($request->query('type'));
+
         return Inertia::render('admin/course/Create', array_merge([
             'eventTypes' => $eventTypes,
+            'companionEventTypes' => $companionEventTypes,
             'organizationName' => $seller['name'],
             'sellerNameLabel' => $seller['label'],
+            'lockedHubListingType' => $lockedHubListingType,
         ], $this->organizationPrimaryActionCategoriesPageProps($request)));
     }
 
@@ -588,12 +701,30 @@ class CourseController extends BaseController
             // Basic Information
             'name' => 'required|string|max:255|unique:courses,name',
             'description' => 'required|string',
-            'type' => ['required', Rule::in(ConnectionHubType::VALUES)],
-            'topic_id' => ['nullable', 'exists:topics,id'],
-            'event_type_id' => [
+            'type' => [
                 'required',
-                'exists:event_types,id',
+                Rule::in(ConnectionHubType::VALUES),
+                function (string $attribute, mixed $value, \Closure $fail) use ($request): void {
+                    if (! is_string($value)) {
+                        return;
+                    }
+                    $raw = $request->input('locked_hub_type');
+                    if (! is_string($raw) || trim($raw) === '') {
+                        return;
+                    }
+                    $lock = ConnectionHubType::normalizedListingTypeLockFromQuery($raw);
+                    if ($lock === null) {
+                        $fail(__('Invalid listing type lock.'));
+
+                        return;
+                    }
+                    if ($value !== $lock) {
+                        $fail(__('The listing type cannot be changed for this create flow.'));
+                    }
+                },
             ],
+            'topic_id' => ['nullable', 'exists:topics,id'],
+            'event_type_id' => EventType::validationRulesForHubType($type),
             'meeting_link' => 'nullable|url|max:500', // Added meeting_link validation
 
             // Pricing
@@ -1015,10 +1146,8 @@ class CourseController extends BaseController
             abort(403, 'Unauthorized access to this course.');
         }
 
-        $eventTypes = \App\Models\EventType::where('is_active', true)
-            ->orderBy('category')
-            ->orderBy('name')
-            ->get(['id', 'name', 'category']);
+        $eventTypes = EventType::generalCatalogForProps();
+        $companionEventTypes = EventType::companionCatalogForProps();
 
         // Format the course data properly for the form
         $courseData = $course->load(['topic', 'eventType', 'organization', 'creator', 'primaryActionCategories']);
@@ -1045,6 +1174,7 @@ class CourseController extends BaseController
         return Inertia::render('admin/course/Edit', array_merge([
             'course' => $courseData,
             'eventTypes' => $eventTypes,
+            'companionEventTypes' => $companionEventTypes,
             'organizationName' => $seller['name'],
             'sellerNameLabel' => $seller['label'],
         ], $this->organizationPrimaryActionCategoriesPageProps($request)));
@@ -1077,10 +1207,7 @@ class CourseController extends BaseController
             'description' => 'required|string',
             'type' => ['required', Rule::in(ConnectionHubType::VALUES)],
             'topic_id' => ['nullable', 'exists:topics,id'],
-            'event_type_id' => [
-                'required',
-                'exists:event_types,id',
-            ],
+            'event_type_id' => EventType::validationRulesForHubType($type),
             'meeting_link' => 'nullable|url|max:500', // Added meeting_link validation
 
             // Pricing
@@ -1303,19 +1430,23 @@ class CourseController extends BaseController
     /**
      * Shared “Explore by Category” payload for Connection Hub learning + events landings.
      *
-     * @param  string  $courseType  `learning` or `events` — must match `courses.type`
+     * @param  string  $courseType  `companion`, `learning`, or `events` — must match `courses.type`
      * @return array<int, array{id: int, name: string, count: int}>
      */
     protected function connectionHubEventTypeCountsFor(string $courseType): array
     {
         $alias = match ($courseType) {
+            'companion' => 'companion_count',
             'learning' => 'learning_count',
             'events' => 'events_count',
             default => 'hub_count',
         };
 
+        $prefix = EventType::COMPANION_HUB_CATEGORY_PREFIX;
+
         return EventType::query()
             ->where('is_active', true)
+            ->when($courseType === 'companion', fn ($q) => $q->where('category', 'like', $prefix.'%'))
             ->withCount(['courses as '.$alias => function ($q) use ($courseType) {
                 $q->where('type', $courseType);
             }])
@@ -1323,11 +1454,19 @@ class CourseController extends BaseController
             ->orderBy('category')
             ->orderBy('name')
             ->get(['id', 'name', 'category'])
-            ->map(fn ($et) => [
-                'id' => $et->id,
-                'name' => $et->category ? $et->category.' · '.$et->name : $et->name,
-                'count' => (int) ($et->{$alias} ?? 0),
-            ])
+            ->map(function ($et) use ($courseType, $prefix, $alias) {
+                $cat = $et->category ?? '';
+                if ($courseType === 'companion' && str_starts_with((string) $cat, $prefix)) {
+                    $cat = substr($cat, strlen($prefix));
+                }
+                $display = $cat !== '' ? $cat.' · '.$et->name : $et->name;
+
+                return [
+                    'id' => $et->id,
+                    'name' => $display,
+                    'count' => (int) ($et->{$alias} ?? 0),
+                ];
+            })
             ->filter(fn ($row) => $row['count'] > 0)
             ->values()
             ->all();

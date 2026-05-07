@@ -43,6 +43,10 @@ import EventsConnectionHubLanding, {
   type EventsHubStats,
   type EventsEventTypeCount,
 } from "@/components/frontend/course/EventsConnectionHubLanding"
+import CompanionConnectionHubLanding, {
+  type CompanionEventTypeCount,
+  type CompanionHubStats,
+} from "@/components/frontend/course/CompanionConnectionHubLanding"
 
 interface PrimaryActionCategoryRef {
   id: number
@@ -143,6 +147,10 @@ interface FrontendCoursesListPageProps {
   }
   /** Every active primary-action category for the Cause(s) filter dropdown */
   causesForFilter?: PrimaryActionCategoryRef[]
+  /** Non–companion-only event types (Learning / Events / Earning topic catalog) */
+  eventTypes?: EventType[]
+  /** Companion hub topic catalog only (shown when Type = Companion) */
+  companionEventTypes?: EventType[]
   user?: CourseListUser | null
   message?: string
   filters: {
@@ -155,6 +163,8 @@ interface FrontendCoursesListPageProps {
     organization?: string
     /** Filter listings that include this primary-action category (cause) */
     cause_id?: string
+    /** When `catalog`, show the searchable table instead of the hub marketing landing */
+    view?: string
   }
   learningTopicCounts?: LearningTopicCount[]
   /** Learning hub category strip uses event types + `event_type_id` instead of topics */
@@ -166,6 +176,11 @@ interface FrontendCoursesListPageProps {
   eventsFeaturedCourses?: EventsHubCourse[]
   eventsLiveCourses?: EventsHubCourse[]
   eventsStats?: EventsHubStats | null
+  companionExploreUsesEventTypes?: boolean
+  companionEventTypeCounts?: CompanionEventTypeCount[]
+  companionFeaturedCourses?: EventsHubCourse[]
+  companionLiveCourses?: EventsHubCourse[]
+  companionStats?: CompanionHubStats | null
 }
 
 function stripHtmlToText(html: string, maxLen = 140): string {
@@ -218,11 +233,21 @@ function listingStatus(course: Course): { label: string; variant: "live" | "mute
 
 const PER_PAGE_OPTIONS = [6, 9, 12, 18] as const
 
+const COMPANION_CATEGORY_LABEL_PREFIX = "Companion · "
+
+function formatCategoryFilterLabel(et: EventType): string {
+  const c = et.category
+  if (!c) return et.name
+  const group = c.startsWith(COMPANION_CATEGORY_LABEL_PREFIX) ? c.slice(COMPANION_CATEGORY_LABEL_PREFIX.length) : c
+  return `${group} · ${et.name}`
+}
+
 export default function FrontendCoursesListPage({
   seo,
   courses: initialCourses,
-  topics = [],
   causesForFilter = [],
+  eventTypes = [],
+  companionEventTypes = [],
   filters,
   learningTopicCounts = [],
   learningExploreUsesEventTypes = false,
@@ -233,6 +258,11 @@ export default function FrontendCoursesListPage({
   eventsFeaturedCourses = [],
   eventsLiveCourses = [],
   eventsStats = null,
+  companionExploreUsesEventTypes = false,
+  companionEventTypeCounts = [],
+  companionFeaturedCourses = [],
+  companionLiveCourses = [],
+  companionStats = null,
 }: FrontendCoursesListPageProps) {
   const flash = usePage().props
   const { showNotification } = useNotification()
@@ -242,6 +272,7 @@ export default function FrontendCoursesListPage({
     filters.cause_id ? Number.parseInt(filters.cause_id, 10) : null,
   )
   const [selectedPricing, setSelectedPricing] = useState(filters.pricing_type || "all")
+  const [selectedEventTypeId, setSelectedEventTypeId] = useState(filters.event_type_id || "")
   const [isSearching, setIsSearching] = useState(false)
   const [showFilters, setShowFilters] = useState(true)
   /** Avoid Inertia remount + preserveState merge right after load (causes stale UI / scroll glitches). */
@@ -252,13 +283,23 @@ export default function FrontendCoursesListPage({
     setSelectedType(filters.type || "all")
   }, [filters.type])
 
+  useEffect(() => {
+    setSelectedEventTypeId(filters.event_type_id || "")
+  }, [filters.event_type_id])
+
   /** Full navigation from another route often keeps scroll position; reset once per mount. */
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: "auto" })
   }, [])
 
   const performSearch = useCallback(
-    (query: string, type: string, causeId: number | null, pricing: string) => {
+    (
+      query: string,
+      type: string,
+      causeId: number | null,
+      pricing: string,
+      eventTypeId: string,
+    ) => {
       setIsSearching(true)
 
       const params: Record<string, string> = { page: "1" }
@@ -266,6 +307,8 @@ export default function FrontendCoursesListPage({
       if (type !== "all") params.type = type
       if (causeId) params.cause_id = causeId.toString()
       if (pricing !== "all") params.pricing_type = pricing
+      if (eventTypeId) params.event_type_id = eventTypeId
+      if (filters.view === "catalog") params.view = "catalog"
 
       const urlParams = new URLSearchParams(window.location.search)
       const perPage = urlParams.get("per_page")
@@ -280,7 +323,7 @@ export default function FrontendCoursesListPage({
         onFinish: () => setIsSearching(false),
       })
     },
-    [],
+    [filters.view],
   )
 
   useEffect(() => {
@@ -289,11 +332,11 @@ export default function FrontendCoursesListPage({
       return
     }
     const timer = setTimeout(() => {
-      performSearch(searchQuery, selectedType, selectedCauseId, selectedPricing)
+      performSearch(searchQuery, selectedType, selectedCauseId, selectedPricing, selectedEventTypeId)
     }, 500)
 
     return () => clearTimeout(timer)
-  }, [searchQuery, selectedType, selectedCauseId, selectedPricing, performSearch])
+  }, [searchQuery, selectedType, selectedCauseId, selectedPricing, selectedEventTypeId, performSearch])
 
   useEffect(() => {
     if (flash?.success) {
@@ -335,6 +378,7 @@ export default function FrontendCoursesListPage({
     setSelectedType("all")
     setSelectedCauseId(null)
     setSelectedPricing("all")
+    setSelectedEventTypeId("")
     router.get("/courses", {}, { preserveScroll: false, replace: true, preserveState: false })
   }
 
@@ -342,7 +386,8 @@ export default function FrontendCoursesListPage({
     Boolean(searchQuery.trim()) ||
     selectedType !== "all" ||
     selectedCauseId != null ||
-    selectedPricing !== "all"
+    selectedPricing !== "all" ||
+    selectedEventTypeId !== ""
 
   const shellClass =
     "relative isolate min-h-screen bg-slate-50 text-slate-900 dark:bg-[#0B0E14] dark:text-slate-100"
@@ -362,16 +407,36 @@ export default function FrontendCoursesListPage({
   const tableRowClass =
     "border-slate-100 hover:bg-slate-50/80 dark:border-slate-800/90 dark:hover:bg-slate-900/60"
 
-  const showLearningLanding = filters.type === "learning"
-  const showEventsLanding = filters.type === "events"
-  /** Hub landings are standalone; do not stack the searchable table + pagination below. */
-  const showConnectionHubTable = !showLearningLanding && !showEventsLanding
+  const isCatalogView = filters.view === "catalog"
+  const showLearningLanding = filters.type === "learning" && !isCatalogView
+  const showEventsLanding = filters.type === "events" && !isCatalogView
+  const showCompanionLanding = filters.type === "companion" && !isCatalogView
+  /** Hub landings are standalone; `view=catalog` shows the filterable table with the same `type`. */
+  const showConnectionHubTable =
+    !showLearningLanding && !showEventsLanding && !showCompanionLanding
 
   /** Server sends only categories with learning listings; do not inject zero-count chips from `topics`. */
   const learningHubTopicRows = useMemo((): LearningTopicCount[] => {
     if (!showLearningLanding) return learningTopicCounts
     return learningTopicCounts
   }, [showLearningLanding, learningTopicCounts])
+
+  const categoryFilterOptions = useMemo(() => {
+    if (selectedType === "companion") return companionEventTypes
+    if (selectedType === "learning" || selectedType === "events") return eventTypes
+    const byId = new Map<number, EventType>()
+    for (const et of companionEventTypes) byId.set(et.id, et)
+    for (const et of eventTypes) byId.set(et.id, et)
+    return Array.from(byId.values())
+  }, [selectedType, companionEventTypes, eventTypes])
+
+  useEffect(() => {
+    const ids = new Set(categoryFilterOptions.map((e) => String(e.id)))
+    setSelectedEventTypeId((prev) => {
+      if (!prev || ids.has(prev)) return prev
+      return ""
+    })
+  }, [selectedType, categoryFilterOptions])
 
   return (
     <FrontendLayout>
@@ -392,6 +457,15 @@ export default function FrontendCoursesListPage({
             eventsFeaturedCourses={eventsFeaturedCourses}
             eventsLiveCourses={eventsLiveCourses}
             eventsStats={eventsStats}
+          />
+        )}
+        {showCompanionLanding && (
+          <CompanionConnectionHubLanding
+            companionEventTypeCounts={companionEventTypeCounts}
+            companionExploreUsesEventTypes={companionExploreUsesEventTypes}
+            companionFeaturedCourses={companionFeaturedCourses}
+            companionLiveCourses={companionLiveCourses}
+            companionStats={companionStats}
           />
         )}
         {showConnectionHubTable && (
@@ -482,7 +556,7 @@ export default function FrontendCoursesListPage({
                     animate={{ opacity: 1, height: "auto" }}
                     exit={{ opacity: 0, height: 0 }}
                     transition={{ duration: 0.25 }}
-                    className="grid grid-cols-1 gap-4 border-t border-slate-200 pt-4 sm:grid-cols-3 dark:border-slate-800"
+                    className="grid grid-cols-1 gap-4 border-t border-slate-200 pt-4 sm:grid-cols-2 xl:grid-cols-4 dark:border-slate-800"
                   >
                     <div>
                       <Label className="mb-2 block text-sm font-semibold text-slate-800 dark:text-slate-200">
@@ -497,6 +571,24 @@ export default function FrontendCoursesListPage({
                         <option value="companion">Companion</option>
                         <option value="learning">Learning</option>
                         <option value="events">Events</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <Label className="mb-2 block text-sm font-semibold text-slate-800 dark:text-slate-200">
+                        Category
+                      </Label>
+                      <select
+                        value={selectedEventTypeId}
+                        onChange={(e) => setSelectedEventTypeId(e.target.value)}
+                        className={selectClass}
+                      >
+                        <option value="">All categories</option>
+                        {categoryFilterOptions.map((et) => (
+                          <option key={et.id} value={String(et.id)}>
+                            {formatCategoryFilterLabel(et)}
+                          </option>
+                        ))}
                       </select>
                     </div>
 
@@ -740,7 +832,7 @@ export default function FrontendCoursesListPage({
                       const cur = initialCourses.current_page
                       const half = Math.floor(maxVisible / 2)
                       let start = Math.max(1, cur - half)
-                      let end = Math.min(last, start + maxVisible - 1)
+                      const end = Math.min(last, start + maxVisible - 1)
                       if (end - start < maxVisible - 1) {
                         start = Math.max(1, end - maxVisible + 1)
                       }

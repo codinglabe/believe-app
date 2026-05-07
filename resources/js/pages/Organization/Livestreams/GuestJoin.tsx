@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from "react"
 import { Head, Link, usePage } from "@inertiajs/react"
+import { RecordingConsentBarrier } from "@/components/livestreams/RecordingConsentBarrier"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
@@ -29,6 +30,8 @@ interface Livestream {
   status: "draft" | "scheduled" | "live" | "ended" | "cancelled"
   scheduledAt?: string | null
   participantEmails?: string[] | null
+  recordingEnabled?: boolean
+  declineContext?: { kind: "user" | "organization"; id: number }
 }
 
 interface Organization {
@@ -39,9 +42,10 @@ interface Organization {
 interface Props {
   livestream: Livestream
   organization: Organization
+  recordingDeclineReturnTo: string
 }
 
-export default function GuestJoin({ livestream, organization }: Props) {
+export default function GuestJoin({ livestream, organization, recordingDeclineReturnTo }: Props) {
   const page = usePage()
   const authEmail = (page.props as any)?.auth?.user?.email as string | undefined
   const [cameraEnabled, setCameraEnabled] = useState(false)
@@ -50,6 +54,12 @@ export default function GuestJoin({ livestream, organization }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null)
   const [inviteEmail, setInviteEmail] = useState("")
   const [inviteChecked, setInviteChecked] = useState(false)
+  const recordingOn = !!(livestream.recordingEnabled ?? false)
+  const [recordingConsentAccepted, setRecordingConsentAccepted] = useState(!recordingOn)
+
+  useEffect(() => {
+    setRecordingConsentAccepted(!recordingOn)
+  }, [livestream.id, recordingOn])
 
   useEffect(() => {
     if (authEmail && authEmail.trim() && inviteEmail.trim() === "") {
@@ -134,6 +144,31 @@ export default function GuestJoin({ livestream, organization }: Props) {
   const allowedByInvite = !inviteRequired || ((authEmail?.trim() ? true : inviteChecked) && isInvited)
 
   const showMeetingPrep = (livestream.status !== "scheduled" || scheduledTimeReached) && allowedByInvite
+  const gateRecordingConsent =
+    showMeetingPrep &&
+    canJoin &&
+    recordingOn &&
+    livestream.declineContext &&
+    !recordingConsentAccepted
+
+  if (gateRecordingConsent && livestream.declineContext) {
+    return (
+      <FrontendLayout>
+        <Head title={`Join Livestream: ${livestream.title || "Untitled"}`} />
+        <RecordingConsentBarrier
+          open
+          appearance="dark"
+          meetingTitle={livestream.title}
+          organizerLabel={organization.name}
+          livestreamKind={livestream.declineContext.kind}
+          livestreamId={livestream.declineContext.id}
+          guestLabel={authEmail?.trim() || (inviteEmailNormalized && isInvited ? inviteEmail.trim() : null) || null}
+          onAccepted={() => setRecordingConsentAccepted(true)}
+          returnToAfterDecline={recordingDeclineReturnTo}
+        />
+      </FrontendLayout>
+    )
+  }
 
   return (
     <FrontendLayout>
