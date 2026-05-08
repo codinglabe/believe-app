@@ -9,6 +9,7 @@ use App\Models\Organization;
 use App\Models\OrganizationLivestream;
 use App\Models\StreamingJob;
 use App\Models\UserLivestream;
+use App\Services\Streaming\StreamingPreflight;
 use App\Services\Streaming\StreamingQueueService;
 use App\Support\MeetingRecordingPreference;
 use App\Support\StreamingWorkerSourceUrl;
@@ -688,7 +689,7 @@ class LivestreamController extends Controller
      * Enqueue AWS streaming worker (SQS): pull meeting video from the host VDO URL and push RTMP to YouTube.
      * Legacy route "go-live-obs-auto" is an alias — this does not use OBS.
      */
-    public function queueStreamRelayJob(Request $request, $id, StreamingQueueService $streamingQueue)
+    public function queueStreamRelayJob(Request $request, $id, StreamingQueueService $streamingQueue, StreamingPreflight $preflight)
     {
         $user = Auth::user();
         $organization = $user->organization ?? Organization::where('user_id', $user->id)->first();
@@ -704,6 +705,11 @@ class LivestreamController extends Controller
             return redirect()->back()->withErrors([
                 'go_live' => 'Cannot queue the cloud stream in this state (status: '.$livestream->status.'). End any active stream first, or reset the meeting.',
             ]);
+        }
+
+        $gate = $preflight->check($livestream, $user);
+        if (! $gate->allowed) {
+            return redirect()->back()->withErrors(['go_live' => $gate->reason]);
         }
 
         $streamKey = $livestream->getDecryptedStreamKey();
