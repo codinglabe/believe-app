@@ -1,7 +1,6 @@
 import React from 'react'
 import { Link, router } from '@inertiajs/react'
-import { MerchantButton } from '@/components/merchant-ui'
-import { Search, Settings, LogOut, ChevronDown, CreditCard } from 'lucide-react'
+import { Search, Settings, LogOut, ChevronDown, CreditCard, Bell } from 'lucide-react'
 import { usePage } from '@inertiajs/react'
 import {
   DropdownMenu,
@@ -17,8 +16,11 @@ interface MerchantDashboardHeaderProps {
 }
 
 export function MerchantDashboardHeader({ className = '' }: MerchantDashboardHeaderProps) {
-  const { auth } = usePage().props as any
+  const { auth } = usePage().props as {
+    auth?: { user?: { pending_pool_approval_count?: number; [key: string]: unknown } }
+  }
   const merchant = auth?.user
+  const pendingApprovals = Number(merchant?.pending_pool_approval_count ?? 0)
 
   const handleLogout = () => {
     router.post(route('merchant.logout'))
@@ -26,26 +28,50 @@ export function MerchantDashboardHeader({ className = '' }: MerchantDashboardHea
 
   return (
     <header
-      className={`fixed top-0 left-0 lg:left-64 right-0 h-16 z-30 bg-black/30 backdrop-blur border-b border-[#2563EB]/20 ${className}`}
+      className={`fixed top-0 left-0 right-0 z-30 h-[3.75rem] border-b border-white/[0.06] bg-[#0a0c1b]/85 backdrop-blur-md sm:h-16 lg:left-64 ${className}`}
     >
-      <div className="flex items-center justify-between h-full px-4 sm:px-6">
-        <div className="flex-1 max-w-md hidden md:block">
+      <div className="flex h-full items-center justify-between gap-3 pl-14 pr-4 sm:pl-6 sm:pr-6">
+        <div className="hidden min-w-0 flex-1 md:block md:max-w-xl lg:max-w-md">
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-white/50" />
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-white/40" />
             <input
-              type="text"
-              placeholder="Search offers, redemptions..."
-              className="w-full pl-10 pr-4 py-2 bg-black/30 border border-[#2563EB]/25 rounded-lg text-white placeholder-white/50 focus:outline-none focus:ring-2 focus:ring-[#2563EB]/35 focus:border-[#2563EB]"
+              type="search"
+              placeholder="Search orders, redemptions, rewards..."
+              className="w-full rounded-xl border border-white/[0.08] bg-[#161B30]/90 py-2 pl-10 pr-4 text-sm text-white placeholder:text-slate-500 focus:border-purple-500/40 focus:outline-none focus:ring-2 focus:ring-purple-500/25"
             />
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex min-w-0 flex-1 items-center md:flex-initial md:justify-end">
+          <div className="relative flex w-full md:hidden">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" />
+            <input
+              type="search"
+              placeholder="Search..."
+              aria-label="Search orders, redemptions, rewards"
+              className="w-full rounded-xl border border-white/[0.08] bg-[#161B30]/90 py-2 pl-9 pr-3 text-sm text-white placeholder:text-slate-500 focus:border-purple-500/40 focus:outline-none focus:ring-2 focus:ring-purple-500/25"
+            />
+          </div>
+        </div>
+
+        <div className="flex shrink-0 items-center gap-2 sm:gap-3">
+          <Link
+            href="/marketplace-pool-approvals"
+            className="relative flex shrink-0 rounded-xl border border-white/[0.08] bg-[#161B30]/80 p-2 text-slate-300 transition hover:bg-white/10 hover:text-white sm:p-2.5"
+            aria-label="Approvals and notifications"
+          >
+            <Bell className="h-5 w-5" />
+            {pendingApprovals > 0 && (
+              <span className="absolute -right-1 -top-1 flex h-[1.125rem] min-w-[1.125rem] items-center justify-center rounded-full bg-gradient-to-br from-[#8E2DE2] to-[#4A00E0] px-1 text-[10px] font-bold leading-none text-white shadow-sm">
+                {pendingApprovals > 99 ? '99+' : pendingApprovals}
+              </span>
+            )}
+          </Link>
           {merchant && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <button className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-white/10 transition-colors focus:outline-none focus:ring-2 focus:ring-[#2563EB]/35">
-                  <div className="w-8 h-8 rounded-full bg-[#2563EB] flex items-center justify-center">
+                <button className="flex items-center gap-2 rounded-lg px-2 py-2 transition-colors hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-purple-500/35 sm:px-3">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#8E2DE2] to-[#4A00E0]">
                     <span className="text-white font-bold text-xs">
                       {merchant.name?.charAt(0).toUpperCase() || 'M'}
                     </span>
@@ -54,14 +80,14 @@ export function MerchantDashboardHeader({ className = '' }: MerchantDashboardHea
                     <p className="text-sm font-semibold text-white">
                       {merchant.business_name || merchant.name}
                     </p>
-                    <p className="text-xs text-white/60">{merchant.role}</p>
+                    <p className="text-xs capitalize text-white/60">{merchant.role || 'Merchant'}</p>
                   </div>
                   <ChevronDown className="w-4 h-4 text-white/60 hidden md:block" />
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent
                 align="end"
-                className="w-56 bg-[#0A2540] border border-[#2563EB]/25 text-white shadow-xl"
+                className="w-56 border border-white/10 bg-[#161B30] text-white shadow-xl"
               >
                 <DropdownMenuLabel className="px-3 py-2">
                   <div className="flex flex-col space-y-1">
@@ -69,7 +95,7 @@ export function MerchantDashboardHeader({ className = '' }: MerchantDashboardHea
                     <p className="text-xs text-white/60 truncate">{merchant.email}</p>
                   </div>
                 </DropdownMenuLabel>
-                <DropdownMenuSeparator className="bg-[#2563EB]/20" />
+                <DropdownMenuSeparator className="bg-white/10" />
                 <DropdownMenuItem asChild className="focus:bg-white/10 focus:text-white">
                   <Link href="/settings" className="flex items-center gap-2 cursor-pointer text-white/80">
                     <Settings className="w-4 h-4" />
@@ -84,7 +110,7 @@ export function MerchantDashboardHeader({ className = '' }: MerchantDashboardHea
                     </Link>
                   </DropdownMenuItem>
                 )}
-                <DropdownMenuSeparator className="bg-[#2563EB]/20" />
+                <DropdownMenuSeparator className="bg-white/10" />
                 <DropdownMenuItem
                   onClick={handleLogout}
                   variant="destructive"
