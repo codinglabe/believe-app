@@ -31,6 +31,7 @@ class SeoService
         'volunteer_opportunities' => 'Volunteer Opportunities',
         'social_feed' => 'Social Feed',
         'fundraise' => 'Raise Capital',
+        'unity_loaves' => 'Unity Loaves Directory',
     ];
 
     /**
@@ -67,6 +68,7 @@ class SeoService
                 'volunteer_opportunities' => ['title' => 'Volunteer Opportunities', 'description' => 'Discover volunteer opportunities at nonprofits. Give your time and skills.'],
                 'social_feed' => ['title' => 'Social Feed', 'description' => 'Stay connected with nonprofits and supporters. See updates, share posts, and engage with your community.'],
                 'fundraise' => ['title' => 'Raise Capital | Community-Powered Crowdfunding', 'description' => 'Raise capital through community-powered crowdfunding. Start your application and connect with investors on Wefunder.'],
+                'unity_loaves' => ['title' => 'Unity Loaves Directory', 'description' => 'Find feeding locations, donate money, and drop off non-perishable food. Search meal programs, food pantries, and community kitchens near you.'],
             ],
         ];
     }

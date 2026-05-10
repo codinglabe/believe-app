@@ -238,6 +238,7 @@ export default function Navbar() {
     ...(isLoggedIn ? [{ name: "Social Feed", href: route("social-feed.index"), icon: Users }] : []),
     ...(isLoggedIn ? [{ name: "Find Supporters", href: route("find-supporters.index"), icon: UserPlus }] : []),
     { name: "Care Alliances", href: route("find-care-alliances.index"), icon: HeartHandshake },
+    { name: "Unity Loaves", href: route("unity-loaves.index"), icon: Heart },
     ...(isLoggedIn ? [{ name: "Groups", href: route("groups"), icon: Users }] : []),
     ...(isLoggedIn ? [{ name: "Chat", href: route("chat.index"), icon: MessageSquare }] : []),
   ]
