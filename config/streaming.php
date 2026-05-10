@@ -46,6 +46,25 @@ return [
     ],
 
     /*
+     * Pre-launch gates for queueStreamRelayJob (INTEGRATION.pdf steps 3, 4, 7).
+     * Every gate defaults to off so existing flows are unchanged.
+     *
+     *   STREAMING_REQUIRE_SUBSCRIPTION=true       — blocks if Cashier subscription is inactive
+     *   STREAMING_SUBSCRIPTION_TYPE=default       — Cashier subscription name to check
+     *   STREAMING_PERMISSION_NAME=livestream.start — Spatie/Gate ability checked on the host user
+     *   STREAMING_HARD_QUOTA_MINUTES=3000          — blocks once a calendar-month total hits this cap
+     */
+    'gates' => [
+        'require_subscription' => filter_var(
+            env('STREAMING_REQUIRE_SUBSCRIPTION', false),
+            FILTER_VALIDATE_BOOLEAN
+        ),
+        'subscription_type' => env('STREAMING_SUBSCRIPTION_TYPE', 'default'),
+        'permission_name' => env('STREAMING_PERMISSION_NAME', ''),
+        'hard_quota_minutes' => (int) env('STREAMING_HARD_QUOTA_MINUTES', 0),
+    ],
+
+    /*
      * Without a real ECS/Lambda/etc. worker that polls SQS and POSTs /api/streaming/status,
      * meetings stay queued forever and never show "live".
      *
