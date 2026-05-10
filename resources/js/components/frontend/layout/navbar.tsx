@@ -227,7 +227,6 @@ export default function Navbar() {
         { name: "Companion", href: `${route("course.index")}?type=companion`, icon: GraduationCap },
         { name: "Learning", href: `${route("course.index")}?type=learning`, icon: GraduationCap },
         { name: "Events", href: `${route("course.index")}?type=events`, icon: Calendar },
-        { name: "Earning", href: `${route("course.index")}?type=earning`, icon: TrendingUp },
       ],
     },
     ...(isLoggedIn ? [{ name: "Challenge Hub", href: route("challenge-hub.index"), icon: Trophy }] : []),
@@ -263,6 +262,7 @@ export default function Navbar() {
     ...(isLoggedIn && !showOrgOnlyNav
       ? [{ name: "Raffles", href: route("frontend.raffles.index"), icon: Ticket }]
       : []),
+    ...(isLoggedIn ? [{ name: "Merchant Brp Campaigns", href: route("frontend.brp-campaigns.index"), icon: Sparkles }] : []),
     ...(isLoggedIn ? [{ name: "Feedback Campaigns", href: route("feedback-campaigns.index"), icon: MessageSquare }] : []),
     ...(isLoggedIn ? [{ name: "Add Points", href: route("believe-points.index"), icon: Coins }] : []),
     ...(showOrgOnlyNav

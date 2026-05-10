@@ -1,7 +1,7 @@
 "use client"
 
-import React, { useState } from "react"
-import { Head, useForm, router, Link } from "@inertiajs/react"
+import React from "react"
+import { Head, useForm, Link } from "@inertiajs/react"
 import AppLayout from "@/layouts/app-layout"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
@@ -10,6 +10,8 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Switch } from "@/components/admin/ui/switch"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { CustomFieldLucideIconPicker } from "@/components/admin/CustomFieldLucideIconPicker"
+import { assignPlanCustomFieldKeys, type PlanCustomFieldFormShape } from "@/lib/plan-custom-fields"
 import { 
     Save, 
     ArrowLeft,
@@ -33,15 +35,6 @@ interface PlanFeature {
     sort_order: number
 }
 
-interface CustomField {
-    key: string
-    label: string
-    value: string
-    type: 'text' | 'number' | 'currency' | 'boolean'
-    icon?: string
-    description?: string
-}
-
 interface Plan {
     id: number
     name: string
@@ -53,7 +46,8 @@ interface Plan {
     is_active: boolean
     is_popular: boolean
     sort_order: number
-    custom_fields: CustomField[]
+    trial_days?: number
+    custom_fields: PlanCustomFieldFormShape[]
     features: PlanFeature[]
 }
 
@@ -71,7 +65,7 @@ interface FeatureForm {
 }
 
 export default function AdminPlansEdit({ plan }: EditPlanProps) {
-    const { data, setData, put, processing, errors } = useForm({
+    const form = useForm({
         name: plan.name,
         frequency: plan.frequency,
         price: plan.price.toString(),
@@ -92,6 +86,13 @@ export default function AdminPlansEdit({ plan }: EditPlanProps) {
             sort_order: f.sort_order,
         })) as FeatureForm[],
     })
+
+    form.transform((payload) => ({
+        ...payload,
+        custom_fields: assignPlanCustomFieldKeys(payload.custom_fields ?? []),
+    }))
+
+    const { data, setData, put, processing, errors } = form
 
     const addFeature = () => {
         setData('features', [
@@ -249,13 +250,13 @@ export default function AdminPlansEdit({ plan }: EditPlanProps) {
                                                 setData('custom_fields', [
                                                     ...data.custom_fields,
                                                     {
-                                                        key: `field_${Date.now()}`,
+                                                        key: '',
                                                         label: '',
                                                         value: '',
                                                         type: 'text',
                                                         icon: '',
                                                         description: '',
-                                                    }
+                                                    },
                                                 ])
                                             }}
                                         >
@@ -272,21 +273,32 @@ export default function AdminPlansEdit({ plan }: EditPlanProps) {
                                         </div>
                                     ) : (
                                         data.custom_fields.map((field, index) => (
-                                            <div key={field.key} className="p-4 border rounded-lg space-y-4 bg-muted/30">
-                                                <div className="flex items-center justify-between mb-2">
-                                                    <Label>Custom Field {index + 1}</Label>
+                                            <div
+                                                key={index}
+                                                className="rounded-lg border border-border bg-muted/30 p-4 space-y-4"
+                                            >
+                                                <div className="flex items-center justify-between">
+                                                    <h4 className="font-semibold text-sm">
+                                                        Custom Field {index + 1}
+                                                    </h4>
                                                     <Button
                                                         type="button"
                                                         variant="ghost"
                                                         size="sm"
+                                                        className="text-destructive hover:text-destructive"
                                                         onClick={() => {
-                                                            setData('custom_fields', data.custom_fields.filter((_, i) => i !== index))
+                                                            setData(
+                                                                'custom_fields',
+                                                                data.custom_fields.filter((_, i) => i !== index),
+                                                            )
                                                         }}
                                                     >
-                                                        <Trash2 className="h-4 w-4 text-destructive" />
+                                                        <Trash2 className="h-4 w-4" />
                                                     </Button>
                                                 </div>
-                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+                                                {/* Row 1: Label | Value */}
+                                                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                                                     <div className="space-y-2">
                                                         <Label>Field Label *</Label>
                                                         <Input
@@ -296,8 +308,11 @@ export default function AdminPlansEdit({ plan }: EditPlanProps) {
                                                                 updated[index].label = e.target.value
                                                                 setData('custom_fields', updated)
                                                             }}
-                                                            placeholder="e.g., Emails Included, AI Tokens, Support Level"
+                                                            placeholder="e.g., Emails Included, AI Assistant"
                                                         />
+                                                        <p className="text-xs text-muted-foreground">
+                                                            Internal key is generated from this label when you save.
+                                                        </p>
                                                     </div>
                                                     <div className="space-y-2">
                                                         <Label>Field Value *</Label>
@@ -308,16 +323,24 @@ export default function AdminPlansEdit({ plan }: EditPlanProps) {
                                                                 updated[index].value = e.target.value
                                                                 setData('custom_fields', updated)
                                                             }}
-                                                            placeholder="e.g., 200/mo, Token Re-ups, Email support"
+                                                            placeholder="e.g., 5,000"
                                                         />
                                                     </div>
                                                 </div>
-                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+                                                {/* Row 2: Type | Icon */}
+                                                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                                                     <div className="space-y-2">
                                                         <Label>Field Type</Label>
-                                                        <Select 
-                                                            value={field.type} 
-                                                            onValueChange={(value: 'text' | 'number' | 'currency' | 'boolean') => {
+                                                        <Select
+                                                            value={field.type}
+                                                            onValueChange={(
+                                                                value:
+                                                                    | 'text'
+                                                                    | 'number'
+                                                                    | 'currency'
+                                                                    | 'boolean',
+                                                            ) => {
                                                                 const updated = [...data.custom_fields]
                                                                 updated[index].type = value
                                                                 setData('custom_fields', updated)
@@ -334,22 +357,25 @@ export default function AdminPlansEdit({ plan }: EditPlanProps) {
                                                             </SelectContent>
                                                         </Select>
                                                     </div>
-                                                    <div className="space-y-2">
-                                                        <Label>Icon (Lucide icon name)</Label>
-                                                        <Input
+                                                    <div className="min-w-0 w-full space-y-2">
+                                                        <Label>Icon</Label>
+                                                        <CustomFieldLucideIconPicker
                                                             value={field.icon || ''}
-                                                            onChange={(e) => {
+                                                            onChange={(iconName) => {
                                                                 const updated = [...data.custom_fields]
-                                                                updated[index].icon = e.target.value
+                                                                updated[index].icon = iconName
                                                                 setData('custom_fields', updated)
                                                             }}
-                                                            placeholder="e.g., Mail, Bot, Shield, Users"
                                                         />
                                                     </div>
                                                 </div>
+
+                                                {/* Row 3: Description (full width, number fields) */}
                                                 {field.type === 'number' && (
                                                     <div className="space-y-2">
-                                                        <Label>Description (e.g., Token Re-ups ($1 per 50K tokens))</Label>
+                                                        <Label>
+                                                            Description (e.g., Token Re-ups ($1 per 50K tokens))
+                                                        </Label>
                                                         <Input
                                                             value={field.description || ''}
                                                             onChange={(e) => {
@@ -410,12 +436,13 @@ export default function AdminPlansEdit({ plan }: EditPlanProps) {
                                                             placeholder="e.g., Unlimited Events"
                                                         />
                                                     </div>
-                                                    <div className="space-y-2">
-                                                        <Label>Icon (Lucide icon name)</Label>
-                                                        <Input
+                                                    <div className="min-w-0 w-full space-y-2">
+                                                        <Label>Icon</Label>
+                                                        <CustomFieldLucideIconPicker
                                                             value={feature.icon}
-                                                            onChange={(e) => updateFeature(index, 'icon', e.target.value)}
-                                                            placeholder="e.g., Calendar"
+                                                            onChange={(iconName) =>
+                                                                updateFeature(index, 'icon', iconName)
+                                                            }
                                                         />
                                                     </div>
                                                 </div>

@@ -2,12 +2,24 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\OrganizationLivestream;
+use App\Models\LivestreamRecordingDecline;
 use App\Models\Organization;
+use App\Models\OrganizationLivestream;
+use App\Models\StreamingJob;
+use App\Models\User;
 use App\Models\UserLivestream;
+use App\Services\Streaming\StreamingPreflight;
+use App\Services\Streaming\StreamingQueueService;
+use App\Support\MeetingRecordingPreference;
+use App\Support\StreamingWorkerSourceUrl;
+use App\Services\DropboxOAuthService;
+use App\Services\DropboxOrgApi;
+use App\Services\YouTubeService;
+use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Crypt;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -29,8 +41,47 @@ class SupporterLivestreamController extends Controller
 
     public function index(Request $request): Response
     {
-        $livestreams = UserLivestream::where('user_id', $request->user()->id)
-            ->orderByDesc('created_at')
+        $meetingsView = $request->query('view') === 'meetings';
+        $meetingsTab = (string) $request->query('tab', 'upcoming');
+        if (! in_array($meetingsTab, ['upcoming', 'past'], true)) {
+            $meetingsTab = 'upcoming';
+        }
+
+        $query = UserLivestream::where('user_id', $request->user()->id);
+
+        if ($meetingsView) {
+            if ($meetingsTab === 'past') {
+                $query->where(function ($q) {
+                    $q->whereIn('status', ['ended', 'cancelled'])
+                        ->orWhere(function ($q2) {
+                            $q2->where('status', 'scheduled')
+                                ->whereNotNull('scheduled_at')
+                                ->where('scheduled_at', '<', now());
+                        });
+                })
+                    ->orderByDesc('ended_at')
+                    ->orderByDesc('scheduled_at')
+                    ->orderByDesc('created_at');
+            } else {
+                $query->where(function ($q) {
+                    $q->whereIn('status', ['draft', 'meeting_live', 'live'])
+                        ->orWhere(function ($q2) {
+                            $q2->where('status', 'scheduled')
+                                ->where(function ($q3) {
+                                    $q3->whereNull('scheduled_at')
+                                        ->orWhere('scheduled_at', '>=', now());
+                                });
+                        });
+                })
+                    ->orderByRaw('CASE WHEN scheduled_at IS NULL THEN 1 ELSE 0 END')
+                    ->orderBy('scheduled_at', 'asc')
+                    ->orderByDesc('created_at');
+            }
+        } else {
+            $query->orderByDesc('created_at');
+        }
+
+        $livestreams = $query
             ->paginate(20)
             ->through(function (UserLivestream $livestream) {
                 return [
@@ -44,12 +95,128 @@ class SupporterLivestreamController extends Controller
                     'endedAt' => $livestream->ended_at?->toIso8601String(),
                     'createdAt' => $livestream->created_at->toIso8601String(),
                     'directorUrl' => $livestream->getDirectorUrl(false),
+                    'joinUrl' => url('/livestreams/join/'.$livestream->room_name),
                 ];
             });
 
         return Inertia::render('frontend/livestreams/Index', [
             'livestreams' => $livestreams,
+            'meetingsView' => $meetingsView,
+            'meetingsTab' => $meetingsView ? $meetingsTab : null,
         ]);
+    }
+
+    /**
+     * Hub for going live: YouTube/OBS, Dropbox recordings, and links into meetings.
+     */
+    public function live(Request $request): Response
+    {
+        $user = $request->user();
+        $user->loadMissing('organization');
+        $organization = $user->organization ?? Organization::where('user_id', $user->id)->first();
+
+        if ($organization) {
+            $youtubeConnected = ! empty($organization->youtube_refresh_token) || ! empty($organization->youtube_access_token);
+            $youtubeChannelUrl = $organization->youtube_channel_url;
+            $dropboxConnected = ! empty($organization->dropbox_refresh_token);
+            $youtubeManageUrl = route('integrations.youtube');
+        } else {
+            $youtubeConnected = ! empty($user->youtube_refresh_token) || ! empty($user->youtube_access_token);
+            $youtubeChannelUrl = $user->youtube_channel_url;
+            $dropboxConnected = ! empty($user->dropbox_refresh_token);
+            $youtubeManageUrl = route('integrations.youtube.connect');
+        }
+
+        return Inertia::render('frontend/livestreams/Live', [
+            'youtubeConnected' => $youtubeConnected,
+            'youtubeChannelUrl' => $youtubeChannelUrl ? (string) $youtubeChannelUrl : null,
+            'dropboxConnected' => $dropboxConnected,
+            'youtubeManageUrl' => $youtubeManageUrl,
+            'dropboxUrl' => route('integrations.dropbox'),
+            'meetingsUrl' => route('livestreams.supporter.index'),
+            'createMeetingUrl' => route('livestreams.supporter.create'),
+            'unityMeetHomeUrl' => route('livestreams.supporter.index'),
+            'publicLivestreams' => $this->buildPublicUnityLivestreamList(),
+        ]);
+    }
+
+    /**
+     * Same discovery list as {@see UnityLiveController::index()}: all org + supporter streams that are public and live.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    private function buildPublicUnityLivestreamList(): array
+    {
+        $orgStreams = OrganizationLivestream::query()
+            ->where('status', 'live')
+            ->where('is_public', true)
+            ->with('organization:id,name')
+            ->orderByDesc('started_at')
+            ->get()
+            ->map(fn (OrganizationLivestream $ls) => $this->toPublicUnityLiveOrgItem($ls))
+            ->filter()
+            ->values()
+            ->all();
+
+        $userStreams = UserLivestream::query()
+            ->where('status', 'live')
+            ->where('is_public', true)
+            ->with('user:id,name')
+            ->orderByDesc('started_at')
+            ->get()
+            ->map(fn (UserLivestream $ls) => $this->toPublicUnityLiveUserItem($ls))
+            ->filter()
+            ->values()
+            ->all();
+
+        return collect(array_merge($orgStreams, $userStreams))
+            ->sortByDesc(fn ($s) => $s['startedAt'] ?? '')
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function toPublicUnityLiveOrgItem(OrganizationLivestream $ls): ?array
+    {
+        $viewUrl = $ls->getPublicViewUrl();
+        if (! $viewUrl) {
+            return null;
+        }
+
+        return [
+            'id' => 'org_'.$ls->id,
+            'slug' => $ls->room_name,
+            'title' => $ls->title ?: 'Live Stream',
+            'organizationName' => $ls->organization?->name ?? 'Organization',
+            'viewUrl' => $viewUrl,
+            'viewUrlMuted' => $ls->getPublicViewUrlMuted(),
+            'viewUrlFallback' => $ls->getPublicViewUrlFallback(),
+            'startedAt' => $ls->started_at?->toIso8601String(),
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function toPublicUnityLiveUserItem(UserLivestream $ls): ?array
+    {
+        $viewUrl = $ls->getPublicViewUrl();
+        if (! $viewUrl) {
+            return null;
+        }
+
+        return [
+            'id' => 'user_'.$ls->id,
+            'slug' => $ls->room_name,
+            'title' => $ls->title ?: 'Live Stream',
+            'organizationName' => $ls->user?->name ?? 'Host',
+            'viewUrl' => $viewUrl,
+            'viewUrlMuted' => $ls->getPublicViewUrlMuted(),
+            'viewUrlFallback' => $ls->getPublicViewUrlFallback(),
+            'startedAt' => $ls->started_at?->toIso8601String(),
+        ];
     }
 
     public function create(Request $request): Response
@@ -70,13 +237,29 @@ class SupporterLivestreamController extends Controller
             'display_name' => 'nullable|string|max:255',
             'is_public' => 'nullable|boolean',
             'require_passcode' => 'nullable|boolean',
-            'passcode' => 'nullable|string|min:6|max:100',
+            'passcode' => [
+                'nullable',
+                'string',
+                'max:100',
+                function (string $_attribute, mixed $value, \Closure $fail) use ($request): void {
+                    if (! $request->boolean('require_passcode')) {
+                        return;
+                    }
+                    if ($value === null || $value === '') {
+                        return;
+                    }
+                    if (strlen((string) $value) < 6) {
+                        $fail(__('Passcode must be at least 6 characters.'));
+                    }
+                },
+            ],
             'record_meeting' => 'nullable|boolean',
+            'go_live' => 'nullable|boolean',
         ]);
 
         $user = $request->user();
         $roomName = $this->getUnityMeetingId($request);
-        $requirePasscode = $request->boolean('require_passcode', true);
+        $requirePasscode = $request->boolean('require_passcode');
         $password = $requirePasscode
             ? (string) ($request->input('passcode') ?: UserLivestream::generatePassword())
             : '';
@@ -87,8 +270,9 @@ class SupporterLivestreamController extends Controller
         if ($displayName !== null && $displayName !== '') {
             $settings['display_name'] = $displayName;
         }
-        $settings['record_meeting'] = $request->boolean('record_meeting', true);
+        $settings['record_meeting'] = $request->boolean('record_meeting');
         $settings['require_passcode'] = $requirePasscode;
+        $settings['go_live'] = $request->boolean('go_live');
 
         // Meeting ID is fixed per supporter. Reuse the same draft record instead of creating duplicates.
         $livestream = UserLivestream::firstOrNew([
@@ -98,7 +282,7 @@ class SupporterLivestreamController extends Controller
         $livestream->fill([
             'room_password' => $encryptedPassword,
             'status' => 'draft',
-            'is_public' => $request->boolean('is_public', true),
+            'is_public' => $request->boolean('is_public'),
             'title' => $request->title,
             'settings' => $settings ?: null,
         ]);
@@ -106,6 +290,92 @@ class SupporterLivestreamController extends Controller
 
         return redirect()->route('livestreams.supporter.ready', $livestream->id)
             ->with('success', 'Meeting ready!');
+    }
+
+    /**
+     * Schedule a meeting (supporter flow): saves scheduled_at and participant email.
+     */
+    public function schedule(Request $request): RedirectResponse
+    {
+        $validated = $request->validate([
+            'title' => 'nullable|string|max:255',
+            'display_name' => 'nullable|string|max:255',
+            'is_public' => 'nullable|boolean',
+            'require_passcode' => 'nullable|boolean',
+            'passcode' => [
+                'nullable',
+                'string',
+                'max:100',
+                function (string $_attribute, mixed $value, \Closure $fail) use ($request): void {
+                    if (! $request->boolean('require_passcode')) {
+                        return;
+                    }
+                    if ($value === null || $value === '') {
+                        return;
+                    }
+                    if (strlen((string) $value) < 6) {
+                        $fail(__('Passcode must be at least 6 characters.'));
+                    }
+                },
+            ],
+            'record_meeting' => 'nullable|boolean',
+            'schedule_date' => 'required|date_format:Y-m-d',
+            'schedule_time' => 'required|date_format:H:i',
+            // Accept multiple participants (tagify-like): send as array of emails.
+            'participant_emails' => 'required|array|min:1|max:50',
+            'participant_emails.*' => 'required|email|max:255',
+            // Backward compatibility for older clients sending a single email string.
+            'participant_email' => 'nullable|email|max:255',
+        ]);
+
+        $user = $request->user();
+        $roomName = $this->getUnityMeetingId($request);
+
+        $scheduledAt = Carbon::createFromFormat(
+            'Y-m-d H:i',
+            $validated['schedule_date'].' '.$validated['schedule_time'],
+            config('app.timezone')
+        );
+        if (! $scheduledAt || $scheduledAt->isPast()) {
+            return back()->withErrors(['schedule_date' => 'Schedule time must be in the future.'])->withInput();
+        }
+
+        $requirePasscode = $request->boolean('require_passcode');
+        $password = $requirePasscode
+            ? (string) ($request->input('passcode') ?: UserLivestream::generatePassword())
+            : '';
+        $encryptedPassword = Crypt::encryptString($password);
+
+        $displayName = $request->filled('display_name') ? (string) $request->display_name : ($user->name ?? null);
+        $settings = [];
+        if ($displayName !== null && $displayName !== '') {
+            $settings['display_name'] = $displayName;
+        }
+        $settings['record_meeting'] = $request->boolean('record_meeting');
+        $settings['require_passcode'] = $requirePasscode;
+        $emails = $validated['participant_emails'] ?? [];
+        if (empty($emails) && ! empty($validated['participant_email'])) {
+            $emails = [(string) $validated['participant_email']];
+        }
+        $emails = array_values(array_unique(array_filter(array_map('strval', $emails))));
+        $settings['participant_emails'] = $emails;
+
+        $livestream = UserLivestream::firstOrNew([
+            'user_id' => $user->id,
+            'room_name' => $roomName,
+        ]);
+        $livestream->fill([
+            'room_password' => $encryptedPassword,
+            'status' => 'scheduled',
+            'is_public' => $request->boolean('is_public'),
+            'title' => $request->input('title'),
+            'scheduled_at' => $scheduledAt,
+            'settings' => $settings ?: null,
+        ]);
+        $livestream->save();
+
+        return redirect()->route('livestreams.supporter.ready', $livestream->id)
+            ->with('success', 'Meeting scheduled!');
     }
 
     /**
@@ -119,6 +389,8 @@ class SupporterLivestreamController extends Controller
         return Inertia::render('frontend/livestreams/Join', [
             'oldMeetingId' => $request->old('meeting_id'),
             'errors' => $errorBag,
+            'requiresPasscodeStep' => (bool) $request->session()->pull('join_requires_passcode', false),
+            'pendingMeetingTitle' => $request->session()->pull('join_pending_title'),
         ]);
     }
 
@@ -142,12 +414,27 @@ class SupporterLivestreamController extends Controller
 
         if ($orgStream) {
             $password = $orgStream->getDecryptedPassword();
-            if ($password !== '' && $password !== $passcode) {
-                return redirect()->route('livestreams.supporter.join')
-                    ->withInput($request->only('meeting_id'))
-                    ->withErrors(['passcode' => 'Invalid meeting ID or passcode.']);
+            if ($password !== '') {
+                if ($passcode === '') {
+                    return redirect()->route('livestreams.supporter.join')
+                        ->withInput($request->only('meeting_id'))
+                        ->with([
+                            'join_requires_passcode' => true,
+                            'join_pending_title' => $orgStream->title,
+                        ]);
+                }
+                if ($password !== $passcode) {
+                    return redirect()->route('livestreams.supporter.join')
+                        ->withInput($request->only('meeting_id'))
+                        ->with([
+                            'join_requires_passcode' => true,
+                            'join_pending_title' => $orgStream->title,
+                        ])
+                        ->withErrors(['passcode' => 'Invalid passcode. Try again.']);
+                }
             }
             $participantUrl = $orgStream->getParticipantUrl();
+            $settings = is_array($orgStream->settings) ? $orgStream->settings : [];
             return Inertia::render('frontend/livestreams/Join', [
                 'livestream' => [
                     'id' => $orgStream->id,
@@ -157,6 +444,11 @@ class SupporterLivestreamController extends Controller
                     'roomPassword' => $password,
                     'participantUrl' => $participantUrl,
                     'status' => $orgStream->status,
+                    'recordingEnabled' => MeetingRecordingPreference::isEnabled($settings, true),
+                    'declineContext' => [
+                        'kind' => 'organization',
+                        'id' => $orgStream->id,
+                    ],
                 ],
                 'organization' => [
                     'id' => $orgStream->organization->id,
@@ -172,12 +464,27 @@ class SupporterLivestreamController extends Controller
 
         if ($userStream) {
             $password = $userStream->getDecryptedPassword();
-            if ($password !== '' && $password !== $passcode) {
-                return redirect()->route('livestreams.supporter.join')
-                    ->withInput($request->only('meeting_id'))
-                    ->withErrors(['passcode' => 'Invalid meeting ID or passcode.']);
+            if ($password !== '') {
+                if ($passcode === '') {
+                    return redirect()->route('livestreams.supporter.join')
+                        ->withInput($request->only('meeting_id'))
+                        ->with([
+                            'join_requires_passcode' => true,
+                            'join_pending_title' => $userStream->title,
+                        ]);
+                }
+                if ($password !== $passcode) {
+                    return redirect()->route('livestreams.supporter.join')
+                        ->withInput($request->only('meeting_id'))
+                        ->with([
+                            'join_requires_passcode' => true,
+                            'join_pending_title' => $userStream->title,
+                        ])
+                        ->withErrors(['passcode' => 'Invalid passcode. Try again.']);
+                }
             }
             $participantUrl = $userStream->getParticipantUrl();
+            $userSettings = is_array($userStream->settings) ? $userStream->settings : [];
             return Inertia::render('frontend/livestreams/Join', [
                 'livestream' => [
                     'id' => $userStream->id,
@@ -187,6 +494,11 @@ class SupporterLivestreamController extends Controller
                     'roomPassword' => $password,
                     'participantUrl' => $participantUrl,
                     'status' => $userStream->status,
+                    'recordingEnabled' => MeetingRecordingPreference::isEnabled($userSettings, false),
+                    'declineContext' => [
+                        'kind' => 'user',
+                        'id' => $userStream->id,
+                    ],
                 ],
                 'organization' => [
                     'id' => 0,
@@ -219,9 +531,14 @@ class SupporterLivestreamController extends Controller
 
     public function show(Request $request, int $id): Response
     {
-        $livestream = UserLivestream::where('user_id', $request->user()->id)->with('user')->findOrFail($id);
+        $livestream = UserLivestream::where('user_id', $request->user()->id)->with(['user.organization'])->findOrFail($id);
 
-        $dropboxConnected = ! empty($request->user()->dropbox_refresh_token);
+        $authUser = $request->user()->loadMissing('organization');
+        $dropboxConnected = ! empty($authUser->dropbox_refresh_token)
+            || ($authUser->organization && ! empty($authUser->organization->dropbox_refresh_token));
+        $youtubeConnected = ($authUser->organization && (! empty($authUser->organization->youtube_refresh_token) || ! empty($authUser->organization->youtube_access_token)))
+            || (! empty($authUser->youtube_refresh_token) || ! empty($authUser->youtube_access_token));
+        $youtubeChannelUrl = $authUser->organization?->youtube_channel_url ?: $authUser->youtube_channel_url;
         $password = $livestream->getDecryptedPassword();
         $directorUrl = $livestream->getDirectorUrl(false);
         $directorUrlDropbox = $dropboxConnected ? $livestream->getDirectorUrl(true) : null;
@@ -238,6 +555,7 @@ class SupporterLivestreamController extends Controller
         $settings = $livestream->settings ?? [];
         $displayName = $settings['display_name'] ?? $request->user()->name ?? 'Host';
         $directorLabel = '&label=' . rawurlencode($displayName);
+        $rtmpUrl = $settings['rtmp_url'] ?? 'rtmp://a.rtmp.youtube.com/live2';
         $youtubeGoLiveEnabled = ! empty($livestream->youtube_stream_key);
         $pushLink = $youtubeGoLiveEnabled
             ? 'https://vdo.ninja/?push=' . rawurlencode($vdoRoom) . '&cleanoutput' . $passwordParam . $directorLabel
@@ -246,9 +564,29 @@ class SupporterLivestreamController extends Controller
             ? 'https://vdo.ninja/?director=' . rawurlencode($vdoRoom) . $passwordParam . '&output&autostart&cleanoutput'
             : null;
         $streamKeyDisplay = $youtubeGoLiveEnabled ? $livestream->getDecryptedStreamKey() : null;
-        $rtmpUrl = 'rtmp://a.rtmp.youtube.com/live2';
+
+        $recordingConsentDeclines = LivestreamRecordingDecline::query()
+            ->where('livestream_kind', 'user')
+            ->where('livestream_id', $livestream->id)
+            ->orderByDesc('id')
+            ->limit(50)
+            ->get()
+            ->map(fn (LivestreamRecordingDecline $r) => [
+                'id' => $r->id,
+                'guestLabel' => $r->guest_label,
+                'createdAt' => $r->created_at?->toIso8601String(),
+            ])
+            ->values()
+            ->all();
+
+        $latestStreamingJob = StreamingJob::query()
+            ->where('livestream_kind', 'user')
+            ->where('livestream_id', $livestream->id)
+            ->latest('id')
+            ->first();
 
         return Inertia::render('frontend/livestreams/Show', [
+            'recordingConsentDeclines' => $recordingConsentDeclines,
             'livestream' => [
                 'id' => $livestream->id,
                 'title' => $livestream->title,
@@ -279,6 +617,14 @@ class SupporterLivestreamController extends Controller
                 'viewLink' => $viewLink,
                 'streamKeyDisplay' => $streamKeyDisplay,
                 'rtmpUrl' => $rtmpUrl,
+                'youtubeBroadcastId' => $livestream->youtube_broadcast_id,
+                'youtubeConnected' => $youtubeConnected,
+                'youtubeChannelUrl' => $youtubeChannelUrl,
+                'streamingQueueStatus' => $latestStreamingJob ? [
+                    'status' => $latestStreamingJob->status,
+                    'updatedAt' => optional($latestStreamingJob->updated_at)->toIso8601String(),
+                    'failureReason' => $latestStreamingJob->failure_reason,
+                ] : null,
             ],
         ]);
     }
@@ -301,7 +647,9 @@ class SupporterLivestreamController extends Controller
         $livestream = UserLivestream::where('user_id', $request->user()->id)->findOrFail($id);
 
         if (! $livestream->canGoLive()) {
-            return redirect()->back()->withErrors(['error' => 'Stream cannot go live in current state.']);
+            return redirect()->back()->withErrors([
+                'error' => 'Cannot mark live in this state (status: '.$livestream->status.'). Use End stream if you are already broadcasting, or open a new meeting.',
+            ]);
         }
 
         $livestream->update([
@@ -417,22 +765,484 @@ class SupporterLivestreamController extends Controller
             'youtube_stream_key' => Crypt::encryptString($request->youtube_stream_key),
         ]);
 
-        return redirect()->back()->with('success', 'YouTube stream key saved. You can go live with OBS when ready.');
+        return redirect()->back()->with('success', 'YouTube stream key saved. You can start your cloud stream when ready.');
     }
 
-    public function goLiveOBSAuto(Request $request, int $id): RedirectResponse
+    /**
+     * Create a YouTube live broadcast on the connected account (user OAuth first, else organization) and save stream key.
+     */
+    public function prepareYouTubeLive(Request $request, int $id, YouTubeService $youtubeService): RedirectResponse
+    {
+        $livestream = UserLivestream::where('user_id', $request->user()->id)->findOrFail($id);
+
+        if (! empty($livestream->youtube_stream_key)) {
+            return redirect()->back()->with('success', 'This meeting already has a stream key.');
+        }
+
+        $authUser = $request->user()->loadMissing('organization');
+        $accessToken = null;
+        if (! empty($authUser->youtube_access_token) || ! empty($authUser->youtube_refresh_token)) {
+            $accessToken = $youtubeService->getValidAccessTokenForUser($authUser);
+        }
+        if (! $accessToken && $authUser->organization
+            && (! empty($authUser->organization->youtube_access_token) || ! empty($authUser->organization->youtube_refresh_token))) {
+            $accessToken = $youtubeService->getValidAccessToken($authUser->organization);
+        }
+
+        if (! $accessToken) {
+            return redirect()->back()->withErrors([
+                'youtube' => 'Connect YouTube in Integrations (your account or organization), then try again.',
+            ]);
+        }
+
+        $title = $livestream->title ?: 'Unity Meet';
+        $scheduledStart = $livestream->scheduled_at && $livestream->scheduled_at->isFuture()
+            ? $livestream->scheduled_at
+            : null;
+
+        $broadcastData = $youtubeService->createLiveBroadcast(
+            $accessToken,
+            $title,
+            $livestream->description,
+            $scheduledStart
+        );
+
+        if (! $broadcastData) {
+            return redirect()->back()->withErrors([
+                'youtube' => 'Could not create a YouTube live broadcast. Try again or paste a stream key from YouTube Studio.',
+            ]);
+        }
+
+        $settings = $livestream->settings ?? [];
+        $settings['rtmp_url'] = $broadcastData['rtmp_url'] ?? ($settings['rtmp_url'] ?? null);
+
+        $livestream->update([
+            'youtube_stream_key' => Crypt::encryptString($broadcastData['stream_key']),
+            'youtube_broadcast_id' => $broadcastData['broadcast_id'],
+            'settings' => $settings ?: null,
+        ]);
+
+        return redirect()->back()->with(
+            'success',
+            'YouTube live is ready on your connected channel. Your stream key was saved — click Go Live when you are ready.'
+        );
+    }
+
+    /**
+     * Enqueue AWS streaming worker (SQS): pull meeting video from the host VDO URL and push RTMP to YouTube.
+     * Legacy route name "go-live-obs-auto" is kept as an alias — this path does not use OBS.
+     */
+    public function queueStreamRelayJob(Request $request, int $id, StreamingQueueService $streamingQueue, StreamingPreflight $preflight): RedirectResponse
     {
         $livestream = UserLivestream::where('user_id', $request->user()->id)->findOrFail($id);
 
         if (! $livestream->canGoLive()) {
-            return redirect()->back()->withErrors(['go_live' => 'Stream cannot go live in current state.']);
+            return redirect()->back()->withErrors([
+                'go_live' => 'Cannot queue the cloud stream in this state (status: '.$livestream->status.'). End any active stream or open a new meeting.',
+            ]);
+        }
+
+        $gate = $preflight->check($livestream, $request->user());
+        if (! $gate->allowed) {
+            return redirect()->back()->withErrors(['go_live' => $gate->reason]);
+        }
+
+        $streamKey = $livestream->getDecryptedStreamKey();
+        if (! $streamKey) {
+            return redirect()->back()->withErrors(['go_live' => 'Missing YouTube stream key. Add it first in settings.']);
+        }
+
+        if ($streamingQueue->willUseRealSqs() && ! StreamingWorkerSourceUrl::hasWorkerIngestConfigured()) {
+            return redirect()->back()->withErrors([
+                'go_live' => 'Cloud relay source is not configured. Set MEDIAMTX_RTMP_PUBLIC or STREAMING_WORKER_RTMP_PULL_BASE (or STREAMING_WORKER_SOURCE_URL_TEMPLATE), then retry.',
+            ]);
+        }
+
+        $organizationId = (string) $request->user()->id;
+        $meetingId = (string) $livestream->id;
+        $sourceUrl = StreamingWorkerSourceUrl::resolve($livestream);
+        $destinationUrl = 'rtmp://a.rtmp.youtube.com/live2/'.$streamKey;
+        $callbackUrl = streaming_status_callback_url();
+        $maxDurationMinutes = (int) config('streaming.max_duration_minutes', 120);
+
+        $job = StreamingJob::create([
+            'livestream_kind' => 'user',
+            'livestream_id' => $livestream->id,
+            'meeting_id' => $meetingId,
+            'organization_id' => $organizationId,
+            'source_url' => $sourceUrl,
+            'destination_url' => $destinationUrl,
+            'callback_url' => $callbackUrl,
+            'max_duration_minutes' => $maxDurationMinutes,
+            'status' => 'queued',
+        ]);
+
+        try {
+            $streamingQueue->enqueue($job, [
+                'meeting_id' => $meetingId,
+                'organization_id' => $organizationId,
+                'source_url' => $sourceUrl,
+                'destination_url' => $destinationUrl,
+                'callback_url' => $callbackUrl,
+                'max_duration_minutes' => $maxDurationMinutes,
+            ]);
+        } catch (\Throwable $e) {
+            $job->update([
+                'status' => 'failed',
+                'failure_reason' => $e->getMessage(),
+            ]);
+
+            return redirect()->back()->withErrors(['go_live' => 'Could not queue the cloud stream job. Check AWS/SQS configuration and try again.']);
         }
 
         $livestream->update([
-            'status' => 'live',
-            'started_at' => $livestream->started_at ?? now(),
+            'status' => 'meeting_live',
         ]);
 
-        return redirect()->back()->with('success', 'You are now live. Your stream is being sent to YouTube via OBS.');
+        return redirect()->back()->with(
+            'success',
+            'Cloud stream queued (AWS). Keep this meeting open as host; status will move to live when the worker connects.'
+        );
+    }
+
+    /**
+     * Unity Meet — recordings tied to this user’s meetings only (personal Dropbox, or org Dropbox filtered by your room names).
+     */
+    public function recordings(Request $request): Response
+    {
+        /** @var User $user */
+        $user = $request->user();
+        $user->loadMissing('organization');
+
+        $ctx = $this->unityMeetRecordingDropboxContext($user);
+
+        $dropboxFiles = [];
+        if (($ctx['linked'] ?? false) && ($ctx['token'] ?? '') !== '') {
+            try {
+                $api = new DropboxOrgApi((string) $ctx['token']);
+                $folderPath = (string) $ctx['folderPath'];
+                $api->createFolder($folderPath);
+                $entries = $api->listFolder($folderPath);
+                $dropboxFiles = $this->mapUnityFilteredDropboxFiles(
+                    $entries,
+                    $ctx['restrictToUserRooms'] ?? false,
+                    $ctx['roomNames'] ?? []
+                );
+            } catch (\Throwable $e) {
+                Log::warning('Unity Meet recordings Dropbox list failed', ['error' => $e->getMessage()]);
+            }
+        }
+
+        $dropboxFolderName = trim(str_replace('/', '', (string) ($ctx['folderPath'] ?? ''))) ?: 'BIU Meeting Recordings';
+
+        $meetingTitleHints = UserLivestream::where('user_id', $user->id)
+            ->select(['room_name', 'title'])
+            ->get()
+            ->map(static fn ($ls) => [
+                'roomName' => (string) $ls->room_name,
+                'title' => $ls->title,
+            ])
+            ->values()
+            ->all();
+
+        return Inertia::render('frontend/livestreams/Dropbox', [
+            'dropboxLinked' => (bool) ($ctx['linked'] ?? false),
+            'dropboxRedirectUri' => config('services.dropbox.redirect_uri'),
+            'dropboxFolderName' => $dropboxFolderName,
+            'dropboxFolderPath' => (string) ($ctx['folderPath'] ?? ''),
+            'dropboxFiles' => $dropboxFiles,
+            'backUrl' => route('livestreams.supporter.index'),
+            'unityMeetRecordings' => true,
+            'recordingsDisconnectAvailable' => ($ctx['source'] ?? null) === 'user',
+            'recordingsBackedByOrganization' => ($ctx['source'] ?? null) === 'organization',
+            'meetingTitleHints' => $meetingTitleHints,
+        ]);
+    }
+
+    public function recordingsSearch(Request $request): \Illuminate\Http\JsonResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+        $user->loadMissing('organization');
+
+        $ctx = $this->unityMeetRecordingDropboxContext($user);
+        if (! ($ctx['linked'] ?? false) || ($ctx['token'] ?? '') === '') {
+            return response()->json(['error' => 'Dropbox not connected'], 400);
+        }
+
+        $query = $request->input('q', '');
+        $query = is_string($query) ? trim($query) : '';
+        if ($query === '') {
+            return response()->json(['files' => []]);
+        }
+
+        try {
+            $api = new DropboxOrgApi((string) $ctx['token']);
+            $folderPath = (string) $ctx['folderPath'];
+            $files = $api->search($folderPath, $query);
+            $filtered = $this->mapUnityFilteredSearchFiles(
+                $files,
+                $ctx['restrictToUserRooms'] ?? false,
+                $ctx['roomNames'] ?? []
+            );
+
+            return response()->json(['files' => $filtered]);
+        } catch (\Throwable $e) {
+            Log::warning('Unity Meet recordings Dropbox search failed', ['error' => $e->getMessage()]);
+
+            return response()->json(['error' => 'Search failed', 'files' => []], 500);
+        }
+    }
+
+    public function recordingDownload(Request $request): RedirectResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+        $user->loadMissing('organization');
+
+        $ctx = $this->unityMeetRecordingDropboxContext($user);
+        $path = $request->query('path');
+        if (! is_string($path) || $path === '') {
+            return redirect()->route('livestreams.supporter.recordings')->with('error', 'Invalid file.');
+        }
+        $path = trim($path);
+        if (str_contains($path, '..')) {
+            return redirect()->route('livestreams.supporter.recordings')->with('error', 'Invalid file path.');
+        }
+        if (! ($ctx['linked'] ?? false) || ($ctx['token'] ?? '') === '') {
+            return redirect()->route('livestreams.supporter.recordings')->with('error', 'Dropbox not connected.');
+        }
+        $folderPath = (string) $ctx['folderPath'];
+        if ($folderPath === '' || ! str_starts_with($path, $folderPath)) {
+            return redirect()->route('livestreams.supporter.recordings')->with('error', 'You can only download files from your recording folder.');
+        }
+        if (! $this->unityMeetRecordingFileMatchesContext($path, $ctx)) {
+            return redirect()->route('livestreams.supporter.recordings')->with('error', 'Recording not available for your account.');
+        }
+
+        $api = new DropboxOrgApi((string) $ctx['token']);
+        $link = $api->getTemporaryLink($path);
+        if (! $link) {
+            return redirect()->route('livestreams.supporter.recordings')->with('error', 'Could not generate download link.');
+        }
+
+        return redirect()->away($link);
+    }
+
+    public function recordingDelete(Request $request): RedirectResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+        $user->loadMissing('organization');
+
+        $ctx = $this->unityMeetRecordingDropboxContext($user);
+        $path = $request->input('path');
+        if (! is_string($path) || $path === '') {
+            return redirect()->route('livestreams.supporter.recordings')->with('error', 'Invalid file.');
+        }
+        $path = trim($path);
+        if (str_contains($path, '..')) {
+            return redirect()->route('livestreams.supporter.recordings')->with('error', 'Invalid file path.');
+        }
+        if (! ($ctx['linked'] ?? false) || ($ctx['token'] ?? '') === '') {
+            return redirect()->route('livestreams.supporter.recordings')->with('error', 'Dropbox not connected.');
+        }
+        $folderPath = (string) $ctx['folderPath'];
+        if ($folderPath === '' || ! str_starts_with($path, $folderPath)) {
+            return redirect()->route('livestreams.supporter.recordings')->with('error', 'You can only delete files from your recording folder.');
+        }
+        if (! $this->unityMeetRecordingFileMatchesContext($path, $ctx)) {
+            return redirect()->route('livestreams.supporter.recordings')->with('error', 'Recording not available for your account.');
+        }
+
+        $api = new DropboxOrgApi((string) $ctx['token']);
+        if (! $api->deleteFile($path)) {
+            return redirect()->route('livestreams.supporter.recordings')->with('error', 'Could not delete file.');
+        }
+
+        return redirect()->route('livestreams.supporter.recordings')->with('success', 'File deleted.');
+    }
+
+    public function recordingRename(Request $request): RedirectResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+        $user->loadMissing('organization');
+
+        $ctx = $this->unityMeetRecordingDropboxContext($user);
+
+        $path = $request->input('path');
+        $newName = $request->input('new_name');
+        if (! is_string($path) || $path === '' || ! is_string($newName) || trim($newName) === '') {
+            return redirect()->route('livestreams.supporter.recordings')->with('error', 'Invalid request.');
+        }
+        $path = trim($path);
+        $newName = trim($newName);
+        $newName = preg_replace('/[\\\\\/:*?"<>|]+/', ' ', $newName);
+        $newName = trim(preg_replace('/\s+/', ' ', $newName));
+        if ($newName === '') {
+            return redirect()->route('livestreams.supporter.recordings')->with('error', 'Invalid file name.');
+        }
+        if (str_contains($path, '..')) {
+            return redirect()->route('livestreams.supporter.recordings')->with('error', 'Invalid file path.');
+        }
+        if (! ($ctx['linked'] ?? false) || ($ctx['token'] ?? '') === '') {
+            return redirect()->route('livestreams.supporter.recordings')->with('error', 'Dropbox not connected.');
+        }
+        $folderPath = (string) $ctx['folderPath'];
+        if ($folderPath === '' || ! str_starts_with($path, $folderPath)) {
+            return redirect()->route('livestreams.supporter.recordings')->with('error', 'You can only rename files in your recording folder.');
+        }
+        if (! $this->unityMeetRecordingFileMatchesContext($path, $ctx)) {
+            return redirect()->route('livestreams.supporter.recordings')->with('error', 'Recording not available for your account.');
+        }
+
+        $toPath = $folderPath.'/'.$newName;
+        $api = new DropboxOrgApi((string) $ctx['token']);
+        if (! $api->moveFile($path, $toPath)) {
+            return redirect()->route('livestreams.supporter.recordings')->with('error', 'Could not rename file.');
+        }
+
+        return redirect()->route('livestreams.supporter.recordings')->with('success', 'File renamed.');
+    }
+
+    /**
+     * @return array{linked: bool, token: ?string, folderPath: string, restrictToUserRooms: bool, roomNames: array<int, string>, source: ?string}
+     */
+    private function unityMeetRecordingDropboxContext(User $user): array
+    {
+        $roomNames = UserLivestream::where('user_id', $user->id)->pluck('room_name')->map(fn ($r) => trim((string) $r))->filter()->values()->all();
+
+        $tokens = app(DropboxOAuthService::class);
+
+        if (! empty($user->dropbox_refresh_token)) {
+            $token = $tokens->getAccessTokenForUser($user);
+
+            return [
+                'linked' => ! empty($token),
+                'token' => $token ?: null,
+                'folderPath' => $this->recordingFolderPathForUser($user),
+                'restrictToUserRooms' => false,
+                'roomNames' => $roomNames,
+                'source' => 'user',
+            ];
+        }
+
+        $org = $user->organization;
+        if ($org && ! empty($org->dropbox_refresh_token)) {
+            $token = $tokens->getAccessTokenForOrganization($org);
+
+            return [
+                'linked' => ! empty($token),
+                'token' => $token ?: null,
+                'folderPath' => $this->recordingFolderPathForOrganization($org),
+                'restrictToUserRooms' => true,
+                'roomNames' => $roomNames,
+                'source' => 'organization',
+            ];
+        }
+
+        return [
+            'linked' => false,
+            'token' => null,
+            'folderPath' => '',
+            'restrictToUserRooms' => false,
+            'roomNames' => $roomNames,
+            'source' => null,
+        ];
+    }
+
+    private function recordingFilenameMatchesRooms(string $filename, array $roomNames): bool
+    {
+        foreach ($roomNames as $room) {
+            $r = strtolower(trim((string) $room));
+            if ($r !== '' && str_contains(strtolower($filename), $r)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @param  array<string, mixed>  $ctx
+     */
+    private function unityMeetRecordingFileMatchesContext(string $path, array $ctx): bool
+    {
+        if (! ($ctx['restrictToUserRooms'] ?? false)) {
+            return true;
+        }
+        /** @var array<int, string> $rooms */
+        $rooms = $ctx['roomNames'] ?? [];
+        if ($rooms === []) {
+            return false;
+        }
+
+        return $this->recordingFilenameMatchesRooms(basename($path), $rooms);
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $entries
+     * @return array<int, array{name: string, path_display: string, size: int, client_modified: ?string}>
+     */
+    private function mapUnityFilteredDropboxFiles(array $entries, bool $restrictToUserRooms, array $roomNames): array
+    {
+        $out = [];
+        foreach ($entries as $entry) {
+            if (($entry['tag'] ?? '') !== 'file') {
+                continue;
+            }
+            $row = [
+                'name' => $entry['name'] ?? '',
+                'path_display' => $entry['path_display'] ?? '',
+                'size' => (int) ($entry['size'] ?? 0),
+                'client_modified' => $entry['client_modified'] ?? null,
+            ];
+            if ($restrictToUserRooms) {
+                if ($roomNames === [] || ! $this->recordingFilenameMatchesRooms((string) $row['name'], $roomNames)) {
+                    continue;
+                }
+            }
+            $out[] = $row;
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  array<int, array{name: string, path_display: string, size: int, client_modified: ?string}>  $files
+     * @return array<int, array{name: string, path_display: string, size: int, client_modified: ?string}>
+     */
+    private function mapUnityFilteredSearchFiles(array $files, bool $restrictToUserRooms, array $roomNames): array
+    {
+        if (! $restrictToUserRooms) {
+            return $files;
+        }
+        $out = [];
+        foreach ($files as $file) {
+            if ($roomNames !== [] && $this->recordingFilenameMatchesRooms((string) ($file['name'] ?? ''), $roomNames)) {
+                $out[] = $file;
+            }
+        }
+
+        return $out;
+    }
+
+    private function recordingFolderPathForUser(User $user): string
+    {
+        $folderName = $user->dropbox_folder_name ? trim((string) $user->dropbox_folder_name) : 'BIU Meeting Recordings';
+        $folderName = trim(preg_replace('/[\\\\\/:*?"<>|]+/', ' ', $folderName));
+        $folderName = trim($folderName, " \t\n\r\0\x0B.") ?: 'BIU Meeting Recordings';
+
+        return '/' . $folderName;
+    }
+
+    private function recordingFolderPathForOrganization(Organization $organization): string
+    {
+        $folderName = $organization->dropbox_folder_name ? trim((string) $organization->dropbox_folder_name) : 'BIU Meeting Recordings';
+        $folderName = trim(preg_replace('/[\\\\\/:*?"<>|]+/', ' ', $folderName));
+        $folderName = trim($folderName, " \t\n\r\0\x0B.") ?: 'BIU Meeting Recordings';
+
+        return '/' . $folderName;
     }
 }

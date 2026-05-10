@@ -4,8 +4,10 @@ namespace App\Http\Controllers;
 
 use App\Jobs\SendCourseNotification;
 use App\Models\Course;
+use App\Models\EventType;
 use App\Models\Enrollment;
 use App\Models\Organization;
+use App\Models\User;
 use App\Models\Topic;
 use App\Services\CourseTaxClassificationService;
 use App\Support\ConnectionHubType;
@@ -174,10 +176,8 @@ class FrontendCourseController extends BaseController
             ->paginate(15)
             ->withQueryString();
 
-        $eventTypes = \App\Models\EventType::where('is_active', true)
-            ->orderBy('category')
-            ->orderBy('name')
-            ->get(['id', 'name', 'category']);
+        $eventTypes = EventType::generalCatalogForProps();
+        $companionEventTypes = EventType::companionCatalogForProps();
 
         // Calculate statistics for the current user's organization
         $statistics = $this->calculateCourseStatistics(Auth::id());
@@ -185,6 +185,7 @@ class FrontendCourseController extends BaseController
         return Inertia::render('frontend/user/course/Index', [
             'courses' => $courses,
             'eventTypes' => $eventTypes,
+            'companionEventTypes' => $companionEventTypes,
             'filters' => $filters,
             'statistics' => $statistics,
         ]);
@@ -220,17 +221,18 @@ class FrontendCourseController extends BaseController
      */
     public function create(Request $request)
     {
-        $eventTypes = \App\Models\EventType::where('is_active', true)
-            ->orderBy('category')
-            ->orderBy('name')
-            ->get(['id', 'name', 'category']);
+        $lockedHubListingType = ConnectionHubType::normalizedListingTypeLockFromQuery($request->query('type'));
+        $eventTypes = EventType::generalCatalogForProps();
+        $companionEventTypes = EventType::companionCatalogForProps();
 
         $seller = Organization::biuSellerDisplayForUser($request->user());
 
         return Inertia::render('frontend/user/course/Create', array_merge([
             'eventTypes' => $eventTypes,
+            'companionEventTypes' => $companionEventTypes,
             'organizationName' => $seller['name'],
             'sellerNameLabel' => $seller['label'],
+            'lockedHubListingType' => $lockedHubListingType,
         ], $this->connectionHubProfilePrimaryCategoriesPageProps($request)));
     }
 
@@ -247,12 +249,30 @@ class FrontendCourseController extends BaseController
         $validated = $request->validate(array_merge([
             'name' => 'required|string|max:255|unique:courses,name',
             'description' => 'required|string',
-            'type' => ['required', Rule::in(ConnectionHubType::VALUES)],
-            'topic_id' => ['nullable', 'exists:topics,id'],
-            'event_type_id' => [
+            'type' => [
                 'required',
-                'exists:event_types,id',
+                Rule::in(ConnectionHubType::VALUES),
+                function (string $attribute, mixed $value, \Closure $fail) use ($request): void {
+                    if (! is_string($value)) {
+                        return;
+                    }
+                    $raw = $request->input('locked_hub_type');
+                    if (! is_string($raw) || trim($raw) === '') {
+                        return;
+                    }
+                    $lock = ConnectionHubType::normalizedListingTypeLockFromQuery($raw);
+                    if ($lock === null) {
+                        $fail(__('Invalid listing type lock.'));
+
+                        return;
+                    }
+                    if ($value !== $lock) {
+                        $fail(__('The listing type cannot be changed for this create flow.'));
+                    }
+                },
             ],
+            'topic_id' => ['nullable', 'exists:topics,id'],
+            'event_type_id' => EventType::validationRulesForHubType($type),
             'meeting_link' => 'nullable|url|max:500',
 
             'pricing_type' => ['required', Rule::in(['free', 'paid'])],
@@ -537,10 +557,8 @@ class FrontendCourseController extends BaseController
             abort(403, 'Unauthorized access to this course.');
         }
 
-        $eventTypes = \App\Models\EventType::where('is_active', true)
-            ->orderBy('category')
-            ->orderBy('name')
-            ->get(['id', 'name', 'category']);
+        $eventTypes = EventType::generalCatalogForProps();
+        $companionEventTypes = EventType::companionCatalogForProps();
 
         $courseData = $course->load(['topic', 'eventType', 'organization', 'creator', 'primaryActionCategories']);
 
@@ -565,6 +583,7 @@ class FrontendCourseController extends BaseController
         return Inertia::render('frontend/user/course/Edit', array_merge([
             'course' => $courseData,
             'eventTypes' => $eventTypes,
+            'companionEventTypes' => $companionEventTypes,
             'organizationName' => $seller['name'],
             'sellerNameLabel' => $seller['label'],
         ], $this->connectionHubProfilePrimaryCategoriesPageProps($request)));
@@ -595,10 +614,7 @@ class FrontendCourseController extends BaseController
             'description' => 'required|string',
             'type' => ['required', Rule::in(ConnectionHubType::VALUES)],
             'topic_id' => ['nullable', 'exists:topics,id'],
-            'event_type_id' => [
-                'required',
-                'exists:event_types,id',
-            ],
+            'event_type_id' => EventType::validationRulesForHubType($type),
             'meeting_link' => 'nullable|url|max:500',
 
             'pricing_type' => ['required', Rule::in(['free', 'paid'])],
@@ -629,7 +645,7 @@ class FrontendCourseController extends BaseController
             'volunteer_opportunities' => 'boolean',
 
             'image' => 'nullable|image|mimes:jpeg,png,jpg,gif,svg|max:2048',
-        ], CourseTaxClassificationService::validationRules(), $this->connectionHubProfilePrimaryActionCategoryValidation($request)), [
+        ], CourseTaxClassificationService::validationRules(), $this->connectionHubProfilePrimaryActionCategoryValidation($request, $course)), [
             'name.required' => "The {$typeLabelCapital} name is required.",
             'name.unique' => "A {$typeLabel} with this name already exists.",
             'name.max' => "The {$typeLabelCapital} name may not be greater than 255 characters.",
@@ -810,12 +826,22 @@ class FrontendCourseController extends BaseController
 
     /**
      * PAC validation: org grid when org has categories; otherwise user's supporter-interest pivot.
+     * When updating a listing, also allow causes already saved on that listing (so saves do not fail
+     * after the org removes a cause from their grid or the catalog is narrowed).
      */
-    private function connectionHubProfilePrimaryActionCategoryValidation(Request $request): array
+    private function connectionHubProfilePrimaryActionCategoryValidation(Request $request, ?Course $course = null): array
     {
         $org = Organization::forAuthUser($request->user());
         if ($org !== null && $this->organizationHasPrimaryActionCategorySelections($org)) {
+            if ($course !== null) {
+                return $this->primaryActionCategoryIdsValidationForCourseUpdate($org, $course);
+            }
+
             return $this->primaryActionCategoryIdsValidation($request);
+        }
+
+        if ($course !== null) {
+            return $this->primaryActionCategoryIdsValidationSupporterForCourseUpdate($request->user(), $course);
         }
 
         $userId = (int) $request->user()->id;
@@ -829,6 +855,54 @@ class FrontendCourseController extends BaseController
                     fn ($q) => $q->where('user_id', $userId)
                 ),
             ],
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function primaryActionCategoryIdsValidationForCourseUpdate(Organization $org, Course $course): array
+    {
+        $orgIds = $org->primaryActionCategories()
+            ->where('primary_action_categories.is_active', true)
+            ->pluck('primary_action_categories.id')
+            ->map(fn ($id) => (int) $id)
+            ->all();
+
+        $onCourseIds = $course->primaryActionCategories()
+            ->pluck('primary_action_categories.id')
+            ->map(fn ($id) => (int) $id)
+            ->all();
+
+        $allowed = array_values(array_unique(array_merge($orgIds, $onCourseIds)));
+
+        return [
+            'primary_action_category_ids' => ['nullable', 'array'],
+            'primary_action_category_ids.*' => ['integer', Rule::in($allowed)],
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function primaryActionCategoryIdsValidationSupporterForCourseUpdate(User $user, Course $course): array
+    {
+        $interestIds = $user->supporterInterestCategories()
+            ->where('primary_action_categories.is_active', true)
+            ->pluck('primary_action_categories.id')
+            ->map(fn ($id) => (int) $id)
+            ->all();
+
+        $onCourseIds = $course->primaryActionCategories()
+            ->pluck('primary_action_categories.id')
+            ->map(fn ($id) => (int) $id)
+            ->all();
+
+        $allowed = array_values(array_unique(array_merge($interestIds, $onCourseIds)));
+
+        return [
+            'primary_action_category_ids' => ['nullable', 'array'],
+            'primary_action_category_ids.*' => ['integer', Rule::in($allowed)],
         ];
     }
 

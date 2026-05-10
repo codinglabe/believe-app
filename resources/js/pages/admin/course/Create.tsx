@@ -1,5 +1,6 @@
 "use client"
 import type React from "react"
+import type { PageProps as InertiaPageProps } from "@inertiajs/core"
 import { Head, useForm, usePage, Link } from "@inertiajs/react"
 import { ArrowLeft, Save, Heart, Calendar, BookOpen, Settings, AlertCircle } from "lucide-react"
 import { Button } from "@/components/admin/ui/button"
@@ -19,6 +20,7 @@ import {
   type PrimaryActionCategoryOption,
 } from "@/components/organization-primary-action-categories-field"
 import BiuCourseTaxIntake from "@/components/biu-course-tax-intake"
+import type { ConnectionHubListingLockType } from "@/lib/connection-hub-hero-hrefs"
 import { connectionHubTypeLabel, isEventsHubType, type ConnectionHubType } from "@/lib/connection-hub-type"
 import { SESSION_DURATION_MINUTES_OPTIONS, sessionDurationLabel } from "@/lib/session-duration-options"
 
@@ -28,36 +30,50 @@ interface EventType {
   category: string
 }
 
-interface AdminCoursesCreateProps {
+interface AdminCoursesCreateProps extends InertiaPageProps {
   eventTypes: EventType[]
+  companionEventTypes?: EventType[]
   organizationPrimaryActionCategories: PrimaryActionCategoryOption[]
   organizationName?: string | null
   sellerNameLabel?: string
+  lockedHubListingType?: ConnectionHubListingLockType | null
+}
+
+type CourseCreatePageProps = AdminCoursesCreateProps & { auth: { user: User } }
+
+function defaultEventTypeIdForHub(
+  hub: ConnectionHubType,
+  companionEventTypes: EventType[],
+  eventTypes: EventType[],
+): string {
+  const catalog = hub === "companion" ? companionEventTypes : eventTypes
+  const first = catalog[0]?.id ?? eventTypes[0]?.id ?? companionEventTypes[0]?.id
+  return first != null ? String(first) : ""
 }
 
 export default function NonprofitCoursesCreate() {
-  const { eventTypes, organizationPrimaryActionCategories, organizationName, sellerNameLabel } =
-    usePage<AdminCoursesCreateProps>().props
-  const { auth } = usePage().props as { auth: { user: User } }
+  const {
+    eventTypes,
+    companionEventTypes = [],
+    organizationPrimaryActionCategories,
+    organizationName,
+    sellerNameLabel,
+    lockedHubListingType,
+    auth,
+  } = usePage<CourseCreatePageProps>().props
+
+  const hubTypeLocked = lockedHubListingType ?? null
+  const initialHubType = (hubTypeLocked ?? "companion") as ConnectionHubType
 
   const [currentTab, setCurrentTab] = useState("basics")
   const [tabErrors, setTabErrors] = useState<Record<string, boolean>>({})
 
-  // Group event types by category
-  const groupedEventTypes = eventTypes.reduce((acc, type) => {
-    const category = type.category || 'Other'
-    if (!acc[category]) {
-      acc[category] = []
-    }
-    acc[category].push(type)
-    return acc
-  }, {} as Record<string, EventType[]>)
-
   const { data, setData, post, processing, errors, reset } = useForm({
-    type: "companion" as ConnectionHubType,
+    type: initialHubType,
+    locked_hub_type: hubTypeLocked ?? "",
     name: "",
     description: "",
-    event_type_id: eventTypes.length > 0 ? eventTypes[0].id.toString() : "",
+    event_type_id: defaultEventTypeIdForHub(initialHubType, companionEventTypes, eventTypes),
     target_audience: "",
     meeting_link: "",
     pricing_type: "free",
@@ -89,6 +105,27 @@ export default function NonprofitCoursesCreate() {
     tax_ack_outside_ca: false,
     tax_ack_auto_calculate: false,
   })
+
+  const topicCatalog = useMemo(() => {
+    if (data.type === "companion") return companionEventTypes
+    return eventTypes
+  }, [data.type, companionEventTypes, eventTypes])
+
+  const groupedEventTypes = useMemo(() => {
+    return topicCatalog.reduce((acc, type) => {
+      const category = type.category || "Other"
+      if (!acc[category]) acc[category] = []
+      acc[category].push(type)
+      return acc
+    }, {} as Record<string, EventType[]>)
+  }, [topicCatalog])
+
+  useEffect(() => {
+    const ids = new Set(topicCatalog.map((t) => t.id.toString()))
+    if (data.event_type_id && ids.has(data.event_type_id)) return
+    setData("event_type_id", topicCatalog[0]?.id?.toString() ?? "")
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally only when hub `type` or topic catalog changes
+  }, [data.type, topicCatalog])
 
   const formattedProgramLengthPreview = useMemo(() => {
     if (!data.start_date || !data.end_date) return null
@@ -254,7 +291,7 @@ export default function NonprofitCoursesCreate() {
 
   return (
     <AppLayout>
-      <Head title={`Create ${connectionHubTypeLabel(data.type)} - Connections`} />
+      <Head title={`Create ${connectionHubTypeLabel(data.type)} - Connection Hub`} />
 
       <div className="space-y-6 m-6">
         <div className="flex items-center gap-4">
@@ -309,9 +346,11 @@ export default function NonprofitCoursesCreate() {
                       <label htmlFor="type" className="text-sm font-medium">
                         Type *
                       </label>
-                      <Select value={data.type} onValueChange={(value) => {
-                        setData("type", value as ConnectionHubType)
-                      }}>
+                      <Select
+                        value={data.type}
+                        onValueChange={(value) => setData("type", value as ConnectionHubType)}
+                        disabled={!!hubTypeLocked}
+                      >
                         <SelectTrigger className={errors.type ? "border-destructive" : ""}>
                           <SelectValue placeholder="Select type" />
                         </SelectTrigger>
@@ -319,9 +358,13 @@ export default function NonprofitCoursesCreate() {
                           <SelectItem value="companion">Companion</SelectItem>
                           <SelectItem value="learning">Learning</SelectItem>
                           <SelectItem value="events">Events</SelectItem>
-                          <SelectItem value="earning">Earning</SelectItem>
                         </SelectContent>
                       </Select>
+                      {hubTypeLocked && (
+                        <p className="text-sm text-muted-foreground">
+                          Type is set from the Connection Hub you used and cannot be changed here.
+                        </p>
+                      )}
                       {errors.type && <p className="text-sm text-destructive">{errors.type}</p>}
                     </div>
 
@@ -436,7 +479,7 @@ export default function NonprofitCoursesCreate() {
                     organizationName={organizationName}
                     sellerNameLabel={sellerNameLabel}
                     hubType={data.type}
-                    pricingType={data.pricing_type}
+                    pricingType={data.pricing_type as "free" | "paid"}
                   />
 
                   <OrganizationPrimaryActionCategoriesField

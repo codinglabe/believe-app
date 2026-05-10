@@ -6,7 +6,7 @@ function MerchantCard({ className, ...props }: React.ComponentProps<"div">) {
     <div
       data-slot="merchant-card"
       className={cn(
-        "w-full flex flex-col gap-6 py-6 bg-black/25 border border-[#2563EB]/20 text-white backdrop-blur px-6 rounded-2xl shadow-xl transition-all duration-300",
+        "w-full flex flex-col gap-6 py-6 bg-[#161B30] border border-white/[0.06] text-white shadow-xl backdrop-blur px-6 rounded-xl transition-all duration-300",
         className
       )}
       {...props}

@@ -119,6 +119,7 @@ interface Course {
 interface AdminCoursesEditProps {
   course: Course
   eventTypes: EventType[]
+  companionEventTypes?: EventType[]
   organizationPrimaryActionCategories: PrimaryActionCategoryOption[]
   causesCatalogSource?: "organization" | "supporter"
   organizationName?: string | null
@@ -129,23 +130,12 @@ export default function AdminCoursesEdit() {
   const {
     course,
     eventTypes,
+    companionEventTypes = [],
     organizationPrimaryActionCategories,
     causesCatalogSource,
     organizationName,
     sellerNameLabel,
   } = usePage<AdminCoursesEditProps>().props
-
-  const groupedEventTypes = useMemo(() => {
-    return eventTypes.reduce(
-      (acc, type) => {
-        const category = type.category || "Other"
-        if (!acc[category]) acc[category] = []
-        acc[category].push(type)
-        return acc
-      },
-      {} as Record<string, EventType[]>,
-    )
-  }, [eventTypes])
   const { auth } = usePage().props as { auth: { user: User } }
 
   const [currentTab, setCurrentTab] = useState("basics")
@@ -214,6 +204,30 @@ export default function AdminCoursesEdit() {
     tax_ack_outside_ca: Boolean(course.tax_ack_outside_ca),
     tax_ack_auto_calculate: Boolean(course.tax_ack_auto_calculate),
   })
+
+  const topicCatalog = useMemo(() => {
+    if (data.type === "companion") return companionEventTypes
+    return eventTypes
+  }, [data.type, companionEventTypes, eventTypes])
+
+  const groupedEventTypes = useMemo(() => {
+    return topicCatalog.reduce(
+      (acc, type) => {
+        const category = type.category || "Other"
+        if (!acc[category]) acc[category] = []
+        acc[category].push(type)
+        return acc
+      },
+      {} as Record<string, EventType[]>,
+    )
+  }, [topicCatalog])
+
+  useEffect(() => {
+    const ids = new Set(topicCatalog.map((t) => t.id.toString()))
+    if (data.event_type_id && ids.has(data.event_type_id)) return
+    setData("event_type_id", topicCatalog[0]?.id?.toString() ?? "")
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally only when hub `type` or topic catalog changes
+  }, [data.type, topicCatalog])
 
   const formattedProgramLengthPreview = useMemo(() => {
     if (!data.start_date || !data.end_date) return null
@@ -524,9 +538,11 @@ export default function AdminCoursesEdit() {
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="companion">Companion</SelectItem>
-                          <SelectItem value="learning">Learning</SelectItem>
+                          <SelectItem value="learning">{connectionHubTypeLabel("learning")}</SelectItem>
                           <SelectItem value="events">Events</SelectItem>
-                          <SelectItem value="earning">Earning</SelectItem>
+                          {data.type === "earning" && (
+                            <SelectItem value="earning">{connectionHubTypeLabel("earning")}</SelectItem>
+                          )}
                         </SelectContent>
                       </Select>
                       {errors.type && <p className="text-sm text-destructive">{errors.type}</p>}

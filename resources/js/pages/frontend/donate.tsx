@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import type { PageProps as InertiaPageProps } from "@inertiajs/core"
 import { router, usePage, Link } from "@inertiajs/react"
 import { PageHead } from "@/components/frontend/PageHead"
 import { useNotification } from "@/components/frontend/notification-provider"
@@ -110,7 +111,7 @@ const DEFAULT_PROCESSING_FEE_RATES: ProcessingFeeRates = {
   ach_fee_cap_usd: 5,
 }
 
-interface DonatePageProps {
+interface DonatePageProps extends InertiaPageProps {
   seo?: { title: string; description?: string }
   organizations: DonateCause[]
   /** Causes the current user has donated to (with totals); empty when logged out. */
@@ -122,6 +123,8 @@ interface DonatePageProps {
   givingGoal?: number
   topOrganizations?: TopOrganization[]
   feePreview?: FeePreviewFromServer | null
+  /** Checkout total for each rail (same gift + “Make Full Impact” as active preview). */
+  feePreviewCheckoutTotalsByRail?: { card: number; bank: number } | null
 }
 
 const amountConfig = [
@@ -170,6 +173,7 @@ export default function DonatePage({
   const page = usePage<DonatePageProps & { processingFeeRates?: ProcessingFeeRates }>()
   const processingFeeRates = page.props.processingFeeRates ?? DEFAULT_PROCESSING_FEE_RATES
   const feePreview = page.props.feePreview ?? null
+  const feePreviewCheckoutTotalsByRail = page.props.feePreviewCheckoutTotalsByRail ?? null
   const flash = page.props
   const { showNotification } = useNotification()
 
@@ -245,7 +249,7 @@ export default function DonatePage({
         preserveScroll: true,
         preserveState: true,
         replace: true,
-        only: ["organizations", "searchQuery", "feePreview"],
+        only: ["organizations", "searchQuery", "feePreview", "feePreviewCheckoutTotalsByRail"],
         onFinish: () => {
           setFeePreviewLoading(false)
           setIsSearchingOrganizations(false)
@@ -777,29 +781,39 @@ export default function DonatePage({
                 {paymentMethod === "stripe" && getCurrentAmount() > 0 && (
                   <div className="rounded-xl border border-slate-200/60 bg-white/40 p-4 space-y-3 dark:border-white/15 dark:bg-white/5">
                     <div>
-                      <div className="text-xs text-slate-600/80 dark:text-white/65 mb-2 font-medium">Fee estimate for</div>
+                      <div className="text-xs text-slate-600/80 dark:text-white/65 mb-2 font-medium">Fee preview for</div>
                       <div className="grid grid-cols-2 gap-2">
                         <button
                           type="button"
                           onClick={() => setFeePreviewRail("card")}
-                          className={`rounded-xl border-2 px-3 py-2.5 text-sm font-semibold transition-all ${
+                          className={`flex flex-col items-center justify-center rounded-xl border-2 px-3 py-2.5 text-center text-sm font-semibold transition-all ${
                             feePreviewRail === "card"
                               ? "border-purple-400 bg-purple-500/25 text-slate-900 dark:text-white"
                               : "border-slate-200/60 bg-white/50 text-slate-700 hover:border-purple-400/40 dark:border-white/15 dark:bg-white/5 dark:text-white/90"
                           }`}
                         >
-                          Card
+                          <span>Card</span>
+                          {feePreviewCheckoutTotalsByRail ? (
+                            <span className="mt-1 text-xs font-medium tabular-nums text-slate-600 dark:text-white/75">
+                              Total Charged: ${feePreviewCheckoutTotalsByRail.card.toFixed(2)}
+                            </span>
+                          ) : null}
                         </button>
                         <button
                           type="button"
                           onClick={() => setFeePreviewRail("bank")}
-                          className={`rounded-xl border-2 px-3 py-2.5 text-sm font-semibold transition-all ${
+                          className={`flex flex-col items-center justify-center rounded-xl border-2 px-3 py-2.5 text-center text-sm font-semibold transition-all ${
                             feePreviewRail === "bank"
                               ? "border-purple-400 bg-purple-500/25 text-slate-900 dark:text-white"
                               : "border-slate-200/60 bg-white/50 text-slate-700 hover:border-purple-400/40 dark:border-white/15 dark:bg-white/5 dark:text-white/90"
                           }`}
                         >
-                          Bank (ACH)
+                          <span>Bank (ACH)</span>
+                          {feePreviewCheckoutTotalsByRail ? (
+                            <span className="mt-1 text-xs font-medium tabular-nums text-slate-600 dark:text-white/75">
+                              Total Charged: ${feePreviewCheckoutTotalsByRail.bank.toFixed(2)}
+                            </span>
+                          ) : null}
                         </button>
                       </div>
                       <p className="text-[11px] text-slate-500 dark:text-white/45 mt-2 leading-snug">
@@ -810,10 +824,11 @@ export default function DonatePage({
                     </div>
                     <div className="flex items-center justify-between gap-3">
                       <div className="min-w-0">
-                        <div className="text-sm font-semibold text-slate-900 dark:text-white">Cover processing fees</div>
+                        <div className="text-sm font-semibold text-slate-900 dark:text-white">Make Full Impact</div>
                         <p className="text-xs text-slate-600/85 dark:text-white/60 mt-0.5 leading-snug">
-                          On: your charge is adjusted so the nonprofit keeps your full gift. Off: fees come out of your
-                          donation. Final total is confirmed in Stripe Checkout.
+                          On: cover fees so 100% of your donation goes to the nonprofit—the extra covers processing.
+                          Off: processing fees reduce what the nonprofit receives. Final total is confirmed in Stripe
+                          Checkout.
                         </p>
                       </div>
                       <Switch checked={donorCoversProcessingFees} onCheckedChange={setDonorCoversProcessingFees} />
@@ -822,43 +837,47 @@ export default function DonatePage({
                       {feePreviewLoading && !feePreview ? (
                         <div className="flex items-center justify-center gap-2 py-6 text-slate-600/80 dark:text-white/60">
                           <Loader2 className="h-5 w-5 animate-spin shrink-0" aria-hidden />
-                          <span>Loading fee estimate…</span>
+                          <span>Loading fee preview…</span>
                         </div>
                       ) : null}
                       {feePreview ? (
                         <div className={cn("relative space-y-1.5", feePreviewLoading && "opacity-60")}>
                           {feePreview.mode === "donor_covers" ? (
                             <>
+                              <div className="flex justify-between font-semibold text-slate-900 dark:text-white">
+                                <span>Total Charged</span>
+                                <span className="tabular-nums">${feePreview.checkout_total_usd.toFixed(2)}</span>
+                              </div>
                               <div className="flex justify-between text-slate-700 dark:text-white/85">
-                                <span>Gift to nonprofit</span>
+                                <span>Donation to Nonprofit</span>
                                 <span className="font-medium tabular-nums">${feePreview.base_gift_usd.toFixed(2)}</span>
                               </div>
                               <div className="flex justify-between text-slate-600/90 dark:text-white/65">
-                                <span>
-                                  Est. processing add-on ({(feePreview.rail ?? "card") === "bank" ? "ACH" : "card"})
-                                </span>
-                                <span className="tabular-nums">+${feePreview.processing_fee_estimate.toFixed(2)}</span>
+                                <span>Processing Fees (covered by you)</span>
+                                <span className="tabular-nums">${feePreview.processing_fee_estimate.toFixed(2)}</span>
                               </div>
-                              <div className="flex justify-between font-semibold text-slate-900 dark:text-white pt-1">
-                                <span>Est. charge</span>
-                                <span className="tabular-nums">${feePreview.checkout_total_usd.toFixed(2)}</span>
+                              <div className="flex justify-between font-semibold text-slate-900 dark:text-white pt-1 border-t border-slate-200/40 dark:border-white/10">
+                                <span>✓ Nonprofit receives</span>
+                                <span className="tabular-nums">${feePreview.estimated_net_to_org_usd.toFixed(2)}</span>
                               </div>
                             </>
                           ) : (
                             <>
+                              <div className="flex justify-between font-semibold text-slate-900 dark:text-white">
+                                <span>Total Charged</span>
+                                <span className="tabular-nums">${feePreview.checkout_total_usd.toFixed(2)}</span>
+                              </div>
                               <div className="flex justify-between text-slate-700 dark:text-white/85">
-                                <span>Your donation</span>
-                                <span className="font-medium tabular-nums">${feePreview.base_gift_usd.toFixed(2)}</span>
+                                <span>Donation to Nonprofit</span>
+                                <span className="font-medium tabular-nums">${feePreview.estimated_net_to_org_usd.toFixed(2)}</span>
                               </div>
                               <div className="flex justify-between text-slate-600/90 dark:text-white/65">
-                                <span>
-                                  Est. Stripe fee ({(feePreview.rail ?? "card") === "bank" ? "ACH" : "card"})
-                                </span>
-                                <span className="tabular-nums">−${feePreview.processing_fee_estimate.toFixed(2)}</span>
+                                <span>Processing Fees</span>
+                                <span className="tabular-nums">${feePreview.processing_fee_estimate.toFixed(2)}</span>
                               </div>
-                              <div className="flex justify-between text-slate-700 dark:text-white/85 pt-1">
-                                <span>Est. to nonprofit after fees</span>
-                                <span className="font-medium tabular-nums">${feePreview.estimated_net_to_org_usd.toFixed(2)}</span>
+                              <div className="flex justify-between font-semibold text-slate-900 dark:text-white pt-1 border-t border-slate-200/40 dark:border-white/10">
+                                <span>✓ Nonprofit receives</span>
+                                <span className="tabular-nums">${feePreview.estimated_net_to_org_usd.toFixed(2)}</span>
                               </div>
                             </>
                           )}
@@ -871,7 +890,8 @@ export default function DonatePage({
                       ) : null}
                       <p className="text-[11px] text-slate-500 dark:text-white/50 pt-1 flex items-start gap-1.5">
                         <Landmark className="h-3.5 w-3.5 shrink-0 mt-0.5 opacity-80" />
-                        Sales tax may apply at checkout when enabled in Stripe.                         Stripe Checkout will only show {feePreviewRail === "bank" ? "US bank account (ACH)" : "card"} for this
+                        Sales tax may apply at checkout when enabled in Stripe. Stripe Checkout will only show{" "}
+                        {feePreviewRail === "bank" ? "US bank account (ACH)" : "card"} for this
                         donation, matching your selection above.
                       </p>
                     </div>

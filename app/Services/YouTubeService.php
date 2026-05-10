@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Organization;
+use App\Models\User;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Http;
@@ -561,6 +562,86 @@ class YouTubeService
         }
 
         return $this->refreshYoutubeToken($organization);
+    }
+
+    /**
+     * Valid access token for the connected supporter (user) OAuth.
+     */
+    public function getValidAccessTokenForUser(User $user): ?string
+    {
+        $expiresAt = $user->youtube_token_expires_at;
+        $bufferMinutes = 5;
+        if ($expiresAt && $expiresAt->copy()->subMinutes($bufferMinutes)->isFuture()) {
+            try {
+                return Crypt::decryptString($user->youtube_access_token);
+            } catch (\Exception $e) {
+                Log::warning('YouTube access token decrypt failed for user, will try refresh', ['user_id' => $user->id]);
+            }
+        }
+
+        return $this->refreshYoutubeTokenForUser($user);
+    }
+
+    /**
+     * Refresh YouTube OAuth tokens for a user (supporter integrations).
+     *
+     * @return string|null New access token or null on failure
+     */
+    public function refreshYoutubeTokenForUser(User $user): ?string
+    {
+        $refreshToken = $user->youtube_refresh_token;
+        if (empty($refreshToken)) {
+            Log::warning('YouTube refresh token missing', ['user_id' => $user->id]);
+
+            return null;
+        }
+
+        try {
+            $decryptedRefresh = Crypt::decryptString($refreshToken);
+        } catch (\Exception $e) {
+            Log::warning('YouTube refresh token decrypt failed', ['user_id' => $user->id]);
+
+            return null;
+        }
+
+        $clientId = config('services.youtube.client_id');
+        $clientSecret = config('services.youtube.client_secret');
+        if (empty($clientId) || empty($clientSecret)) {
+            Log::warning('YouTube OAuth client not configured');
+
+            return null;
+        }
+
+        $response = $this->http()->asForm()->post('https://oauth2.googleapis.com/token', [
+            'client_id' => $clientId,
+            'client_secret' => $clientSecret,
+            'refresh_token' => $decryptedRefresh,
+            'grant_type' => 'refresh_token',
+        ]);
+
+        if (! $response->successful()) {
+            Log::error('YouTube token refresh failed', [
+                'user_id' => $user->id,
+                'status' => $response->status(),
+                'body' => $response->body(),
+            ]);
+
+            return null;
+        }
+
+        $data = $response->json();
+        $accessToken = $data['access_token'] ?? null;
+        $expiresIn = (int) ($data['expires_in'] ?? 3600);
+        if (! $accessToken) {
+            return null;
+        }
+
+        $user->update([
+            'youtube_access_token' => Crypt::encryptString($accessToken),
+            'youtube_token_expires_at' => now()->addSeconds($expiresIn),
+        ]);
+
+        return $accessToken;
     }
 
     /**

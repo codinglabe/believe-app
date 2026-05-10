@@ -92,6 +92,9 @@ class Organization extends Model
         'is_compliance_locked',
         'gift_card_terms_approved',
         'gift_card_terms_approved_at',
+        'stripe_connect_account_id',
+        'stripe_connect_charges_enabled',
+        'stripe_connect_payouts_enabled',
         'dropbox_folder_name',
     ];
 
@@ -112,6 +115,8 @@ class Organization extends Model
         'is_compliance_locked' => 'boolean',
         'gift_card_terms_approved' => 'boolean',
         'gift_card_terms_approved_at' => 'datetime',
+        'stripe_connect_charges_enabled' => 'boolean',
+        'stripe_connect_payouts_enabled' => 'boolean',
         'youtube_token_expires_at' => 'datetime',
         'dropbox_token_expires_at' => 'datetime',
     ];

@@ -9,26 +9,21 @@ import { PageHead } from "@/components/frontend/PageHead"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/frontend/ui/avatar"
 import { Button } from "@/components/frontend/ui/button"
 import { Input } from "@/components/frontend/ui/input"
-import { Card, CardContent } from "@/components/frontend/ui/card"
-import {
-  Search,
-  MapPin,
-  ChevronDown,
-  Check,
-  Heart,
-  MessageCircle,
-  Share2,
-  User,
-  Loader2,
-  X,
-  Gift,
-} from "lucide-react"
+import { Search, MapPin, ChevronDown, Loader2, Gift, UserPlus, UserCheck } from "lucide-react"
+import { cn } from "@/lib/utils"
+import { CauseBadge } from "@/components/frontend/cause-badge"
 
 const SORT_OPTIONS = [
   { value: "best_match", label: "Best Match" },
   { value: "most_active", label: "Most Active" },
   { value: "new_supporters", label: "New Supporters" },
 ] as const
+
+interface SupporterCause {
+  id: number
+  name: string
+  slug?: string
+}
 
 interface Supporter {
   id: number
@@ -38,7 +33,7 @@ interface Supporter {
   image?: string | null
   is_following: boolean
   location?: string | null
-  interests?: string[]
+  interests?: SupporterCause[]
   shared_organizations_count?: number
   reactions_count?: number
   comments_count?: number
@@ -55,14 +50,14 @@ interface PaginatedSupporters {
   prev_page_url: string | null
 }
 
-interface InterestOption {
+interface PopularCause {
   id: number
   name: string
+  slug?: string
 }
 
 interface Filters {
   same_causes: boolean
-  /** Primary action category ids (profile Supporter interest) */
   causes: number[]
   location: string
   radius: string
@@ -74,8 +69,8 @@ interface PageProps {
   supporters: PaginatedSupporters
   searchQuery: string
   filters: Filters
-  /** Active primary action categories (same as org registration + supporter profile) */
-  interestOptions: InterestOption[]
+  /** Top causes by supporter profile picks (`primary_action_category_user`), same order as DB */
+  popularCauses: PopularCause[]
   auth?: { user?: { id: number; name?: string } }
 }
 
@@ -99,7 +94,7 @@ export default function FindSupportersPage() {
     supporters: initialSupporters,
     searchQuery: initialQuery,
     filters: initialFilters,
-    interestOptions = [],
+    popularCauses = [],
     auth,
   } = usePage<PageProps>().props
 
@@ -113,7 +108,6 @@ export default function FindSupportersPage() {
     radius: initialFilters?.radius ?? "",
     sort: initialFilters?.sort ?? "best_match",
   })
-  const [locationInput, setLocationInput] = useState(initialFilters?.location ?? "")
   const [followingStates, setFollowingStates] = useState<Record<number, boolean>>(() => {
     const map: Record<number, boolean> = {}
     initialSupporters?.data?.forEach((s: Supporter) => {
@@ -122,58 +116,12 @@ export default function FindSupportersPage() {
     return map
   })
   const [loadingFollow, setLoadingFollow] = useState<Record<number, boolean>>({})
-  const [causesExpanded, setCausesExpanded] = useState(true)
-  const [showAllInterests, setShowAllInterests] = useState(false)
-  const [locationExpanded, setLocationExpanded] = useState(true)
   const [sortDropdownOpen, setSortDropdownOpen] = useState(false)
-  const [expandedInterestCards, setExpandedInterestCards] = useState<Set<number>>(new Set())
 
-  const INTERESTS_VISIBLE_COUNT = 5
-  const visibleInterestOptions = showAllInterests
-    ? interestOptions
-    : interestOptions.slice(0, INTERESTS_VISIBLE_COUNT)
-  const hasMoreInterests = interestOptions.length > INTERESTS_VISIBLE_COUNT
-
-  const toggleCardInterests = (supporterId: number) => {
-    setExpandedInterestCards((prev) => {
-      const next = new Set(prev)
-      if (next.has(supporterId)) next.delete(supporterId)
-      else next.add(supporterId)
-      return next
-    })
-  }
-
-  const applyLocation = useCallback(
-    (locationValue: string) => {
-      const trimmed = locationValue.trim()
-      const nextFilters = { ...filters, location: trimmed }
-      setFilters(nextFilters)
-      setLocationInput(trimmed)
-      router.get(route("find-supporters.index"), buildParams(searchQuery, nextFilters), {
-        preserveState: false,
-      })
-    },
-    [filters, searchQuery]
-  )
-
-  // Auto-apply location when user stops typing (debounced)
-  const locationInputRef = React.useRef(locationInput)
-  locationInputRef.current = locationInput
-  React.useEffect(() => {
-    const current = locationInputRef.current.trim()
-    if (current === (filters.location || "")) return
-    const timer = setTimeout(() => {
-      applyLocation(locationInputRef.current)
-    }, 600)
-    return () => clearTimeout(timer)
-  }, [locationInput, filters.location, applyLocation])
-
-  // Auto-search when user stops typing (debounced)
   const searchQueryRef = React.useRef(searchQuery)
   searchQueryRef.current = searchQuery
   const isInitialMountRef = React.useRef(true)
   React.useEffect(() => {
-    // Skip on initial mount to avoid searching when query is already set from URL
     if (isInitialMountRef.current) {
       isInitialMountRef.current = false
       return
@@ -188,24 +136,6 @@ export default function FindSupportersPage() {
     return () => clearTimeout(timer)
   }, [searchQuery, filters, initialQuery])
 
-  const clearSameCauses = useCallback(() => {
-    const next = { ...filters, same_causes: false }
-    setFilters(next)
-    router.get(route("find-supporters.index"), buildParams(searchQuery, next), {
-      preserveState: false,
-    })
-  }, [filters, searchQuery])
-
-  const clearLocation = useCallback(() => {
-    setLocationInput("")
-    const next = { ...filters, location: "" }
-    setFilters(next)
-    router.get(route("find-supporters.index"), buildParams(searchQuery, next), {
-      preserveState: false,
-    })
-  }, [filters, searchQuery])
-
-  // Sync from server when props change (e.g. after navigation)
   React.useEffect(() => {
     setSupporters(initialSupporters)
     setSearchQuery(initialQuery ?? "")
@@ -216,7 +146,6 @@ export default function FindSupportersPage() {
       radius: initialFilters?.radius ?? "",
       sort: initialFilters?.sort ?? "best_match",
     })
-    setLocationInput(initialFilters?.location ?? "")
     const map: Record<number, boolean> = {}
     initialSupporters?.data?.forEach((s: Supporter) => {
       map[s.id] = s.is_following ?? false
@@ -226,7 +155,6 @@ export default function FindSupportersPage() {
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault()
-    // Clear any pending debounce and search immediately
     router.get(route("find-supporters.index"), buildParams(searchQuery, filters), {
       preserveState: false,
     })
@@ -244,42 +172,11 @@ export default function FindSupportersPage() {
     [filters, searchQuery]
   )
 
-  const toggleSameCauses = useCallback(() => {
-    const next = { ...filters, same_causes: !filters.same_causes }
-    setFilters(next)
-    router.get(route("find-supporters.index"), buildParams(searchQuery, next), {
-      preserveState: false,
-    })
-  }, [filters, searchQuery])
-
   const toggleCause = useCallback(
     (causeId: number) => {
       const next = filters.causes.includes(causeId)
         ? filters.causes.filter((id) => id !== causeId)
         : [...filters.causes, causeId]
-      const nextFilters = { ...filters, causes: next }
-      setFilters(nextFilters)
-      router.get(route("find-supporters.index"), buildParams(searchQuery, nextFilters), {
-        preserveState: false,
-      })
-    },
-    [filters, searchQuery]
-  )
-
-  const applySortChip = useCallback(
-    (value: string) => {
-      const next = { ...filters, sort: value }
-      setFilters(next)
-      router.get(route("find-supporters.index"), buildParams(searchQuery, next), {
-        preserveState: false,
-      })
-    },
-    [filters, searchQuery]
-  )
-
-  const removeCauseChip = useCallback(
-    (causeId: number) => {
-      const next = filters.causes.filter((id) => id !== causeId)
       const nextFilters = { ...filters, causes: next }
       setFilters(nextFilters)
       router.get(route("find-supporters.index"), buildParams(searchQuery, nextFilters), {
@@ -303,7 +200,9 @@ export default function FindSupportersPage() {
       preserveState: false,
       onFinish: () => setLoadingFollow((prev) => ({ ...prev, [supporter.id]: false })),
       onError: () => {
-        toast.error('Following is for supporter accounts only. Please log in with your personal (supporter) account to follow people.')
+        toast.error(
+          "Following is for supporter accounts only. Please log in with your personal (supporter) account to follow people.",
+        )
         setFollowingStates((prev) => ({ ...prev, [supporter.id]: !newState }))
         setSupporters((prev) => ({
           ...prev,
@@ -318,400 +217,261 @@ export default function FindSupportersPage() {
     [filters.sort]
   )
 
-  const selectedCauseNames = useMemo(
-    () =>
-      filters.causes
-        .map((id) => interestOptions.find((t) => t.id === id)?.name)
-        .filter(Boolean) as string[],
-    [filters.causes, interestOptions]
-  )
-
-  const primaryBlue = "#3B82F6"
-  const lightBlueBg = "bg-blue-50 dark:bg-blue-950/30"
+  /** Cause(s) column — same CauseBadge (icon + pill) as org directory; +N when truncated */
+  function CauseBadgesCell({ interests }: { interests: SupporterCause[] }) {
+    const max = 3
+    const visible = interests.slice(0, max)
+    const rest = interests.length - max
+    return (
+      <div className="flex flex-wrap items-start gap-1.5">
+        {visible.map((c) => (
+          <CauseBadge key={c.id} c={c} />
+        ))}
+        {rest > 0 ? (
+          <span className="mt-0.5 rounded-md border border-slate-300 bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600 dark:border-slate-500/50 dark:bg-slate-800/80 dark:text-slate-300">
+            +{rest}
+          </span>
+        ) : null}
+      </div>
+    )
+  }
 
   return (
     <FrontendLayout>
-      <PageHead title={seo?.title ?? "Find Supporters"} description={seo?.description} />
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-50 dark:from-gray-950 dark:via-gray-900 dark:to-gray-950">
-        <div className="max-w-[95rem] mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <div className="mb-8">
-            <h1 className="text-3xl sm:text-4xl font-bold text-gray-900 dark:text-white mb-2 tracking-tight">
-              Find Supporters
-            </h1>
-            <p className="text-gray-600 dark:text-gray-400 text-base sm:text-lg">
-              Discover and connect with people who share your interests and values.
+      <PageHead title={seo?.title ?? "Supporters"} description={seo?.description} />
+      <div className="min-h-screen bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
+        <div className="relative overflow-hidden border-b border-slate-200/80 bg-gradient-to-b from-white via-slate-50 to-slate-100 dark:border-white/5 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950">
+          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(59,130,246,0.06),_transparent_55%),radial-gradient(ellipse_at_bottom,_rgba(147,51,234,0.05),_transparent_55%)] dark:bg-[radial-gradient(ellipse_at_top,_rgba(59,130,246,0.12),_transparent_55%),radial-gradient(ellipse_at_bottom,_rgba(147,51,234,0.08),_transparent_55%)]" />
+          <div className="relative container mx-auto px-4 py-10">
+            <header className="mb-8 max-w-3xl">
+              <h1 className="text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl dark:text-white">
+                Supporters
+              </h1>
+              <p className="mt-3 text-base text-slate-600 dark:text-slate-400">
+                Discover and connect with supporters who care about making a difference.
+              </p>
+            </header>
+
+            <form onSubmit={handleSearch} className="relative mb-6">
+              <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400 dark:text-slate-500" />
+              <Input
+                type="text"
+                placeholder="Search supporters by name, email, or location..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="h-14 w-full rounded-xl border border-slate-200 bg-white pl-12 pr-4 text-base text-slate-900 placeholder:text-slate-500 focus-visible:border-violet-400 focus-visible:ring-2 focus-visible:ring-violet-500/25 dark:border-white/10 dark:bg-slate-900/80 dark:text-white dark:placeholder:text-slate-500 dark:focus-visible:border-violet-500/50 dark:focus-visible:ring-violet-500/30"
+              />
+            </form>
+
+            {/* Popular causes = most chosen by supporters (global), not “my profile” interests */}
+            {popularCauses.length > 0 ? (
+              <div className="mb-6 flex min-w-0 flex-wrap items-center gap-2">
+                <span className="shrink-0 text-sm font-medium text-slate-600 dark:text-slate-400">
+                  Popular among supporters:
+                </span>
+                {popularCauses.map((c) => (
+                  <CauseBadge
+                    key={c.id}
+                    c={c}
+                    onClick={() => toggleCause(c.id)}
+                    selected={filters.causes.includes(c.id)}
+                  />
+                ))}
+              </div>
+            ) : null}
+          </div>
+        </div>
+
+        <div className="container mx-auto px-4 py-8">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <p className="text-sm text-slate-600 dark:text-slate-400">
+              {supporters.total.toLocaleString()} supporter{supporters.total === 1 ? "" : "s"}
             </p>
+            <div className="relative flex items-center gap-2">
+              <span className="text-sm text-slate-500 dark:text-slate-500">Sort</span>
+              <button
+                type="button"
+                onClick={() => setSortDropdownOpen(!sortDropdownOpen)}
+                className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-900 shadow-sm hover:bg-slate-50 dark:border-white/10 dark:bg-slate-900 dark:text-white dark:shadow-none dark:hover:bg-slate-800"
+              >
+                {sortLabel}
+                <ChevronDown className={cn("h-4 w-4 transition-transform", sortDropdownOpen && "rotate-180")} />
+              </button>
+              {sortDropdownOpen ? (
+                <>
+                  <button
+                    type="button"
+                    className="fixed inset-0 z-10 cursor-default"
+                    aria-label="Close menu"
+                    onClick={() => setSortDropdownOpen(false)}
+                  />
+                  <div className="absolute right-0 top-full z-20 mt-2 min-w-[200px] rounded-xl border border-slate-200 bg-white py-1 shadow-lg dark:border-white/10 dark:bg-slate-900 dark:shadow-xl">
+                    {SORT_OPTIONS.map((opt) => (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        onClick={() => setSort(opt.value)}
+                        className={cn(
+                          "flex w-full px-4 py-2.5 text-left text-sm text-slate-800 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800",
+                          filters.sort === opt.value &&
+                            "bg-violet-100 font-medium text-violet-900 dark:bg-violet-600/20 dark:text-violet-200",
+                        )}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              ) : null}
+            </div>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 lg:gap-8">
-            {/* Left Sidebar - Filter Supporters */}
-            <aside className="lg:col-span-3">
-              <Card className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 shadow-lg rounded-2xl overflow-hidden sticky top-6">
-                <CardContent className="p-6">
-                  <h2 className="font-semibold text-gray-900 dark:text-white mb-6 text-lg">Filter Supporters</h2>
-
-                  <button
-                    type="button"
-                    onClick={toggleSameCauses}
-                    className={`w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl font-medium mb-6 transition-all duration-200 ${
-                      filters.same_causes
-                        ? "bg-gradient-to-r from-blue-600 to-blue-700 text-white shadow-md shadow-blue-500/30 hover:shadow-lg hover:shadow-blue-500/40"
-                        : "bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"
-                    }`}
-                  >
-                    {filters.same_causes && <Check className="w-4 h-4" />}
-                    Same Causes as Me
-                  </button>
-
-                  <div className="mb-6">
-                    <button
-                      type="button"
-                      onClick={() => setCausesExpanded(!causesExpanded)}
-                      className="w-full flex items-center justify-between font-semibold text-gray-900 dark:text-white text-sm mb-3 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
-                    >
-                      Supporter interest
-                      <ChevronDown
-                        className={`w-4 h-4 transition-transform duration-200 ${causesExpanded ? "" : "-rotate-90"}`}
-                      />
-                    </button>
-                    {causesExpanded && (
-                      <div className="flex flex-wrap gap-2 mt-2">
-                        {visibleInterestOptions.map((topic) => {
-                          const isSelected = filters.causes.includes(topic.id)
-                          return (
-                            <button
-                              key={topic.id}
-                              type="button"
-                              onClick={() => toggleCause(topic.id)}
-                              className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full text-sm font-medium border transition-all duration-200 ${
-                                isSelected
-                                  ? "bg-gradient-to-r from-blue-600 to-blue-700 text-white border-blue-600 shadow-sm hover:shadow-md"
-                                  : "bg-gray-50 dark:bg-gray-800/50 text-gray-700 dark:text-gray-300 border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800 hover:border-blue-300 dark:hover:border-blue-600"
-                              }`}
-                            >
-                              {isSelected && <Check className="w-3.5 h-3.5" />}
-                              {topic.name}
-                            </button>
-                          )
-                        })}
-                        {hasMoreInterests && (
-                          <button
-                            type="button"
-                            onClick={() => setShowAllInterests(!showAllInterests)}
-                            className="w-full mt-3 flex items-center justify-center gap-1.5 rounded-xl border-2 border-dashed border-gray-300 dark:border-gray-600 px-4 py-2.5 text-sm font-medium text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800/70 hover:border-blue-400 dark:hover:border-blue-500 hover:text-blue-600 dark:hover:text-blue-400 transition-all duration-200"
-                          >
-                            <ChevronDown
-                              className={`w-4 h-4 transition-transform duration-200 ${showAllInterests ? "rotate-180" : ""}`}
-                            />
-                            {showAllInterests ? "Show less" : `Show more (${interestOptions.length - INTERESTS_VISIBLE_COUNT} more)`}
-                          </button>
-                        )}
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="mb-6">
-                    <button
-                      type="button"
-                      onClick={() => setLocationExpanded(!locationExpanded)}
-                      className="w-full flex items-center justify-between font-semibold text-gray-900 dark:text-white text-sm mb-3 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
-                    >
-                      Location
-                      <ChevronDown
-                        className={`w-4 h-4 transition-transform duration-200 ${locationExpanded ? "" : "-rotate-90"}`}
-                      />
-                    </button>
-                    {locationExpanded && (
-                      <div className="space-y-3 mt-3">
-                        <div className="relative">
-                          <MapPin className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                          <Input
-                            value={locationInput}
-                            onChange={(e) => setLocationInput(e.target.value)}
-                            placeholder="City, state or zip"
-                            className="pl-10 pr-4 py-2.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all"
-                          />
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-            </aside>
-
-            {/* Main Content - Search bar and active filters only (selected items show here) */}
-            <div className="lg:col-span-9 space-y-6">
-              <form onSubmit={handleSearch} className="relative group">
-                <Search className="absolute left-5 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 group-focus-within:text-blue-500 transition-colors" />
-                <Input
-                  type="text"
-                  placeholder="Search supporters by name, email, or location..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-12 pr-5 py-4 rounded-2xl border-2 border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-base shadow-sm focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 dark:focus:ring-blue-500/20 transition-all"
-                />
-              </form>
-
-              {/* Only selected/active filters appear as chips below search bar */}
-              <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-gray-200 dark:border-gray-800">
-                <div className="flex flex-wrap items-center gap-2.5">
-                  {filters.same_causes && (
-                    <span className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full text-sm font-medium text-white bg-gradient-to-r from-blue-600 to-blue-700 shadow-sm">
-                      Same causes as me
-                      <button
-                        type="button"
-                        onClick={clearSameCauses}
-                        className="ml-0.5 rounded-full hover:bg-white/20 p-0.5 transition-colors"
-                      >
-                        <X className="w-3.5 h-3.5" />
-                      </button>
-                    </span>
-                  )}
-                  {filters.location && (
-                    <span className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full text-sm font-medium bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200 border border-gray-200 dark:border-gray-700">
-                      <MapPin className="w-3.5 h-3.5" />
-                      {filters.location}
-                      <button
-                        type="button"
-                        onClick={clearLocation}
-                        className="ml-0.5 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 p-0.5 transition-colors"
-                      >
-                        <X className="w-3.5 h-3.5" />
-                      </button>
-                    </span>
-                  )}
-                  {selectedCauseNames.map((name) => {
-                    const id = interestOptions.find((t) => t.name === name)?.id
+          {supporters?.data?.length ? (
+          <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm dark:border-white/10 dark:bg-slate-900/40 dark:shadow-none">
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[720px] border-collapse text-left text-sm">
+                <thead>
+                  <tr className="border-b border-slate-200 bg-slate-100 text-xs font-semibold uppercase tracking-wide text-slate-600 dark:border-white/10 dark:bg-slate-900/80 dark:text-slate-400">
+                    <th className="px-4 py-4 pl-6">Supporter</th>
+                    <th className="px-4 py-4">Location</th>
+                    <th className="px-4 py-4">Cause(s)</th>
+                    <th className="px-4 py-4 text-center">Gift</th>
+                    <th className="px-4 py-4 pr-6 text-right">Follow</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-white/5">
+                  {supporters?.data?.map((supporter) => {
+                    const interests = supporter.interests ?? []
+                    const causeCount = interests.length
                     return (
-                      <span
-                        key={id ?? name}
-                        className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full text-sm font-medium text-white bg-gradient-to-r from-blue-600 to-blue-700 shadow-sm"
+                      <tr
+                        key={supporter.id}
+                        className="hover:bg-slate-50 dark:hover:bg-white/[0.03]"
                       >
-                        <Heart className="w-3.5 h-3.5" />
-                        {name}
-                        <button
-                          type="button"
-                          onClick={() => id != null && removeCauseChip(id)}
-                          className="ml-0.5 rounded-full hover:bg-white/20 p-0.5 transition-colors"
-                        >
-                          <X className="w-3.5 h-3.5" />
-                        </button>
-                      </span>
-                    )
-                  })}
-                  {SORT_OPTIONS.filter((o) => o.value !== "best_match").map((opt) => (
-                    <button
-                      key={opt.value}
-                      type="button"
-                      onClick={() => applySortChip(opt.value)}
-                      className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full text-sm font-medium transition-all ${
-                        filters.sort === opt.value
-                          ? "text-white bg-gradient-to-r from-blue-600 to-blue-700 shadow-sm"
-                          : "bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-700"
-                      }`}
-                    >
-                      <User className="w-3.5 h-3.5" />
-                      {opt.label}
-                    </button>
-                  ))}
-                </div>
-                <div className="relative">
-                  <span className="text-sm text-gray-600 dark:text-gray-400 mr-2 font-medium">Sort:</span>
-                  <button
-                    type="button"
-                    onClick={() => setSortDropdownOpen(!sortDropdownOpen)}
-                    className="font-semibold text-gray-900 dark:text-white inline-flex items-center gap-1 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
-                  >
-                    {sortLabel}
-                    <ChevronDown className={`w-4 h-4 transition-transform duration-200 ${sortDropdownOpen ? "rotate-180" : ""}`} />
-                  </button>
-                  {sortDropdownOpen && (
-                    <>
-                      <div
-                        className="fixed inset-0 z-10"
-                        onClick={() => setSortDropdownOpen(false)}
-                      />
-                      <div className="absolute right-0 top-full mt-2 z-20 py-2 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl min-w-[180px]">
-                        {SORT_OPTIONS.map((opt) => (
-                          <button
-                            key={opt.value}
-                            type="button"
-                            onClick={() => setSort(opt.value)}
-                            className={`w-full text-left px-4 py-2.5 text-sm hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors ${
-                              filters.sort === opt.value ? "font-semibold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/30" : "text-gray-700 dark:text-gray-300"
-                            }`}
-                          >
-                            {opt.label}
-                          </button>
-                        ))}
-                      </div>
-                    </>
-                  )}
-                </div>
-              </div>
-              {selectedCauseNames.length > 0 && (
-                <p className="text-sm text-gray-500 dark:text-gray-400">
-                  {selectedCauseNames.join(", ")}
-                  {supporters.total > 0 && ` • ${supporters.total} supporter${supporters.total !== 1 ? "s" : ""}`}
-                </p>
-              )}
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {supporters?.data?.map((supporter) => (
-                  <Card
-                    key={supporter.id}
-                    className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 shadow-md hover:shadow-xl rounded-2xl overflow-hidden transition-all duration-300 hover:-translate-y-1"
-                  >
-                    <CardContent className="p-5">
-                      <div className="flex items-start gap-3">
-                        <Link
-                          href={
-                            supporter.slug
-                              ? `/users/${supporter.slug}`
-                              : `/users/${supporter.id}`
-                          }
-                          className="flex-shrink-0"
-                        >
-                          <Avatar className="w-14 h-14">
-                            <AvatarImage src={supporter.image ?? undefined} />
-                            <AvatarFallback className="bg-blue-500 text-white text-lg">
-                              {supporter.name?.charAt(0)?.toUpperCase() ?? "?"}
-                            </AvatarFallback>
-                          </Avatar>
-                        </Link>
-                        <div className="flex-1 min-w-0">
-                          <div>
+                        <td className="px-4 py-4 pl-6 align-top">
+                          <div className="flex items-start gap-3">
                             <Link
-                              href={
-                                supporter.slug
-                                  ? `/users/${supporter.slug}`
-                                  : `/users/${supporter.id}`
-                              }
-                              className="font-semibold text-gray-900 dark:text-white hover:text-blue-600 dark:hover:text-blue-400 transition-colors text-base block truncate"
+                              href={supporter.slug ? `/users/${supporter.slug}` : `/users/${supporter.id}`}
+                              className="shrink-0"
                             >
-                              {supporter.name}
+                              <Avatar className="h-12 w-12 border border-slate-200 dark:border-white/10">
+                                <AvatarImage src={supporter.image ?? undefined} />
+                                <AvatarFallback className="bg-violet-600 text-sm text-white">
+                                  {supporter.name?.charAt(0)?.toUpperCase() ?? "?"}
+                                </AvatarFallback>
+                              </Avatar>
                             </Link>
-                            <div className="flex items-center gap-1.5 mt-1">
-                              <MapPin className="w-3.5 h-3.5 text-gray-400" />
-                              <p className="text-sm text-gray-500 dark:text-gray-400 truncate">
-                                {supporter.location || "Location not set"}
+                            <div className="min-w-0">
+                              <Link
+                                href={supporter.slug ? `/users/${supporter.slug}` : `/users/${supporter.id}`}
+                                className="font-semibold text-slate-900 hover:text-violet-700 dark:text-white dark:hover:text-violet-300"
+                              >
+                                {supporter.name}
+                              </Link>
+                              <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-500">
+                                Supporting {causeCount} cause{causeCount !== 1 ? "s" : ""}
                               </p>
                             </div>
                           </div>
-                          <div className="mt-3 flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
-                            <Heart className="w-4 h-4 text-blue-500" />
-                            <span>
-                              {(supporter.shared_organizations_count ?? 0) > 0
-                                ? `${supporter.shared_organizations_count} shared organization${supporter.shared_organizations_count !== 1 ? "s" : ""}`
-                                : "No shared organizations yet"}
-                            </span>
-                          </div>
-                          {supporter.interests && supporter.interests.length > 0 && (() => {
-                            const showAll = expandedInterestCards.has(supporter.id)
-                            const visible = showAll ? supporter.interests : supporter.interests.slice(0, INTERESTS_VISIBLE_COUNT)
-                            const remaining = supporter.interests.length - INTERESTS_VISIBLE_COUNT
-                            const hasMore = remaining > 0
-                            return (
-                              <div className="flex flex-wrap items-center gap-1.5 mt-2">
-                                {visible.map((tag) => (
-                                  <span
-                                    key={tag}
-                                    className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800"
-                                  >
-                                    {tag}
-                                  </span>
-                                ))}
-                                {hasMore && (
-                                  <button
-                                    type="button"
-                                    onClick={() => toggleCardInterests(supporter.id)}
-                                    className="inline-flex items-center gap-0.5 rounded-md border border-dashed border-gray-400 dark:border-gray-500 px-2 py-1 text-xs font-medium text-gray-500 dark:text-gray-400 hover:border-blue-400 hover:text-blue-600 dark:hover:border-blue-500 dark:hover:text-blue-400 transition-colors"
-                                  >
-                                    {showAll ? "Show less" : `+${remaining} more`}
-                                  </button>
+                        </td>
+                        <td className="px-4 py-4 align-top text-slate-700 dark:text-slate-300">
+                          <span className="inline-flex items-start gap-1.5">
+                            <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-slate-400 dark:text-slate-500" />
+                            <span>{supporter.location || "—"}</span>
+                          </span>
+                        </td>
+                        <td className="px-4 py-4 align-top">
+                          {interests.length > 0 ? (
+                            <CauseBadgesCell interests={interests} />
+                          ) : (
+                            <span className="text-slate-400 dark:text-slate-500">—</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-4 align-middle text-center">
+                          {currentUser && supporter.id !== currentUser.id ? (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="rounded-lg border-amber-400/80 font-semibold text-amber-800 hover:bg-amber-50 dark:border-amber-400/60 dark:bg-transparent dark:text-amber-200 dark:hover:bg-amber-500/10 dark:hover:text-amber-100"
+                              onClick={() => router.visit(`/supporters/gift/${supporter.id}`)}
+                            >
+                              <Gift className="mr-1.5 h-4 w-4" />
+                              Gift
+                            </Button>
+                          ) : (
+                            <span className="text-slate-400 dark:text-slate-600">—</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-4 pr-6 align-middle text-right">
+                          {currentUser && supporter.id !== currentUser.id ? (
+                            followingStates[supporter.id] ? (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="rounded-lg border-sky-500/70 font-semibold text-sky-700 hover:bg-sky-50 dark:border-sky-500/60 dark:bg-transparent dark:text-sky-300 dark:hover:bg-sky-500/10"
+                                onClick={() => handleFollow(supporter)}
+                                disabled={loadingFollow[supporter.id]}
+                              >
+                                {loadingFollow[supporter.id] ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                  <>
+                                    <UserCheck className="mr-1.5 h-4 w-4" />
+                                    Following
+                                  </>
                                 )}
-                              </div>
+                              </Button>
+                            ) : (
+                              <Button
+                                size="sm"
+                                className="rounded-lg bg-violet-600 font-semibold text-white hover:bg-violet-700"
+                                onClick={() => handleFollow(supporter)}
+                                disabled={loadingFollow[supporter.id]}
+                              >
+                                {loadingFollow[supporter.id] ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                  <>
+                                    <UserPlus className="mr-1.5 h-4 w-4" />
+                                    Follow
+                                  </>
+                                )}
+                              </Button>
                             )
-                          })()}
-                          <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-100 dark:border-gray-800">
-                            <div className="flex items-center gap-5 text-sm">
-                              <span className="inline-flex items-center gap-1.5 text-gray-600 dark:text-gray-400">
-                                <Heart className="w-4 h-4 text-red-500 fill-red-500" />
-                                <span className="font-medium">{supporter.reactions_count ?? 0}</span>
-                              </span>
-                              <span className="inline-flex items-center gap-1.5 text-gray-600 dark:text-gray-400">
-                                <MessageCircle className="w-4 h-4 text-blue-500" />
-                                <span className="font-medium">{supporter.comments_count ?? 0}</span>
-                              </span>
-                              <span className="inline-flex items-center gap-1.5 text-gray-600 dark:text-gray-400">
-                                <Share2 className="w-4 h-4 text-green-500" />
-                                <span className="font-medium">{supporter.shares_count ?? 0}</span>
-                              </span>
-                            </div>
-                            {currentUser && supporter.id !== currentUser.id && (
-                              <div className="flex items-center gap-2">
-                                <Button
-                                  size="sm"
-                                  variant="outline"
-                                  className="rounded-xl font-semibold flex-shrink-0 px-4 border-amber-300 text-amber-700 hover:bg-amber-50 hover:text-amber-800 dark:border-amber-800 dark:text-amber-300 dark:hover:bg-amber-950/30"
-                                  onClick={() => router.visit(`/supporters/gift/${supporter.id}`)}
-                                >
-                                  <Gift className="w-4 h-4 mr-1.5" />
-                                  Gift
-                                </Button>
-                                <Button
-                                  size="sm"
-                                  className={`rounded-xl font-semibold flex-shrink-0 px-5 transition-all ${
-                                    followingStates[supporter.id]
-                                      ? "bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"
-                                      : "bg-gradient-to-r from-blue-600 to-blue-700 text-white hover:from-blue-700 hover:to-blue-800 shadow-md hover:shadow-lg"
-                                  }`}
-                                  onClick={() => handleFollow(supporter)}
-                                  disabled={loadingFollow[supporter.id]}
-                                >
-                                  {loadingFollow[supporter.id] ? (
-                                    <Loader2 className="w-4 h-4 animate-spin" />
-                                  ) : followingStates[supporter.id] ? (
-                                    "Following"
-                                  ) : (
-                                    "Follow"
-                                  )}
-                                </Button>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-
-              {supporters?.next_page_url && (
-                <div className="flex justify-center pt-6">
-                  <Button
-                    variant="outline"
-                    onClick={() => router.get(supporters.next_page_url!)}
-                    className="rounded-xl px-8 py-2.5 border-2 border-gray-300 dark:border-gray-700 hover:border-blue-500 hover:text-blue-600 dark:hover:text-blue-400 font-semibold transition-all"
-                  >
-                    Load more supporters
-                  </Button>
-                </div>
-              )}
-
-              {!supporters?.data?.length && (
-                <Card className="bg-white dark:bg-gray-900 border-2 border-dashed border-gray-200 dark:border-gray-800">
-                  <CardContent className="p-12 text-center">
-                    <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
-                      <Search className="w-8 h-8 text-gray-400" />
-                    </div>
-                    <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">No supporters found</h3>
-                    <p className="text-gray-500 dark:text-gray-400">Try adjusting your filters or search terms to find more supporters.</p>
-                  </CardContent>
-                </Card>
-              )}
+                          ) : (
+                            <span className="text-slate-400 dark:text-slate-600">—</span>
+                          )}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
             </div>
           </div>
+          ) : null}
+
+          {supporters?.data?.length && supporters?.next_page_url ? (
+            <div className="mt-8 flex justify-center">
+              <Button
+                variant="outline"
+                onClick={() => router.get(supporters.next_page_url!)}
+                className="rounded-xl border-slate-300 bg-white px-8 text-slate-800 hover:bg-slate-50 dark:border-white/15 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+              >
+                Load more supporters
+              </Button>
+            </div>
+          ) : null}
+
+          {!supporters?.data?.length && (
+            <div className="mt-8 rounded-xl border border-dashed border-slate-300 bg-slate-50 py-16 text-center dark:border-white/15 dark:bg-slate-900/40">
+              <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-slate-200 dark:bg-slate-800">
+                <Search className="h-8 w-8 text-slate-500" />
+              </div>
+              <h3 className="mb-2 text-lg font-semibold text-slate-900 dark:text-white">No supporters found</h3>
+              <p className="text-slate-600 dark:text-slate-400">Try adjusting your filters or search terms.</p>
+            </div>
+          )}
         </div>
       </div>
     </FrontendLayout>

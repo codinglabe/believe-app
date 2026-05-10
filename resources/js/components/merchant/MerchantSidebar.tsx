@@ -2,12 +2,10 @@ import React, { useState } from 'react'
 import { Link, usePage } from '@inertiajs/react'
 import {
   LayoutDashboard,
-  Gift,
   BarChart3,
   Settings,
   Menu,
   X,
-  Plus,
   ShoppingBag,
   TrendingUp,
   Package,
@@ -18,7 +16,9 @@ import {
   ChevronDown,
   ListChecks,
   Inbox,
-  PieChart,
+  Coins,
+  Megaphone,
+  Rocket,
 } from 'lucide-react'
 import { MerchantButton } from '@/components/merchant-ui'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -43,17 +43,34 @@ interface NavItem {
 
 const navigation: NavItem[] = [
   { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
-  { name: 'Offers', href: '/offers', icon: Gift },
-  { name: 'Marketplace products', href: '/marketplace-products', icon: Package },
   {
-    name: 'Pool listing approvals',
+    name: 'Products',
+    href: '/marketplace-products',
+    icon: Package,
+    children: [
+      { name: 'My Products', href: '/marketplace-products' },
+      { name: 'Add Product', href: '/marketplace-products/create' },
+    ],
+  },
+  {
+    name: 'Offers',
+    href: '/offers',
+    icon: Receipt,
+    children: [
+      { name: 'All Offers', href: '/offers' },
+      { name: 'Create Offer', href: '/offers/create' },
+    ],
+  },
+  { name: 'BRP Funding', href: '/brp-funding', icon: Coins },
+  { name: 'BRP Campaigns', href: '/brp-campaigns', icon: Megaphone },
+  { name: 'Orders', href: '/marketplace-orders', icon: Receipt },
+  { name: 'Redemptions', href: '/redemptions', icon: ShoppingBag },
+  {
+    name: 'Approvals',
     href: '/marketplace-pool-approvals',
     icon: ClipboardCheck,
     badgeFromAuth: 'pending_pool_approval_count',
   },
-  { name: 'Marketplace orders', href: '/marketplace-orders', icon: Receipt },
-  { name: 'Create Offer', href: '/offers/create', icon: Plus },
-  { name: 'Redemptions', href: '/redemptions', icon: ShoppingBag },
   {
     name: 'Feedback & Rewards',
     href: '/feedback-rewards',
@@ -62,7 +79,6 @@ const navigation: NavItem[] = [
       { name: 'Campaigns', href: '/feedback-rewards' },
       { name: 'Responses', href: '/feedback-rewards?status=active' },
       { name: 'Rewards Wallet', href: '/wallet/brp' },
-      { name: 'Insights', href: '/feedback-rewards?view=insights' },
     ],
   },
   { name: 'Analytics', href: '/analytics', icon: BarChart3 },
@@ -77,12 +93,12 @@ export function MerchantSidebar({ className = '' }: MerchantSidebarProps) {
   return (
     <>
       {/* Mobile Menu Button */}
-      <div className="lg:hidden fixed top-4 left-4 z-50">
+      <div className="fixed left-4 top-4 z-50 lg:hidden">
         <MerchantButton
           variant="ghost"
           size="icon"
           onClick={() => setIsMobileOpen(!isMobileOpen)}
-          className="h-10 w-10 border border-white/15 bg-black/30 shadow-sm"
+          className="h-10 w-10 border border-white/10 bg-[#161B30]/95 shadow-lg shadow-black/30 backdrop-blur"
         >
           {isMobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
         </MerchantButton>
@@ -96,7 +112,7 @@ export function MerchantSidebar({ className = '' }: MerchantSidebarProps) {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-[#0A2540]/40 z-40 lg:hidden"
+              className="fixed inset-0 z-40 bg-[#0a0c1b]/70 backdrop-blur-sm lg:hidden"
               onClick={() => setIsMobileOpen(false)}
             />
             <motion.aside
@@ -131,8 +147,12 @@ function SidebarContent({
   const hasActiveSubscription = (auth?.user?.has_active_subscription as boolean | undefined) ?? false
 
   // Track expanded groups
+  const isProductsSection = currentPath.startsWith('/marketplace-products')
+  const isOffersSection = currentPath.startsWith('/offers')
   const isFeedbackSection = currentPath.startsWith('/feedback-rewards') || currentPath.startsWith('/wallet/brp')
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({
+    Products: isProductsSection,
+    Offers: isOffersSection,
     'Feedback & Rewards': isFeedbackSection,
   })
 
@@ -161,18 +181,18 @@ function SidebarContent({
   }
 
   return (
-    <div className="flex flex-col w-full h-full bg-black/35 backdrop-blur border-r border-[#2563EB]/20 shadow-sm">
+    <div className="flex h-full w-full flex-col border-r border-white/[0.06] bg-[#0a0c1b]/95 shadow-xl backdrop-blur-md">
       {/* Logo Section */}
-      <div className="flex items-center gap-3 px-6 py-4 border-b border-[#2563EB]/20">
-        <img src="/merchant/merchant.png" alt="BIU Merchant" className="w-10 h-10 object-contain" />
-        <div className="flex flex-col">
-          <span className="text-sm font-bold text-white">BIU Merchant</span>
-          <span className="text-xs text-white/60">Dashboard</span>
+      <div className="flex items-center gap-3 border-b border-white/[0.06] px-5 py-4 sm:px-6">
+        <img src="/merchant/merchant.png" alt="" className="h-10 w-10 shrink-0 object-contain" />
+        <div className="flex min-w-0 flex-col">
+          <span className="truncate text-sm font-bold tracking-tight text-white">BRP Merchant Hub</span>
+          <span className="text-xs text-slate-500">Dashboard</span>
         </div>
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 px-4 py-6 space-y-1 overflow-y-auto">
+      <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-5 sm:px-4">
         {navigation.map((item) => {
           const active = isGroupActive(item)
           const authBadge =
@@ -188,16 +208,17 @@ function SidebarContent({
               <div key={item.name}>
                 <button
                   onClick={() => toggleGroup(item.name)}
+                  type="button"
                   className={`
-                    w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200
+                    flex w-full items-center gap-3 rounded-xl px-3 py-2.5 transition-all duration-200 sm:px-4 sm:py-3
                     ${
                       active
-                        ? 'bg-[#2563EB]/15 text-white font-semibold'
-                        : 'text-white/80 hover:bg-white/10 hover:text-white'
+                        ? 'border border-purple-500/25 bg-gradient-to-r from-[#8E2DE2]/35 to-[#4A00E0]/20 font-semibold text-white shadow-md shadow-purple-900/20'
+                        : 'text-slate-300 hover:bg-white/[0.06] hover:text-white'
                     }
                   `}
                 >
-                  <item.icon className={`w-5 h-5 flex-shrink-0 ${active ? 'text-[#2563EB]' : ''}`} />
+                  <item.icon className={`h-5 w-5 shrink-0 ${active ? 'text-purple-200' : 'text-slate-400'}`} />
                   <span className="font-medium flex-1 text-left">{item.name}</span>
                   <ChevronDown
                     className={`w-4 h-4 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}
@@ -212,7 +233,7 @@ function SidebarContent({
                       transition={{ duration: 0.2 }}
                       className="overflow-hidden"
                     >
-                      <div className="ml-5 pl-4 border-l border-white/10 mt-1 space-y-1">
+                      <div className="ml-4 mt-1 space-y-1 border-l border-white/10 pl-3 sm:ml-5 sm:pl-4">
                         {item.children!.map((child) => {
                           const childActive = currentPath === child.href ||
                             currentPath.startsWith(child.href.split('?')[0] + '/')  ||
@@ -226,8 +247,8 @@ function SidebarContent({
                                 block px-3 py-2 rounded-md text-sm transition-all duration-200
                                 ${
                                   childActive
-                                    ? 'text-[#2563EB] font-semibold bg-[#2563EB]/10'
-                                    : 'text-white/60 hover:text-white hover:bg-white/5'
+                                    ? 'bg-purple-500/15 font-semibold text-purple-200'
+                                    : 'text-slate-500 hover:bg-white/[0.04] hover:text-slate-200'
                                 }
                               `}
                             >
@@ -249,15 +270,15 @@ function SidebarContent({
               href={item.href}
               onClick={onNavigate}
               className={`
-                flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200
+                flex items-center gap-3 rounded-xl px-3 py-2.5 transition-all duration-200 sm:px-4 sm:py-3
                 ${
                   active
-                    ? 'bg-[#2563EB]/15 text-white border-l-2 border-[#2563EB] font-semibold'
-                    : 'text-white/80 hover:bg-white/10 hover:text-white'
+                    ? 'border border-purple-500/25 bg-gradient-to-r from-[#8E2DE2]/35 to-[#4A00E0]/20 font-semibold text-white shadow-md shadow-purple-900/20'
+                    : 'text-slate-300 hover:bg-white/[0.06] hover:text-white'
                 }
               `}
             >
-              <item.icon className={`w-5 h-5 ${active ? 'text-[#2563EB]' : ''}`} />
+              <item.icon className={`h-5 w-5 shrink-0 ${active ? 'text-purple-200' : 'text-slate-400'}`} />
               <span className="font-medium">{item.name}</span>
               {showBadge != null && showBadge > 0 && (
                 <span className="ml-auto px-2 py-0.5 text-xs font-semibold bg-amber-500 text-white rounded-full min-w-[1.25rem] text-center">
@@ -269,18 +290,41 @@ function SidebarContent({
         })}
       </nav>
 
-      {!hasActiveSubscription && (
-        <div className="px-4 py-4 border-t border-[#2563EB]/20">
-          <div className="px-3 py-3 rounded-lg bg-white/5 border border-[#2563EB]/20">
-            <div className="flex items-start gap-2">
-              <div className="p-1.5 bg-[#2563EB] rounded">
-                <TrendingUp className="w-3 h-3 text-white" />
+      {hasActiveSubscription ? (
+        <div className="border-t border-white/[0.06] px-3 py-4 sm:px-4">
+          <div className="relative overflow-hidden rounded-xl bg-gradient-to-br from-[#8E2DE2] via-[#6b21a8] to-[#4A00E0] p-4 shadow-lg shadow-purple-950/40">
+            <div className="pointer-events-none absolute -right-2 -top-2 h-16 w-16 rounded-full bg-white/15 blur-2xl" />
+            <div className="relative flex gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-white/20">
+                <Rocket className="h-5 w-5 text-white" aria-hidden />
               </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-xs font-semibold text-white mb-1">Upgrade Plan</p>
-                <p className="text-xs text-white/70 leading-tight mb-2">Unlock advanced features</p>
-                <Link href="/subscription">
-                  <MerchantButton size="sm" className="w-full text-xs py-1.5 h-auto">
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-bold text-white">Boost your rewards!</p>
+                <p className="mt-1 text-xs leading-snug text-white/85">Create a standout offer for your supporters.</p>
+                <Link href="/offers/create" onClick={onNavigate} className="mt-3 block">
+                  <MerchantButton
+                    size="sm"
+                    className="h-9 w-full border-0 bg-white text-xs font-semibold text-[#4A00E0] hover:bg-white/95"
+                  >
+                    Create Offer
+                  </MerchantButton>
+                </Link>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="border-t border-white/[0.06] px-3 py-4 sm:px-4">
+          <div className="rounded-xl border border-white/[0.08] bg-[#161B30]/90 p-4">
+            <div className="flex items-start gap-3">
+              <div className="rounded-lg bg-gradient-to-br from-[#8E2DE2] to-[#4A00E0] p-2">
+                <TrendingUp className="h-4 w-4 text-white" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold text-white">Upgrade plan</p>
+                <p className="mt-1 text-xs leading-snug text-slate-400">Unlock offers, analytics, and more.</p>
+                <Link href="/subscription" onClick={onNavigate} className="mt-3 block">
+                  <MerchantButton size="sm" className="h-9 w-full text-xs">
                     Upgrade Now
                   </MerchantButton>
                 </Link>

@@ -118,22 +118,19 @@ class ProfilePhotoController extends Controller
             $path = 'profile-photos/' . $filename;
             Storage::disk('public')->put($path, $imageData);
 
-            $registeredUserid = $user->organization->user_id;
+            $authenticated = Auth::user();
 
-            $user = User::find($registeredUserid);
+            /** Profile photo belongs to the signed-in account (same as Api\UserController wallet/profile flows). */
+            $authenticated->updateProfilePhoto($path, 'public');
 
-            // Update user profile
-            $user->updateProfilePhoto($path, 'public');
-
-            // return response()->json([
-            //     'success' => true,
-            //     'message' => 'Profile photo updated successfully!',
-            //     'photo_url' => $user->fresh()->profile_photo_url,
-            // ]);
+            /** Mirror onto `organizations.registered_user_image` so directories, donations, and cards stay in sync. */
+            Organization::query()
+                ->where('user_id', $authenticated->id)
+                ->update(['registered_user_image' => $path]);
 
             return to_route('profile.edit', [
                 'success' => 'Profile photo updated successfully!',
-                'photo_url' => $user->fresh()->profile_photo_url,
+                'photo_url' => $authenticated->fresh()->profile_photo_url,
             ]);
 
         } catch (\Exception $e) {
@@ -309,6 +306,10 @@ class ProfilePhotoController extends Controller
         try {
             $user = Auth::user();
             $user->deleteProfilePhoto();
+
+            Organization::query()
+                ->where('user_id', $user->id)
+                ->update(['registered_user_image' => null]);
 
             return to_route('profile.edit',[
                 'message' => 'Profile photo deleted successfully!',

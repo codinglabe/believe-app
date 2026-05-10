@@ -123,7 +123,7 @@ export default function AdminCourseEnrollments({
 
   return (
     <AppLayout>
-      <Head title={`Enrollments - ${course.name} - Connections`} />
+      <Head title={`Enrollments - ${course.name} - Connection Hub`} />
 
       <div className="space-y-6 m-10">
         {/* Header */}

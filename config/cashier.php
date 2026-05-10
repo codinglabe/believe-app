@@ -49,6 +49,7 @@ return [
         'tolerance' => env('STRIPE_WEBHOOK_TOLERANCE', 300),
         'events' => array_merge(WebhookCommand::DEFAULT_EVENTS, [
             'payment_intent.succeeded',
+            'payment_intent.payment_failed',
             'checkout.session.completed',
         ]),
     ],

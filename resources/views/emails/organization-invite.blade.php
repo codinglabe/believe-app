@@ -153,7 +153,7 @@
 
         <div style="background-color: #fff3cd; padding: 15px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #ffc107;">
             <p style="margin: 0; font-size: 13px; color: #856404;">
-                <strong>💡 Bonus Reward:</strong> When you register and complete your profile, {{ $inviter->name }} will receive 100 reward points as a thank you for bringing you to our platform!
+                <strong>Bonus for {{ $inviter->name }}:</strong> After your organization joins Believe In Unity and you verify your email, they receive <strong>Believe Points</strong> on a schedule (not Merchant Hub reward points): <strong>10 per month</strong> for the first 12 months, then <strong>5 per month</strong> for months 13–24.
             </p>
         </div>
 

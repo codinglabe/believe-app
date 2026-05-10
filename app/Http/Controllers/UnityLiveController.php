@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\OrganizationLivestream;
 use App\Models\UserLivestream;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -59,9 +60,15 @@ class UnityLiveController extends Controller
     /**
      * Public Unity Live index: list org + supporter livestreams that are currently live (and public).
      * Clicking a card goes to the show page (slug-wise) for the big screen.
+     * Logged-in users are sent to Unity Meet instead (same live directory there).
      */
-    public function index(): Response
+    public function index(Request $request): Response|RedirectResponse
     {
+        $user = $request->user();
+        if ($user && $user->hasAnyRole(['user', 'organization', 'organization_pending', 'care_alliance'])) {
+            return redirect()->route('livestreams.supporter.index');
+        }
+
         $orgStreams = OrganizationLivestream::query()
             ->where('status', 'live')
             ->where('is_public', true)

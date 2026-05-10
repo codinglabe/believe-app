@@ -128,10 +128,12 @@ use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\NteeCodeController;
 use App\Http\Controllers\OrderController;
 use App\Http\Controllers\OrderItemController;
+use App\Http\Controllers\LivestreamRecordingDeclineController;
 use App\Http\Controllers\Organization\LivestreamController;
 use App\Http\Controllers\Organization\MarketplaceProductPoolController;
 use App\Http\Controllers\Organization\OrganizationKioskProviderController;
 use App\Http\Controllers\OrganizationController;
+use App\Http\Controllers\OrganizationStripeConnectController;
 use App\Http\Controllers\OwnershipVerificationController;
 use App\Http\Controllers\PaymentMethodSettingController;
 use App\Http\Controllers\PhazeWebhookController;
@@ -159,8 +161,8 @@ use App\Http\Controllers\TransactionController;
 use App\Http\Controllers\UnityLiveController;
 use App\Http\Controllers\UserProfileController;
 use App\Http\Controllers\UsersInterestedTopicsController;
-use App\Http\Controllers\VolunteerController;
 use App\Http\Controllers\VolunteerAvailableSupportersController;
+use App\Http\Controllers\VolunteerController;
 use App\Http\Controllers\VolunteerSupporterInterestsController;
 use App\Http\Controllers\VolunteerTimesheetController;
 use App\Http\Controllers\WalletController;
@@ -417,8 +419,15 @@ Route::get('/unity-live/{slug}', [UnityLiveController::class, 'show'])->name('un
 // Unity Meet (supporter UI): personal meetings — also available to org / care alliance accounts from dashboard Tools
 Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:user|organization|organization_pending|care_alliance'])->group(function () {
     Route::get('/livestreams/supporter', [SupporterLivestreamController::class, 'index'])->name('livestreams.supporter.index');
+    Route::get('/livestreams/supporter/live', [SupporterLivestreamController::class, 'live'])->name('livestreams.supporter.live');
+    Route::get('/livestreams/supporter/recordings/search', [SupporterLivestreamController::class, 'recordingsSearch'])->name('livestreams.supporter.recordings.search');
+    Route::get('/livestreams/supporter/recordings/download', [SupporterLivestreamController::class, 'recordingDownload'])->name('livestreams.supporter.recordings.download');
+    Route::delete('/livestreams/supporter/recordings/file', [SupporterLivestreamController::class, 'recordingDelete'])->name('livestreams.supporter.recordings.file.delete');
+    Route::put('/livestreams/supporter/recordings/file', [SupporterLivestreamController::class, 'recordingRename'])->name('livestreams.supporter.recordings.file.rename');
+    Route::get('/livestreams/supporter/recordings', [SupporterLivestreamController::class, 'recordings'])->name('livestreams.supporter.recordings');
     Route::get('/livestreams/supporter/create', [SupporterLivestreamController::class, 'create'])->name('livestreams.supporter.create');
     Route::post('/livestreams/supporter', [SupporterLivestreamController::class, 'store'])->name('livestreams.supporter.store');
+    Route::post('/livestreams/supporter/schedule', [SupporterLivestreamController::class, 'schedule'])->name('livestreams.supporter.schedule');
     Route::get('/livestreams/supporter/ready/{id}', [SupporterLivestreamController::class, 'ready'])->name('livestreams.supporter.ready')->where('id', '[0-9]+');
     Route::get('/livestreams/supporter/join', [SupporterLivestreamController::class, 'joinPage'])->name('livestreams.supporter.join');
     Route::post('/livestreams/supporter/join', [SupporterLivestreamController::class, 'joinWithPasscode'])->name('livestreams.supporter.join.submit');
@@ -431,7 +440,9 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:user|organization|orga
     Route::post('/livestreams/supporter/{id}/end-stream', [SupporterLivestreamController::class, 'endStream'])->name('livestreams.supporter.end-stream')->where('id', '[0-9]+');
     Route::patch('/livestreams/supporter/{id}/visibility', [SupporterLivestreamController::class, 'updateVisibility'])->name('livestreams.supporter.update-visibility')->where('id', '[0-9]+');
     Route::patch('/livestreams/supporter/{id}/stream-key', [SupporterLivestreamController::class, 'updateStreamKey'])->name('livestreams.supporter.update-stream-key')->where('id', '[0-9]+');
-    Route::post('/livestreams/supporter/{id}/go-live-obs-auto', [SupporterLivestreamController::class, 'goLiveOBSAuto'])->name('livestreams.supporter.go-live-obs-auto')->where('id', '[0-9]+');
+    Route::post('/livestreams/supporter/{id}/prepare-youtube-live', [SupporterLivestreamController::class, 'prepareYouTubeLive'])->name('livestreams.supporter.prepare-youtube-live')->where('id', '[0-9]+');
+    Route::post('/livestreams/supporter/{id}/queue-stream-relay', [SupporterLivestreamController::class, 'queueStreamRelayJob'])->name('livestreams.supporter.queue-stream-relay')->where('id', '[0-9]+');
+    Route::post('/livestreams/supporter/{id}/go-live-obs-auto', [SupporterLivestreamController::class, 'queueStreamRelayJob'])->name('livestreams.supporter.go-live-obs-auto')->where('id', '[0-9]+');
 });
 
 // VDO.Ninja meeting: guest join by secure token (public)
@@ -622,6 +633,8 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin|use
 });
 
 Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin|user|care_alliance'])->group(function () {
+    Route::get('/brp-campaigns', [\App\Http\Controllers\BrpCampaignBrowserController::class, 'index'])
+        ->name('frontend.brp-campaigns.index');
     Route::get('/feedback-campaigns', [\App\Http\Controllers\FeedbackCampaignBrowserController::class, 'index'])
         ->name('feedback-campaigns.index');
     Route::get('/feedback/{uuid}', [\App\Http\Controllers\SupporterFeedbackController::class, 'show'])
@@ -778,8 +791,12 @@ Route::get('/organizations/{slug}/contact', [OrganizationController::class, 'con
 
 // Public livestream guest join (no auth) — registered first so /livestreams/join/{roomName} is not matched by /livestreams/{id}
 Route::get('/livestreams/join/{roomName}', [LivestreamController::class, 'guestJoin'])
-    ->where('roomName', '[a-zA-Z0-9_]+')
+    ->where('roomName', '[a-zA-Z0-9_-]+')
     ->name('livestreams.guest-join');
+
+Route::post('/livestreams/recording-decline', [LivestreamRecordingDeclineController::class, 'store'])
+    ->middleware('throttle:30,1')
+    ->name('livestreams.recording-decline.store');
 
 // API route for inviting unregistered organizations (requires auth)
 Route::middleware(['auth', 'web'])->post('/api/organizations/invite', [OrganizationController::class, 'inviteOrganization'])->name('api.organizations.invite');
@@ -1099,6 +1116,7 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|care_alli
     // Credit Purchase Routes
     Route::get('/credits/purchase', [CreditPurchaseController::class, 'index'])->name('credits.purchase');
     Route::post('/credits/checkout', [CreditPurchaseController::class, 'checkout'])->name('credits.checkout');
+    Route::post('/credits/pay-believe-points', [CreditPurchaseController::class, 'payWithBelievePoints'])->name('credits.pay-believe-points');
     Route::get('/credits/success', [CreditPurchaseController::class, 'success'])->name('credits.success');
     Route::get('/credits/cancel', [CreditPurchaseController::class, 'cancel'])->name('credits.cancel');
 
@@ -1230,11 +1248,13 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin|org
         Route::post('/{id}/generate-invite', [LivestreamController::class, 'generateInviteToken'])->name('generate-invite');
         Route::post('/{id}/go-live', [LivestreamController::class, 'goLive'])->name('go-live');
         Route::post('/{id}/set-live', [LivestreamController::class, 'setLive'])->name('set-live');
-        Route::post('/{id}/go-live-obs-auto', [LivestreamController::class, 'goLiveOBSAuto'])->name('go-live-obs-auto');
+        Route::post('/{id}/queue-stream-relay', [LivestreamController::class, 'queueStreamRelayJob'])->name('queue-stream-relay');
+        Route::post('/{id}/go-live-obs-auto', [LivestreamController::class, 'queueStreamRelayJob'])->name('go-live-obs-auto');
         Route::post('/{id}/go-live-browser', [LivestreamController::class, 'goLiveBrowser'])->name('go-live-browser');
         Route::post('/{id}/end-stream', [LivestreamController::class, 'endStream'])->name('end-stream');
         Route::patch('/{id}/status', [LivestreamController::class, 'updateStatus'])->name('update-status');
         Route::patch('/{id}/stream-key', [LivestreamController::class, 'updateStreamKey'])->name('update-stream-key');
+        Route::post('/{id}/prepare-youtube-live', [LivestreamController::class, 'prepareYouTubeLive'])->name('prepare-youtube-live');
         Route::patch('/{id}/visibility', [LivestreamController::class, 'updateVisibility'])->name('update-visibility');
         Route::delete('/{id}', [LivestreamController::class, 'destroy'])->name('destroy');
     });
@@ -2000,6 +2020,11 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin|org
     Route::get('/dropbox/download', [IntegrationsController::class, 'downloadFile'])->name('dropbox.download');
     Route::delete('/dropbox/file', [IntegrationsController::class, 'deleteFile'])->name('dropbox.file.delete');
     Route::put('/dropbox/file', [IntegrationsController::class, 'renameFile'])->name('dropbox.file.rename');
+
+    Route::get('/stripe-connect', [OrganizationStripeConnectController::class, 'show'])->name('stripe-connect');
+    Route::get('/stripe-connect/start', [OrganizationStripeConnectController::class, 'start'])->name('stripe-connect.start');
+    Route::get('/stripe-connect/return', [OrganizationStripeConnectController::class, 'onboardingReturn'])->name('stripe-connect.return');
+    Route::get('/stripe-connect/refresh', [OrganizationStripeConnectController::class, 'onboardingRefresh'])->name('stripe-connect.refresh');
 });
 
 // YouTube integration: organization + supporter (outside dashboard group so role:user can access)

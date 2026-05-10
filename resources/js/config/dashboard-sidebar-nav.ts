@@ -49,6 +49,7 @@ import {
     Send,
     Store,
     CreditCard,
+    Landmark,
     FolderOpen,
     ShoppingBag,
     Search,
@@ -167,6 +168,19 @@ export const dashboardSidebarNavItems: (NavItem | NavGroup)[] = [
                 href: '/newsletter',
                 icon: Mail,
                 permission: 'newsletter.read',
+            },
+            {
+                title: 'Email',
+                href: '/newsletter',
+                icon: Mail,
+                permission: 'newsletter.read',
+                role: ['organization', 'organization_pending', 'care_alliance', 'admin'],
+            },
+            {
+                title: 'Email Packages',
+                href: '/admin/email-packages',
+                icon: Mail,
+                role: 'admin',
             },
             {
                 title: 'Social',
@@ -918,6 +932,12 @@ export const dashboardSidebarNavItems: (NavItem | NavGroup)[] = [
                         role: 'organization',
                     },
                     {
+                        title: 'Stripe payouts (donations)',
+                        href: route('integrations.stripe-connect'),
+                        icon: Landmark,
+                        role: 'organization',
+                    },
+                    {
                         title: 'Dropbox (recordings)',
                         href: route('integrations.dropbox'),
                         icon: Cloud,
@@ -949,7 +969,13 @@ export const dashboardSidebarNavItems: (NavItem | NavGroup)[] = [
                 href: '/ai-chat',
                 icon: Bot,
                 permission: 'ai.chat.use',
-                role: 'organization',
+                role: ['organization', 'care_alliance'],
+            },
+            {
+                title: 'AI Top Up',
+                href: '/credits/purchase',
+                icon: Coins,
+                role: ['organization', 'care_alliance'],
             },
             {
                 title: 'Livestream',

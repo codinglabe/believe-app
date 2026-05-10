@@ -7,6 +7,17 @@ import { Bot, Send, User as UserIcon, Coins, AlertCircle, Sparkles, Loader2, Ref
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog'
 import type { SharedData } from '@/types'
 import { CampaignCreateForm } from '@/components/ai-chat/CampaignCreateForm'
+import { AiTokensPurchaseModal } from '@/components/ai-chat/AiTokensPurchaseModal'
+import {
+  AiTokenPurchaseSuccessOverlay,
+  isAiCreditPurchaseFlashSuccess,
+} from '@/components/ai-chat/AiTokenPurchaseSuccessOverlay'
+import { AiChatUsageCard } from '@/components/ai-chat/AiChatUsageCard'
+import { chatGradientText, chatPrimaryButtonClass, chatInputFocusRing } from '@/components/chat/chat-brand'
+import { cn } from '@/lib/utils'
+
+/** Icon accent aligned with sidebar logo gradient (site-title.tsx) */
+const brandIconClass = 'text-purple-600 dark:text-blue-400'
 
 interface Message {
   id: number | string
@@ -147,12 +158,17 @@ const AiChatIndex: React.FC<AiChatIndexProps> = ({
   currentConversation: initialConversation,
   messages: initialMessages = []
 }) => {
-  const { auth } = usePage<SharedData>().props
+  const { auth, flash } = usePage<SharedData & { flash?: { success?: string } }>().props
   const currentCredits = auth.user.credits ?? 0
   const aiTokensUsed = (auth.user as { ai_tokens_used?: number }).ai_tokens_used ?? 0
   const aiTokensIncluded = (auth.user as { ai_tokens_included?: number }).ai_tokens_included ?? 0
   // AI chat is token-based: allow send when no limit (ai_tokens_included === 0) or when used < included
   const hasAiTokensLeft = aiTokensIncluded === 0 || aiTokensUsed < aiTokensIncluded
+
+  const percentTokensUsed =
+    aiTokensIncluded > 0
+      ? Math.min(100, Math.round((aiTokensUsed / aiTokensIncluded) * 100))
+      : 0
   
   // Sidebar state
   const [conversations, setConversations] = useState<Conversation[]>(initialConversations?.data || [])
@@ -179,6 +195,12 @@ const AiChatIndex: React.FC<AiChatIndexProps> = ({
   const [conversationToDelete, setConversationToDelete] = useState<number | null>(null)
   const [editingTitleId, setEditingTitleId] = useState<number | null>(null)
   const [editingTitle, setEditingTitle] = useState('')
+  const [aiTokensPurchaseModalOpen, setAiTokensPurchaseModalOpen] = useState(false)
+  const [tokenPurchaseCelebration, setTokenPurchaseCelebration] = useState<{
+    id: number
+    active: boolean
+    message: string | null
+  }>({ id: 0, active: false, message: null })
   const [streamingTexts, setStreamingTexts] = useState<Record<string | number, string>>({})
   const scrollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -188,6 +210,26 @@ const AiChatIndex: React.FC<AiChatIndexProps> = ({
   const isUserScrollingRef = useRef(false)
   const shouldAutoScrollRef = useRef(true)
   const isInitialLoadRef = useRef(true)
+
+  useEffect(() => {
+    const success = flash?.success
+    if (!isAiCreditPurchaseFlashSuccess(success)) {
+      return
+    }
+
+    setTokenPurchaseCelebration((prev) => ({
+      id: prev.id + 1,
+      active: true,
+      message: success,
+    }))
+    setAiTokensPurchaseModalOpen(false)
+
+    const hideTimer = window.setTimeout(() => {
+      setTokenPurchaseCelebration((prev) => ({ ...prev, active: false }))
+    }, 3200)
+
+    return () => window.clearTimeout(hideTimer)
+  }, [flash?.success])
 
   // Check if user is near bottom (within 150px) or at bottom
   const isNearBottom = () => {
@@ -379,24 +421,6 @@ const AiChatIndex: React.FC<AiChatIndexProps> = ({
     setMessages([])
     setError(null)
     router.get(route('ai-chat.index') as string, {}, { preserveState: true })
-  }
-
-  const handleBuyCredits = () => {
-    setIsLoading(true)
-    router.post(route('credits.checkout'), {
-      amount: 1.00, // $1
-      return_route: 'ai-chat.index',
-    }, {
-      onError: (errors) => {
-        setError(errors.message || errors.error || 'Failed to create checkout session. Please try again.')
-        setIsLoading(false)
-      },
-      onFinish: () => {
-        // Inertia will automatically redirect to Stripe checkout on success
-        // This will be called if there's an error
-        setIsLoading(false)
-      }
-    })
   }
 
   const handleDeleteClick = (id: number, e: React.MouseEvent) => {
@@ -759,7 +783,7 @@ const AiChatIndex: React.FC<AiChatIndexProps> = ({
       const patterns = [
         { regex: /`([^`]+)`/g, render: (match: string, code: string) => (
           <code key={currentIndex++} className={`px-1.5 py-0.5 rounded text-xs font-mono ${
-            isUser ? 'bg-primary-foreground/20 text-primary-foreground' : 'bg-muted border border-border'
+            isUser ? 'bg-white/20 text-white' : 'bg-muted border border-border'
           }`}>
             {code}
           </code>
@@ -776,7 +800,7 @@ const AiChatIndex: React.FC<AiChatIndexProps> = ({
             href={url}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-primary underline hover:text-primary/80"
+            className="text-purple-600 underline hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300"
           >
             {text}
           </a>
@@ -915,30 +939,29 @@ const AiChatIndex: React.FC<AiChatIndexProps> = ({
       <div className="relative h-[calc(100vh-4rem)] w-full">
         {/* Main Chat Area */}
         <div className="flex flex-col h-full px-2 sm:px-4 md:px-6 lg:px-8 py-2 sm:py-4">
-            {/* Header */}
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-4 flex-shrink-0 gap-2 sm:gap-0">
-              <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
-                <div className="p-2 rounded-xl bg-primary/10 flex-shrink-0">
-                  <Bot className="h-5 w-5 sm:h-6 sm:w-6 text-primary" />
+            {/* Header — title left, same usage card top-right as sidebar */}
+            <div className="mb-4 flex flex-shrink-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3">
+                <div className="flex-shrink-0 rounded-xl bg-gradient-to-r from-purple-600/10 to-blue-600/10 p-2">
+                  <Bot className={cn('h-5 w-5 sm:h-6 sm:w-6', brandIconClass)} />
                 </div>
                 <div className="min-w-0">
-                  <h1 className="text-xl sm:text-2xl font-bold truncate">AI Believe Assistant</h1>
-                  <p className="text-xs sm:text-sm text-muted-foreground">Ask me anything</p>
+                  <h1 className={cn('truncate text-xl font-bold sm:text-2xl', chatGradientText)}>
+                    AI Believe Assistant
+                  </h1>
+                  <p className="text-xs text-muted-foreground sm:text-sm">Ask me anything</p>
                 </div>
               </div>
-              <div className="flex items-center gap-2 sm:gap-4 flex-shrink-0">
-                {auth.user.role === 'organization' && (
-                  <div className="flex items-center gap-1.5 sm:gap-2 rounded-full bg-primary/10 px-2.5 sm:px-4 py-1.5 sm:py-2 border border-primary/20">
-                    <Sparkles className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-primary" />
-                    <span className="text-xs sm:text-sm font-semibold text-primary">
-                      {aiTokensIncluded > 0 ? (
-                        <><span className="hidden sm:inline">AI: </span>{aiTokensUsed.toLocaleString()} / {aiTokensIncluded.toLocaleString()} tokens</>
-                      ) : (
-                        <span className="hidden sm:inline">AI tokens</span>
-                      )}
-                    </span>
-                  </div>
-                )}
+              <div className="ml-auto w-full max-w-[17.5rem] shrink-0 sm:ml-0">
+                <AiChatUsageCard
+                  userRole={auth.user.role}
+                  aiTokensIncluded={aiTokensIncluded}
+                  aiTokensUsed={aiTokensUsed}
+                  percentTokensUsed={percentTokensUsed}
+                  hasAiTokensLeft={hasAiTokensLeft}
+                  onAddTokens={() => setAiTokensPurchaseModalOpen(true)}
+                  addTokensDisabled={isLoading}
+                />
               </div>
             </div>
 
@@ -968,8 +991,9 @@ const AiChatIndex: React.FC<AiChatIndexProps> = ({
                       You don't have enough credits for this action. Top up to continue.
                     </p>
                     <button
-                      onClick={handleBuyCredits}
-                      className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors font-medium text-sm flex items-center gap-2 cursor-pointer"
+                      onClick={() => setAiTokensPurchaseModalOpen(true)}
+                      type="button"
+                      className={cn(chatPrimaryButtonClass, 'px-4 py-2 rounded-lg transition-colors font-medium text-sm flex items-center gap-2 cursor-pointer')}
                     >
                       <Coins className="h-4 w-4" />
                       TopUp
@@ -991,8 +1015,8 @@ const AiChatIndex: React.FC<AiChatIndexProps> = ({
                     </p>
                     <button
                       type="button"
-                      onClick={handleBuyCredits}
-                      className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors font-medium text-sm flex items-center gap-2 cursor-pointer"
+                      onClick={() => setAiTokensPurchaseModalOpen(true)}
+                      className={cn(chatPrimaryButtonClass, 'px-4 py-2 rounded-lg transition-colors font-medium text-sm flex items-center gap-2 cursor-pointer')}
                     >
                       <Coins className="h-4 w-4" />
                       TopUp
@@ -1046,7 +1070,7 @@ const AiChatIndex: React.FC<AiChatIndexProps> = ({
                       createNewConversation()
                       setSidebarOpen(false) // Close sidebar on mobile
                     }}
-                    className="w-full flex items-center gap-2 px-3 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors font-medium text-sm"
+                    className={cn(chatPrimaryButtonClass, 'w-full flex items-center gap-2 px-3 py-2 rounded-lg transition-colors font-medium text-sm')}
                   >
                     <Plus className="h-4 w-4" />
                     <span>New Chat</span>
@@ -1069,7 +1093,7 @@ const AiChatIndex: React.FC<AiChatIndexProps> = ({
                         }}
                         className={`group flex items-center gap-2 p-3 rounded-lg cursor-pointer transition-colors ${
                           currentConversationId === conversation.id
-                            ? 'bg-primary/10 border border-primary/20'
+                            ? 'bg-gradient-to-r from-purple-600/10 to-blue-600/10 border border-purple-500/20'
                             : 'hover:bg-accent'
                         }`}
                         role="button"
@@ -1109,7 +1133,10 @@ const AiChatIndex: React.FC<AiChatIndexProps> = ({
                                 onClick={(e) => e.stopPropagation()}
                                 onFocus={(e) => e.stopPropagation()}
                                 onInput={(e) => e.stopPropagation()}
-                                className="text-sm font-medium bg-background border border-primary/30 rounded px-2 py-1 flex-1 min-w-0 focus:outline-none focus:ring-2 focus:ring-primary"
+                                className={cn(
+                                  'text-sm font-medium bg-background border border-purple-500/25 rounded px-2 py-1 flex-1 min-w-0 focus:outline-none',
+                                  chatInputFocusRing
+                                )}
                                 autoFocus
                               />
                               <button
@@ -1120,7 +1147,7 @@ const AiChatIndex: React.FC<AiChatIndexProps> = ({
                                 className="p-0.5 hover:bg-accent rounded transition-colors"
                                 title="Save"
                               >
-                                <Save className="h-3 w-3 text-primary" />
+                                <Save className={cn('h-3 w-3', brandIconClass)} />
                               </button>
                               <button
                                 onClick={(e) => {
@@ -1135,7 +1162,7 @@ const AiChatIndex: React.FC<AiChatIndexProps> = ({
                             </div>
                           ) : (
                             <div
-                              className="text-sm font-medium truncate cursor-text hover:text-primary transition-colors"
+                              className="text-sm font-medium truncate cursor-text hover:text-purple-600 dark:hover:text-blue-400 transition-colors"
                               onClick={(e) => handleTitleClick(conversation, e)}
                               title="Click to edit title"
                             >
@@ -1155,7 +1182,7 @@ const AiChatIndex: React.FC<AiChatIndexProps> = ({
                     ))}
                     {loadingConversations && (
                       <div className="flex justify-center p-4">
-                        <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                        <Loader2 className={cn('h-4 w-4 animate-spin', brandIconClass)} />
                       </div>
                     )}
                     {conversations.length === 0 && !loadingConversations && (
@@ -1166,16 +1193,17 @@ const AiChatIndex: React.FC<AiChatIndexProps> = ({
                   </div>
                 </div>
                 
-                {/* Bottom - Upgrade Button */}
-                <div className="p-3 border-t border-border flex-shrink-0">
-                  <p className="text-xs text-muted-foreground mb-2">
-                    {aiTokensIncluded > 0
-                      ? `${aiTokensUsed.toLocaleString()} / ${aiTokensIncluded.toLocaleString()} AI tokens used`
-                      : 'Uses your AI token balance'}
-                  </p>
-                  {!hasAiTokensLeft && aiTokensIncluded > 0 && (
-                    <p className="text-xs text-amber-600 dark:text-amber-400">Upgrade plan for more tokens</p>
-                  )}
+                {/* Bottom — same AI usage card as header */}
+                <div className="flex-shrink-0 border-t border-border p-3">
+                  <AiChatUsageCard
+                    userRole={auth.user.role}
+                    aiTokensIncluded={aiTokensIncluded}
+                    aiTokensUsed={aiTokensUsed}
+                    percentTokensUsed={percentTokensUsed}
+                    hasAiTokensLeft={hasAiTokensLeft}
+                    onAddTokens={() => setAiTokensPurchaseModalOpen(true)}
+                    addTokensDisabled={isLoading}
+                  />
                 </div>
               </div>
 
@@ -1185,7 +1213,7 @@ const AiChatIndex: React.FC<AiChatIndexProps> = ({
                 {currentConversationId && (
                   <div className="flex-shrink-0 px-4 sm:px-6 py-3 border-b border-border bg-muted/30">
                     <div className="flex items-center gap-2">
-                      <MessageSquare className="h-4 w-4 text-primary" />
+                      <MessageSquare className={cn('h-4 w-4', brandIconClass)} />
                       <h2 className="text-base sm:text-lg font-semibold truncate">
                         {conversations.find(conv => conv.id === currentConversationId)?.title || 'Chat'}
                       </h2>
@@ -1222,11 +1250,11 @@ const AiChatIndex: React.FC<AiChatIndexProps> = ({
                     
                     {/* Branding */}
                     <div className="mb-6">
-                      <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 border border-primary/20 mb-4">
-                        <Bot className="h-5 w-5 text-primary" />
-                        <span className="text-lg font-semibold text-primary">AI Believe Assistant</span>
+                      <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-gradient-to-r from-purple-600/10 to-blue-600/10 border border-purple-500/20 mb-4">
+                        <Bot className={cn('h-5 w-5', brandIconClass)} />
+                        <span className={cn('text-lg font-semibold', chatGradientText)}>AI Believe Assistant</span>
                       </div>
-                      <h3 className="text-2xl sm:text-3xl font-bold mb-3 bg-gradient-to-r from-primary via-primary/90 to-primary/80 bg-clip-text text-transparent">
+                      <h3 className="text-2xl sm:text-3xl font-bold mb-3 bg-gradient-to-r from-purple-600 via-violet-500 to-blue-600 bg-clip-text text-transparent">
                         Start a Conversation
                       </h3>
                       <p className="text-muted-foreground max-w-md mx-auto text-base sm:text-lg">
@@ -1239,19 +1267,19 @@ const AiChatIndex: React.FC<AiChatIndexProps> = ({
                       <p className="text-sm font-medium text-foreground mb-3">I can help you with:</p>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm text-muted-foreground">
                         <div className="flex items-center gap-2">
-                          <Sparkles className="h-4 w-4 text-primary" />
+                          <Sparkles className={cn('h-4 w-4', brandIconClass)} />
                           <span>Creating campaigns</span>
                         </div>
                         <div className="flex items-center gap-2">
-                          <Sparkles className="h-4 w-4 text-primary" />
+                          <Sparkles className={cn('h-4 w-4', brandIconClass)} />
                           <span>Generating content</span>
                         </div>
                         <div className="flex items-center gap-2">
-                          <Sparkles className="h-4 w-4 text-primary" />
+                          <Sparkles className={cn('h-4 w-4', brandIconClass)} />
                           <span>Answering questions</span>
                         </div>
                         <div className="flex items-center gap-2">
-                          <Sparkles className="h-4 w-4 text-primary" />
+                          <Sparkles className={cn('h-4 w-4', brandIconClass)} />
                           <span>Providing insights</span>
                         </div>
                       </div>
@@ -1280,14 +1308,14 @@ const AiChatIndex: React.FC<AiChatIndexProps> = ({
                           }`}
                         >
                           {message.role === 'assistant' && (
-                            <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center mt-1">
-                              <Bot className="h-4 w-4 text-primary" />
+                            <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gradient-to-br from-purple-600/15 to-blue-600/15 flex items-center justify-center mt-1">
+                              <Bot className={cn('h-4 w-4', brandIconClass)} />
                             </div>
                           )}
                           <div
                             className={`max-w-[75%] rounded-2xl px-4 py-3 flex flex-col ${
                               message.role === 'user'
-                                ? 'bg-primary text-primary-foreground'
+                                ? 'bg-gradient-to-r from-purple-600 to-blue-600 text-white shadow-sm'
                                 : 'bg-muted border border-border'
                             }`}
                           >
@@ -1354,7 +1382,7 @@ const AiChatIndex: React.FC<AiChatIndexProps> = ({
                                   </div>
                                   {streamingTexts[message.id] && streamingTexts[message.id].length < message.content.length && (
                                     <span className={`inline-block w-0.5 h-4 align-middle ml-1 animate-pulse ${
-                                      message.role === 'user' ? 'bg-primary-foreground' : 'bg-primary'
+                                      message.role === 'user' ? 'bg-white' : 'bg-purple-600 dark:bg-blue-400'
                                     }`} />
                                   )}
                                 </>
@@ -1420,7 +1448,7 @@ const AiChatIndex: React.FC<AiChatIndexProps> = ({
                             <div
                               className={`text-xs mt-1.5 opacity-60 ${
                                 message.role === 'user'
-                                  ? 'text-primary-foreground'
+                                  ? 'text-white/75'
                                   : 'text-muted-foreground'
                               }`}
                             >
@@ -1428,8 +1456,8 @@ const AiChatIndex: React.FC<AiChatIndexProps> = ({
                             </div>
                           </div>
                           {message.role === 'user' && (
-                            <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center mt-1">
-                              <UserIcon className="h-4 w-4 text-primary" />
+                            <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gradient-to-br from-purple-600/15 to-blue-600/15 flex items-center justify-center mt-1">
+                              <UserIcon className={cn('h-4 w-4', brandIconClass)} />
                             </div>
                           )}
                         </div>
@@ -1437,8 +1465,8 @@ const AiChatIndex: React.FC<AiChatIndexProps> = ({
                     })}
                     {isLoading && (
                       <div className="flex gap-3 items-start justify-start">
-                        <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center mt-1">
-                          <Bot className="h-4 w-4 text-primary" />
+                        <div className="flex-shrink-0 w-8 h-8 rounded-full bg-gradient-to-br from-purple-600/15 to-blue-600/15 flex items-center justify-center mt-1">
+                          <Bot className={cn('h-4 w-4', brandIconClass)} />
                         </div>
                         <div className="bg-muted border border-border rounded-2xl px-4 py-3">
                           <div className="flex items-center gap-1.5">
@@ -1475,7 +1503,10 @@ const AiChatIndex: React.FC<AiChatIndexProps> = ({
                       onKeyDown={handleKeyPress}
                       placeholder="Type your message..."
                       rows={1}
-                      className="w-full px-4 py-3 pr-12 border border-border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary resize-none transition-all overflow-hidden"
+                      className={cn(
+                        'w-full px-4 py-3 pr-12 border border-border rounded-lg bg-background focus:outline-none resize-none transition-all overflow-hidden',
+                        chatInputFocusRing
+                      )}
                       style={{ minHeight: '52px', maxHeight: '200px', height: '52px' }}
                       disabled={isLoading || !hasAiTokensLeft}
                     />
@@ -1486,7 +1517,10 @@ const AiChatIndex: React.FC<AiChatIndexProps> = ({
                   <button
                     onClick={handleSend}
                     disabled={!input.trim() || isLoading || currentCredits < 1}
-                    className="px-3 sm:px-4 py-3 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center shadow-sm hover:shadow-md"
+                    className={cn(
+                      chatPrimaryButtonClass,
+                      'px-3 sm:px-4 py-3 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center shadow-sm hover:shadow-md'
+                    )}
                     title="Send message"
                   >
                     {isLoading ? (
@@ -1501,6 +1535,19 @@ const AiChatIndex: React.FC<AiChatIndexProps> = ({
           </div>
         </div>
       </div>
+
+      <AiTokenPurchaseSuccessOverlay
+        key={tokenPurchaseCelebration.id}
+        active={tokenPurchaseCelebration.active}
+        message={tokenPurchaseCelebration.message}
+      />
+
+      <AiTokensPurchaseModal
+        open={aiTokensPurchaseModalOpen}
+        onOpenChange={setAiTokensPurchaseModalOpen}
+        returnRoute="ai-chat.index"
+        onCheckoutError={(message) => setError(message)}
+      />
 
       {/* Delete Confirmation Modal */}
       <Dialog open={deleteModalOpen} onOpenChange={setDeleteModalOpen}>

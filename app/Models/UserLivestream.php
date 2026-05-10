@@ -22,6 +22,7 @@ class UserLivestream extends Model
         'room_name',
         'room_password',
         'youtube_stream_key',
+        'youtube_broadcast_id',
         'status',
         'is_public',
         'title',
@@ -140,14 +141,14 @@ class UserLivestream extends Model
         $layoutsParam = '&slotmode&layouts=' . rawurlencode(json_encode($layouts));
         $base = "https://vdo.ninja/?director={$room}{$passwordParam}&clearstorage&label={$label}&showlabels=1&activespeaker=1&cleandirector&openscene{$layoutsParam}";
 
-        if ($recordEnabled && $recordToDropbox && $this->user && ! empty($this->user->dropbox_refresh_token)) {
-            $oauthService = app(\App\Services\DropboxOAuthService::class);
-            $dropboxToken = $oauthService->getAccessTokenForUser($this->user);
-            if (! empty($dropboxToken)) {
-                $folderName = $this->getDropboxFolderName();
+        if ($recordEnabled && $recordToDropbox) {
+            $ctx = $this->resolveDropboxUploadContext();
+            if ($ctx !== null) {
+                $oauthService = app(\App\Services\DropboxOAuthService::class);
+                $folderName = $ctx['folderName'];
                 $folderPath = '/' . trim($folderName, '/');
-                $oauthService->ensureFolderExists($dropboxToken, $folderPath);
-                $base .= '&dropbox=' . rawurlencode($dropboxToken);
+                $oauthService->ensureFolderExists($ctx['token'], $folderPath);
+                $base .= '&dropbox=' . rawurlencode($ctx['token']);
                 $base .= '&dropboxpath=/' . rawurlencode($folderName);
                 $base .= '&cloud=1';
             }
@@ -175,6 +176,60 @@ class UserLivestream extends Model
         return 'BIU Meeting Recordings';
     }
 
+    /** Folder segment when recording via the supporter's organization's linked Dropbox (Integrations pattern). */
+    public function getOrganizationDropboxFolderName(): string
+    {
+        $this->user?->loadMissing('organization');
+        $orgFolder = $this->user?->organization?->dropbox_folder_name;
+        if ($orgFolder !== null && $orgFolder !== '') {
+            $safe = self::sanitizeDropboxFolderName($orgFolder);
+            if ($safe !== '') {
+                return substr($safe, 0, self::DROPBOX_FOLDER_MAX_LENGTH);
+            }
+        }
+
+        return 'BIU Meeting Recordings';
+    }
+
+    /**
+     * Resolves Dropbox access for VDO.Ninja uploads: user's own token first, else organization's (same as Unity Meet recordings).
+     *
+     * @return array{token: string, folderName: string}|null
+     */
+    protected function resolveDropboxUploadContext(): ?array
+    {
+        $this->loadMissing('user');
+        if (! $this->user) {
+            return null;
+        }
+
+        $oauthService = app(\App\Services\DropboxOAuthService::class);
+
+        if (! empty($this->user->dropbox_refresh_token)) {
+            $dropboxToken = $oauthService->getAccessTokenForUser($this->user);
+
+            return ! empty($dropboxToken)
+                ? ['token' => $dropboxToken, 'folderName' => $this->getDropboxFolderName()]
+                : null;
+        }
+
+        $this->user->loadMissing('organization');
+        $organization = $this->user->organization;
+        if ($organization && ! empty($organization->dropbox_refresh_token)) {
+            $dropboxToken = $oauthService->getAccessTokenForOrganization($organization);
+
+            return ! empty($dropboxToken)
+                ? ['token' => $dropboxToken, 'folderName' => $this->getOrganizationDropboxFolderName()]
+                : null;
+        }
+
+        return null;
+    }
+
+    /**
+     * Guest / participant link. &audiodevice=1 and &videodevice=1 = VDO.Ninja auto-picks the system default
+     * microphone and camera (not a specific index). Do not use =0 — that disables audio/video.
+     */
     public function getParticipantUrl(): string
     {
         $password = $this->getDecryptedPassword();
@@ -182,7 +237,7 @@ class UserLivestream extends Model
         $pass = rawurlencode((string) $password);
         $passwordParam = $pass !== '' ? '&password=' . $pass : '';
         $avatarInitialUrl = 'https://ui-avatars.com/api/?name=Guest&size=256&length=1';
-        return "https://vdo.ninja/?room={$room}{$passwordParam}&label=&audiodevice=1&norecord&showlabels=1&showall&style=6&avatar=" . rawurlencode($avatarInitialUrl) . '&autostart&noheader';
+        return "https://vdo.ninja/?room={$room}{$passwordParam}&label=&audiodevice=1&videodevice=1&norecord&showlabels=1&showall&style=6&avatar=" . rawurlencode($avatarInitialUrl) . '&autostart&noheader';
     }
 
     public function getRoomViewUrl(): string
@@ -234,16 +289,16 @@ class UserLivestream extends Model
         $initial = mb_substr(trim($hostName), 0, 1) ?: 'H';
         $avatarParam = '&avatar=' . rawurlencode("https://ui-avatars.com/api/?name={$initial}&size=256&length=1");
         $recordParam = $recordEnabled ? '&record' : '';
-        $base = "https://vdo.ninja/?room={$room}&push={$push}&label={$label}{$recordParam}&quality=0&bitrate=6000&audiodevice=1&showlabels=1&showall&style=6{$avatarParam}&autostart&noheader{$passwordParam}";
+        $base = "https://vdo.ninja/?room={$room}&push={$push}&label={$label}{$recordParam}&quality=0&bitrate=6000&audiodevice=1&videodevice=1&showlabels=1&showall&style=6{$avatarParam}&autostart&noheader{$passwordParam}";
 
-        if ($recordEnabled && $recordToDropbox && $this->user && ! empty($this->user->dropbox_refresh_token)) {
-            $oauthService = app(\App\Services\DropboxOAuthService::class);
-            $dropboxToken = $oauthService->getAccessTokenForUser($this->user);
-            if (! empty($dropboxToken)) {
-                $folderName = $this->getDropboxFolderName();
+        if ($recordEnabled && $recordToDropbox) {
+            $ctx = $this->resolveDropboxUploadContext();
+            if ($ctx !== null) {
+                $oauthService = app(\App\Services\DropboxOAuthService::class);
+                $folderName = $ctx['folderName'];
                 $folderPath = '/' . trim($folderName, '/');
-                $oauthService->ensureFolderExists($dropboxToken, $folderPath);
-                $base .= '&dropbox=' . rawurlencode($dropboxToken);
+                $oauthService->ensureFolderExists($ctx['token'], $folderPath);
+                $base .= '&dropbox=' . rawurlencode($ctx['token']);
                 $base .= '&dropboxpath=/' . rawurlencode($folderName);
                 $base .= '&autorecordlocal=6000';
                 $base .= '&cloud=1';
@@ -260,6 +315,6 @@ class UserLivestream extends Model
 
     public function canGoLive(): bool
     {
-        return in_array($this->status, ['draft', 'scheduled', 'meeting_live']);
+        return in_array($this->status, ['draft', 'scheduled', 'meeting_live', 'ended'], true);
     }
 }

@@ -1,5 +1,5 @@
 "use client"
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { Head, Link, router } from "@inertiajs/react"
 import ProfileLayout from "@/components/frontend/layout/user-profile-layout"
 import { Button } from "@/components/admin/ui/button"
@@ -139,6 +139,7 @@ interface Props {
   auth: Auth
   courses: LaravelPagination<Course>
   eventTypes: EventTypeOption[]
+  companionEventTypes?: EventTypeOption[]
   filters: {
     courses_search: string
     courses_status: string
@@ -150,7 +151,13 @@ interface Props {
   statistics: Statistics
 }
 
-export default function CoursesIndex({ courses, eventTypes, filters, statistics }: Props) {
+export default function CoursesIndex({
+  courses,
+  eventTypes,
+  companionEventTypes = [],
+  filters,
+  statistics,
+}: Props) {
   const [copiedLink, setCopiedLink] = useState<string | null>(null)
 
   // Filter states
@@ -160,6 +167,15 @@ export default function CoursesIndex({ courses, eventTypes, filters, statistics 
   const [coursesFormat, setCoursesFormat] = useState(filters.courses_format || "")
   const [coursesEventType, setCoursesEventType] = useState(filters.courses_event_type || "")
   const [coursesHubType, setCoursesHubType] = useState(filters.courses_hub_type || "")
+
+  const topicFilterOptions = useMemo(() => {
+    if (coursesHubType === "companion") return companionEventTypes
+    if (coursesHubType === "learning" || coursesHubType === "events") return eventTypes
+    const byId = new Map<number, EventTypeOption>()
+    for (const et of companionEventTypes) byId.set(et.id, et)
+    for (const et of eventTypes) byId.set(et.id, et)
+    return Array.from(byId.values())
+  }, [coursesHubType, companionEventTypes, eventTypes])
 
   // Modal states
   const [deleteModal, setDeleteModal] = useState<{
@@ -566,7 +582,7 @@ export default function CoursesIndex({ courses, eventTypes, filters, statistics 
                       className={filterSelectClass}
                     >
                       <option value="">All topics</option>
-                      {eventTypes.map((et) => (
+                      {topicFilterOptions.map((et) => (
                         <option key={et.id} value={et.id.toString()}>
                           {et.category ? `${et.category} — ${et.name}` : et.name}
                         </option>

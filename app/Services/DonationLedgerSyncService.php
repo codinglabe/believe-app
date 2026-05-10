@@ -122,6 +122,11 @@ class DonationLedgerSyncService
      * Financial fields stored on recipient deposit meta — matches {@see TransactionLedgerController::ledgerReportFinancials}
      * for Stripe: donor covers → NET = intended gift; org absorbs → NET = pay amount minus processing estimate.
      *
+     * For Stripe Connect destination charges:
+     *  - BIU collects {@see Donation::$stripe_application_fee_amount} as platform-fee revenue.
+     *  - Organization Connect balance receives (checkout_total − application_fee_amount).
+     *  - Stripe processing fees are deducted from BIU's platform balance, not the org's.
+     *
      * @return array<string, mixed>
      */
     public static function organizationDonationFinancialMeta(Donation $donation): array
@@ -137,6 +142,12 @@ class DonationLedgerSyncService
                 : DonationProcessingFeeEstimator::estimateCardFeeOnChargeUsd($amountDollars);
         }
 
+        $connectId = isset($donation->stripe_connect_account_id) ? trim((string) $donation->stripe_connect_account_id) : '';
+        $applicationFee = $donation->stripe_application_fee_amount !== null
+            ? (float) $donation->stripe_application_fee_amount
+            : 0.0;
+        $isConnectDonation = $connectId !== '';
+
         $meta = [
             'donor_covers_processing_fees' => $donorCovers,
         ];
@@ -149,7 +160,21 @@ class DonationLedgerSyncService
         } elseif ($feeEstimate > 0) {
             $meta['gross_amount'] = round($amountDollars + $feeEstimate, 2);
         }
-        if (self::donationPaymentUsesStripeFees($pm)) {
+
+        if ($isConnectDonation) {
+            // Destination charge: org's connected Stripe balance receives the post-platform-fee amount.
+            $netToOrg = $checkoutTotal !== null
+                ? max(0.0, $checkoutTotal - $applicationFee)
+                : max(0.0, $amountDollars - $applicationFee);
+            $meta['net_to_organization'] = round($netToOrg, 2);
+            $meta['stripe_connect_account_id'] = $connectId;
+            $meta['funds_routed_via_stripe_connect'] = true;
+            $meta['stripe_connect_routing_mode'] = 'destination_charge';
+            if ($applicationFee > 0) {
+                $meta['stripe_application_fee_amount'] = round($applicationFee, 2);
+                $meta['platform_fee_revenue'] = round($applicationFee, 2);
+            }
+        } elseif (self::donationPaymentUsesStripeFees($pm)) {
             if ($donorCovers) {
                 $meta['net_to_organization'] = round($amountDollars, 2);
             } else {
