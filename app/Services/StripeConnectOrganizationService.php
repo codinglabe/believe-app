@@ -8,21 +8,36 @@ use Laravel\Cashier\Cashier;
 
 class StripeConnectOrganizationService
 {
+    /**
+     * Configure Stripe credentials. Tries the DB-backed PaymentMethod row first; falls back to
+     * Cashier's existing config (i.e. the .env STRIPE_SECRET / STRIPE_KEY pair) so that orgs can
+     * still onboard when the admin hasn't filled the in-app payment_methods row yet.
+     */
     public static function configureStripe(): bool
     {
-        return StripeConfigService::configureStripe();
+        if (StripeConfigService::configureStripe()) {
+            return true;
+        }
+
+        $envSecret = (string) (config('cashier.secret') ?? '');
+        if ($envSecret !== '') {
+            return true;
+        }
+
+        return false;
     }
 
     /**
-     * Pull charges/payouts flags from Stripe and persist locally.
+     * Pull charges/payouts flags from Stripe and persist locally. Returns null on success or a
+     * short error string when Stripe rejects the call (e.g. wrong API mode, missing Connect setup).
      */
-    public static function syncAccountStatusFromStripe(Organization $organization): void
+    public static function syncAccountStatusFromStripe(Organization $organization): ?string
     {
         if ($organization->stripe_connect_account_id === null || $organization->stripe_connect_account_id === '') {
-            return;
+            return null;
         }
         if (! self::configureStripe()) {
-            return;
+            return 'Stripe credentials are not configured for this application.';
         }
 
         try {
@@ -31,11 +46,16 @@ class StripeConnectOrganizationService
                 'stripe_connect_charges_enabled' => (bool) ($acct->charges_enabled ?? false),
                 'stripe_connect_payouts_enabled' => (bool) ($acct->payouts_enabled ?? false),
             ])->save();
+
+            return null;
         } catch (\Throwable $e) {
             Log::warning('Stripe Connect account retrieve failed', [
                 'organization_id' => $organization->id,
+                'stripe_connect_account_id' => $organization->stripe_connect_account_id,
                 'error' => $e->getMessage(),
             ]);
+
+            return self::humanizeStripeError($e);
         }
     }
 
@@ -44,14 +64,16 @@ class StripeConnectOrganizationService
      */
     public static function createExpressAccountIfMissing(Organization $organization): string
     {
-        self::configureStripe();
+        if (! self::configureStripe()) {
+            throw new \RuntimeException('Stripe credentials are not configured for this application.');
+        }
 
         $organization->loadMissing('user');
         $stripe = Cashier::stripe();
 
         $email = trim((string) ($organization->email ?: $organization->platform_email ?: $organization->user?->email ?: ''));
         if ($email === '') {
-            throw new \RuntimeException('Organization must have an email before connecting Stripe payouts.');
+            throw new \RuntimeException('Organization must have an email address on file before connecting Stripe payouts.');
         }
 
         if ($organization->stripe_connect_account_id !== null && $organization->stripe_connect_account_id !== '') {
@@ -60,15 +82,34 @@ class StripeConnectOrganizationService
             return $organization->stripe_connect_account_id;
         }
 
-        $account = $stripe->accounts->create([
-            'type' => 'express',
-            'country' => 'US',
-            'email' => $email,
-            'capabilities' => [
-                'card_payments' => ['requested' => true],
-                'transfers' => ['requested' => true],
-            ],
-        ]);
+        $country = strtoupper((string) config('donations.stripe_connect_default_country', 'US'));
+        if ($country === '' || strlen($country) !== 2) {
+            $country = 'US';
+        }
+
+        try {
+            $account = $stripe->accounts->create([
+                'type' => 'express',
+                'country' => $country,
+                'email' => $email,
+                'capabilities' => [
+                    'card_payments' => ['requested' => true],
+                    'transfers' => ['requested' => true],
+                ],
+                'business_type' => 'non_profit',
+                'metadata' => [
+                    'organization_id' => (string) $organization->id,
+                    'organization_name' => mb_substr((string) $organization->name, 0, 250),
+                ],
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Stripe Connect account create failed', [
+                'organization_id' => $organization->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            throw new \RuntimeException(self::humanizeStripeError($e), 0, $e);
+        }
 
         $organization->forceFill([
             'stripe_connect_account_id' => $account->id,
@@ -81,17 +122,53 @@ class StripeConnectOrganizationService
 
     public static function createAccountOnboardingLink(Organization $organization): string
     {
-        self::configureStripe();
+        if (! self::configureStripe()) {
+            throw new \RuntimeException('Stripe credentials are not configured for this application.');
+        }
+
         $accountId = self::createExpressAccountIfMissing($organization);
 
-        $link = Cashier::stripe()->accountLinks->create([
-            'account' => $accountId,
-            'refresh_url' => route('integrations.stripe-connect.refresh'),
-            'return_url' => route('integrations.stripe-connect.return'),
-            'type' => 'account_onboarding',
-        ]);
+        try {
+            $link = Cashier::stripe()->accountLinks->create([
+                'account' => $accountId,
+                'refresh_url' => route('integrations.stripe-connect.refresh'),
+                'return_url' => route('integrations.stripe-connect.return'),
+                'type' => 'account_onboarding',
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Stripe Connect account link create failed', [
+                'organization_id' => $organization->id,
+                'stripe_connect_account_id' => $accountId,
+                'error' => $e->getMessage(),
+            ]);
+
+            throw new \RuntimeException(self::humanizeStripeError($e), 0, $e);
+        }
 
         return $link->url;
+    }
+
+    /**
+     * Convert raw Stripe SDK exceptions into a sentence the org admin can act on.
+     */
+    public static function humanizeStripeError(\Throwable $e): string
+    {
+        $msg = (string) $e->getMessage();
+        $lower = strtolower($msg);
+
+        if (str_contains($lower, 'signed up for connect') || str_contains($lower, 'enable connect')) {
+            return 'Stripe Connect is not enabled on this platform’s Stripe account. The platform admin must visit https://dashboard.stripe.com/connect and complete Connect setup before organizations can onboard.';
+        }
+
+        if (str_contains($lower, 'no such account') || str_contains($lower, 'does not exist')) {
+            return 'The previously stored Stripe Connect account was not found in this Stripe environment (test vs live mismatch is the most common cause).';
+        }
+
+        if (str_contains($lower, 'invalid api key') || str_contains($lower, 'no api key provided')) {
+            return 'The Stripe API key is invalid or missing. Check the Stripe configuration in the admin panel.';
+        }
+
+        return 'Stripe error: '.$msg;
     }
 
     public static function organizationCanAcceptDirectDonations(Organization $organization): bool

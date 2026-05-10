@@ -10,6 +10,7 @@ use App\Services\CareAlliancePublicPageService;
 use App\Services\DonationProcessingFeeEstimator;
 use App\Services\DonationStripeConnectCheckoutSessionService;
 use App\Services\DonationStripeConnectRouting;
+use App\Services\DonationStripeDescriptionBuilder;
 use App\Services\DonationStripePaymentCompletion;
 use App\Services\ImpactScoreService;
 use App\Services\SeoService;
@@ -616,11 +617,23 @@ class DonationController extends Controller
             ]);
         }
 
-        // Create donation record (amount = intended gift to recipient; checkout may be higher if donor covers card fees)
+        // Platform fee (BIU's cut on Stripe Connect destination charges) — set only when the
+        // donation is actually routing through Connect. Mirrors processing_fee_estimate so BIU
+        // collects the processing-fee portion and the organization receives the gift amount.
+        $applicationFeeInCents = 0;
+        if ($useStripeConnectCheckout && $processingFeeEstimate !== null && $processingFeeEstimate > 0) {
+            $applicationFeeInCents = (int) round(((float) $processingFeeEstimate) * 100);
+            // Stripe requires the application fee to be strictly less than the charge.
+            $applicationFeeInCents = max(0, min($applicationFeeInCents, max(0, $amountInCents - 1)));
+        }
+
         $donation = Donation::create([
             'user_id' => $user->id,
             'organization_id' => $organization->id,
             'stripe_connect_account_id' => $useStripeConnectCheckout ? $organization->stripe_connect_account_id : null,
+            'stripe_application_fee_amount' => $useStripeConnectCheckout && $applicationFeeInCents > 0
+                ? round($applicationFeeInCents / 100, 2)
+                : null,
             'care_alliance_id' => $allianceForCheckout?->id,
             'amount' => $baseGiftUsd,
             'donor_covers_processing_fees' => $paymentMethod === 'stripe' && $donorCoversFees,
@@ -684,12 +697,42 @@ class DonationController extends Controller
                 ? sprintf('Donation to %s', $allianceForCheckout->name)
                 : "Donation to {$organizationName}";
 
+            // Rich descriptions for the Stripe Dashboard (Description column on Payments) and the
+            // donor's bank statement. Same builder used by Connect & non-Connect paths so admin
+            // sees consistent labels regardless of routing.
+            $isOneTime = $validated['frequency'] === 'one-time';
+            $piDescription = DonationStripeDescriptionBuilder::forPaymentIntent(
+                $organization,
+                $allianceForCheckout,
+                $user,
+                $baseGiftUsd,
+                $paymentMethod === 'stripe' ? $checkoutTotalUsd : null,
+                $donorCoversFees,
+                $processingFeeEstimate !== null ? (float) $processingFeeEstimate : null
+            );
+            $subscriptionDescription = DonationStripeDescriptionBuilder::forSubscription(
+                $organization,
+                $allianceForCheckout,
+                $user,
+                $baseGiftUsd,
+                $validated['frequency']
+            );
+            $statementSuffix = DonationStripeDescriptionBuilder::forStatementDescriptorSuffix(
+                $organization,
+                $allianceForCheckout
+            );
+
             $metadata = [
                 'donation_id' => (string) $donation->id,
                 'organization_id' => (string) $organization->id,
+                'organization_name' => mb_substr((string) $organizationName, 0, 500),
+                'donor_user_id' => (string) $user->id,
+                'donor_name' => mb_substr((string) ($user->name ?? ''), 0, 500),
+                'donor_email' => mb_substr((string) ($user->email ?? ''), 0, 500),
                 'base_gift_amount' => (string) $baseGiftUsd,
                 'donor_covers_processing_fees' => $donorCoversFees ? '1' : '0',
                 'fee_rail' => $feeRail,
+                'frequency' => (string) $validated['frequency'],
             ];
             if ($allianceForCheckout !== null) {
                 $metadata['care_alliance_id'] = (string) $allianceForCheckout->id;
@@ -707,11 +750,14 @@ class DonationController extends Controller
                     $organization,
                     $donation,
                     $amountInCents,
+                    $applicationFeeInCents,
                     mb_substr($checkoutLineTitle, 0, 250),
                     $metadata,
                     $paymentMethodTypes,
                     $successUrl,
-                    $cancelUrl
+                    $cancelUrl,
+                    $piDescription,
+                    $statementSuffix
                 );
                 $donation->update(['stripe_checkout_session_id' => $checkoutSession->id]);
 
@@ -739,13 +785,20 @@ class DonationController extends Controller
                 'billing_address_collection' => 'auto',
             ];
 
-            if ($validated['frequency'] !== 'one-time') {
+            if ($isOneTime) {
+                $checkoutOptions['payment_intent_data'] = [
+                    'description' => mb_substr($piDescription, 0, 1000),
+                    'statement_descriptor_suffix' => mb_substr($statementSuffix, 0, 22),
+                    'metadata' => $metadata,
+                ];
+            } else {
                 $checkoutOptions['subscription_data'] = [
-                    'description' => mb_substr($checkoutLineTitle, 0, 500),
+                    'description' => mb_substr($subscriptionDescription, 0, 500),
+                    'metadata' => $metadata,
                 ];
             }
 
-            if ($validated['frequency'] === 'one-time') {
+            if ($isOneTime) {
                 $checkout = $user->checkoutCharge(
                     $amountInCents,
                     mb_substr($checkoutLineTitle, 0, 250),
@@ -805,15 +858,9 @@ class DonationController extends Controller
             ]);
         }
         try {
-            $stripeRequestOpts = [];
-            if ($donationId !== null && $donationId !== '') {
-                $preloadDonation = Donation::query()->find((int) $donationId);
-                if ($preloadDonation && $preloadDonation->stripe_connect_account_id) {
-                    $stripeRequestOpts['stripe_account'] = $preloadDonation->stripe_connect_account_id;
-                }
-            }
-
-            $session = Cashier::stripe()->checkout->sessions->retrieve($sessionId, [], $stripeRequestOpts);
+            // Connect donations now use destination charges, so the Checkout Session lives on the
+            // platform Stripe account — NOT on the connected account. Retrieve from the platform.
+            $session = Cashier::stripe()->checkout->sessions->retrieve($sessionId);
             $metaDonationId = $session->metadata->donation_id ?? null;
             if ($metaDonationId === null || $metaDonationId === '') {
                 throw new \RuntimeException('Checkout session is missing donation metadata.');
@@ -832,10 +879,12 @@ class DonationController extends Controller
                     $alreadySettled = $donation->status === 'completed'
                         && (string) $donation->transaction_id === (string) $paymentIntentId;
                     if (! $alreadySettled) {
+                        // Both classic platform charges AND Connect destination charges produce a
+                        // PaymentIntent on the platform account, so no stripe_account header needed.
                         DonationStripePaymentCompletion::completeSuccessfulOneTime(
                             $donation,
                             (string) $paymentIntentId,
-                            $this->stripeCheckoutPaymentMethodLabel($session, $donation->stripe_connect_account_id)
+                            $this->stripeCheckoutPaymentMethodLabel($session)
                         );
                     }
                 } elseif ($session->subscription) {
@@ -916,7 +965,7 @@ class DonationController extends Controller
                         DB::transaction(function () use ($donation, $session) {
                             $donation->update([
                                 'transaction_id' => $session->subscription,
-                                'payment_method' => $this->stripeCheckoutPaymentMethodLabel($session, $donation->stripe_connect_account_id),
+                                'payment_method' => $this->stripeCheckoutPaymentMethodLabel($session),
                                 'status' => 'active',
                                 'donation_date' => now(),
                             ]);
@@ -936,7 +985,7 @@ class DonationController extends Controller
                         DB::transaction(function () use ($donation, $session) {
                             $donation->update([
                                 'transaction_id' => $session->id,
-                                'payment_method' => $this->stripeCheckoutPaymentMethodLabel($session, $donation->stripe_connect_account_id),
+                                'payment_method' => $this->stripeCheckoutPaymentMethodLabel($session),
                                 'status' => 'completed',
                                 'donation_date' => now(),
                             ]);
@@ -979,16 +1028,8 @@ class DonationController extends Controller
 
         if ($sessionId) {
             try {
-                $stripeRequestOpts = [];
-                $did = $request->get('donation_id');
-                if ($did !== null && $did !== '') {
-                    $preload = Donation::query()->find((int) $did);
-                    if ($preload && $preload->stripe_connect_account_id) {
-                        $stripeRequestOpts['stripe_account'] = $preload->stripe_connect_account_id;
-                    }
-                }
-
-                $session = Cashier::stripe()->checkout->sessions->retrieve($sessionId, [], $stripeRequestOpts);
+                // Destination-charge sessions live on the platform account; no stripe_account needed.
+                $session = Cashier::stripe()->checkout->sessions->retrieve($sessionId);
                 if ($session->metadata->donation_id) {
                     Donation::where('id', $session->metadata->donation_id)
                         ->update(['status' => 'canceled']);

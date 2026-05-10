@@ -11,6 +11,7 @@ class Donation extends Model
         'user_id',
         'organization_id',
         'stripe_connect_account_id',
+        'stripe_application_fee_amount',
         'care_alliance_id',
         'amount',
         'donor_covers_processing_fees',
@@ -32,6 +33,7 @@ class Donation extends Model
         'donor_covers_processing_fees' => 'boolean',
         'processing_fee_estimate' => 'decimal:2',
         'checkout_total' => 'decimal:2',
+        'stripe_application_fee_amount' => 'decimal:2',
     ];
 
     /**
