@@ -13,6 +13,7 @@ class UnityLoavesLocation extends Model
 
     protected $fillable = [
         'organization_id',
+        'user_id',
         'name',
         'description',
         'address',
@@ -44,6 +45,11 @@ class UnityLoavesLocation extends Model
     public function organization(): BelongsTo
     {
         return $this->belongsTo(Organization::class);
+    }
+
+    public function user(): BelongsTo
+    {
+        return $this->belongsTo(User::class);
     }
 
     public function schedules(): HasMany
