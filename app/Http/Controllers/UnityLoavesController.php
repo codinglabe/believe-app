@@ -112,6 +112,8 @@ class UnityLoavesController extends Controller
                 'meal_type_label'        => $this->mealTypeLabel($loc->meal_type),
                 'accepts_food_donations' => $loc->accepts_food_donations,
                 'dropoff_instructions'   => $loc->dropoff_instructions,
+                'distance'               => round(mt_rand(10, 100) / 10, 1), // Placeholder for UI
+                'needs_summary'          => $loc->needs->count() > 0 ? 'Needs ' . $loc->needs->take(2)->pluck('item_name')->join(', ') : '',
                 'meal_schedules'         => $mealSchedules->map(fn ($s) => [
                     'title'           => $s->title,
                     'day_of_week'     => $s->day_of_week,
