@@ -359,9 +359,9 @@ class OrganizationLivestream extends Model
         $displayName = $settings['display_name'] ?? null;
         $recordEnabled = (bool) ($settings['record_meeting'] ?? true);
         $hostName = $displayName ?: ($this->organization?->name ?? 'Host');
-        $roomName = $this->getVdoRoomName();
-        $room = rawurlencode($roomName);
-        $push = rawurlencode($roomName);
+        $streamKey = \App\Support\StreamingWorkerSourceUrl::streamPath($this);
+        $room = rawurlencode($streamKey);
+        $push = rawurlencode($streamKey);
         $label = rawurlencode($hostName);
         $pass = rawurlencode((string) $this->getDecryptedPassword());
         $passwordParam = $pass !== '' ? '&password=' . $pass : '';
@@ -375,7 +375,14 @@ class OrganizationLivestream extends Model
         }
         // No width/height/framerate — fixed 1920x1080@30 caused "Camera failed to load" on some webcams. quality=0 + bitrate let the camera use supported resolution.
         $recordParam = $recordEnabled ? '&record' : '';
-        $base = "https://vdo.ninja/?room={$room}&push={$push}&label={$label}{$recordParam}&quality=0&bitrate=6000&audiodevice=1&videodevice=1&showlabels=1&showall&style=6{$avatarParam}&autostart&noheader{$passwordParam}";
+        $base = "https://vdo.ninja/?room={$room}&push={$push}&label={$label}{$recordParam}&quality=0&bitrate=6000&audiodevice=1&videodevice=1&proaudio&stereo=2&showlabels=1&showall&style=6{$avatarParam}&autostart&noheader{$passwordParam}";
+
+        $mediaMtxHost = \App\Support\StreamingWorkerSourceUrl::bridgeMediaMtxHost();
+        if ($mediaMtxHost !== null) {
+            // VDO publishes to /{room}/{push}/whip through MediaMTX; force H.264 for RTMP remuxing.
+            $base .= '&mediamtx=' . $mediaMtxHost . '&codec=h264';
+        }
+
         if ($recordEnabled && $recordToDropbox && $this->organization) {
             $oauthService = app(\App\Services\DropboxOAuthService::class);
             $dropboxToken = $oauthService->getAccessTokenForOrganization($this->organization);

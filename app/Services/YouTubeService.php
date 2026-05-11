@@ -723,6 +723,16 @@ class YouTubeService
         ?\DateTime $scheduledStartTime = null
     ): ?array {
         try {
+            $existingBroadcast = $this->findBroadcastStreamKeyByTitle($accessToken, $title);
+            if ($existingBroadcast !== null) {
+                Log::info('YouTube broadcast create skipped; existing broadcast reused by title', [
+                    'title' => $title,
+                    'broadcast_id' => $existingBroadcast['broadcast_id'],
+                ]);
+
+                return $existingBroadcast;
+            }
+
             // YouTube API requires scheduledStartTime for every broadcast. Use "now" when starting immediately.
             $startTime = $scheduledStartTime ?? new \DateTime('now', new \DateTimeZone('UTC'));
             $scheduledStartTimeIso = $startTime->format('Y-m-d\TH:i:s\Z');
@@ -765,45 +775,64 @@ class YouTubeService
                 return null;
             }
 
-            // Step 2: Create the stream (API requires cdn.resolution and cdn.frameRate; cdn.format is deprecated)
-            $streamData = [
-                'snippet' => [
-                    'title' => $title . ' Stream',
-                ],
-                'cdn' => [
-                    'ingestionType' => 'rtmp',
-                    'resolution' => '1080p',
-                    'frameRate' => '30fps',
-                ],
-            ];
-
-            $streamResponse = $this->http()
-                ->withToken($accessToken)
-                ->asJson()
-                ->post($this->baseUrl . '/liveStreams?part=snippet,cdn&key=' . $this->apiKey, $streamData);
-
-            if (!$streamResponse->successful()) {
-                Log::error('YouTube stream creation failed', [
-                    'status' => $streamResponse->status(),
-                    'body' => $streamResponse->body(),
+            // Step 2: Reuse the YouTube live stream/key with this name if it already exists.
+            // This keeps one stream key per livestream title instead of creating duplicates.
+            $streamTitle = $title . ' Stream';
+            $existingStream = $this->findLiveStreamByTitle($accessToken, $streamTitle);
+            if ($existingStream !== null) {
+                Log::info('YouTube live stream reused by title', [
+                    'title' => $streamTitle,
+                    'stream_id' => $existingStream['stream_id'],
                 ]);
-                // Try to delete the broadcast we created
-                $this->http()
+
+                $streamId = $existingStream['stream_id'];
+                $streamKey = $existingStream['stream_key'];
+                $rtmpUrl = $existingStream['rtmp_url'];
+            } else {
+                // API requires cdn.resolution and cdn.frameRate; cdn.format is deprecated.
+                $streamData = [
+                    'snippet' => [
+                        'title' => $streamTitle,
+                    ],
+                    'cdn' => [
+                        'ingestionType' => 'rtmp',
+                        'resolution' => '1080p',
+                        'frameRate' => '30fps',
+                    ],
+                ];
+
+                $streamResponse = $this->http()
                     ->withToken($accessToken)
-                    ->delete($this->baseUrl . '/liveBroadcasts', [
-                        'id' => $broadcastId,
-                        'key' => $this->apiKey,
+                    ->asJson()
+                    ->post($this->baseUrl . '/liveStreams?part=snippet,cdn&key=' . $this->apiKey, $streamData);
+
+                if (!$streamResponse->successful()) {
+                    Log::error('YouTube stream creation failed', [
+                        'status' => $streamResponse->status(),
+                        'body' => $streamResponse->body(),
                     ]);
-                return null;
+                    // Try to delete the broadcast we created.
+                    $this->http()
+                        ->withToken($accessToken)
+                        ->delete($this->baseUrl . '/liveBroadcasts', [
+                            'id' => $broadcastId,
+                            'key' => $this->apiKey,
+                        ]);
+                    return null;
+                }
+
+                $stream = $streamResponse->json();
+                $streamId = $stream['id'] ?? null;
+                $streamKey = $stream['cdn']['ingestionInfo']['streamName'] ?? null;
+                $rtmpUrl = $stream['cdn']['ingestionInfo']['ingestionAddress'] ?? null;
             }
 
-            $stream = $streamResponse->json();
-            $streamId = $stream['id'] ?? null;
-            $streamKey = $stream['cdn']['ingestionInfo']['streamName'] ?? null;
-            $rtmpUrl = $stream['cdn']['ingestionInfo']['ingestionAddress'] ?? null;
-
             if (!$streamId || !$streamKey || !$rtmpUrl) {
-                Log::error('YouTube stream data incomplete', ['response' => $stream]);
+                Log::error('YouTube stream data incomplete', [
+                    'stream_id' => $streamId,
+                    'has_stream_key' => ! empty($streamKey),
+                    'rtmp_url' => $rtmpUrl,
+                ]);
                 return null;
             }
 
@@ -839,6 +868,140 @@ class YouTubeService
             ]);
             return null;
         }
+    }
+
+    /**
+     * Find an existing non-completed broadcast on the channel by exact title and return its stream key.
+     * Used so a user creating a meeting whose name matches an existing YouTube live reuses that broadcast
+     * (and its stream key) instead of accidentally spawning duplicates.
+     *
+     * @param string $accessToken OAuth access token
+     * @param string $title Broadcast title to match (case/whitespace-insensitive)
+     * @return array{broadcast_id: string, stream_key: string, rtmp_url: string}|null
+     */
+    public function findBroadcastStreamKeyByTitle(string $accessToken, string $title): ?array
+    {
+        try {
+            $response = $this->http()
+                ->withToken($accessToken)
+                ->get($this->baseUrl . '/liveBroadcasts', [
+                    'mine' => 'true',
+                    'part' => 'snippet,contentDetails,status',
+                    'maxResults' => 50,
+                    'key' => $this->apiKey,
+                ]);
+
+            if (! $response->successful()) {
+                Log::error('YouTube broadcast title lookup failed', [
+                    'status' => $response->status(),
+                    'body' => $response->body(),
+                    'title' => $title,
+                ]);
+                return null;
+            }
+
+            $targetTitle = $this->normalizeBroadcastTitle($title);
+            foreach (($response->json('items') ?? []) as $item) {
+                $broadcastTitle = $this->normalizeBroadcastTitle((string) ($item['snippet']['title'] ?? ''));
+                if ($broadcastTitle !== $targetTitle) {
+                    continue;
+                }
+
+                $lifeCycleStatus = (string) ($item['status']['lifeCycleStatus'] ?? '');
+                if (in_array($lifeCycleStatus, ['complete', 'revoked'], true)) {
+                    continue;
+                }
+
+                $broadcastId = (string) ($item['id'] ?? '');
+                if ($broadcastId === '') {
+                    continue;
+                }
+
+                $streamData = $this->getBroadcastStreamKey($accessToken, $broadcastId);
+                if (! $streamData || empty($streamData['stream_key'])) {
+                    continue;
+                }
+
+                return [
+                    'broadcast_id' => $broadcastId,
+                    'stream_key' => $streamData['stream_key'],
+                    'rtmp_url' => $streamData['rtmp_url'],
+                ];
+            }
+        } catch (\Exception $e) {
+            Log::error('YouTube broadcast title lookup exception', [
+                'title' => $title,
+                'message' => $e->getMessage(),
+            ]);
+        }
+
+        return null;
+    }
+
+    private function normalizeBroadcastTitle(string $title): string
+    {
+        return mb_strtolower(trim(preg_replace('/\s+/', ' ', $title) ?? ''));
+    }
+
+    /**
+     * Find an existing YouTube live stream resource by exact title and return its reusable stream key.
+     *
+     * @param string $accessToken OAuth access token
+     * @param string $title Live stream title to match (case/whitespace-insensitive)
+     * @return array{stream_id: string, stream_key: string, rtmp_url: string}|null
+     */
+    private function findLiveStreamByTitle(string $accessToken, string $title): ?array
+    {
+        try {
+            $response = $this->http()
+                ->withToken($accessToken)
+                ->get($this->baseUrl . '/liveStreams', [
+                    'mine' => 'true',
+                    'part' => 'id,snippet,cdn',
+                    'maxResults' => 50,
+                    'key' => $this->apiKey,
+                ]);
+
+            if (! $response->successful()) {
+                Log::error('YouTube live stream title lookup failed', [
+                    'status' => $response->status(),
+                    'body' => $response->body(),
+                    'title' => $title,
+                ]);
+
+                return null;
+            }
+
+            $targetTitle = $this->normalizeBroadcastTitle($title);
+            foreach (($response->json('items') ?? []) as $item) {
+                $streamTitle = $this->normalizeBroadcastTitle((string) ($item['snippet']['title'] ?? ''));
+                if ($streamTitle !== $targetTitle) {
+                    continue;
+                }
+
+                $streamId = (string) ($item['id'] ?? '');
+                $cdn = $item['cdn']['ingestionInfo'] ?? [];
+                $streamKey = $cdn['streamName'] ?? null;
+                $rtmpUrl = $cdn['ingestionAddress'] ?? null;
+
+                if ($streamId === '' || ! $streamKey || ! $rtmpUrl) {
+                    continue;
+                }
+
+                return [
+                    'stream_id' => $streamId,
+                    'stream_key' => $streamKey,
+                    'rtmp_url' => $rtmpUrl,
+                ];
+            }
+        } catch (\Exception $e) {
+            Log::error('YouTube live stream title lookup exception', [
+                'title' => $title,
+                'message' => $e->getMessage(),
+            ]);
+        }
+
+        return null;
     }
 
     /**

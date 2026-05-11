@@ -104,10 +104,17 @@ class StreamingQueueService
 
         $client = new SqsClient($this->sqsClientConfig());
 
-        $result = $client->sendMessage([
+        $message = [
             'QueueUrl' => $queueUrl,
             'MessageBody' => json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR),
-        ]);
+        ];
+
+        $delaySeconds = max(0, min(900, (int) config('streaming.sqs_delay_seconds', 0)));
+        if ($delaySeconds > 0) {
+            $message['DelaySeconds'] = $delaySeconds;
+        }
+
+        $result = $client->sendMessage($message);
 
         $messageId = (string) ($result->get('MessageId') ?? '');
         $job->update([

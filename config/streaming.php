@@ -6,6 +6,9 @@ return [
     'aws_secret' => env('AWS_SECRET_ACCESS_KEY'),
     'queue_url' => env('SQS_STREAMING_QUEUE_URL'),
     'callback_token' => env('LARAVEL_CALLBACK_TOKEN'),
+    // Delay the worker pull so the browser publisher has time to connect to MediaMTX.
+    // AWS SQS supports DelaySeconds from 0 to 900.
+    'sqs_delay_seconds' => max(0, min(900, (int) env('STREAMING_SQS_DELAY_SECONDS', 0))),
 
     /*
      * Public base URL AWS workers must use to POST /api/streaming/status.
@@ -81,4 +84,18 @@ return [
         env('STREAMING_SIMULATE_WORKER_FORCE', false),
         FILTER_VALIDATE_BOOLEAN
     ),
+
+    /*
+     * MediaMTX bridge — VDO.Ninja publishes through &mediamtx=<host>, and Laravel sends
+     * the resulting RTMP path to the AWS worker as source_url.
+     * Example host: stream.501c3ers.com:443
+     *
+     * VDO.Ninja cannot send auth headers with &mediamtx, so /whip must be open or relaxed
+     * on the MediaMTX side.
+     */
+    'bridge' => [
+        'host' => env('STREAMING_BRIDGE_HOST', ''),
+        'publish_user' => env('STREAMING_BRIDGE_PUBLISH_USER', 'publisher'),
+        'publish_pass' => env('STREAMING_BRIDGE_PUBLISH_PASS', ''),
+    ],
 ];
