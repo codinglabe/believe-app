@@ -779,4 +779,9 @@ class Organization extends Model
     {
         return $this->livestreams()->where('status', 'live');
     }
+
+    public function aiVideos()
+    {
+        return $this->hasMany(AiVideo::class);
+    }
 }

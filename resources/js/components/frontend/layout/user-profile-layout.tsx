@@ -37,6 +37,7 @@ import {
   Globe,
   Youtube,
   Gavel,
+  Video,
 } from "lucide-react"
 import { Button } from "@/components/frontend/ui/button"
 import { Card, CardContent } from "@/components/frontend/ui/card"
@@ -228,6 +229,13 @@ const navigationItems = [
     icon: CreditCard,
     description: "Billing & wallet",
     color: "from-indigo-500 to-purple-600",
+  },
+  {
+    name: "AI Media Studio",
+    href: "/ai-media-studio",
+    icon: Video,
+    description: "Short AI videos (OpenAI + fal.ai), queued in the background",
+    color: "from-fuchsia-500 to-purple-600",
   },
   {
     name: "Integrations",

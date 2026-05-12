@@ -164,6 +164,13 @@ export const dashboardSidebarNavItems: (NavItem | NavGroup)[] = [
                 ],
             },
             {
+                title: 'AI Media Studio',
+                href: '/ai-media-studio',
+                icon: Video,
+                permission: 'ai.media.read',
+                role: ['organization', 'organization_pending', 'care_alliance', 'user'],
+            },
+            {
                 title: 'Engagement',
                 href: '/newsletter',
                 icon: Mail,

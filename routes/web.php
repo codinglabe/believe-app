@@ -43,6 +43,7 @@ use App\Http\Controllers\Admin\WalletPlanController;
 use App\Http\Controllers\AdminAboutPageController;
 use App\Http\Controllers\AiCampaignController;
 use App\Http\Controllers\AiChatController;
+use App\Http\Controllers\AiMediaStudioController;
 use App\Http\Controllers\Barter\BarterNetworkController;
 use App\Http\Controllers\BelievePointController;
 use App\Http\Controllers\BoardMemberController;
@@ -110,6 +111,7 @@ use App\Http\Controllers\JobsController;
 use App\Http\Controllers\KioskController;
 use App\Http\Controllers\KioskDashboardController;
 use App\Http\Controllers\KioskServiceRequestController;
+use App\Http\Controllers\LivestreamRecordingDeclineController;
 use App\Http\Controllers\LiveViewController;
 use App\Http\Controllers\ManageDataController;
 use App\Http\Controllers\ManageDatasetController;
@@ -128,7 +130,6 @@ use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\NteeCodeController;
 use App\Http\Controllers\OrderController;
 use App\Http\Controllers\OrderItemController;
-use App\Http\Controllers\LivestreamRecordingDeclineController;
 use App\Http\Controllers\Organization\LivestreamController;
 use App\Http\Controllers\Organization\MarketplaceProductPoolController;
 use App\Http\Controllers\Organization\OrganizationKioskProviderController;
@@ -811,6 +812,27 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected'])->group(f
     Route::get('/profile/donations', [UserProfileController::class, 'donations'])->name('profile.donations');
 });
 
+// BIU AI Media Studio — nonprofits + supporters (OpenAI → fal.ai → Dropbox; work runs on the queue worker).
+Route::middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected', 'permission:ai.media.read', 'role:user|organization|organization_pending|care_alliance|admin'])
+    ->prefix('ai-media-studio')
+    ->name('ai-media-studio.')
+    ->group(function () {
+        Route::get('/', [AiMediaStudioController::class, 'index'])->name('index');
+        Route::get('/create', [AiMediaStudioController::class, 'create'])->middleware('permission:ai.media.create')->name('create');
+        Route::post('/', [AiMediaStudioController::class, 'store'])->middleware('permission:ai.media.create')->name('store');
+        Route::get('/{ai_video}', [AiMediaStudioController::class, 'show'])->name('show');
+    });
+
+// Credit purchases — wallet credits + AI Media Studio packs (supporters + organizations).
+Route::middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected', 'role:user|organization|organization_pending|care_alliance|admin'])
+    ->group(function () {
+        Route::get('/credits/purchase', [CreditPurchaseController::class, 'index'])->name('credits.purchase');
+        Route::post('/credits/checkout', [CreditPurchaseController::class, 'checkout'])->name('credits.checkout');
+        Route::post('/credits/pay-believe-points', [CreditPurchaseController::class, 'payWithBelievePoints'])->name('credits.pay-believe-points');
+        Route::get('/credits/success', [CreditPurchaseController::class, 'success'])->name('credits.success');
+        Route::get('/credits/cancel', [CreditPurchaseController::class, 'cancel'])->name('credits.cancel');
+    });
+
 // Profile routes
 Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:user'])->name('user.')->group(function () {
     Route::get('/profile', [UserProfileController::class, 'index'])->name('profile.index');
@@ -1112,13 +1134,6 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|care_alli
     Route::get('/ai-chat/conversations/{id}', [AiChatController::class, 'getConversation'])->name('ai-chat.conversation');
     Route::put('/ai-chat/conversations/{id}', [AiChatController::class, 'updateConversation'])->name('ai-chat.update-conversation');
     Route::delete('/ai-chat/conversations/{id}', [AiChatController::class, 'deleteConversation'])->name('ai-chat.delete-conversation');
-
-    // Credit Purchase Routes
-    Route::get('/credits/purchase', [CreditPurchaseController::class, 'index'])->name('credits.purchase');
-    Route::post('/credits/checkout', [CreditPurchaseController::class, 'checkout'])->name('credits.checkout');
-    Route::post('/credits/pay-believe-points', [CreditPurchaseController::class, 'payWithBelievePoints'])->name('credits.pay-believe-points');
-    Route::get('/credits/success', [CreditPurchaseController::class, 'success'])->name('credits.success');
-    Route::get('/credits/cancel', [CreditPurchaseController::class, 'cancel'])->name('credits.cancel');
 
     // Organization routes follwers
     Route::prefix('organization')->group(function () {

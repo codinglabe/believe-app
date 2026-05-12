@@ -861,6 +861,7 @@ class PlansController extends Controller
             $emailsIncluded = 0;
             $aiTokensIncluded = 0;
             $creditsToAdd = 0;
+            $aiMediaStudioCreditsFromPlan = null;
 
             // Process custom fields
             if ($plan->custom_fields && is_array($plan->custom_fields)) {
@@ -885,6 +886,10 @@ class PlansController extends Controller
                     ) {
                         // Remove commas and convert to integer
                         $aiTokensIncluded = (int) str_replace(',', '', $fieldValue);
+                    }
+                    // AI Media Studio (short-form video) credits — separate from wallet `credits`
+                    elseif ($fieldKey === 'ai_media_studio_credits' && $fieldType === 'number') {
+                        $aiMediaStudioCreditsFromPlan = (int) str_replace(',', '', $fieldValue);
                     }
                     // Handle currency fields
                     elseif ($fieldType === 'currency') {
@@ -915,8 +920,17 @@ class PlansController extends Controller
                 'subscribed_at' => now()->toIso8601String(),
                 'emails_included' => $emailsIncluded,
                 'ai_tokens_included' => $aiTokensIncluded,
+                'ai_media_studio_credits_granted' => 0,
                 'custom_fields' => $plan->custom_fields ?? [],
             ];
+
+            $mediaStudioGrant = 0;
+            if (in_array($user->role, ['organization', 'organization_pending', 'care_alliance'], true)) {
+                $mediaStudioGrant = $aiMediaStudioCreditsFromPlan !== null
+                    ? max(0, $aiMediaStudioCreditsFromPlan)
+                    : (int) config('services.ai_media_studio.org_subscription_credits', 10);
+            }
+            $planDetails['ai_media_studio_credits_granted'] = $mediaStudioGrant;
 
             // Update user with plan, emails, tokens, and credits
             $user->update([
@@ -930,6 +944,10 @@ class PlansController extends Controller
             $totalCreditsToAdd = $aiTokensIncluded + $creditsToAdd;
             if ($totalCreditsToAdd > 0) {
                 $user->increment('credits', $totalCreditsToAdd);
+            }
+
+            if ($mediaStudioGrant > 0) {
+                $user->increment('ai_media_studio_credits', $mediaStudioGrant);
             }
 
             // Record transaction for billing history
@@ -948,6 +966,7 @@ class PlansController extends Controller
                     'emails_included' => $emailsIncluded,
                     'ai_tokens_included' => $aiTokensIncluded,
                     'credits_added' => $totalCreditsToAdd,
+                    'ai_media_studio_credits_granted' => $mediaStudioGrant,
                     'description' => "Plan Subscription: {$plan->name}".(! empty($currencyFields) ? ' + Add-ons' : ''),
                     'stripe_session_id' => $sessionId,
                     'stripe_payment_intent' => $session->payment_intent ?? null,
@@ -962,6 +981,7 @@ class PlansController extends Controller
                 'emails_included' => $emailsIncluded,
                 'ai_tokens_included' => $aiTokensIncluded,
                 'credits_added' => $totalCreditsToAdd,
+                'ai_media_studio_credits_granted' => $mediaStudioGrant,
                 'total_amount' => $totalAmount,
                 'session_id' => $sessionId,
             ]);
@@ -972,6 +992,9 @@ class PlansController extends Controller
             }
             if ($emailsIncluded > 0) {
                 $successMessage .= " {$emailsIncluded} emails included.";
+            }
+            if ($mediaStudioGrant > 0) {
+                $successMessage .= " {$mediaStudioGrant} AI Media Studio video credits added.";
             }
 
             // Render success page instead of redirecting

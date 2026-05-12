@@ -15,16 +15,52 @@ use Laravel\Cashier\Cashier;
 class CreditPurchaseController extends Controller
 {
     /**
+     * @return array<string, array{amount: float, credits?: int, media_credits?: int, wallet: string}>
+     */
+    protected function checkoutPackages(): array
+    {
+        $packages = [
+            'legacy_50k' => ['amount' => 1.0, 'credits' => 50000, 'wallet' => 'credits'],
+            'addon_10k' => ['amount' => 2.0, 'credits' => 10000, 'wallet' => 'credits'],
+            'addon_25k' => ['amount' => 4.5, 'credits' => 25000, 'wallet' => 'credits'],
+            'addon_50k' => ['amount' => 8.0, 'credits' => 50000, 'wallet' => 'credits'],
+        ];
+
+        $studio = config('services.ai_media_studio.supporter_packs', []);
+        if (is_array($studio)) {
+            foreach ($studio as $key => $row) {
+                if (! is_string($key) || ! is_array($row)) {
+                    continue;
+                }
+                $usd = (float) ($row['usd'] ?? 0);
+                $credits = (int) ($row['credits'] ?? 0);
+                if ($usd > 0 && $credits > 0) {
+                    $packages[$key] = [
+                        'amount' => $usd,
+                        'media_credits' => $credits,
+                        'wallet' => 'ai_media_studio',
+                    ];
+                }
+            }
+        }
+
+        return $packages;
+    }
+
+    /**
      * Show the credit purchase page
      */
-    public function index()
+    public function index(Request $request)
     {
-        $user = auth()->user();
+        $user = $request->user();
 
         return Inertia::render('Credits/Purchase', [
             'currentCredits' => $user->credits ?? 0,
+            'aiMediaStudioCredits' => (int) ($user->ai_media_studio_credits ?? 0),
             'price' => 1.00, // $1
             'credits' => 50000, // 50000 credits
+            'mediaStudioPacks' => config('services.ai_media_studio.supporter_packs', []),
+            'activeWallet' => $request->query('wallet', 'credits'),
         ]);
     }
 
@@ -33,14 +69,13 @@ class CreditPurchaseController extends Controller
      */
     public function checkout(Request $request)
     {
-        $packages = [
-            'legacy_50k' => ['amount' => 1.0, 'credits' => 50000],
-            'addon_10k' => ['amount' => 2.0, 'credits' => 10000],
-            'addon_25k' => ['amount' => 4.5, 'credits' => 25000],
-            'addon_50k' => ['amount' => 8.0, 'credits' => 50000],
-        ];
+        $packages = $this->checkoutPackages();
 
         $returnRoute = $request->input('return_route', 'ai-chat.index');
+        if (! is_string($returnRoute) || $returnRoute === '' || ! Route::has($returnRoute)) {
+            $returnRoute = 'ai-chat.index';
+        }
+
         $packageKey = $request->input('package');
 
         if ($packageKey !== null && $packageKey !== '') {
@@ -49,7 +84,9 @@ class CreditPurchaseController extends Controller
                 'return_route' => ['nullable', 'string'],
             ]);
             $amount = $packages[$packageKey]['amount'];
-            $creditsToAdd = $packages[$packageKey]['credits'];
+            $wallet = $packages[$packageKey]['wallet'] ?? 'credits';
+            $creditsToAdd = (int) ($packages[$packageKey]['credits'] ?? 0);
+            $mediaCreditsToAdd = (int) ($packages[$packageKey]['media_credits'] ?? 0);
         } else {
             $request->validate([
                 'amount' => ['required', 'numeric', 'min:1'],
@@ -60,12 +97,18 @@ class CreditPurchaseController extends Controller
             $amount = $userAmount;
             // Legacy: charge requested USD amount and grant fixed 50k wallet credits per checkout (existing behaviour).
             $creditsToAdd = 50000;
+            $mediaCreditsToAdd = 0;
+            $wallet = 'credits';
         }
 
         try {
             $user = $request->user();
 
             $amountInCents = StripeCustomerChargeAmount::chargeCentsFromNetUsd((float) $amount, 'card');
+
+            $grantLabel = $wallet === 'ai_media_studio'
+                ? "{$mediaCreditsToAdd} AI Media Studio credits"
+                : "{$creditsToAdd} credits";
 
             // Record pending transaction
             $transaction = $user->recordTransaction([
@@ -75,15 +118,17 @@ class CreditPurchaseController extends Controller
                 'status' => 'pending',
                 'meta' => [
                     'credits_to_add' => $creditsToAdd,
+                    'media_credits_to_add' => $mediaCreditsToAdd,
+                    'credit_wallet' => $wallet,
                     'package' => $packageKey ?? 'legacy_amount',
-                    'description' => "Purchase {$creditsToAdd} credits",
+                    'description' => "Purchase {$grantLabel}",
                 ],
             ]);
 
             // Create checkout session
             $checkout = $user->checkoutCharge(
                 $amountInCents,
-                "Purchase {$creditsToAdd} Credits",
+                "Purchase {$grantLabel}",
                 1,
                 [
                     'success_url' => route('credits.success').'?session_id={CHECKOUT_SESSION_ID}&return_route='.urlencode($returnRoute),
@@ -92,8 +137,10 @@ class CreditPurchaseController extends Controller
                         'user_id' => $user->id,
                         'transaction_id' => $transaction->id,
                         'type' => 'credit_purchase',
-                        'credits_to_add' => $creditsToAdd,
-                        'amount' => $amount,
+                        'credits_to_add' => (string) $creditsToAdd,
+                        'media_credits_to_add' => (string) $mediaCreditsToAdd,
+                        'credit_wallet' => $wallet,
+                        'amount' => (string) $amount,
                         'return_route' => $returnRoute,
                         'package' => (string) ($packageKey ?? 'legacy_amount'),
                     ],
@@ -122,11 +169,9 @@ class CreditPurchaseController extends Controller
      */
     public function payWithBelievePoints(Request $request)
     {
-        $packages = [
-            'addon_10k' => ['amount' => 2.0, 'credits' => 10000],
-            'addon_25k' => ['amount' => 4.5, 'credits' => 25000],
-            'addon_50k' => ['amount' => 8.0, 'credits' => 50000],
-        ];
+        $packages = collect($this->checkoutPackages())
+            ->filter(fn ($p) => ($p['wallet'] ?? 'credits') === 'credits')
+            ->all();
 
         $request->validate([
             'package' => ['required', 'string', 'in:'.implode(',', array_keys($packages))],
@@ -136,7 +181,7 @@ class CreditPurchaseController extends Controller
         $user = $request->user();
         $packageKey = $request->input('package');
         $amountUsd = $packages[$packageKey]['amount'];
-        $creditsToAdd = $packages[$packageKey]['credits'];
+        $creditsToAdd = (int) ($packages[$packageKey]['credits'] ?? 0);
 
         $returnRoute = $request->input('return_route', 'ai-chat.index');
         if (! is_string($returnRoute) || $returnRoute === '' || ! Route::has($returnRoute)) {
@@ -207,6 +252,10 @@ class CreditPurchaseController extends Controller
                 return redirect()->route($returnRoute)->with('error', 'Invalid session ID.');
             }
 
+            if (! is_string($returnRoute) || $returnRoute === '' || ! Route::has($returnRoute)) {
+                $returnRoute = 'ai-chat.index';
+            }
+
             $user = $request->user();
 
             // Retrieve the checkout session from Stripe
@@ -218,9 +267,53 @@ class CreditPurchaseController extends Controller
 
             // Get metadata from session
             $metadata = $session->metadata ?? [];
-            $creditsToAdd = (int) ($metadata['credits_to_add'] ?? 50000);
             $transactionId = $metadata['transaction_id'] ?? null;
             $returnRouteFromMetadata = $metadata['return_route'] ?? $returnRoute;
+            if (! is_string($returnRouteFromMetadata) || $returnRouteFromMetadata === '' || ! Route::has($returnRouteFromMetadata)) {
+                $returnRouteFromMetadata = 'ai-chat.index';
+            }
+
+            $wallet = is_object($metadata) ? ($metadata->credit_wallet ?? 'credits') : ($metadata['credit_wallet'] ?? 'credits');
+            $wallet = is_string($wallet) ? $wallet : 'credits';
+
+            if ($wallet === 'ai_media_studio') {
+                $mediaCreditsToAdd = (int) (is_object($metadata) ? ($metadata->media_credits_to_add ?? 0) : ($metadata['media_credits_to_add'] ?? 0));
+                if ($mediaCreditsToAdd < 1) {
+                    return redirect()->route($returnRouteFromMetadata)->with('error', 'Invalid AI Media Studio credit amount.');
+                }
+
+                $user->increment('ai_media_studio_credits', $mediaCreditsToAdd);
+
+                if ($transactionId) {
+                    $tx = Transaction::find($transactionId);
+                    Transaction::where('id', $transactionId)->update([
+                        'status' => 'completed',
+                        'meta' => array_merge(
+                            $tx?->meta ?? [],
+                            [
+                                'stripe_session_id' => $sessionId,
+                                'stripe_payment_intent' => $session->payment_intent,
+                                'payment_status' => $session->payment_status,
+                                'ai_media_studio_credits_added' => $mediaCreditsToAdd,
+                                'credit_wallet' => 'ai_media_studio',
+                            ]
+                        ),
+                    ]);
+                }
+
+                Log::info('AI Media Studio credits purchased', [
+                    'user_id' => $user->id,
+                    'credits_added' => $mediaCreditsToAdd,
+                    'session_id' => $sessionId,
+                ]);
+
+                return redirect()->route($returnRouteFromMetadata)->with(
+                    'success',
+                    "Successfully purchased {$mediaCreditsToAdd} AI Media Studio video credits."
+                );
+            }
+
+            $creditsToAdd = (int) (is_object($metadata) ? ($metadata->credits_to_add ?? 50000) : ($metadata['credits_to_add'] ?? 50000));
 
             // Add wallet credits
             $user->increment('credits', $creditsToAdd);
@@ -282,6 +375,9 @@ class CreditPurchaseController extends Controller
     public function cancel(Request $request)
     {
         $returnRoute = $request->query('return_route', 'ai-chat.index');
+        if (! is_string($returnRoute) || $returnRoute === '' || ! Route::has($returnRoute)) {
+            $returnRoute = 'ai-chat.index';
+        }
 
         return redirect()->route($returnRoute)->with('info', 'Payment was cancelled.');
     }
@@ -290,13 +386,13 @@ class CreditPurchaseController extends Controller
      * Handle Stripe webhook for payment confirmation
      * Note: This is handled by Laravel Cashier's webhook system
      * But we can add additional logic here if needed
+     * The actual webhook should be configured in Stripe dashboard to point to:
+     * /stripe/webhook (Cashier's default webhook endpoint)
      */
     public function webhook(Request $request)
     {
         // Laravel Cashier handles the webhook verification and processing
         // This method can be used for additional credit processing if needed
-        // The actual webhook should be configured in Stripe dashboard to point to:
-        // /stripe/webhook (Cashier's default webhook endpoint)
 
         return response()->json(['status' => 'success']);
     }

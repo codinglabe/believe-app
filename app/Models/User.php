@@ -298,6 +298,11 @@ class User extends Authenticatable implements MustVerifyEmail
             ->withTimestamps()->with(['user', 'nteeCode']);
     }
 
+    public function aiVideos(): HasMany
+    {
+        return $this->hasMany(AiVideo::class);
+    }
+
     /**
      * Primary organization affiliation selected by supporter.
      */

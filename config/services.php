@@ -123,6 +123,36 @@ return [
     ],
 
     /*
+    | fal.ai — short-form video generation (BIU AI Media Studio). Used from queued jobs only.
+    */
+    'fal' => [
+        'api_key' => env('FAL_API_KEY'),
+        /** Full queue path, e.g. fal-ai/minimax/video-01 (see model API page on fal.ai). */
+        'default_model' => env('FAL_VIDEO_MODEL', ''),
+        'verify_ssl' => filter_var(env('FAL_VERIFY_SSL', true), FILTER_VALIDATE_BOOLEAN),
+        /** Merged into fal queue POST body after `prompt` (model-specific keys). JSON object string in .env. */
+        'video_input_extras' => env('FAL_VIDEO_INPUT_EXTRAS'),
+    ],
+
+    /*
+    | BIU AI Media Studio — OpenAI script + fal.ai video (queue worker).
+    */
+    'ai_media_studio' => [
+        'openai_model' => env('AI_MEDIA_STUDIO_OPENAI_MODEL', 'gpt-4o-mini'),
+        'fal_poll_interval_seconds' => max(1, (int) env('AI_MEDIA_STUDIO_FAL_POLL_INTERVAL', 3)),
+        'fal_max_wait_seconds' => max(30, (int) env('AI_MEDIA_STUDIO_FAL_MAX_WAIT', 900)),
+        /** Each queued video consumes this many credits (deducted before the job runs). */
+        'credits_per_generation' => max(1, (int) env('AI_MEDIA_STUDIO_CREDITS_PER_VIDEO', 1)),
+        /** Granted to nonprofit org accounts on successful plan subscription (unless plan defines `ai_media_studio_credits`). */
+        'org_subscription_credits' => max(0, (int) env('AI_MEDIA_ORG_PLAN_CREDITS', 10)),
+        /** Supporter Stripe packs: id => [usd, credits] */
+        'supporter_packs' => [
+            'media_studio_5' => ['usd' => (float) env('AI_MEDIA_PACK_5_USD', 9.99), 'credits' => (int) env('AI_MEDIA_PACK_5_CREDITS', 5)],
+            'media_studio_10' => ['usd' => (float) env('AI_MEDIA_PACK_10_USD', 17.99), 'credits' => (int) env('AI_MEDIA_PACK_10_CREDITS', 10)],
+        ],
+    ],
+
+    /*
     | Newsletter / template AI HTML generation (OpenAI JSON mode).
     | Default model is gpt-4o-mini (good layout quality vs cost). Override with NEWSLETTER_AI_MODEL in .env.
     | Keep max_output_tokens <= 4096 unless your model supports higher (otherwise OpenAI returns HTTP 400).

@@ -2,63 +2,157 @@ import React from 'react'
 import { Head, Link } from '@inertiajs/react'
 import { MerchantButton } from '@/components/merchant-ui'
 import { MerchantHeader, MerchantFooter } from '@/components/merchant'
+import type { MerchantHeaderAnchorNavItem } from '@/components/merchant/MerchantHeader'
 import {
   ArrowRight,
+  BookOpen,
+  Check,
+  Code2,
+  Eye,
   HeartHandshake,
+  LayoutDashboard,
+  LifeBuoy,
   LineChart,
+  MapPin,
   Megaphone,
   ShieldCheck,
-  SlidersHorizontal,
+  Sparkles,
   Store,
   Tag,
   UserPlus,
   Users,
 } from 'lucide-react'
 
+const landingAnchorNav: MerchantHeaderAnchorNavItem[] = [
+  { id: 'how-it-works', label: 'How It Works' },
+  { id: 'benefits', label: 'Benefits' },
+  { id: 'pricing', label: 'Pricing' },
+  { id: 'resources', label: 'Resources' },
+  { id: 'about-us', label: 'About Us' },
+]
+
 const howItWorksCards = [
   {
-    title: 'Join The Hub',
-    text: 'Signup and get approved into the 10% volunteer discount merchant network.',
+    step: '1',
+    title: 'Join the BIU Merchant Network',
+    text: 'Create your merchant account and become part of a growing community that supports nonprofits, churches, and verified volunteers.',
     icon: Store,
   },
   {
+    step: '2',
     title: 'Create Your Offers',
-    text: "Set your item, discount, limits and what's tracked in your dashboard.",
+    text: 'Set up discounts, rewards, BRP campaigns, or volunteer appreciation offers directly from your dashboard.',
     icon: Tag,
   },
   {
-    title: 'Volunteers Claim',
-    text: 'Verified volunteers redeem your offer and show proof in-store or online.',
-    icon: ShieldCheck,
+    step: '3',
+    title: 'Volunteers & Supporters Redeem',
+    text: 'Verified supporters and volunteers discover your business through BIU and redeem your offers online or in-store.',
+    icon: Users,
   },
   {
-    title: 'You Gain Customers',
-    text: 'New customers come for value, and stronger community impact.',
-    icon: Users,
+    step: '4',
+    title: 'Grow Your Business',
+    text: 'Gain new customers, increase repeat visits, strengthen community visibility, and build goodwill through meaningful impact.',
+    icon: LineChart,
   },
 ]
 
-const merchantValueCards = [
+const benefitItems: Array<{
+  title: string
+  text: string
+  icon: React.ComponentType<{ className?: string }>
+  bullets?: string[]
+}> = [
   {
-    title: 'Get New Customers',
-    text: 'Reach engaged volunteers who love supporting community-minded businesses.',
+    title: 'Reward Community Service',
+    text: 'Support volunteers, nonprofits, churches, and community programs while growing your customer base.',
+    icon: HeartHandshake,
+  },
+  {
+    title: 'Gain New Customers',
+    text: 'Reach supporters actively looking to shop with businesses that give back.',
     icon: UserPlus,
   },
   {
-    title: 'You Stay in Control',
-    text: "You decide the terms, usage limits, and what's included in the discount.",
-    icon: SlidersHorizontal,
+    title: 'No Hidden Fees',
+    text: 'Transparent pricing with full visibility into your offers, rewards, and performance.',
+    icon: Eye,
   },
   {
-    title: 'Track What Matters',
-    text: 'See claims, repeat customer impact, and discount payouts in your dashboard.',
+    title: 'Full Dashboard Control',
+    text: 'Manage offers, campaigns, limits, analytics, and customer engagement from one platform.',
+    icon: LayoutDashboard,
+  },
+  {
+    title: 'Verified Volunteer Network',
+    text: 'Only verified supporters and volunteers can redeem community reward offers.',
+    icon: ShieldCheck,
+  },
+  {
+    title: 'Increase Local Visibility',
+    text: 'Your business becomes discoverable through BIU nonprofit and supporter networks.',
+    icon: MapPin,
+  },
+  {
+    title: 'Flexible Reward Options',
+    text: 'Offer:',
+    icon: Tag,
+    bullets: [
+      'Percentage discounts',
+      'Fixed discounts',
+      'BRP rewards',
+      'Volunteer specials',
+      'Seasonal campaigns',
+    ],
+  },
+  {
+    title: 'Community Impact Branding',
+    text: 'Show customers your business actively supports local causes and organizations.',
+    icon: Sparkles,
+  },
+]
+
+const resourceItems = [
+  {
+    title: 'Merchant Help Center',
+    text: 'Guides and tutorials for setting up your merchant account and campaigns.',
+    icon: BookOpen,
+  },
+  {
+    title: 'Volunteer Verification Guide',
+    text: 'Learn how BIU verifies volunteers and community participants.',
+    icon: ShieldCheck,
+  },
+  {
+    title: 'Marketing Toolkit',
+    text: 'Download promotional materials, logos, social graphics, and campaign templates.',
+    icon: Megaphone,
+  },
+  {
+    title: 'Community Growth Tips',
+    text: 'Best practices for attracting supporters and increasing customer engagement.',
     icon: LineChart,
   },
   {
-    title: 'Strengthen Community',
-    text: 'Show your support for volunteers and make a positive local impact.',
-    icon: HeartHandshake,
+    title: 'API & Integrations',
+    text: 'Developer resources for POS systems, ecommerce, and BIU integrations.',
+    icon: Code2,
   },
+  {
+    title: 'Support Center',
+    text: 'Access live support, FAQs, and onboarding assistance.',
+    icon: LifeBuoy,
+  },
+]
+
+const growthPlanIncludes = [
+  'Unlimited offers',
+  'Volunteer reward campaigns',
+  'Dashboard analytics',
+  'Featured listings',
+  'Customer insights',
+  'Priority support',
 ]
 
 export default function MerchantLanding() {
@@ -67,7 +161,11 @@ export default function MerchantLanding() {
       <Head title="Reward Service. Grow Together." />
 
       <div className="min-h-screen bg-[#050B1D] text-white">
-        <MerchantHeader variant="public" />
+        <MerchantHeader
+          variant="public"
+          tagline="Reward Service. Grow Together."
+          anchorNav={landingAnchorNav}
+        />
 
         <main className="pt-24 pb-14">
           <div className="container mx-auto px-4 sm:px-6 lg:px-8">
@@ -142,19 +240,26 @@ export default function MerchantLanding() {
               </div>
             </section>
 
-            <section className="pt-14">
+            <section id="how-it-works" className="scroll-mt-28 pt-14">
               <h2 className="text-center text-3xl font-bold sm:text-4xl">How It Works</h2>
-              <p className="mx-auto mt-2 max-w-xl text-center text-slate-300">Simple steps to start rewarding volunteers and growing your business.</p>
+              <p className="mx-auto mt-2 max-w-xl text-center text-slate-300">
+                Simple steps to start rewarding volunteers and growing your business.
+              </p>
 
               <div className="mt-7 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
                 {howItWorksCards.map((card) => {
                   const Icon = card.icon
                   return (
                     <div key={card.title} className="rounded-2xl border border-slate-700/70 bg-[#0A132B] p-5">
-                      <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-lg border border-violet-400/40 bg-violet-500/10">
-                        <Icon className="h-5 w-5 text-violet-300" />
+                      <div className="mb-3 flex items-center gap-3">
+                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-violet-500/20 text-sm font-bold text-violet-200">
+                          {card.step}
+                        </span>
+                        <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-violet-400/40 bg-violet-500/10">
+                          <Icon className="h-5 w-5 text-violet-300" />
+                        </div>
                       </div>
-                      <h3 className="text-lg font-semibold">{card.title}</h3>
+                      <h3 className="text-lg font-semibold leading-snug">{card.title}</h3>
                       <p className="mt-2 text-sm leading-6 text-slate-300">{card.text}</p>
                     </div>
                   )
@@ -162,25 +267,139 @@ export default function MerchantLanding() {
               </div>
             </section>
 
-            <section className="pt-14">
-              <h2 className="text-center text-3xl font-bold sm:text-4xl">Why Merchants Love It</h2>
+            <section id="benefits" className="scroll-mt-28 pt-14">
+              <h2 className="text-center text-3xl font-bold sm:text-4xl">Benefits</h2>
               <p className="mx-auto mt-2 max-w-2xl text-center text-slate-300">
-                Drive growth while supporting the people who support your community.
+                Drive growth while supporting the people and organizations making a difference in your community.
               </p>
 
-              <div className="mt-7 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                {merchantValueCards.map((card) => {
+              <div className="mt-7 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                {benefitItems.map((card) => {
                   const Icon = card.icon
                   return (
                     <div key={card.title} className="rounded-2xl border border-slate-700/70 bg-[#0A132B] p-5">
                       <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-lg border border-blue-400/40 bg-blue-500/10">
                         <Icon className="h-5 w-5 text-blue-300" />
                       </div>
-                      <h3 className="text-lg font-semibold">{card.title}</h3>
+                      <h3 className="text-lg font-semibold leading-snug">{card.title}</h3>
                       <p className="mt-2 text-sm leading-6 text-slate-300">{card.text}</p>
+                      {card.bullets ? (
+                        <ul className="mt-3 list-disc space-y-1.5 pl-4 text-sm text-slate-300">
+                          {card.bullets.map((b) => (
+                            <li key={b}>{b}</li>
+                          ))}
+                        </ul>
+                      ) : null}
                     </div>
                   )
                 })}
+              </div>
+            </section>
+
+            <section id="pricing" className="scroll-mt-28 pt-14">
+              <h2 className="text-center text-3xl font-bold sm:text-4xl">Pricing</h2>
+              <p className="mx-auto mt-2 max-w-xl text-center text-slate-300">Transparent plans built for merchants on BIU.</p>
+
+              <div className="mx-auto mt-8 max-w-md">
+                <div className="rounded-3xl border border-violet-400/35 bg-gradient-to-b from-[#121a3d] to-[#0A132B] p-8 shadow-[0_0_60px_rgba(139,92,246,0.15)]">
+                  <p className="text-center text-sm font-semibold uppercase tracking-wider text-violet-300">Growth Merchant</p>
+                  <p className="mt-2 text-center text-4xl font-extrabold sm:text-5xl">
+                    $9<span className="text-lg font-semibold text-slate-400">/month</span>
+                  </p>
+                  <p className="mt-3 text-center text-sm text-slate-300">Designed for active businesses growing through BIU.</p>
+                  <p className="mt-6 text-sm font-semibold text-white">Includes:</p>
+                  <ul className="mt-3 space-y-2.5">
+                    {growthPlanIncludes.map((line) => (
+                      <li key={line} className="flex gap-2 text-sm text-slate-200">
+                        <Check className="mt-0.5 h-4 w-4 shrink-0 text-emerald-400" aria-hidden />
+                        {line}
+                      </li>
+                    ))}
+                  </ul>
+                  <div className="mt-8">
+                    <Link href="/register" className="block">
+                      <MerchantButton className="w-full">
+                        Get Started
+                        <ArrowRight className="ml-2 h-4 w-4" />
+                      </MerchantButton>
+                    </Link>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <section id="resources" className="scroll-mt-28 pt-14">
+              <h2 className="text-center text-3xl font-bold sm:text-4xl">Resources</h2>
+              <p className="mx-auto mt-2 max-w-2xl text-center text-slate-300">
+                Everything you need to launch, promote, and scale on the BIU Merchant network.
+              </p>
+
+              <div className="mt-7 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                {resourceItems.map((item) => {
+                  const Icon = item.icon
+                  return (
+                    <div
+                      key={item.title}
+                      className="rounded-2xl border border-slate-700/70 bg-[#0A132B] p-5 transition-colors hover:border-indigo-400/30"
+                    >
+                      <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-lg border border-indigo-400/35 bg-indigo-500/10">
+                        <Icon className="h-5 w-5 text-indigo-300" />
+                      </div>
+                      <h3 className="text-lg font-semibold">{item.title}</h3>
+                      <p className="mt-2 text-sm leading-6 text-slate-300">{item.text}</p>
+                    </div>
+                  )
+                })}
+              </div>
+            </section>
+
+            <section id="about-us" className="scroll-mt-28 pt-14">
+              <h2 className="text-center text-3xl font-bold sm:text-4xl">About Us</h2>
+
+              <div className="mx-auto mt-8 max-w-3xl space-y-8 rounded-3xl border border-slate-700/70 bg-[#0A132B] p-6 sm:p-10">
+                <div>
+                  <h3 className="text-xl font-bold text-white sm:text-2xl">Built to Strengthen Communities</h3>
+                  <p className="mt-3 text-sm leading-7 text-slate-300 sm:text-base">
+                    BIU Merchant was created to help businesses grow by supporting the people and organizations making a difference every day.
+                  </p>
+                  <p className="mt-3 text-sm leading-7 text-slate-300 sm:text-base">
+                    We believe commerce can do more than generate sales — it can strengthen neighborhoods, reward service, and create lasting
+                    community impact.
+                  </p>
+                  <p className="mt-4 text-sm font-medium text-slate-200 sm:text-base">Our platform connects:</p>
+                  <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-slate-300 sm:text-base">
+                    <li>Businesses</li>
+                    <li>Nonprofits</li>
+                    <li>Churches</li>
+                    <li>Volunteers</li>
+                    <li>Supporters</li>
+                  </ul>
+                  <p className="mt-3 text-sm leading-7 text-slate-300 sm:text-base">
+                    through a shared ecosystem focused on growth, giving, and opportunity.
+                  </p>
+                  <p className="mt-4 text-sm leading-7 text-slate-300 sm:text-base">
+                    By helping merchants reward verified volunteers and supporters, we create a cycle where:
+                  </p>
+                  <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-slate-300 sm:text-base">
+                    <li>Businesses gain customers</li>
+                    <li>Organizations gain support</li>
+                    <li>Communities grow stronger together</li>
+                  </ul>
+                </div>
+
+                <div className="border-t border-slate-700/80 pt-8">
+                  <h4 className="text-lg font-bold text-violet-200">Our Mission</h4>
+                  <p className="mt-2 text-sm leading-7 text-slate-300 sm:text-base">
+                    To build a community-powered commerce network that rewards service, supports nonprofits, and helps local businesses thrive.
+                  </p>
+                </div>
+
+                <div>
+                  <h4 className="text-lg font-bold text-blue-200">Our Vision</h4>
+                  <p className="mt-2 text-sm leading-7 text-slate-300 sm:text-base">
+                    A future where every purchase can create meaningful community impact.
+                  </p>
+                </div>
               </div>
             </section>
 
@@ -190,7 +409,7 @@ export default function MerchantLanding() {
                   <div>
                     <p className="text-xs font-semibold uppercase tracking-[0.2em] text-violet-300">Ready to make an impact?</p>
                     <h3 className="mt-2 text-3xl font-bold leading-tight sm:text-4xl">
-                      Let's grow your business
+                      Let&apos;s grow your business
                       <span className="block">and our community.</span>
                     </h3>
                     <p className="mt-3 text-slate-200">
