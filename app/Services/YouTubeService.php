@@ -116,7 +116,7 @@ class YouTubeService
      * Fetch recent uploads from a channel. Returns array of video items for frontend.
      * Cached 5 minutes per channel so index page loads quickly on first visit and reload.
      *
-     * @return array<int, array{id: string, title: string, thumbnail_url: string, published_at: string, views: int, views_formatted: string, duration: string, watch_url: string}>
+     * @return array<int, array<string, mixed>>
      */
     public function getChannelVideos(string $channelUrl, int $maxResults = 24): array
     {
@@ -134,7 +134,8 @@ class YouTubeService
             return [];
         }
 
-        $cacheKey = 'youtube_channel_videos_' . md5($channelUrl) . '_' . $maxResults;
+        // Bump cache key when video row shape changes (Shorts classification fields).
+        $cacheKey = 'youtube_channel_videos_v2_' . md5($channelUrl) . '_' . $maxResults;
 
         return Cache::remember($cacheKey, 300, fn () => $this->fetchPlaylistVideos($uploadsPlaylistId, $maxResults));
     }
@@ -211,6 +212,11 @@ class YouTubeService
                     'views' => (int) ($detail['viewCount'] ?? 0),
                     'views_formatted' => number_format((int) ($detail['viewCount'] ?? 0)),
                     'duration' => 'LIVE',
+                    'duration_seconds' => 0,
+                    'description' => '',
+                    'thumbnail_width' => 0,
+                    'thumbnail_height' => 0,
+                    'is_youtube_short' => false,
                     'watch_url' => 'https://www.youtube.com/watch?v=' . $videoId,
                     'likes' => $likeCount,
                     'likes_formatted' => $detail['likes_formatted'] ?? number_format($likeCount),
@@ -306,7 +312,7 @@ class YouTubeService
     }
 
     /**
-     * @return array<int, array{id: string, title: string, thumbnail_url: string, published_at: string, views: int, views_formatted: string, duration: string, watch_url: string}>
+     * @return array<int, array<string, mixed>>
      */
     private function fetchPlaylistVideos(string $playlistId, int $maxResults): array
     {
@@ -341,29 +347,115 @@ class YouTubeService
                 continue;
             }
             $snippet = $item['snippet'] ?? [];
-            $thumb = $this->bestThumbnail($snippet['thumbnails'] ?? []);
+            $thumbMeta = $this->bestThumbnailMeta($snippet['thumbnails'] ?? []);
+            $thumb = $thumbMeta['url'];
             if ($thumb === '') {
                 $thumb = 'https://img.youtube.com/vi/' . $videoId . '/mqdefault.jpg';
             }
             $likeCount = (int) ($detail['likeCount'] ?? 0);
             $commentCount = (int) ($detail['commentCount'] ?? 0);
-            $out[] = [
+            $isoDuration = $detail['duration'] ?? 'PT0S';
+            $durationSeconds = $this->iso8601DurationToSeconds($isoDuration);
+            $description = (string) ($snippet['description'] ?? '');
+            $row = [
                 'id' => $videoId,
                 'title' => $snippet['title'] ?? 'Video',
+                'description' => $description,
                 'thumbnail_url' => $thumb,
+                'thumbnail_width' => $thumbMeta['width'],
+                'thumbnail_height' => $thumbMeta['height'],
                 'published_at' => $snippet['publishedAt'] ?? '',
                 'views' => (int) ($detail['viewCount'] ?? 0),
                 'views_formatted' => number_format((int) ($detail['viewCount'] ?? 0)),
-                'duration' => $this->formatIsoDuration($detail['duration'] ?? 'PT0S'),
+                'duration' => $this->formatIsoDuration($isoDuration),
+                'duration_seconds' => $durationSeconds,
                 'watch_url' => 'https://www.youtube.com/watch?v=' . $videoId,
                 'likes' => $likeCount,
                 'likes_formatted' => $detail['likes_formatted'] ?? number_format($likeCount),
                 'comment_count' => $commentCount,
                 'comment_count_formatted' => $detail['comment_count_formatted'] ?? number_format($commentCount),
             ];
+            $row['is_youtube_short'] = $this->isYoutubeShort($row);
+            $out[] = $row;
         }
 
         return $out;
+    }
+
+    /**
+     * True when the upload should appear in the Shorts hub (not merely ≤60s horizontal clips).
+     * Uses duration (1–60s) plus Shorts hashtag / Shorts URL in metadata or portrait thumbnail from the API.
+     *
+     * @param  array<string, mixed>  $v
+     */
+    public function isYoutubeShort(array $v): bool
+    {
+        if (($v['duration'] ?? '') === 'LIVE') {
+            return false;
+        }
+
+        $seconds = (int) ($v['duration_seconds'] ?? 0);
+        if ($seconds < 1 || $seconds > 60) {
+            $seconds = $this->formattedDurationToSeconds(is_string($v['duration'] ?? null) ? (string) $v['duration'] : '');
+        }
+        if ($seconds < 1 || $seconds > 60) {
+            return false;
+        }
+
+        $title = strtolower((string) ($v['title'] ?? ''));
+        $desc = strtolower((string) ($v['description'] ?? ''));
+        if (str_contains($title, '#shorts') || str_contains($desc, '#shorts')) {
+            return true;
+        }
+        if (str_contains($desc, 'youtube.com/shorts/')) {
+            return true;
+        }
+
+        $tw = (int) ($v['thumbnail_width'] ?? 0);
+        $th = (int) ($v['thumbnail_height'] ?? 0);
+        if ($tw > 0 && $th > 0 && $th > $tw) {
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * Parse M:SS or H:M:SS from {@see formatIsoDuration()} output.
+     */
+    private function formattedDurationToSeconds(string $formatted): int
+    {
+        $formatted = trim($formatted);
+        if ($formatted === '' || $formatted === 'LIVE' || $formatted === '0:00') {
+            return 0;
+        }
+        $parts = array_map('intval', explode(':', $formatted));
+        if (count($parts) === 2) {
+            return $parts[0] * 60 + $parts[1];
+        }
+        if (count($parts) === 3) {
+            return $parts[0] * 3600 + $parts[1] * 60 + $parts[2];
+        }
+
+        return 0;
+    }
+
+    /**
+     * @return array{url: string, width: int, height: int}
+     */
+    private function bestThumbnailMeta(array $thumbnails): array
+    {
+        foreach (['maxres', 'standard', 'high', 'medium', 'default'] as $key) {
+            if (! empty($thumbnails[$key]['url'])) {
+                return [
+                    'url' => (string) $thumbnails[$key]['url'],
+                    'width' => (int) ($thumbnails[$key]['width'] ?? 0),
+                    'height' => (int) ($thumbnails[$key]['height'] ?? 0),
+                ];
+            }
+        }
+
+        return ['url' => '', 'width' => 0, 'height' => 0];
     }
 
     /**
@@ -405,6 +497,8 @@ class YouTubeService
         $likeCount = (int) ($stats['likeCount'] ?? 0);
         $commentCount = (int) ($stats['commentCount'] ?? 0);
 
+        $durationIso = $item['contentDetails']['duration'] ?? 'PT0S';
+
         return [
             'id' => $videoId,
             'title' => $snippet['title'] ?? 'Video',
@@ -420,8 +514,26 @@ class YouTubeService
             'likes_formatted' => number_format($likeCount),
             'comment_count' => $commentCount,
             'comment_count_formatted' => number_format($commentCount),
-            'duration' => $this->formatIsoDuration($item['contentDetails']['duration'] ?? 'PT0S'),
+            'duration' => $this->formatIsoDuration($durationIso),
+            'duration_seconds' => $this->iso8601DurationToSeconds($durationIso),
         ];
+    }
+
+    /**
+     * Parse ISO 8601 duration (e.g. PT1M30S) to total seconds for Shorts / uploads.
+     */
+    private function iso8601DurationToSeconds(string $iso): int
+    {
+        try {
+            $interval = new \DateInterval($iso);
+
+            return ($interval->days * 86400)
+                + ($interval->h * 3600)
+                + ($interval->i * 60)
+                + $interval->s;
+        } catch (\Exception $e) {
+            return 0;
+        }
     }
 
     /**

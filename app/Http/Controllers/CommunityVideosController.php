@@ -28,6 +28,8 @@ class CommunityVideosController extends Controller
         $search = $request->input('search', '');
         $tab = $request->input('tab', 'latest');
         $org = $request->input('org', 'all');
+        $hub = $request->input('hub', 'all');
+        $hubNormalized = 'all';
 
         try {
             // Organizations with connected YouTube (for Non-Profits tab dropdown)
@@ -42,10 +44,10 @@ class CommunityVideosController extends Controller
 
             // Only YouTube videos from connected channels; cache 5 min for fast loads/reloads. On fetch failure, use stale cache if any.
             try {
-                $youtubeVideos = Cache::remember('unity_videos_all', 300, fn () => $this->fetchAllYouTubeVideos());
+                $youtubeVideos = Cache::remember('unity_videos_all_v2', 300, fn () => $this->fetchAllYouTubeVideos());
             } catch (\Throwable $e) {
                 Log::warning('Unity Videos: fetch failed, using stale cache if available', ['message' => $e->getMessage()]);
-                $youtubeVideos = Cache::get('unity_videos_all');
+                $youtubeVideos = Cache::get('unity_videos_all_v2');
                 if (! $youtubeVideos instanceof Collection) {
                     $youtubeVideos = collect();
                 }
@@ -80,37 +82,64 @@ class CommunityVideosController extends Controller
             $userId = Auth::id();
             $youtubeVideos = $this->attachEngagementAndRank($youtubeVideos, $userId, $tab);
 
-            // Only full-length videos on this page (exclude Shorts: duration 0:XX or 1:00)
-            $isShort = function (array $v): bool {
-                $d = $v['duration'] ?? '';
-                return is_string($d) && preg_match('/^(?:0:\d{1,2}|1:00)$/', $d);
+            $youtubeService = app(YouTubeService::class);
+            $isShort = static function (array $v) use ($youtubeService): bool {
+                if (array_key_exists('is_youtube_short', $v)) {
+                    return (bool) $v['is_youtube_short'];
+                }
+
+                return $youtubeService->isYoutubeShort($v);
             };
-            $fullLengthOnly = $youtubeVideos->reject($isShort)->values();
+
+            $isLiveHub = static function (array $v): bool {
+                if (($v['duration'] ?? '') === 'LIVE') {
+                    return true;
+                }
+
+                return ($v['hub_kind'] ?? 'vod') === 'live';
+            };
+
+            $shortsAll = $youtubeVideos->filter($isShort)->values();
+            $vodNonShort = $youtubeVideos->reject($isShort)->values();
+
+            $hubNormalized = in_array($hub, ['all', 'shorts', 'videos', 'live_replays'], true) ? $hub : 'all';
+
+            if ($hubNormalized === 'shorts') {
+                $gridPool = $shortsAll;
+                $shortsStrip = $shortsAll;
+            } elseif ($hubNormalized === 'videos') {
+                $gridPool = $vodNonShort->reject($isLiveHub)->values();
+                $shortsStrip = collect();
+            } elseif ($hubNormalized === 'live_replays') {
+                $gridPool = $youtubeVideos->filter($isLiveHub)->values();
+                $shortsStrip = collect();
+            } else {
+                $gridPool = $vodNonShort;
+                $shortsStrip = $shortsAll;
+            }
+
+            $shorts = $shortsStrip->take(48)->values()->all();
 
             $gridPerPage = 12;
             $page = (int) $request->input('page', 1);
-            $totalVideos = $fullLengthOnly->count();
+            $totalVideos = $gridPool->count();
             $featured = null;
             $videos = [];
             if ($totalVideos > 0) {
                 if ($page === 1) {
-                    $featured = $fullLengthOnly->first();
-                    $videos = $fullLengthOnly->slice(1, $gridPerPage)->values()->all();
+                    $featured = $gridPool->first();
+                    $videos = $gridPool->slice(1, $gridPerPage)->values()->all();
                 } else {
                     $offset = 1 + $gridPerPage * ($page - 1);
-                    $videos = $fullLengthOnly->slice($offset, $gridPerPage)->values()->all();
+                    $videos = $gridPool->slice($offset, $gridPerPage)->values()->all();
                 }
             }
             $hasMore = $totalVideos > 1 + $gridPerPage * $page;
             $nextPage = $page + 1;
 
-            // Shorts are not shown on this page (only real videos)
-            $shorts = [];
-
             $channelBanners = $this->getChannelBannersForIndex();
 
-            // Stats for filter bar (imported videos, livestream replays)
-            $livestreamReplays = $fullLengthOnly->filter(fn ($v) => ($v['duration'] ?? '') === 'LIVE')->count();
+            $livestreamReplays = $vodNonShort->filter($isLiveHub)->count();
             $stats = [
                 'total_videos' => $totalVideos,
                 'livestream_replays' => $livestreamReplays,
@@ -237,6 +266,7 @@ class CommunityVideosController extends Controller
                 'search' => $search,
                 'tab' => $tab,
                 'org' => $org,
+                'hub' => $hubNormalized,
             ],
             'nonprofitOrganizations' => $nonprofitOrganizations ?? [],
             'stats' => $stats ?? ['total_videos' => 0, 'livestream_replays' => 0],
@@ -334,7 +364,7 @@ class CommunityVideosController extends Controller
     {
         try {
             $videos = $this->fetchAllYouTubeVideos();
-            Cache::put('unity_videos_all', $videos, 300);
+            Cache::put('unity_videos_all_v2', $videos, 300);
             Log::info('Unity Videos cache warmed', ['count' => $videos->count()]);
         } catch (\Throwable $e) {
             Log::warning('Unity Videos cache warm failed', ['message' => $e->getMessage()]);
@@ -376,7 +406,7 @@ class CommunityVideosController extends Controller
                 $sortAt = $publishedAt ? Carbon::parse($publishedAt)->timestamp : 0;
                 $timeAgo = $publishedAt ? Carbon::parse($publishedAt)->diffForHumans() : '';
 
-                $all->push([
+                $all->push(array_merge([
                     'id' => 'yt-' . $yt['id'],
                     'slug' => $yt['id'],
                     'title' => $yt['title'],
@@ -393,10 +423,11 @@ class CommunityVideosController extends Controller
                     'comment_count_formatted' => $yt['comment_count_formatted'] ?? number_format((int) ($yt['comment_count'] ?? 0)),
                     'channel_slug' => $channelSlug,
                     'organization_id' => $org->id,
+                    'hub_kind' => 'vod',
                     'source' => 'youtube',
                     'watch_url' => $yt['watch_url'],
                     'sort_at' => $sortAt,
-                ]);
+                ], $this->youtubeShortMetaFromYtRow($yt)));
             }
 
             $liveStreams = $youtubeService->getChannelLiveStreams($org->youtube_channel_url, 10);
@@ -407,7 +438,7 @@ class CommunityVideosController extends Controller
                 }
                 $publishedAt = $yt['published_at'] ?? '';
                 $timeAgo = $publishedAt ? Carbon::parse($publishedAt)->diffForHumans() : '';
-                $all->push([
+                $all->push(array_merge([
                     'id' => 'yt-' . $yt['id'],
                     'slug' => $yt['id'],
                     'title' => $yt['title'],
@@ -424,10 +455,11 @@ class CommunityVideosController extends Controller
                     'comment_count_formatted' => $yt['comment_count_formatted'] ?? number_format((int) ($yt['comment_count'] ?? 0)),
                     'channel_slug' => $channelSlug,
                     'organization_id' => $org->id,
+                    'hub_kind' => 'live',
                     'source' => 'youtube',
                     'watch_url' => $yt['watch_url'],
                     'sort_at' => PHP_INT_MAX,
-                ]);
+                ], $this->youtubeShortMetaFromYtRow($yt)));
             }
         }
 
@@ -451,7 +483,7 @@ class CommunityVideosController extends Controller
                 $sortAt = $publishedAt ? Carbon::parse($publishedAt)->timestamp : 0;
                 $timeAgo = $publishedAt ? Carbon::parse($publishedAt)->diffForHumans() : '';
 
-                $all->push([
+                $all->push(array_merge([
                     'id' => 'yt-' . $yt['id'],
                     'slug' => $yt['id'],
                     'title' => $yt['title'],
@@ -468,10 +500,11 @@ class CommunityVideosController extends Controller
                     'comment_count_formatted' => $yt['comment_count_formatted'] ?? number_format((int) ($yt['comment_count'] ?? 0)),
                     'channel_slug' => $channelSlug,
                     'organization_id' => null,
+                    'hub_kind' => 'vod',
                     'source' => 'youtube',
                     'watch_url' => $yt['watch_url'],
                     'sort_at' => $sortAt,
-                ]);
+                ], $this->youtubeShortMetaFromYtRow($yt)));
             }
 
             try {
@@ -483,7 +516,7 @@ class CommunityVideosController extends Controller
                     }
                     $publishedAt = $yt['published_at'] ?? '';
                     $timeAgo = $publishedAt ? Carbon::parse($publishedAt)->diffForHumans() : '';
-                    $all->push([
+                    $all->push(array_merge([
                         'id' => 'yt-' . $yt['id'],
                         'slug' => $yt['id'],
                         'title' => $yt['title'],
@@ -500,10 +533,11 @@ class CommunityVideosController extends Controller
                         'comment_count_formatted' => $yt['comment_count_formatted'] ?? number_format((int) ($yt['comment_count'] ?? 0)),
                         'channel_slug' => $channelSlug,
                         'organization_id' => null,
+                        'hub_kind' => 'live',
                         'source' => 'youtube',
                         'watch_url' => $yt['watch_url'],
                         'sort_at' => PHP_INT_MAX,
-                    ]);
+                    ], $this->youtubeShortMetaFromYtRow($yt)));
                 }
             } catch (\Throwable $e) {
                 // Non-fatal: we already have regular videos for this supporter
@@ -511,6 +545,23 @@ class CommunityVideosController extends Controller
         }
 
         return $all->sortByDesc('sort_at')->values();
+    }
+
+    /**
+     * Fields used for YouTube Shorts detection on the Unity Videos aggregate feed (from API upload rows or live placeholders).
+     *
+     * @param  array<string, mixed>  $yt
+     * @return array<string, mixed>
+     */
+    private function youtubeShortMetaFromYtRow(array $yt): array
+    {
+        return [
+            'description' => $yt['description'] ?? '',
+            'duration_seconds' => (int) ($yt['duration_seconds'] ?? 0),
+            'thumbnail_width' => (int) ($yt['thumbnail_width'] ?? 0),
+            'thumbnail_height' => (int) ($yt['thumbnail_height'] ?? 0),
+            'is_youtube_short' => (bool) ($yt['is_youtube_short'] ?? false),
+        ];
     }
 
     /**
@@ -750,11 +801,9 @@ class CommunityVideosController extends Controller
             }
         }
 
-        // Shorts: real shorts only — 60 seconds or less but not "0:00" (0:01–0:59 or 1:00)
-        $shortsRaw = array_values(array_filter($youtubeVideos, function ($v) {
-            $d = $v['duration'] ?? '';
-            return is_string($d) && $d !== '0:00' && preg_match('/^(?:0:[1-5]\d|0:0[1-9]|1:00)$/', $d);
-        }));
+        // Shorts shelf: same classification as Unity hub (hashtag / portrait thumb / Shorts URL + ≤60s).
+        $shortsClassifier = app(YouTubeService::class);
+        $shortsRaw = array_values(array_filter($youtubeVideos, fn ($v) => $shortsClassifier->isYoutubeShort($v)));
         $shorts = array_map(function ($v) use ($slug, $channelName, $channelAvatar) {
             return [
                 'id' => $v['id'],
@@ -963,12 +1012,14 @@ class CommunityVideosController extends Controller
 
         // More videos (like YouTube sidebar): full-length videos only (exclude current, Shorts, and 0:00)
         $allVideos = $this->fetchAllYouTubeVideos();
-        $isShortOrInvalid = function (array $v): bool {
+        $youtubeService = app(YouTubeService::class);
+        $isShortOrInvalid = function (array $v) use ($youtubeService): bool {
             $d = $v['duration'] ?? '';
             if (! is_string($d) || $d === '' || $d === '0:00') {
                 return true;
             }
-            return (bool) preg_match('/^(?:0:\d{1,2}|1:00)$/', $d);
+
+            return $youtubeService->isYoutubeShort($v);
         };
         $moreVideos = $allVideos
             ->reject(fn ($v) => ($v['slug'] ?? '') === $id)

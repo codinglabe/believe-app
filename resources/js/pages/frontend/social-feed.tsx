@@ -25,6 +25,11 @@ interface SocialFeedPageProps {
     fundmes: { id: number; title: string; slug: string | null }[]
   }
   feedReels?: any[]
+  shortImportContext?: {
+    organization_id?: number | null
+    campaign_id?: number | null
+    fundme_id?: number | null
+  } | null
 }
 
 export default function SocialFeedPage() {
@@ -37,6 +42,7 @@ export default function SocialFeedPage() {
     trendingOrganizations = [],
     youtubeShortAttachOptions,
     feedReels,
+    shortImportContext,
   } = usePage<SocialFeedPageProps>().props
 
   return (
@@ -53,6 +59,7 @@ export default function SocialFeedPage() {
         has_more={has_more}
         youtubeShortAttachOptions={youtubeShortAttachOptions}
         feedReels={feedReels}
+        shortImportContext={shortImportContext}
       />
     </SocialFeedLayout>
   )

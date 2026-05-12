@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Campaign;
 use App\Models\CareAlliance;
+use App\Models\CommunityVideo;
 use App\Models\ExcelData;
 use App\Models\FundMeCampaign;
 use App\Models\Organization;
@@ -20,6 +21,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Inertia\Inertia;
 
 class PostController extends Controller
@@ -181,6 +183,11 @@ class PostController extends Controller
             'trendingOrganizations' => $trendingOrganizations,
             'youtubeShortAttachOptions' => $this->buildYoutubeShortAttachOptionsForUser(Auth::user()),
             'feedReels' => $this->loadFeedReelsStrip(),
+            'shortImportContext' => [
+                'organization_id' => null,
+                'campaign_id' => null,
+                'fundme_id' => null,
+            ],
         ]);
     }
 
@@ -236,9 +243,9 @@ class PostController extends Controller
      */
     public function update(Request $request, Post $post)
     {
-        if ($post->post_type === Post::POST_TYPE_YOUTUBE_SHORT) {
+        if (in_array($post->post_type, [Post::POST_TYPE_YOUTUBE_SHORT, Post::POST_TYPE_YOUTUBE_VIDEO], true)) {
             return response()->json([
-                'message' => 'YouTube Short posts cannot be edited.',
+                'message' => 'YouTube posts cannot be edited.',
             ], 422);
         }
 
@@ -770,13 +777,13 @@ class PostController extends Controller
             $post->creator_name = $org->name;
             $post->creator_slug = $org->user->slug;
             $post->creator_image = $org->user->image;
-            $this->hydrateYoutubeShortPresentation($post);
+            $this->hydrateYouTubeEmbedPresentation($post);
 
             return;
         }
 
         if (! $post->user) {
-            $this->hydrateYoutubeShortPresentation($post);
+            $this->hydrateYouTubeEmbedPresentation($post);
 
             return;
         }
@@ -810,7 +817,7 @@ class PostController extends Controller
                 $post->creator_slug = $alliance->slug;
                 $post->creator_image = $user->image;
             }
-            $this->hydrateYoutubeShortPresentation($post);
+            $this->hydrateYouTubeEmbedPresentation($post);
 
             return;
         }
@@ -828,15 +835,15 @@ class PostController extends Controller
             $post->creator_slug = $user->slug;
         }
 
-        $this->hydrateYoutubeShortPresentation($post);
+        $this->hydrateYouTubeEmbedPresentation($post);
     }
 
-    protected function hydrateYoutubeShortPresentation(Post $post): void
+    protected function hydrateYouTubeEmbedPresentation(Post $post): void
     {
         $post->attach_context = null;
         $post->youtube_embed_url = null;
 
-        if ($post->post_type !== Post::POST_TYPE_YOUTUBE_SHORT) {
+        if (! in_array($post->post_type, [Post::POST_TYPE_YOUTUBE_SHORT, Post::POST_TYPE_YOUTUBE_VIDEO], true)) {
             return;
         }
 
@@ -857,6 +864,14 @@ class PostController extends Controller
             $slug = $post->attachedFundMe->slug ?? null;
             $href = $slug ? route('fundme.show', ['slug' => $slug]) : null;
         }
+        if ((! $label) && $post->organization_id && $post->attachedOrganization) {
+            $org = $post->attachedOrganization;
+            $slug = $org->user?->slug;
+            if ($slug) {
+                $label = $org->name ?? 'Organization';
+                $href = route('organizations.show', ['slug' => $slug]);
+            }
+        }
 
         if ($label) {
             $post->attach_context = [
@@ -864,6 +879,198 @@ class PostController extends Controller
                 'href' => $href,
             ];
         }
+    }
+
+    /**
+     * Share an already-imported YouTube video from Video Hub to the social feed (no re-upload).
+     */
+    public function shareVideoFromHub(Request $request)
+    {
+        $validated = $request->validate([
+            'youtube_video_id' => 'required|string|max:32',
+            'watch_url' => 'required|string|max:2048',
+            'title' => 'required|string|max:500',
+            'thumbnail_url' => 'nullable|string|max:2048',
+            'duration' => 'nullable|string|max:32',
+            'attach_type' => 'nullable|string|in:profile,organization,campaign,fundme',
+            'organization_id' => 'nullable|integer|exists:organizations,id',
+            'campaign_id' => 'nullable|integer|exists:campaigns,id',
+            'fundme_id' => 'nullable|integer|exists:fundme_campaigns,id',
+        ]);
+
+        $videoId = trim($validated['youtube_video_id']);
+        $watchUrl = trim($validated['watch_url']);
+        $extracted = $this->extractYoutubeVideoId($watchUrl);
+        if (! $extracted || $extracted !== $videoId) {
+            return response()->json([
+                'message' => 'Video link does not match the selected video.',
+            ], 422);
+        }
+
+        /** @var User $user */
+        $user = $request->user();
+
+        // Hub cards may omit organization_id or send the channel owner’s org. Only attach when this
+        // user may post for that org; otherwise share as a personal feed post.
+        $allowedOrgIds = $this->collectAllowedOrganizationIdsForUser($user);
+        $hubOrgId = isset($validated['organization_id']) ? (int) $validated['organization_id'] : null;
+        if ($hubOrgId && ! in_array($hubOrgId, $allowedOrgIds, true)) {
+            unset($validated['organization_id']);
+        }
+
+        if (Post::query()->where('user_id', $user->id)->where('youtube_video_id', $videoId)->exists()) {
+            return response()->json([
+                'message' => 'You already shared this video to the community feed.',
+            ], 422);
+        }
+
+        $attachment = $this->resolveYoutubeShortAttachment($validated, $user);
+        if ($attachment instanceof \Illuminate\Http\JsonResponse) {
+            return $attachment;
+        }
+
+        ['organizationId' => $organizationId, 'campaignId' => $campaignId, 'fundmeId' => $fundmeId] = $attachment;
+
+        $durationDisplay = isset($validated['duration']) ? (string) $validated['duration'] : '';
+        $durationSecondsFromClient = (int) $request->input('duration_seconds', 0);
+        $parsedSeconds = $this->parseYoutubeDurationDisplayToSeconds($durationDisplay);
+        $durationSeconds = $durationSecondsFromClient > 0 ? $durationSecondsFromClient : $parsedSeconds;
+
+        $details = app(YouTubeService::class)->getVideoDetails($videoId);
+        if (is_array($details)) {
+            if (isset($details['duration_seconds'])) {
+                $durationSeconds = max($durationSeconds, (int) $details['duration_seconds']);
+            }
+            if (empty($validated['thumbnail_url'] ?? null) && ! empty($details['thumbnail_url'])) {
+                $validated['thumbnail_url'] = (string) $details['thumbnail_url'];
+            }
+        }
+
+        $thumbnailUrl = ! empty($validated['thumbnail_url'] ?? null)
+            ? (string) $validated['thumbnail_url']
+            : sprintf('https://img.youtube.com/vi/%s/maxresdefault.jpg', $videoId);
+
+        $videoTitle = Str::limit(trim($validated['title']), 255);
+        $postType = $this->hubVideoLooksLikeShort($watchUrl, $durationDisplay, $durationSeconds)
+            ? Post::POST_TYPE_YOUTUBE_SHORT
+            : Post::POST_TYPE_YOUTUBE_VIDEO;
+
+        $category = $postType === Post::POST_TYPE_YOUTUBE_SHORT ? 'shorts' : 'videos';
+
+        $postBody = $videoTitle;
+
+        $post = DB::transaction(function () use ($user, $watchUrl, $videoId, $thumbnailUrl, $organizationId, $campaignId, $fundmeId, $postBody, $videoTitle, $durationSeconds, $postType, $category) {
+            $communityVideo = CommunityVideo::updateOrCreate(
+                ['youtube_video_id' => $videoId],
+                [
+                    'title' => $videoTitle,
+                    'slug' => 'yt-'.$videoId,
+                    'description' => null,
+                    'thumbnail_url' => $thumbnailUrl,
+                    'video_url' => $watchUrl,
+                    'duration_seconds' => max(0, $durationSeconds),
+                    'organization_id' => $organizationId,
+                    'user_id' => $user->id,
+                    'category' => $category,
+                ]
+            );
+
+            return Post::create([
+                'user_id' => $user->id,
+                'post_type' => $postType,
+                'content' => $postBody,
+                'caption' => $postBody,
+                'images' => [],
+                'youtube_url' => $watchUrl,
+                'youtube_video_id' => $videoId,
+                'thumbnail_url' => $thumbnailUrl,
+                'organization_id' => $organizationId,
+                'campaign_id' => $campaignId,
+                'fundme_id' => $fundmeId,
+                'community_video_id' => $communityVideo->id,
+                'visibility' => 'public',
+            ]);
+        });
+
+        $post->load([
+            'user.organization',
+            'user.createdCareAlliances' => fn ($q) => $q->where('status', 'active')->orderByDesc('id'),
+            'attachedOrganization.user:id,slug,name,image',
+            'attachedCampaign',
+            'attachedFundMe',
+            'reactions',
+            'comments',
+        ]);
+        $this->hydratePostCreatorForSocialFeed($post);
+
+        $msg = $postType === Post::POST_TYPE_YOUTUBE_SHORT
+            ? 'Your YouTube Short was shared to the community feed.'
+            : 'Your video was shared to the community feed.';
+
+        return response()->json([
+            'message' => $msg,
+            'post' => $post,
+        ], 201);
+    }
+
+    protected function hubVideoLooksLikeShort(string $watchUrl, string $durationDisplay, int $durationSeconds): bool
+    {
+        if (str_contains(strtolower($watchUrl), '/shorts/')) {
+            return true;
+        }
+        if ($durationDisplay !== '' && preg_match('/^(?:0:\d{1,2}|1:00)$/', $durationDisplay)) {
+            return true;
+        }
+        if ($durationSeconds > 0 && $durationSeconds <= 60) {
+            return true;
+        }
+
+        return false;
+    }
+
+    protected function parseYoutubeDurationDisplayToSeconds(?string $d): int
+    {
+        if ($d === null || $d === '' || $d === 'LIVE') {
+            return 0;
+        }
+        if (preg_match('/^(\d+):(\d{2})$/', $d, $m)) {
+            return ((int) $m[1]) * 60 + (int) $m[2];
+        }
+        if (preg_match('/^(\d+):(\d{2}):(\d{2})$/', $d, $m)) {
+            return ((int) $m[1]) * 3600 + ((int) $m[2]) * 60 + (int) $m[3];
+        }
+
+        return 0;
+    }
+
+    protected function extractYoutubeVideoId(string $url): ?string
+    {
+        $url = trim($url);
+        if ($url === '') {
+            return null;
+        }
+
+        if (preg_match('~(?:www\.)?youtube\.com/shorts/([a-zA-Z0-9_-]{11})~', $url, $m)) {
+            return $m[1];
+        }
+
+        if (preg_match('~(?:www\.)?youtube\.com/watch\?[^#]*\bv=([a-zA-Z0-9_-]{11})~', $url, $m)) {
+            return $m[1];
+        }
+
+        if (preg_match('~youtu\.be/([a-zA-Z0-9_-]{11})~', $url, $m)) {
+            return $m[1];
+        }
+
+        if (preg_match('~youtube\.com/embed/([a-zA-Z0-9_-]{11})~', $url, $m)) {
+            return $m[1];
+        }
+
+        if (preg_match('~m\.youtube\.com/shorts/([a-zA-Z0-9_-]{11})~', $url, $m)) {
+            return $m[1];
+        }
+
+        return null;
     }
 
     /**
@@ -975,7 +1182,7 @@ class PostController extends Controller
         $validated = $request->validate([
             'youtube_url' => 'required|string|max:2048',
             'caption' => 'nullable|string|max:5000',
-            'attach_type' => 'required|string|in:profile,organization,campaign,fundme',
+            'attach_type' => 'nullable|string|in:profile,organization,campaign,fundme',
             'organization_id' => 'nullable|integer|exists:organizations,id',
             'campaign_id' => 'nullable|integer|exists:campaigns,id',
             'fundme_id' => 'nullable|integer|exists:fundme_campaigns,id',
@@ -991,97 +1198,69 @@ class PostController extends Controller
 
         /** @var User $user */
         $user = $request->user();
-        $allowedOrgIds = $this->collectAllowedOrganizationIdsForUser($user);
-
-        $organizationId = null;
-        $campaignId = null;
-        $fundmeId = null;
-
-        switch ($validated['attach_type']) {
-            case 'profile':
-                break;
-            case 'organization':
-                $oid = isset($validated['organization_id']) ? (int) $validated['organization_id'] : null;
-                if (! $oid || ! in_array($oid, $allowedOrgIds, true)) {
-                    return response()->json([
-                        'message' => 'Choose an organization you are allowed to post for.',
-                    ], 422);
-                }
-                $organizationId = $oid;
-                break;
-            case 'campaign':
-                $cid = isset($validated['campaign_id']) ? (int) $validated['campaign_id'] : null;
-                if (! $cid) {
-                    return response()->json([
-                        'message' => 'Select a campaign to attach.',
-                    ], 422);
-                }
-                $campaign = Campaign::query()->find($cid);
-                if (! $campaign) {
-                    return response()->json([
-                        'message' => 'Campaign not found.',
-                    ], 422);
-                }
-                $canPostCampaign = ((int) $campaign->user_id === (int) $user->id)
-                    || in_array((int) $campaign->organization_id, $allowedOrgIds, true);
-                if (! $canPostCampaign) {
-                    return response()->json([
-                        'message' => 'You cannot attach this campaign.',
-                    ], 422);
-                }
-                $campaignId = $campaign->id;
-                $organizationId = (int) $campaign->organization_id;
-                break;
-            case 'fundme':
-                $fid = isset($validated['fundme_id']) ? (int) $validated['fundme_id'] : null;
-                if (! $fid) {
-                    return response()->json([
-                        'message' => 'Select a FundMe campaign to attach.',
-                    ], 422);
-                }
-                $fundme = FundMeCampaign::query()->find($fid);
-                if (! $fundme || $fundme->status !== FundMeCampaign::STATUS_LIVE) {
-                    return response()->json([
-                        'message' => 'FundMe campaign not available.',
-                    ], 422);
-                }
-                if (! in_array((int) $fundme->organization_id, $allowedOrgIds, true)) {
-                    return response()->json([
-                        'message' => 'You cannot attach this FundMe campaign.',
-                    ], 422);
-                }
-                $fundmeId = $fundme->id;
-                $organizationId = (int) $fundme->organization_id;
-                break;
-            default:
-                return response()->json(['message' => 'Invalid attach type.'], 422);
+        $attachment = $this->resolveYoutubeShortAttachment($validated, $user);
+        if ($attachment instanceof \Illuminate\Http\JsonResponse) {
+            return $attachment;
         }
 
-        $thumbnailUrl = sprintf('https://img.youtube.com/vi/%s/maxresdefault.jpg', $videoId);
+        ['organizationId' => $organizationId, 'campaignId' => $campaignId, 'fundmeId' => $fundmeId] = $attachment;
 
-        $apiKey = config('services.youtube.api_key');
-        if ($apiKey) {
-            $details = app(YouTubeService::class)->getVideoDetails($videoId);
-            if (is_array($details) && ! empty($details['thumbnail_url'])) {
+        $thumbnailUrl = sprintf('https://img.youtube.com/vi/%s/maxresdefault.jpg', $videoId);
+        $videoTitle = 'YouTube Short';
+        $durationSeconds = 0;
+        $videoDescription = null;
+
+        $details = app(YouTubeService::class)->getVideoDetails($videoId);
+        if (is_array($details)) {
+            if (! empty($details['thumbnail_url'])) {
                 $thumbnailUrl = (string) $details['thumbnail_url'];
+            }
+            if (! empty($details['title'])) {
+                $videoTitle = (string) $details['title'];
+            }
+            if (isset($details['duration_seconds'])) {
+                $durationSeconds = max(0, (int) $details['duration_seconds']);
+            }
+            if (! empty($details['description'])) {
+                $videoDescription = Str::limit((string) $details['description'], 2000);
             }
         }
 
-        $caption = isset($validated['caption']) ? trim((string) $validated['caption']) : '';
+        $manualCaption = isset($validated['caption']) ? trim((string) $validated['caption']) : '';
+        $postBody = $manualCaption !== '' ? $manualCaption : $videoTitle;
 
-        $post = Post::create([
-            'user_id' => $user->id,
-            'post_type' => Post::POST_TYPE_YOUTUBE_SHORT,
-            'content' => $caption !== '' ? $caption : null,
-            'caption' => $caption !== '' ? $caption : null,
-            'images' => [],
-            'youtube_url' => $url,
-            'youtube_video_id' => $videoId,
-            'thumbnail_url' => $thumbnailUrl,
-            'organization_id' => $organizationId,
-            'campaign_id' => $campaignId,
-            'fundme_id' => $fundmeId,
-        ]);
+        $post = DB::transaction(function () use ($user, $url, $videoId, $thumbnailUrl, $organizationId, $campaignId, $fundmeId, $postBody, $videoTitle, $durationSeconds, $videoDescription) {
+            $communityVideo = CommunityVideo::updateOrCreate(
+                ['youtube_video_id' => $videoId],
+                [
+                    'title' => Str::limit($videoTitle, 255),
+                    'slug' => 'yt-'.$videoId,
+                    'description' => $videoDescription,
+                    'thumbnail_url' => $thumbnailUrl,
+                    'video_url' => $url,
+                    'duration_seconds' => $durationSeconds,
+                    'organization_id' => $organizationId,
+                    'user_id' => $user->id,
+                    'category' => 'shorts',
+                ]
+            );
+
+            return Post::create([
+                'user_id' => $user->id,
+                'post_type' => Post::POST_TYPE_YOUTUBE_SHORT,
+                'content' => $postBody,
+                'caption' => $postBody,
+                'images' => [],
+                'youtube_url' => $url,
+                'youtube_video_id' => $videoId,
+                'thumbnail_url' => $thumbnailUrl,
+                'organization_id' => $organizationId,
+                'campaign_id' => $campaignId,
+                'fundme_id' => $fundmeId,
+                'community_video_id' => $communityVideo->id,
+                'visibility' => 'public',
+            ]);
+        });
 
         $post->load([
             'user.organization',
@@ -1095,9 +1274,139 @@ class PostController extends Controller
         $this->hydratePostCreatorForSocialFeed($post);
 
         return response()->json([
-            'message' => 'Short posted successfully',
+            'message' => 'Your YouTube Short was shared to the community feed.',
             'post' => $post,
         ], 201);
+    }
+
+    /**
+     * @param  array<string, mixed>  $validated
+     * @return array{organizationId: ?int, campaignId: ?int, fundmeId: ?int}|\Illuminate\Http\JsonResponse
+     */
+    protected function resolveYoutubeShortAttachment(array $validated, User $user): array|\Illuminate\Http\JsonResponse
+    {
+        $allowedOrgIds = $this->collectAllowedOrganizationIdsForUser($user);
+
+        $organizationId = null;
+        $campaignId = null;
+        $fundmeId = null;
+
+        if (! empty($validated['attach_type'] ?? null)) {
+            switch ($validated['attach_type']) {
+                case 'profile':
+                    break;
+                case 'organization':
+                    $oid = isset($validated['organization_id']) ? (int) $validated['organization_id'] : null;
+                    if (! $oid || ! in_array($oid, $allowedOrgIds, true)) {
+                        return response()->json([
+                            'message' => 'Choose an organization you are allowed to post for.',
+                        ], 422);
+                    }
+                    $organizationId = $oid;
+                    break;
+                case 'campaign':
+                    $cid = isset($validated['campaign_id']) ? (int) $validated['campaign_id'] : null;
+                    if (! $cid) {
+                        return response()->json([
+                            'message' => 'Select a campaign to attach.',
+                        ], 422);
+                    }
+                    $campaign = Campaign::query()->find($cid);
+                    if (! $campaign) {
+                        return response()->json([
+                            'message' => 'Campaign not found.',
+                        ], 422);
+                    }
+                    $canPostCampaign = ((int) $campaign->user_id === (int) $user->id)
+                        || in_array((int) $campaign->organization_id, $allowedOrgIds, true);
+                    if (! $canPostCampaign) {
+                        return response()->json([
+                            'message' => 'You cannot attach this campaign.',
+                        ], 422);
+                    }
+                    $campaignId = $campaign->id;
+                    $organizationId = (int) $campaign->organization_id;
+                    break;
+                case 'fundme':
+                    $fid = isset($validated['fundme_id']) ? (int) $validated['fundme_id'] : null;
+                    if (! $fid) {
+                        return response()->json([
+                            'message' => 'Select a FundMe campaign to attach.',
+                        ], 422);
+                    }
+                    $fundme = FundMeCampaign::query()->find($fid);
+                    if (! $fundme || $fundme->status !== FundMeCampaign::STATUS_LIVE) {
+                        return response()->json([
+                            'message' => 'FundMe campaign not available.',
+                        ], 422);
+                    }
+                    if (! in_array((int) $fundme->organization_id, $allowedOrgIds, true)) {
+                        return response()->json([
+                            'message' => 'You cannot attach this FundMe campaign.',
+                        ], 422);
+                    }
+                    $fundmeId = $fundme->id;
+                    $organizationId = (int) $fundme->organization_id;
+                    break;
+                default:
+                    return response()->json(['message' => 'Invalid attach type.'], 422);
+            }
+
+            return compact('organizationId', 'campaignId', 'fundmeId');
+        }
+
+        // Import flow: infer from optional IDs (fundme > campaign > organization), else personal
+        if (! empty($validated['fundme_id'] ?? null)) {
+            $fid = (int) $validated['fundme_id'];
+            $fundme = FundMeCampaign::query()->find($fid);
+            if (! $fundme || $fundme->status !== FundMeCampaign::STATUS_LIVE) {
+                return response()->json([
+                    'message' => 'FundMe campaign not available.',
+                ], 422);
+            }
+            if (! in_array((int) $fundme->organization_id, $allowedOrgIds, true)) {
+                return response()->json([
+                    'message' => 'You cannot attach this FundMe campaign.',
+                ], 422);
+            }
+            $fundmeId = $fundme->id;
+            $organizationId = (int) $fundme->organization_id;
+
+            return compact('organizationId', 'campaignId', 'fundmeId');
+        }
+
+        if (! empty($validated['campaign_id'] ?? null)) {
+            $cid = (int) $validated['campaign_id'];
+            $campaign = Campaign::query()->find($cid);
+            if (! $campaign) {
+                return response()->json([
+                    'message' => 'Campaign not found.',
+                ], 422);
+            }
+            $canPostCampaign = ((int) $campaign->user_id === (int) $user->id)
+                || in_array((int) $campaign->organization_id, $allowedOrgIds, true);
+            if (! $canPostCampaign) {
+                return response()->json([
+                    'message' => 'You cannot attach this campaign.',
+                ], 422);
+            }
+            $campaignId = $campaign->id;
+            $organizationId = (int) $campaign->organization_id;
+
+            return compact('organizationId', 'campaignId', 'fundmeId');
+        }
+
+        if (! empty($validated['organization_id'] ?? null)) {
+            $oid = (int) $validated['organization_id'];
+            if (! in_array($oid, $allowedOrgIds, true)) {
+                return response()->json([
+                    'message' => 'Choose an organization you are allowed to post for.',
+                ], 422);
+            }
+            $organizationId = $oid;
+        }
+
+        return compact('organizationId', 'campaignId', 'fundmeId');
     }
 }
 

@@ -244,6 +244,7 @@ Route::middleware(['auth', 'EnsureEmailIsVerified'])->group(function () {
         return redirect()->route('organizations.show', $id);
     })->name('organizations.toggle-favorite.get');
     Route::post('/posts', [App\Http\Controllers\PostController::class, 'store'])->name('posts.store');
+    Route::post('/posts/share-from-video-hub', [App\Http\Controllers\PostController::class, 'shareVideoFromHub'])->name('posts.share-from-video-hub');
     Route::put('/posts/{post}', [App\Http\Controllers\PostController::class, 'update'])->name('posts.update');
     Route::delete('/posts/{post}', [App\Http\Controllers\PostController::class, 'destroy'])->name('posts.destroy');
     Route::post('/posts/{post}/react', [App\Http\Controllers\PostController::class, 'react'])->name('posts.react');

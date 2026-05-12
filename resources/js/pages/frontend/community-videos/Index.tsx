@@ -18,7 +18,8 @@ import {
   CommandItem,
   CommandList,
 } from "@/components/frontend/ui/command"
-import { Search, Heart, ThumbsUp, Play, Building2, ChevronDown, Share2, Eye, MessageCircle, Clapperboard, Youtube, Lock, Sparkles, Brain, HardDrive, ChevronsUpDown, Check } from "lucide-react"
+import { Search, Heart, ThumbsUp, Play, Building2, ChevronDown, Share2, Eye, MessageCircle, Clapperboard, Youtube, Brain, HardDrive, ChevronsUpDown, Check, Pin, Megaphone, Rss } from "lucide-react"
+import toast from "react-hot-toast"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/frontend/ui/avatar"
 import { cn } from "@/lib/utils"
 
@@ -41,6 +42,7 @@ interface VideoItem {
   channel_slug?: string | null
   source?: "upload" | "youtube"
   watch_url?: string | null
+  organization_id?: number | null
   app_likes?: number
   app_comment_count?: number
   app_shares?: number
@@ -74,6 +76,7 @@ interface Props {
     search: string
     tab: string
     org?: string
+    hub?: string
   }
   nonprofitOrganizations?: Array<{ id: number; name: string }>
   stats?: { total_videos: number; livestream_replays: number }
@@ -92,7 +95,121 @@ function formatCount(n: number) {
 const SHORTS_AUTO_ADVANCE_MS = 4500
 const SHORTS_PER_PAGE = 4
 
+function VideoHubActionBar({
+  video,
+  watchHref,
+  layout,
+  onShareToFeed,
+  onCopyWatchLink,
+}: {
+  video: VideoItem
+  watchHref: string
+  layout: "featured" | "card"
+  onShareToFeed: (e: React.MouseEvent, video: VideoItem) => void
+  onCopyWatchLink: (e: React.MouseEvent, video: VideoItem) => void
+}) {
+  const compact = layout === "card"
+  return (
+    <div
+      className={cn(
+        "w-full bg-gradient-to-br from-purple-50/95 via-white to-violet-50/40 dark:from-purple-950/35 dark:via-gray-900/95 dark:to-violet-950/20",
+        compact
+          ? "rounded-b-xl rounded-t-none border-x-0 border-b-0 border-t border-purple-200/70 p-3 shadow-sm ring-1 ring-purple-500/5 dark:border-purple-900/50 dark:ring-purple-500/10"
+          : "rounded-none rounded-b-xl border-x-0 border-b-0 border-t-2 border-purple-300/90 p-4 shadow-inner ring-1 ring-inset ring-purple-500/10 sm:p-5 dark:border-purple-600/60 dark:ring-purple-500/5"
+      )}
+    >
+      <div className="flex items-center gap-2 mb-2.5">
+        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-purple-600 text-white shadow-sm dark:bg-purple-500">
+          <Rss className="h-3.5 w-3.5" aria-hidden />
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-purple-800 dark:text-purple-200">
+            Community feed
+          </p>
+          <p className="text-[10px] text-neutral-500 dark:text-gray-400 truncate">
+            Share this video on BIU — no re-upload
+          </p>
+        </div>
+      </div>
+
+      <div className={cn("grid gap-2", compact ? "grid-cols-2" : "grid-cols-1 sm:grid-cols-2")}>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className={cn(
+            "w-full gap-1.5 border-neutral-300 bg-white font-medium shadow-sm hover:bg-neutral-50 dark:border-gray-600 dark:bg-gray-800/80 dark:hover:bg-gray-800",
+            compact ? "h-8 text-[11px]" : "h-9 text-xs"
+          )}
+          asChild
+        >
+          <a href={watchHref} onClick={(e) => e.stopPropagation()}>
+            <Play className="h-3.5 w-3.5 shrink-0 opacity-80" aria-hidden />
+            Watch
+          </a>
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          className={cn(
+            "w-full gap-1.5 bg-purple-600 font-semibold text-white shadow-sm hover:bg-purple-500 dark:bg-purple-600 dark:hover:bg-purple-500",
+            compact ? "h-8 text-[11px]" : "h-9 text-xs"
+          )}
+          onClick={(e) => onShareToFeed(e, video)}
+        >
+          <Rss className="h-3.5 w-3.5 shrink-0" aria-hidden />
+          Share to Feed
+        </Button>
+      </div>
+
+      <div className="mt-2 grid grid-cols-2 gap-2">
+        <Button
+          type="button"
+          size="sm"
+          variant="secondary"
+          className={cn(
+            "gap-1.5 border border-dashed border-neutral-300 bg-neutral-100/80 text-neutral-500 dark:border-gray-600 dark:bg-gray-800/60 dark:text-gray-500",
+            compact ? "h-8 justify-center px-1.5 text-[10px]" : "h-9 justify-center text-xs"
+          )}
+          disabled
+          title="Coming soon"
+        >
+          <Pin className="h-3.5 w-3.5 shrink-0 opacity-70" aria-hidden />
+          <span className="truncate">{compact ? "Pin org" : "Pin to Organization"}</span>
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          variant="secondary"
+          className={cn(
+            "gap-1.5 border border-dashed border-neutral-300 bg-neutral-100/80 text-neutral-500 dark:border-gray-600 dark:bg-gray-800/60 dark:text-gray-500",
+            compact ? "h-8 justify-center px-1.5 text-[10px]" : "h-9 justify-center text-xs"
+          )}
+          disabled
+          title="Coming soon"
+        >
+          <Megaphone className="h-3.5 w-3.5 shrink-0 opacity-70" aria-hidden />
+          <span className="truncate">{compact ? "Campaign" : "Attach to Campaign"}</span>
+        </Button>
+      </div>
+
+      <button
+        type="button"
+        className={cn(
+          "mt-2.5 flex w-full items-center justify-center gap-1.5 rounded-lg py-1.5 text-[11px] font-medium text-neutral-600 transition-colors hover:bg-white/80 hover:text-purple-700 dark:text-gray-400 dark:hover:bg-gray-800/80 dark:hover:text-purple-300",
+          compact && "py-1"
+        )}
+        onClick={(e) => onCopyWatchLink(e, video)}
+      >
+        <Share2 className="h-3.5 w-3.5 shrink-0 opacity-70" aria-hidden />
+        Copy watch link
+      </button>
+    </div>
+  )
+}
+
 export default function CommunityVideosIndex({ seo, channelBanners = [], featuredVideo: initialFeatured, videos: initialVideos, shorts = [], filters, nonprofitOrganizations = [], stats = { total_videos: 0, livestream_replays: 0 }, videos_has_more = false, videos_next_page = 2, myChannel = null, authUserChannelSlug = null, userOrgHasYoutube = false, userOrgCanConnect = false }: Props) {
+  const defaultHub = "all"
   const { auth } = usePage().props as { auth?: { user?: { id: number } } }
   const [featuredVideo, setFeaturedVideo] = useState<VideoItem | null>(initialFeatured)
   const [videos, setVideos] = useState<VideoItem[]>(initialVideos)
@@ -117,7 +234,7 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
     setVideos(initialVideos)
     setHasMore(videos_has_more)
     setNextPage(videos_next_page)
-  }, [initialFeatured, initialVideos, videos_has_more, videos_next_page, filters.search, filters.tab, filters.org])
+  }, [initialFeatured, initialVideos, videos_has_more, videos_next_page, filters.search, filters.tab, filters.org, filters.hub])
 
   // Keep search input in sync with URL (e.g. back/forward, or after server response)
   useEffect(() => {
@@ -129,7 +246,7 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
     if (loadingMore || !hasMore) return
     setLoadingMore(true)
     axios.get(route("unity-videos.index"), {
-      params: { page: nextPage, search: filters.search, tab: filters.tab, org: filters.org },
+      params: { page: nextPage, search: filters.search, tab: filters.tab, org: filters.org, hub: filters.hub ?? defaultHub },
       headers: { Accept: "application/json", "X-Requested-With": "XMLHttpRequest" },
     }).then(({ data }) => {
       const list = Array.isArray(data?.videos) ? data.videos : []
@@ -141,7 +258,7 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
     }).finally(() => {
       setLoadingMore(false)
     })
-  }, [loadingMore, hasMore, nextPage, filters.search, filters.tab, filters.org])
+  }, [loadingMore, hasMore, nextPage, filters.search, filters.tab, filters.org, filters.hub])
 
   useEffect(() => {
     const el = loadMoreSentinelRef.current
@@ -225,7 +342,6 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
   const activeTab = (filters.tab === "latest" || filters.tab === "trending" || filters.tab === "nonprofits" || filters.tab === "supporter"
     ? filters.tab
     : "latest") as "latest" | "trending" | "nonprofits" | "supporter"
-  const category = filters.category || "all"
 
   const updateVideoLike = useCallback((videoId: string | number, newLiked: boolean, newAppLikes: number) => {
     setFeaturedVideo((f) =>
@@ -268,6 +384,41 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
     [auth?.user?.id, updateVideoLike]
   )
 
+  const handleShareToFeed = useCallback(
+    async (e: React.MouseEvent, video: VideoItem) => {
+      e.preventDefault()
+      e.stopPropagation()
+      if (!auth?.user?.id) {
+        window.location.href = route("login") + "?redirect=" + encodeURIComponent("/unity-videos")
+        return
+      }
+      const watchUrl = video.watch_url?.trim()
+      if (!watchUrl) {
+        toast.error("This video is missing a watch URL.")
+        return
+      }
+      try {
+        const { data } = await axios.post(
+          route("posts.share-from-video-hub"),
+          {
+            youtube_video_id: String(video.slug),
+            watch_url: watchUrl,
+            title: video.title,
+            thumbnail_url: video.thumbnail_url,
+            duration: video.duration ?? "",
+            organization_id: video.organization_id ?? undefined,
+          },
+          { headers: { Accept: "application/json", "X-Requested-With": "XMLHttpRequest" } }
+        )
+        toast.success(typeof data?.message === "string" ? data.message : "Shared to community feed.")
+      } catch (err: unknown) {
+        const ax = err as { response?: { data?: { message?: string } } }
+        toast.error(ax.response?.data?.message ?? "Could not share to feed. Try again.")
+      }
+    },
+    [auth?.user?.id]
+  )
+
   const handleShare = useCallback(async (e: React.MouseEvent, video: VideoItem) => {
     e.preventDefault()
     e.stopPropagation()
@@ -296,17 +447,19 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
   const defaultOrg = "all"
 
   const applyFilters = useCallback(
-    (updates: { search?: string; tab?: string; org?: string }) => {
+    (updates: { search?: string; tab?: string; org?: string; hub?: string }) => {
       const search = updates.search !== undefined ? updates.search : filters.search
       const tab = updates.tab !== undefined ? updates.tab : filters.tab
       const org = updates.org !== undefined ? updates.org : (filters.org ?? defaultOrg)
+      const hub = updates.hub !== undefined ? updates.hub : (filters.hub ?? defaultHub)
       const params: Record<string, string> = {}
       if (search !== defaultSearch) params.search = search
       if (tab !== defaultTab) params.tab = tab
       if (tab === "nonprofits" && org !== defaultOrg) params.org = org
+      if (hub !== defaultHub) params.hub = hub
       router.get("/unity-videos", params, { preserveState: false })
     },
-    [filters.search, filters.tab, filters.org]
+    [filters.search, filters.tab, filters.org, filters.hub]
   )
 
   // Debounced search: apply filters automatically after user stops typing (400ms)
@@ -334,13 +487,16 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
     applyFilters({ tab })
   }
 
+  const handleHubChange = (hub: "all" | "shorts" | "videos" | "live_replays") => {
+    applyFilters({ hub })
+  }
+
+  const activeHub = (filters.hub === "shorts" || filters.hub === "videos" || filters.hub === "live_replays" ? filters.hub : "all") as "all" | "shorts" | "videos" | "live_replays"
+
   const hasContent = featuredVideo || videos.length > 0
 
-  // When search returns only one result it's shown as featured and grid is empty; show it in the grid too so the grid is visible
-  const gridVideos =
-    (filters.search?.trim() && featuredVideo && videos.length === 0)
-      ? [featuredVideo]
-      : videos
+  /** Grid items only — never repeat the featured hero row (search single-result used to inject featured here and duplicated the card). */
+  const gridVideos = videos
 
   const connectYoutubeUrl = route("login") + "?redirect=" + encodeURIComponent("/integrations/youtube/redirect")
 
@@ -407,29 +563,30 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
             const featuredWatchHref = `/unity-videos/watch/yt/${featuredVideo.slug}${fq ? `?${fq}` : ""}`
             return (
             <section className="mb-8">
-              <div className="grid grid-cols-1 lg:grid-cols-5 gap-0 rounded-xl overflow-hidden border border-neutral-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-lg">
+              <div className="flex flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-lg dark:border-gray-700 dark:bg-gray-900">
+                <div className="grid grid-cols-1 gap-0 lg:grid-cols-5">
                 <a
                   href={featuredWatchHref}
                   onClick={(e) => { e.preventDefault(); window.location.href = featuredWatchHref }}
                   className="lg:col-span-3 block h-full"
                 >
-                  <div className="relative h-[180px] sm:h-[200px] bg-black group">
+                  <div className="relative h-[180px] bg-black group sm:h-[200px]">
                     <img
                       src={featuredVideo.thumbnail_url}
                       alt={featuredVideo.title}
-                      className="w-full h-full object-cover"
+                      className="h-full w-full object-cover"
                     />
-                    <div className="absolute inset-0 flex items-center justify-center bg-black/30 group-hover:bg-black/40 transition-colors">
-                      <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-white/90 flex items-center justify-center group-hover:bg-white transition-colors">
-                        <Play className="w-6 h-6 sm:w-7 sm:h-7 text-gray-900 ml-0.5 fill-gray-900" />
+                    <div className="absolute inset-0 flex items-center justify-center bg-black/30 transition-colors group-hover:bg-black/40">
+                      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white/90 transition-colors group-hover:bg-white sm:h-14 sm:w-14">
+                        <Play className="ml-0.5 h-6 w-6 fill-gray-900 text-gray-900 sm:h-7 sm:w-7" />
                       </div>
                     </div>
-                    <div className={`absolute bottom-1.5 right-1.5 px-1.5 py-0.5 rounded text-xs font-medium ${featuredVideo.duration === "LIVE" ? "bg-red-600 text-white" : "bg-black/80 text-white"}`}>
+                    <div className={`absolute bottom-1.5 right-1.5 rounded px-1.5 py-0.5 text-xs font-medium ${featuredVideo.duration === "LIVE" ? "bg-red-600 text-white" : "bg-black/80 text-white"}`}>
                       {featuredVideo.duration}
                     </div>
                   </div>
                 </a>
-                <div className="lg:col-span-2 flex flex-col border-l border-neutral-200 dark:border-gray-700 bg-neutral-50 dark:bg-gray-800/90 p-4 sm:p-5">
+                <div className="flex flex-col border-neutral-200 bg-neutral-50 dark:border-gray-700 dark:bg-gray-800/90 lg:col-span-2 lg:border-l p-4 sm:p-5">
                   <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
                     <div className="flex items-center gap-2 text-xs text-neutral-500 dark:text-gray-400">
                       <span>{featuredVideo.views_formatted} views</span>
@@ -457,7 +614,7 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
                   <a
                     href={featuredWatchHref}
                     onClick={(e) => { e.preventDefault(); window.location.href = featuredWatchHref }}
-                    className="flex-1 min-w-0 block"
+                    className="min-w-0 block shrink-0"
                   >
                     <h2 className="text-base sm:text-lg font-bold text-neutral-900 dark:text-white mb-1 line-clamp-2 hover:underline">
                       {featuredVideo.title}
@@ -482,16 +639,16 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
                       {featuredVideo.total_likes_formatted ?? featuredVideo.likes_formatted ?? featuredVideo.likes}
                     </Button>
                   </div>
-                  <div className="flex items-center justify-end mt-auto">
-                    <button
-                      type="button"
-                      className="p-1.5 rounded hover:bg-neutral-200 dark:hover:bg-gray-700 text-neutral-500 dark:text-gray-400 hover:text-neutral-800 dark:hover:text-gray-200 flex items-center gap-1.5 text-xs"
-                      onClick={(e) => handleShare(e, featuredVideo)}
-                    >
-                      <Share2 className="w-4 h-4" />
-                      Share
-                    </button>
-                  </div>
+                </div>
+                </div>
+                <div className="w-full shrink-0">
+                  <VideoHubActionBar
+                    video={featuredVideo}
+                    watchHref={featuredWatchHref}
+                    layout="featured"
+                    onShareToFeed={handleShareToFeed}
+                    onCopyWatchLink={handleShare}
+                  />
                 </div>
               </div>
             </section>
@@ -571,6 +728,24 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
               </div>
             </section>
           )}
+
+          {/* Hub type: All | Shorts | Videos | Live Replays */}
+          <div className="flex flex-wrap gap-2 pb-3 mb-1">
+            {(["all", "shorts", "videos", "live_replays"] as const).map((h) => (
+              <button
+                key={h}
+                type="button"
+                onClick={() => handleHubChange(h)}
+                className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold transition-colors ${
+                  activeHub === h
+                    ? "bg-purple-600 text-white shadow-sm"
+                    : "bg-neutral-200 dark:bg-gray-800 text-neutral-700 dark:text-gray-300 hover:bg-neutral-300 dark:hover:bg-gray-700"
+                }`}
+              >
+                {h === "all" ? "All" : h === "shorts" ? "Shorts" : h === "videos" ? "Videos" : "Live Replays"}
+              </button>
+            ))}
+          </div>
 
           {/* Filter bar + stats */}
           <div className="flex flex-wrap items-center gap-3 pb-4 mb-4 border-b border-neutral-200 dark:border-gray-800">
@@ -692,6 +867,8 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
             </div>
           ) : (
             <>
+              {gridVideos.length > 0 ? (
+              <>
               <h2 className="text-lg font-semibold text-neutral-900 dark:text-white mb-4">
                 {filters.search?.trim() ? `Search results for "${filters.search.trim()}"` : activeTab === "latest" ? "Latest" : activeTab === "trending" ? "Trending" : activeTab === "supporter" ? "Supporter" : "Non-Profits"}
               </h2>
@@ -704,13 +881,16 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
                 const q = params.toString()
                 const watchHref = `/unity-videos/watch/yt/${video.slug}${q ? `?${q}` : ""}`
                 return (
-                  <div key={video.id} className="group block">
+                  <div
+                    key={video.id}
+                    className="group flex flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm transition-all hover:border-purple-200/80 hover:shadow-md dark:border-gray-700 dark:bg-gray-900/50 dark:hover:border-purple-900/50"
+                  >
                     <a
                       href={watchHref}
                       onClick={(e) => { e.preventDefault(); window.location.href = watchHref }}
                       className="block"
                     >
-                      <div className="relative aspect-video w-full rounded-xl overflow-hidden bg-neutral-100 dark:bg-gray-800">
+                      <div className="relative aspect-video w-full overflow-hidden rounded-t-xl bg-neutral-100 dark:bg-gray-800">
                         <img
                           src={video.thumbnail_url}
                           alt={video.title}
@@ -726,8 +906,8 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
                         </div>
                       </div>
                     </a>
-                    <div className="flex gap-3 mt-2">
-                      <Avatar className="h-9 w-9 rounded-full shrink-0 border border-neutral-200 dark:border-gray-700">
+                    <div className="flex flex-1 gap-3 px-3 pb-3 pt-2.5">
+                      <Avatar className="h-9 w-9 shrink-0 rounded-full border border-neutral-200 dark:border-gray-700">
                         {video.creatorAvatar && <AvatarImage src={video.creatorAvatar} alt={video.creator} />}
                         <AvatarFallback className="rounded-full bg-neutral-200 dark:bg-gray-700 text-neutral-600 dark:text-gray-300 text-xs">
                           {video.creator.charAt(0)}
@@ -739,17 +919,17 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
                           onClick={(e) => { e.preventDefault(); window.location.href = watchHref }}
                           className="block"
                         >
-                          <h3 className="text-sm font-medium text-neutral-900 dark:text-gray-100 line-clamp-2 group-hover:text-purple-600 dark:group-hover:text-purple-400 transition-colors">
+                          <h3 className="text-sm font-medium text-neutral-900 dark:text-gray-100 line-clamp-2 transition-colors group-hover:text-purple-600 dark:group-hover:text-purple-400">
                             {video.title}
                           </h3>
                         </a>
-                        <p className="text-xs text-neutral-500 dark:text-gray-500 mt-0.5 truncate flex items-center gap-1 flex-wrap">
-                          <Youtube className="w-3.5 h-3.5 text-red-500 shrink-0" />
+                        <p className="mt-0.5 flex flex-wrap items-center gap-1 truncate text-xs text-neutral-500 dark:text-gray-500">
+                          <Youtube className="h-3.5 w-3.5 shrink-0 text-red-500" />
                           {video.channel_slug ? (
                             <>
                               <button
                                 type="button"
-                                className="text-left truncate hover:text-purple-600 dark:hover:text-purple-400 cursor-pointer"
+                                className="truncate text-left hover:text-purple-600 dark:hover:text-purple-400 cursor-pointer"
                                 onClick={(e) => {
                                   e.preventDefault()
                                   e.stopPropagation()
@@ -760,7 +940,7 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
                               </button>
                               <Link
                                 href={`/unity-videos/channel/${video.channel_slug}`}
-                                className="text-purple-600 dark:text-purple-400 hover:text-purple-700 dark:hover:text-purple-300 text-xs shrink-0"
+                                className="shrink-0 text-xs text-purple-600 hover:text-purple-700 dark:text-purple-400 dark:hover:text-purple-300"
                                 onClick={(e) => e.stopPropagation()}
                               >
                                 {video.channel_slug === authUserChannelSlug ? "Visit Channel" : "Subscribe"}
@@ -770,9 +950,9 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
                             video.creator
                           )}
                         </p>
-                        <p className="text-xs text-neutral-500 dark:text-gray-500 mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1">
+                        <p className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-neutral-500 dark:text-gray-500">
                           <span className="flex items-center gap-1.5 text-neutral-500 dark:text-gray-400">
-                            <Eye className="w-3.5 h-3.5 shrink-0" aria-hidden />
+                            <Eye className="h-3.5 w-3.5 shrink-0" aria-hidden />
                             {video.views_formatted} views
                           </span>
                           {video.time_ago ? (
@@ -788,29 +968,31 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
                             disabled={likeLoadingId === video.slug || likeLoadingId === video.id}
                             title={!!video.user_liked ? "Unlike" : "Like"}
                           >
-                            {!!video.user_liked ? <Heart className="w-3.5 h-3.5 shrink-0 fill-current" aria-hidden /> : <ThumbsUp className="w-3.5 h-3.5 shrink-0" aria-hidden />}
+                            {!!video.user_liked ? <Heart className="h-3.5 w-3.5 shrink-0 fill-current" aria-hidden /> : <ThumbsUp className="h-3.5 w-3.5 shrink-0" aria-hidden />}
                             {video.total_likes_formatted ?? video.likes_formatted ?? video.likes ?? 0}
                           </button>
                           <span className="flex items-center gap-1 text-neutral-500 dark:text-gray-400">
-                            <MessageCircle className="w-3.5 h-3.5 shrink-0" aria-hidden />
+                            <MessageCircle className="h-3.5 w-3.5 shrink-0" aria-hidden />
                             {video.total_comment_count_formatted ?? video.comment_count_formatted ?? video.comment_count ?? 0}
                           </span>
-                          <button
-                            type="button"
-                            className="flex items-center gap-1 text-neutral-500 dark:text-gray-400 hover:text-purple-600 dark:hover:text-purple-400 transition-colors"
-                            title="Share"
-                            onClick={(e) => handleShare(e, video)}
-                          >
-                            <Share2 className="w-3.5 h-3.5 shrink-0" aria-hidden />
-                            Share
-                          </button>
                         </p>
                       </div>
+                    </div>
+                    <div className="mt-auto w-full shrink-0">
+                      <VideoHubActionBar
+                        video={video}
+                        watchHref={watchHref}
+                        layout="card"
+                        onShareToFeed={handleShareToFeed}
+                        onCopyWatchLink={handleShare}
+                      />
                     </div>
                   </div>
                 )
               })}
             </div>
+              </>
+              ) : null}
             {hasMore && (
               <div ref={loadMoreSentinelRef} className="min-h-[80px] flex items-center justify-center py-6">
                 {loadingMore && (
