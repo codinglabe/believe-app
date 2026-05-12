@@ -729,8 +729,8 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
             </section>
           )}
 
-          {/* Hub type: All | Shorts | Videos | Live Replays */}
-          <div className="flex flex-wrap gap-2 pb-3 mb-1">
+          {/* Hub type: All | Shorts | Videos | Live Replays — hidden per product request; URL ?hub= still works */}
+          <div className="hidden" aria-hidden>
             {(["all", "shorts", "videos", "live_replays"] as const).map((h) => (
               <button
                 key={h}

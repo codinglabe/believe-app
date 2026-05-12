@@ -57,7 +57,7 @@ export default function RaffleCancelPage({ auth: _auth }: CancelPageProps) {
                                 <XCircle className="h-8 w-8 text-rose-600 dark:text-rose-400" aria-hidden />
                             </div>
                             <p className="mb-2 text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                                Raffle checkout
+                                Sweepstakes checkout
                             </p>
                             <h1 className="mb-3 font-serif text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
                                 Checkout cancelled
@@ -113,7 +113,7 @@ export default function RaffleCancelPage({ auth: _auth }: CancelPageProps) {
                             <Button variant="outline" className="h-11 rounded-xl border-border" asChild>
                                 <Link href="/frontend/raffles">
                                     <Ticket className="mr-2 h-4 w-4" aria-hidden />
-                                    Browse raffles
+                                    Browse sweepstakes
                                 </Link>
                             </Button>
                             <Button variant="ghost" className="h-11 rounded-xl text-muted-foreground" asChild>

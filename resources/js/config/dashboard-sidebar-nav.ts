@@ -114,7 +114,7 @@ export const dashboardSidebarNavItems: (NavItem | NavGroup)[] = [
                 role: 'organization',
             },
             {
-                title: 'Raffles',
+                title: 'Sweepstakes',
                 href: '/raffles',
                 icon: Gift,
                 permission: 'raffle.read',

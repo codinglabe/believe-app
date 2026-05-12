@@ -87,7 +87,7 @@ const navigationItems: NavigationItem[] = [
     color: "from-blue-500 to-cyan-600",
   },
   {
-    name: "Raffle",
+    name: "Sweepstakes",
     href: "/profile/raffle-tickets",
     icon: Award,
     description: "Tickets",

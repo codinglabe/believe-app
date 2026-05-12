@@ -83,6 +83,9 @@ class CommunityVideosController extends Controller
             $youtubeVideos = $this->attachEngagementAndRank($youtubeVideos, $userId, $tab);
 
             $youtubeService = app(YouTubeService::class);
+            // Never list empty / 0:00 / zero-length items (not real videos or shorts). LIVE kept for live hub.
+            $youtubeVideos = $youtubeVideos->reject(fn (array $v) => $youtubeService->shouldOmitFromVideoHub($v))->values();
+
             $isShort = static function (array $v) use ($youtubeService): bool {
                 if (array_key_exists('is_youtube_short', $v)) {
                     return (bool) $v['is_youtube_short'];
@@ -118,20 +121,27 @@ class CommunityVideosController extends Controller
                 $shortsStrip = $shortsAll;
             }
 
+            // Top carousel: Shorts only (never surface full-length items in the strip).
+            $shortsStrip = $shortsStrip->filter($isShort)->values();
             $shorts = $shortsStrip->take(48)->values()->all();
+
+            // Main grid / featured: exclude Shorts everywhere except the Shorts hub (there the grid is the Shorts rail).
+            $listForGrid = $hubNormalized === 'shorts'
+                ? $gridPool
+                : $gridPool->reject($isShort)->values();
 
             $gridPerPage = 12;
             $page = (int) $request->input('page', 1);
-            $totalVideos = $gridPool->count();
+            $totalVideos = $listForGrid->count();
             $featured = null;
             $videos = [];
             if ($totalVideos > 0) {
                 if ($page === 1) {
-                    $featured = $gridPool->first();
-                    $videos = $gridPool->slice(1, $gridPerPage)->values()->all();
+                    $featured = $listForGrid->first();
+                    $videos = $listForGrid->slice(1, $gridPerPage)->values()->all();
                 } else {
                     $offset = 1 + $gridPerPage * ($page - 1);
-                    $videos = $gridPool->slice($offset, $gridPerPage)->values()->all();
+                    $videos = $listForGrid->slice($offset, $gridPerPage)->values()->all();
                 }
             }
             $hasMore = $totalVideos > 1 + $gridPerPage * $page;
@@ -774,8 +784,8 @@ class CommunityVideosController extends Controller
 
         $youtubeVideos = [];
         $channelBannerUrl = null;
+        $youtubeService = app(YouTubeService::class);
         if ($channelUrl) {
-            $youtubeService = app(YouTubeService::class);
             $youtubeVideos = $youtubeService->getChannelVideos($channelUrl, 24);
             $liveStreams = $youtubeService->getChannelLiveStreams($channelUrl, 10);
             $existingIds = array_flip(array_column($youtubeVideos, 'id'));
@@ -785,11 +795,8 @@ class CommunityVideosController extends Controller
                     $existingIds[$live['id']] = true;
                 }
             }
-            // Only show real shorts and videos: exclude items with duration "0:00" or empty (placeholder/invalid).
-            $youtubeVideos = array_values(array_filter($youtubeVideos, function ($v) {
-                $d = $v['duration'] ?? '';
-                return is_string($d) && $d !== '' && $d !== '0:00';
-            }));
+            // Drop empty / 0:00 / zero-length (not playable). LIVE kept.
+            $youtubeVideos = array_values(array_filter($youtubeVideos, fn (array $v) => ! $youtubeService->shouldOmitFromVideoHub($v)));
             $channelDetails = $youtubeService->getChannelDetails($channelUrl);
             if ($channelDetails) {
                 $channelBannerUrl = $channelDetails['banner_url'];
@@ -802,8 +809,7 @@ class CommunityVideosController extends Controller
         }
 
         // Shorts shelf: same classification as Unity hub (hashtag / portrait thumb / Shorts URL + ≤60s).
-        $shortsClassifier = app(YouTubeService::class);
-        $shortsRaw = array_values(array_filter($youtubeVideos, fn ($v) => $shortsClassifier->isYoutubeShort($v)));
+        $shortsRaw = array_values(array_filter($youtubeVideos, fn ($v) => $youtubeService->isYoutubeShort($v)));
         $shorts = array_map(function ($v) use ($slug, $channelName, $channelAvatar) {
             return [
                 'id' => $v['id'],

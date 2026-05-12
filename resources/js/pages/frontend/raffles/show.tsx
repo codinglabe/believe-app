@@ -105,6 +105,8 @@ interface Raffle {
     is_completed: boolean;
     is_draw_time: boolean;
     available_tickets: number;
+    npn_entry_enabled?: boolean;
+    official_rules?: string | null;
 }
 
 interface RaffleShowProps extends PageProps {
@@ -302,8 +304,20 @@ export default function RaffleShow({
                         className="mb-6 inline-flex items-center gap-2 text-sm font-medium text-muted-foreground transition hover:text-primary"
                     >
                         <ArrowLeft className="h-4 w-4 shrink-0" />
-                        All raffles
+                        All sweepstakes
                     </Link>
+
+                    <div className="mb-6 flex gap-3 rounded-xl border border-border bg-muted/40 p-4 text-sm text-muted-foreground dark:bg-muted/20">
+                        <Info className="h-5 w-5 shrink-0 text-primary" aria-hidden />
+                        <div>
+                            <p className="font-semibold text-foreground">No purchase necessary</p>
+                            <p>
+                                Where required by law, a free method of entry is available. Donations are optional and do
+                                not increase your odds of winning. See official rules for eligibility, odds, and sponsor
+                                information.
+                            </p>
+                        </div>
+                    </div>
 
                     {/* Hero */}
                     <header className={cn('mb-10 p-6 sm:p-8', cardSurface)}>
@@ -356,7 +370,7 @@ export default function RaffleShow({
                             <section className={cn('p-6 sm:p-8', cardSurface)}>
                                 <h2 className="mb-4 flex items-center gap-2 text-lg font-bold text-foreground">
                                     <Info className="h-5 w-5 text-primary" />
-                                    About this raffle
+                                    About this campaign
                                 </h2>
                                 <p className="leading-relaxed text-muted-foreground">{raffle.description}</p>
                             </section>
@@ -403,7 +417,7 @@ export default function RaffleShow({
                                                     <div>
                                                         <p className="font-semibold text-foreground">{winner.user.name}</p>
                                                         <p className="text-sm text-muted-foreground">
-                                                            Ticket #{winner.ticket.ticket_number}
+                                                            Entry #{winner.ticket.ticket_number}
                                                         </p>
                                                     </div>
                                                 </div>
@@ -427,7 +441,7 @@ export default function RaffleShow({
                                     <CardHeader className="border-b border-border pb-4">
                                         <CardTitle className="flex items-center gap-2 text-lg text-foreground">
                                             <Ticket className="h-5 w-5 text-primary" />
-                                            Get tickets
+                                            Get entries
                                         </CardTitle>
                                         <CardDescription className="text-muted-foreground">
                                             {showPaymentPicker && checkoutStep === 1
@@ -533,7 +547,7 @@ export default function RaffleShow({
 
                                             <div>
                                                 <Label htmlFor="quantity" className="text-foreground">
-                                                    Quantity
+                                                    Number of entries
                                                 </Label>
                                                 <Input
                                                     id="quantity"
@@ -554,14 +568,14 @@ export default function RaffleShow({
 
                                             <div className="space-y-3 rounded-xl border border-border bg-muted/40 p-4">
                                                 <div className="flex justify-between text-sm text-muted-foreground">
-                                                    <span>Price per ticket</span>
+                                                    <span>Suggested donation (per entry)</span>
                                                     <span className="font-semibold text-foreground">
                                                         ${Number(raffle.ticket_price).toFixed(2)}
                                                     </span>
                                                 </div>
                                                 <div className="flex justify-between text-sm text-muted-foreground">
                                                     <span>
-                                                        Subtotal ({data.quantity} ticket{data.quantity !== 1 ? 's' : ''})
+                                                        Subtotal ({data.quantity} entr{data.quantity !== 1 ? 'ies' : 'y'})
                                                     </span>
                                                     <span className="font-semibold text-foreground">
                                                         ${lineSubtotal.toFixed(2)}
@@ -702,12 +716,12 @@ export default function RaffleShow({
                                                         ? 'Completing…'
                                                         : 'Redirecting…'
                                                     : data.payment_method === 'believe_points'
-                                                      ? `Use ${lineSubtotal.toFixed(2)} Believe Points · ${data.quantity} ticket${data.quantity > 1 ? 's' : ''}`
-                                                      : `Card · ${data.quantity} ticket${data.quantity > 1 ? 's' : ''}`}
+                                                      ? `Use ${lineSubtotal.toFixed(2)} Believe Points · ${data.quantity} entr${data.quantity > 1 ? 'ies' : 'y'}`
+                                                      : `Support · ${data.quantity} entr${data.quantity > 1 ? 'ies' : 'y'}`}
                                             </Button>
 
                                             {data.quantity > raffle.available_tickets ? (
-                                                <p className="text-center text-sm text-red-600 dark:text-red-400">Not enough tickets left</p>
+                                                <p className="text-center text-sm text-red-600 dark:text-red-400">Not enough entries remaining</p>
                                             ) : null}
                                         </form>
                                         )}
@@ -716,14 +730,14 @@ export default function RaffleShow({
                             )}
 
                             <section className={cn('p-6', cardSurface)}>
-                                <h2 className="mb-4 text-lg font-bold text-foreground">Raffle details</h2>
+                                <h2 className="mb-4 text-lg font-bold text-foreground">Campaign details</h2>
                                 <dl className="space-y-3 text-sm">
                                     {[
-                                        ['Ticket price', `$${raffle.ticket_price}`],
-                                        ['Total tickets', String(raffle.total_tickets)],
-                                        ['Sold', String(raffle.sold_tickets)],
-                                        ['Available', String(raffle.available_tickets)],
-                                        ['Draw date', formatDate(raffle.draw_date)],
+                                        ['Suggested donation', `$${raffle.ticket_price}`],
+                                        ['Maximum entries', String(raffle.total_tickets)],
+                                        ['Entries issued', String(raffle.sold_tickets)],
+                                        ['Entries available', String(raffle.available_tickets)],
+                                        ['Winner selection', formatDate(raffle.draw_date)],
                                         ['Winner spots', String(raffle.winners_count)],
                                     ].map(([k, v]) => (
                                         <div key={k} className="flex justify-between gap-4 border-b border-border pb-2 last:border-0">
@@ -747,9 +761,9 @@ export default function RaffleShow({
                             <section className={cn('p-6', cardSurface)}>
                                 <h2 className="mb-3 flex items-center gap-2 text-lg font-bold text-foreground">
                                     <Ticket className="h-5 w-5 text-primary" />
-                                    Ticket preview
+                                    Entry preview
                                 </h2>
-                                <p className="mb-4 text-sm text-muted-foreground">Sample layout for your purchased tickets</p>
+                                <p className="mb-4 text-sm text-muted-foreground">Sample layout for your digital entry</p>
                                 <div className="flex w-full justify-center pb-2">
                                     <RaffleTicket
                                         ticket={{

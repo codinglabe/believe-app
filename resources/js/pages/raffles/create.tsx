@@ -9,6 +9,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Plus, Trash2, Upload, Calendar, DollarSign, Users, Gift } from 'lucide-react';
 import { PageProps } from '@/types';
 import AppLayout from '@/layouts/app-layout';
+import { SweepstakesComplianceBanner } from '@/components/raffles/SweepstakesComplianceBanner';
+import { SweepstakesSettingsFields } from '@/components/raffles/SweepstakesSettingsFields';
 
 interface Prize {
     name: string;
@@ -23,7 +25,7 @@ export default function CreateRaffle() {
         { name: '', description: '' }
     ]);
 
-    const { data, setData, post, processing, errors, reset } = useForm({
+    const { data, setData, post, processing, errors } = useForm({
         title: '',
         description: '',
         ticket_price: '',
@@ -32,6 +34,21 @@ export default function CreateRaffle() {
         image: null as File | null,
         prizes: prizes,
         winners_count: 3,
+        sweepstakes_type: 'hybrid' as 'free' | 'donation' | 'hybrid',
+        npn_entry_enabled: false,
+        entry_free_online_enabled: false,
+        entry_donation_enabled: true,
+        entry_mail_in_enabled: false,
+        entry_social_bonus_enabled: false,
+        entry_volunteer_enabled: false,
+        official_rules: '',
+        eligibility_rules: '',
+        max_entries_per_person: '',
+        max_free_entries: '',
+        max_donation_entries: '',
+        minimum_age: '',
+        country_restrictions_text: '',
+        state_restrictions_text: '',
     });
 
     const addPrize = () => {
@@ -98,13 +115,17 @@ export default function CreateRaffle() {
 
     return (
         <AppLayout>
-            <Head title="Create Raffle" />
-            
+            <Head title="Create sweepstakes campaign" />
+
             <div className="w-full space-y-6 px-4">
+                <SweepstakesComplianceBanner />
+
                 {/* Header */}
-                <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
-                    <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Create Raffle Draw</h1>
-                    <p className="text-gray-600 dark:text-gray-400">Set up a new raffle draw for your organization</p>
+                <div className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+                    <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Create sweepstakes campaign</h1>
+                    <p className="text-gray-600 dark:text-gray-400">
+                        Configure a campaign, entry methods, and optional suggested donations for your organization.
+                    </p>
                 </div>
 
                 <form onSubmit={handleSubmit}>
@@ -124,17 +145,17 @@ export default function CreateRaffle() {
                                         Basic Information
                                     </CardTitle>
                                     <CardDescription>
-                                        Provide the essential details for your raffle draw
+                                        Campaign basics — use clear titles and descriptions for your public page.
                                     </CardDescription>
                                 </CardHeader>
                                 <CardContent className="space-y-6">
                                     <div className="space-y-2">
-                                        <Label htmlFor="title">Raffle Title *</Label>
+                                        <Label htmlFor="title">Campaign title *</Label>
                                         <Input
                                             id="title"
                                             value={data.title}
                                             onChange={(e) => setData('title', e.target.value)}
-                                            placeholder="Enter raffle title"
+                                            placeholder="Enter campaign title"
                                             className={errors.title ? 'border-red-500' : ''}
                                         />
                                         {errors.title && <p className="text-sm text-red-500">{errors.title}</p>}
@@ -146,7 +167,7 @@ export default function CreateRaffle() {
                                             id="description"
                                             value={data.description}
                                             onChange={(e) => setData('description', e.target.value)}
-                                            placeholder="Describe your raffle draw"
+                                            placeholder="Describe your sweepstakes campaign"
                                             rows={4}
                                             className={errors.description ? 'border-red-500' : ''}
                                         />
@@ -156,8 +177,8 @@ export default function CreateRaffle() {
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                         <div className="space-y-2">
                                             <Label htmlFor="ticket_price" className="flex items-center">
-                                                <DollarSign className="w-4 h-4 mr-1" />
-                                                Ticket Price *
+                                                <DollarSign className="mr-1 h-4 w-4" />
+                                                Suggested donation amount *
                                             </Label>
                                             <Input
                                                 id="ticket_price"
@@ -166,16 +187,20 @@ export default function CreateRaffle() {
                                                 min="0.01"
                                                 value={data.ticket_price}
                                                 onChange={(e) => setData('ticket_price', e.target.value)}
-                                                placeholder="0.00"
+                                                placeholder="e.g. 5.00"
                                                 className={errors.ticket_price ? 'border-red-500' : ''}
                                             />
+                                            <p className="text-xs text-muted-foreground">
+                                                Shown as a suggested donation for donation-based entries. Donations cannot
+                                                be required to enter; enable free / NPN paths above.
+                                            </p>
                                             {errors.ticket_price && <p className="text-sm text-red-500">{errors.ticket_price}</p>}
                                         </div>
 
                                         <div className="space-y-2">
                                             <Label htmlFor="total_tickets" className="flex items-center">
-                                                <Users className="w-4 h-4 mr-1" />
-                                                Total Tickets *
+                                                <Users className="mr-1 h-4 w-4" />
+                                                Maximum entries *
                                             </Label>
                                             <Input
                                                 id="total_tickets"
@@ -193,8 +218,8 @@ export default function CreateRaffle() {
 
                                     <div className="space-y-2">
                                         <Label htmlFor="draw_date" className="flex items-center">
-                                            <Calendar className="w-4 h-4 mr-1" />
-                                            Draw Date & Time *
+                                            <Calendar className="mr-1 h-4 w-4" />
+                                            Winner selection date & time *
                                         </Label>
                                         <Input
                                             id="draw_date"
@@ -207,7 +232,7 @@ export default function CreateRaffle() {
                                     </div>
 
                                     <div className="space-y-2">
-                                        <Label htmlFor="image">Raffle Image</Label>
+                                        <Label htmlFor="image">Campaign image</Label>
                                         <div className="flex items-center space-x-4">
                                             <Input
                                                 id="image"
@@ -238,9 +263,7 @@ export default function CreateRaffle() {
                                             Add Prize
                                         </Button>
                                     </CardTitle>
-                                    <CardDescription>
-                                        Define the prizes for your raffle draw
-                                    </CardDescription>
+                                    <CardDescription>Define prizes for this sweepstakes campaign.</CardDescription>
                                 </CardHeader>
                                 <CardContent className="space-y-4">
                                     {prizes.map((prize, index) => (
@@ -291,25 +314,28 @@ export default function CreateRaffle() {
                         <TabsContent value="settings">
                             <Card>
                                 <CardHeader>
-                                    <CardTitle>Raffle Settings</CardTitle>
+                                    <CardTitle>Compliance & entry configuration</CardTitle>
                                     <CardDescription>
-                                        Configure additional settings for your raffle
+                                        Entry methods, limits, eligibility, and winner selection settings.
                                     </CardDescription>
                                 </CardHeader>
-                                <CardContent className="space-y-6">
-                                    <div className="space-y-2">
-                                        <Label htmlFor="winners_count">Number of Winners</Label>
+                                <CardContent className="space-y-10">
+                                    <SweepstakesSettingsFields data={data} setData={setData} errors={errors} />
+                                    <div className="space-y-2 border-t border-border pt-8">
+                                        <Label htmlFor="winners_count">Winner spots</Label>
                                         <Input
                                             id="winners_count"
                                             type="number"
                                             min="1"
                                             max="10"
                                             value={data.winners_count}
-                                            onChange={(e) => setData('winners_count', parseInt(e.target.value))}
+                                            onChange={(e) =>
+                                                setData('winners_count', parseInt(e.target.value, 10) || 1)
+                                            }
                                             placeholder="3"
                                         />
                                         <p className="text-sm text-gray-500">
-                                            How many winners will be selected for this raffle?
+                                            How many winners will be selected when you run winner selection?
                                         </p>
                                         {errors.winners_count && <p className="text-sm text-red-500">{errors.winners_count}</p>}
                                     </div>
@@ -348,7 +374,7 @@ export default function CreateRaffle() {
                                     disabled={processing || !validateCurrentTab()} 
                                     className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
                                 >
-                                    {processing ? 'Creating...' : 'Create Raffle'}
+                                    {processing ? 'Creating…' : 'Create sweepstakes'}
                                 </Button>
                             )}
                         </div>

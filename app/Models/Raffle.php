@@ -24,12 +24,38 @@ class Raffle extends Model
         'prizes',
         'winners_count',
         'organization_id',
+        'sweepstakes_type',
+        'npn_entry_enabled',
+        'entry_free_online_enabled',
+        'entry_donation_enabled',
+        'entry_mail_in_enabled',
+        'entry_social_bonus_enabled',
+        'entry_volunteer_enabled',
+        'official_rules',
+        'eligibility_rules',
+        'max_entries_per_person',
+        'max_free_entries',
+        'max_donation_entries',
+        'minimum_age',
+        'country_restrictions',
+        'state_restrictions',
+        'winner_selected_at',
+        'winner_selected_by_user_id',
     ];
 
     protected $casts = [
         'draw_date' => 'datetime',
         'prizes' => 'array',
         'ticket_price' => 'decimal:2',
+        'npn_entry_enabled' => 'boolean',
+        'entry_free_online_enabled' => 'boolean',
+        'entry_donation_enabled' => 'boolean',
+        'entry_mail_in_enabled' => 'boolean',
+        'entry_social_bonus_enabled' => 'boolean',
+        'entry_volunteer_enabled' => 'boolean',
+        'country_restrictions' => 'array',
+        'state_restrictions' => 'array',
+        'winner_selected_at' => 'datetime',
     ];
 
     public function organization(): BelongsTo
@@ -45,6 +71,11 @@ class Raffle extends Model
     public function winners(): HasMany
     {
         return $this->hasMany(RaffleWinner::class);
+    }
+
+    public function sweepstakesEntries(): HasMany
+    {
+        return $this->hasMany(SweepstakesEntry::class);
     }
 
     public function getAvailableTicketsAttribute(): int

@@ -161,10 +161,10 @@ const navigationItems = [
     color: "from-blue-500 to-cyan-600",
   },
   {
-    name: "Raffle Tickets",
+    name: "Sweepstakes entries",
     href: "/profile/raffle-tickets",
     icon: Award,
-    description: "My raffle tickets",
+    description: "My sweepstakes entries",
     color: "from-yellow-500 to-orange-600",
   },
   {

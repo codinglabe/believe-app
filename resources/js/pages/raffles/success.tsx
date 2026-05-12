@@ -237,8 +237,8 @@ export default function RaffleSuccessPage({
                             </h1>
                             <p className="mx-auto mb-6 max-w-lg text-base leading-relaxed text-muted-foreground">
                                 {paidWithBelievePoints
-                                    ? 'Your tickets are secured using Believe Points — thank you for supporting this raffle.'
-                                    : 'Payment confirmed. Your raffle tickets are ready below.'}
+                                    ? 'Your entries are secured using Believe Points — thank you for supporting this campaign.'
+                                    : 'Payment confirmed. Your sweepstakes entries are ready below.'}
                             </p>
                             <span
                                 className={cn(
@@ -479,12 +479,12 @@ export default function RaffleSuccessPage({
                                 asChild
                             >
                                 <Link href="/frontend/raffles">
-                                    Browse raffles
+                                    Browse sweepstakes
                                     <ArrowRight className="ml-2 h-4 w-4" />
                                 </Link>
                             </Button>
                             <Button variant="outline" className="h-12 rounded-xl border-border px-8" asChild>
-                                <Link href="/profile/raffle-tickets">My tickets</Link>
+                                <Link href="/profile/raffle-tickets">My entries</Link>
                             </Button>
                         </div>
                     </div>

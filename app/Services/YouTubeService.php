@@ -376,10 +376,35 @@ class YouTubeService
                 'comment_count_formatted' => $detail['comment_count_formatted'] ?? number_format($commentCount),
             ];
             $row['is_youtube_short'] = $this->isYoutubeShort($row);
+            if ($this->shouldOmitFromVideoHub($row)) {
+                continue;
+            }
             $out[] = $row;
         }
 
         return $out;
+    }
+
+    /**
+     * Drop placeholders and API gaps: no empty or 0:00 duration in Videos or Shorts. LIVE streams are kept.
+     *
+     * @param  array<string, mixed>  $v
+     */
+    public function shouldOmitFromVideoHub(array $v): bool
+    {
+        $d = $v['duration'] ?? null;
+        if ($d === 'LIVE') {
+            return false;
+        }
+        if (! is_string($d) || $d === '' || trim($d) === '0:00') {
+            return true;
+        }
+        $sec = (int) ($v['duration_seconds'] ?? 0);
+        if ($sec < 1) {
+            $sec = $this->formattedDurationToSeconds($d);
+        }
+
+        return $sec < 1;
     }
 
     /**
