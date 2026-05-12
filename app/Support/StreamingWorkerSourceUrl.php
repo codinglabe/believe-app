@@ -38,6 +38,18 @@ final class StreamingWorkerSourceUrl
         return 'ls_'.$livestream->id;
     }
 
+    public static function bridgeMediaMtxHost(): ?string
+    {
+        $host = trim((string) config('streaming.bridge.host', ''));
+
+        return $host !== '' ? $host : null;
+    }
+
+    public static function hasBridgeConfigured(): bool
+    {
+        return self::bridgeMediaMtxHost() !== null;
+    }
+
     private static function workerRtmpPullBase(): string
     {
         $explicit = (string) config('streaming.worker_rtmp_pull_base', '');

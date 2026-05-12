@@ -160,6 +160,7 @@ use App\Http\Controllers\SupporterLivestreamController;
 use App\Http\Controllers\TopicController;
 use App\Http\Controllers\TransactionController;
 use App\Http\Controllers\UnityLiveController;
+use App\Http\Controllers\UnityLoavesController;
 use App\Http\Controllers\UserProfileController;
 use App\Http\Controllers\UsersInterestedTopicsController;
 use App\Http\Controllers\VolunteerAvailableSupportersController;
@@ -219,6 +220,9 @@ Route::get('/robots.txt', function () {
 
 // Discover Care Alliances (public — same listing whether or not you’re logged in)
 Route::get('/find-care-alliances', [FindCareAlliancesController::class, 'index'])->name('find-care-alliances.index');
+
+// Unity Loaves Network Directory (public)
+Route::get('/unity-loaves', [UnityLoavesController::class, 'index'])->name('unity-loaves.index');
 
 // Social Media Feed Routes
 Route::middleware(['auth', 'EnsureEmailIsVerified'])->group(function () {

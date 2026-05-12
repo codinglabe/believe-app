@@ -280,16 +280,22 @@ class UserLivestream extends Model
         $displayName = $settings['display_name'] ?? null;
         $recordEnabled = (bool) ($settings['record_meeting'] ?? true);
         $hostName = $displayName ?: ($this->user?->name ?? 'Host');
-        $roomName = $this->getVdoRoomName();
-        $room = rawurlencode($roomName);
-        $push = rawurlencode($roomName);
+        $streamKey = \App\Support\StreamingWorkerSourceUrl::streamPath($this);
+        $room = rawurlencode($streamKey);
+        $push = rawurlencode($streamKey);
         $label = rawurlencode($hostName);
         $pass = rawurlencode((string) $this->getDecryptedPassword());
         $passwordParam = $pass !== '' ? '&password=' . $pass : '';
         $initial = mb_substr(trim($hostName), 0, 1) ?: 'H';
         $avatarParam = '&avatar=' . rawurlencode("https://ui-avatars.com/api/?name={$initial}&size=256&length=1");
         $recordParam = $recordEnabled ? '&record' : '';
-        $base = "https://vdo.ninja/?room={$room}&push={$push}&label={$label}{$recordParam}&quality=0&bitrate=6000&audiodevice=1&videodevice=1&showlabels=1&showall&style=6{$avatarParam}&autostart&noheader{$passwordParam}";
+        $base = "https://vdo.ninja/?room={$room}&push={$push}&label={$label}{$recordParam}&quality=0&bitrate=6000&audiodevice=1&videodevice=1&proaudio&stereo=2&showlabels=1&showall&style=6{$avatarParam}&autostart&noheader{$passwordParam}";
+
+        $mediaMtxHost = \App\Support\StreamingWorkerSourceUrl::bridgeMediaMtxHost();
+        if ($mediaMtxHost !== null) {
+            // VDO publishes to /{room}/{push}/whip through MediaMTX; force H.264 for RTMP remuxing.
+            $base .= '&mediamtx=' . $mediaMtxHost . '&codec=h264';
+        }
 
         if ($recordEnabled && $recordToDropbox) {
             $ctx = $this->resolveDropboxUploadContext();

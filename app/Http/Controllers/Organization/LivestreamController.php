@@ -689,7 +689,7 @@ class LivestreamController extends Controller
      * Enqueue AWS streaming worker (SQS): pull meeting video from the host VDO URL and push RTMP to YouTube.
      * Legacy route "go-live-obs-auto" is an alias — this does not use OBS.
      */
-    public function queueStreamRelayJob(Request $request, $id, StreamingQueueService $streamingQueue, StreamingPreflight $preflight)
+    public function queueStreamRelayJob(Request $request, $id, StreamingQueueService $streamingQueue, StreamingPreflight $preflight, YouTubeService $youtubeService)
     {
         $user = Auth::user();
         $organization = $user->organization ?? Organization::where('user_id', $user->id)->first();
@@ -712,9 +712,13 @@ class LivestreamController extends Controller
             return redirect()->back()->withErrors(['go_live' => $gate->reason]);
         }
 
-        $streamKey = $livestream->getDecryptedStreamKey();
-        if (! $streamKey) {
-            return redirect()->back()->withErrors(['go_live' => 'Missing YouTube stream key. Add it first in settings.']);
+        // Auto-resolve a current YouTube stream key. Reuses existing broadcast (by id, then by title)
+        // before creating a new one so multiple meetings under the same name share one YouTube live.
+        $streamKey = $this->ensureFreshYouTubeStreamKey($organization, $livestream, $youtubeService);
+        if ($streamKey === null) {
+            return redirect()->back()->withErrors([
+                'go_live' => 'No YouTube stream is ready. Click "Prepare YouTube Live" first, or connect YouTube under Integrations.',
+            ]);
         }
 
         if ($streamingQueue->willUseRealSqs() && ! StreamingWorkerSourceUrl::hasWorkerIngestConfigured()) {
@@ -840,10 +844,6 @@ class LivestreamController extends Controller
         $livestream = OrganizationLivestream::where('organization_id', $organization->id)
             ->findOrFail($id);
 
-        if (! empty($livestream->youtube_stream_key)) {
-            return redirect()->back()->with('success', 'This meeting already has a stream key.');
-        }
-
         if (empty($organization->youtube_access_token) && empty($organization->youtube_refresh_token)) {
             return redirect()->back()->withErrors(['youtube' => 'Connect YouTube in Integrations first, then try again.']);
         }
@@ -854,6 +854,35 @@ class LivestreamController extends Controller
         }
 
         $title = $livestream->title ?: 'Unity Meet - ' . $organization->name;
+
+        // 1. Already-bound broadcast on this row → refresh its key from YouTube (handles stale keys).
+        if (! empty($livestream->youtube_broadcast_id)) {
+            $existing = $youtubeService->getBroadcastStreamKey($accessToken, $livestream->youtube_broadcast_id);
+            if ($existing && ! empty($existing['stream_key'])) {
+                $this->persistOrgYoutubeKey($livestream, $livestream->youtube_broadcast_id, $existing['stream_key'], $existing['rtmp_url'] ?? null);
+                return redirect()->back()->with(
+                    'success',
+                    'YouTube live already created — existing broadcast and stream key reused.'
+                );
+            }
+            Log::warning('YouTube broadcast missing on remote (org), falling back to title lookup / create', [
+                'livestream_id' => $livestream->id,
+                'previous_broadcast_id' => $livestream->youtube_broadcast_id,
+            ]);
+        }
+
+        // 2. Reuse a non-completed broadcast on the channel with the same title (avoids duplicate
+        //    YouTube lives when an org creates multiple meetings under the same name).
+        $existingByTitle = $youtubeService->findBroadcastStreamKeyByTitle($accessToken, $title);
+        if ($existingByTitle && ! empty($existingByTitle['stream_key'])) {
+            $this->persistOrgYoutubeKey($livestream, $existingByTitle['broadcast_id'], $existingByTitle['stream_key'], $existingByTitle['rtmp_url'] ?? null);
+            return redirect()->back()->with(
+                'success',
+                'YouTube live with this name already exists — existing broadcast and stream key reused.'
+            );
+        }
+
+        // 3. No existing broadcast — create a fresh one.
         $scheduledStart = $livestream->scheduled_at && $livestream->scheduled_at->isFuture()
             ? $livestream->scheduled_at
             : null;
@@ -871,19 +900,81 @@ class LivestreamController extends Controller
             ]);
         }
 
-        $settings = $livestream->settings ?? [];
-        $settings['rtmp_url'] = $broadcastData['rtmp_url'] ?? ($settings['rtmp_url'] ?? null);
-
-        $livestream->update([
-            'youtube_stream_key' => Crypt::encryptString($broadcastData['stream_key']),
-            'youtube_broadcast_id' => $broadcastData['broadcast_id'],
-            'settings' => ! empty($settings) ? $settings : null,
-        ]);
+        $this->persistOrgYoutubeKey($livestream, $broadcastData['broadcast_id'], $broadcastData['stream_key'], $broadcastData['rtmp_url'] ?? null);
 
         return redirect()->back()->with(
             'success',
             'YouTube live is ready on your connected channel. Your stream key was saved — click Go Live when you are ready.'
         );
+    }
+
+    private function persistOrgYoutubeKey(OrganizationLivestream $livestream, string $broadcastId, string $streamKey, ?string $rtmpUrl): void
+    {
+        $settings = $livestream->settings ?? [];
+        if (! empty($rtmpUrl)) {
+            $settings['rtmp_url'] = $rtmpUrl;
+        }
+        $livestream->update([
+            'youtube_broadcast_id' => $broadcastId,
+            'youtube_stream_key' => Crypt::encryptString($streamKey),
+            'settings' => ! empty($settings) ? $settings : null,
+        ]);
+    }
+
+    /**
+     * Make sure the org livestream has a usable YouTube stream key right now.
+     * Mirrors the supporter helper: refresh existing broadcast key, else reuse-by-title, else create.
+     */
+    private function ensureFreshYouTubeStreamKey(Organization $organization, OrganizationLivestream $livestream, YouTubeService $youtubeService): ?string
+    {
+        if (empty($organization->youtube_access_token) && empty($organization->youtube_refresh_token)) {
+            $manual = $livestream->getDecryptedStreamKey();
+            return $manual !== '' ? $manual : null;
+        }
+
+        $accessToken = $youtubeService->getValidAccessToken($organization);
+        if (! $accessToken) {
+            $manual = $livestream->getDecryptedStreamKey();
+            return $manual !== '' ? $manual : null;
+        }
+
+        $title = $livestream->title ?: 'Unity Meet - ' . $organization->name;
+
+        if (! empty($livestream->youtube_broadcast_id)) {
+            $existing = $youtubeService->getBroadcastStreamKey($accessToken, $livestream->youtube_broadcast_id);
+            if ($existing && ! empty($existing['stream_key'])) {
+                $this->persistOrgYoutubeKey($livestream, $livestream->youtube_broadcast_id, $existing['stream_key'], $existing['rtmp_url'] ?? null);
+                return $existing['stream_key'];
+            }
+            Log::warning('YouTube broadcast missing on remote at Go Live (org); will look up by title or create a new one', [
+                'livestream_id' => $livestream->id,
+                'previous_broadcast_id' => $livestream->youtube_broadcast_id,
+            ]);
+        }
+
+        $byTitle = $youtubeService->findBroadcastStreamKeyByTitle($accessToken, $title);
+        if ($byTitle && ! empty($byTitle['stream_key'])) {
+            $this->persistOrgYoutubeKey($livestream, $byTitle['broadcast_id'], $byTitle['stream_key'], $byTitle['rtmp_url'] ?? null);
+            return $byTitle['stream_key'];
+        }
+
+        $scheduledStart = $livestream->scheduled_at && $livestream->scheduled_at->isFuture()
+            ? $livestream->scheduled_at
+            : null;
+
+        $created = $youtubeService->createLiveBroadcast(
+            $accessToken,
+            $title,
+            $livestream->description,
+            $scheduledStart
+        );
+        if ($created && ! empty($created['stream_key'])) {
+            $this->persistOrgYoutubeKey($livestream, $created['broadcast_id'], $created['stream_key'], $created['rtmp_url'] ?? null);
+            return $created['stream_key'];
+        }
+
+        $manual = $livestream->getDecryptedStreamKey();
+        return $manual !== '' ? $manual : null;
     }
 
     /**
