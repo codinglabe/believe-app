@@ -64,19 +64,26 @@ export default function RafflesIndex({ raffles, filters }: RafflesIndexProps) {
 
     const getStatusBadge = (raffle: Raffle) => {
         if (raffle.is_completed) {
-            return <Badge variant="secondary" className="bg-green-100 text-green-800"><CheckCircle className="w-3 h-3 mr-1" />Completed</Badge>;
-        }
-        if (raffle.is_draw_time) {
-            return <Badge variant="destructive" className="bg-red-100 text-red-800"><Clock className="w-3 h-3 mr-1" />Draw Time!</Badge>;
-        }
-        if (raffle.status === 'active' && raffle.is_active) {
-            return <Badge variant="default" className="bg-blue-100 text-blue-800">Active</Badge>;
+            return (
+                <Badge variant="secondary" className="bg-green-100 text-green-800">
+                    <CheckCircle className="mr-1 h-3 w-3" />
+                    Completed
+                </Badge>
+            );
         }
         if (raffle.status === 'cancelled') {
             return <Badge variant="outline">Cancelled</Badge>;
         }
-        if (raffle.status === 'active' && !raffle.is_active) {
-            return <Badge variant="destructive" className="bg-red-100 text-red-800"><Clock className="w-3 h-3 mr-1" />Draw Time!</Badge>;
+        if (raffle.is_draw_time) {
+            return (
+                <Badge variant="outline" className="border-amber-200 bg-amber-100 text-amber-900">
+                    <Clock className="mr-1 h-3 w-3" />
+                    Draw near
+                </Badge>
+            );
+        }
+        if (raffle.is_active) {
+            return <Badge variant="default" className="bg-blue-100 text-blue-800">Active</Badge>;
         }
         return <Badge variant="outline">Inactive</Badge>;
     };

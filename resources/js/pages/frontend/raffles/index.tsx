@@ -118,6 +118,13 @@ export default function RafflesIndex({ raffles, filters }: RafflesIndexProps) {
                 </span>
             );
         }
+        if (raffle.status === 'cancelled') {
+            return (
+                <span className="inline-flex items-center gap-1 rounded-full border border-border bg-muted/50 px-2.5 py-0.5 text-xs font-semibold text-muted-foreground">
+                    Cancelled
+                </span>
+            );
+        }
         if (raffle.is_draw_time) {
             return (
                 <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2.5 py-0.5 text-xs font-semibold text-amber-900 dark:text-amber-100">
