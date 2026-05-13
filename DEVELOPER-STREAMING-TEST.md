@@ -4,18 +4,104 @@ For when you want to verify the **real** Laravel → AWS → YouTube pipeline on
 
 You do **not** need AWS console access, AWS CLI, or to touch any Terraform. The AWS side (MediaMTX bridge + Fargate worker autoscaler + SQS) stays running 24/7. Your laptop just produces SQS messages and accepts callbacks.
 
-If you just want to develop the UI and don't care whether video actually reaches YouTube, use simulate mode instead — `STREAMING_SIMULATE_WORKER=true` in `.env` and you can skip this whole document.
+## Pick a mode first
+
+| Mode | Sees video on YouTube | UI status pill updates | What you install |
+|---|---|---|---|
+| **Simulate** (`STREAMING_SIMULATE_WORKER=true`) | ❌ no AWS at all | ✅ in-process | nothing extra — works offline |
+| **Real, no tunnel** (`STREAMING_CALLBACK_BASE_URL=`) | ✅ | ❌ stuck at `queued` | nothing extra |
+| **Real, full** (this doc) | ✅ | ✅ | cloudflared + ffmpeg |
+
+Use **Simulate** if you're working on UI only. Use **Real, full** if you're verifying a streaming change end-to-end. Read on for the latter.
 
 ## What you need before you start
 
-- PHP 8.2 on the path as `php8.2` (system `php` is 8.1; commands will refuse with a platform check)
+Tools (install instructions in the next section):
+
+- PHP 8.2 on the path as `php8.2` (system `php` is often 8.1; commands will refuse with a platform check)
 - Docker (for the local MySQL)
-- `cloudflared` installed and on the path
+- `cloudflared` (Cloudflare Tunnel client)
 - `ffmpeg` (only needed for Path A below)
 - A YouTube channel + stream key for the destination (any test channel; YouTube Studio → Go Live → Stream → "Stream key")
-- These three values from Dosh (paste into `.env` as you go):
-  - `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY` for the **Laravel producer IAM user**. This key only has `sqs:SendMessage` on the streaming queue — it cannot read the queue, scale workers, or do anything else, so it is safe to put on your laptop.
-  - `LARAVEL_CALLBACK_TOKEN`. The worker uses this to authenticate its status callbacks. Must match what AWS Secrets Manager has — otherwise the worker's POSTs get 401 and your UI status pill never updates.
+
+Secrets — get these from Dosh on a private channel (not WhatsApp / Slack channels):
+
+- `AWS_ACCESS_KEY_ID` + `AWS_SECRET_ACCESS_KEY` for the **Laravel producer IAM user**. This key only has `sqs:SendMessage` on the streaming queue — it cannot read the queue, scale workers, or do anything else, so it is safe to put on your laptop.
+- `LARAVEL_CALLBACK_TOKEN`. The worker uses this to authenticate its status callbacks. Must match what AWS Secrets Manager has — otherwise the worker's POSTs get 401 and your UI status pill never updates.
+
+## Install the tools
+
+### PHP 8.2
+
+```bash
+# Ubuntu / Debian
+sudo apt update
+sudo apt install -y software-properties-common
+sudo add-apt-repository -y ppa:ondrej/php
+sudo apt update
+sudo apt install -y php8.2 php8.2-cli php8.2-mbstring php8.2-xml php8.2-curl php8.2-zip php8.2-mysql php8.2-bcmath php8.2-intl php8.2-gd
+
+# macOS
+brew install php@8.2
+brew link --overwrite --force php@8.2
+
+# verify
+php8.2 -v
+```
+
+### Composer + Node
+
+```bash
+# Composer (Linux/macOS)
+curl -sS https://getcomposer.org/installer | php8.2 -- --install-dir=/usr/local/bin --filename=composer
+
+# Node 18+ via nvm (system Node may be too old for Vite)
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
+nvm install 18 && nvm use 18
+```
+
+### Docker
+
+Use Docker Desktop on macOS / Windows, or `apt install docker.io` on Ubuntu. Make sure your user is in the `docker` group so you don't need `sudo`:
+
+```bash
+sudo usermod -aG docker $USER && newgrp docker
+docker run hello-world   # should print "Hello from Docker!"
+```
+
+### cloudflared
+
+This is the bit the AWS worker needs to reach your laptop. It's a single static binary from Cloudflare — no account, no signup. Quick-tunnels (the kind you'll use) are free and ephemeral.
+
+```bash
+# Ubuntu / Debian (apt)
+curl -L https://pkg.cloudflare.com/cloudflare-main.gpg | sudo tee /usr/share/keyrings/cloudflare-main.gpg >/dev/null
+echo "deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg] https://pkg.cloudflare.com/cloudflared $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/cloudflared.list
+sudo apt update && sudo apt install -y cloudflared
+
+# Ubuntu / Debian (direct .deb — works on any distro)
+wget https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
+sudo dpkg -i cloudflared-linux-amd64.deb
+
+# macOS
+brew install cloudflare/cloudflare/cloudflared
+
+# Windows (PowerShell as Administrator)
+winget install --id Cloudflare.cloudflared
+
+# verify
+cloudflared --version
+```
+
+That's it — no `cloudflared login`, no Cloudflare account needed for what we're doing. A "quick tunnel" (started with `--url`) produces a throwaway `*.trycloudflare.com` hostname for 1–2 hours, which is plenty for a test session.
+
+### ffmpeg (only for Path A)
+
+```bash
+sudo apt install -y ffmpeg          # Ubuntu / Debian
+brew install ffmpeg                  # macOS
+winget install ffmpeg                # Windows
+```
 
 ## Setup
 
