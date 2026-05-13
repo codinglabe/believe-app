@@ -358,6 +358,13 @@ PROMPT;
         }
 
         $model = (string) config('services.ai_media_studio.openai_model', 'gpt-4o-mini');
+        $minD = (int) config('services.ai_media_studio.video_duration_min', 5);
+        $maxD = (int) config('services.ai_media_studio.video_duration_max', 10);
+        if ($maxD < $minD) {
+            $maxD = $minD;
+        }
+        $dsec = max($minD, min($maxD, (int) ($context['duration_seconds'] ?? $maxD)));
+
         $userPayload = [
             'video_title' => $context['title'],
             'user_prompt' => $context['user_prompt'] ?? '',
@@ -365,10 +372,10 @@ PROMPT;
             'template_label' => $context['template_label'] ?? null,
             'template_inputs' => $context['template_inputs'] ?? [],
             'orientation' => $context['orientation'] ?? '9:16',
-            'duration_seconds' => $context['duration_seconds'] ?? 10,
+            'duration_seconds' => $dsec,
         ];
 
-        $system = <<<'PROMPT'
+        $system = <<<PROMPT
 You are a senior creative director for short vertical nonprofit/social videos (faith-friendly, inclusive tone).
 Return ONLY a single JSON object (no markdown) with these exact keys:
 - "ai_script": string — multi-sentence production brief: scenes, camera, lighting, emotion, pacing, on-screen text ideas, optional voiceover lines. Plain text inside the string (use \n for newlines).
@@ -377,6 +384,7 @@ Return ONLY a single JSON object (no markdown) with these exact keys:
 - "hashtags": array of 5–12 short strings WITHOUT the # character (e.g. "nonprofit" not "#nonprofit").
 
 Rules: Keep content appropriate for all ages; avoid graphic violence, hate, or medical claims. If inputs are sparse, still produce a coherent mini-story.
+The video runtime target is **{$dsec} seconds** (hard platform limit: {$minD}–{$maxD} seconds). Pace scenes and detail for exactly that length.
 PROMPT;
 
         $userJson = json_encode($userPayload, JSON_INVALID_UTF8_SUBSTITUTE);

@@ -6,6 +6,7 @@ use App\Jobs\ProcessAiVideoGenerationJob;
 use App\Models\AiVideo;
 use App\Models\Organization;
 use App\Models\User;
+use App\Services\AiMediaStudioDropboxService;
 use App\Support\AiMediaStudioTemplates;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -71,6 +72,8 @@ class AiMediaStudioController extends Controller
             'ai_media_studio_credits' => (int) ($user->ai_media_studio_credits ?? 0),
             'media_studio_credit_cost' => (int) config('services.ai_media_studio.credits_per_generation', 1),
             'media_studio_packs' => config('services.ai_media_studio.supporter_packs', []),
+            'video_duration_min' => (int) config('services.ai_media_studio.video_duration_min', 5),
+            'video_duration_max' => (int) config('services.ai_media_studio.video_duration_max', 10),
         ]);
     }
 
@@ -79,12 +82,18 @@ class AiMediaStudioController extends Controller
         $user = $request->user();
         $templateKeys = collect(self::videoTemplates())->pluck('key')->all();
 
+        $minDur = (int) config('services.ai_media_studio.video_duration_min', 5);
+        $maxDur = (int) config('services.ai_media_studio.video_duration_max', 10);
+        if ($maxDur < $minDur) {
+            $maxDur = $minDur;
+        }
+
         $validated = $request->validate([
             'title' => ['required', 'string', 'max:255'],
             'prompt' => ['nullable', 'string', 'max:8000'],
             'template_key' => ['nullable', 'string', Rule::in($templateKeys)],
             'orientation' => ['nullable', 'string', Rule::in(['9:16', '16:9'])],
-            'duration_seconds' => ['nullable', 'integer', 'min:5', 'max:120'],
+            'duration_seconds' => ['nullable', 'integer', 'min:'.$minDur, 'max:'.$maxDur],
             'organization_id' => ['nullable', 'integer', 'exists:organizations,id'],
             'template_inputs' => ['nullable', 'array'],
             'template_inputs.title' => ['nullable', 'string', 'max:500'],
@@ -110,12 +119,16 @@ class AiMediaStudioController extends Controller
         $orientation = $validated['orientation'] ?? '9:16';
         $resolution = $orientation === '9:16' ? '1080x1920' : '1920x1080';
 
+        $durationSeconds = isset($validated['duration_seconds'])
+            ? max($minDur, min($maxDur, (int) $validated['duration_seconds']))
+            : (int) round(($minDur + $maxDur) / 2);
+
         $cost = (int) config('services.ai_media_studio.credits_per_generation', 1);
         $cost = max(1, $cost);
 
         $video = null;
 
-        DB::transaction(function () use ($user, $validated, $organizationId, $orientation, $resolution, $cost, &$video) {
+        DB::transaction(function () use ($user, $validated, $organizationId, $orientation, $resolution, $durationSeconds, $cost, &$video) {
             $locked = User::query()->whereKey($user->id)->lockForUpdate()->first();
             if (! $locked) {
                 throw ValidationException::withMessages(['title' => 'Account not found.']);
@@ -138,7 +151,7 @@ class AiMediaStudioController extends Controller
                 'template_inputs' => $validated['template_inputs'] ?? null,
                 'orientation' => $orientation,
                 'resolution' => $resolution,
-                'duration_seconds' => $validated['duration_seconds'] ?? 10,
+                'duration_seconds' => $durationSeconds,
                 'status' => AiVideo::STATUS_PENDING_PROMPT,
                 'media_studio_credits_charged' => $cost,
             ]);
@@ -160,6 +173,7 @@ class AiMediaStudioController extends Controller
         $aiVideo->loadMissing(['organization:id,name', 'user:id,name']);
 
         return Inertia::render('AiMediaStudio/Show', [
+            'context' => Organization::forAuthUser($request->user()) ? 'organization' : 'supporter',
             'video' => [
                 'id' => $aiVideo->id,
                 'title' => $aiVideo->title,
@@ -175,6 +189,7 @@ class AiMediaStudioController extends Controller
                 'fal_model' => $aiVideo->fal_model,
                 'fal_job_id' => $aiVideo->fal_job_id,
                 'video_source_url' => $aiVideo->video_source_url,
+                'fal_cdn_url' => $aiVideo->fal_cdn_url,
                 'duration_seconds' => $aiVideo->duration_seconds,
                 'resolution' => $aiVideo->resolution,
                 'orientation' => $aiVideo->orientation,
@@ -196,6 +211,28 @@ class AiMediaStudioController extends Controller
                 'creator_name' => $aiVideo->user?->name,
             ],
         ]);
+    }
+
+    public function download(Request $request, AiVideo $aiVideo): RedirectResponse
+    {
+        $this->authorizeView($request->user(), $aiVideo);
+        $aiVideo->refresh();
+
+        $tmp = app(AiMediaStudioDropboxService::class)->temporaryDownloadUrl($aiVideo);
+        if (is_string($tmp) && $tmp !== '') {
+            return redirect()->away($tmp);
+        }
+
+        $falCdn = $aiVideo->fal_cdn_url;
+        if (is_string($falCdn) && str_starts_with($falCdn, 'http')) {
+            return redirect()->away($falCdn);
+        }
+
+        if (is_string($aiVideo->video_source_url) && str_starts_with($aiVideo->video_source_url, 'http')) {
+            return redirect()->away($aiVideo->video_source_url);
+        }
+
+        abort(404, 'Video file is not available yet.');
     }
 
     private function videosForUser(User $user): \Illuminate\Database\Eloquent\Builder

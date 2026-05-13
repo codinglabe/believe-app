@@ -13,14 +13,33 @@ use RuntimeException;
  */
 class FalVideoService
 {
+    /**
+     * JSON POST client (queue submit). Do not use for GET polling — fal returns HTTP 405 if GET
+     * carries Content-Type: application/json (common CDN / API gateway behavior).
+     */
     protected function http(): \Illuminate\Http\Client\PendingRequest
+    {
+        return $this->httpBase()
+            ->withHeaders([
+                'Content-Type' => 'application/json',
+            ]);
+    }
+
+    /**
+     * GET polling / result fetch: Authorization only + Accept JSON (no Content-Type on GET).
+     */
+    protected function httpRead(): \Illuminate\Http\Client\PendingRequest
+    {
+        return $this->httpBase()->acceptJson();
+    }
+
+    protected function httpBase(): \Illuminate\Http\Client\PendingRequest
     {
         $verify = config('services.fal.verify_ssl', true);
 
         return Http::withOptions(['verify' => $verify])
             ->withHeaders([
                 'Authorization' => 'Key '.$this->apiKey(),
-                'Content-Type' => 'application/json',
             ])
             ->timeout(120)
             ->connectTimeout(30);
@@ -52,15 +71,30 @@ class FalVideoService
 
     /**
      * Merge prompt with optional extras from FAL_VIDEO_INPUT_EXTRAS (JSON object).
+     * Duration is sent when `services.ai_media_studio.fal_duration_param` is non-empty (model-specific).
      *
      * @return array<string, mixed>
      */
-    public function buildQueueInput(string $prompt): array
+    public function buildQueueInput(string $prompt, ?int $durationSeconds = null): array
     {
         $input = [
             'prompt' => $prompt,
             'prompt_optimizer' => true,
         ];
+
+        $param = trim((string) config('services.ai_media_studio.fal_duration_param', 'duration'));
+        if ($param !== '' && $durationSeconds !== null) {
+            $min = (int) config('services.ai_media_studio.video_duration_min', 5);
+            $max = (int) config('services.ai_media_studio.video_duration_max', 10);
+            if ($max < $min) {
+                $max = $min;
+            }
+            $d = max($min, min($max, $durationSeconds));
+            $input[$param] = filter_var(config('services.ai_media_studio.fal_duration_as_string', false), FILTER_VALIDATE_BOOLEAN)
+                ? (string) $d
+                : $d;
+        }
+
         $extrasRaw = config('services.fal.video_input_extras');
         if (is_string($extrasRaw) && $extrasRaw !== '') {
             $decoded = json_decode($extrasRaw, true);
@@ -91,7 +125,12 @@ class FalVideoService
             throw new RuntimeException('fal.ai submit failed: HTTP '.$submit->status());
         }
 
-        $requestId = $submit->json('request_id');
+        $submitBody = $submit->json();
+        if (! is_array($submitBody)) {
+            throw new RuntimeException('fal.ai submit response was not JSON.');
+        }
+
+        $requestId = $submitBody['request_id'] ?? null;
         if (! is_string($requestId) || $requestId === '') {
             throw new RuntimeException('fal.ai submit response missing request_id.');
         }
@@ -100,10 +139,16 @@ class FalVideoService
         $maxWait = (int) config('services.ai_media_studio.fal_max_wait_seconds', 900);
         $deadline = microtime(true) + $maxWait;
 
-        $statusBase = 'https://queue.fal.run/'.$modelId.'/requests/'.rawurlencode($requestId);
+        $requestBase = 'https://queue.fal.run/'.$modelId.'/requests/'.rawurlencode($requestId);
+        $statusPollUrl = isset($submitBody['status_url']) && is_string($submitBody['status_url']) && $submitBody['status_url'] !== ''
+            ? $submitBody['status_url']
+            : $requestBase.'/status';
+        $resultFetchUrl = isset($submitBody['response_url']) && is_string($submitBody['response_url']) && $submitBody['response_url'] !== ''
+            ? $submitBody['response_url']
+            : $requestBase;
 
         while (microtime(true) < $deadline) {
-            $statusRes = $this->http()->get($statusBase.'/status');
+            $statusRes = $this->httpRead()->get($statusPollUrl);
             if ($statusRes->failed()) {
                 Log::warning('fal.ai status poll failed', ['status' => $statusRes->status(), 'body' => $statusRes->body()]);
                 sleep($pollInterval);
@@ -132,7 +177,7 @@ class FalVideoService
             throw new RuntimeException('fal.ai generation timed out after '.$maxWait.'s (request_id: '.$requestId.').');
         }
 
-        $resultRes = $this->http()->get($statusBase);
+        $resultRes = $this->httpRead()->get($resultFetchUrl);
         if ($resultRes->failed()) {
             Log::error('fal.ai result fetch failed', [
                 'status' => $resultRes->status(),
@@ -165,9 +210,18 @@ class FalVideoService
      */
     protected function extractVideoUrl(array $payload): ?string
     {
+        // Direct URL string (some models / wrappers)
+        if (isset($payload['video']) && is_string($payload['video']) && str_starts_with($payload['video'], 'http')) {
+            return $payload['video'];
+        }
+
         $candidates = [
             ['video', 'url'],
+            ['video', 'file', 'url'],
             ['output', 'video', 'url'],
+            ['output', 'video', 'file', 'url'],
+            ['data', 'video', 'url'],
+            ['result', 'video', 'url'],
         ];
 
         foreach ($candidates as $path) {
@@ -188,9 +242,68 @@ class FalVideoService
             return $payload['video_url'];
         }
 
+        // First entry in a `videos` array (some endpoints)
+        if (isset($payload['videos']) && is_array($payload['videos']) && $payload['videos'] !== []) {
+            $first = $payload['videos'][0] ?? null;
+            if (is_string($first) && str_starts_with($first, 'http')) {
+                return $first;
+            }
+            if (is_array($first)) {
+                $nested = $this->extractVideoUrl($first);
+                if ($nested !== null) {
+                    return $nested;
+                }
+            }
+        }
+
         // Some models nest under "data"
         if (isset($payload['data']) && is_array($payload['data'])) {
-            return $this->extractVideoUrl($payload['data']);
+            $nested = $this->extractVideoUrl($payload['data']);
+            if ($nested !== null) {
+                return $nested;
+            }
+        }
+
+        if (isset($payload['output']) && is_array($payload['output'])) {
+            $nested = $this->extractVideoUrl($payload['output']);
+            if ($nested !== null) {
+                return $nested;
+            }
+        }
+
+        // Last resort: shallow scan for a hosted media URL (WAN / fal file CDN shapes)
+        return $this->findHttpVideoUrlInPayload($payload, 0);
+    }
+
+    /**
+     * Breadth-first search for a plausible video file URL (bounded depth/size).
+     *
+     * @param  array<string, mixed>  $payload
+     */
+    protected function findHttpVideoUrlInPayload(array $payload, int $depth): ?string
+    {
+        if ($depth > 6) {
+            return null;
+        }
+
+        foreach ($payload as $value) {
+            if (is_string($value) && str_starts_with($value, 'http')) {
+                if (preg_match('#\.(mp4|webm)(\?|/|$)#i', $value)
+                    || str_contains($value, 'fal.media')
+                    || str_contains($value, 'fal-cdn')
+                    || str_contains($value, 'falserverless')) {
+                    return $value;
+                }
+            }
+        }
+
+        foreach ($payload as $value) {
+            if (is_array($value)) {
+                $found = $this->findHttpVideoUrlInPayload($value, $depth + 1);
+                if ($found !== null) {
+                    return $found;
+                }
+            }
         }
 
         return null;

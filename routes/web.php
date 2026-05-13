@@ -824,6 +824,7 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected', 'permissi
         Route::get('/', [AiMediaStudioController::class, 'index'])->name('index');
         Route::get('/create', [AiMediaStudioController::class, 'create'])->middleware('permission:ai.media.create')->name('create');
         Route::post('/', [AiMediaStudioController::class, 'store'])->middleware('permission:ai.media.create')->name('store');
+        Route::get('/{ai_video}/download', [AiMediaStudioController::class, 'download'])->name('download');
         Route::get('/{ai_video}', [AiMediaStudioController::class, 'show'])->name('show');
     });
 

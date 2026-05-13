@@ -38,6 +38,7 @@ class AiVideo extends Model
         'fal_model',
         'fal_job_id',
         'video_source_url',
+        'fal_cdn_url',
         'duration_seconds',
         'resolution',
         'orientation',

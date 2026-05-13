@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Organization;
 use App\Models\Transaction;
 use App\Support\StripeCustomerChargeAmount;
 use Illuminate\Http\Request;
@@ -14,6 +15,45 @@ use Laravel\Cashier\Cashier;
 
 class CreditPurchaseController extends Controller
 {
+    /**
+     * @return list<array{id: int, created_at: string, amount_usd: float, status: string, payment_method: string|null, wallet: string, quantity: int, summary: string, package: string|null}>
+     */
+    protected function purchaseHistoryForUser(int $userId): array
+    {
+        return Transaction::query()
+            ->where('user_id', $userId)
+            ->where('type', 'credit_purchase')
+            ->orderByDesc('created_at')
+            ->limit(50)
+            ->get()
+            ->map(function (Transaction $t) {
+                $meta = is_array($t->meta) ? $t->meta : [];
+                $wallet = isset($meta['credit_wallet']) && is_string($meta['credit_wallet'])
+                    ? $meta['credit_wallet']
+                    : 'credits';
+                $isStudio = $wallet === 'ai_media_studio';
+                $qty = $isStudio
+                    ? (int) ($meta['ai_media_studio_credits_added'] ?? $meta['media_credits_to_add'] ?? 0)
+                    : (int) ($meta['credits_added'] ?? $meta['credits_to_add'] ?? 0);
+
+                return [
+                    'id' => $t->id,
+                    'created_at' => $t->created_at?->toIso8601String() ?? '',
+                    'amount_usd' => round((float) $t->amount, 2),
+                    'status' => (string) $t->status,
+                    'payment_method' => $t->payment_method !== null ? (string) $t->payment_method : null,
+                    'wallet' => $isStudio ? 'ai_media_studio' : 'credits',
+                    'quantity' => $qty,
+                    'summary' => (string) ($meta['description'] ?? ($isStudio ? 'AI Media Studio credits' : 'Wallet credits')),
+                    'package' => isset($meta['package']) && (is_string($meta['package']) || is_numeric($meta['package']))
+                        ? (string) $meta['package']
+                        : null,
+                ];
+            })
+            ->values()
+            ->all();
+    }
+
     /**
      * @return array<string, array{amount: float, credits?: int, media_credits?: int, wallet: string}>
      */
@@ -55,12 +95,11 @@ class CreditPurchaseController extends Controller
         $user = $request->user();
 
         return Inertia::render('Credits/Purchase', [
-            'currentCredits' => $user->credits ?? 0,
             'aiMediaStudioCredits' => (int) ($user->ai_media_studio_credits ?? 0),
-            'price' => 1.00, // $1
-            'credits' => 50000, // 50000 credits
             'mediaStudioPacks' => config('services.ai_media_studio.supporter_packs', []),
             'activeWallet' => $request->query('wallet', 'credits'),
+            'context' => Organization::forAuthUser($user) ? 'organization' : 'supporter',
+            'purchaseHistory' => $this->purchaseHistoryForUser((int) $user->id),
         ]);
     }
 

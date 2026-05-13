@@ -139,8 +139,18 @@ return [
     */
     'ai_media_studio' => [
         'openai_model' => env('AI_MEDIA_STUDIO_OPENAI_MODEL', 'gpt-4o-mini'),
+        /** Text-to-video length (seconds) enforced on create + fal payload. */
+        'video_duration_min' => max(1, (int) env('AI_MEDIA_STUDIO_DURATION_MIN', 5)),
+        'video_duration_max' => max(1, (int) env('AI_MEDIA_STUDIO_DURATION_MAX', 10)),
+        /** Merged into fal queue body after `prompt`. Set empty to omit (model-specific). */
+        'fal_duration_param' => env('AI_MEDIA_STUDIO_FAL_DURATION_PARAM', 'duration'),
+        'fal_duration_as_string' => filter_var(env('AI_MEDIA_STUDIO_FAL_DURATION_AS_STRING', false), FILTER_VALIDATE_BOOLEAN),
         'fal_poll_interval_seconds' => max(1, (int) env('AI_MEDIA_STUDIO_FAL_POLL_INTERVAL', 3)),
         'fal_max_wait_seconds' => max(30, (int) env('AI_MEDIA_STUDIO_FAL_MAX_WAIT', 900)),
+        /** Subfolder under the account’s Dropbox recordings folder for AI Studio MP4s. */
+        'dropbox_subfolder' => env('AI_MEDIA_STUDIO_DROPBOX_SUBFOLDER', 'AI Media Studio'),
+        /** `memory_limit` while ProcessAiVideoGenerationJob runs (OpenAI + fal + Dropbox). */
+        'queue_worker_memory_limit' => env('AI_MEDIA_STUDIO_QUEUE_MEMORY', '1024M'),
         /** Each queued video consumes this many credits (deducted before the job runs). */
         'credits_per_generation' => max(1, (int) env('AI_MEDIA_STUDIO_CREDITS_PER_VIDEO', 1)),
         /** Granted to nonprofit org accounts on successful plan subscription (unless plan defines `ai_media_studio_credits`). */

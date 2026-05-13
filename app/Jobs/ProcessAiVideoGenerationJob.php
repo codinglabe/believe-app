@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Models\AiVideo;
 use App\Models\User;
+use App\Services\AiMediaStudioDropboxService;
 use App\Services\FalVideoService;
 use App\Services\OpenAiService;
 use App\Support\AiMediaStudioTemplates;
@@ -15,7 +16,10 @@ use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 
 /**
- * Async pipeline: OpenAI (script + fal-ready prompt) → fal.ai queue (video URL) → optional Dropbox later.
+ * Async pipeline: OpenAI (script + fal-ready prompt) → fal.ai queue (video URL) → Dropbox (optional) → ready.
+ *
+ * Run workers with a timeout at least as large as {@see self::$timeout}, for example:
+ * `php artisan queue:work --timeout=900` (default 60s will kill long fal + Dropbox work).
  */
 class ProcessAiVideoGenerationJob implements ShouldQueue
 {
@@ -23,10 +27,21 @@ class ProcessAiVideoGenerationJob implements ShouldQueue
 
     public int $tries = 3;
 
+    /** Seconds before Laravel marks the job as timed out (fal + Dropbox can exceed a few minutes). */
+    public int $timeout = 900;
+
     public function __construct(public int $aiVideoId) {}
 
-    public function handle(OpenAiService $openAi, FalVideoService $fal): void
-    {
+    public function handle(
+        OpenAiService $openAi,
+        FalVideoService $fal,
+        AiMediaStudioDropboxService $dropboxService,
+    ): void {
+        $mem = config('services.ai_media_studio.queue_worker_memory_limit');
+        if (is_string($mem) && $mem !== '' && function_exists('ini_set')) {
+            @ini_set('memory_limit', $mem);
+        }
+
         $video = AiVideo::query()->find($this->aiVideoId);
         if (! $video) {
             return;
@@ -34,6 +49,13 @@ class ProcessAiVideoGenerationJob implements ShouldQueue
 
         try {
             $video->update(['status' => AiVideo::STATUS_GENERATING]);
+
+            $min = (int) config('services.ai_media_studio.video_duration_min', 5);
+            $max = (int) config('services.ai_media_studio.video_duration_max', 10);
+            if ($max < $min) {
+                $max = $min;
+            }
+            $durationSeconds = max($min, min($max, (int) ($video->duration_seconds ?? $max)));
 
             $templateLabel = null;
             if (is_string($video->template_key) && $video->template_key !== '') {
@@ -53,7 +75,7 @@ class ProcessAiVideoGenerationJob implements ShouldQueue
                 'template_label' => $templateLabel,
                 'template_inputs' => is_array($video->template_inputs) ? $video->template_inputs : [],
                 'orientation' => $video->orientation,
-                'duration_seconds' => $video->duration_seconds,
+                'duration_seconds' => $durationSeconds,
             ]);
 
             $tokens = (int) ($package['total_tokens'] ?? 0);
@@ -61,12 +83,15 @@ class ProcessAiVideoGenerationJob implements ShouldQueue
                 User::query()->whereKey($video->user_id)->increment('ai_tokens_used', $tokens);
             }
 
+            $falVideoPrompt = (string) ($package['fal_video_prompt'] ?? '');
+
             $video->update([
                 'ai_script' => $package['ai_script'],
                 'fal_prompt' => $package['fal_video_prompt'],
                 'caption' => $package['caption'] ?: null,
                 'hashtags' => $package['hashtags'] ?: null,
             ]);
+            unset($package);
 
             $modelId = is_string($video->fal_model) && trim($video->fal_model) !== ''
                 ? trim($video->fal_model, '/')
@@ -77,17 +102,35 @@ class ProcessAiVideoGenerationJob implements ShouldQueue
                 'fal_model' => $modelId,
             ]);
 
-            $queueInput = $fal->buildQueueInput($package['fal_video_prompt']);
+            $queueInput = $fal->buildQueueInput($falVideoPrompt, $durationSeconds);
             $falOut = $fal->generateVideoUrl($modelId, $queueInput);
 
+            $falUrl = $falOut['video_url'];
+            $falRequestId = $falOut['request_id'];
+            unset($falOut);
+
+            // fal CDN URL is best for <video> and direct access (correct Content-Type). Keep it; do not replace with Dropbox HTML links.
             $video->update([
-                'fal_job_id' => $falOut['request_id'],
-                'video_source_url' => $falOut['video_url'],
+                'fal_job_id' => $falRequestId,
+                'fal_cdn_url' => $falUrl,
+                'video_source_url' => $falUrl,
                 'status' => AiVideo::STATUS_VIDEO_GENERATED,
             ]);
 
-            // Dropbox upload step comes later; go straight to review when asset is only on fal CDN.
+            $video->update(['status' => AiVideo::STATUS_UPLOADING_TO_DROPBOX]);
+
+            try {
+                $dropboxService->mirrorFalVideoToDropbox($video, $falUrl);
+            } catch (\Throwable $dropEx) {
+                Log::warning('ai_media_studio.dropbox_mirror_failed', [
+                    'ai_video_id' => $video->id,
+                    'error' => $dropEx->getMessage(),
+                ]);
+            }
+
+            $video->refresh();
             $video->update(['status' => AiVideo::STATUS_READY_FOR_REVIEW]);
+            gc_collect_cycles();
         } catch (\Throwable $e) {
             Log::error('ai_video.pipeline.failed', [
                 'ai_video_id' => $video->id,

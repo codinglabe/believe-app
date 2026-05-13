@@ -1,7 +1,7 @@
 "use client"
 
-import AppLayout from "@/layouts/app-layout"
-import { Head, Link, router, useForm } from "@inertiajs/react"
+import AccountContextLayout from "@/layouts/account-context-layout"
+import { Link, router, useForm } from "@inertiajs/react"
 import { route } from "ziggy-js"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -22,6 +22,8 @@ export default function AiMediaStudioCreate({
   ai_media_studio_credits,
   media_studio_credit_cost,
   media_studio_packs,
+  video_duration_min,
+  video_duration_max,
 }: {
   templates: Template[]
   favoriteOrganizations: { id: number; name: string }[]
@@ -29,13 +31,17 @@ export default function AiMediaStudioCreate({
   ai_media_studio_credits: number
   media_studio_credit_cost: number
   media_studio_packs: Record<string, { usd: number; credits: number }>
+  video_duration_min: number
+  video_duration_max: number
 }) {
+  const defaultDuration = Math.round((video_duration_min + video_duration_max) / 2)
+
   const form = useForm({
     title: "",
     prompt: "",
     template_key: "",
     orientation: "9:16" as "9:16" | "16:9",
-    duration_seconds: 10,
+    duration_seconds: defaultDuration,
     organization_id: null as number | null,
     template_inputs: {
       title: "",
@@ -59,7 +65,7 @@ export default function AiMediaStudioCreate({
       route("credits.checkout"),
       {
         package: packageKey,
-        return_route: "ai-media-studio.create",
+        return_route: "ai-media-studio.index",
       },
       { preserveScroll: true },
     )
@@ -73,8 +79,11 @@ export default function AiMediaStudioCreate({
   const orgSelectValue = data.organization_id == null ? "__none__" : String(data.organization_id)
 
   return (
-    <AppLayout>
-      <Head title="Create AI video" />
+    <AccountContextLayout
+      context={context}
+      title="Create AI video"
+      description={`Queue a ${video_duration_min}–${video_duration_max}s short video: OpenAI script → fal.ai render → Dropbox (when linked) → watch & download here.`}
+    >
       <div className="mx-auto max-w-2xl space-y-6 p-4 md:p-8">
         <div>
           <Button variant="ghost" size="sm" asChild className="mb-2 -ml-2">
@@ -82,8 +91,8 @@ export default function AiMediaStudioCreate({
           </Button>
           <h1 className="text-2xl font-semibold tracking-tight">Create short video</h1>
           <p className="text-muted-foreground mt-1 text-sm">
-            Submitting queues a job (no long request). Next: OpenAI builds the scene script; fal.ai renders; a worker
-            uploads to Dropbox.
+            Submitting queues a background job: OpenAI builds the fal.ai prompt; fal renders {video_duration_min}–{video_duration_max}s MP4;
+            if Dropbox is connected under Integrations, the file is saved there and playable in your library.
           </p>
           <p className="text-muted-foreground mt-2 text-sm">
             Credits: <span className="font-medium text-foreground">{ai_media_studio_credits}</span> available ·{" "}
@@ -155,15 +164,22 @@ export default function AiMediaStudioCreate({
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="duration">Target length (seconds)</Label>
+                  <Label htmlFor="duration">Length ({video_duration_min}–{video_duration_max} seconds)</Label>
                   <Input
                     id="duration"
                     type="number"
-                    min={5}
-                    max={120}
+                    min={video_duration_min}
+                    max={video_duration_max}
+                    step={1}
                     value={data.duration_seconds}
-                    onChange={(e) => setData("duration_seconds", Number(e.target.value))}
+                    onChange={(e) => {
+                      let v = Number(e.target.value)
+                      if (Number.isNaN(v)) v = defaultDuration
+                      v = Math.min(video_duration_max, Math.max(video_duration_min, Math.round(v)))
+                      setData("duration_seconds", v)
+                    }}
                   />
+                  <p className="text-muted-foreground text-xs">fal.ai is billed per generation; keep within this range for predictable cost.</p>
                   {errors.duration_seconds ? (
                     <p className="text-destructive text-sm">{errors.duration_seconds}</p>
                   ) : null}
@@ -282,6 +298,6 @@ export default function AiMediaStudioCreate({
           </Button>
         </form>
       </div>
-    </AppLayout>
+    </AccountContextLayout>
   )
 }
