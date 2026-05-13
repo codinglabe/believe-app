@@ -304,7 +304,7 @@ export default function HomePage() {
     ]
 
     const staticMerchants = [
-      { name: "Smart Watch Series 9", category: "Raffle", impact: "Enter Raffle" },
+      { name: "Smart Watch Series 9", category: "Sweepstakes", impact: "Enter to win" },
       { name: "FitWear", category: "Activewear", impact: "Shop Now" },
       { name: "TasteBite", category: "Food & Dining", impact: "Shop Now" },
     ]
@@ -400,7 +400,7 @@ export default function HomePage() {
                   },
                   {
                     Icon: Ticket,
-                    title: "Enter Raffle",
+                    title: "Enter to win",
                     sub: "Win Amazing Prizes",
                     iconBg: "bg-blue-600",
                   },
@@ -686,20 +686,20 @@ export default function HomePage() {
                         </Button>
                       </div>
                       <p className="mt-2 text-center text-xs text-muted-foreground sm:text-sm">
-                        Use BP for Donations, Raffles, Gift Cards & Merchants
+                        Use BP for Donations, Sweepstakes, Gift Cards & Merchants
                       </p>
                     </CardContent>
                   </Card>
                 </div>
               </div>
 
-              {/* Right Column - Raffles & Wallet */}
+              {/* Right Column - Sweepstakes & Wallet */}
               <div className="space-y-4 sm:space-y-6 lg:mt-[-5rem]">
-                {/* Active Raffles */}
+                {/* Active sweepstakes */}
                 <Card className="border-border bg-card">
                   <CardContent className="p-4 sm:p-6">
                     <div className="mb-3 flex items-center justify-between sm:mb-4">
-                      <h3 className="text-base font-semibold text-foreground sm:text-lg">Active Raffles</h3>
+                      <h3 className="text-base font-semibold text-foreground sm:text-lg">Active sweepstakes</h3>
                       <button type="button" className="text-xs font-medium text-violet-600 hover:underline sm:text-sm">
                         View All
                       </button>
@@ -711,7 +711,7 @@ export default function HomePage() {
                           <h4 className="text-sm font-semibold text-foreground sm:text-base line-clamp-2">
                             Smart Watch Series 9
                             <br />
-                            Raffle
+                            Sweepstakes
                           </h4>
                           <div className="mt-1 text-xs text-muted-foreground">Ticket Price</div>
                           <div className="text-lg font-bold text-foreground sm:text-xl">$2.00</div>
@@ -748,7 +748,7 @@ export default function HomePage() {
                         <div className="block">
                           <Button type="button" className="mt-3 w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white hover:from-blue-700 hover:to-purple-700 sm:mt-4">
                             <Ticket className="mr-2 h-4 w-4" />
-                            Enter Raffle
+                            Enter sweepstakes
                           </Button>
                         </div>
                       </div>
@@ -779,7 +779,7 @@ export default function HomePage() {
                     </div>
 
                     <div className="mt-3 space-y-1.5 sm:mt-4 sm:space-y-2">
-                      {["Use BP to Donate", "Use BP for Raffles", "Use BP for Gift Cards", "Use BP at Merchants"].map((label) => (
+                      {["Use BP to Donate", "Use BP for Sweepstakes", "Use BP for Gift Cards", "Use BP at Merchants"].map((label) => (
                         <div key={label} className="flex items-center gap-1.5 text-xs sm:gap-2 sm:text-sm">
                           <Check className="h-3.5 w-3.5 shrink-0 text-violet-400 sm:h-4 sm:w-4" />
                           <span className="text-gray-300">{label}</span>

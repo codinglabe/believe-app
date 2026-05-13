@@ -112,7 +112,7 @@ export default function RaffleTicket({ ticket, showStub = true, className = '' }
         return cleanNumber.replace(/(.{4})/g, '$1-').replace(/-$/, '');
     };
 
-    const title = ticket.raffle?.title?.trim() || 'Raffle';
+    const title = ticket.raffle?.title?.trim() || 'Sweepstakes';
     const orgName =
         ticket.raffle?.organization?.organization?.name?.trim() ||
         ticket.raffle?.organization?.name?.trim();
@@ -157,7 +157,7 @@ export default function RaffleTicket({ ticket, showStub = true, className = '' }
                             </div>
                             <div className="min-w-0 flex-1">
                                 <p className="text-[9px] font-semibold uppercase tracking-[0.18em] text-muted-foreground sm:text-[10px]">
-                                    Digital raffle ticket
+                                    Digital sweepstakes entry
                                 </p>
                                 <h3 className="line-clamp-2 text-sm font-semibold leading-tight tracking-tight text-foreground sm:line-clamp-1 sm:text-base">
                                     {title}

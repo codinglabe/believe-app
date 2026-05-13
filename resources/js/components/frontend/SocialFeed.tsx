@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useEffect, useRef, useCallback } from 'react'
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { usePage } from '@inertiajs/react'
 import { Button } from '@/components/frontend/ui/button'
 import { Textarea } from '@/components/frontend/ui/textarea'
@@ -25,6 +25,7 @@ import {
   ChevronRight,
   Youtube,
   Plus,
+  Share2,
 } from 'lucide-react'
 import { Link } from '@inertiajs/react'
 import {
@@ -111,6 +112,9 @@ interface Post {
   creator_name?: string
   creator_slug?: string
   creator_image?: string
+  organization_id?: number | null
+  campaign_id?: number | null
+  fundme_id?: number | null
 }
 
 /** Build iframe src with autoplay for modal player; mirrors server embed defaults. */
@@ -151,6 +155,12 @@ interface SocialFeedProps {
     fundmes: { id: number; title: string; slug: string | null }[]
   }
   feedReels?: Post[]
+  /** Server / parent hints for auto-attaching imports (URL query params override). */
+  shortImportContext?: {
+    organization_id?: number | null
+    campaign_id?: number | null
+    fundme_id?: number | null
+  } | null
 }
 
 const reactionConfig = {
@@ -165,21 +175,46 @@ export default function SocialFeed({
   posts: initialPosts = [],
   next_page_url,
   has_more: initialHasMore = false,
-  youtubeShortAttachOptions,
   feedReels: initialFeedReels,
+  shortImportContext: shortImportContextProp,
 }: SocialFeedProps) {
-  const attachOptions = youtubeShortAttachOptions ?? {
-    organizations: [],
-    campaigns: [],
-    fundmes: [],
-  }
+  const inertiaPage = usePage<{
+    auth: { user: User }
+    csrf_token?: string
+    shortImportContext?: SocialFeedProps['shortImportContext']
+  }>()
+  const { auth, csrf_token, shortImportContext: shortImportContextPage } = inertiaPage.props
+
+  const mergedShortImport = useMemo(() => {
+    const server = shortImportContextProp ?? shortImportContextPage
+    const pick = (v: unknown): number | undefined =>
+      typeof v === 'number' && Number.isFinite(v) ? v : undefined
+    let organization_id = pick(server?.organization_id)
+    let campaign_id = pick(server?.campaign_id)
+    let fundme_id = pick(server?.fundme_id)
+
+    const url = inertiaPage.url || ''
+    const qIdx = url.indexOf('?')
+    if (qIdx >= 0) {
+      const params = new URLSearchParams(url.slice(qIdx + 1))
+      const gn = (key: string): number | undefined => {
+        const raw = params.get(key)
+        if (raw == null || raw === '') return undefined
+        const n = parseInt(raw, 10)
+        return Number.isFinite(n) ? n : undefined
+      }
+      organization_id = gn('organization_id') ?? gn('attach_organization_id') ?? organization_id
+      campaign_id = gn('campaign_id') ?? gn('attach_campaign_id') ?? campaign_id
+      fundme_id = gn('fundme_id') ?? gn('attach_fundme_id') ?? fundme_id
+    }
+
+    return { organization_id, campaign_id, fundme_id }
+  }, [shortImportContextProp, shortImportContextPage, inertiaPage.url])
 
   const [reelsStrip, setReelsStrip] = useState<Post[]>(() =>
     Array.isArray(initialFeedReels) ? initialFeedReels : [],
   )
 
-  const pageProps = usePage<{ auth: { user: User }, csrf_token?: string }>().props
-  const { auth, csrf_token } = pageProps
   const currentUser = auth?.user
 
   // Get CSRF token from props or meta tag
@@ -219,11 +254,6 @@ export default function SocialFeed({
   const [postImages, setPostImages] = useState<File[]>([])
   const [youtubeShortModalOpen, setYoutubeShortModalOpen] = useState(false)
   const [shortYoutubeUrl, setShortYoutubeUrl] = useState('')
-  const [shortCaption, setShortCaption] = useState('')
-  const [shortAttachType, setShortAttachType] = useState<'profile' | 'organization' | 'campaign' | 'fundme'>('profile')
-  const [shortOrganizationId, setShortOrganizationId] = useState<number | ''>('')
-  const [shortCampaignId, setShortCampaignId] = useState<number | ''>('')
-  const [shortFundmeId, setShortFundmeId] = useState<number | ''>('')
   const [isPostingShort, setIsPostingShort] = useState(false)
   const [editingPostImages, setEditingPostImages] = useState<Record<number, { existing: string[], new: File[] }>>({})
   const [loadingComments, setLoadingComments] = useState<Record<number, boolean>>({})
@@ -782,30 +812,15 @@ export default function SocialFeed({
     const body: Record<string, unknown> = {
       post_type: 'youtube_short',
       youtube_url: trimmed,
-      caption: shortCaption.trim() || null,
-      attach_type: shortAttachType,
     }
-
-    if (shortAttachType === 'organization') {
-      if (shortOrganizationId === '') {
-        toast.error('Select an organization.')
-        return
-      }
-      body.organization_id = shortOrganizationId
+    if (mergedShortImport.fundme_id !== undefined) {
+      body.fundme_id = mergedShortImport.fundme_id
     }
-    if (shortAttachType === 'campaign') {
-      if (shortCampaignId === '') {
-        toast.error('Select a campaign.')
-        return
-      }
-      body.campaign_id = shortCampaignId
+    if (mergedShortImport.campaign_id !== undefined) {
+      body.campaign_id = mergedShortImport.campaign_id
     }
-    if (shortAttachType === 'fundme') {
-      if (shortFundmeId === '') {
-        toast.error('Select a FundMe campaign.')
-        return
-      }
-      body.fundme_id = shortFundmeId
+    if (mergedShortImport.organization_id !== undefined) {
+      body.organization_id = mergedShortImport.organization_id
     }
 
     setIsPostingShort(true)
@@ -824,7 +839,7 @@ export default function SocialFeed({
       })
 
       if (response.ok) {
-        const data = await response.json() as { post: Post }
+        const data = await response.json() as { post: Post; message?: string }
         setPosts(prev => [data.post, ...prev])
         setReelsStrip(prev => {
           const next = [data.post, ...prev.filter((p) => p.id !== data.post.id)]
@@ -832,12 +847,7 @@ export default function SocialFeed({
         })
         setYoutubeShortModalOpen(false)
         setShortYoutubeUrl('')
-        setShortCaption('')
-        setShortAttachType('profile')
-        setShortOrganizationId('')
-        setShortCampaignId('')
-        setShortFundmeId('')
-        toast.success('YouTube Short posted')
+        toast.success(data.message || 'Your YouTube Short was shared to the community feed.')
       } else {
         const errorData = await response.json().catch(() => ({})) as { message?: string }
         toast.error(errorData.message || 'Could not post short. Try again.', { duration: 5000 })
@@ -1473,6 +1483,15 @@ export default function SocialFeed({
                         {post.creator_name || post.user?.name}
                       </h3>
                     )}
+                    {post.post_type === 'youtube_short' ? (
+                      <p className="text-xs text-gray-600 dark:text-gray-400 mt-0.5">
+                        shared a YouTube Short
+                      </p>
+                    ) : post.post_type === 'youtube_video' ? (
+                      <p className="text-xs text-gray-600 dark:text-gray-400 mt-0.5">
+                        shared a video
+                      </p>
+                    ) : null}
                     <div className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
                       <span>{formatTime(post.created_at)}</span>
                       {post.is_edited && (
@@ -1496,7 +1515,7 @@ export default function SocialFeed({
                     <DropdownMenuContent align="end" className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
                       <DropdownMenuItem
                         onClick={() => {
-                          if (post.post_type === 'youtube_short') {
+                          if (post.post_type === 'youtube_short' || post.post_type === 'youtube_video') {
                             return
                           }
                           setEditingPost({ ...post, content: post.content })
@@ -1508,7 +1527,7 @@ export default function SocialFeed({
                             }
                           }))
                         }}
-                        disabled={post.post_type === 'youtube_short'}
+                        disabled={post.post_type === 'youtube_short' || post.post_type === 'youtube_video'}
                         className="hover:bg-gray-100 dark:hover:bg-gray-700 disabled:pointer-events-none disabled:opacity-40"
                       >
                         <Edit className="w-4 h-4 mr-2" />
@@ -1649,9 +1668,9 @@ export default function SocialFeed({
                 </div>
               ) : (
                 <>
-                  {(post.post_type === 'youtube_short' ? (post.content || post.caption) : post.content) ? (
+                  {(post.post_type === 'youtube_short' || post.post_type === 'youtube_video' ? (post.content || post.caption) : post.content) ? (
                     <p className="text-sm mb-3 whitespace-pre-wrap break-words text-gray-900 dark:text-gray-100 leading-relaxed">
-                      {post.post_type === 'youtube_short' ? (post.content || post.caption || '') : post.content}
+                      {post.post_type === 'youtube_short' || post.post_type === 'youtube_video' ? (post.content || post.caption || '') : post.content}
                     </p>
                   ) : null}
 
@@ -1672,13 +1691,10 @@ export default function SocialFeed({
                     </div>
                   ) : null}
 
-                  {post.post_type === 'youtube_short' && post.youtube_embed_url ? (
-                    <div className="mb-3 overflow-hidden rounded-lg bg-gray-100 dark:bg-gray-700">
-                      <div className="flex justify-center px-2 py-2 sm:px-3 sm:py-3">
-                        {/* Same visual language as photo cells: muted panel, rounded-lg, ring; portrait height ~ single-image post */}
-                        <div
-                          className="relative aspect-[9/16] h-[min(520px,75dvh)] w-auto max-w-full overflow-hidden rounded-lg bg-gray-200 shadow-sm ring-1 ring-gray-200/90 dark:bg-gray-800 dark:ring-gray-600/60"
-                        >
+                  {(post.post_type === 'youtube_short' || post.post_type === 'youtube_video') && post.youtube_embed_url ? (
+                    post.post_type === 'youtube_short' ? (
+                      <div className="mb-3 flex w-full justify-center">
+                        <div className="short-player relative aspect-[9/16] w-full max-w-[420px] overflow-hidden rounded-[18px] bg-black shadow-lg ring-1 ring-black/10 dark:ring-white/15">
                           <iframe
                             title="YouTube Short"
                             src={post.youtube_embed_url}
@@ -1686,14 +1702,28 @@ export default function SocialFeed({
                             referrerPolicy="strict-origin-when-cross-origin"
                             allowFullScreen
                             loading="lazy"
-                            className="absolute inset-0 h-full w-full rounded-lg"
+                            className="absolute inset-0 h-full w-full rounded-[18px]"
                           />
                         </div>
                       </div>
-                    </div>
+                    ) : (
+                      <div className="mb-3 flex w-full justify-center">
+                        <div className="video-player relative aspect-video w-full max-w-4xl overflow-hidden rounded-xl bg-black shadow-lg ring-1 ring-black/10 dark:ring-white/15">
+                          <iframe
+                            title="YouTube video"
+                            src={post.youtube_embed_url}
+                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                            referrerPolicy="strict-origin-when-cross-origin"
+                            allowFullScreen
+                            loading="lazy"
+                            className="absolute inset-0 h-full w-full rounded-xl"
+                          />
+                        </div>
+                      </div>
+                    )
                   ) : null}
 
-                  {(!post.post_type || post.post_type !== 'youtube_short') && post.images && post.images.length > 0 && (
+                  {(!post.post_type || (post.post_type !== 'youtube_short' && post.post_type !== 'youtube_video')) && post.images && post.images.length > 0 && (
                     <div className={`grid gap-2 mb-3 rounded-lg overflow-hidden ${
                       post.images.length === 1 ? 'grid-cols-1' :
                       post.images.length === 2 ? 'grid-cols-2' :
@@ -1827,7 +1857,45 @@ export default function SocialFeed({
                   <MessageCircle className="w-5 h-5 mr-2" />
                   Comment
                 </Button>
+                {(post.post_type === 'youtube_short' || post.post_type === 'youtube_video') && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    type="button"
+                    className="flex-1 justify-center text-gray-600 dark:text-gray-400 hover:bg-primary/10 dark:hover:bg-primary/20 rounded-xl transition-all duration-200 font-medium"
+                    onClick={() => {
+                      const url = `${typeof window !== 'undefined' ? window.location.origin : ''}/social-feed#feed-post-${post.id}`
+                      if (typeof navigator !== 'undefined' && navigator.share) {
+                        navigator.share({ title: document.title, url }).catch(() => {
+                          void navigator.clipboard.writeText(url)
+                          toast.success('Link copied')
+                        })
+                      } else {
+                        void navigator.clipboard.writeText(url)
+                        toast.success('Link copied')
+                      }
+                    }}
+                  >
+                    <Share2 className="w-5 h-5 mr-2" />
+                    Share
+                  </Button>
+                )}
               </div>
+
+              {(post.post_type === 'youtube_short' || post.post_type === 'youtube_video') && post.attach_context?.href ? (
+                <div className="flex flex-wrap gap-2 pt-2 border-t border-gray-200 dark:border-gray-700">
+                  <Link
+                    href={post.attach_context.href}
+                    className={`inline-flex flex-1 min-w-[140px] justify-center rounded-lg border px-3 py-2 text-xs font-semibold transition-colors ${
+                      post.fundme_id
+                        ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-800 dark:text-emerald-200 hover:bg-emerald-500/20'
+                        : 'border-violet-500/40 bg-violet-500/10 text-violet-800 dark:text-violet-200 hover:bg-violet-500/20'
+                    }`}
+                  >
+                    {post.fundme_id ? 'Donate' : 'Support organization'}
+                  </Link>
+                </div>
+              ) : null}
 
               {/* Comments Section */}
               <AnimatePresence>
@@ -1975,25 +2043,20 @@ export default function SocialFeed({
           setYoutubeShortModalOpen(open)
           if (!open) {
             setShortYoutubeUrl('')
-            setShortCaption('')
-            setShortAttachType('profile')
-            setShortOrganizationId('')
-            setShortCampaignId('')
-            setShortFundmeId('')
           }
         }}
       >
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Add YouTube Short</DialogTitle>
+            <DialogTitle>Import YouTube Short</DialogTitle>
             <DialogDescription>
-              Paste a Shorts URL and optional caption. It will appear in the community feed with a player embed.
+              Paste a Shorts link and import. We&apos;ll pull the title and thumbnail, add your Short to the community feed and Media library, and attach it to your profile or page context automatically when available.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 pt-2">
             <div>
               <label htmlFor="yt-short-url" className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                Paste YouTube Shorts URL
+                Paste URL
               </label>
               <Input
                 id="yt-short-url"
@@ -2004,120 +2067,6 @@ export default function SocialFeed({
                 className="mt-1.5"
               />
             </div>
-            <div>
-              <label htmlFor="yt-short-caption" className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                Caption
-              </label>
-              <Textarea
-                id="yt-short-caption"
-                placeholder="Write something…"
-                value={shortCaption}
-                onChange={(e) => setShortCaption(e.target.value)}
-                rows={3}
-                className="mt-1.5 resize-none"
-              />
-            </div>
-            <div className="space-y-2">
-              <span className="text-sm font-medium text-gray-900 dark:text-gray-100">Attach to</span>
-              <div className="flex flex-wrap gap-2">
-                {(
-                  [
-                    { id: 'profile' as const, label: 'Personal profile' },
-                    { id: 'organization' as const, label: 'Organization' },
-                    { id: 'campaign' as const, label: 'Campaign' },
-                    { id: 'fundme' as const, label: 'FundMe' },
-                  ]
-                ).map((opt) => (
-                  <Button
-                    key={opt.id}
-                    type="button"
-                    variant={shortAttachType === opt.id ? 'default' : 'outline'}
-                    size="sm"
-                    className={shortAttachType === opt.id ? 'bg-gradient-to-r from-blue-600 to-purple-600' : ''}
-                    onClick={() => {
-                      setShortAttachType(opt.id)
-                      setShortOrganizationId('')
-                      setShortCampaignId('')
-                      setShortFundmeId('')
-                    }}
-                  >
-                    {opt.label}
-                  </Button>
-                ))}
-              </div>
-            </div>
-            {shortAttachType === 'organization' ? (
-              <div>
-                <label htmlFor="yt-org" className="text-sm font-medium">
-                  Organization
-                </label>
-                {attachOptions.organizations.length === 0 ? (
-                  <p className="mt-1 text-xs text-muted-foreground">No organizations available for your account.</p>
-                ) : (
-                  <select
-                    id="yt-org"
-                    className="mt-1.5 flex h-10 w-full rounded-md border border-gray-300 bg-white px-3 text-sm dark:border-gray-700 dark:bg-gray-900"
-                    value={shortOrganizationId === '' ? '' : String(shortOrganizationId)}
-                    onChange={(e) => setShortOrganizationId(e.target.value ? Number(e.target.value) : '')}
-                  >
-                    <option value="">Select organization…</option>
-                    {attachOptions.organizations.map((o) => (
-                      <option key={o.id} value={o.id}>
-                        {o.name}
-                      </option>
-                    ))}
-                  </select>
-                )}
-              </div>
-            ) : null}
-            {shortAttachType === 'campaign' ? (
-              <div>
-                <label htmlFor="yt-campaign" className="text-sm font-medium">
-                  Campaign
-                </label>
-                {attachOptions.campaigns.length === 0 ? (
-                  <p className="mt-1 text-xs text-muted-foreground">No campaigns found. Create one from your dashboard first.</p>
-                ) : (
-                  <select
-                    id="yt-campaign"
-                    className="mt-1.5 flex h-10 w-full rounded-md border border-gray-300 bg-white px-3 text-sm dark:border-gray-700 dark:bg-gray-900"
-                    value={shortCampaignId === '' ? '' : String(shortCampaignId)}
-                    onChange={(e) => setShortCampaignId(e.target.value ? Number(e.target.value) : '')}
-                  >
-                    <option value="">Select campaign…</option>
-                    {attachOptions.campaigns.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.name}
-                      </option>
-                    ))}
-                  </select>
-                )}
-              </div>
-            ) : null}
-            {shortAttachType === 'fundme' ? (
-              <div>
-                <label htmlFor="yt-fundme" className="text-sm font-medium">
-                  FundMe
-                </label>
-                {attachOptions.fundmes.length === 0 ? (
-                  <p className="mt-1 text-xs text-muted-foreground">No live FundMe campaigns for your organizations.</p>
-                ) : (
-                  <select
-                    id="yt-fundme"
-                    className="mt-1.5 flex h-10 w-full rounded-md border border-gray-300 bg-white px-3 text-sm dark:border-gray-700 dark:bg-gray-900"
-                    value={shortFundmeId === '' ? '' : String(shortFundmeId)}
-                    onChange={(e) => setShortFundmeId(e.target.value ? Number(e.target.value) : '')}
-                  >
-                    <option value="">Select FundMe…</option>
-                    {attachOptions.fundmes.map((f) => (
-                      <option key={f.id} value={f.id}>
-                        {f.title}
-                      </option>
-                    ))}
-                  </select>
-                )}
-              </div>
-            ) : null}
           </div>
           <DialogFooter className="gap-2 sm:gap-0">
             <Button type="button" variant="outline" onClick={() => setYoutubeShortModalOpen(false)}>
@@ -2132,10 +2081,10 @@ export default function SocialFeed({
               {isPostingShort ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Posting…
+                  Importing…
                 </>
               ) : (
-                'Post Short'
+                'Import Short'
               )}
             </Button>
           </DialogFooter>

@@ -13,6 +13,7 @@ use App\Services\StripeProcessingFeeEstimator;
 use App\Support\StripeCustomerChargeAmount;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -69,6 +70,12 @@ class RaffleController extends BaseController
     {
         $this->authorizePermission($request, 'raffle.create');
 
+        foreach (['max_entries_per_person', 'max_free_entries', 'max_donation_entries', 'minimum_age'] as $key) {
+            if ($request->input($key) === '') {
+                $request->merge([$key => null]);
+            }
+        }
+
         $validated = $request->validate([
             'title' => 'required|string|max:255',
             'description' => 'required|string',
@@ -80,7 +87,35 @@ class RaffleController extends BaseController
             'prizes.*.name' => 'required|string|max:255',
             'prizes.*.description' => 'nullable|string',
             'winners_count' => 'required|integer|min:1|max:10',
+            'sweepstakes_type' => 'nullable|in:free,donation,hybrid',
+            'official_rules' => 'nullable|string|max:65000',
+            'eligibility_rules' => 'nullable|string|max:65000',
+            'max_entries_per_person' => 'nullable|integer|min:1|max:999999',
+            'max_free_entries' => 'nullable|integer|min:0|max:999999',
+            'max_donation_entries' => 'nullable|integer|min:0|max:999999',
+            'minimum_age' => 'nullable|integer|min:13|max:120',
+            'country_restrictions_text' => 'nullable|string|max:5000',
+            'state_restrictions_text' => 'nullable|string|max:5000',
         ]);
+
+        $countryText = Arr::pull($validated, 'country_restrictions_text');
+        $stateText = Arr::pull($validated, 'state_restrictions_text');
+        $validated['country_restrictions'] = $this->commaSeparatedToJsonArray($countryText);
+        $validated['state_restrictions'] = $this->commaSeparatedToJsonArray($stateText);
+
+        $validated['sweepstakes_type'] = $validated['sweepstakes_type'] ?? 'hybrid';
+        $validated['npn_entry_enabled'] = $request->boolean('npn_entry_enabled');
+        $validated['entry_free_online_enabled'] = $request->boolean('entry_free_online_enabled');
+        $validated['entry_donation_enabled'] = $request->boolean('entry_donation_enabled');
+        $validated['entry_mail_in_enabled'] = $request->boolean('entry_mail_in_enabled');
+        $validated['entry_social_bonus_enabled'] = $request->boolean('entry_social_bonus_enabled');
+        $validated['entry_volunteer_enabled'] = $request->boolean('entry_volunteer_enabled');
+
+        foreach (['max_entries_per_person', 'max_free_entries', 'max_donation_entries', 'minimum_age'] as $key) {
+            if (! array_key_exists($key, $validated) || $validated[$key] === '' || $validated[$key] === null) {
+                $validated[$key] = null;
+            }
+        }
 
         if ($request->hasFile('image')) {
             $validated['image'] = $request->file('image')->store('raffles', 'public');
@@ -92,7 +127,7 @@ class RaffleController extends BaseController
         $raffle = Raffle::create($validated);
 
         return redirect()->route('raffles.show', $raffle)
-            ->with('success', 'Raffle created successfully!');
+            ->with('success', 'Sweepstakes campaign created successfully.');
     }
 
     /**
@@ -124,7 +159,7 @@ class RaffleController extends BaseController
         // Only allow editing if raffle is not completed and user owns it
         if ($raffle->status === 'completed' ||
             ($request->user()->role === 'organization' && $raffle->organization_id !== $request->user()->id)) {
-            abort(403, 'You cannot edit this raffle.');
+            abort(403, 'You cannot edit this sweepstakes campaign.');
         }
 
         return Inertia::render('raffles/edit', [
@@ -142,7 +177,13 @@ class RaffleController extends BaseController
         // Only allow updating if raffle is not completed and user owns it
         if ($raffle->status === 'completed' ||
             ($request->user()->role === 'organization' && $raffle->organization_id !== $request->user()->id)) {
-            abort(403, 'You cannot update this raffle.');
+            abort(403, 'You cannot update this sweepstakes campaign.');
+        }
+
+        foreach (['max_entries_per_person', 'max_free_entries', 'max_donation_entries', 'minimum_age'] as $key) {
+            if ($request->input($key) === '') {
+                $request->merge([$key => null]);
+            }
         }
 
         $validated = $request->validate([
@@ -156,7 +197,35 @@ class RaffleController extends BaseController
             'prizes.*.name' => 'required|string|max:255',
             'prizes.*.description' => 'nullable|string',
             'winners_count' => 'required|integer|min:1|max:10',
+            'sweepstakes_type' => 'nullable|in:free,donation,hybrid',
+            'official_rules' => 'nullable|string|max:65000',
+            'eligibility_rules' => 'nullable|string|max:65000',
+            'max_entries_per_person' => 'nullable|integer|min:1|max:999999',
+            'max_free_entries' => 'nullable|integer|min:0|max:999999',
+            'max_donation_entries' => 'nullable|integer|min:0|max:999999',
+            'minimum_age' => 'nullable|integer|min:13|max:120',
+            'country_restrictions_text' => 'nullable|string|max:5000',
+            'state_restrictions_text' => 'nullable|string|max:5000',
         ]);
+
+        $countryText = Arr::pull($validated, 'country_restrictions_text');
+        $stateText = Arr::pull($validated, 'state_restrictions_text');
+        $validated['country_restrictions'] = $this->commaSeparatedToJsonArray($countryText);
+        $validated['state_restrictions'] = $this->commaSeparatedToJsonArray($stateText);
+
+        $validated['sweepstakes_type'] = $validated['sweepstakes_type'] ?? 'hybrid';
+        $validated['npn_entry_enabled'] = $request->boolean('npn_entry_enabled');
+        $validated['entry_free_online_enabled'] = $request->boolean('entry_free_online_enabled');
+        $validated['entry_donation_enabled'] = $request->boolean('entry_donation_enabled');
+        $validated['entry_mail_in_enabled'] = $request->boolean('entry_mail_in_enabled');
+        $validated['entry_social_bonus_enabled'] = $request->boolean('entry_social_bonus_enabled');
+        $validated['entry_volunteer_enabled'] = $request->boolean('entry_volunteer_enabled');
+
+        foreach (['max_entries_per_person', 'max_free_entries', 'max_donation_entries', 'minimum_age'] as $key) {
+            if (! array_key_exists($key, $validated) || $validated[$key] === '' || $validated[$key] === null) {
+                $validated[$key] = null;
+            }
+        }
 
         if ($request->hasFile('image')) {
             if ($raffle->image) {
@@ -168,7 +237,7 @@ class RaffleController extends BaseController
         $raffle->update($validated);
 
         return redirect()->route('raffles.show', $raffle)
-            ->with('success', 'Raffle updated successfully!');
+            ->with('success', 'Sweepstakes campaign updated successfully.');
     }
 
     /**
@@ -180,7 +249,7 @@ class RaffleController extends BaseController
 
         // Only allow deletion if raffle has no tickets sold
         if ($raffle->sold_tickets > 0) {
-            abort(403, 'Cannot delete raffle with sold tickets.');
+            abort(403, 'Cannot delete a sweepstakes campaign that already has entries sold.');
         }
 
         if ($raffle->image) {
@@ -190,7 +259,7 @@ class RaffleController extends BaseController
         $raffle->delete();
 
         return redirect()->route('raffles.index')
-            ->with('success', 'Raffle deleted successfully!');
+            ->with('success', 'Sweepstakes campaign deleted successfully.');
     }
 
     /**
@@ -535,7 +604,7 @@ class RaffleController extends BaseController
             $raffle->update(['status' => 'completed']);
         });
 
-        return back()->with('success', 'Winners have been drawn successfully!');
+        return back()->with('success', 'Winners selected successfully.');
     }
 
     /**
@@ -903,5 +972,21 @@ class RaffleController extends BaseController
                 'user_email' => $ticket->user->email,
             ],
         ]);
+    }
+
+    /**
+     * @param  string|null  $value  Comma- or newline-separated codes (e.g. US, CA or TX, OK)
+     * @return array<int, string>|null
+     */
+    private function commaSeparatedToJsonArray(?string $value): ?array
+    {
+        if ($value === null || trim($value) === '') {
+            return null;
+        }
+
+        $parts = preg_split('/[,;\n\r]+/', $value);
+        $parts = array_values(array_filter(array_map('trim', $parts ?? []), fn ($p) => $p !== ''));
+
+        return $parts === [] ? null : $parts;
     }
 }

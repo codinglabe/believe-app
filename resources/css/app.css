@@ -928,3 +928,19 @@ body.main-domain #nprogress .spinner-icon {
     padding-bottom: max(env(safe-area-inset-bottom), 16px);
   }
 }
+
+/* Video Hub / feed YouTube embed helpers */
+.short-player {
+  aspect-ratio: 9 / 16;
+  max-width: 420px;
+  border-radius: 18px;
+  overflow: hidden;
+}
+
+.video-player {
+  aspect-ratio: 16 / 9;
+  width: 100%;
+  max-width: min(896px, 100%);
+  border-radius: 12px;
+  overflow: hidden;
+}

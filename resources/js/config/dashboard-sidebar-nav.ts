@@ -114,7 +114,7 @@ export const dashboardSidebarNavItems: (NavItem | NavGroup)[] = [
                 role: 'organization',
             },
             {
-                title: 'Raffles',
+                title: 'Sweepstakes',
                 href: '/raffles',
                 icon: Gift,
                 permission: 'raffle.read',
@@ -423,8 +423,14 @@ export const dashboardSidebarNavItems: (NavItem | NavGroup)[] = [
     {
         title: 'Community',
         icon: Users,
-        role: 'organization',
+        role: ['organization', 'user'],
         items: [
+            {
+                title: 'Unity Loaves',
+                href: '/dashboard/unity-loaves',
+                icon: Heart,
+                role: ['organization', 'user'],
+            },
             {
                 title: 'Followers',
                 href: route('organization.followers.index'),

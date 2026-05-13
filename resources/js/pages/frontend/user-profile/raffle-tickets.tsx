@@ -108,11 +108,11 @@ function RaffleTicketsLoading() {
             className="space-y-8"
             aria-busy="true"
             aria-live="polite"
-            aria-label="Loading raffle tickets"
+            aria-label="Loading sweepstakes entries"
         >
             <div className="flex flex-col items-center justify-center gap-3 py-4">
                 <Loader2 className="h-10 w-10 animate-spin text-primary" aria-hidden />
-                <p className="text-sm font-medium text-muted-foreground">Loading your tickets…</p>
+                <p className="text-sm font-medium text-muted-foreground">Loading your entries…</p>
             </div>
 
             <div className="grid grid-cols-1 gap-8 lg:grid-cols-2">
@@ -197,7 +197,7 @@ function TicketFiltersToolbar({ filters }: { filters: PageProps["filters"] }) {
                             type="search"
                             value={searchDraft}
                             onChange={(e) => setSearchDraft(e.target.value)}
-                            placeholder="Raffle title or ticket number"
+                            placeholder="Campaign title or entry number"
                             className="h-10 pl-9"
                             autoComplete="off"
                             aria-busy={searchDraft !== filters.search}
@@ -206,7 +206,7 @@ function TicketFiltersToolbar({ filters }: { filters: PageProps["filters"] }) {
                 </div>
 
                 <div className="w-full space-y-2 sm:max-w-[200px] lg:w-auto">
-                    <Label htmlFor="raffle-tickets-status">Raffle status</Label>
+                    <Label htmlFor="raffle-tickets-status">Campaign status</Label>
                     <Select
                         value={filters.status}
                         onValueChange={(v) => applyVisit({ status: v, page: 1, search: searchDraft })}
@@ -305,14 +305,14 @@ function RaffleTicketsBody() {
                 <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-600 to-purple-600 text-white shadow-lg">
                     <Ticket className="h-7 w-7" />
                 </div>
-                <h3 className="text-lg font-bold text-foreground">No tickets yet</h3>
+                <h3 className="text-lg font-bold text-foreground">No entries yet</h3>
                 <p className="mx-auto mt-2 max-w-sm text-sm text-muted-foreground">
-                    Browse live raffles and buy tickets—your digital stubs will show up here.
+                    Browse live sweepstakes and enter to win—your digital stubs will show up here.
                 </p>
                 <Link href={route("frontend.raffles.index")} className="mt-6 inline-block">
                     <Button className="h-11 rounded-xl bg-gradient-to-r from-blue-600 to-purple-600 px-6 font-semibold text-white shadow-md hover:from-blue-700 hover:to-purple-700">
                         <Gift className="mr-2 h-4 w-4" />
-                        Browse raffles
+                        Browse sweepstakes
                     </Button>
                 </Link>
             </div>
@@ -325,9 +325,9 @@ function RaffleTicketsBody() {
                 <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-muted">
                     <Search className="h-7 w-7 text-muted-foreground" />
                 </div>
-                <h3 className="text-lg font-bold text-foreground">No matching tickets</h3>
+                <h3 className="text-lg font-bold text-foreground">No matching entries</h3>
                 <p className="mx-auto mt-2 max-w-sm text-sm text-muted-foreground">
-                    Try a different search term or raffle status.
+                    Try a different search term or campaign status.
                 </p>
                 <Button
                     type="button"
@@ -357,10 +357,10 @@ function RaffleTicketsBody() {
         <>
             <header className="text-center">
                 <h2 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
-                    Your tickets
+                    Your entries
                 </h2>
                 <p className="mt-2 text-sm text-muted-foreground">
-                    {total} ticket{total !== 1 ? "s" : ""}{" "}
+                    {total} entr{total !== 1 ? "ies" : "y"}{" "}
                     {hasActiveFilters ? "match your filters" : "on file"}
                     {raffleTickets ? (
                         <span className="text-muted-foreground/80">
@@ -435,7 +435,7 @@ function RaffleTicketsBody() {
                                         className="h-9 rounded-lg border-border bg-background"
                                     >
                                         <Eye className="mr-2 h-4 w-4" />
-                                        View raffle
+                                        View campaign
                                     </Button>
                                 </Link>
                                 <Button
@@ -525,8 +525,8 @@ export default function RaffleTicketsPage() {
 
     return (
         <ProfileLayout
-            title="My raffle tickets"
-            description="Your purchased tickets, downloads, and links back to each fundraiser."
+            title="My sweepstakes entries"
+            description="Your entries, downloads, and links back to each fundraiser."
         >
             <div className="space-y-6">
                 <TicketFiltersToolbar filters={filters} />

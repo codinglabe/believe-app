@@ -161,6 +161,7 @@ use App\Http\Controllers\TopicController;
 use App\Http\Controllers\TransactionController;
 use App\Http\Controllers\UnityLiveController;
 use App\Http\Controllers\UnityLoavesController;
+use App\Http\Controllers\DashboardUnityLoavesController;
 use App\Http\Controllers\UserProfileController;
 use App\Http\Controllers\UsersInterestedTopicsController;
 use App\Http\Controllers\VolunteerAvailableSupportersController;
@@ -244,6 +245,7 @@ Route::middleware(['auth', 'EnsureEmailIsVerified'])->group(function () {
         return redirect()->route('organizations.show', $id);
     })->name('organizations.toggle-favorite.get');
     Route::post('/posts', [App\Http\Controllers\PostController::class, 'store'])->name('posts.store');
+    Route::post('/posts/share-from-video-hub', [App\Http\Controllers\PostController::class, 'shareVideoFromHub'])->name('posts.share-from-video-hub');
     Route::put('/posts/{post}', [App\Http\Controllers\PostController::class, 'update'])->name('posts.update');
     Route::delete('/posts/{post}', [App\Http\Controllers\PostController::class, 'destroy'])->name('posts.destroy');
     Route::post('/posts/{post}/react', [App\Http\Controllers\PostController::class, 'react'])->name('posts.react');
@@ -646,6 +648,16 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin|use
         ->name('feedback-campaigns.show');
     Route::post('/feedback/{uuid}', [\App\Http\Controllers\SupporterFeedbackController::class, 'submit'])
         ->name('feedback-campaigns.submit');
+        
+    // Dashboard Unity Loaves
+    Route::prefix('dashboard/unity-loaves')->name('dashboard.unity-loaves.')->group(function () {
+        Route::get('/', [\App\Http\Controllers\DashboardUnityLoavesController::class, 'index'])->name('index');
+        Route::get('/create', [\App\Http\Controllers\DashboardUnityLoavesController::class, 'create'])->name('create');
+        Route::post('/', [\App\Http\Controllers\DashboardUnityLoavesController::class, 'store'])->name('store');
+        Route::get('/{unityLoaf}/edit', [\App\Http\Controllers\DashboardUnityLoavesController::class, 'edit'])->name('edit');
+        Route::put('/{unityLoaf}', [\App\Http\Controllers\DashboardUnityLoavesController::class, 'update'])->name('update');
+        Route::delete('/{unityLoaf}', [\App\Http\Controllers\DashboardUnityLoavesController::class, 'destroy'])->name('destroy');
+    });
 });
 
 // Merchant Hub Routes (Public - for viewing offers)

@@ -12,6 +12,8 @@ class Post extends Model
 
     public const POST_TYPE_YOUTUBE_SHORT = 'youtube_short';
 
+    public const POST_TYPE_YOUTUBE_VIDEO = 'youtube_video';
+
     protected $fillable = [
         'user_id',
         'post_type',
@@ -24,6 +26,8 @@ class Post extends Model
         'organization_id',
         'campaign_id',
         'fundme_id',
+        'community_video_id',
+        'visibility',
         'is_edited',
     ];
 
@@ -54,6 +58,11 @@ class Post extends Model
     public function attachedFundMe(): BelongsTo
     {
         return $this->belongsTo(FundMeCampaign::class, 'fundme_id');
+    }
+
+    public function communityVideo(): BelongsTo
+    {
+        return $this->belongsTo(CommunityVideo::class, 'community_video_id');
     }
 
     public function user(): BelongsTo

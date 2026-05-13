@@ -250,7 +250,7 @@ export default function Navbar() {
     ...(showOrgOnlyNav
       ? [
           { name: "Manage Support Projects", href: "/fundme", icon: Handshake },
-          { name: "Raffles", href: "/raffles", icon: Ticket },
+          { name: "Sweepstakes", href: "/raffles", icon: Ticket },
         ]
       : []),
     { name: "Gift Cards", href: route("gift-cards.index"), icon: Gift },
@@ -261,7 +261,7 @@ export default function Navbar() {
     { name: "Merchant Deals", href: route("merchant-hub.index"), icon: ShoppingBag },
     ...(showOrgOnlyNav ? [{ name: "Add Jobs", href: route("job-posts.create"), icon: Briefcase }] : []),
     ...(isLoggedIn && !showOrgOnlyNav
-      ? [{ name: "Raffles", href: route("frontend.raffles.index"), icon: Ticket }]
+      ? [{ name: "Sweepstakes", href: route("frontend.raffles.index"), icon: Ticket }]
       : []),
     ...(isLoggedIn ? [{ name: "Merchant Brp Campaigns", href: route("frontend.brp-campaigns.index"), icon: Sparkles }] : []),
     ...(isLoggedIn ? [{ name: "Feedback Campaigns", href: route("feedback-campaigns.index"), icon: MessageSquare }] : []),

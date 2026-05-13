@@ -10,6 +10,7 @@ class CommunityVideo extends Model
     protected $fillable = [
         'title',
         'slug',
+        'youtube_video_id',
         'description',
         'thumbnail_url',
         'video_url',

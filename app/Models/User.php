@@ -130,6 +130,7 @@ class User extends Authenticatable implements MustVerifyEmail
         'primary_organization_id',
         'secondary_organization_ids',
         'preferred_theme',
+        'auto_share_youtube_imports_to_feed',
     ];
 
     /**
@@ -182,6 +183,7 @@ class User extends Authenticatable implements MustVerifyEmail
             'youtube_token_expires_at' => 'datetime',
             'dropbox_token_expires_at' => 'datetime',
             'secondary_organization_ids' => 'array',
+            'auto_share_youtube_imports_to_feed' => 'boolean',
         ];
     }
 
