@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import FrontendLayout from "@/layouts/frontend/frontend-layout"
 import { RecordingConsentBarrier } from "@/components/livestreams/RecordingConsentBarrier"
-import { Video, VideoOff, Mic, MicOff } from "lucide-react"
+import { applyVdoGroupRoomPresentation, vdoUiAvatarUrl } from "@/lib/vdoMeeting"
+import { Video } from "lucide-react"
 
 interface Livestream {
   id: number
@@ -33,8 +34,6 @@ interface Props {
 export default function GuestJoinByToken({ livestream, organization, recordingDeclineReturnTo }: Props) {
   const [displayName, setDisplayName] = useState("")
   const [joined, setJoined] = useState(false)
-  const [cameraOn, setCameraOn] = useState(true)
-  const [micOn, setMicOn] = useState(true)
   const recordingOn = !!(livestream.recordingEnabled ?? false)
   const [recordingConsentOk, setRecordingConsentOk] = useState(!recordingOn)
 
@@ -44,26 +43,14 @@ export default function GuestJoinByToken({ livestream, organization, recordingDe
 
   const iframeUrl = useMemo(() => {
     const url = new URL(livestream.participantUrl)
+    applyVdoGroupRoomPresentation(url)
     const name = (displayName || "Guest").trim()
-    if (name) url.searchParams.set("label", name)
-    if (cameraOn) {
-      url.searchParams.set("videodevice", "1")
-      url.searchParams.delete("novideo")
-    } else {
-      url.searchParams.set("novideo", "1")
-      url.searchParams.delete("videodevice")
-      url.searchParams.delete("vd")
-    }
-    if (micOn) {
-      url.searchParams.set("audiodevice", "1")
-      url.searchParams.delete("nomicrophone")
-    } else {
-      url.searchParams.set("nomicrophone", "1")
-      url.searchParams.delete("audiodevice")
-      url.searchParams.delete("ad")
+    if (name) {
+      url.searchParams.set("label", name)
+      url.searchParams.set("avatar", vdoUiAvatarUrl(name))
     }
     return url.toString()
-  }, [livestream.participantUrl, displayName, cameraOn, micOn])
+  }, [livestream.participantUrl, displayName])
 
   const displayLabel = (displayName || "Guest").trim()
   const initial = displayLabel.charAt(0).toUpperCase() || "G"
@@ -130,35 +117,6 @@ export default function GuestJoinByToken({ livestream, organization, recordingDe
                   </div>
                 </div>
 
-                <div className="px-6 py-4 border-t border-neutral-100 dark:border-white/10 flex items-center justify-center gap-6">
-                  <button
-                    type="button"
-                    onClick={() => setCameraOn((v) => !v)}
-                    className={`flex flex-col items-center gap-1.5 p-3 rounded-xl min-w-[72px] transition-colors ${
-                      cameraOn
-                        ? "bg-primary/10 text-primary hover:bg-primary/20 dark:bg-primary/20 dark:hover:bg-primary/30"
-                        : "bg-destructive/10 text-destructive hover:bg-destructive/20 dark:bg-destructive/20 dark:hover:bg-destructive/30"
-                    }`}
-                    aria-label={cameraOn ? "Turn off camera" : "Turn on camera"}
-                  >
-                    {cameraOn ? <Video className="h-6 w-6" /> : <VideoOff className="h-6 w-6" />}
-                    <span className="text-xs font-medium">{cameraOn ? "Camera on" : "Camera off"}</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setMicOn((v) => !v)}
-                    className={`flex flex-col items-center gap-1.5 p-3 rounded-xl min-w-[72px] transition-colors ${
-                      micOn
-                        ? "bg-primary/10 text-primary hover:bg-primary/20 dark:bg-primary/20 dark:hover:bg-primary/30"
-                        : "bg-destructive/10 text-destructive hover:bg-destructive/20 dark:bg-destructive/20 dark:hover:bg-destructive/30"
-                    }`}
-                    aria-label={micOn ? "Turn off microphone" : "Turn on microphone"}
-                  >
-                    {micOn ? <Mic className="h-6 w-6" /> : <MicOff className="h-6 w-6" />}
-                    <span className="text-xs font-medium">{micOn ? "Mic on" : "Mic off"}</span>
-                  </button>
-                </div>
-
                 <div className="p-6 pt-4">
                   <Button
                     className="w-full h-12 text-base font-medium rounded-xl bg-neutral-900 hover:bg-neutral-800 dark:bg-white dark:hover:bg-neutral-100 text-white dark:text-neutral-900 shadow-sm"
@@ -201,7 +159,7 @@ export default function GuestJoinByToken({ livestream, organization, recordingDe
               <iframe
                 src={iframeUrl}
                 title="Meeting"
-                allow="camera;microphone;display-capture;fullscreen;autoplay"
+                allow="camera; microphone; fullscreen; display-capture https://vdo.ninja https://www.vdo.ninja; autoplay; clipboard-write"
                 className="absolute inset-0 w-full h-full border-0"
               />
             </div>

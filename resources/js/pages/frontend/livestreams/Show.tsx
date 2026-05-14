@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { Head, router, usePage } from "@inertiajs/react"
 import { stopOBSStream } from "@/lib/obsLivestream"
 import { Button } from "@/components/ui/button"
@@ -51,6 +51,7 @@ import {
   Cloud,
 } from "lucide-react"
 import { Link } from "@inertiajs/react"
+import { applyVdoGroupRoomPresentation } from "@/lib/vdoMeeting"
 
 interface Livestream {
   id: number
@@ -125,7 +126,7 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false)
   const [infoOpen, setInfoOpen] = useState(false)
   const [isUpdatingVisibility, setIsUpdatingVisibility] = useState(false)
-  const [isStartingMeeting, setIsStartingMeeting] = useState(false)
+  const [isEndingStreamPending, setIsEndingStreamPending] = useState(false)
   const [sidebarTab, setSidebarTab] = useState<"meeting-info" | "invite-link">("meeting-info")
   const [goLiveOpen, setGoLiveOpen] = useState(false)
   const [goLivePrecheckOpen, setGoLivePrecheckOpen] = useState(false)
@@ -142,22 +143,26 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
       ? livestream.hostPushUrlDropbox
       : (livestream.hostPushUrl || livestream.directorUrl)
 
+  /** Host push URLs: ensure Meet-style labels + single-row grid (matches participant embeds). */
+  const vdoHostIframeSrc = useMemo(() => {
+    const raw = effectiveHostUrl
+    if (!raw?.includes("vdo.ninja")) return raw
+    try {
+      const u = new URL(raw)
+      if (u.searchParams.has("push") && u.searchParams.has("room")) {
+        applyVdoGroupRoomPresentation(u)
+      }
+      return u.toString()
+    } catch {
+      return raw
+    }
+  }, [effectiveHostUrl])
+
   const joinUrl = livestream.latestInviteUrl ?? livestream.joinUrl ?? (typeof window !== "undefined" ? `${window.location.origin}/livestreams/join/${livestream.roomName}` : "")
   const unityLiveUrl = livestream.unityLiveUrl ?? (typeof window !== "undefined" ? `${window.location.origin}/unity-live/${livestream.roomName}` : "")
   const liveViewerUrl = livestream.liveViewerUrl ?? (typeof window !== "undefined" ? `${window.location.origin}/live/${livestream.roomName}` : "")
 
-  useEffect(() => {
-    const html = document.documentElement
-    const body = document.body
-    const prevHtml = html.style.overflow
-    const prevBody = body.style.overflow
-    html.style.overflow = "hidden"
-    body.style.overflow = "hidden"
-    return () => {
-      html.style.overflow = prevHtml
-      body.style.overflow = prevBody
-    }
-  }, [])
+  const pollMs = isEndingStreamPending && livestream.status === "live" ? 4000 : 12000
 
   useEffect(() => {
     const id = window.setInterval(() => {
@@ -166,9 +171,24 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
         preserveScroll: true,
         preserveState: true,
       })
-    }, 12000)
+    }, pollMs)
     return () => window.clearInterval(id)
-  }, [])
+  }, [pollMs])
+
+  useEffect(() => {
+    if (isEndingStreamPending && livestream.status !== "live") {
+      setIsEndingStreamPending(false)
+    }
+  }, [livestream.status, isEndingStreamPending])
+
+  const endStreamError = inertiaProps.errors?.error
+  const endStreamErrorText = Array.isArray(endStreamError) ? endStreamError[0] : endStreamError
+
+  useEffect(() => {
+    if (endStreamErrorText && isEndingStreamPending) {
+      setIsEndingStreamPending(false)
+    }
+  }, [endStreamErrorText, isEndingStreamPending])
 
   const copyToClipboard = (text: string, key: string) => {
     navigator.clipboard.writeText(text)
@@ -187,14 +207,6 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
     }
     const config = statusConfig[livestream.status] || statusConfig.draft
     return <Badge variant="outline" className={config.className}>{config.label}</Badge>
-  }
-
-  const handleStartMeeting = () => {
-    setIsStartingMeeting(true)
-    router.post(`/livestreams/supporter/${livestream.id}/start-meeting`, {}, {
-      preserveScroll: true,
-      onFinish: () => setIsStartingMeeting(false),
-    })
   }
 
   const queueCloudStream = () => {
@@ -231,12 +243,18 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
 
   const handleEndStream = () => {
     setIsUpdatingStatus(true)
+    setIsEndingStreamPending(true)
     stopOBSStream(true).catch(() => {})
     router.post(`/livestreams/supporter/${livestream.id}/end-stream`, {}, {
       preserveScroll: true,
       onFinish: () => setIsUpdatingStatus(false),
     })
   }
+
+  const goLiveAttentionClass =
+    livestream.canGoLive && livestream.status !== "live"
+      ? "motion-safe:animate-pulse shadow-md shadow-red-500/30"
+      : ""
 
   const toggleVisibility = (publicVal: boolean) => {
     setIsUpdatingVisibility(true)
@@ -456,7 +474,7 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
     >
       <PageHead title={livestream.title || "Meeting"} description="Host your meeting with VDO.Ninja" />
       <Head title={livestream.title || "Meeting"} />
-      <div className="w-screen max-w-[100vw] relative left-1/2 -translate-x-1/2 overflow-hidden md:w-full md:max-w-none md:left-auto md:translate-x-0 md:overflow-visible">
+      <div className="flex min-h-0 w-full min-w-0 max-w-full flex-col overflow-hidden">
         <div className="flex h-[calc(100dvh-4rem)] sm:h-[calc(100vh-4rem)] flex-col w-full min-w-0 overflow-hidden">
           <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border px-3 py-2 sm:px-4 sm:py-3">
             <div className="flex min-w-0 flex-1 items-center gap-1.5 sm:gap-4">
@@ -498,23 +516,12 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
                     </Tabs>
                   </SheetContent>
                 </Sheet>
-                {livestream.canStartMeeting && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-8 px-2.5 rounded-md touch-manipulation text-xs font-medium"
-                    onClick={handleStartMeeting}
-                    disabled={isStartingMeeting}
-                  >
-                    {isStartingMeeting ? "…" : "Start Meeting"}
-                  </Button>
-                )}
                 {livestream.canGoLive && livestream.status !== "live" && (
                   <>
                     <Button
                       variant="default"
                       size="icon"
-                      className="h-8 w-8 rounded-md bg-red-600 hover:bg-red-700 touch-manipulation"
+                      className={`h-8 w-8 rounded-md bg-red-600 hover:bg-red-700 touch-manipulation ${goLiveAttentionClass}`}
                       onClick={handleGoLiveClick}
                       disabled={isUpdatingStatus}
                       aria-label="Queue cloud stream to YouTube"
@@ -545,12 +552,12 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
                       Stream options
                     </DropdownMenuItem>
                     {livestream.status === "live" && (
-                      <DropdownMenuItem variant="destructive" onClick={handleEndStream} disabled={isUpdatingStatus}>
+                      <DropdownMenuItem variant="destructive" onClick={handleEndStream} disabled={isUpdatingStatus || isEndingStreamPending}>
                         <Square className="h-4 w-4 mr-2" />
-                        End stream
+                        {isEndingStreamPending ? "Stopping…" : "End stream"}
                       </DropdownMenuItem>
                     )}
-                    <DropdownMenuItem onClick={() => window.open(effectiveHostUrl, "_blank")}>
+                    <DropdownMenuItem onClick={() => window.open(vdoHostIframeSrc, "_blank")}>
                       <Maximize2 className="h-4 w-4 mr-2" />
                       Open meeting in new tab
                     </DropdownMenuItem>
@@ -558,16 +565,11 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
                 </DropdownMenu>
               </div>
               <div className="hidden md:flex items-center gap-1.5">
-                {livestream.canStartMeeting && (
-                  <Button variant="outline" size="sm" className="h-8 px-3" onClick={handleStartMeeting} disabled={isStartingMeeting}>
-                    {isStartingMeeting ? "…" : "Start Meeting"}
-                  </Button>
-                )}
                 {livestream.canGoLive && livestream.status !== "live" && (
                   <>
                     <Button
                       size="sm"
-                      className="bg-red-600 hover:bg-red-700 h-8 px-3"
+                      className={`bg-red-600 hover:bg-red-700 h-8 px-3 ${goLiveAttentionClass}`}
                       onClick={handleGoLiveClick}
                       disabled={isUpdatingStatus}
                     >
@@ -580,9 +582,9 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
                   Stream options
                 </Button>
                 {livestream.status === "live" && (
-                  <Button variant="destructive" size="sm" className="h-8 px-3" onClick={handleEndStream} disabled={isUpdatingStatus}>
+                  <Button variant="destructive" size="sm" className="h-8 px-3" onClick={handleEndStream} disabled={isUpdatingStatus || isEndingStreamPending}>
                     <Square className="h-4 w-4 mr-1.5" />
-                    End stream
+                    {isEndingStreamPending ? "Stopping…" : "End stream"}
                   </Button>
                 )}
               </div>
@@ -590,7 +592,7 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
                 variant="ghost"
                 size="icon"
                 className="h-8 w-8 sm:h-9 sm:w-9 touch-manipulation"
-                onClick={() => window.open(effectiveHostUrl, "_blank")}
+                onClick={() => window.open(vdoHostIframeSrc, "_blank")}
                 aria-label="Open meeting in new tab"
                 title="Open meeting in new tab"
               >
@@ -598,6 +600,15 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
               </Button>
             </div>
           </div>
+
+          {isEndingStreamPending && livestream.status === "live" && (
+            <div className="shrink-0 border-b border-blue-500/30 bg-gradient-to-r from-purple-500/10 to-blue-500/10 px-3 py-2 sm:px-4">
+              <p className="text-xs font-medium text-foreground">Stopping stream</p>
+              <p className="text-[11px] text-muted-foreground">
+                Waiting for the cloud relay to finish on AWS. This banner clears when the meeting status updates.
+              </p>
+            </div>
+          )}
 
           {recordingConsentDeclines.length > 0 && (
             <div className="shrink-0 border-b border-amber-500/35 bg-amber-500/10 px-3 py-2 sm:px-4">
@@ -641,31 +652,31 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
               </Tabs>
             </aside>
 
-            <div className="flex flex-1 flex-col min-w-0 min-h-0 w-0 overflow-hidden">
-              <div className="flex-1 min-h-0 min-w-0 bg-black relative overflow-hidden">
-                {effectiveHostUrl ? (
+            <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+              <div className="relative isolate flex min-h-0 min-w-0 flex-1 overflow-hidden bg-black">
+                {vdoHostIframeSrc ? (
                   <iframe
                     key={recordingDestination}
-                    src={effectiveHostUrl}
+                    src={vdoHostIframeSrc}
                     title="Host"
-                    className="absolute inset-0 w-full h-full z-0"
+                    className="absolute inset-0 z-[1] h-full w-full border-0 bg-black"
                     allow="camera; microphone; fullscreen; display-capture https://vdo.ninja https://www.vdo.ninja; autoplay; clipboard-write"
                   />
                 ) : null}
-                {!effectiveHostUrl ? (
-                  <div className="absolute inset-0 flex items-center justify-center text-muted-foreground text-sm sm:text-base">Loading meeting…</div>
+                {!vdoHostIframeSrc ? (
+                  <div className="absolute inset-0 z-[1] flex items-center justify-center text-muted-foreground text-sm sm:text-base">Loading meeting…</div>
                 ) : null}
                 {livestream.status === "live" && (
-                  <div className="absolute top-2 right-2 sm:top-3 sm:right-3 bg-red-600 text-white px-2 py-0.5 sm:px-3 sm:py-1 rounded text-xs sm:text-sm font-semibold animate-pulse">
+                  <div className="pointer-events-none absolute top-2 right-2 z-[2] sm:top-3 sm:right-3 rounded bg-red-600 px-2 py-0.5 text-xs font-semibold text-white animate-pulse sm:px-3 sm:py-1 sm:text-sm">
                     ● LIVE
                   </div>
                 )}
-                <div className="absolute bottom-2 left-2 md:hidden">
+                <div className="pointer-events-none absolute bottom-2 left-2 z-[2] md:hidden">
                   <Button
                     variant="secondary"
                     size="sm"
-                    className="h-8 gap-1.5 rounded-full bg-background/90 shadow-md touch-manipulation"
-                    onClick={() => window.open(effectiveHostUrl, "_blank")}
+                    className="pointer-events-auto h-8 gap-1.5 rounded-full bg-background/90 shadow-md touch-manipulation"
+                    onClick={() => window.open(vdoHostIframeSrc, "_blank")}
                   >
                     <Maximize2 className="h-3.5 w-3.5" />
                     <span className="text-xs">Full screen</span>
@@ -696,7 +707,7 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
                 <Alert variant="destructive"><AlertDescription>{queueStreamErrorText}</AlertDescription></Alert>
               )}
               {livestream.hasStreamKey && livestream.canGoLive && livestream.status !== "live" && (
-                <Button className="w-full bg-red-600 hover:bg-red-700" onClick={handleGoLiveClick} disabled={isUpdatingStatus}>
+                <Button className={`w-full bg-red-600 hover:bg-red-700 ${goLiveAttentionClass}`} onClick={handleGoLiveClick} disabled={isUpdatingStatus}>
                   {isUpdatingStatus ? "Queuing…" : "Start cloud stream to YouTube"}
                 </Button>
               )}
@@ -711,8 +722,8 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
                 <p className="text-sm text-muted-foreground">Use Create live on YouTube or paste a stream key in Settings first.</p>
               )}
               {livestream.status === "live" && (
-                <Button variant="destructive" className="w-full" onClick={handleEndStream} disabled={isUpdatingStatus}>
-                  <Square className="h-4 w-4 mr-2" /> End stream
+                <Button variant="destructive" className="w-full" onClick={handleEndStream} disabled={isUpdatingStatus || isEndingStreamPending}>
+                  <Square className="h-4 w-4 mr-2" /> {isEndingStreamPending ? "Stopping…" : "End stream"}
                 </Button>
               )}
             </TabsContent>

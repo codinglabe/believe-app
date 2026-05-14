@@ -139,7 +139,7 @@ class UserLivestream extends Model
         $passwordParam = $pass !== '' ? '&password=' . $pass : '';
         $layouts = $this->getVdoGridLayouts();
         $layoutsParam = '&slotmode&layouts=' . rawurlencode(json_encode($layouts));
-        $base = "https://vdo.ninja/?director={$room}{$passwordParam}&clearstorage&label={$label}&showlabels=1&activespeaker=1&cleandirector&openscene{$layoutsParam}";
+        $base = "https://vdo.ninja/?director={$room}{$passwordParam}&clearstorage&label={$label}&showlabels=zoom&fontsize=82&activespeaker=1&cleandirector&openscene{$layoutsParam}";
 
         if ($recordEnabled && $recordToDropbox) {
             $ctx = $this->resolveDropboxUploadContext();
@@ -227,8 +227,12 @@ class UserLivestream extends Model
     }
 
     /**
-     * Guest / participant link. &audiodevice=1 and &videodevice=1 = VDO.Ninja auto-picks the system default
-     * microphone and camera (not a specific index). Do not use =0 — that disables audio/video.
+     * Guest / participant link. Same publisher path as host: &webcam + &ssb + &vdo=1 + &audiodevice=1 + &proaudio + &stereo=2
+     * (no &intro — intro delays auto camera and shows an extra menu before permissions; host push does not use it).
+     * Do not combine &showall with &style=6 — style overrides and breaks the group grid.
+     * &showlabels=zoom &rows=1 &fontsize=82: names on tiles + one row (e.g. two people side-by-side).
+     * &vdo=1 pre-selects the default camera; &audiodevice=1 the default mic; &autostart keeps room subscriptions stable.
+     * &nocontrols hides the per-tile video control bar (play/progress); not the user mic/settings bar. &clock=false disables wall-clock overlay.
      */
     public function getParticipantUrl(): string
     {
@@ -236,8 +240,8 @@ class UserLivestream extends Model
         $room = rawurlencode($this->getVdoRoomName());
         $pass = rawurlencode((string) $password);
         $passwordParam = $pass !== '' ? '&password=' . $pass : '';
-        $avatarInitialUrl = 'https://ui-avatars.com/api/?name=Guest&size=256&length=1';
-        return "https://vdo.ninja/?room={$room}{$passwordParam}&label=&audiodevice=1&videodevice=1&norecord&showlabels=1&showall&style=6&avatar=" . rawurlencode($avatarInitialUrl) . '&autostart&noheader';
+        $avatarInitialUrl = 'https://ui-avatars.com/api/?name=' . rawurlencode('Guest') . '&size=256&length=2';
+        return "https://vdo.ninja/?room={$room}{$passwordParam}&label=&webcam&ssb&vdo=1&audiodevice=1&proaudio&stereo=2&norecord&showlabels=zoom&showall&rows=1&fontsize=82&nocontrols&clock=false&avatar=" . rawurlencode($avatarInitialUrl) . '&autostart&noheader';
     }
 
     public function getRoomViewUrl(): string
@@ -245,7 +249,7 @@ class UserLivestream extends Model
         $room = rawurlencode($this->getVdoRoomName());
         $pw = rawurlencode((string) $this->getDecryptedPassword());
         $passwordParam = $pw !== '' ? '&password=' . $pw : '';
-        return "https://vdo.ninja/?room={$room}{$passwordParam}&nopush&viewonly&activespeaker=1&showall&showlabels=1&cleanoutput&noheader&nopreview&nocontrols&nosettings&autostart";
+        return "https://vdo.ninja/?room={$room}{$passwordParam}&nopush&viewonly&activespeaker=1&showall&showlabels=zoom&rows=1&fontsize=82&cleanoutput&noheader&nopreview&nocontrols&nosettings&clock=false&autostart";
     }
 
     public function getPublicViewUrl(): ?string
@@ -260,7 +264,7 @@ class UserLivestream extends Model
         $room = rawurlencode($roomName);
         $pw = rawurlencode((string) $this->getDecryptedPassword());
         $passwordParam = $pw !== '' ? '&password=' . $pw : '';
-        return "https://vdo.ninja/?view={$view}&solo&fullscreen&room={$room}{$passwordParam}&cleanoutput&noheader&nopreview&nocontrols&nosettings&autostart";
+        return "https://vdo.ninja/?view={$view}&solo&fullscreen&room={$room}{$passwordParam}&showlabels=zoom&fontsize=82&cleanoutput&noheader&nopreview&nocontrols&nosettings&autostart";
     }
 
     public function getPublicViewUrlMuted(): string
@@ -273,6 +277,16 @@ class UserLivestream extends Model
         return $this->getSoloViewUrl();
     }
 
+    /**
+     * Host push link (room + WHIP to MediaMTX when configured).
+     * &webcam + &ssb: skip the camera vs screenshare fork for publishers; &ssb keeps screenshare in the bar.
+     * Do not add &style=6 with &showall — style overrides and breaks the multi-participant grid (VDO treats showall as style 7).
+     * &vdo=1 + &audiodevice=1: default camera/mic pre-selected; &autostart keeps room/grid subscriptions stable after load.
+     *
+     * `room` must match {@see getParticipantUrl()} / {@see getVdoRoomName()} so host and guests join the same VDO room
+     * (multi-participant grid). `push` stays the stable stream id ({@see StreamingWorkerSourceUrl::streamPath()}) for WHIP/MediaMTX.
+     * &nocontrols hides per-tile play/progress controls; &clock=false disables wall-clock overlay.
+     */
     public function getHostPushUrl(bool $recordToDropbox = false): string
     {
         $this->loadMissing('user');
@@ -281,15 +295,16 @@ class UserLivestream extends Model
         $recordEnabled = (bool) ($settings['record_meeting'] ?? true);
         $hostName = $displayName ?: ($this->user?->name ?? 'Host');
         $streamKey = \App\Support\StreamingWorkerSourceUrl::streamPath($this);
-        $room = rawurlencode($streamKey);
+        $room = rawurlencode($this->getVdoRoomName());
         $push = rawurlencode($streamKey);
         $label = rawurlencode($hostName);
         $pass = rawurlencode((string) $this->getDecryptedPassword());
         $passwordParam = $pass !== '' ? '&password=' . $pass : '';
-        $initial = mb_substr(trim($hostName), 0, 1) ?: 'H';
-        $avatarParam = '&avatar=' . rawurlencode("https://ui-avatars.com/api/?name={$initial}&size=256&length=1");
+        $hn = trim($hostName) !== '' ? trim($hostName) : 'Host';
+        $avatarImage = 'https://ui-avatars.com/api/?name=' . rawurlencode($hn) . '&size=256&length=2';
+        $avatarParam = '&avatar=' . rawurlencode($avatarImage);
         $recordParam = $recordEnabled ? '&record' : '';
-        $base = "https://vdo.ninja/?room={$room}&push={$push}&label={$label}{$recordParam}&quality=0&bitrate=6000&audiodevice=1&videodevice=1&proaudio&stereo=2&showlabels=1&showall&style=6{$avatarParam}&autostart&noheader{$passwordParam}";
+        $base = "https://vdo.ninja/?room={$room}&push={$push}&label={$label}{$recordParam}&quality=0&bitrate=6000&webcam&ssb&vdo=1&audiodevice=1&proaudio&stereo=2&showlabels=zoom&showall&rows=1&fontsize=82&nocontrols&clock=false{$avatarParam}&autostart&noheader{$passwordParam}";
 
         $mediaMtxHost = \App\Support\StreamingWorkerSourceUrl::bridgeMediaMtxHost();
         if ($mediaMtxHost !== null) {

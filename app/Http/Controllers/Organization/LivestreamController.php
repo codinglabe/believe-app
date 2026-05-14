@@ -773,8 +773,9 @@ class LivestreamController extends Controller
     }
 
     /**
-     * End stream: stop the broadcast on YouTube (and optional local OBS via frontend) only.
-     * Do NOT set meeting to "ended" — set back to "draft" so the same link can be used for more streams.
+     * End stream: tell YouTube to complete the broadcast (and optional local OBS via frontend).
+     * Livestream status returns to draft when the AWS worker reports completed/stopped; a new YouTube
+     * broadcast is provisioned then so this meeting can go live again.
      */
     public function endStream(Request $request, $id)
     {
@@ -795,36 +796,30 @@ class LivestreamController extends Controller
         $youtubeService = app(YouTubeService::class);
         $accessToken = $youtubeService->getValidAccessToken($organization);
 
-        // Stop the current broadcast on YouTube (OBS is stopped on frontend via stopOBSStream)
+        // Stop the current broadcast on YouTube (OBS is stopped on frontend via stopOBSStream).
+        // Do not set meeting status here — the AWS worker callback (completed/stopped) updates the row
+        // so the UI matches when the relay has actually finished. A fresh YouTube broadcast is created then.
         if (! empty($livestream->youtube_broadcast_id) && $accessToken) {
             try {
                 $youtubeService->updateBroadcastStatus($accessToken, $livestream->youtube_broadcast_id, 'complete');
-            } catch (\Exception $e) {
+            } catch (\Throwable $e) {
                 Log::warning('End stream: YouTube complete failed', ['livestream_id' => $id, 'error' => $e->getMessage()]);
+
+                return redirect()->back()->withErrors([
+                    'error' => 'Could not end the YouTube broadcast. Try again from YouTube Studio, or wait and refresh.',
+                ]);
             }
+
+            return redirect()->back()->with(
+                'success',
+                'Ending stream — YouTube was told to stop. This page will update when the cloud relay reports finished (usually within a short time).'
+            );
         }
 
-        // Create a new YouTube broadcast so the same meeting can go live again (completed broadcasts cannot be reused)
-        $updatePayload = ['status' => 'draft'];
-        if ($accessToken) {
-            try {
-                $title = $livestream->title ?: 'Unity Meet - ' . ($organization->name ?? 'Live');
-                $broadcastData = $youtubeService->createLiveBroadcast(
-                    $accessToken,
-                    $title,
-                    $livestream->description,
-                    null
-                );
-                if ($broadcastData) {
-                    $updatePayload['youtube_broadcast_id'] = $broadcastData['broadcast_id'];
-                    $updatePayload['youtube_stream_key'] = Crypt::encryptString($broadcastData['stream_key']);
-                }
-            } catch (\Exception $e) {
-                Log::warning('End stream: create new YouTube broadcast failed', ['livestream_id' => $id, 'error' => $e->getMessage()]);
-            }
-        }
-
-        $livestream->update($updatePayload);
+        $livestream->update([
+            'status' => 'draft',
+            'ended_at' => $livestream->ended_at ?? now(),
+        ]);
 
         return redirect()->back()->with('success', 'Stream stopped. You can go live again from the same link when ready.');
     }

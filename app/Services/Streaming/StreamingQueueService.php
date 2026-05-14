@@ -6,8 +6,10 @@ use App\Models\OrganizationLivestream;
 use App\Models\StreamingJob;
 use App\Models\StreamingMonthlyUsage;
 use App\Models\UserLivestream;
+use App\Services\YouTubeService;
 use Aws\Sqs\SqsClient;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use RuntimeException;
@@ -178,11 +180,62 @@ class StreamingQueueService
                 'ended_at' => now(),
             ]);
 
+            if ($job->livestream_kind === 'organization' && $livestream instanceof OrganizationLivestream) {
+                $this->rotateOrganizationYoutubeBroadcastAfterStreamEnd($livestream);
+            }
+
             return;
         }
 
         if ($status === 'failed') {
             $livestream->update(['status' => 'meeting_live']);
+        }
+    }
+
+    /**
+     * After an org cloud relay ends, create a new YouTube broadcast so the same meeting can go live again.
+     */
+    private function rotateOrganizationYoutubeBroadcastAfterStreamEnd(OrganizationLivestream $livestream): void
+    {
+        $livestream->loadMissing('organization');
+        $organization = $livestream->organization;
+        if (! $organization) {
+            return;
+        }
+
+        $youtubeService = app(YouTubeService::class);
+        $accessToken = $youtubeService->getValidAccessToken($organization);
+        if (! $accessToken) {
+            return;
+        }
+
+        try {
+            $title = $livestream->title ?: 'Unity Meet - '.($organization->name ?? 'Live');
+            $broadcastData = $youtubeService->createLiveBroadcast(
+                $accessToken,
+                $title,
+                $livestream->description,
+                null
+            );
+            if (! $broadcastData || empty($broadcastData['stream_key'])) {
+                return;
+            }
+
+            $settings = $livestream->settings ?? [];
+            if (! empty($broadcastData['rtmp_url'] ?? null)) {
+                $settings['rtmp_url'] = $broadcastData['rtmp_url'];
+            }
+
+            $livestream->update([
+                'youtube_broadcast_id' => $broadcastData['broadcast_id'],
+                'youtube_stream_key' => Crypt::encryptString($broadcastData['stream_key']),
+                'settings' => $settings ?: null,
+            ]);
+        } catch (\Throwable $e) {
+            Log::warning('rotateOrganizationYoutubeBroadcastAfterStreamEnd failed', [
+                'livestream_id' => $livestream->id,
+                'error' => $e->getMessage(),
+            ]);
         }
     }
 

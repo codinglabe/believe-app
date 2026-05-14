@@ -16,13 +16,11 @@ import {
   AlertCircle,
   KeyRound,
   Hash,
-  VideoOff,
-  Mic,
-  MicOff,
   ChevronDown,
 } from "lucide-react"
 import { Link } from "@inertiajs/react"
 import { RecordingConsentBarrier } from "@/components/livestreams/RecordingConsentBarrier"
+import { applyVdoGroupRoomPresentation, vdoUiAvatarUrl } from "@/lib/vdoMeeting"
 
 const BRAND = {
   from: "#9333ea",
@@ -54,6 +52,8 @@ interface Props {
   pendingMeetingTitle?: string | null
   livestream?: Livestream
   organization?: Organization
+  /** Logged-in user's display name for VDO label (server-set after meeting lookup). */
+  joinDisplayName?: string
 }
 
 export default function SupporterMeetJoin({
@@ -63,9 +63,12 @@ export default function SupporterMeetJoin({
   pendingMeetingTitle,
   livestream,
   organization,
+  joinDisplayName: joinDisplayNameProp,
 }: Props) {
   const pageProps = usePage().props as unknown as Props
   const errors = propsErrors ?? pageProps.errors
+  const joinDisplayName = joinDisplayNameProp ?? pageProps.joinDisplayName ?? ""
+  const displayLabel = joinDisplayName.trim() || "Guest"
   const requiresPasscodeStep =
     requiresPasscodeStepProp ?? pageProps.requiresPasscodeStep ?? false
   const [meetingId, setMeetingId] = useState(oldMeetingId ?? "")
@@ -75,10 +78,7 @@ export default function SupporterMeetJoin({
   const showPasscodeStep =
     requiresPasscodeStep || (!!errors?.passcode?.[0] && !!(oldMeetingId ?? "").trim())
 
-  // Step 2: after ID+passcode validated — enter name and join in-page
-  const [displayName, setDisplayName] = useState("")
-  const [cameraOn, setCameraOn] = useState(true)
-  const [micOn, setMicOn] = useState(true)
+  // Step 2: after ID+passcode validated — join in-page (VDO label = auth user name from server)
   const [joined, setJoined] = useState(false)
   const [recordingConsentAccepted, setRecordingConsentAccepted] = useState(false)
 
@@ -110,30 +110,16 @@ export default function SupporterMeetJoin({
   const iframeUrl = useMemo(() => {
     if (!livestream?.participantUrl || !joined) return null
     const url = new URL(livestream.participantUrl)
-    const name = (displayName || "Guest").trim()
-    if (name) url.searchParams.set("label", name)
-    if (cameraOn) {
-      url.searchParams.set("videodevice", "1")
-      url.searchParams.delete("novideo")
-    } else {
-      url.searchParams.set("novideo", "1")
-      url.searchParams.delete("videodevice")
-      url.searchParams.delete("vd")
-    }
-    if (micOn) {
-      url.searchParams.set("audiodevice", "1")
-      url.searchParams.delete("nomicrophone")
-    } else {
-      url.searchParams.set("nomicrophone", "1")
-      url.searchParams.delete("audiodevice")
-      url.searchParams.delete("ad")
+    applyVdoGroupRoomPresentation(url)
+    if (displayLabel) {
+      url.searchParams.set("label", displayLabel)
+      url.searchParams.set("avatar", vdoUiAvatarUrl(displayLabel))
     }
     return url.toString()
-  }, [livestream?.participantUrl, joined, displayName, cameraOn, micOn])
+  }, [livestream?.participantUrl, joined, displayLabel])
 
   // Step 2b: In-meeting view — iframe on same page
   if (livestream && joined && iframeUrl) {
-    const displayLabel = (displayName || "Guest").trim()
     const initial = displayLabel.charAt(0).toUpperCase() || "G"
 
     return (
@@ -167,7 +153,7 @@ export default function SupporterMeetJoin({
             <iframe
               src={iframeUrl}
               title="Meeting"
-              allow="camera;microphone;display-capture;fullscreen;autoplay"
+              allow="camera; microphone; fullscreen; display-capture https://vdo.ninja https://www.vdo.ninja; autoplay; clipboard-write"
               className="absolute inset-0 w-full h-full border-0"
             />
           </div>
@@ -211,7 +197,7 @@ export default function SupporterMeetJoin({
           organizerLabel={organization?.name ?? null}
           livestreamKind={livestream.declineContext.kind}
           livestreamId={livestream.declineContext.id}
-          guestLabel={(displayName || "").trim() || null}
+          guestLabel={displayLabel}
           onAccepted={() => setRecordingConsentAccepted(true)}
           returnToAfterDecline="/livestreams/supporter/join"
         />
@@ -223,7 +209,7 @@ export default function SupporterMeetJoin({
   if (livestream && canJoin) {
     return (
       <UnityMeetLayout>
-        <PageHead title="Join meeting" description={livestream.title || "Enter your name to join"} />
+        <PageHead title="Join meeting" description={livestream.title || "Join with your account name"} />
         <Head title={`Join: ${livestream.title || "Meeting"}`} />
         <div className="min-h-screen bg-background">
           <div
@@ -261,52 +247,13 @@ export default function SupporterMeetJoin({
           <div className="w-full max-w-md mx-auto px-4 py-10 md:px-6">
             <Card className="border-border bg-card shadow-lg">
               <CardHeader>
-                <CardTitle>Enter your name</CardTitle>
+                <CardTitle>Ready to join</CardTitle>
                 <CardDescription>
-                  Your name will be shown to others in the meeting. The meeting will start on this page.
+                  You’ll appear as <span className="font-medium text-foreground">{displayLabel}</span> (from your account).
+                  Turn your camera or mic on inside the meeting when you’re ready.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="display-name">Your name</Label>
-                  <Input
-                    id="display-name"
-                    type="text"
-                    placeholder="e.g. John"
-                    value={displayName}
-                    onChange={(e) => setDisplayName(e.target.value)}
-                    className="bg-muted/50 border-border"
-                    autoFocus
-                  />
-                </div>
-                <div className="flex items-center justify-center gap-6 py-2">
-                  <button
-                    type="button"
-                    onClick={() => setCameraOn((v) => !v)}
-                    className={`flex flex-col items-center gap-1.5 p-3 rounded-xl min-w-[72px] transition-colors ${
-                      cameraOn
-                        ? "bg-primary/10 text-primary hover:bg-primary/20"
-                        : "bg-muted text-muted-foreground hover:bg-muted/80"
-                    }`}
-                    aria-label={cameraOn ? "Camera on" : "Camera off"}
-                  >
-                    {cameraOn ? <Video className="h-6 w-6" /> : <VideoOff className="h-6 w-6" />}
-                    <span className="text-xs font-medium">{cameraOn ? "Camera on" : "Off"}</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setMicOn((v) => !v)}
-                    className={`flex flex-col items-center gap-1.5 p-3 rounded-xl min-w-[72px] transition-colors ${
-                      micOn
-                        ? "bg-primary/10 text-primary hover:bg-primary/20"
-                        : "bg-muted text-muted-foreground hover:bg-muted/80"
-                    }`}
-                    aria-label={micOn ? "Microphone on" : "Microphone off"}
-                  >
-                    {micOn ? <Mic className="h-6 w-6" /> : <MicOff className="h-6 w-6" />}
-                    <span className="text-xs font-medium">{micOn ? "Mic on" : "Off"}</span>
-                  </button>
-                </div>
                 <Button
                   type="button"
                   className="w-full h-11 text-white"

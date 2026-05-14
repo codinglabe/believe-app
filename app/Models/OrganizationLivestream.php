@@ -168,9 +168,9 @@ class OrganizationLivestream extends Model
 
         $layouts = $this->getVdoGridLayouts();
         $layoutsParam = '&slotmode&layouts=' . rawurlencode(json_encode($layouts));
-        // openscene = allow scene viewers (e.g. Unity Live embed) to receive scene 0. showlabels=1 = names in grid (avatar labels).
+        // openscene = allow scene viewers (e.g. Unity Live embed) to receive scene 0. showlabels=zoom = Meet-style names on tiles.
         // No &record = no recording from director tab. Do NOT add &autorecordremote (value is bitrate; 0 would enable with 0 kbps and start extra recordings when guests join).
-        $base = "https://vdo.ninja/?director={$room}{$passwordParam}&clearstorage&label={$label}&showlabels=1&activespeaker=1&cleandirector&openscene{$layoutsParam}";
+        $base = "https://vdo.ninja/?director={$room}{$passwordParam}&clearstorage&label={$label}&showlabels=zoom&fontsize=82&activespeaker=1&cleandirector&openscene{$layoutsParam}";
 
         // Dropbox: same as host push — ensure folder exists, then add params so Director recordings save in folder (only when $recordToDropbox)
         if ($recordEnabled && $recordToDropbox && $this->organization) {
@@ -231,11 +231,11 @@ class OrganizationLivestream extends Model
 
     /**
      * Get the VDO.Ninja participant/guest URL.
-     * &label= (empty) prompts for display name. &showall &showlabels=1 &style=6 = grid.
-     * &videodevice=1 = auto-select system default camera (same idea as &audiodevice=1). Do NOT use =0 — that disables video.
-     * &audiodevice=1 = auto-select system default microphone.
-     * &norecord = no recording for participants; only the host/director should record.
-     * &avatar= shows initial until they enable camera. Participants can turn on webcam from the UI.
+     * Same publisher path as host: &webcam + &ssb + &vdo=1 + &audiodevice=1 + &proaudio + &stereo=2 (no &intro — host does not use intro).
+     * &label= (empty) can be set by the app to the signed-in name. &showlabels=zoom &showall &rows=1 = group grid + names on tiles + one row (two people side-by-side).
+     * &nocontrols hides per-tile play/progress controls; &clock=false disables wall-clock overlay (not the recording UI when &record is on).
+     * Do not use &style=6 with &showall — style overrides and breaks the grid.
+     * &vdo=1 + &audiodevice=1 pre-select default camera/mic; &autostart keeps the room view stable.
      */
     public function getParticipantUrl(): string
     {
@@ -243,8 +243,8 @@ class OrganizationLivestream extends Model
         $room = rawurlencode($this->getVdoRoomName());
         $pass = rawurlencode((string) $password);
         $passwordParam = $pass !== '' ? '&password=' . $pass : '';
-        $avatarInitialUrl = 'https://ui-avatars.com/api/?name=Guest&size=256&length=1';
-        return "https://vdo.ninja/?room={$room}{$passwordParam}&label=&audiodevice=1&videodevice=1&norecord&showlabels=1&showall&style=6&avatar=" . rawurlencode($avatarInitialUrl) . '&autostart&noheader';
+        $avatarInitialUrl = 'https://ui-avatars.com/api/?name=' . rawurlencode('Guest') . '&size=256&length=2';
+        return "https://vdo.ninja/?room={$room}{$passwordParam}&label=&webcam&ssb&vdo=1&audiodevice=1&proaudio&stereo=2&norecord&showlabels=zoom&showall&rows=1&fontsize=82&nocontrols&clock=false&avatar=" . rawurlencode($avatarInitialUrl) . '&autostart&noheader';
     }
 
     /**
@@ -272,7 +272,7 @@ class OrganizationLivestream extends Model
      * Room view URL: view-only (no camera/screen prompt). Same content the host sees.
      * - nopush / viewonly: receive only, no publishing (viewers never prompted to share).
      * - showall: show every participant (host + guests) who is pushing screen or webcam.
-     * - activespeaker=1: emphasize active speaker; showlabels=1 for names.
+     * - activespeaker=1: emphasize active speaker; showlabels=zoom + fontsize for names on tiles.
      * So: host's feed, any participant's share, and whatever the host is watching is what goes live.
      */
     public function getRoomViewUrl(): string
@@ -280,7 +280,7 @@ class OrganizationLivestream extends Model
         $room = rawurlencode($this->getVdoRoomName());
         $pw = rawurlencode((string) $this->getDecryptedPassword());
         $passwordParam = $pw !== '' ? '&password=' . $pw : '';
-        return "https://vdo.ninja/?room={$room}{$passwordParam}&nopush&viewonly&activespeaker=1&showall&showlabels=1&cleanoutput&noheader&nopreview&nocontrols&nosettings&autostart";
+        return "https://vdo.ninja/?room={$room}{$passwordParam}&nopush&viewonly&activespeaker=1&showall&showlabels=zoom&rows=1&fontsize=82&cleanoutput&noheader&nopreview&nocontrols&nosettings&clock=false&autostart";
     }
 
     /**
@@ -295,7 +295,7 @@ class OrganizationLivestream extends Model
         $room = rawurlencode($roomName);
         $pw = rawurlencode((string) $this->getDecryptedPassword());
         $passwordParam = $pw !== '' ? '&password=' . $pw : '';
-        return "https://vdo.ninja/?view={$view}&solo&fullscreen&room={$room}{$passwordParam}&cleanoutput&noheader&nopreview&nocontrols&nosettings&autostart";
+        return "https://vdo.ninja/?view={$view}&solo&fullscreen&room={$room}{$passwordParam}&showlabels=zoom&fontsize=82&cleanoutput&noheader&nopreview&nocontrols&nosettings&autostart";
     }
 
     /**
@@ -342,15 +342,15 @@ class OrganizationLivestream extends Model
     }
 
     /**
-     * Get the VDO.Ninja host push link (no OBS): host joins and pushes their stream.
-     * Uses push={roomName} so stream ID matches getPublicViewUrl (view=roomName). label= sets display name.
-     * &record = host can record. &showlabels=1 &showall = grid; &style=6 = avatar (initial) until video.
-     * quality=0 = let VDO.Ninja/browser pick resolution and framerate (avoids "Camera failed to load" on webcams that don't support fixed 1080p30).
-     * No fixed width/height/framerate so the camera can load with its native or negotiated settings.
-     * &videodevice=1 = auto-select system default camera (pairs with &audiodevice=1). Do NOT use videodevice=0 — that disables the camera.
+     * Get the VDO.Ninja host push link (no OBS). &webcam + &ssb avoids the camera vs screenshare fork for publishers.
+     * Do not use &style=6 with &showall — style overrides and breaks the multi-participant grid.
+     * &vdo=1 + &audiodevice=1 pre-select default camera/mic; &autostart keeps room/grid behavior stable.
      * Custom host avatar: set livestream settings['host_avatar_url'] to a full image URL; otherwise no avatar param.
-     * Do not use &novideo for host — it blocks receiving video (participant screen shares would not show).
      * @param bool $recordToDropbox If true and org has Dropbox, add dropbox params so recordings save to Dropbox. If false, recording is local only (browser download).
+     *
+     * `room` must match {@see getParticipantUrl()} / {@see getVdoRoomName()} so host and guests share one VDO room (grid).
+     * `push` remains {@see StreamingWorkerSourceUrl::streamPath()} for stable WHIP / worker ingest identity.
+     * &nocontrols hides per-tile play/progress bar; &clock=false disables wall-clock overlay.
      */
     public function getHostPushUrl(bool $recordToDropbox = true): string
     {
@@ -360,7 +360,7 @@ class OrganizationLivestream extends Model
         $recordEnabled = (bool) ($settings['record_meeting'] ?? true);
         $hostName = $displayName ?: ($this->organization?->name ?? 'Host');
         $streamKey = \App\Support\StreamingWorkerSourceUrl::streamPath($this);
-        $room = rawurlencode($streamKey);
+        $room = rawurlencode($this->getVdoRoomName());
         $push = rawurlencode($streamKey);
         $label = rawurlencode($hostName);
         $pass = rawurlencode((string) $this->getDecryptedPassword());
@@ -370,12 +370,13 @@ class OrganizationLivestream extends Model
         if (!empty($avatarUrl) && filter_var($avatarUrl, FILTER_VALIDATE_URL)) {
             $avatarParam = '&avatar=' . rawurlencode($avatarUrl);
         } else {
-            $initial = mb_substr(trim($hostName), 0, 1) ?: 'H';
-            $avatarParam = '&avatar=' . rawurlencode("https://ui-avatars.com/api/?name={$initial}&size=256&length=1");
+            $hn = trim($hostName) !== '' ? trim($hostName) : 'Host';
+            $avatarImage = 'https://ui-avatars.com/api/?name=' . rawurlencode($hn) . '&size=256&length=2';
+            $avatarParam = '&avatar=' . rawurlencode($avatarImage);
         }
         // No width/height/framerate — fixed 1920x1080@30 caused "Camera failed to load" on some webcams. quality=0 + bitrate let the camera use supported resolution.
         $recordParam = $recordEnabled ? '&record' : '';
-        $base = "https://vdo.ninja/?room={$room}&push={$push}&label={$label}{$recordParam}&quality=0&bitrate=6000&audiodevice=1&videodevice=1&proaudio&stereo=2&showlabels=1&showall&style=6{$avatarParam}&autostart&noheader{$passwordParam}";
+        $base = "https://vdo.ninja/?room={$room}&push={$push}&label={$label}{$recordParam}&quality=0&bitrate=6000&webcam&ssb&vdo=1&audiodevice=1&proaudio&stereo=2&showlabels=zoom&showall&rows=1&fontsize=82&nocontrols&clock=false{$avatarParam}&autostart&noheader{$passwordParam}";
 
         $mediaMtxHost = \App\Support\StreamingWorkerSourceUrl::bridgeMediaMtxHost();
         if ($mediaMtxHost !== null) {
