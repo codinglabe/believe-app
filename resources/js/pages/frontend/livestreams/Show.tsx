@@ -62,6 +62,10 @@ interface Livestream {
   directorUrl: string
   participantUrl: string
   hostPushUrl: string
+  /** VDO.Ninja scene-mixer URL that pushes the composite of all room participants to MediaMTX.
+   * Rendered in a hidden iframe so guests reach YouTube alongside the host. Null when MediaMTX
+   * isn't configured. */
+  scenePushUrl?: string | null
   watchUrl: string | null
   unityLiveUrl?: string
   liveViewerUrl?: string
@@ -670,6 +674,20 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
                   <div className="pointer-events-none absolute top-2 right-2 z-[2] sm:top-3 sm:right-3 rounded bg-red-600 px-2 py-0.5 text-xs font-semibold text-white animate-pulse sm:px-3 sm:py-1 sm:text-sm">
                     ● LIVE
                   </div>
+                )}
+                {/* Hidden scene-mixer iframe: composites all room participants → MediaMTX → YouTube.
+                    Only renders while the meeting is active (meeting_live or live) since it consumes
+                    bandwidth. 1x1 + hidden + tabIndex=-1 so it never grabs focus or layout. */}
+                {livestream.scenePushUrl && (livestream.status === "live" || livestream.status === "meeting_live") && (
+                  <iframe
+                    src={livestream.scenePushUrl}
+                    title="scene-mixer"
+                    tabIndex={-1}
+                    aria-hidden="true"
+                    className="pointer-events-none absolute h-px w-px overflow-hidden border-0 opacity-0"
+                    style={{ left: "-9999px", top: "-9999px" }}
+                    allow="autoplay; clipboard-write"
+                  />
                 )}
                 <div className="pointer-events-none absolute bottom-2 left-2 z-[2] md:hidden">
                   <Button

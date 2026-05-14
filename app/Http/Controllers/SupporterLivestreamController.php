@@ -551,6 +551,9 @@ class SupporterLivestreamController extends Controller
         $participantUrl = $livestream->getParticipantUrl();
         $hostPushUrl = $livestream->getHostPushUrl(false);
         $hostPushUrlDropbox = $dropboxConnected ? $livestream->getHostPushUrl(true) : null;
+        // Scene-mixer URL: composite of ALL room participants → MediaMTX → worker → YouTube.
+        // Frontend loads this in a hidden iframe so guests reach YouTube too.
+        $scenePushUrl = $livestream->getScenePushUrl();
         $watchUrl = $livestream->getPublicViewUrl();
         $unityLiveUrl = url('/unity-live/' . $livestream->room_name);
         $liveViewerUrl = url('/live/' . $livestream->room_name);
@@ -604,6 +607,7 @@ class SupporterLivestreamController extends Controller
                 'participantUrl' => $participantUrl,
                 'hostPushUrl' => $hostPushUrl,
                 'hostPushUrlDropbox' => $hostPushUrlDropbox,
+                'scenePushUrl' => $scenePushUrl,
                 'dropboxRecordingAvailable' => $dropboxConnected,
                 'watchUrl' => $watchUrl,
                 'unityLiveUrl' => $unityLiveUrl,

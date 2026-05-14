@@ -38,6 +38,10 @@ interface Livestream {
   directorUrl: string
   hostPushUrl: string
   participantUrl: string
+  /** VDO.Ninja scene-mixer URL that pushes the composite of all room participants to MediaMTX.
+   * Rendered in a hidden iframe so guests reach YouTube alongside the host. Null when MediaMTX
+   * isn't configured. */
+  scenePushUrl?: string | null
   status: "draft" | "scheduled" | "live" | "meeting_live" | "starting" | "ended" | "cancelled"
   scheduledAt: string | null
   startedAt: string | null
@@ -160,6 +164,20 @@ export default function ShowLivestream({ livestream, organization, recordingCons
   return (
     <AppLayout>
       <Head title={`Livestream: ${livestream.title || "Untitled"}`} />
+      {/* Hidden scene-mixer iframe: composites all room participants → MediaMTX → YouTube.
+          Only renders while the meeting is active (meeting_live or live). 1x1 off-screen so it
+          never grabs focus or layout but VDO.Ninja's canvas keeps rendering and pushing. */}
+      {livestream.scenePushUrl && (livestream.status === "live" || livestream.status === "meeting_live") && (
+        <iframe
+          src={livestream.scenePushUrl}
+          title="scene-mixer"
+          tabIndex={-1}
+          aria-hidden="true"
+          className="pointer-events-none fixed h-px w-px overflow-hidden border-0 opacity-0"
+          style={{ left: "-9999px", top: "-9999px" }}
+          allow="autoplay; clipboard-write"
+        />
+      )}
       <div className="container mx-auto py-8 px-4 max-w-6xl">
         <Link href="/livestreams" className="inline-flex items-center text-gray-400 hover:text-white mb-4">
           <ArrowLeft className="w-4 h-4 mr-2" />

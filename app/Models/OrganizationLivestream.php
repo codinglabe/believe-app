@@ -342,6 +342,30 @@ class OrganizationLivestream extends Model
     }
 
     /**
+     * Scene-mixer URL: joins the room as a scene observer (NOT a publisher of its own camera),
+     * renders scene 0 (showall = grid of every connected participant), and pushes that composite
+     * canvas to MediaMTX as `/{room}/{push}/whip`. The Fargate worker pulls the same `{push}`
+     * path so YouTube sees ALL participants, not just the host's webcam.
+     *
+     * Runs in a hidden iframe on the host's Show page (no camera/mic permissions required since
+     * it only captures the rendered canvas). Returns null when MediaMTX isn't configured.
+     */
+    public function getScenePushUrl(): ?string
+    {
+        $mediaMtxHost = \App\Support\StreamingWorkerSourceUrl::bridgeMediaMtxHost();
+        if ($mediaMtxHost === null) {
+            return null;
+        }
+        $streamKey = \App\Support\StreamingWorkerSourceUrl::streamPath($this);
+        $room = rawurlencode($this->getVdoRoomName());
+        $push = rawurlencode($streamKey);
+        $pass = rawurlencode((string) $this->getDecryptedPassword());
+        $passwordParam = $pass !== '' ? '&password=' . $pass : '';
+
+        return "https://vdo.ninja/?room={$room}&scene=0&push={$push}&mediamtx={$mediaMtxHost}&codec=h264&showall&rows=1&fontsize=82&autostart&cleanoutput&noheader&nopreview&nocontrols{$passwordParam}";
+    }
+
+    /**
      * Get the VDO.Ninja host push link (no OBS). &webcam + &ssb avoids the camera vs screenshare fork for publishers.
      * Do not use &style=6 with &showall — style overrides and breaks the multi-participant grid.
      * &vdo=1 + &audiodevice=1 pre-select default camera/mic; &autostart keeps room/grid behavior stable.
@@ -376,13 +400,10 @@ class OrganizationLivestream extends Model
         }
         // No width/height/framerate — fixed 1920x1080@30 caused "Camera failed to load" on some webcams. quality=0 + bitrate let the camera use supported resolution.
         $recordParam = $recordEnabled ? '&record' : '';
+        // Host tab publishes its own webcam INTO THE ROOM only. The scene composite (all
+        // participants) is what feeds MediaMTX/YouTube — see {@see getScenePushUrl()}. Two
+        // publishers to the same MediaMTX path is a WHIP conflict, so host stays room-only.
         $base = "https://vdo.ninja/?room={$room}&push={$push}&label={$label}{$recordParam}&quality=0&bitrate=6000&webcam&ssb&vdo=1&audiodevice=1&proaudio&stereo=2&showlabels=zoom&showall&rows=1&fontsize=82&nocontrols&clock=false{$avatarParam}&autostart&noheader{$passwordParam}";
-
-        $mediaMtxHost = \App\Support\StreamingWorkerSourceUrl::bridgeMediaMtxHost();
-        if ($mediaMtxHost !== null) {
-            // VDO publishes to /{room}/{push}/whip through MediaMTX; force H.264 for RTMP remuxing.
-            $base .= '&mediamtx=' . $mediaMtxHost . '&codec=h264';
-        }
 
         if ($recordEnabled && $recordToDropbox && $this->organization) {
             $oauthService = app(\App\Services\DropboxOAuthService::class);
