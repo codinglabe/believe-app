@@ -233,7 +233,7 @@ class OrganizationLivestream extends Model
      * Get the VDO.Ninja participant/guest URL.
      * Same publisher path as host: &webcam + &ssb + &vdo=1 + &audiodevice=1 + &proaudio + &stereo=2 (no &intro — host does not use intro).
      * &label= (empty) can be set by the app to the signed-in name. &showlabels=zoom &showall &rows=1 = group grid + names on tiles + one row (two people side-by-side).
-     * &nocontrols hides per-tile play/progress controls; &clock=false disables wall-clock overlay (not the recording UI when &record is on).
+     * Virtual backgrounds: {@see \App\Support\VdoMeetingVirtualBackground::querySegment()} (gallery + &virtualbackground).
      * Do not use &style=6 with &showall — style overrides and breaks the grid.
      * &vdo=1 + &audiodevice=1 pre-select default camera/mic; &autostart keeps the room view stable.
      */
@@ -244,7 +244,7 @@ class OrganizationLivestream extends Model
         $pass = rawurlencode((string) $password);
         $passwordParam = $pass !== '' ? '&password=' . $pass : '';
         $avatarInitialUrl = 'https://ui-avatars.com/api/?name=' . rawurlencode('Guest') . '&size=256&length=2';
-        return "https://vdo.ninja/?room={$room}{$passwordParam}&label=&webcam&ssb&vdo=1&audiodevice=1&proaudio&stereo=2&norecord&showlabels=zoom&showall&rows=1&fontsize=82&nocontrols&clock=false&avatar=" . rawurlencode($avatarInitialUrl) . '&autostart&noheader';
+        return 'https://vdo.ninja/?room=' . $room . $passwordParam . '&label=&webcam&ssb&vdo=1&audiodevice=1&proaudio&stereo=2&norecord&showlabels=zoom&showall&rows=1&fontsize=82&nocontrols&clock=false&avatar=' . rawurlencode($avatarInitialUrl) . \App\Support\VdoMeetingVirtualBackground::querySegment() . '&autostart&noheader';
     }
 
     /**
@@ -375,6 +375,7 @@ class OrganizationLivestream extends Model
      * `room` must match {@see getParticipantUrl()} / {@see getVdoRoomName()} so host and guests share one VDO room (grid).
      * `push` remains {@see StreamingWorkerSourceUrl::streamPath()} for stable WHIP / worker ingest identity.
      * &nocontrols hides per-tile play/progress bar; &clock=false disables wall-clock overlay.
+     * Virtual backgrounds: {@see \App\Support\VdoMeetingVirtualBackground::querySegment()} (gallery + &virtualbackground).
      */
     public function getHostPushUrl(bool $recordToDropbox = true): string
     {
@@ -400,10 +401,14 @@ class OrganizationLivestream extends Model
         }
         // No width/height/framerate — fixed 1920x1080@30 caused "Camera failed to load" on some webcams. quality=0 + bitrate let the camera use supported resolution.
         $recordParam = $recordEnabled ? '&record' : '';
+<<<<<<< Updated upstream
         // Host tab publishes its own webcam INTO THE ROOM only. The scene composite (all
         // participants) is what feeds MediaMTX/YouTube — see {@see getScenePushUrl()}. Two
         // publishers to the same MediaMTX path is a WHIP conflict, so host stays room-only.
         $base = "https://vdo.ninja/?room={$room}&push={$push}&label={$label}{$recordParam}&quality=0&bitrate=6000&webcam&ssb&vdo=1&audiodevice=1&proaudio&stereo=2&showlabels=zoom&showall&rows=1&fontsize=82&nocontrols&clock=false{$avatarParam}&autostart&noheader{$passwordParam}";
+=======
+        $base = "https://vdo.ninja/?room={$room}&push={$push}&label={$label}{$recordParam}&quality=0&bitrate=6000&webcam&ssb&vdo=1&audiodevice=1&proaudio&stereo=2&showlabels=zoom&showall&rows=1&fontsize=82&nocontrols&clock=false{$avatarParam}" . \App\Support\VdoMeetingVirtualBackground::querySegment() . "&autostart&noheader{$passwordParam}";
+>>>>>>> Stashed changes
 
         if ($recordEnabled && $recordToDropbox && $this->organization) {
             $oauthService = app(\App\Services\DropboxOAuthService::class);

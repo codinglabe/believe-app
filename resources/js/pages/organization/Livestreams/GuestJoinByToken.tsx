@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import FrontendLayout from "@/layouts/frontend/frontend-layout"
 import { RecordingConsentBarrier } from "@/components/livestreams/RecordingConsentBarrier"
+import UnityMeetVideoLogoOverlay from "@/components/meeting/UnityMeetVideoLogoOverlay"
 import { applyVdoGroupRoomPresentation, vdoUiAvatarUrl } from "@/lib/vdoMeeting"
 import { Video } from "lucide-react"
 
@@ -162,6 +163,7 @@ export default function GuestJoinByToken({ livestream, organization, recordingDe
                 allow="camera; microphone; fullscreen; display-capture https://vdo.ninja https://www.vdo.ninja; autoplay; clipboard-write"
                 className="absolute inset-0 w-full h-full border-0"
               />
+              <UnityMeetVideoLogoOverlay />
             </div>
           </div>
         ) : null}

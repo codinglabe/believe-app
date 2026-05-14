@@ -31,6 +31,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Switch } from "@/components/admin/ui/switch"
 import UnityMeetLayout from "@/layouts/UnityMeetLayout"
+import UnityMeetVideoLogoOverlay from "@/components/meeting/UnityMeetVideoLogoOverlay"
 import { PageHead } from "@/components/frontend/PageHead"
 import {
   Copy,
@@ -670,6 +671,7 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
                 {!vdoHostIframeSrc ? (
                   <div className="absolute inset-0 z-[1] flex items-center justify-center text-muted-foreground text-sm sm:text-base">Loading meeting…</div>
                 ) : null}
+                <UnityMeetVideoLogoOverlay />
                 {livestream.status === "live" && (
                   <div className="pointer-events-none absolute top-2 right-2 z-[2] sm:top-3 sm:right-3 rounded bg-red-600 px-2 py-0.5 text-xs font-semibold text-white animate-pulse sm:px-3 sm:py-1 sm:text-sm">
                     ● LIVE

@@ -232,7 +232,7 @@ class UserLivestream extends Model
      * Do not combine &showall with &style=6 — style overrides and breaks the group grid.
      * &showlabels=zoom &rows=1 &fontsize=82: names on tiles + one row (e.g. two people side-by-side).
      * &vdo=1 pre-selects the default camera; &audiodevice=1 the default mic; &autostart keeps room subscriptions stable.
-     * &nocontrols hides the per-tile video control bar (play/progress); not the user mic/settings bar. &clock=false disables wall-clock overlay.
+     * Virtual backgrounds: curated gallery via {@see \App\Support\VdoMeetingVirtualBackground::querySegment()} (&virtualbackground + &imagelist).
      */
     public function getParticipantUrl(): string
     {
@@ -241,7 +241,7 @@ class UserLivestream extends Model
         $pass = rawurlencode((string) $password);
         $passwordParam = $pass !== '' ? '&password=' . $pass : '';
         $avatarInitialUrl = 'https://ui-avatars.com/api/?name=' . rawurlencode('Guest') . '&size=256&length=2';
-        return "https://vdo.ninja/?room={$room}{$passwordParam}&label=&webcam&ssb&vdo=1&audiodevice=1&proaudio&stereo=2&norecord&showlabels=zoom&showall&rows=1&fontsize=82&nocontrols&clock=false&avatar=" . rawurlencode($avatarInitialUrl) . '&autostart&noheader';
+        return 'https://vdo.ninja/?room=' . $room . $passwordParam . '&label=&webcam&ssb&vdo=1&audiodevice=1&proaudio&stereo=2&norecord&showlabels=zoom&showall&rows=1&fontsize=82&nocontrols&clock=false&avatar=' . rawurlencode($avatarInitialUrl) . \App\Support\VdoMeetingVirtualBackground::querySegment() . '&autostart&noheader';
     }
 
     public function getRoomViewUrl(): string
@@ -310,6 +310,7 @@ class UserLivestream extends Model
      * `room` must match {@see getParticipantUrl()} / {@see getVdoRoomName()} so host and guests join the same VDO room
      * (multi-participant grid). `push` stays the stable stream id ({@see StreamingWorkerSourceUrl::streamPath()}) for WHIP/MediaMTX.
      * &nocontrols hides per-tile play/progress controls; &clock=false disables wall-clock overlay.
+     * Virtual backgrounds: {@see \App\Support\VdoMeetingVirtualBackground::querySegment()} (gallery + &virtualbackground).
      */
     public function getHostPushUrl(bool $recordToDropbox = false): string
     {
@@ -328,7 +329,7 @@ class UserLivestream extends Model
         $avatarImage = 'https://ui-avatars.com/api/?name=' . rawurlencode($hn) . '&size=256&length=2';
         $avatarParam = '&avatar=' . rawurlencode($avatarImage);
         $recordParam = $recordEnabled ? '&record' : '';
-        $base = "https://vdo.ninja/?room={$room}&push={$push}&label={$label}{$recordParam}&quality=0&bitrate=6000&webcam&ssb&vdo=1&audiodevice=1&proaudio&stereo=2&showlabels=zoom&showall&rows=1&fontsize=82&nocontrols&clock=false{$avatarParam}&autostart&noheader{$passwordParam}";
+        $base = "https://vdo.ninja/?room={$room}&push={$push}&label={$label}{$recordParam}&quality=0&bitrate=6000&webcam&ssb&vdo=1&audiodevice=1&proaudio&stereo=2&showlabels=zoom&showall&rows=1&fontsize=82&nocontrols&clock=false{$avatarParam}" . \App\Support\VdoMeetingVirtualBackground::querySegment() . "&autostart&noheader{$passwordParam}";
 
         // Host push URL no longer publishes to MediaMTX — only the host's webcam goes into the VDO room.
         // The composite of all participants is published to MediaMTX by {@see getScenePushUrl()},
