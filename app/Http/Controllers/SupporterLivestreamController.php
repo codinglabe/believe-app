@@ -407,6 +407,10 @@ class SupporterLivestreamController extends Controller
         $roomName = trim($request->input('meeting_id'));
         $passcode = (string) $request->input('passcode', '');
 
+        $joinDisplayName = trim((string) ($request->user()->name ?? '')) !== ''
+            ? trim((string) $request->user()->name)
+            : (trim((string) ($request->user()->email ?? '')) ?: 'Guest');
+
         $orgStream = OrganizationLivestream::where('room_name', $roomName)
             ->whereIn('status', ['draft', 'scheduled', 'meeting_live', 'live', 'ended'])
             ->with('organization')
@@ -454,6 +458,7 @@ class SupporterLivestreamController extends Controller
                     'id' => $orgStream->organization->id,
                     'name' => $orgStream->organization->name,
                 ],
+                'joinDisplayName' => $joinDisplayName,
             ]);
         }
 
@@ -504,6 +509,7 @@ class SupporterLivestreamController extends Controller
                     'id' => 0,
                     'name' => $userStream->user?->name ?? 'Meeting',
                 ],
+                'joinDisplayName' => $joinDisplayName,
             ]);
         }
 
@@ -545,6 +551,9 @@ class SupporterLivestreamController extends Controller
         $participantUrl = $livestream->getParticipantUrl();
         $hostPushUrl = $livestream->getHostPushUrl(false);
         $hostPushUrlDropbox = $dropboxConnected ? $livestream->getHostPushUrl(true) : null;
+        // Scene-mixer URL: composite of ALL room participants → MediaMTX → worker → YouTube.
+        // Frontend loads this in a hidden iframe so guests reach YouTube too.
+        $scenePushUrl = $livestream->getScenePushUrl();
         $watchUrl = $livestream->getPublicViewUrl();
         $unityLiveUrl = url('/unity-live/' . $livestream->room_name);
         $liveViewerUrl = url('/live/' . $livestream->room_name);
@@ -598,6 +607,7 @@ class SupporterLivestreamController extends Controller
                 'participantUrl' => $participantUrl,
                 'hostPushUrl' => $hostPushUrl,
                 'hostPushUrlDropbox' => $hostPushUrlDropbox,
+                'scenePushUrl' => $scenePushUrl,
                 'dropboxRecordingAvailable' => $dropboxConnected,
                 'watchUrl' => $watchUrl,
                 'unityLiveUrl' => $unityLiveUrl,
@@ -728,7 +738,7 @@ class SupporterLivestreamController extends Controller
         return redirect()->route('livestreams.supporter.index')->with('success', 'Meeting deleted.');
     }
 
-    public function endStream(Request $request, int $id): RedirectResponse
+    public function endStream(Request $request, int $id, YouTubeService $youtubeService): RedirectResponse
     {
         $livestream = UserLivestream::where('user_id', $request->user()->id)->findOrFail($id);
 
@@ -736,12 +746,38 @@ class SupporterLivestreamController extends Controller
             return redirect()->back()->withErrors(['error' => 'Stream is not live.']);
         }
 
+        $accessToken = $this->resolveYouTubeAccessToken($request, $youtubeService);
+
+        if (! empty($livestream->youtube_broadcast_id) && $accessToken) {
+            try {
+                $youtubeService->updateBroadcastStatus($accessToken, $livestream->youtube_broadcast_id, 'complete');
+            } catch (\Throwable $e) {
+                Log::warning('End stream: YouTube complete failed (supporter)', [
+                    'livestream_id' => $id,
+                    'error' => $e->getMessage(),
+                ]);
+
+                return redirect()->back()->withErrors([
+                    'error' => 'Could not end the YouTube broadcast. Try again from YouTube Studio, or wait and refresh.',
+                ]);
+            }
+
+            return redirect()->back()->with(
+                'success',
+                'Ending stream — YouTube was told to stop. This page will update when the cloud relay reports finished (usually within a short time).'
+            );
+        }
+
+        // Manual stream key / no API broadcast: there is nothing to complete on YouTube; settle locally.
         $livestream->update([
             'status' => 'draft',
             'ended_at' => $livestream->ended_at ?? now(),
         ]);
 
-        return redirect()->back()->with('success', 'Stream stopped. You can go live again from the same link when ready.');
+        return redirect()->back()->with(
+            'success',
+            'Stream stopped. You can go live again from the same link when ready.'
+        );
     }
 
     public function updateVisibility(Request $request, int $id): RedirectResponse

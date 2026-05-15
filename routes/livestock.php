@@ -172,7 +172,7 @@ Route::middleware('guest')->group(function () {
 
 Route::middleware('auth:livestock')->group(function () {
     Route::get('verify-email', LivestockEmailVerificationPromptController::class)
-        ->name('verification.notice');
+        ->name('livestock.verification.notice');
 
     Route::get('verify-email/{id}/{hash}', LivestockVerifyEmailController::class)
         ->middleware(['signed', 'throttle:6,1'])
@@ -180,10 +180,10 @@ Route::middleware('auth:livestock')->group(function () {
 
     Route::post('email/verification-notification', [LivestockEmailVerificationNotificationController::class, 'store'])
         ->middleware('throttle:6,1')
-        ->name('verification.send');
+        ->name('livestock.verification.send');
 
     Route::get('confirm-password', [ConfirmablePasswordController::class, 'show'])
-        ->name('password.confirm');
+        ->name('livestock.password.confirm');
 
     Route::post('confirm-password', [ConfirmablePasswordController::class, 'store']);
 

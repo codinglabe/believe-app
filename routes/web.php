@@ -727,10 +727,6 @@ Route::middleware(['auth', 'EnsureEmailIsVerified'])->prefix('merchant')->name('
     Route::get('/qr-code', function () {
         return Inertia::render('merchant/QRCode');
     })->name('qr-code');
-
-    Route::get('/dashboard', function () {
-        return Inertia::render('merchant/Dashboard');
-    })->name('dashboard');
 });
 
 Route::middleware(['auth', 'EnsureEmailIsVerified'])->group(function () {

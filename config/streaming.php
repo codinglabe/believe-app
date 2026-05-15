@@ -7,7 +7,7 @@ return [
     'queue_url' => env('SQS_STREAMING_QUEUE_URL'),
     'callback_token' => env('LARAVEL_CALLBACK_TOKEN'),
     // Delay the worker pull so the browser publisher has time to connect to MediaMTX.
-    // AWS SQS supports DelaySeconds from 0 to 900.
+    // AWS SQS supports DelaySeconds from 0 to 900. Default 0 — no artificial wait before the worker runs.
     'sqs_delay_seconds' => max(0, min(900, (int) env('STREAMING_SQS_DELAY_SECONDS', 0))),
 
     /*
