@@ -139,9 +139,35 @@ return [
     */
     'ai_media_studio' => [
         'openai_model' => env('AI_MEDIA_STUDIO_OPENAI_MODEL', 'gpt-4o-mini'),
-        /** Text-to-video length (seconds) enforced on create + fal payload. */
-        'video_duration_min' => max(1, (int) env('AI_MEDIA_STUDIO_DURATION_MIN', 5)),
-        'video_duration_max' => max(1, (int) env('AI_MEDIA_STUDIO_DURATION_MAX', 10)),
+        /** Text-to-video length (seconds): fixed 5–10 everywhere (create form, validation, fal, OpenAI). */
+        'video_duration_min' => 5,
+        'video_duration_max' => 10,
+        /**
+         * Comma-separated tiers offered in the UI (intersected with 480p,720p,1080p).
+         * Example: AI_MEDIA_STUDIO_RESOLUTIONS=720p,1080p
+         */
+        'video_resolution_tiers' => array_values(array_filter(array_map(static function (string $s): string {
+            return strtolower(trim($s));
+        }, explode(',', (string) env('AI_MEDIA_STUDIO_RESOLUTIONS', '480p,720p,1080p'))))),
+        /**
+         * fal queue: send tier string (e.g. 480p) under this key. Set empty to skip (e.g. width/height only models).
+         */
+        'fal_resolution_param' => env('AI_MEDIA_STUDIO_FAL_RESOLUTION_PARAM', 'resolution'),
+        /** Sent for resolution key: "tier" (480p) or "pixels" (720x1280). */
+        'fal_resolution_value_format' => strtolower(trim((string) env('AI_MEDIA_STUDIO_FAL_RESOLUTION_VALUE_FORMAT', 'tier'))),
+        /**
+         * When value format is "tier": how to spell the tier in JSON.
+         * "lowercase" (480p) — WAN 2.5 / fal-ai/wan-25-preview (enum: 480p, 720p, 1080p).
+         * "suffix_upper" (480P) — only if your model docs require uppercase P (some MiniMax paths).
+         */
+        'fal_resolution_tier_output' => strtolower(trim((string) env('AI_MEDIA_STUDIO_FAL_RESOLUTION_TIER_OUTPUT', 'lowercase'))),
+        /** Merge resolution tier (480p/720p/1080p) into fal JSON when the param name is non-empty. */
+        'fal_send_resolution_tier' => filter_var(env('AI_MEDIA_STUDIO_FAL_SEND_RESOLUTION_TIER', true), FILTER_VALIDATE_BOOLEAN),
+        /** Merge explicit width / height (from orientation + tier) into fal JSON. */
+        'fal_send_dimensions' => filter_var(env('AI_MEDIA_STUDIO_FAL_SEND_DIMENSIONS', true), FILTER_VALIDATE_BOOLEAN),
+        /** Merge aspect ratio (9:16 or 16:9) — many fal video models expect this with resolution. */
+        'fal_send_aspect_ratio' => filter_var(env('AI_MEDIA_STUDIO_FAL_SEND_ASPECT_RATIO', true), FILTER_VALIDATE_BOOLEAN),
+        'fal_aspect_ratio_param' => env('AI_MEDIA_STUDIO_FAL_ASPECT_RATIO_PARAM', 'aspect_ratio'),
         /** Merged into fal queue body after `prompt`. Set empty to omit (model-specific). */
         'fal_duration_param' => env('AI_MEDIA_STUDIO_FAL_DURATION_PARAM', 'duration'),
         'fal_duration_as_string' => filter_var(env('AI_MEDIA_STUDIO_FAL_DURATION_AS_STRING', false), FILTER_VALIDATE_BOOLEAN),
@@ -151,14 +177,26 @@ return [
         'dropbox_subfolder' => env('AI_MEDIA_STUDIO_DROPBOX_SUBFOLDER', 'AI Media Studio'),
         /** `memory_limit` while ProcessAiVideoGenerationJob runs (OpenAI + fal + Dropbox). */
         'queue_worker_memory_limit' => env('AI_MEDIA_STUDIO_QUEUE_MEMORY', '1024M'),
-        /** Each queued video consumes this many credits (deducted before the job runs). */
-        'credits_per_generation' => max(1, (int) env('AI_MEDIA_STUDIO_CREDITS_PER_VIDEO', 1)),
-        /** Granted to nonprofit org accounts on successful plan subscription (unless plan defines `ai_media_studio_credits`). */
-        'org_subscription_credits' => max(0, (int) env('AI_MEDIA_ORG_PLAN_CREDITS', 10)),
-        /** Supporter Stripe packs: id => [usd, credits] */
+        /**
+         * Optional override for retail credit prices (1 credit = US$1.00). Keys: tier => seconds => USD.
+         * Omitted keys fall back to BIU suggested retail defaults.
+         *
+         * @var array<string, array<int, float>>
+         */
+        'retail_credit_prices_usd' => [],
+        /**
+         * Credits added to AI Media Studio balance on every pricing-plan subscribe (checkout success) and on each
+         * subscription renewal (Stripe `invoice.payment_succeeded`, billing_reason `subscription_cycle`).
+         * Plan custom field `ai_media_studio_credits` can grant more than this minimum. Env: PLAN_SUBSCRIPTION_AI_MEDIA_STUDIO_CREDITS
+         */
+        'plan_subscription_ai_media_studio_credits' => max(0, (int) env('PLAN_SUBSCRIPTION_AI_MEDIA_STUDIO_CREDITS', 5)),
+        /**
+         * Supporter Stripe packs: id => [usd, credits]. Parity: 1 credit = US$1.00 on the AI Media Studio balance
+         * (video generation then debits fractional credits by resolution × length).
+         */
         'supporter_packs' => [
-            'media_studio_5' => ['usd' => (float) env('AI_MEDIA_PACK_5_USD', 9.99), 'credits' => (int) env('AI_MEDIA_PACK_5_CREDITS', 5)],
-            'media_studio_10' => ['usd' => (float) env('AI_MEDIA_PACK_10_USD', 17.99), 'credits' => (int) env('AI_MEDIA_PACK_10_CREDITS', 10)],
+            'media_studio_5' => ['usd' => (float) env('AI_MEDIA_PACK_5_USD', 5), 'credits' => (int) env('AI_MEDIA_PACK_5_CREDITS', 5)],
+            'media_studio_10' => ['usd' => (float) env('AI_MEDIA_PACK_10_USD', 10), 'credits' => (int) env('AI_MEDIA_PACK_10_CREDITS', 10)],
         ],
     ],
 

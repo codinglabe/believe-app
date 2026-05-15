@@ -6,6 +6,7 @@ import { route } from "ziggy-js"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Coins, Plus, Sparkles, Video } from "lucide-react"
+import { formatMediaStudioCredits } from "@/lib/media-studio-credits"
 
 interface VideoRow {
   id: number
@@ -29,12 +30,10 @@ export default function AiMediaStudioIndex({
   videos,
   context,
   ai_media_studio_credits,
-  media_studio_credit_cost,
 }: {
   videos: Paginated<VideoRow>
   context: "organization" | "supporter"
   ai_media_studio_credits: number
-  media_studio_credit_cost: number
 }) {
   const success = usePage<{ success?: string }>().props.success
 
@@ -65,9 +64,12 @@ export default function AiMediaStudioIndex({
                     <Sparkles className="h-3.5 w-3.5 text-violet-400" />
                     Video credits
                   </p>
-                  <p className="mt-1 text-3xl font-bold tabular-nums tracking-tight">{ai_media_studio_credits}</p>
+                  <p className="mt-1 text-3xl font-bold tabular-nums tracking-tight">
+                    {formatMediaStudioCredits(ai_media_studio_credits)}
+                  </p>
                   <p className="text-muted-foreground mt-0.5 text-xs">
-                    {media_studio_credit_cost} credit{media_studio_credit_cost === 1 ? "" : "s"} deducted per queued video
+                    Credits are US dollars (1 credit = $1). Each queued video deducts the retail price for your chosen
+                    resolution and length (see New video).
                   </p>
                 </div>
                 <div className="rounded-full bg-violet-500/15 p-2 text-violet-300">

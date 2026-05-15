@@ -7,6 +7,8 @@ use App\Models\AiVideo;
 use App\Models\Organization;
 use App\Models\User;
 use App\Services\AiMediaStudioDropboxService;
+use App\Support\AiMediaStudioCreditPricing;
+use App\Support\AiMediaStudioResolution;
 use App\Support\AiMediaStudioTemplates;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -45,8 +47,8 @@ class AiMediaStudioController extends Controller
         return Inertia::render('AiMediaStudio/Index', [
             'videos' => $videos,
             'context' => Organization::forAuthUser($user) ? 'organization' : 'supporter',
-            'ai_media_studio_credits' => (int) ($user->ai_media_studio_credits ?? 0),
-            'media_studio_credit_cost' => (int) config('services.ai_media_studio.credits_per_generation', 1),
+            'ai_media_studio_credits' => round((float) ($user->ai_media_studio_credits ?? 0), 2),
+            'media_studio_retail_prices' => AiMediaStudioCreditPricing::retailMatrixForFrontend(),
         ]);
     }
 
@@ -65,15 +67,22 @@ class AiMediaStudioController extends Controller
                 ->all();
         }
 
+        $resolutionTiers = AiMediaStudioResolution::allowedTiers();
+        $defaultTier = AiMediaStudioResolution::defaultTier();
+        $pixelMatrix = AiMediaStudioResolution::pixelMatrixForTiers($resolutionTiers);
+
         return Inertia::render('AiMediaStudio/Create', [
             'templates' => self::videoTemplates(),
             'favoriteOrganizations' => $favoriteOrganizations,
             'context' => $org ? 'organization' : 'supporter',
-            'ai_media_studio_credits' => (int) ($user->ai_media_studio_credits ?? 0),
-            'media_studio_credit_cost' => (int) config('services.ai_media_studio.credits_per_generation', 1),
+            'ai_media_studio_credits' => round((float) ($user->ai_media_studio_credits ?? 0), 2),
+            'media_studio_retail_prices' => AiMediaStudioCreditPricing::retailMatrixForFrontend(),
             'media_studio_packs' => config('services.ai_media_studio.supporter_packs', []),
             'video_duration_min' => (int) config('services.ai_media_studio.video_duration_min', 5),
             'video_duration_max' => (int) config('services.ai_media_studio.video_duration_max', 10),
+            'video_resolution_tiers' => $resolutionTiers,
+            'default_video_resolution_tier' => $defaultTier,
+            'video_resolution_pixel_matrix' => $pixelMatrix,
         ]);
     }
 
@@ -82,18 +91,15 @@ class AiMediaStudioController extends Controller
         $user = $request->user();
         $templateKeys = collect(self::videoTemplates())->pluck('key')->all();
 
-        $minDur = (int) config('services.ai_media_studio.video_duration_min', 5);
-        $maxDur = (int) config('services.ai_media_studio.video_duration_max', 10);
-        if ($maxDur < $minDur) {
-            $maxDur = $minDur;
-        }
+        $resolutionTiers = AiMediaStudioResolution::allowedTiers();
 
         $validated = $request->validate([
             'title' => ['required', 'string', 'max:255'],
             'prompt' => ['nullable', 'string', 'max:8000'],
             'template_key' => ['nullable', 'string', Rule::in($templateKeys)],
             'orientation' => ['nullable', 'string', Rule::in(['9:16', '16:9'])],
-            'duration_seconds' => ['nullable', 'integer', 'min:'.$minDur, 'max:'.$maxDur],
+            'resolution_tier' => ['nullable', 'string', Rule::in($resolutionTiers)],
+            'duration_seconds' => ['nullable', 'integer', Rule::in([5, 10])],
             'organization_id' => ['nullable', 'integer', 'exists:organizations,id'],
             'template_inputs' => ['nullable', 'array'],
             'template_inputs.title' => ['nullable', 'string', 'max:500'],
@@ -117,26 +123,32 @@ class AiMediaStudioController extends Controller
         }
 
         $orientation = $validated['orientation'] ?? '9:16';
-        $resolution = $orientation === '9:16' ? '1080x1920' : '1920x1080';
+        $tier = $validated['resolution_tier'] ?? AiMediaStudioResolution::defaultTier();
+        if (! in_array($tier, $resolutionTiers, true)) {
+            $tier = AiMediaStudioResolution::defaultTier();
+        }
+        $resolution = AiMediaStudioResolution::pixels($orientation, $tier);
 
-        $durationSeconds = isset($validated['duration_seconds'])
-            ? max($minDur, min($maxDur, (int) $validated['duration_seconds']))
-            : (int) round(($minDur + $maxDur) / 2);
+        $durationSeconds = (int) ($validated['duration_seconds'] ?? 5);
+        if (! in_array($durationSeconds, [5, 10], true)) {
+            $durationSeconds = 5;
+        }
 
-        $cost = (int) config('services.ai_media_studio.credits_per_generation', 1);
-        $cost = max(1, $cost);
+        $cost = AiMediaStudioCreditPricing::retailCredits($tier, $durationSeconds);
 
         $video = null;
 
-        DB::transaction(function () use ($user, $validated, $organizationId, $orientation, $resolution, $durationSeconds, $cost, &$video) {
+        DB::transaction(function () use ($user, $validated, $organizationId, $orientation, $resolution, $tier, $durationSeconds, $cost, &$video) {
             $locked = User::query()->whereKey($user->id)->lockForUpdate()->first();
             if (! $locked) {
                 throw ValidationException::withMessages(['title' => 'Account not found.']);
             }
 
-            if ((int) ($locked->ai_media_studio_credits ?? 0) < $cost) {
+            $balance = round((float) ($locked->ai_media_studio_credits ?? 0), 2);
+            if ($balance < round($cost, 2)) {
+                $need = number_format($cost, 2);
                 throw ValidationException::withMessages([
-                    'title' => "You need {$cost} AI Media Studio credit(s) to generate a video. Organizations receive credits with their subscription; supporters can buy credit packs from Credits / purchase.",
+                    'title' => 'You need '.$need.' AI Media Studio credits for this video (1 credit = US$1.00). Organizations receive credits with their subscription; supporters can buy credit packs from Credits / purchase.',
                 ]);
             }
 
@@ -151,6 +163,7 @@ class AiMediaStudioController extends Controller
                 'template_inputs' => $validated['template_inputs'] ?? null,
                 'orientation' => $orientation,
                 'resolution' => $resolution,
+                'resolution_tier' => $tier,
                 'duration_seconds' => $durationSeconds,
                 'status' => AiVideo::STATUS_PENDING_PROMPT,
                 'media_studio_credits_charged' => $cost,
@@ -192,6 +205,7 @@ class AiMediaStudioController extends Controller
                 'fal_cdn_url' => $aiVideo->fal_cdn_url,
                 'duration_seconds' => $aiVideo->duration_seconds,
                 'resolution' => $aiVideo->resolution,
+                'resolution_tier' => $aiVideo->resolution_tier,
                 'orientation' => $aiVideo->orientation,
                 'dropbox_path' => $aiVideo->dropbox_path,
                 'dropbox_shared_link' => $aiVideo->dropbox_shared_link,

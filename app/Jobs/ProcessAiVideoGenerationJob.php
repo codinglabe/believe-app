@@ -7,6 +7,7 @@ use App\Models\User;
 use App\Services\AiMediaStudioDropboxService;
 use App\Services\FalVideoService;
 use App\Services\OpenAiService;
+use App\Support\AiMediaStudioResolution;
 use App\Support\AiMediaStudioTemplates;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -48,14 +49,16 @@ class ProcessAiVideoGenerationJob implements ShouldQueue
         }
 
         try {
-            $video->update(['status' => AiVideo::STATUS_GENERATING]);
+            $video->update(['status' => AiVideo::STATUS_BUILDING_PROMPT]);
 
             $min = (int) config('services.ai_media_studio.video_duration_min', 5);
             $max = (int) config('services.ai_media_studio.video_duration_max', 10);
             if ($max < $min) {
                 $max = $min;
             }
-            $durationSeconds = max($min, min($max, (int) ($video->duration_seconds ?? $max)));
+            $durationSeconds = (int) ($video->duration_seconds ?? $max);
+            $durationSeconds = in_array($durationSeconds, [5, 10], true) ? $durationSeconds : 5;
+            $durationSeconds = max($min, min($max, $durationSeconds));
 
             $templateLabel = null;
             if (is_string($video->template_key) && $video->template_key !== '') {
@@ -93,6 +96,8 @@ class ProcessAiVideoGenerationJob implements ShouldQueue
             ]);
             unset($package);
 
+            $video->update(['status' => AiVideo::STATUS_RENDERING_VIDEO]);
+
             $modelId = is_string($video->fal_model) && trim($video->fal_model) !== ''
                 ? trim($video->fal_model, '/')
                 : $fal->defaultModelId();
@@ -102,7 +107,17 @@ class ProcessAiVideoGenerationJob implements ShouldQueue
                 'fal_model' => $modelId,
             ]);
 
-            $queueInput = $fal->buildQueueInput($falVideoPrompt, $durationSeconds);
+            $tier = is_string($video->resolution_tier) ? strtolower(trim($video->resolution_tier)) : '';
+            if ($tier === '') {
+                $tier = AiMediaStudioResolution::inferTierFromResolutionString($video->resolution, $video->orientation);
+            }
+            if ($tier === '') {
+                $tier = AiMediaStudioResolution::defaultTier();
+            }
+
+            $falOverrides = AiMediaStudioResolution::falQueueSizePayload($video->orientation, $tier);
+
+            $queueInput = $fal->buildQueueInput($falVideoPrompt, $durationSeconds, $falOverrides);
             $falOut = $fal->generateVideoUrl($modelId, $queueInput);
 
             $falUrl = $falOut['video_url'];
@@ -156,8 +171,8 @@ class ProcessAiVideoGenerationJob implements ShouldQueue
             return;
         }
 
-        $charged = (int) ($video->media_studio_credits_charged ?? 0);
-        if ($charged < 1) {
+        $charged = (float) ($video->media_studio_credits_charged ?? 0);
+        if ($charged < 0.005) {
             return;
         }
 

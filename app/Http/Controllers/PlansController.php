@@ -6,6 +6,7 @@ use App\Models\Plan;
 use App\Models\Transaction;
 use App\Models\User;
 use App\Models\WalletPlan;
+use App\Support\PlanAiMediaStudioSubscriptionCredits;
 use App\Support\StripeCustomerChargeAmount;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -924,12 +925,7 @@ class PlansController extends Controller
                 'custom_fields' => $plan->custom_fields ?? [],
             ];
 
-            $mediaStudioGrant = 0;
-            if (in_array($user->role, ['organization', 'organization_pending', 'care_alliance'], true)) {
-                $mediaStudioGrant = $aiMediaStudioCreditsFromPlan !== null
-                    ? max(0, $aiMediaStudioCreditsFromPlan)
-                    : (int) config('services.ai_media_studio.org_subscription_credits', 10);
-            }
+            $mediaStudioGrant = PlanAiMediaStudioSubscriptionCredits::grantAmountForSubscribe($aiMediaStudioCreditsFromPlan);
             $planDetails['ai_media_studio_credits_granted'] = $mediaStudioGrant;
 
             // Update user with plan, emails, tokens, and credits
@@ -994,7 +990,7 @@ class PlansController extends Controller
                 $successMessage .= " {$emailsIncluded} emails included.";
             }
             if ($mediaStudioGrant > 0) {
-                $successMessage .= " {$mediaStudioGrant} AI Media Studio video credits added.";
+                $successMessage .= " {$mediaStudioGrant} AI Media Studio credits added (US\$1 = 1 credit).";
             }
 
             // Render success page instead of redirecting

@@ -16,6 +16,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Coins, History, Sparkles, Video } from "lucide-react"
+import { formatMediaStudioCredits } from "@/lib/media-studio-credits"
 
 export type PurchaseHistoryRow = {
   id: number
@@ -119,15 +120,18 @@ export default function CreditsPurchase({
     w === "ai_media_studio" ? "AI Media Studio" : "Wallet credits"
 
   const quantityLabel = (row: PurchaseHistoryRow) => {
-    if (row.quantity < 1) return "—"
-    return row.wallet === "ai_media_studio" ? `${row.quantity} video credit(s)` : `${row.quantity.toLocaleString()} credits`
+    if (row.quantity < 0.005) return "—"
+    if (row.wallet === "ai_media_studio") {
+      return `${formatMediaStudioCredits(row.quantity)} credits (US$1 = 1 credit)`
+    }
+    return `${row.quantity.toLocaleString()} credits`
   }
 
   return (
     <AccountContextLayout
       context={context}
       title="AI Top Up"
-      description="Buy AI Media Studio video credits securely, then return to your library."
+      description="Top up your AI Media Studio balance: US$1 = 1 credit. Each queued video deducts credits by resolution and length."
     >
       <div className="mx-auto max-w-4xl space-y-8 px-4 py-6 md:px-8 md:py-10">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -172,15 +176,19 @@ export default function CreditsPurchase({
                     AI Media Studio
                   </CardTitle>
                   <CardDescription className="text-base leading-snug">
-                    Short-form video generation (OpenAI + fal.ai). One credit is reserved when you queue a video.
+                    Short-form video generation (OpenAI + fal.ai). Your balance is in credits where US$1 = 1 credit.
+                    Queuing a video deducts the retail amount for your resolution and length (for example, up to 3.99
+                    credits for 1080p at 10 seconds).
                   </CardDescription>
                 </div>
               </div>
               <div className="rounded-2xl border bg-card/80 px-4 py-4 backdrop-blur-sm">
                 <p className="text-muted-foreground text-xs font-semibold uppercase tracking-wide">Your balance</p>
                 <div className="mt-1 flex flex-wrap items-baseline gap-2">
-                  <span className="text-4xl font-bold tabular-nums tracking-tight">{aiMediaStudioCredits}</span>
-                  <span className="text-muted-foreground text-sm font-medium">video credits</span>
+                  <span className="text-4xl font-bold tabular-nums tracking-tight">
+                    {formatMediaStudioCredits(aiMediaStudioCredits)}
+                  </span>
+                  <span className="text-muted-foreground text-sm font-medium">credits (US$1 = 1)</span>
                 </div>
               </div>
             </CardHeader>

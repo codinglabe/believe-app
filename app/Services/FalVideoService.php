@@ -72,10 +72,12 @@ class FalVideoService
     /**
      * Merge prompt with optional extras from FAL_VIDEO_INPUT_EXTRAS (JSON object).
      * Duration is sent when `services.ai_media_studio.fal_duration_param` is non-empty (model-specific).
+     * `$inputOverrides` are merged last (e.g. resolution) so they win over env extras when keys collide.
      *
+     * @param  array<string, mixed>  $inputOverrides
      * @return array<string, mixed>
      */
-    public function buildQueueInput(string $prompt, ?int $durationSeconds = null): array
+    public function buildQueueInput(string $prompt, ?int $durationSeconds = null, array $inputOverrides = []): array
     {
         $input = [
             'prompt' => $prompt,
@@ -101,6 +103,10 @@ class FalVideoService
             if (is_array($decoded)) {
                 $input = array_merge($input, $decoded);
             }
+        }
+
+        if ($inputOverrides !== []) {
+            $input = array_merge($input, $inputOverrides);
         }
 
         return $input;

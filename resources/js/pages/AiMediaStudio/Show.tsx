@@ -9,13 +9,16 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { cn } from "@/lib/utils"
-import { Check, Copy, ExternalLink, Loader2, Sparkles } from "lucide-react"
+import { CreatorProgressStepper } from "@/pages/AiMediaStudio/creator-progress-stepper"
+import { Copy, ExternalLink, Loader2, Sparkles } from "lucide-react"
 import { showErrorToast, showSuccessToast } from "@/lib/toast"
 
 /** Statuses while the async pipeline may still be running (queue worker). */
 const PIPELINE_ACTIVE = new Set([
   "pending_prompt",
+  "building_prompt",
   "generating",
+  "rendering_video",
   "video_generated",
   "uploading_to_dropbox",
 ])
@@ -24,12 +27,18 @@ function generationHeadline(status: string): string {
   switch (status) {
     case "pending_prompt":
       return "Queued for generation"
+    case "building_prompt":
+      return "BIU AI is building your prompt"
     case "generating":
       return "Generating your video"
+    case "rendering_video":
+      return "BIU is rendering your video"
     case "video_generated":
       return "Video rendered — wrapping up"
     case "uploading_to_dropbox":
       return "Saving to your library"
+    case "failed":
+      return "Generation stopped"
     default:
       return "Working on your video"
   }
@@ -39,64 +48,21 @@ function generationSubtext(status: string): string {
   switch (status) {
     case "pending_prompt":
       return "Waiting for the background worker to pick up this job. This usually starts within a minute."
+    case "building_prompt":
+      return "OpenAI is turning your story into a cinematic script and a fal.ai-ready prompt."
     case "generating":
       return "OpenAI is drafting the script and fal.ai is rendering your MP4. Short videos can still take several minutes — this page refreshes automatically."
+    case "rendering_video":
+      return "fal.ai is rendering your MP4 at the resolution and length you chose. This page refreshes automatically."
     case "video_generated":
       return "Your file is ready to stream. We’re finishing metadata and optional cloud steps."
     case "uploading_to_dropbox":
       return "Copying the finished video to Dropbox (if connected). You can preview below while this completes."
+    case "failed":
+      return "See the error message below. Credits may be refunded automatically after retries."
     default:
       return "Please keep this tab open or return later — status updates on its own."
   }
-}
-
-function pipelineStepIndex(status: string): number {
-  if (status === "pending_prompt") return 0
-  if (status === "generating") return 1
-  if (status === "video_generated" || status === "uploading_to_dropbox") return 2
-  return 0
-}
-
-function PipelineStepper({ activeIndex }: { activeIndex: number }) {
-  const steps = [
-    { label: "Queued", description: "Job accepted" },
-    { label: "Script & render", description: "OpenAI + fal.ai" },
-    { label: "Finalize", description: "Preview & archive" },
-  ]
-  return (
-    <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
-      {steps.map((step, i) => {
-        const done = i < activeIndex
-        const current = i === activeIndex
-        return (
-          <div
-            key={step.label}
-            className={cn(
-              "flex gap-3 rounded-xl border p-3 transition-colors",
-              current && "border-violet-500/50 bg-violet-500/10 ring-1 ring-violet-500/20",
-              done && !current && "border-violet-500/30 bg-violet-500/5",
-              !done && !current && "border-border/80 bg-muted/20 opacity-80",
-            )}
-          >
-            <span
-              className={cn(
-                "flex h-10 w-10 shrink-0 items-center justify-center rounded-full border-2 text-sm font-semibold",
-                done && "border-violet-500 bg-violet-500 text-white",
-                current && !done && "border-violet-500 bg-violet-500/20 text-violet-200",
-                !done && !current && "border-muted-foreground/25 bg-background text-muted-foreground",
-              )}
-            >
-              {done ? <Check className="h-5 w-5" strokeWidth={3} /> : current ? <Loader2 className="h-5 w-5 animate-spin" /> : i + 1}
-            </span>
-            <div className="min-w-0">
-              <p className={cn("text-sm font-medium", current && "text-violet-100")}>{step.label}</p>
-              <p className="text-muted-foreground text-xs leading-snug">{step.description}</p>
-            </div>
-          </div>
-        )
-      })}
-    </div>
-  )
 }
 
 interface VideoDetail {
@@ -118,6 +84,7 @@ interface VideoDetail {
   video_source_url: string | null
   duration_seconds: number | null
   resolution: string | null
+  resolution_tier: string | null
   orientation: string | null
   dropbox_path: string | null
   dropbox_shared_link: string | null
@@ -146,7 +113,8 @@ export default function AiMediaStudioShow({
   const [previewFailed, setPreviewFailed] = useState(false)
 
   const isGenerating = PIPELINE_ACTIVE.has(video.status)
-  const stepActive = pipelineStepIndex(video.status)
+  const hasFalPrompt = Boolean(video.fal_prompt && String(video.fal_prompt).trim().length > 0)
+  const hasFalCdn = Boolean(video.fal_cdn_url && String(video.fal_cdn_url).trim().length > 0)
 
   useEffect(() => {
     if (!PIPELINE_ACTIVE.has(video.status)) {
@@ -188,7 +156,7 @@ export default function AiMediaStudioShow({
           : "AI video generation status, preview, and pipeline details."
       }
     >
-      <div className="mx-auto max-w-3xl space-y-6 p-4 md:p-8">
+      <div className="mx-auto max-w-5xl space-y-6 p-4 md:p-8">
         {success ? (
           <div className="rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-900 dark:border-green-900 dark:bg-green-950/40 dark:text-green-100">
             {success}
@@ -243,6 +211,14 @@ export default function AiMediaStudioShow({
           </div>
         </div>
 
+        <CreatorProgressStepper
+          variant="track"
+          status={video.status}
+          hasFalPrompt={hasFalPrompt}
+          hasFalCdn={hasFalCdn}
+          className="mb-2"
+        />
+
         {isGenerating ? (
           <div
             role="status"
@@ -272,7 +248,6 @@ export default function AiMediaStudioShow({
                 </p>
               </div>
             </div>
-            <PipelineStepper activeIndex={stepActive} />
           </div>
         ) : null}
 
@@ -436,6 +411,12 @@ export default function AiMediaStudioShow({
             </p>
             <p>
               <span className="text-muted-foreground">Format:</span> {video.resolution ?? "—"} ({video.orientation ?? "—"})
+              {video.resolution_tier ? (
+                <>
+                  {" "}
+                  · <span className="text-muted-foreground">Tier:</span> {video.resolution_tier}
+                </>
+              ) : null}
             </p>
             <p>
               <span className="text-muted-foreground">Dropbox path:</span> {video.dropbox_path ?? "—"}

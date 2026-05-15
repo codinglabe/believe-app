@@ -11,6 +11,12 @@ class AiVideo extends Model
 
     public const STATUS_GENERATING = 'generating';
 
+    /** OpenAI script + fal prompt package (legacy `generating` may still appear on old rows). */
+    public const STATUS_BUILDING_PROMPT = 'building_prompt';
+
+    /** fal.ai queue render in progress. */
+    public const STATUS_RENDERING_VIDEO = 'rendering_video';
+
     public const STATUS_VIDEO_GENERATED = 'video_generated';
 
     public const STATUS_UPLOADING_TO_DROPBOX = 'uploading_to_dropbox';
@@ -41,6 +47,7 @@ class AiVideo extends Model
         'fal_cdn_url',
         'duration_seconds',
         'resolution',
+        'resolution_tier',
         'orientation',
         'dropbox_path',
         'dropbox_shared_link',
@@ -62,6 +69,7 @@ class AiVideo extends Model
             'hashtags' => 'array',
             'template_inputs' => 'array',
             'generation_cost' => 'decimal:4',
+            'media_studio_credits_charged' => 'decimal:2',
             'approved_at' => 'datetime',
             'published_at' => 'datetime',
             'media_studio_credits_refunded_at' => 'datetime',

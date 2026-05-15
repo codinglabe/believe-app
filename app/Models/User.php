@@ -173,6 +173,7 @@ class User extends Authenticatable implements MustVerifyEmail
             'newsletter_pro_targeting_purchased_at' => 'datetime',
             'ai_tokens_included' => 'integer',
             'ai_tokens_used' => 'integer',
+            'ai_media_studio_credits' => 'decimal:2',
             'believe_points' => 'decimal:2',
             'gifted_believe_points' => 'decimal:2',
             'believe_points_auto_replenish_enabled' => 'boolean',

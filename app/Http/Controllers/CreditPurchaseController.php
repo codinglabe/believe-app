@@ -16,7 +16,7 @@ use Laravel\Cashier\Cashier;
 class CreditPurchaseController extends Controller
 {
     /**
-     * @return list<array{id: int, created_at: string, amount_usd: float, status: string, payment_method: string|null, wallet: string, quantity: int, summary: string, package: string|null}>
+     * @return list<array{id: int, created_at: string, amount_usd: float, status: string, payment_method: string|null, wallet: string, quantity: float|int, summary: string, package: string|null}>
      */
     protected function purchaseHistoryForUser(int $userId): array
     {
@@ -33,7 +33,7 @@ class CreditPurchaseController extends Controller
                     : 'credits';
                 $isStudio = $wallet === 'ai_media_studio';
                 $qty = $isStudio
-                    ? (int) ($meta['ai_media_studio_credits_added'] ?? $meta['media_credits_to_add'] ?? 0)
+                    ? (float) ($meta['ai_media_studio_credits_added'] ?? $meta['media_credits_to_add'] ?? 0)
                     : (int) ($meta['credits_added'] ?? $meta['credits_to_add'] ?? 0);
 
                 return [
@@ -43,7 +43,7 @@ class CreditPurchaseController extends Controller
                     'status' => (string) $t->status,
                     'payment_method' => $t->payment_method !== null ? (string) $t->payment_method : null,
                     'wallet' => $isStudio ? 'ai_media_studio' : 'credits',
-                    'quantity' => $qty,
+                    'quantity' => round($qty, 2),
                     'summary' => (string) ($meta['description'] ?? ($isStudio ? 'AI Media Studio credits' : 'Wallet credits')),
                     'package' => isset($meta['package']) && (is_string($meta['package']) || is_numeric($meta['package']))
                         ? (string) $meta['package']
@@ -95,7 +95,7 @@ class CreditPurchaseController extends Controller
         $user = $request->user();
 
         return Inertia::render('Credits/Purchase', [
-            'aiMediaStudioCredits' => (int) ($user->ai_media_studio_credits ?? 0),
+            'aiMediaStudioCredits' => round((float) ($user->ai_media_studio_credits ?? 0), 2),
             'mediaStudioPacks' => config('services.ai_media_studio.supporter_packs', []),
             'activeWallet' => $request->query('wallet', 'credits'),
             'context' => Organization::forAuthUser($user) ? 'organization' : 'supporter',
@@ -146,7 +146,7 @@ class CreditPurchaseController extends Controller
             $amountInCents = StripeCustomerChargeAmount::chargeCentsFromNetUsd((float) $amount, 'card');
 
             $grantLabel = $wallet === 'ai_media_studio'
-                ? "{$mediaCreditsToAdd} AI Media Studio credits"
+                ? "{$mediaCreditsToAdd} AI Media Studio credits (US\$1 = 1 credit)"
                 : "{$creditsToAdd} credits";
 
             // Record pending transaction
@@ -348,7 +348,7 @@ class CreditPurchaseController extends Controller
 
                 return redirect()->route($returnRouteFromMetadata)->with(
                     'success',
-                    "Successfully purchased {$mediaCreditsToAdd} AI Media Studio video credits."
+                    "Successfully added {$mediaCreditsToAdd} credits to your AI Media Studio balance (US\$1 = 1 credit)."
                 );
             }
 
