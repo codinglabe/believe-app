@@ -20,7 +20,7 @@ import {
 } from "lucide-react"
 import { Link } from "@inertiajs/react"
 import { RecordingConsentBarrier } from "@/components/livestreams/RecordingConsentBarrier"
-import UnityMeetVideoLogoOverlay from "@/components/meeting/UnityMeetVideoLogoOverlay"
+import VdoMeetingIframe from "@/components/meeting/VdoMeetingIframe"
 import { applyVdoGroupRoomPresentation, vdoUiAvatarUrl } from "@/lib/vdoMeeting"
 
 const BRAND = {
@@ -151,13 +151,7 @@ export default function SupporterMeetJoin({
             <span className="shrink-0 text-xs font-medium text-muted-foreground">{displayLabel}</span>
           </div>
           <div className="flex-1 min-h-0 relative bg-black">
-            <iframe
-              src={iframeUrl}
-              title="Meeting"
-              allow="camera; microphone; fullscreen; display-capture https://vdo.ninja https://www.vdo.ninja; autoplay; clipboard-write"
-              className="absolute inset-0 w-full h-full border-0"
-            />
-            <UnityMeetVideoLogoOverlay />
+            <VdoMeetingIframe src={iframeUrl} title="Meeting" />
           </div>
         </div>
       </UnityMeetLayout>

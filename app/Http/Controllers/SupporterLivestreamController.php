@@ -555,7 +555,7 @@ class SupporterLivestreamController extends Controller
         ]);
     }
 
-    public function show(Request $request, int $id): Response
+    public function show(Request $request, int $id, StreamingQueueService $streamingQueue): Response
     {
         $livestream = UserLivestream::where('user_id', $request->user()->id)->with(['user.organization'])->findOrFail($id);
 
@@ -651,11 +651,7 @@ class SupporterLivestreamController extends Controller
                 'youtubeBroadcastId' => $livestream->youtube_broadcast_id,
                 'youtubeConnected' => $youtubeConnected,
                 'youtubeChannelUrl' => $youtubeChannelUrl,
-                'streamingQueueStatus' => $latestStreamingJob ? [
-                    'status' => $latestStreamingJob->status,
-                    'updatedAt' => optional($latestStreamingJob->updated_at)->toIso8601String(),
-                    'failureReason' => $latestStreamingJob->failure_reason,
-                ] : null,
+                'streamingQueueStatus' => $streamingQueue->queueStatusForUi($latestStreamingJob, $livestream),
             ],
         ]);
     }

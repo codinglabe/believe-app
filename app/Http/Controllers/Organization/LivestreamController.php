@@ -316,11 +316,7 @@ class LivestreamController extends Controller
                 'canGoLive' => $livestream->canGoLive(),
                 'latestInviteUrl' => $latestInviteUrl,
                 'youtubeConnected' => ! empty($organization->youtube_refresh_token) || ! empty($organization->youtube_access_token),
-                'streamingQueueStatus' => $latestStreamingJob ? [
-                    'status' => $latestStreamingJob->status,
-                    'updatedAt' => optional($latestStreamingJob->updated_at)->toIso8601String(),
-                    'failureReason' => $latestStreamingJob->failure_reason,
-                ] : null,
+                'streamingQueueStatus' => app(StreamingQueueService::class)->queueStatusForUi($latestStreamingJob, $livestream),
             ],
             'mediamtxEnabled' => $mediamtxEnabled,
             'organization' => [

@@ -1,11 +1,11 @@
-"use client"
+﻿"use client"
 
 import { useMemo, useState, type ReactNode } from "react"
 import { Head } from "@inertiajs/react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { BelieveInUnityBrandMark } from "@/components/site-title"
-import UnityMeetVideoLogoOverlay from "@/components/meeting/UnityMeetVideoLogoOverlay"
+import VdoMeetingIframe from "@/components/meeting/VdoMeetingIframe"
 import { RecordingConsentBarrier } from "@/components/livestreams/RecordingConsentBarrier"
 import { applyVdoGroupRoomPresentation, vdoUiAvatarUrl } from "@/lib/vdoMeeting"
 import { Video } from "lucide-react"
@@ -236,13 +236,7 @@ function MeetingView({
         <span className="shrink-0 text-xs font-medium text-muted-foreground">{displayLabel}</span>
       </div>
       <div className="relative min-h-0 flex-1 bg-black">
-        <iframe
-          src={iframeUrl}
-          title="Meeting"
-          allow="camera; microphone; fullscreen; display-capture https://vdo.ninja https://www.vdo.ninja; autoplay; clipboard-write"
-          className="absolute inset-0 h-full w-full border-0"
-        />
-        <UnityMeetVideoLogoOverlay />
+        <VdoMeetingIframe src={iframeUrl} title="Meeting" />
       </div>
     </div>
   )

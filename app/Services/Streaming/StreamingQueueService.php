@@ -407,4 +407,23 @@ class StreamingQueueService
 
         $job->update(['accounted_at' => now()]);
     }
+
+    /**
+     * Props for the host UI "YouTube readiness" stream status row.
+     *
+     * @param  OrganizationLivestream|UserLivestream  $livestream
+     * @return array{status: ?string, livestreamStatus: string, streamStopRequested: bool, updatedAt: ?string, failureReason: ?string}
+     */
+    public function queueStatusForUi(?StreamingJob $job, OrganizationLivestream|UserLivestream $livestream): array
+    {
+        $settings = is_array($livestream->settings) ? $livestream->settings : [];
+
+        return [
+            'status' => $job?->status,
+            'livestreamStatus' => (string) $livestream->status,
+            'streamStopRequested' => ! empty($settings['stream_stop_requested']),
+            'updatedAt' => $job?->updated_at?->toIso8601String(),
+            'failureReason' => $job?->failure_reason,
+        ];
+    }
 }

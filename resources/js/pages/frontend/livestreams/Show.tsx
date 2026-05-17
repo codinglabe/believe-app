@@ -31,7 +31,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Switch } from "@/components/admin/ui/switch"
 import UnityMeetLayout from "@/layouts/UnityMeetLayout"
-import UnityMeetVideoLogoOverlay from "@/components/meeting/UnityMeetVideoLogoOverlay"
+import VdoMeetingIframe from "@/components/meeting/VdoMeetingIframe"
 import { PageHead } from "@/components/frontend/PageHead"
 import {
   Copy,
@@ -40,6 +40,7 @@ import {
   Square,
   Key,
   Info,
+  Loader2,
   CheckCircle2,
   ArrowLeft,
   MoreVertical,
@@ -53,6 +54,11 @@ import {
 } from "lucide-react"
 import { Link } from "@inertiajs/react"
 import { applyVdoGroupRoomPresentation } from "@/lib/vdoMeeting"
+import {
+  isStreamRelayInProgress,
+  resolveStreamingDisplayStatus,
+  streamingDisplayBadgeClass,
+} from "@/lib/streamingDisplayStatus"
 
 interface Livestream {
   id: number
@@ -96,8 +102,10 @@ interface Livestream {
 }
 
 interface StreamingQueueStatus {
-  status: "queued" | "starting" | "live" | "completed" | "failed" | "stopped" | "meeting_live" | "draft" | "scheduled" | string
-  updatedAt: string | null
+  status?: string | null
+  livestreamStatus?: string
+  streamStopRequested?: boolean
+  updatedAt?: string | null
   failureReason?: string | null
 }
 
@@ -130,6 +138,7 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
 
   const [copied, setCopied] = useState<string | null>(null)
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false)
+  const [isGoLivePending, setIsGoLivePending] = useState(false)
   const [infoOpen, setInfoOpen] = useState(false)
   const [isUpdatingVisibility, setIsUpdatingVisibility] = useState(false)
   const [isEndingStreamPending, setIsEndingStreamPending] = useState(false)
@@ -168,7 +177,20 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
   const unityLiveUrl = livestream.unityLiveUrl ?? (typeof window !== "undefined" ? `${window.location.origin}/unity-live/${livestream.roomName}` : "")
   const liveViewerUrl = livestream.liveViewerUrl ?? (typeof window !== "undefined" ? `${window.location.origin}/live/${livestream.roomName}` : "")
 
-  const pollMs = isEndingStreamPending && livestream.status === "live" ? 4000 : 12000
+  const streamRelayInProgress = useMemo(
+    () =>
+      isStreamRelayInProgress({
+        jobStatus: livestream.streamingQueueStatus?.status,
+        livestreamStatus: livestream.streamingQueueStatus?.livestreamStatus ?? livestream.status,
+        streamStopRequested: livestream.streamingQueueStatus?.streamStopRequested,
+      }),
+    [livestream.streamingQueueStatus, livestream.status],
+  )
+
+  const isGoLiveBusy = isGoLivePending || streamRelayInProgress
+
+  const pollMs =
+    (isEndingStreamPending && livestream.status === "live") || streamRelayInProgress ? 4000 : 12000
 
   useEffect(() => {
     const id = window.setInterval(() => {
@@ -216,14 +238,17 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
   }
 
   const queueCloudStream = () => {
+    if (isGoLiveBusy) {
+      return
+    }
     if (!livestream.hasStreamKey) {
       setGoLivePrecheckOpen(true)
       return
     }
-    setIsUpdatingStatus(true)
+    setIsGoLivePending(true)
     router.post(`/livestreams/supporter/${livestream.id}/queue-stream-relay`, {}, {
       preserveScroll: true,
-      onFinish: () => setIsUpdatingStatus(false),
+      onFinish: () => setIsGoLivePending(false),
     })
   }
 
@@ -258,9 +283,28 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
   }
 
   const goLiveAttentionClass =
-    livestream.canGoLive && livestream.status !== "live"
+    livestream.canGoLive && livestream.status !== "live" && !isGoLiveBusy
       ? "motion-safe:animate-pulse shadow-md shadow-red-500/30"
       : ""
+
+  const goLiveDisabled = isGoLiveBusy || isUpdatingStatus || isEndingStreamPending
+
+  const streamDisplayStatus = useMemo(
+    () =>
+      resolveStreamingDisplayStatus({
+        jobStatus: livestream.streamingQueueStatus?.status,
+        livestreamStatus: livestream.streamingQueueStatus?.livestreamStatus ?? livestream.status,
+        isEndingStreamPending,
+        streamStopRequested: livestream.streamingQueueStatus?.streamStopRequested,
+        failureReason: livestream.streamingQueueStatus?.failureReason,
+        jobUpdatedAt: livestream.streamingQueueStatus?.updatedAt ?? null,
+      }),
+    [
+      livestream.streamingQueueStatus,
+      livestream.status,
+      isEndingStreamPending,
+    ],
+  )
 
   const toggleVisibility = (publicVal: boolean) => {
     setIsUpdatingVisibility(true)
@@ -291,12 +335,21 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
               {livestream.hasStreamKey ? "Yes" : "No"}
             </span>
           </div>
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-muted-foreground">Queue status</span>
-            <Badge variant="outline" className="h-6 px-2 text-[10px] uppercase">
-              {livestream.streamingQueueStatus?.status ?? "not queued"}
-            </Badge>
-          </div>
+          {streamDisplayStatus ? (
+            <div className="space-y-1">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-muted-foreground">Stream status</span>
+                <Badge
+                  variant="outline"
+                  className={`h-6 max-w-[58%] truncate px-2 text-[10px] font-semibold ${streamingDisplayBadgeClass(streamDisplayStatus.tone)}`}
+                  title={streamDisplayStatus.description}
+                >
+                  {streamDisplayStatus.label}
+                </Badge>
+              </div>
+              <p className="text-[10px] leading-snug text-muted-foreground">{streamDisplayStatus.description}</p>
+            </div>
+          ) : null}
         </div>
         {(livestream.youtubeChannelUrl ?? "").trim().length > 0 && (
           <p className="text-[11px] text-muted-foreground truncate">
@@ -531,10 +584,14 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
                       size="icon"
                       className={`h-8 w-8 rounded-md bg-red-600 hover:bg-red-700 touch-manipulation ${goLiveAttentionClass}`}
                       onClick={handleGoLiveClick}
-                      disabled={isUpdatingStatus}
-                      aria-label="Queue cloud stream to YouTube"
+                      disabled={goLiveDisabled}
+                      aria-label={isGoLiveBusy ? "Going live" : "Queue cloud stream to YouTube"}
                     >
-                      <Play className="h-4 w-4" />
+                      {isGoLiveBusy ? (
+                        <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                      ) : (
+                        <Play className="h-4 w-4" />
+                      )}
                     </Button>
                   </>
                 )}
@@ -550,9 +607,13 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
                   <DropdownMenuContent align="end" side="bottom" className="w-48">
                     {livestream.canGoLive && livestream.status !== "live" && (
                       <>
-                        <DropdownMenuItem onClick={handleGoLiveClick} disabled={isUpdatingStatus}>
-                          <Play className="h-4 w-4 mr-2" />
-                          Go Live (cloud relay)
+                        <DropdownMenuItem onClick={handleGoLiveClick} disabled={goLiveDisabled}>
+                          {isGoLiveBusy ? (
+                            <Loader2 className="h-4 w-4 mr-2 animate-spin" aria-hidden />
+                          ) : (
+                            <Play className="h-4 w-4 mr-2" />
+                          )}
+                          {isGoLiveBusy ? "Going live…" : "Go Live (cloud relay)"}
                         </DropdownMenuItem>
                       </>
                     )}
@@ -577,12 +638,16 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
                   <>
                     <Button
                       size="sm"
-                      className={`bg-red-600 hover:bg-red-700 h-8 px-3 ${goLiveAttentionClass}`}
+                      className={`bg-red-600 hover:bg-red-700 h-8 px-3 min-w-[7.5rem] ${goLiveAttentionClass}`}
                       onClick={handleGoLiveClick}
-                      disabled={isUpdatingStatus}
+                      disabled={goLiveDisabled}
                     >
-                      <Play className="h-4 w-4 mr-1.5" />
-                      Go Live
+                      {isGoLiveBusy ? (
+                        <Loader2 className="h-4 w-4 mr-1.5 animate-spin" aria-hidden />
+                      ) : (
+                        <Play className="h-4 w-4 mr-1.5" />
+                      )}
+                      {isGoLiveBusy ? "Going live…" : "Go Live"}
                     </Button>
                   </>
                 )}
@@ -664,18 +729,16 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
             <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
               <div className="relative isolate flex min-h-0 min-w-0 flex-1 overflow-hidden bg-black">
                 {vdoHostIframeSrc ? (
-                  <iframe
+                  <VdoMeetingIframe
                     key={recordingDestination}
                     src={vdoHostIframeSrc}
                     title="Host"
-                    className="absolute inset-0 z-[1] h-full w-full border-0 bg-black"
-                    allow="camera; microphone; fullscreen; display-capture https://vdo.ninja https://www.vdo.ninja; autoplay; clipboard-write"
                   />
-                ) : null}
-                {!vdoHostIframeSrc ? (
-                  <div className="absolute inset-0 z-[1] flex items-center justify-center text-muted-foreground text-sm sm:text-base">Loading meeting…</div>
-                ) : null}
-                <UnityMeetVideoLogoOverlay />
+                ) : (
+                  <div className="absolute inset-0 z-[1] flex items-center justify-center text-muted-foreground text-sm sm:text-base">
+                    Loading meeting…
+                  </div>
+                )}
                 {livestream.status === "live" && (
                   <div className="pointer-events-none absolute top-2 right-2 z-[2] sm:top-3 sm:right-3 rounded bg-red-600 px-2 py-0.5 text-xs font-semibold text-white animate-pulse sm:px-3 sm:py-1 sm:text-sm">
                     ● LIVE
@@ -732,8 +795,19 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
                 <Alert variant="destructive"><AlertDescription>{queueStreamErrorText}</AlertDescription></Alert>
               )}
               {livestream.hasStreamKey && livestream.canGoLive && livestream.status !== "live" && (
-                <Button className={`w-full bg-red-600 hover:bg-red-700 ${goLiveAttentionClass}`} onClick={handleGoLiveClick} disabled={isUpdatingStatus}>
-                  {isUpdatingStatus ? "Queuing…" : "Start cloud stream to YouTube"}
+                <Button
+                  className={`w-full bg-red-600 hover:bg-red-700 ${goLiveAttentionClass}`}
+                  onClick={handleGoLiveClick}
+                  disabled={goLiveDisabled}
+                >
+                  {isGoLiveBusy ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" aria-hidden />
+                      Going live…
+                    </>
+                  ) : (
+                    "Start cloud stream to YouTube"
+                  )}
                 </Button>
               )}
               {livestream.hasStreamKey && (!livestream.canGoLive || livestream.status === "live") && (
@@ -799,7 +873,7 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
                     <ul className="mt-1.5 list-inside list-disc space-y-1 text-sm text-muted-foreground">
                       <li>Open this meeting as host (iframe above).</li>
                       <li>Click <strong className="text-foreground">Go Live</strong> — that queues an AWS relay to YouTube.</li>
-                      <li>Watch <strong className="text-foreground">Queue status</strong> in Meeting info; it switches to live when the worker attaches.</li>
+                      <li>Watch <strong className="text-foreground">Stream status</strong> in Meeting info; it moves through Pending → Live when the worker attaches.</li>
                     </ul>
                   </div>
                 </div>

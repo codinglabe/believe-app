@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { Head, router } from "@inertiajs/react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -16,6 +16,7 @@ import {
   ExternalLink,
   Play,
   Square,
+  Loader2,
   Youtube,
   Users,
   Key,
@@ -28,6 +29,7 @@ import {
   ArrowLeft,
 } from "lucide-react"
 import { Link } from "@inertiajs/react"
+import { isStreamRelayInProgress } from "@/lib/streamingDisplayStatus"
 
 interface Livestream {
   id: number
@@ -49,6 +51,13 @@ interface Livestream {
   endedAt: string | null
   hasStreamKey: boolean
   youtubeBroadcastId: string | null
+  streamingQueueStatus?: {
+    status?: string | null
+    livestreamStatus?: string
+    streamStopRequested?: boolean
+    updatedAt?: string | null
+    failureReason?: string | null
+  } | null
 }
 
 interface Organization {
@@ -78,11 +87,25 @@ function formatDeclineTime(iso: string | null): string {
 export default function ShowLivestream({ livestream, organization, recordingConsentDeclines }: Props) {
   const [copied, setCopied] = useState<string | null>(null)
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false)
+  const [isGoLivePending, setIsGoLivePending] = useState(false)
   const [isEndingStreamPending, setIsEndingStreamPending] = useState(false)
   const [streamKey, setStreamKey] = useState("")
   const [isUpdatingStreamKey, setIsUpdatingStreamKey] = useState(false)
 
-  const pollMs = isEndingStreamPending && livestream.status === "live" ? 4000 : 12000
+  const streamRelayInProgress = useMemo(
+    () =>
+      isStreamRelayInProgress({
+        jobStatus: livestream.streamingQueueStatus?.status,
+        livestreamStatus: livestream.streamingQueueStatus?.livestreamStatus ?? livestream.status,
+        streamStopRequested: livestream.streamingQueueStatus?.streamStopRequested,
+      }),
+    [livestream.streamingQueueStatus, livestream.status],
+  )
+
+  const isGoLiveBusy = isGoLivePending || streamRelayInProgress
+
+  const pollMs =
+    (isEndingStreamPending && livestream.status === "live") || streamRelayInProgress ? 4000 : 12000
 
   useEffect(() => {
     const id = window.setInterval(() => {
@@ -120,13 +143,16 @@ export default function ShowLivestream({ livestream, organization, recordingCons
   }
 
   const goLiveCloud = () => {
-    setIsUpdatingStatus(true)
+    if (isGoLiveBusy) {
+      return
+    }
+    setIsGoLivePending(true)
     router.post(
       `/livestreams/${livestream.id}/queue-stream-relay`,
       {},
       {
         preserveScroll: true,
-        onFinish: () => setIsUpdatingStatus(false),
+        onFinish: () => setIsGoLivePending(false),
       }
     )
   }
@@ -268,11 +294,15 @@ export default function ShowLivestream({ livestream, organization, recordingCons
                 {!["live", "meeting_live", "starting"].includes(livestream.status) && (
                   <Button
                     onClick={goLiveCloud}
-                    disabled={isUpdatingStatus}
-                    className="bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800"
+                    disabled={isGoLiveBusy || isUpdatingStatus || isEndingStreamPending}
+                    className="bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 min-w-[10.5rem]"
                   >
-                    <Play className="w-4 h-4 mr-2" />
-                    Go Live (Cloud)
+                    {isGoLiveBusy ? (
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden />
+                    ) : (
+                      <Play className="w-4 h-4 mr-2" />
+                    )}
+                    {isGoLiveBusy ? "Going live…" : "Go Live (Cloud)"}
                   </Button>
                 )}
                 {["live", "meeting_live", "starting"].includes(livestream.status) && (
