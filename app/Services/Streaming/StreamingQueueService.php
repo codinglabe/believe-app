@@ -160,7 +160,15 @@ class StreamingQueueService
         }
 
         if ($status === 'starting' && in_array($livestream->status, ['draft', 'scheduled'], true)) {
-            $livestream->update(['status' => 'meeting_live']);
+            // Fresh stream beginning — drop any stale End Stream marker so this
+            // run isn't killed by the previous run's flag.
+            $settings = $livestream->settings ?? [];
+            unset($settings['stream_stop_requested']);
+
+            $livestream->update([
+                'status' => 'meeting_live',
+                'settings' => $settings ?: null,
+            ]);
 
             return;
         }
@@ -185,9 +193,15 @@ class StreamingQueueService
         }
 
         if (in_array($status, ['completed', 'stopped'], true)) {
+            // Clear the End Stream marker so the *next* stream on this row
+            // isn't instantly stopped by a stale flag.
+            $settings = $livestream->settings ?? [];
+            unset($settings['stream_stop_requested']);
+
             $livestream->update([
                 'status' => 'draft',
                 'ended_at' => now(),
+                'settings' => $settings ?: null,
             ]);
 
             if ($job->livestream_kind === 'organization' && $livestream instanceof OrganizationLivestream) {

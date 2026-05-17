@@ -797,6 +797,14 @@ class LivestreamController extends Controller
             return redirect()->back()->withErrors(['error' => 'Stream is not live.']);
         }
 
+        // Mark stop intent BEFORE the YouTube calls. The AWS worker polls the
+        // callback endpoint every ~10s and shuts itself down once it sees this.
+        // Without it, "End Stream" never reached the worker (Laravel has no way
+        // to signal the task) so the relay ran until the browser tab closed.
+        $settings = $livestream->settings ?? [];
+        $settings['stream_stop_requested'] = now()->toIso8601String();
+        $livestream->update(['settings' => $settings]);
+
         $youtubeService = app(YouTubeService::class);
         $accessToken = $youtubeService->getValidAccessToken($organization);
 
