@@ -335,7 +335,11 @@ class UserLivestream extends Model
         // would replace it; that assumption was wrong — VDO.Ninja scene mode is receive-only.)
         $mediaMtxHost = \App\Support\StreamingWorkerSourceUrl::bridgeMediaMtxHost();
         if ($mediaMtxHost !== null) {
-            $base .= '&mediamtx=' . $mediaMtxHost . '&codec=h264';
+            // VP8, not H264: every browser can VP8-encode for WebRTC, so the
+            // video track is always published. Forcing H264 made browsers that
+            // can't H264-encode drop video entirely (audio-only on YouTube).
+            // The MediaMTX bridge transcodes VP8 -> H264 for the RTMP/YouTube leg.
+            $base .= '&mediamtx=' . $mediaMtxHost . '&codec=vp8';
         }
 
         if ($recordEnabled && $recordToDropbox) {
