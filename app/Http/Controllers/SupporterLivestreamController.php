@@ -742,8 +742,11 @@ class SupporterLivestreamController extends Controller
     {
         $livestream = UserLivestream::where('user_id', $request->user()->id)->findOrFail($id);
 
-        if ($livestream->status !== 'live') {
-            return redirect()->back()->withErrors(['error' => 'Stream is not live.']);
+        // Accept any active state, not just 'live'. A stream that failed (e.g.
+        // bridge cold) gets reset to 'meeting_live'; the user must still be able
+        // to end/reset it. Only reject genuinely-inactive states.
+        if (! in_array($livestream->status, ['live', 'meeting_live', 'starting'], true)) {
+            return redirect()->back()->withErrors(['error' => 'Stream is not active.']);
         }
 
         // Mark stop intent BEFORE the YouTube calls. The AWS worker polls the
@@ -770,9 +773,19 @@ class SupporterLivestreamController extends Controller
                 ]);
             }
 
+            // Reset locally too. The worker (if one is running) stops within
+            // ~10s via the stop_requested heartbeat and its 'stopped' callback
+            // re-confirms draft (idempotent). If the stream had already failed
+            // and no worker is running, this is the only thing that frees the
+            // user from a stuck meeting_live/live state.
+            $livestream->update([
+                'status' => 'draft',
+                'ended_at' => $livestream->ended_at ?? now(),
+            ]);
+
             return redirect()->back()->with(
                 'success',
-                'Ending stream — YouTube was told to stop. This page will update when the cloud relay reports finished (usually within a short time).'
+                'Ending stream — YouTube was told to stop and the relay is shutting down (usually within ~10s).'
             );
         }
 
