@@ -39,6 +39,22 @@ class SupporterLivestreamController extends Controller
         return 'uni-'.$slugPart.'-'.$user->id;
     }
 
+    /**
+     * Supporter meetings reuse one row per Unity Meeting ID — clear YouTube from the previous session
+     * so "Stream key configured" is not Yes until Prepare YouTube Live (or paste key) for this meeting.
+     */
+    private function resetYoutubeForFreshMeetingSession(UserLivestream $livestream): void
+    {
+        $livestream->youtube_stream_key = null;
+        $livestream->youtube_broadcast_id = null;
+        $livestream->started_at = null;
+        $livestream->ended_at = null;
+
+        $settings = is_array($livestream->settings) ? $livestream->settings : [];
+        unset($settings['rtmp_url']);
+        $livestream->settings = $settings !== [] ? $settings : null;
+    }
+
     public function index(Request $request): Response
     {
         $meetingsView = $request->query('view') === 'meetings';
@@ -285,7 +301,9 @@ class SupporterLivestreamController extends Controller
             'is_public' => $request->boolean('is_public'),
             'title' => $request->title,
             'settings' => $settings ?: null,
+            'scheduled_at' => null,
         ]);
+        $this->resetYoutubeForFreshMeetingSession($livestream);
         $livestream->save();
 
         return redirect()->route('livestreams.supporter.ready', $livestream->id)
@@ -372,6 +390,7 @@ class SupporterLivestreamController extends Controller
             'scheduled_at' => $scheduledAt,
             'settings' => $settings ?: null,
         ]);
+        $this->resetYoutubeForFreshMeetingSession($livestream);
         $livestream->save();
 
         return redirect()->route('livestreams.supporter.ready', $livestream->id)
@@ -418,7 +437,7 @@ class SupporterLivestreamController extends Controller
 
         if ($orgStream) {
             $password = $orgStream->getDecryptedPassword();
-            if ($password !== '') {
+            if ($orgStream->requiresPasscode()) {
                 if ($passcode === '') {
                     return redirect()->route('livestreams.supporter.join')
                         ->withInput($request->only('meeting_id'))
@@ -469,7 +488,7 @@ class SupporterLivestreamController extends Controller
 
         if ($userStream) {
             $password = $userStream->getDecryptedPassword();
-            if ($password !== '') {
+            if ($userStream->requiresPasscode()) {
                 if ($passcode === '') {
                     return redirect()->route('livestreams.supporter.join')
                         ->withInput($request->only('meeting_id'))
@@ -530,6 +549,7 @@ class SupporterLivestreamController extends Controller
                 'title' => $livestream->title,
                 'roomName' => $livestream->room_name,
                 'roomPassword' => $password,
+                'requiresPasscode' => $livestream->requiresPasscode(),
                 'joinUrl' => $joinUrl,
             ],
         ]);
@@ -621,6 +641,7 @@ class SupporterLivestreamController extends Controller
                 'canStartMeeting' => $livestream->canStartMeeting(),
                 'canGoLive' => $livestream->canGoLive(),
                 'latestInviteUrl' => $joinUrl,
+                'requiresPasscode' => $livestream->requiresPasscode(),
                 'hasStreamKey' => ! empty($livestream->youtube_stream_key),
                 'youtubeGoLiveEnabled' => $youtubeGoLiveEnabled,
                 'pushLink' => $pushLink,
@@ -738,8 +759,12 @@ class SupporterLivestreamController extends Controller
         return redirect()->route('livestreams.supporter.index')->with('success', 'Meeting deleted.');
     }
 
-    public function endStream(Request $request, int $id, YouTubeService $youtubeService): RedirectResponse
-    {
+    public function endStream(
+        Request $request,
+        int $id,
+        YouTubeService $youtubeService,
+        StreamingQueueService $streamingQueue,
+    ): RedirectResponse {
         $livestream = UserLivestream::where('user_id', $request->user()->id)->findOrFail($id);
 
         // Accept any active state, not just 'live'. A stream that failed (e.g.
@@ -761,7 +786,16 @@ class SupporterLivestreamController extends Controller
 
         if (! empty($livestream->youtube_broadcast_id) && $accessToken) {
             try {
-                $youtubeService->updateBroadcastStatus($accessToken, $livestream->youtube_broadcast_id, 'complete');
+                $endedOnYoutube = $youtubeService->updateBroadcastStatus(
+                    $accessToken,
+                    $livestream->youtube_broadcast_id,
+                    'complete'
+                );
+                if (! $endedOnYoutube) {
+                    return redirect()->back()->withErrors([
+                        'error' => 'YouTube did not confirm the broadcast ended. Try again or end it from YouTube Studio.',
+                    ]);
+                }
             } catch (\Throwable $e) {
                 Log::warning('End stream: YouTube complete failed (supporter)', [
                     'livestream_id' => $id,
@@ -772,6 +806,8 @@ class SupporterLivestreamController extends Controller
                     'error' => 'Could not end the YouTube broadcast. Try again from YouTube Studio, or wait and refresh.',
                 ]);
             }
+
+            $settledLocally = $streamingQueue->finalizeAfterHostEndStream('user', $livestream->id);
 
             // Reset locally too. The worker (if one is running) stops within
             // ~10s via the stop_requested heartbeat and its 'stopped' callback
@@ -785,9 +821,13 @@ class SupporterLivestreamController extends Controller
 
             return redirect()->back()->with(
                 'success',
-                'Ending stream — YouTube was told to stop and the relay is shutting down (usually within ~10s).'
+                $settledLocally
+                    ? 'YouTube live ended. The meeting is ready — you can go live again when you want.'
+                    : 'Ending stream — YouTube was told to stop and the relay is shutting down (usually within ~10s).'
             );
         }
+
+        $streamingQueue->finalizeAfterHostEndStream('user', $livestream->id);
 
         // Manual stream key / no API broadcast: there is nothing to complete on YouTube; settle locally.
         $livestream->update([

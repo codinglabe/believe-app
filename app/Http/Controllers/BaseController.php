@@ -6,6 +6,7 @@ use App\Models\Organization;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\Auth\Access\AuthorizesRequests;
 use Illuminate\Foundation\Validation\ValidatesRequests;
+use Illuminate\Auth\AuthenticationException;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller as LaravelBaseController;
 use Illuminate\Validation\Rule;
@@ -89,6 +90,10 @@ abstract class BaseController extends LaravelBaseController
      */
     protected function authorizePermission(Request $request, string $permission): void
     {
+        if (! $request->user()) {
+            throw new AuthenticationException;
+        }
+
         if (! $this->hasPermission($request, $permission)) {
             // If it's an AJAX request, return JSON response
             if ($request->expectsJson()) {

@@ -35,6 +35,7 @@ interface Livestream {
   description: string | null
   roomName: string
   roomPassword: string
+  requiresPasscode?: boolean
   directorUrl: string
   hostPushUrl: string
   participantUrl: string
@@ -77,8 +78,28 @@ function formatDeclineTime(iso: string | null): string {
 export default function ShowLivestream({ livestream, organization, recordingConsentDeclines }: Props) {
   const [copied, setCopied] = useState<string | null>(null)
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false)
+  const [isEndingStreamPending, setIsEndingStreamPending] = useState(false)
   const [streamKey, setStreamKey] = useState("")
   const [isUpdatingStreamKey, setIsUpdatingStreamKey] = useState(false)
+
+  const pollMs = isEndingStreamPending && livestream.status === "live" ? 4000 : 12000
+
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      router.reload({
+        only: ["livestream", "recordingConsentDeclines"],
+        preserveScroll: true,
+        preserveState: true,
+      })
+    }, pollMs)
+    return () => window.clearInterval(id)
+  }, [pollMs])
+
+  useEffect(() => {
+    if (isEndingStreamPending && livestream.status !== "live") {
+      setIsEndingStreamPending(false)
+    }
+  }, [livestream.status, isEndingStreamPending])
 
   const copyToClipboard = (text: string, key: string) => {
     navigator.clipboard.writeText(text)
@@ -112,6 +133,7 @@ export default function ShowLivestream({ livestream, organization, recordingCons
 
   const endStreamCloud = () => {
     setIsUpdatingStatus(true)
+    setIsEndingStreamPending(true)
     router.post(
       `/livestreams/${livestream.id}/end-stream`,
       {},
@@ -216,6 +238,19 @@ export default function ShowLivestream({ livestream, organization, recordingCons
           </Alert>
         )}
 
+        {isEndingStreamPending && livestream.status === "live" && (
+          <Alert className="border-blue-500/30 bg-gradient-to-r from-purple-500/10 to-blue-500/10">
+            <Info className="h-4 w-4" />
+            <AlertDescription>
+              <p className="font-medium text-foreground">Ending YouTube live</p>
+              <p className="text-sm text-muted-foreground mt-1">
+                YouTube was told to stop. This page refreshes until the AWS worker callback reports the relay
+                finished, then you can go live again.
+              </p>
+            </AlertDescription>
+          </Alert>
+        )}
+
         <Tabs defaultValue="dashboard" className="space-y-6">
           <TabsList>
             <TabsTrigger value="dashboard">Host Dashboard</TabsTrigger>
@@ -243,11 +278,11 @@ export default function ShowLivestream({ livestream, organization, recordingCons
                 {["live", "meeting_live", "starting"].includes(livestream.status) && (
                   <Button
                     onClick={endStreamCloud}
-                    disabled={isUpdatingStatus}
+                    disabled={isUpdatingStatus || isEndingStreamPending}
                     variant="destructive"
                   >
                     <Square className="w-4 h-4 mr-2" />
-                    End Stream
+                    {isEndingStreamPending ? "Stopping…" : "End Stream"}
                   </Button>
                 )}
                 <Button
@@ -361,19 +396,21 @@ export default function ShowLivestream({ livestream, organization, recordingCons
                     </Button>
                   </div>
                 </div>
-                <div>
-                  <Label>Room Password</Label>
-                  <div className="flex gap-2 mt-1">
-                    <Input value={livestream.roomPassword} readOnly className="font-mono" />
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      onClick={() => copyToClipboard(livestream.roomPassword, "password")}
-                    >
-                      <Copy className={`w-4 h-4 ${copied === "password" ? "text-green-400" : ""}`} />
-                    </Button>
+                {livestream.requiresPasscode ? (
+                  <div>
+                    <Label>Room Password</Label>
+                    <div className="flex gap-2 mt-1">
+                      <Input value={livestream.roomPassword} readOnly className="font-mono" />
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        onClick={() => copyToClipboard(livestream.roomPassword, "password")}
+                      >
+                        <Copy className={`w-4 h-4 ${copied === "password" ? "text-green-400" : ""}`} />
+                      </Button>
+                    </div>
                   </div>
-                </div>
+                ) : null}
               </CardContent>
             </Card>
 

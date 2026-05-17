@@ -194,6 +194,7 @@ class LivestreamController extends Controller
                 'title' => $livestream->title,
                 'roomName' => $livestream->room_name,
                 'roomPassword' => $password,
+                'requiresPasscode' => $livestream->requiresPasscode(),
                 'joinUrl' => $joinUrl,
             ],
             'organization' => [
@@ -286,6 +287,7 @@ class LivestreamController extends Controller
                 'description' => $livestream->description,
                 'roomName' => $livestream->room_name,
                 'roomPassword' => $password,
+                'requiresPasscode' => $livestream->requiresPasscode(),
                 'directorUrl' => $directorUrl,
                 'directorUrlLocal' => $directorUrlLocal,
                 'directorUrlDropbox' => $directorUrlDropbox,
@@ -781,7 +783,7 @@ class LivestreamController extends Controller
      * Livestream status returns to draft when the AWS worker reports completed/stopped; a new YouTube
      * broadcast is provisioned then so this meeting can go live again.
      */
-    public function endStream(Request $request, $id)
+    public function endStream(Request $request, $id, StreamingQueueService $streamingQueue)
     {
         $user = Auth::user();
         $organization = $user->organization ?? Organization::where('user_id', $user->id)->first();
@@ -812,11 +814,20 @@ class LivestreamController extends Controller
         $accessToken = $youtubeService->getValidAccessToken($organization);
 
         // Stop the current broadcast on YouTube (OBS is stopped on frontend via stopOBSStream).
-        // Do not set meeting status here — the AWS worker callback (completed/stopped) updates the row
-        // so the UI matches when the relay has actually finished. A fresh YouTube broadcast is created then.
+        // Meeting status returns to draft when the AWS worker callback reports completed/stopped
+        // (or immediately in STREAMING_SIMULATE_WORKER mode). A fresh YouTube broadcast is created then.
         if (! empty($livestream->youtube_broadcast_id) && $accessToken) {
             try {
-                $youtubeService->updateBroadcastStatus($accessToken, $livestream->youtube_broadcast_id, 'complete');
+                $endedOnYoutube = $youtubeService->updateBroadcastStatus(
+                    $accessToken,
+                    $livestream->youtube_broadcast_id,
+                    'complete'
+                );
+                if (! $endedOnYoutube) {
+                    return redirect()->back()->withErrors([
+                        'error' => 'YouTube did not confirm the broadcast ended. Try again or end it from YouTube Studio.',
+                    ]);
+                }
             } catch (\Throwable $e) {
                 Log::warning('End stream: YouTube complete failed', ['livestream_id' => $id, 'error' => $e->getMessage()]);
 
@@ -824,6 +835,8 @@ class LivestreamController extends Controller
                     'error' => 'Could not end the YouTube broadcast. Try again from YouTube Studio, or wait and refresh.',
                 ]);
             }
+
+            $settledLocally = $streamingQueue->finalizeAfterHostEndStream('organization', $livestream->id);
 
             // Reset locally too. The worker (if running) stops within ~10s via
             // the stop_requested heartbeat and its 'stopped' callback re-confirms
@@ -837,9 +850,13 @@ class LivestreamController extends Controller
 
             return redirect()->back()->with(
                 'success',
-                'Ending stream — YouTube was told to stop and the relay is shutting down (usually within ~10s).'
+                $settledLocally
+                    ? 'YouTube live ended. The meeting is ready — you can go live again when you want.'
+                    : 'Ending stream — YouTube was told to stop and the relay is shutting down (usually within ~10s).'
             );
         }
+
+        $streamingQueue->finalizeAfterHostEndStream('organization', $livestream->id);
 
         $livestream->update([
             'status' => 'draft',

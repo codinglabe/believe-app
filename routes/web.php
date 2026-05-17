@@ -928,7 +928,9 @@ Route::prefix('chat')->middleware(['auth', 'EnsureEmailIsVerified', 'topics.sele
 // Wallet Routes
 Route::prefix('wallet')->middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected', 'care_alliance.wallet'])->name('wallet.')->group(function () {
     Route::post('/connect', [WalletController::class, 'connect'])->name('connect');
-    Route::get('/balance', [WalletController::class, 'getBalance'])->name('balance');
+    Route::get('/balance', [WalletController::class, 'getBalance'])
+        ->middleware('throttle:wallet-balance')
+        ->name('balance');
     Route::get('/status', [WalletController::class, 'status'])->name('status');
     Route::get('/activity', [WalletController::class, 'getActivity'])->name('activity');
     Route::get('/activity/all', [WalletController::class, 'getAllActivity'])->name('activity.all');
@@ -1725,8 +1727,8 @@ Route::post('withdrawals/{withdrawal}/make-payment', [WithdrawalController::clas
 //     Route::post('/payment-methods', [PaymentMethodSettingController::class, 'update'])->name('payment-methods.update');
 // });
 
-// Newsletter Routes
-Route::prefix('newsletter')->name('newsletter.')->group(function () {
+// Newsletter Routes (auth required — guests are redirected to login, not 403)
+Route::middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected'])->prefix('newsletter')->name('newsletter.')->group(function () {
     Route::get('/', [NewsletterController::class, 'index'])->name('index');
     Route::get('/templates', [NewsletterController::class, 'templates'])->name('templates');
     Route::get('/templates/create', [NewsletterController::class, 'createTemplate'])->name('templates.create');

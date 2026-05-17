@@ -60,6 +60,7 @@ interface Livestream {
   description: string | null
   roomName: string
   roomPassword: string
+  requiresPasscode?: boolean
   directorUrl: string
   participantUrl: string
   hostPushUrl: string
@@ -285,7 +286,7 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
             </span>
           </div>
           <div className="flex items-center justify-between gap-2">
-            <span className="text-muted-foreground">Stream key configured</span>
+            <span className="text-muted-foreground">YouTube live prepared</span>
             <span className={livestream.hasStreamKey ? "text-green-600 dark:text-green-400 font-medium" : "text-amber-600 dark:text-amber-400 font-medium"}>
               {livestream.hasStreamKey ? "Yes" : "No"}
             </span>
@@ -423,17 +424,19 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
           Copy
         </Button>
       </div>
-      <div className="rounded-lg border border-border bg-muted/30 p-3.5 space-y-2">
-        <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-          <Key className="h-3.5 w-3.5 text-primary" />
-          Passcode
+      {livestream.requiresPasscode ? (
+        <div className="rounded-lg border border-border bg-muted/30 p-3.5 space-y-2">
+          <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+            <Key className="h-3.5 w-3.5 text-primary" />
+            Passcode
+          </div>
+          <Input value={livestream.roomPassword} readOnly className="font-mono text-sm h-9 w-full bg-background/80" />
+          <Button variant="outline" size="sm" className="w-full h-9 gap-2" onClick={() => copyToClipboard(livestream.roomPassword, "password")}>
+            {copied === "password" ? <CheckCircle2 className="h-4 w-4 text-green-600" /> : <Copy className="h-4 w-4" />}
+            Copy
+          </Button>
         </div>
-        <Input value={livestream.roomPassword} readOnly className="font-mono text-sm h-9 w-full bg-background/80" />
-        <Button variant="outline" size="sm" className="w-full h-9 gap-2" onClick={() => copyToClipboard(livestream.roomPassword, "password")}>
-          {copied === "password" ? <CheckCircle2 className="h-4 w-4 text-green-600" /> : <Copy className="h-4 w-4" />}
-          Copy
-        </Button>
-      </div>
+      ) : null}
     </div>
   )
 
@@ -608,9 +611,10 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
 
           {isEndingStreamPending && livestream.status === "live" && (
             <div className="shrink-0 border-b border-blue-500/30 bg-gradient-to-r from-purple-500/10 to-blue-500/10 px-3 py-2 sm:px-4">
-              <p className="text-xs font-medium text-foreground">Stopping stream</p>
+              <p className="text-xs font-medium text-foreground">Ending YouTube live</p>
               <p className="text-[11px] text-muted-foreground">
-                Waiting for the cloud relay to finish on AWS. This banner clears when the meeting status updates.
+                YouTube was told to stop. This page refreshes until the AWS worker callback reports the relay
+                finished, then you can go live again.
               </p>
             </div>
           )}
