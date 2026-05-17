@@ -171,6 +171,16 @@ class StreamingQueueService
                 'started_at' => $livestream->started_at ?? now(),
             ]);
 
+            // Transition the YouTube broadcast to "live" NOW — not on the user's
+            // Go Live click. The worker only sends status=live after ffmpeg has
+            // pushed its first frame to YouTube, so the RTMP ingest is active and
+            // YouTube accepts the transition. Doing it on button-click (see
+            // Organization/LivestreamController:674) fired ~60-120s too early,
+            // before any frames flowed; YouTube rejected it, the error was
+            // swallowed, and the broadcast never went live even though video was
+            // arriving — the "streaming but nothing on YouTube Studio" symptom.
+            $this->transitionYoutubeBroadcastToLive($livestream, $job->livestream_kind);
+
             return;
         }
 
@@ -195,6 +205,67 @@ class StreamingQueueService
     /**
      * After an org cloud relay ends, create a new YouTube broadcast so the same meeting can go live again.
      */
+    /**
+     * Transition the bound YouTube broadcast to "live". Called from the worker
+     * status=live callback (NOT the Go Live button) so YouTube's RTMP ingest is
+     * already active and the transition is accepted. Best-effort: a failure here
+     * must not break the callback (BIU status is already updated).
+     *
+     * @param  OrganizationLivestream|UserLivestream  $livestream
+     */
+    private function transitionYoutubeBroadcastToLive($livestream, string $kind): void
+    {
+        if (empty($livestream->youtube_broadcast_id)) {
+            return;
+        }
+
+        $youtubeService = app(YouTubeService::class);
+        $accessToken = null;
+
+        if ($kind === 'organization' && $livestream instanceof OrganizationLivestream) {
+            $livestream->loadMissing('organization');
+            if ($livestream->organization) {
+                $accessToken = $youtubeService->getValidAccessToken($livestream->organization);
+            }
+        } elseif ($livestream instanceof UserLivestream) {
+            $livestream->loadMissing('user.organization');
+            $user = $livestream->user;
+            if ($user) {
+                $accessToken = $youtubeService->getValidAccessTokenForUser($user)
+                    ?: ($user->organization
+                        ? $youtubeService->getValidAccessToken($user->organization)
+                        : null);
+            }
+        }
+
+        if (! $accessToken) {
+            Log::warning('YouTube transition->live skipped: no valid access token', [
+                'livestream_id' => $livestream->id,
+                'kind' => $kind,
+            ]);
+
+            return;
+        }
+
+        try {
+            $ok = $youtubeService->updateBroadcastStatus(
+                $accessToken,
+                $livestream->youtube_broadcast_id,
+                'live'
+            );
+            Log::info('YouTube broadcast transition->live (worker callback)', [
+                'livestream_id' => $livestream->id,
+                'broadcast_id' => $livestream->youtube_broadcast_id,
+                'ok' => $ok,
+            ]);
+        } catch (\Throwable $e) {
+            Log::warning('YouTube transition->live failed', [
+                'livestream_id' => $livestream->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
     private function rotateOrganizationYoutubeBroadcastAfterStreamEnd(OrganizationLivestream $livestream): void
     {
         $livestream->loadMissing('organization');
