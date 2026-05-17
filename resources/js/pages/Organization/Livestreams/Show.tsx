@@ -165,9 +165,10 @@ export default function ShowLivestream({ livestream, organization, recordingCons
     <AppLayout>
       <Head title={`Livestream: ${livestream.title || "Untitled"}`} />
       {/* Hidden scene-mixer iframe: composites all room participants → MediaMTX → YouTube.
-          Only renders while the meeting is active (meeting_live or live). 1x1 off-screen so it
-          never grabs focus or layout but VDO.Ninja's canvas keeps rendering and pushing. */}
-      {livestream.scenePushUrl && (livestream.status === "live" || livestream.status === "meeting_live") && (
+          Pre-warms on scheduled/starting so MediaMTX already has a publisher by the time the
+          worker fires (worker dispatch + ffmpeg first-frame race was burning tests). Stays up
+          through meeting_live and live. 1x1 off-screen so it never grabs focus or layout. */}
+      {livestream.scenePushUrl && ["scheduled", "starting", "meeting_live", "live"].includes(livestream.status) && (
         <iframe
           src={livestream.scenePushUrl}
           title="scene-mixer"

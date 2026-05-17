@@ -678,9 +678,10 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
                   </div>
                 )}
                 {/* Hidden scene-mixer iframe: composites all room participants → MediaMTX → YouTube.
-                    Only renders while the meeting is active (meeting_live or live) since it consumes
-                    bandwidth. 1x1 + hidden + tabIndex=-1 so it never grabs focus or layout. */}
-                {livestream.scenePushUrl && (livestream.status === "live" || livestream.status === "meeting_live") && (
+                    Pre-warms on scheduled/starting so MediaMTX already has a publisher by the
+                    time the worker fires (worker dispatch + ffmpeg first-frame race was burning
+                    tests). 1x1 + hidden + tabIndex=-1 so it never grabs focus or layout. */}
+                {livestream.scenePushUrl && ["scheduled", "starting", "meeting_live", "live"].includes(livestream.status) && (
                   <iframe
                     src={livestream.scenePushUrl}
                     title="scene-mixer"
