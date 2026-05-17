@@ -108,6 +108,17 @@ class OrganizationLivestream extends Model
     }
 
     /**
+     * Whether guests must enter a passcode to join. Driven by the
+     * settings['require_passcode'] flag set at create/update time. A
+     * room_password always exists (used for the VDO &password= param), but
+     * it is only *enforced* on the join flow when this returns true.
+     */
+    public function requiresPasscode(): bool
+    {
+        return (bool) ($this->settings['require_passcode'] ?? false);
+    }
+
+    /**
      * Get the encrypted YouTube stream key.
      */
     public function getEncryptedStreamKey(): ?string
