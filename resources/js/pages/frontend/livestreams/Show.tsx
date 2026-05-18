@@ -31,6 +31,7 @@ import {
 import { Switch } from "@/components/admin/ui/switch"
 import UnityMeetLayout from "@/layouts/UnityMeetLayout"
 import VdoMeetingIframe from "@/components/meeting/VdoMeetingIframe"
+import GoLiveConfirmDialog from "@/components/livestreams/GoLiveConfirmDialog"
 import { PageHead } from "@/components/frontend/PageHead"
 import {
   Copy,
@@ -146,6 +147,7 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
   const [sidebarTab, setSidebarTab] = useState<"meeting-info" | "invite-link">("meeting-info")
   const [goLiveOpen, setGoLiveOpen] = useState(false)
   const [goLivePrecheckOpen, setGoLivePrecheckOpen] = useState(false)
+  const [goLiveConfirmOpen, setGoLiveConfirmOpen] = useState(false)
   const [isPrepareYoutubeLive, setIsPrepareYoutubeLive] = useState(false)
   const [goLiveTab, setGoLiveTab] = useState("streaming")
   const [streamKey, setStreamKey] = useState("")
@@ -249,11 +251,25 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
     setIsGoLivePending(true)
     router.post(`/livestreams/supporter/${livestream.id}/queue-stream-relay`, {}, {
       preserveScroll: true,
-      onFinish: () => setIsGoLivePending(false),
+      onFinish: () => {
+        setIsGoLivePending(false)
+        setGoLiveConfirmOpen(false)
+      },
     })
   }
 
   const handleGoLiveClick = () => {
+    if (isGoLiveBusy) {
+      return
+    }
+    if (!livestream.hasStreamKey) {
+      setGoLivePrecheckOpen(true)
+      return
+    }
+    setGoLiveConfirmOpen(true)
+  }
+
+  const confirmGoLive = () => {
     queueCloudStream()
   }
 
@@ -354,11 +370,6 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
         {(livestream.youtubeChannelUrl ?? "").trim().length > 0 && (
           <p className="text-[11px] text-muted-foreground truncate">
             Channel: {livestream.youtubeChannelUrl}
-          </p>
-        )}
-        {livestream.streamingQueueStatus?.failureReason && (
-          <p className="text-[11px] text-red-600 dark:text-red-400">
-            Last failure: {livestream.streamingQueueStatus.failureReason}
           </p>
         )}
       </div>
@@ -883,6 +894,13 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
           </Tabs>
         </DialogContent>
       </Dialog>
+
+      <GoLiveConfirmDialog
+        open={goLiveConfirmOpen}
+        onOpenChange={setGoLiveConfirmOpen}
+        onConfirm={confirmGoLive}
+        isConfirming={isGoLivePending}
+      />
 
       <Dialog open={goLivePrecheckOpen} onOpenChange={setGoLivePrecheckOpen}>
         <DialogContent className="max-w-md">

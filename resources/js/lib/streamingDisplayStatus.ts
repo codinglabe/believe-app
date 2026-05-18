@@ -127,7 +127,12 @@ export function resolveStreamingDisplayStatus(input: {
   }
 
   if (job === "failed") {
-    return copy("failed", "error")
+    // Stale lifecycle failures (e.g. startup timeout) stay on the job row for ops;
+    // don't show a red "Failed" badge once the host is back in the meeting.
+    if (ls === "live" || ls === "starting") {
+      return copy("failed", "error")
+    }
+    return null
   }
 
   if (ls === "live") {

@@ -29,6 +29,7 @@ import {
 } from "lucide-react"
 import { Link } from "@inertiajs/react"
 import { isStreamRelayInProgress } from "@/lib/streamingDisplayStatus"
+import GoLiveConfirmDialog from "@/components/livestreams/GoLiveConfirmDialog"
 
 interface Livestream {
   id: number
@@ -89,6 +90,7 @@ export default function ShowLivestream({ livestream, organization, recordingCons
   const [copied, setCopied] = useState<string | null>(null)
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false)
   const [isGoLivePending, setIsGoLivePending] = useState(false)
+  const [goLiveConfirmOpen, setGoLiveConfirmOpen] = useState(false)
   const [isEndingStreamPending, setIsEndingStreamPending] = useState(false)
   const [streamKey, setStreamKey] = useState("")
   const [isUpdatingStreamKey, setIsUpdatingStreamKey] = useState(false)
@@ -143,7 +145,7 @@ export default function ShowLivestream({ livestream, organization, recordingCons
     )
   }
 
-  const goLiveCloud = () => {
+  const queueCloudStream = () => {
     if (isGoLiveBusy) {
       return
     }
@@ -153,9 +155,26 @@ export default function ShowLivestream({ livestream, organization, recordingCons
       {},
       {
         preserveScroll: true,
-        onFinish: () => setIsGoLivePending(false),
+        onFinish: () => {
+          setIsGoLivePending(false)
+          setGoLiveConfirmOpen(false)
+        },
       }
     )
+  }
+
+  const handleGoLiveClick = () => {
+    if (isGoLiveBusy) {
+      return
+    }
+    if (!livestream.hasStreamKey) {
+      return
+    }
+    setGoLiveConfirmOpen(true)
+  }
+
+  const confirmGoLive = () => {
+    queueCloudStream()
   }
 
   const endStreamCloud = () => {
@@ -295,8 +314,8 @@ export default function ShowLivestream({ livestream, organization, recordingCons
               <CardContent className="flex gap-4">
                 {!["live", "meeting_live", "starting"].includes(livestream.status) && (
                   <Button
-                    onClick={goLiveCloud}
-                    disabled={isGoLiveBusy || isUpdatingStatus || isEndingStreamPending}
+                    onClick={handleGoLiveClick}
+                    disabled={isGoLiveBusy || isUpdatingStatus || isEndingStreamPending || !livestream.hasStreamKey}
                     className="bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 min-w-[10.5rem]"
                   >
                     {isGoLiveBusy ? (
@@ -539,6 +558,13 @@ export default function ShowLivestream({ livestream, organization, recordingCons
             </Card>
           </TabsContent>
         </Tabs>
+
+        <GoLiveConfirmDialog
+          open={goLiveConfirmOpen}
+          onOpenChange={setGoLiveConfirmOpen}
+          onConfirm={confirmGoLive}
+          isConfirming={isGoLivePending}
+        />
       </div>
     </AppLayout>
   )
