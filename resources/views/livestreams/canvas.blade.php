@@ -127,8 +127,13 @@ function frame(){
            ctx.fillText('seat '+(seat.i+1), r.x+r.w/2, r.y+r.h/2); }
   }
   liveCount=n;
-  requestAnimationFrame(frame);
 }
+// setInterval — NOT requestAnimationFrame. The mixer runs in a hidden 1x1
+// off-screen iframe; Chrome throttles rAF to ~1 Hz (or 0) for hidden iframes,
+// so captureStream() produced near-zero video frames during WHIP negotiation,
+// the bridge runOnReady fired on the first arriving (audio) track and locked
+// in audio-only output. setInterval is not subject to that throttling.
+setInterval(frame, Math.max(16, Math.round(1000 / CFG.fps)));
 
 // ---- WHIP publish the combined canvas+audio to <streamPath> ----
 let publishing=false;
@@ -164,7 +169,10 @@ async function whipPublish(){
 // ---- boot ----
 say('subscribing to '+seats.length+' seats…','warn');
 seats.forEach(whepSubscribe);
-requestAnimationFrame(frame);
+// Kick the canvas immediately with one frame so captureStream has data the
+// instant WHIP negotiates (before setInterval's first tick). setInterval
+// (above) drives the steady draw loop — rAF is throttled in hidden iframes.
+frame();
 // give seats a moment to connect, then start publishing the canvas
 setTimeout(() => { actx.resume().catch(()=>{}); whipPublish();
   setInterval(()=>{ if(publishing) say('LIVE — '+liveCount+' participant(s) on canvas. Keep tab open.','ok'); }, 5000);
