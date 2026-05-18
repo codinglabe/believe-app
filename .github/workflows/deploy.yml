@@ -26,6 +26,7 @@ jobs:
       DEPLOY_PATH: ${{ vars.DEPLOY_PATH != '' && vars.DEPLOY_PATH || '/home/c3ers/public_html' }}
       APP_URL: ${{ vars.APP_URL != '' && vars.APP_URL || 'https://501c3ers.com' }}
       SSH_PORT: ${{ vars.SSH_PORT != '' && vars.SSH_PORT || '22' }}
+      SSH_DIR: ~/.ssh
       SSH_CMD: ssh -F ~/.ssh/config -o BatchMode=yes -o ConnectTimeout=30
       RSYNC_RSH: ssh -F ~/.ssh/config -o BatchMode=yes -o ConnectTimeout=30
       RSYNC_EXCLUDES: >-
@@ -94,24 +95,25 @@ jobs:
             echo "::error::Add repository secret CPANEL_SSH_KEY (private key for ${DEPLOY_USER}@${DEPLOY_HOST})."
             exit 1
           fi
-          mkdir -p ~/.ssh
-          chmod 700 ~/.ssh
-          install -m 600 /dev/null ~/.ssh/cpanel_deploy
-          printf '%s\n' "${SSH_PRIVATE_KEY}" > ~/.ssh/cpanel_deploy
-          ssh-keyscan -p "${SSH_PORT}" -H "${DEPLOY_HOST}" >> ~/.ssh/known_hosts 2>/dev/null || true
-          {
-            echo "Host cpanel-deploy"
-            echo "  HostName ${DEPLOY_HOST}"
-            echo "  User ${DEPLOY_USER}"
-            echo "  Port ${SSH_PORT}"
-            echo "  IdentityFile ~/.ssh/cpanel_deploy"
-            echo "  IdentitiesOnly yes"
-            echo "  StrictHostKeyChecking accept-new"
-            echo "  ServerAliveInterval 60"
-            echo "  ServerAliveCountMax 3"
-          } > ~/.ssh/config
-          chmod 600 ~/.ssh/config
-          ${SSH_CMD} cpanel-deploy "echo SSH_OK && whoami && hostname"
+          SSH_DIR="${HOME}/.ssh"
+          mkdir -p "${SSH_DIR}"
+          chmod 700 "${SSH_DIR}"
+          printf '%s\n' "${SSH_PRIVATE_KEY}" > "${SSH_DIR}/cpanel_deploy"
+          chmod 600 "${SSH_DIR}/cpanel_deploy"
+          ssh-keyscan -p "${SSH_PORT}" -H "${DEPLOY_HOST}" >> "${SSH_DIR}/known_hosts" 2>/dev/null || true
+          printf '%s\n' \
+            'Host cpanel-deploy' \
+            "  HostName ${DEPLOY_HOST}" \
+            "  User ${DEPLOY_USER}" \
+            "  Port ${SSH_PORT}" \
+            "  IdentityFile ${SSH_DIR}/cpanel_deploy" \
+            '  IdentitiesOnly yes' \
+            '  StrictHostKeyChecking accept-new' \
+            '  ServerAliveInterval 60' \
+            '  ServerAliveCountMax 3' \
+            > "${SSH_DIR}/config"
+          chmod 600 "${SSH_DIR}/config"
+          ssh -F "${SSH_DIR}/config" -o BatchMode=yes -o ConnectTimeout=30 cpanel-deploy "echo SSH_OK && whoami && hostname"
 
       - name: Verify server paths (storage, .env, .htaccess)
         run: |
