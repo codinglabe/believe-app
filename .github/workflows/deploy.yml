@@ -113,7 +113,7 @@ jobs:
         if: hashFiles('package.json') != ''
         run: |
           set -euo pipefail
-          ${SSH_CMD} cpanel-deploy "grep -E '^(APP_NAME|APP_URL|VITE_)=' '${DEPLOY_PATH}/.env' | grep -v '^#'" > .env.vite
+          ${SSH_CMD} cpanel-deploy "grep -E '^(APP_NAME|APP_URL)=|^VITE_' '${DEPLOY_PATH}/.env' | grep -v '^#'" > .env.vite
           {
             echo "APP_URL=${APP_URL}"
             cat .env.vite
