@@ -7,7 +7,7 @@ name: Deploy Laravel to cPanel
 
 on:
   push:
-    branches: [main, production]
+    branches: [production]
   workflow_dispatch:
 
 concurrency:
