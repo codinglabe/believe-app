@@ -108,45 +108,20 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
 
-      # Local deploy uses your machine's .env (VITE_* / Reverb / etc.). CI must load the same from server .env.
+      # Local deploy uses your machine's .env (VITE_* / Reverb / etc.). Read server .env directly (cPanel php -r breaks on multiline SSH).
       - name: Load Vite env from server (match local build)
         if: hashFiles('package.json') != ''
         run: |
           set -euo pipefail
-          # config:cache on server makes env() return null for VITE_* — clear first, then read .env via Laravel.
-          ${SSH_CMD} cpanel-deploy bash -s > .env.vite <<REMOTE
-          set -euo pipefail
-          cd "${DEPLOY_PATH}"
-          php artisan config:clear --quiet 2>/dev/null || true
-          php -r '
-          require "vendor/autoload.php";
-          \$app = require "bootstrap/app.php";
-          \$app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
-          \$keys = [
-            "APP_NAME","APP_URL",
-            "VITE_APP_NAME","VITE_APP_VERSION",
-            "VITE_REVERB_APP_KEY","VITE_REVERB_HOST","VITE_REVERB_PORT","VITE_REVERB_SCHEME",
-            "VITE_MERCHANT_DOMAIN","VITE_LIVESTOCK_DOMAIN",
-            "VITE_GOOGLE_API_KEY","VITE_GOOGLE_MAPS_API_KEY","VITE_YOUTUBE_API_KEY",
-          ];
-          foreach (\$keys as \$k) {
-            \$v = env(\$k);
-            if (\$v !== null && \$v !== "" && !str_contains((string) \$v, "\${")) {
-              echo \$k."=".\$v.PHP_EOL;
-            }
-          }
-          '
-          REMOTE
-          # Fallback: keys still in server .env (e.g. when only referenced as ${OTHER_VAR})
-          ${SSH_CMD} cpanel-deploy "grep -E '^(APP_NAME|APP_URL|VITE_|REVERB_APP_|REVERB_HOST|REVERB_PORT|REVERB_SCHEME)=' '${DEPLOY_PATH}/.env' 2>/dev/null | grep -v '^#'" >> .env.vite || true
-          sort -u -t= -k1,1 .env.vite -o .env.vite
+          ${SSH_CMD} cpanel-deploy "grep -E '^(APP_NAME|APP_URL|VITE_)=' '${DEPLOY_PATH}/.env' | grep -v '^#'" > .env.vite
           {
             echo "APP_URL=${APP_URL}"
             cat .env.vite
           } > .env
-          lines=$(wc -l < .env)
+          lines=$(wc -l < .env | tr -d ' ')
           echo "Wrote .env for Vite build (${lines} lines)"
-          test "${lines}" -ge 5 || { echo "::warning::Few VITE lines in CI .env — build may miss Reverb/maps"; grep -E '^VITE_|^APP_' .env | sed 's/=.*$/=***/' || true; }
+          grep -E '^VITE_|^APP_' .env | sed 's/=.*$/=***/' || true
+          test "${lines}" -ge 8 || echo "::warning::Expected more VITE lines in CI .env (got ${lines})"
 
       - name: Build frontend assets
         if: hashFiles('package.json') != ''
