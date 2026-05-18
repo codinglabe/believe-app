@@ -16,27 +16,6 @@ final class VdoMeetingVirtualBackground
      */
     public static function querySegment(): string
     {
-        $urls = config('vdo_meeting.virtual_background_urls', []);
-        if (! is_array($urls) || $urls === []) {
-            return '&effects=';
-        }
-
-        $filtered = [];
-        foreach ($urls as $u) {
-            if (is_string($u) && filter_var($u, FILTER_VALIDATE_URL)) {
-                $filtered[] = $u;
-            }
-        }
-
-        if ($filtered === []) {
-            return '&effects=';
-        }
-
-        $json = json_encode(array_values($filtered), JSON_UNESCAPED_SLASHES);
-        if ($json === false || $json === '[]') {
-            return '&effects=';
-        }
-
-        return '&virtualbackground&imagelist=' . rawurlencode($json);
+        return '';
     }
 }

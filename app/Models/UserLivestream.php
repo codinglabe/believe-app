@@ -75,6 +75,17 @@ class UserLivestream extends Model
         }
     }
 
+    /**
+     * Whether guests must enter a passcode to join. Driven by the
+     * settings['require_passcode'] flag set at create/update time. A
+     * room_password always exists (used for the VDO &password= param), but
+     * it is only *enforced* on the join flow when this returns true.
+     */
+    public function requiresPasscode(): bool
+    {
+        return (bool) ($this->settings['require_passcode'] ?? false);
+    }
+
     public function getDecryptedStreamKey(): ?string
     {
         if (! $this->youtube_stream_key) {
@@ -234,14 +245,44 @@ class UserLivestream extends Model
      * &vdo=1 pre-selects the default camera; &audiodevice=1 the default mic; &autostart keeps room subscriptions stable.
      * Virtual backgrounds: curated gallery via {@see \App\Support\VdoMeetingVirtualBackground::querySegment()} (&virtualbackground + &imagelist).
      */
-    public function getParticipantUrl(): string
+    public function getParticipantUrl(?int $seat = null): string
     {
         $password = $this->getDecryptedPassword();
         $room = rawurlencode($this->getVdoRoomName());
         $pass = rawurlencode((string) $password);
         $passwordParam = $pass !== '' ? '&password=' . $pass : '';
         $avatarInitialUrl = 'https://ui-avatars.com/api/?name=' . rawurlencode('Guest') . '&size=256&length=2';
-        return 'https://vdo.ninja/?room=' . $room . $passwordParam . '&label=&webcam&ssb&vdo=1&audiodevice=1&proaudio&stereo=2&norecord&showlabels=zoom&showall&rows=1&fontsize=82&nocontrols&clock=false&avatar=' . rawurlencode($avatarInitialUrl) . \App\Support\VdoMeetingVirtualBackground::querySegment() . '&autostart&noheader';
+        $base = 'https://vdo.ninja/?room=' . $room . $passwordParam . '&label=&webcam&ssb&vdo=1&audiodevice=1&proaudio&stereo=2&norecord&showlabels=zoom&showall&rows=1&fontsize=82&nocontrols&clock=false&avatar=' . rawurlencode($avatarInitialUrl) . \App\Support\VdoMeetingVirtualBackground::querySegment() . '&autostart&noheader';
+
+        // Canvas mode + seat allocated -> publish this participant to MediaMTX at
+        // ls_<id>_s<seat> so the canvas mixer can WHEP-subscribe. seat is null
+        // elsewhere; single-host flow untouched.
+        if ($seat !== null && $this->isCanvasModeEnabled()) {
+            $host = \App\Support\StreamingWorkerSourceUrl::bridgeMediaMtxHost();
+            if ($host !== null) {
+                $seatPath = \App\Support\StreamingWorkerSourceUrl::streamPath($this).'_s'.max(2, min(6, $seat));
+                $base .= '&push=' . rawurlencode($seatPath) . '&mediamtx=' . $host . '&codec=vp8';
+            }
+        }
+        return $base;
+    }
+
+    /** Canvas-mode opt-in flag — see OrganizationLivestream for full rationale. */
+    public function isCanvasModeEnabled(): bool
+    {
+        return (bool) (($this->settings ?? [])['canvas_mode'] ?? true);
+    }
+
+    /** Best-effort seat allocator (2..6), wraps. Host = seat 1. MVP scope. */
+    public function allocateNextGuestSeat(): int
+    {
+        $settings = $this->settings ?? [];
+        $cursor = (int) ($settings['next_guest_seat'] ?? 2);
+        $seat = max(2, min(6, $cursor));
+        $next = $seat >= 6 ? 2 : $seat + 1;
+        $settings['next_guest_seat'] = $next;
+        $this->update(['settings' => $settings]);
+        return $seat;
     }
 
     public function getRoomViewUrl(): string
@@ -278,27 +319,24 @@ class UserLivestream extends Model
     }
 
     /**
-     * Scene-mixer URL: joins the room as a scene observer (NOT a publisher of its own camera),
-     * renders scene 0 (showall = grid of every connected participant), and pushes that composite
-     * canvas to MediaMTX as `/{room}/{push}/whip`. The Fargate worker pulls the same `{push}`
-     * path so YouTube sees ALL participants, not just the host's webcam.
-     *
-     * Runs in a hidden iframe on the host's Show page (no camera/mic permissions required since
-     * it only captures the rendered canvas). Returns null when MediaMTX isn't configured.
+     * Participant canvas mixer URL (MVP, approved 2026-05-17). WHEP-subscribes
+     * the 6 seat paths, composites a fixed 3x2 grid, mixes audio, and WHIP-
+     * publishes the combined stream to streamPath — the path the bridge ->
+     * worker -> YouTube pipeline already pulls.
+     */
+    public function getCanvasUrl(): string
+    {
+        return url('/livestreams/canvas/'.$this->room_name);
+    }
+
+    /**
+     * Returns null for now. Was previously intended to publish a scene composite via VDO.Ninja's
+     * &scene+&push+&mediamtx flags — but scene mode in VDO.Ninja is receive-only. Superseded by
+     * the canvas mixer ({@see getCanvasUrl()}); kept returning null so old callers stay inert.
      */
     public function getScenePushUrl(): ?string
     {
-        $mediaMtxHost = \App\Support\StreamingWorkerSourceUrl::bridgeMediaMtxHost();
-        if ($mediaMtxHost === null) {
-            return null;
-        }
-        $streamKey = \App\Support\StreamingWorkerSourceUrl::streamPath($this);
-        $room = rawurlencode($this->getVdoRoomName());
-        $push = rawurlencode($streamKey);
-        $pass = rawurlencode((string) $this->getDecryptedPassword());
-        $passwordParam = $pass !== '' ? '&password=' . $pass : '';
-
-        return "https://vdo.ninja/?room={$room}&scene=0&push={$push}&mediamtx={$mediaMtxHost}&codec=h264&showall&rows=1&fontsize=82&autostart&cleanoutput&noheader&nopreview&nocontrols{$passwordParam}";
+        return null;
     }
 
     /**
@@ -329,11 +367,26 @@ class UserLivestream extends Model
         $avatarImage = 'https://ui-avatars.com/api/?name=' . rawurlencode($hn) . '&size=256&length=2';
         $avatarParam = '&avatar=' . rawurlencode($avatarImage);
         $recordParam = $recordEnabled ? '&record' : '';
-        $base = "https://vdo.ninja/?room={$room}&push={$push}&label={$label}{$recordParam}&quality=0&bitrate=6000&webcam&ssb&vdo=1&audiodevice=1&proaudio&stereo=2&showlabels=zoom&showall&rows=1&fontsize=82&nocontrols&clock=false{$avatarParam}" . \App\Support\VdoMeetingVirtualBackground::querySegment() . "&autostart&noheader{$passwordParam}";
+        // Canvas mode: host publishes to seat 1 path so the canvas mixer can WHEP-
+        // subscribe alongside guests; the mixer publishes the combined stream to
+        // streamPath. Single-host (default) mode publishes directly to streamPath
+        // — the path the worker pulls — exactly as before.
+        $effectivePush = $this->isCanvasModeEnabled()
+            ? rawurlencode($streamKey.'_s1')
+            : $push;
+        $base = "https://vdo.ninja/?room={$room}&push={$effectivePush}&label={$label}{$recordParam}&quality=0&bitrate=6000&webcam&ssb&vdo=1&audiodevice=1&proaudio&stereo=2&showlabels=zoom&showall&rows=1&fontsize=82&nocontrols&clock=false{$avatarParam}" . \App\Support\VdoMeetingVirtualBackground::querySegment() . "&autostart&noheader{$passwordParam}";
 
-        // Host push URL no longer publishes to MediaMTX — only the host's webcam goes into the VDO room.
-        // The composite of all participants is published to MediaMTX by {@see getScenePushUrl()},
-        // which runs as a hidden iframe on the livestream Show page so guests + host all reach YouTube.
+        // Restore the MediaMTX push so the host's webcam reaches the bridge and the AWS worker can
+        // pull and forward to YouTube. (Was dropped under the assumption that getScenePushUrl
+        // would replace it; that assumption was wrong — VDO.Ninja scene mode is receive-only.)
+        $mediaMtxHost = \App\Support\StreamingWorkerSourceUrl::bridgeMediaMtxHost();
+        if ($mediaMtxHost !== null) {
+            // VP8, not H264: every browser can VP8-encode for WebRTC, so the
+            // video track is always published. Forcing H264 made browsers that
+            // can't H264-encode drop video entirely (audio-only on YouTube).
+            // The MediaMTX bridge transcodes VP8 -> H264 for the RTMP/YouTube leg.
+            $base .= '&mediamtx=' . $mediaMtxHost . '&codec=vp8';
+        }
 
         if ($recordEnabled && $recordToDropbox) {
             $ctx = $this->resolveDropboxUploadContext();

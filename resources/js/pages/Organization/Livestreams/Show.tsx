@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { Head, router } from "@inertiajs/react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -16,6 +16,7 @@ import {
   ExternalLink,
   Play,
   Square,
+  Loader2,
   Youtube,
   Users,
   Key,
@@ -28,6 +29,7 @@ import {
   ArrowLeft,
 } from "lucide-react"
 import { Link } from "@inertiajs/react"
+import { isStreamRelayInProgress } from "@/lib/streamingDisplayStatus"
 
 interface Livestream {
   id: number
@@ -35,19 +37,29 @@ interface Livestream {
   description: string | null
   roomName: string
   roomPassword: string
+  requiresPasscode?: boolean
   directorUrl: string
   hostPushUrl: string
   participantUrl: string
-  /** VDO.Ninja scene-mixer URL that pushes the composite of all room participants to MediaMTX.
-   * Rendered in a hidden iframe so guests reach YouTube alongside the host. Null when MediaMTX
-   * isn't configured. */
   scenePushUrl?: string | null
+  /** Participant-canvas mixer page URL. Loaded in a hidden iframe when canvasMode
+   * is on so all participants reach YouTube, not just the host. */
+  canvasUrl?: string | null
+  /** When true, the meeting runs in multi-participant canvas mode. */
+  canvasMode?: boolean
   status: "draft" | "scheduled" | "live" | "meeting_live" | "starting" | "ended" | "cancelled"
   scheduledAt: string | null
   startedAt: string | null
   endedAt: string | null
   hasStreamKey: boolean
   youtubeBroadcastId: string | null
+  streamingQueueStatus?: {
+    status?: string | null
+    livestreamStatus?: string
+    streamStopRequested?: boolean
+    updatedAt?: string | null
+    failureReason?: string | null
+  } | null
 }
 
 interface Organization {
@@ -77,8 +89,42 @@ function formatDeclineTime(iso: string | null): string {
 export default function ShowLivestream({ livestream, organization, recordingConsentDeclines }: Props) {
   const [copied, setCopied] = useState<string | null>(null)
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false)
+  const [isGoLivePending, setIsGoLivePending] = useState(false)
+  const [isEndingStreamPending, setIsEndingStreamPending] = useState(false)
   const [streamKey, setStreamKey] = useState("")
   const [isUpdatingStreamKey, setIsUpdatingStreamKey] = useState(false)
+
+  const streamRelayInProgress = useMemo(
+    () =>
+      isStreamRelayInProgress({
+        jobStatus: livestream.streamingQueueStatus?.status,
+        livestreamStatus: livestream.streamingQueueStatus?.livestreamStatus ?? livestream.status,
+        streamStopRequested: livestream.streamingQueueStatus?.streamStopRequested,
+      }),
+    [livestream.streamingQueueStatus, livestream.status],
+  )
+
+  const isGoLiveBusy = isGoLivePending || streamRelayInProgress
+
+  const pollMs =
+    (isEndingStreamPending && livestream.status === "live") || streamRelayInProgress ? 4000 : 12000
+
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      router.reload({
+        only: ["livestream", "recordingConsentDeclines"],
+        preserveScroll: true,
+        preserveState: true,
+      })
+    }, pollMs)
+    return () => window.clearInterval(id)
+  }, [pollMs])
+
+  useEffect(() => {
+    if (isEndingStreamPending && livestream.status !== "live") {
+      setIsEndingStreamPending(false)
+    }
+  }, [livestream.status, isEndingStreamPending])
 
   const copyToClipboard = (text: string, key: string) => {
     navigator.clipboard.writeText(text)
@@ -99,19 +145,23 @@ export default function ShowLivestream({ livestream, organization, recordingCons
   }
 
   const goLiveCloud = () => {
-    setIsUpdatingStatus(true)
+    if (isGoLiveBusy) {
+      return
+    }
+    setIsGoLivePending(true)
     router.post(
       `/livestreams/${livestream.id}/queue-stream-relay`,
       {},
       {
         preserveScroll: true,
-        onFinish: () => setIsUpdatingStatus(false),
+        onFinish: () => setIsGoLivePending(false),
       }
     )
   }
 
   const endStreamCloud = () => {
     setIsUpdatingStatus(true)
+    setIsEndingStreamPending(true)
     router.post(
       `/livestreams/${livestream.id}/end-stream`,
       {},
@@ -164,13 +214,16 @@ export default function ShowLivestream({ livestream, organization, recordingCons
   return (
     <AppLayout>
       <Head title={`Livestream: ${livestream.title || "Untitled"}`} />
-      {/* Hidden scene-mixer iframe: composites all room participants → MediaMTX → YouTube.
-          Only renders while the meeting is active (meeting_live or live). 1x1 off-screen so it
-          never grabs focus or layout but VDO.Ninja's canvas keeps rendering and pushing. */}
-      {livestream.scenePushUrl && (livestream.status === "live" || livestream.status === "meeting_live") && (
+      {/* Hidden participant-canvas mixer iframe. WHEP-subscribes the 6 seats,
+          composites the 3x2 grid, mixes audio, and WHIP-publishes the combined
+          stream to the path the worker pulls. Auto-runs whenever canvas mode is
+          on and the meeting is active — no manual tab. Pre-warms on
+          scheduled/starting so the composite is publishing before the worker
+          fires. Stays open as long as this Show page is open. */}
+      {livestream.canvasMode && livestream.canvasUrl && ["scheduled", "starting", "meeting_live", "live"].includes(livestream.status) && (
         <iframe
-          src={livestream.scenePushUrl}
-          title="scene-mixer"
+          src={livestream.canvasUrl}
+          title="canvas-mixer"
           tabIndex={-1}
           aria-hidden="true"
           className="pointer-events-none fixed h-px w-px overflow-hidden border-0 opacity-0"
@@ -215,6 +268,19 @@ export default function ShowLivestream({ livestream, organization, recordingCons
           </Alert>
         )}
 
+        {isEndingStreamPending && livestream.status === "live" && (
+          <Alert className="border-blue-500/30 bg-gradient-to-r from-purple-500/10 to-blue-500/10">
+            <Info className="h-4 w-4" />
+            <AlertDescription>
+              <p className="font-medium text-foreground">Ending YouTube live</p>
+              <p className="text-sm text-muted-foreground mt-1">
+                YouTube was told to stop. This page refreshes until the AWS worker callback reports the relay
+                finished, then you can go live again.
+              </p>
+            </AlertDescription>
+          </Alert>
+        )}
+
         <Tabs defaultValue="dashboard" className="space-y-6">
           <TabsList>
             <TabsTrigger value="dashboard">Host Dashboard</TabsTrigger>
@@ -232,21 +298,25 @@ export default function ShowLivestream({ livestream, organization, recordingCons
                 {!["live", "meeting_live", "starting"].includes(livestream.status) && (
                   <Button
                     onClick={goLiveCloud}
-                    disabled={isUpdatingStatus}
-                    className="bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800"
+                    disabled={isGoLiveBusy || isUpdatingStatus || isEndingStreamPending}
+                    className="bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 min-w-[10.5rem]"
                   >
-                    <Play className="w-4 h-4 mr-2" />
-                    Go Live (Cloud)
+                    {isGoLiveBusy ? (
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden />
+                    ) : (
+                      <Play className="w-4 h-4 mr-2" />
+                    )}
+                    {isGoLiveBusy ? "Going live…" : "Go Live (Cloud)"}
                   </Button>
                 )}
                 {["live", "meeting_live", "starting"].includes(livestream.status) && (
                   <Button
                     onClick={endStreamCloud}
-                    disabled={isUpdatingStatus}
+                    disabled={isUpdatingStatus || isEndingStreamPending}
                     variant="destructive"
                   >
                     <Square className="w-4 h-4 mr-2" />
-                    End Stream
+                    {isEndingStreamPending ? "Stopping…" : "End Stream"}
                   </Button>
                 )}
                 <Button
@@ -360,19 +430,21 @@ export default function ShowLivestream({ livestream, organization, recordingCons
                     </Button>
                   </div>
                 </div>
-                <div>
-                  <Label>Room Password</Label>
-                  <div className="flex gap-2 mt-1">
-                    <Input value={livestream.roomPassword} readOnly className="font-mono" />
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      onClick={() => copyToClipboard(livestream.roomPassword, "password")}
-                    >
-                      <Copy className={`w-4 h-4 ${copied === "password" ? "text-green-400" : ""}`} />
-                    </Button>
+                {livestream.requiresPasscode ? (
+                  <div>
+                    <Label>Room Password</Label>
+                    <div className="flex gap-2 mt-1">
+                      <Input value={livestream.roomPassword} readOnly className="font-mono" />
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        onClick={() => copyToClipboard(livestream.roomPassword, "password")}
+                      >
+                        <Copy className={`w-4 h-4 ${copied === "password" ? "text-green-400" : ""}`} />
+                      </Button>
+                    </div>
                   </div>
-                </div>
+                ) : null}
               </CardContent>
             </Card>
 

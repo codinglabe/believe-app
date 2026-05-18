@@ -1,14 +1,7 @@
 "use client"
 
-import { useState, useMemo, useEffect } from "react"
-import { Head } from "@inertiajs/react"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import FrontendLayout from "@/layouts/frontend/frontend-layout"
-import { RecordingConsentBarrier } from "@/components/livestreams/RecordingConsentBarrier"
-import UnityMeetVideoLogoOverlay from "@/components/meeting/UnityMeetVideoLogoOverlay"
-import { applyVdoGroupRoomPresentation, vdoUiAvatarUrl } from "@/lib/vdoMeeting"
-import { Video } from "lucide-react"
+import { GuestMeetJoinExperience } from "@/components/livestreams/GuestMeetJoinExperience"
 
 interface Livestream {
   id: number
@@ -33,141 +26,15 @@ interface Props {
 }
 
 export default function GuestJoinByToken({ livestream, organization, recordingDeclineReturnTo }: Props) {
-  const [displayName, setDisplayName] = useState("")
-  const [joined, setJoined] = useState(false)
-  const recordingOn = !!(livestream.recordingEnabled ?? false)
-  const [recordingConsentOk, setRecordingConsentOk] = useState(!recordingOn)
-
-  useEffect(() => {
-    setRecordingConsentOk(!recordingOn)
-  }, [livestream.id, recordingOn])
-
-  const iframeUrl = useMemo(() => {
-    const url = new URL(livestream.participantUrl)
-    applyVdoGroupRoomPresentation(url)
-    const name = (displayName || "Guest").trim()
-    if (name) {
-      url.searchParams.set("label", name)
-      url.searchParams.set("avatar", vdoUiAvatarUrl(name))
-    }
-    return url.toString()
-  }, [livestream.participantUrl, displayName])
-
-  const displayLabel = (displayName || "Guest").trim()
-  const initial = displayLabel.charAt(0).toUpperCase() || "G"
-
-  const needBarrier =
-    !joined &&
-    recordingOn &&
-    !!livestream.declineContext &&
-    !recordingConsentOk
-
-  const showLobby = !joined && (!recordingOn || recordingConsentOk)
-
   return (
     <FrontendLayout>
-      <Head title={`Join: ${livestream.title || "Meeting"}`} />
-      <div className="min-h-screen flex flex-col bg-[#f0f4f8] dark:bg-neutral-950">
-        {needBarrier && livestream.declineContext && (
-          <RecordingConsentBarrier
-            open
-            appearance="light"
-            meetingTitle={livestream.title}
-            organizerLabel={organization.name}
-            livestreamKind={livestream.declineContext.kind}
-            livestreamId={livestream.declineContext.id}
-            guestLabel={displayLabel !== "Guest" ? displayLabel : null}
-            onAccepted={() => setRecordingConsentOk(true)}
-            returnToAfterDecline={recordingDeclineReturnTo}
-          />
-        )}
-        {showLobby ? (
-          <div className="flex-1 flex flex-col items-center justify-center p-4 sm:p-6 lg:p-8">
-            <div className="w-full max-w-[420px]">
-              <div className="text-center mb-8">
-                <p className="text-sm text-neutral-600 dark:text-neutral-400 mb-1">
-                  {organization.name} is inviting you to a meeting
-                </p>
-                <h1 className="text-2xl sm:text-3xl font-semibold text-neutral-900 dark:text-white break-words">
-                  {livestream.title || "Meeting"}
-                </h1>
-                {recordingOn && (
-                  <p className="mt-3 inline-flex items-center gap-2 rounded-full bg-purple-100 px-3 py-1 text-xs font-semibold text-purple-800 dark:bg-purple-950/80 dark:text-purple-200">
-                    <Video className="h-3.5 w-3.5" aria-hidden />
-                    Recording enabled — you’ll confirm before joining
-                  </p>
-                )}
-              </div>
-
-              <div className="rounded-2xl bg-white dark:bg-neutral-900 shadow-xl border border-neutral-200/80 dark:border-white/10 overflow-hidden">
-                <div className="px-6 pt-6 pb-4">
-                  <p className="text-xs font-medium uppercase tracking-wider text-neutral-500 dark:text-neutral-400 mb-3">
-                    You’ll join as
-                  </p>
-                  <div className="flex items-center gap-4">
-                    <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-neutral-200 dark:bg-neutral-700 text-xl font-semibold text-neutral-600 dark:text-neutral-300">
-                      {initial}
-                    </div>
-                    <Input
-                      type="text"
-                      placeholder="Your name"
-                      value={displayName}
-                      onChange={(e) => setDisplayName(e.target.value)}
-                      className="flex-1 h-12 text-base bg-neutral-50 dark:bg-neutral-800/50 border-neutral-200 dark:border-white/10"
-                    />
-                  </div>
-                </div>
-
-                <div className="p-6 pt-4">
-                  <Button
-                    className="w-full h-12 text-base font-medium rounded-xl bg-neutral-900 hover:bg-neutral-800 dark:bg-white dark:hover:bg-neutral-100 text-white dark:text-neutral-900 shadow-sm"
-                    onClick={() => setJoined(true)}
-                  >
-                    Join now
-                  </Button>
-                  <p className="text-center text-xs text-neutral-500 dark:text-neutral-400 mt-4">
-                    You can turn your camera and microphone on or off after joining.
-                  </p>
-                </div>
-              </div>
-
-              <p className="text-center text-xs text-neutral-400 dark:text-neutral-500 mt-8">Believe In Unity</p>
-            </div>
-          </div>
-        ) : null}
-
-        {joined ? (
-          <div className="flex-1 flex flex-col min-h-0">
-            <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-neutral-200 dark:border-white/10 bg-white dark:bg-neutral-900 shrink-0">
-              <div className="flex items-center gap-3 min-w-0">
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-neutral-200 dark:bg-neutral-700 text-sm font-semibold text-neutral-600 dark:text-neutral-300">
-                  {initial}
-                </div>
-                <div className="min-w-0">
-                  <span className="text-sm font-medium text-neutral-900 dark:text-white truncate block">
-                    {livestream.title || "Meeting"}
-                  </span>
-                  <span className="text-xs text-neutral-500 dark:text-neutral-400 truncate block">
-                    {organization.name}
-                  </span>
-                </div>
-              </div>
-              <span className="shrink-0 text-xs font-medium text-neutral-500 dark:text-neutral-400">
-                {displayLabel}
-              </span>
-            </div>
-            <div className="flex-1 min-h-0 relative bg-black">
-              <iframe
-                src={iframeUrl}
-                title="Meeting"
-                allow="camera; microphone; fullscreen; display-capture https://vdo.ninja https://www.vdo.ninja; autoplay; clipboard-write"
-                className="absolute inset-0 w-full h-full border-0"
-              />
-              <UnityMeetVideoLogoOverlay />
-            </div>
-          </div>
-        ) : null}
-      </div>
+      <GuestMeetJoinExperience
+        livestream={livestream}
+        organization={organization}
+        recordingDeclineReturnTo={recordingDeclineReturnTo}
+        consentAppearance="light"
+        pageClassName="min-h-screen"
+      />
     </FrontendLayout>
   )
 }

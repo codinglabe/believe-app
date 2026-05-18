@@ -160,7 +160,15 @@ class StreamingQueueService
         }
 
         if ($status === 'starting' && in_array($livestream->status, ['draft', 'scheduled'], true)) {
-            $livestream->update(['status' => 'meeting_live']);
+            // Fresh stream beginning — drop any stale End Stream marker so this
+            // run isn't killed by the previous run's flag.
+            $settings = $livestream->settings ?? [];
+            unset($settings['stream_stop_requested']);
+
+            $livestream->update([
+                'status' => 'meeting_live',
+                'settings' => $settings ?: null,
+            ]);
 
             return;
         }
@@ -171,17 +179,35 @@ class StreamingQueueService
                 'started_at' => $livestream->started_at ?? now(),
             ]);
 
+            // Transition the YouTube broadcast to "live" NOW — not on the user's
+            // Go Live click. The worker only sends status=live after ffmpeg has
+            // pushed its first frame to YouTube, so the RTMP ingest is active and
+            // YouTube accepts the transition. Doing it on button-click (see
+            // Organization/LivestreamController:674) fired ~60-120s too early,
+            // before any frames flowed; YouTube rejected it, the error was
+            // swallowed, and the broadcast never went live even though video was
+            // arriving — the "streaming but nothing on YouTube Studio" symptom.
+            $this->transitionYoutubeBroadcastToLive($livestream, $job->livestream_kind);
+
             return;
         }
 
         if (in_array($status, ['completed', 'stopped'], true)) {
+            // Clear the End Stream marker so the *next* stream on this row
+            // isn't instantly stopped by a stale flag.
+            $settings = $livestream->settings ?? [];
+            unset($settings['stream_stop_requested']);
+
             $livestream->update([
                 'status' => 'draft',
                 'ended_at' => now(),
+                'settings' => $settings ?: null,
             ]);
 
-            if ($job->livestream_kind === 'organization' && $livestream instanceof OrganizationLivestream) {
-                $this->rotateOrganizationYoutubeBroadcastAfterStreamEnd($livestream);
+            if ($livestream instanceof OrganizationLivestream) {
+                $this->rotateYoutubeBroadcastAfterStreamEnd($livestream, 'organization');
+            } elseif ($livestream instanceof UserLivestream) {
+                $this->rotateYoutubeBroadcastAfterStreamEnd($livestream, 'user');
             }
 
             return;
@@ -193,24 +219,133 @@ class StreamingQueueService
     }
 
     /**
-     * After an org cloud relay ends, create a new YouTube broadcast so the same meeting can go live again.
+     * Transition the bound YouTube broadcast to "live". Called from the worker
+     * status=live callback (NOT the Go Live button) so YouTube's RTMP ingest is
+     * already active and the transition is accepted. Best-effort: a failure here
+     * must not break the callback (BIU status is already updated).
+     *
+     * @param  OrganizationLivestream|UserLivestream  $livestream
      */
-    private function rotateOrganizationYoutubeBroadcastAfterStreamEnd(OrganizationLivestream $livestream): void
+    private function transitionYoutubeBroadcastToLive($livestream, string $kind): void
     {
-        $livestream->loadMissing('organization');
-        $organization = $livestream->organization;
-        if (! $organization) {
+        if (empty($livestream->youtube_broadcast_id)) {
             return;
         }
 
         $youtubeService = app(YouTubeService::class);
-        $accessToken = $youtubeService->getValidAccessToken($organization);
+        $accessToken = null;
+
+        if ($kind === 'organization' && $livestream instanceof OrganizationLivestream) {
+            $livestream->loadMissing('organization');
+            if ($livestream->organization) {
+                $accessToken = $youtubeService->getValidAccessToken($livestream->organization);
+            }
+        } elseif ($livestream instanceof UserLivestream) {
+            $livestream->loadMissing('user.organization');
+            $user = $livestream->user;
+            if ($user) {
+                $accessToken = $youtubeService->getValidAccessTokenForUser($user)
+                    ?: ($user->organization
+                        ? $youtubeService->getValidAccessToken($user->organization)
+                        : null);
+            }
+        }
+
+        if (! $accessToken) {
+            Log::warning('YouTube transition->live skipped: no valid access token', [
+                'livestream_id' => $livestream->id,
+                'kind' => $kind,
+            ]);
+
+            return;
+        }
+
+        try {
+            $ok = $youtubeService->updateBroadcastStatus(
+                $accessToken,
+                $livestream->youtube_broadcast_id,
+                'live'
+            );
+            Log::info('YouTube broadcast transition->live (worker callback)', [
+                'livestream_id' => $livestream->id,
+                'broadcast_id' => $livestream->youtube_broadcast_id,
+                'ok' => $ok,
+            ]);
+        } catch (\Throwable $e) {
+            Log::warning('YouTube transition->live failed', [
+                'livestream_id' => $livestream->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * Host clicked End stream: YouTube was already told to complete. In local simulate mode, apply the
+     * worker "stopped" callback immediately so the UI does not wait on AWS. With a real worker, the
+     * relay should callback completed/stopped shortly after YouTube ingest ends.
+     */
+    public function finalizeAfterHostEndStream(string $livestreamKind, int $livestreamId): bool
+    {
+        $job = StreamingJob::query()
+            ->where('livestream_kind', $livestreamKind)
+            ->where('livestream_id', $livestreamId)
+            ->whereIn('status', ['queued', 'starting', 'live'])
+            ->latest('id')
+            ->first();
+
+        if (! $job) {
+            return false;
+        }
+
+        if ($this->shouldSimulateWorker()) {
+            $this->applyCallbackStatus($job, 'stopped', null, null);
+
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * After a cloud relay ends, create a new YouTube broadcast so the same meeting can go live again.
+     *
+     * @param  OrganizationLivestream|UserLivestream  $livestream
+     */
+    private function rotateYoutubeBroadcastAfterStreamEnd(
+        OrganizationLivestream|UserLivestream $livestream,
+        string $livestreamKind,
+    ): void {
+        $youtubeService = app(YouTubeService::class);
+        $accessToken = null;
+        $titleSuffix = 'Live';
+
+        if ($livestreamKind === 'organization' && $livestream instanceof OrganizationLivestream) {
+            $livestream->loadMissing('organization');
+            $organization = $livestream->organization;
+            if (! $organization) {
+                return;
+            }
+            $accessToken = $youtubeService->getValidAccessToken($organization);
+            $titleSuffix = $organization->name ?? 'Live';
+        } elseif ($livestreamKind === 'user' && $livestream instanceof UserLivestream) {
+            $livestream->loadMissing('user');
+            $user = $livestream->user;
+            if (! $user) {
+                return;
+            }
+            $accessToken = $youtubeService->getValidAccessTokenForUser($user);
+            if (! $accessToken && $user->organization) {
+                $accessToken = $youtubeService->getValidAccessToken($user->organization);
+            }
+            $titleSuffix = $user->name ?? 'Live';
+        }
+
         if (! $accessToken) {
             return;
         }
 
         try {
-            $title = $livestream->title ?: 'Unity Meet - '.($organization->name ?? 'Live');
+            $title = $livestream->title ?: 'Unity Meet - '.$titleSuffix;
             $broadcastData = $youtubeService->createLiveBroadcast(
                 $accessToken,
                 $title,
@@ -232,7 +367,8 @@ class StreamingQueueService
                 'settings' => $settings ?: null,
             ]);
         } catch (\Throwable $e) {
-            Log::warning('rotateOrganizationYoutubeBroadcastAfterStreamEnd failed', [
+            Log::warning('rotateYoutubeBroadcastAfterStreamEnd failed', [
+                'livestream_kind' => $livestreamKind,
                 'livestream_id' => $livestream->id,
                 'error' => $e->getMessage(),
             ]);
@@ -270,5 +406,24 @@ class StreamingQueueService
         $usage->save();
 
         $job->update(['accounted_at' => now()]);
+    }
+
+    /**
+     * Props for the host UI "YouTube readiness" stream status row.
+     *
+     * @param  OrganizationLivestream|UserLivestream  $livestream
+     * @return array{status: ?string, livestreamStatus: string, streamStopRequested: bool, updatedAt: ?string, failureReason: ?string}
+     */
+    public function queueStatusForUi(?StreamingJob $job, OrganizationLivestream|UserLivestream $livestream): array
+    {
+        $settings = is_array($livestream->settings) ? $livestream->settings : [];
+
+        return [
+            'status' => $job?->status,
+            'livestreamStatus' => (string) $livestream->status,
+            'streamStopRequested' => ! empty($settings['stream_stop_requested']),
+            'updatedAt' => $job?->updated_at?->toIso8601String(),
+            'failureReason' => $job?->failure_reason,
+        ];
     }
 }

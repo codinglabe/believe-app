@@ -3,7 +3,9 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\OrganizationLivestream;
 use App\Models\StreamingJob;
+use App\Models\UserLivestream;
 use App\Services\Streaming\StreamingQueueService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -20,7 +22,10 @@ class StreamingStatusCallbackController extends Controller
         $validated = $request->validate([
             'meeting_id' => ['required', 'string', 'max:100'],
             'organization_id' => ['required', 'string', 'max:100'],
-            'status' => ['required', 'string', 'in:starting,live,completed,failed,stopped'],
+            // `heartbeat` is a no-op poll: the worker asks "should I stop?"
+            // every ~10s so the End Stream button can reach it (Laravel only
+            // has sqs:SendMessage, no way to signal the task directly).
+            'status' => ['required', 'string', 'in:starting,live,completed,failed,stopped,heartbeat'],
             // Worker contract (INTEGRATION.pdf) may send fractional minutes; bill on integer portion.
             'duration_minutes' => ['nullable', 'numeric', 'min:0'],
             'failure_reason' => ['nullable', 'string'],
@@ -58,6 +63,13 @@ class StreamingStatusCallbackController extends Controller
             return response()->json(['error' => 'Streaming job not found'], 404);
         }
 
+        $stop = $this->workerShouldStop($job);
+
+        // heartbeat is a pure poll — no state change, just answer "stop?".
+        if ($validated['status'] === 'heartbeat') {
+            return response()->json(['ok' => true, 'stop' => $stop]);
+        }
+
         $service->applyCallbackStatus(
             $job,
             $validated['status'],
@@ -65,6 +77,30 @@ class StreamingStatusCallbackController extends Controller
             $failureReason
         );
 
-        return response()->json(['ok' => true]);
+        return response()->json(['ok' => true, 'stop' => $stop]);
+    }
+
+    /**
+     * True when the worker should shut down: the user clicked End Stream
+     * (settings.stream_stop_requested set), the livestream is no longer in a
+     * streaming state, or the livestream row is gone. Drives the bidirectional
+     * stop so "End Stream" actually terminates the AWS worker.
+     */
+    private function workerShouldStop(StreamingJob $job): bool
+    {
+        $livestream = $job->livestream_kind === 'organization'
+            ? OrganizationLivestream::find($job->livestream_id)
+            : UserLivestream::find($job->livestream_id);
+
+        if (! $livestream) {
+            return true;
+        }
+
+        $settings = $livestream->settings ?? [];
+        if (! empty($settings['stream_stop_requested'])) {
+            return true;
+        }
+
+        return ! in_array($livestream->status, ['live', 'meeting_live', 'starting'], true);
     }
 }

@@ -24,8 +24,11 @@ use App\Observers\JobApplicationObserver;
 use App\Observers\NodeSellObserver;
 use Illuminate\Auth\Events\Verified;
 use Illuminate\Notifications\ChannelManager;
+use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use Inertia\Inertia;
 use Laravel\Cashier\Cashier;
@@ -46,6 +49,10 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        RateLimiter::for('wallet-balance', function (Request $request) {
+            return Limit::perMinute(30)->by($request->user()?->id ?: $request->ip());
+        });
+
         NodeSell::observe(NodeSellObserver::class);
         FundMeDonation::observe(FundMeDonationObserver::class);
         BelievePointPurchase::observe(BelievePointPurchaseObserver::class);

@@ -194,6 +194,7 @@ class LivestreamController extends Controller
                 'title' => $livestream->title,
                 'roomName' => $livestream->room_name,
                 'roomPassword' => $password,
+                'requiresPasscode' => $livestream->requiresPasscode(),
                 'joinUrl' => $joinUrl,
             ],
             'organization' => [
@@ -286,6 +287,7 @@ class LivestreamController extends Controller
                 'description' => $livestream->description,
                 'roomName' => $livestream->room_name,
                 'roomPassword' => $password,
+                'requiresPasscode' => $livestream->requiresPasscode(),
                 'directorUrl' => $directorUrl,
                 'directorUrlLocal' => $directorUrlLocal,
                 'directorUrlDropbox' => $directorUrlDropbox,
@@ -294,6 +296,8 @@ class LivestreamController extends Controller
                 'hostPushUrlLocal' => $hostPushUrlLocal,
                 'hostPushUrlDropbox' => $hostPushUrlDropbox,
                 'scenePushUrl' => $scenePushUrl,
+                'canvasUrl' => $livestream->getCanvasUrl(),
+                'canvasMode' => $livestream->isCanvasModeEnabled(),
                 'dropboxRecordingAvailable' => $dropboxConnected,
                 'watchUrl' => $watchUrl,
                 'unityLiveUrl' => $unityLiveUrl,
@@ -314,11 +318,7 @@ class LivestreamController extends Controller
                 'canGoLive' => $livestream->canGoLive(),
                 'latestInviteUrl' => $latestInviteUrl,
                 'youtubeConnected' => ! empty($organization->youtube_refresh_token) || ! empty($organization->youtube_access_token),
-                'streamingQueueStatus' => $latestStreamingJob ? [
-                    'status' => $latestStreamingJob->status,
-                    'updatedAt' => optional($latestStreamingJob->updated_at)->toIso8601String(),
-                    'failureReason' => $latestStreamingJob->failure_reason,
-                ] : null,
+                'streamingQueueStatus' => app(StreamingQueueService::class)->queueStatusForUi($latestStreamingJob, $livestream),
             ],
             'mediamtxEnabled' => $mediamtxEnabled,
             'organization' => [
@@ -340,7 +340,12 @@ class LivestreamController extends Controller
             ->first();
 
         if ($orgStream) {
-            $participantUrl = $orgStream->getParticipantUrl();
+            // Canvas mode (opt-in): allocate the next guest seat so this
+            // participant publishes their cam to ls_<id>_s<seat> on MediaMTX
+            // for the canvas mixer to WHEP-subscribe. No-op when canvas_mode
+            // is off — getParticipantUrl(null) is the original single-host URL.
+            $seat = $orgStream->isCanvasModeEnabled() ? $orgStream->allocateNextGuestSeat() : null;
+            $participantUrl = $orgStream->getParticipantUrl($seat);
             $password = $orgStream->getDecryptedPassword();
             $settings = $orgStream->settings ?? [];
             $participantEmails = [];
@@ -382,7 +387,8 @@ class LivestreamController extends Controller
             ->first();
 
         if ($userStream) {
-            $participantUrl = $userStream->getParticipantUrl();
+            $seat = $userStream->isCanvasModeEnabled() ? $userStream->allocateNextGuestSeat() : null;
+            $participantUrl = $userStream->getParticipantUrl($seat);
             $password = $userStream->getDecryptedPassword();
             $settings = $userStream->settings ?? [];
             $participantEmails = [];
@@ -464,7 +470,10 @@ class LivestreamController extends Controller
             ]);
         }
 
-        $participantUrl = $livestream->getParticipantUrl();
+        // Per-invite-token join: allocate a canvas seat when canvas_mode is on
+        // so this specific guest publishes into the mixer.
+        $seat = $livestream->isCanvasModeEnabled() ? $livestream->allocateNextGuestSeat() : null;
+        $participantUrl = $livestream->getParticipantUrl($seat);
         $hasPasscode = ! empty($livestream->getDecryptedPassword());
         $inviteSettings = is_array($livestream->settings) ? $livestream->settings : [];
 
@@ -781,7 +790,7 @@ class LivestreamController extends Controller
      * Livestream status returns to draft when the AWS worker reports completed/stopped; a new YouTube
      * broadcast is provisioned then so this meeting can go live again.
      */
-    public function endStream(Request $request, $id)
+    public function endStream(Request $request, $id, StreamingQueueService $streamingQueue)
     {
         $user = Auth::user();
         $organization = $user->organization ?? Organization::where('user_id', $user->id)->first();
@@ -793,19 +802,39 @@ class LivestreamController extends Controller
         $livestream = OrganizationLivestream::where('organization_id', $organization->id)
             ->findOrFail($id);
 
-        if ($livestream->status !== 'live') {
-            return redirect()->back()->withErrors(['error' => 'Stream is not live.']);
+        // Accept any active state, not just 'live'. A stream that failed (e.g.
+        // bridge cold) gets reset to 'meeting_live'; the user must still be able
+        // to end/reset it. Only reject genuinely-inactive states.
+        if (! in_array($livestream->status, ['live', 'meeting_live', 'starting'], true)) {
+            return redirect()->back()->withErrors(['error' => 'Stream is not active.']);
         }
+
+        // Mark stop intent BEFORE the YouTube calls. The AWS worker polls the
+        // callback endpoint every ~10s and shuts itself down once it sees this.
+        // Without it, "End Stream" never reached the worker (Laravel has no way
+        // to signal the task) so the relay ran until the browser tab closed.
+        $settings = $livestream->settings ?? [];
+        $settings['stream_stop_requested'] = now()->toIso8601String();
+        $livestream->update(['settings' => $settings]);
 
         $youtubeService = app(YouTubeService::class);
         $accessToken = $youtubeService->getValidAccessToken($organization);
 
         // Stop the current broadcast on YouTube (OBS is stopped on frontend via stopOBSStream).
-        // Do not set meeting status here — the AWS worker callback (completed/stopped) updates the row
-        // so the UI matches when the relay has actually finished. A fresh YouTube broadcast is created then.
+        // Meeting status returns to draft when the AWS worker callback reports completed/stopped
+        // (or immediately in STREAMING_SIMULATE_WORKER mode). A fresh YouTube broadcast is created then.
         if (! empty($livestream->youtube_broadcast_id) && $accessToken) {
             try {
-                $youtubeService->updateBroadcastStatus($accessToken, $livestream->youtube_broadcast_id, 'complete');
+                $endedOnYoutube = $youtubeService->updateBroadcastStatus(
+                    $accessToken,
+                    $livestream->youtube_broadcast_id,
+                    'complete'
+                );
+                if (! $endedOnYoutube) {
+                    return redirect()->back()->withErrors([
+                        'error' => 'YouTube did not confirm the broadcast ended. Try again or end it from YouTube Studio.',
+                    ]);
+                }
             } catch (\Throwable $e) {
                 Log::warning('End stream: YouTube complete failed', ['livestream_id' => $id, 'error' => $e->getMessage()]);
 
@@ -814,11 +843,27 @@ class LivestreamController extends Controller
                 ]);
             }
 
+            $settledLocally = $streamingQueue->finalizeAfterHostEndStream('organization', $livestream->id);
+
+            // Reset locally too. The worker (if running) stops within ~10s via
+            // the stop_requested heartbeat and its 'stopped' callback re-confirms
+            // draft (idempotent). If the stream had already failed and no worker
+            // is running, this is the only thing that frees the user from a
+            // stuck meeting_live/live state.
+            $livestream->update([
+                'status' => 'draft',
+                'ended_at' => $livestream->ended_at ?? now(),
+            ]);
+
             return redirect()->back()->with(
                 'success',
-                'Ending stream — YouTube was told to stop. This page will update when the cloud relay reports finished (usually within a short time).'
+                $settledLocally
+                    ? 'YouTube live ended. The meeting is ready — you can go live again when you want.'
+                    : 'Ending stream — YouTube was told to stop and the relay is shutting down (usually within ~10s).'
             );
         }
+
+        $streamingQueue->finalizeAfterHostEndStream('organization', $livestream->id);
 
         $livestream->update([
             'status' => 'draft',

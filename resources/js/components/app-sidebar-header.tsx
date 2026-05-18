@@ -12,6 +12,7 @@ import { showSuccessToast } from '@/lib/toast';
 import { useEffect, useState, useCallback } from 'react';
 import { WalletPopup } from './WalletPopup';
 import { SubscriptionRequiredModal } from './SubscriptionRequiredModal';
+import { fetchWalletBalance } from '@/lib/wallet-balance-fetch';
 
 export function AppSidebarHeader({ breadcrumbs = [] }: { breadcrumbs?: BreadcrumbItemType[] }) {
     const { isImpersonating, auth, hasSubscription: propHasSubscription } = usePage<{
@@ -50,31 +51,21 @@ export function AppSidebarHeader({ breadcrumbs = [] }: { breadcrumbs?: Breadcrum
     }
 
     // Fetch organization balance directly (no wallet connection checks)
-    const fetchOrganizationBalance = useCallback(async () => {
+    const fetchOrganizationBalance = useCallback(async (force = false) => {
             if (!isOrgUser || !walletHeaderVisible) return;
 
             try {
-                // Fetch organization balance directly
-                const balanceResponse = await fetch(`/wallet/balance?t=${Date.now()}`, {
-                    method: 'GET',
-                    headers: {
-                        'Accept': 'application/json',
-                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
-                        'X-Requested-With': 'XMLHttpRequest',
-                    },
-                    credentials: 'include',
-                    cache: 'no-cache',
-                });
-
-                if (balanceResponse.ok) {
-                    const balanceData = await balanceResponse.json();
-                    if (balanceData.success) {
-                        setWalletBalance(balanceData.balance || balanceData.organization_balance || balanceData.local_balance || 0);
-                        setWalletConnected(true); // Always connected for organization users
-                    // Only update subscription status if not provided via props
+                const balanceData = await fetchWalletBalance({ force });
+                if (balanceData?.success) {
+                    setWalletBalance(
+                        balanceData.balance ||
+                            balanceData.organization_balance ||
+                            balanceData.local_balance ||
+                            0,
+                    );
+                    setWalletConnected(true);
                     if (propHasSubscription === undefined) {
                         setHasSubscription(balanceData.has_subscription ?? null);
-                    }
                     }
                 }
             } catch (error) {
@@ -99,14 +90,13 @@ export function AppSidebarHeader({ breadcrumbs = [] }: { breadcrumbs?: Breadcrum
         const handleVisibilityChange = () => {
             if (document.visibilityState === 'visible' && isOrgUser && walletHeaderVisible) {
                 // Refresh balance/subscription status when user returns to the page
-                fetchOrganizationBalance();
+                fetchOrganizationBalance(true);
             }
         };
 
         const handleFocus = () => {
             if (isOrgUser && walletHeaderVisible) {
-                // Refresh balance/subscription status when window regains focus
-        fetchOrganizationBalance();
+                fetchOrganizationBalance(true);
             }
         };
 

@@ -67,6 +67,11 @@ import { NotificationBell } from "@/components/notification-bell"
 import SiteTitle from "@/components/site-title"
 import { WalletPopup } from "@/components/WalletPopup"
 import { UserWalletSubscriptionModal } from "@/components/UserWalletSubscriptionModal"
+import {
+  fetchWalletBalance,
+  shouldPollWalletBalance,
+  WALLET_BALANCE_POLL_MS,
+} from "@/lib/wallet-balance-fetch"
 // Extending SharedData interface to include wallet_balance
 interface SharedData extends Record<string, unknown> {
   auth: {
@@ -325,7 +330,20 @@ export default function Navbar() {
       return
     }
 
-    const fetchBalance = async () => {
+    const applyBalanceData = (balanceData: Awaited<ReturnType<typeof fetchWalletBalance>>) => {
+      if (balanceData?.success) {
+        setWalletBalance(balanceData.balance || balanceData.local_balance || 0)
+        if (balanceData.has_subscription !== undefined) {
+          setHasSubscription(balanceData.has_subscription)
+        }
+        return
+      }
+      if (auth?.user?.balance) {
+        setWalletBalance(parseFloat(auth.user.balance.toString()))
+      }
+    }
+
+    const fetchBalance = async (force = false) => {
       if (!auth?.user?.email_verified_at) {
         if (auth?.user?.balance) {
           setWalletBalance(parseFloat(auth.user.balance.toString()))
@@ -334,37 +352,10 @@ export default function Navbar() {
       }
 
       try {
-        const balanceResponse = await fetch(`/wallet/balance?t=${Date.now()}`, {
-          method: 'GET',
-          headers: {
-            'Accept': 'application/json',
-            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
-            'X-Requested-With': 'XMLHttpRequest',
-          },
-          credentials: 'include',
-          cache: 'no-cache',
-        })
-
-        // Check if response is JSON before parsing
-        const contentType = balanceResponse.headers.get('content-type')
-        if (balanceResponse.ok && contentType && contentType.includes('application/json')) {
-          const balanceData = await balanceResponse.json()
-          if (balanceData.success) {
-            setWalletBalance(balanceData.balance || balanceData.local_balance || 0)
-            // Set subscription status (for regular users/supporters)
-            if (balanceData.has_subscription !== undefined) {
-              setHasSubscription(balanceData.has_subscription)
-            }
-          }
-        } else if (balanceResponse.status === 403) {
-          // Email not verified - use fallback balance
-          if (auth?.user?.balance) {
-            setWalletBalance(parseFloat(auth.user.balance.toString()))
-          }
-        }
+        const balanceData = await fetchWalletBalance({ force })
+        applyBalanceData(balanceData)
       } catch (error) {
         console.error('Failed to fetch wallet balance:', error)
-        // Fallback to user balance from auth
         if (auth?.user?.balance) {
           setWalletBalance(parseFloat(auth.user.balance.toString()))
         }
@@ -372,7 +363,11 @@ export default function Navbar() {
     }
 
     fetchBalance()
-    const interval = setInterval(fetchBalance, 30000)
+    const interval = setInterval(() => {
+      if (shouldPollWalletBalance()) {
+        void fetchBalance()
+      }
+    }, WALLET_BALANCE_POLL_MS)
     return () => clearInterval(interval)
   }, [isLoggedIn, auth?.user?.id, auth?.user?.balance, auth?.user?.wallet_header_visible])
 
@@ -398,37 +393,17 @@ export default function Navbar() {
     }
 
     try {
-      const balanceResponse = await fetch(`/wallet/balance?t=${Date.now()}`, {
-        method: 'GET',
-        headers: {
-          'Accept': 'application/json',
-          'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
-          'X-Requested-With': 'XMLHttpRequest',
-        },
-        credentials: 'include',
-        cache: 'no-cache',
-      })
-
-      // Check if response is JSON before parsing
-      const contentType = balanceResponse.headers.get('content-type')
-      if (balanceResponse.ok && contentType && contentType.includes('application/json')) {
-        const balanceData = await balanceResponse.json()
-        if (balanceData.success) {
-          setWalletBalance(balanceData.balance || balanceData.local_balance || 0)
-          // Set subscription status (for regular users/supporters)
-          if (balanceData.has_subscription !== undefined) {
-            setHasSubscription(balanceData.has_subscription)
-          }
+      const balanceData = await fetchWalletBalance({ force: true })
+      if (balanceData?.success) {
+        setWalletBalance(balanceData.balance || balanceData.local_balance || 0)
+        if (balanceData.has_subscription !== undefined) {
+          setHasSubscription(balanceData.has_subscription)
         }
-      } else if (balanceResponse.status === 403) {
-        // Email not verified - use fallback balance
-        if (auth?.user?.balance) {
-          setWalletBalance(parseFloat(auth.user.balance.toString()))
-        }
+      } else if (auth?.user?.balance) {
+        setWalletBalance(parseFloat(auth.user.balance.toString()))
       }
     } catch (error) {
       console.error('Failed to fetch wallet balance:', error)
-      // Fallback to user balance from auth
       if (auth?.user?.balance) {
         setWalletBalance(parseFloat(auth.user.balance.toString()))
       }
