@@ -631,6 +631,8 @@ class SupporterLivestreamController extends Controller
                 'hostPushUrl' => $hostPushUrl,
                 'hostPushUrlDropbox' => $hostPushUrlDropbox,
                 'scenePushUrl' => $scenePushUrl,
+                'canvasUrl' => $livestream->getCanvasUrl(),
+                'canvasMode' => $livestream->isCanvasModeEnabled(),
                 'dropboxRecordingAvailable' => $dropboxConnected,
                 'watchUrl' => $watchUrl,
                 'unityLiveUrl' => $unityLiveUrl,

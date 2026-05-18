@@ -278,7 +278,7 @@ class OrganizationLivestream extends Model
      */
     public function isCanvasModeEnabled(): bool
     {
-        return (bool) (($this->settings ?? [])['canvas_mode'] ?? false);
+        return (bool) (($this->settings ?? [])['canvas_mode'] ?? true);
     }
 
     /**

@@ -270,7 +270,7 @@ class UserLivestream extends Model
     /** Canvas-mode opt-in flag — see OrganizationLivestream for full rationale. */
     public function isCanvasModeEnabled(): bool
     {
-        return (bool) (($this->settings ?? [])['canvas_mode'] ?? false);
+        return (bool) (($this->settings ?? [])['canvas_mode'] ?? true);
     }
 
     /** Best-effort seat allocator (2..6), wraps. Host = seat 1. MVP scope. */

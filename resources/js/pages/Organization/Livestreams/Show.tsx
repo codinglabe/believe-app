@@ -41,10 +41,12 @@ interface Livestream {
   directorUrl: string
   hostPushUrl: string
   participantUrl: string
-  /** VDO.Ninja scene-mixer URL that pushes the composite of all room participants to MediaMTX.
-   * Rendered in a hidden iframe so guests reach YouTube alongside the host. Null when MediaMTX
-   * isn't configured. */
   scenePushUrl?: string | null
+  /** Participant-canvas mixer page URL. Loaded in a hidden iframe when canvasMode
+   * is on so all participants reach YouTube, not just the host. */
+  canvasUrl?: string | null
+  /** When true, the meeting runs in multi-participant canvas mode. */
+  canvasMode?: boolean
   status: "draft" | "scheduled" | "live" | "meeting_live" | "starting" | "ended" | "cancelled"
   scheduledAt: string | null
   startedAt: string | null
@@ -212,14 +214,16 @@ export default function ShowLivestream({ livestream, organization, recordingCons
   return (
     <AppLayout>
       <Head title={`Livestream: ${livestream.title || "Untitled"}`} />
-      {/* Hidden scene-mixer iframe: composites all room participants → MediaMTX → YouTube.
-          Pre-warms on scheduled/starting so MediaMTX already has a publisher by the time the
-          worker fires (worker dispatch + ffmpeg first-frame race was burning tests). Stays up
-          through meeting_live and live. 1x1 off-screen so it never grabs focus or layout. */}
-      {livestream.scenePushUrl && ["scheduled", "starting", "meeting_live", "live"].includes(livestream.status) && (
+      {/* Hidden participant-canvas mixer iframe. WHEP-subscribes the 6 seats,
+          composites the 3x2 grid, mixes audio, and WHIP-publishes the combined
+          stream to the path the worker pulls. Auto-runs whenever canvas mode is
+          on and the meeting is active — no manual tab. Pre-warms on
+          scheduled/starting so the composite is publishing before the worker
+          fires. Stays open as long as this Show page is open. */}
+      {livestream.canvasMode && livestream.canvasUrl && ["scheduled", "starting", "meeting_live", "live"].includes(livestream.status) && (
         <iframe
-          src={livestream.scenePushUrl}
-          title="scene-mixer"
+          src={livestream.canvasUrl}
+          title="canvas-mixer"
           tabIndex={-1}
           aria-hidden="true"
           className="pointer-events-none fixed h-px w-px overflow-hidden border-0 opacity-0"

@@ -70,10 +70,12 @@ interface Livestream {
   directorUrl: string
   participantUrl: string
   hostPushUrl: string
-  /** VDO.Ninja scene-mixer URL that pushes the composite of all room participants to MediaMTX.
-   * Rendered in a hidden iframe so guests reach YouTube alongside the host. Null when MediaMTX
-   * isn't configured. */
   scenePushUrl?: string | null
+  /** Participant-canvas mixer page URL — hidden iframe when canvasMode is on so
+   * all participants reach YouTube, not just the host. */
+  canvasUrl?: string | null
+  /** When true, the meeting runs in multi-participant canvas mode. */
+  canvasMode?: boolean
   watchUrl: string | null
   unityLiveUrl?: string
   liveViewerUrl?: string
@@ -744,14 +746,15 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
                     ● LIVE
                   </div>
                 )}
-                {/* Hidden scene-mixer iframe: composites all room participants → MediaMTX → YouTube.
-                    Pre-warms on scheduled/starting so MediaMTX already has a publisher by the
-                    time the worker fires (worker dispatch + ffmpeg first-frame race was burning
-                    tests). 1x1 + hidden + tabIndex=-1 so it never grabs focus or layout. */}
-                {livestream.scenePushUrl && ["scheduled", "starting", "meeting_live", "live"].includes(livestream.status) && (
+                {/* Hidden participant-canvas mixer iframe. Auto-runs when canvas
+                    mode is on and the meeting is active — composites the 3x2 grid,
+                    mixes audio, WHIP-publishes the combined stream to the worker's
+                    pull path. Pre-warms on scheduled/starting so the composite is
+                    live before the worker fires. No manual tab needed. */}
+                {livestream.canvasMode && livestream.canvasUrl && ["scheduled", "starting", "meeting_live", "live"].includes(livestream.status) && (
                   <iframe
-                    src={livestream.scenePushUrl}
-                    title="scene-mixer"
+                    src={livestream.canvasUrl}
+                    title="canvas-mixer"
                     tabIndex={-1}
                     aria-hidden="true"
                     className="pointer-events-none absolute h-px w-px overflow-hidden border-0 opacity-0"
