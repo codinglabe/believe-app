@@ -236,7 +236,7 @@ export default function CreateLivestream({ organization, defaultDisplayName }: P
                         <li>Go to YouTube Studio → Go Live</li>
                         <li>Create a new stream or use an existing one</li>
                         <li>Copy the "Stream Key" (starts with "rtmp://" or similar)</li>
-                        <li>Paste it here to enable OBS → YouTube streaming</li>
+                        <li>Paste it here to enable cloud streaming to YouTube</li>
                       </ol>
                     </AlertDescription>
                   </Alert>
@@ -301,7 +301,7 @@ export default function CreateLivestream({ organization, defaultDisplayName }: P
               <li>A unique VDO.Ninja room will be automatically generated</li>
               <li>You'll receive a secure password for the room</li>
               <li>Guests can join using a simple link (no accounts needed)</li>
-              <li>You'll use OBS Studio to pull in guest feeds and stream to YouTube</li>
+              <li>Use <strong>Go Live (Cloud)</strong> on the host dashboard to stream your meeting to YouTube</li>
             </ul>
           </CardContent>
         </Card>

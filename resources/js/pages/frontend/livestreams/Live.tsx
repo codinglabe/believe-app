@@ -72,7 +72,7 @@ export default function UnityMeetLive({
                   <h1 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">Live</h1>
                 </div>
                 <p className="max-w-xl text-sm text-muted-foreground">
-                  See all public Unity Meet streams that are live, set up YouTube and Dropbox, and open a meeting to host or use OBS.
+                  See all public Unity Meet streams that are live, set up YouTube and Dropbox, and open a meeting to host.
                 </p>
               </div>
               <Button asChild variant="outline" className="shrink-0 gap-2">
@@ -174,14 +174,14 @@ export default function UnityMeetLive({
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex items-center gap-2">
                     <Youtube className="h-5 w-5 text-red-600" aria-hidden />
-                    <CardTitle className="text-lg">YouTube &amp; OBS</CardTitle>
+                    <CardTitle className="text-lg">YouTube</CardTitle>
                   </div>
                   <Badge variant={youtubeConnected ? "default" : "secondary"}>
                     {youtubeConnected ? "Signed in" : "Not connected"}
                   </Badge>
                 </div>
                 <CardDescription>
-                  Connect your channel so you can send OBS to YouTube. Per-meeting stream keys are entered on the meeting page when you enable live mode.
+                  Connect your channel for cloud streaming to YouTube. Per-meeting stream keys are set on the meeting page when you go live.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
@@ -241,7 +241,7 @@ export default function UnityMeetLive({
                   <CardTitle className="text-lg">Meetings</CardTitle>
                 </div>
                 <CardDescription>
-                  Create or open a meeting, then use the room&apos;s <strong className="text-foreground">Live</strong> / OBS tab for stream keys and controls.
+                  Create or open a meeting, then use <strong className="text-foreground">Go Live</strong> on the host page for stream keys and controls.
                 </CardDescription>
               </CardHeader>
               <CardContent className="flex flex-wrap gap-2">

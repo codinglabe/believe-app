@@ -202,7 +202,7 @@ export default function IntegrationsYouTube({ youtube_channel_url, youtube_redir
                 Connect your channel
               </CardTitle>
               <CardDescription>
-                Click the button below to sign in with Google and connect your YouTube channel. Your channel's videos will then appear on {is_supporter ? "your" : "your organization's"} Unity Videos page.
+                Click the button below to sign in with Google and connect your YouTube channel. Your channel&apos;s videos will then appear on {is_supporter ? "your" : "your organization&apos;s"} Unity Videos page.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
