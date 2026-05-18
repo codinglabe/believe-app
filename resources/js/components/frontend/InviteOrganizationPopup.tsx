@@ -1,11 +1,10 @@
 "use client"
 
 import { motion, AnimatePresence } from "framer-motion"
-import { X, Mail, Gift, Sparkles, Send } from "lucide-react"
+import { X, Mail, Send } from "lucide-react"
 import { Button } from "@/components/frontend/ui/button"
 import { Input } from "@/components/frontend/ui/input"
 import { useState } from "react"
-import { router } from "@inertiajs/react"
 import { showSuccessToast, showErrorToast } from "@/lib/toast"
 
 interface InviteOrganizationPopupProps {
@@ -49,7 +48,7 @@ export default function InviteOrganizationPopup({ isOpen, onClose, organization 
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Accept": "application/json",
+          Accept: "application/json",
           "X-Requested-With": "XMLHttpRequest",
         },
         credentials: "include",
@@ -66,12 +65,12 @@ export default function InviteOrganizationPopup({ isOpen, onClose, organization 
         throw new Error(data.message || "Failed to send invite")
       }
 
-      showSuccessToast("Invite Sent! 🎉 Your invitation has been sent successfully. You'll receive 100 points when they sign up!")
+      showSuccessToast("Invitation sent.")
       setEmail("")
       onClose()
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error("Error sending invite:", error)
-      showErrorToast(error.message || "Failed to send invite. Please try again later.")
+      showErrorToast(error instanceof Error ? error.message : "Failed to send invite. Please try again later.")
     } finally {
       setIsSubmitting(false)
     }
@@ -81,173 +80,111 @@ export default function InviteOrganizationPopup({ isOpen, onClose, organization 
     <AnimatePresence>
       {isOpen && (
         <>
-          {/* Backdrop */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 0.2 }}
-            className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50"
+            transition={{ duration: 0.15 }}
+            className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm"
             onClick={onClose}
           />
 
-          {/* Popup */}
           <motion.div
-            initial={{ opacity: 0, scale: 0.9, y: 20 }}
+            initial={{ opacity: 0, scale: 0.96, y: 8 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.9, y: 20 }}
-            transition={{
-              type: "spring",
-              stiffness: 300,
-              damping: 30,
-            }}
+            exit={{ opacity: 0, scale: 0.96, y: 8 }}
+            transition={{ type: "spring", stiffness: 360, damping: 28 }}
             className="fixed inset-0 z-50 flex items-center justify-center p-4"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="relative w-full max-w-md bg-white dark:bg-gray-800 rounded-2xl shadow-2xl overflow-hidden border border-gray-200 dark:border-gray-700">
-              {/* Decorative gradient */}
-              <div className="absolute inset-0 bg-gradient-to-br from-blue-500/10 via-purple-500/10 to-indigo-500/10 pointer-events-none" />
+            <div className="relative w-full max-w-sm overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl dark:border-gray-700 dark:bg-gray-800">
+              <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-blue-500/12 via-purple-500/10 to-indigo-500/12 dark:from-blue-500/15 dark:via-purple-600/10 dark:to-indigo-600/15" />
 
-              {/* Close button */}
               <button
+                type="button"
                 onClick={onClose}
-                className="absolute top-4 right-4 p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-full transition-colors z-10"
+                className="absolute right-3 top-3 z-10 rounded-full p-2 text-gray-500 transition-colors hover:bg-blue-50 hover:text-gray-700 dark:hover:bg-purple-950/40 dark:hover:text-gray-200"
+                aria-label="Close"
               >
-                <X className="h-5 w-5 text-gray-500 dark:text-gray-400" />
+                <X className="h-4 w-4" />
               </button>
 
-              {/* Content */}
-              <form onSubmit={handleSubmit} className="relative p-8">
-                {/* Icon */}
-                <motion.div
-                  initial={{ scale: 0 }}
-                  animate={{ scale: 1 }}
-                  transition={{
-                    type: "spring",
-                    stiffness: 200,
-                    damping: 15,
-                    delay: 0.1,
-                  }}
-                  className="flex justify-center mb-6"
-                >
-                  <div className="relative">
-                    <div className="absolute inset-0 bg-gradient-to-r from-blue-600 to-purple-600 rounded-full blur-xl opacity-50 animate-pulse" />
-                    <div className="relative bg-gradient-to-r from-blue-600 to-purple-600 p-4 rounded-full">
-                      <Mail className="h-8 w-8 text-white" />
+              <form onSubmit={handleSubmit} className="relative p-5 pt-11">
+                <div className="mb-5 flex items-start gap-3 pr-8">
+                  <motion.div
+                    initial={{ scale: 0.85, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    transition={{ type: "spring", stiffness: 320, damping: 22 }}
+                    className="relative shrink-0"
+                  >
+                    <div className="absolute inset-0 rounded-full bg-gradient-to-r from-blue-600 to-purple-600 opacity-40 blur-lg dark:opacity-50" />
+                    <div className="relative flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-r from-blue-600 to-purple-600 shadow-lg shadow-blue-600/25 dark:shadow-purple-600/20">
+                      <Mail className="h-5 w-5 text-white" aria-hidden />
                     </div>
+                  </motion.div>
+                  <div className="min-w-0 pt-0.5">
+                    <h3 className="bg-gradient-to-r from-blue-700 to-purple-600 bg-clip-text text-lg font-bold text-transparent dark:from-blue-400 dark:to-purple-400">
+                      Invite organization
+                    </h3>
+                    <p className="mt-1 truncate text-sm text-gray-600 dark:text-gray-300" title={organization.name}>
+                      {organization.name}
+                    </p>
                   </div>
-                </motion.div>
+                </div>
 
-                {/* Title */}
-                <motion.h3
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.2 }}
-                  className="text-2xl font-bold text-center text-gray-900 dark:text-white mb-3"
-                >
-                  Invite This Organization
-                </motion.h3>
-
-                {/* Message */}
-                <motion.div
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.3 }}
-                  className="text-center mb-6 space-y-3"
-                >
-                  <p className="text-gray-600 dark:text-gray-300 leading-relaxed">
-                    The organization <span className="font-semibold text-gray-900 dark:text-white">"{organization.name}"</span> isn't part of our community yet.
-                  </p>
-                  <p className="text-gray-600 dark:text-gray-300 leading-relaxed">
-                    If you know this organization, you can invite them to join and help them connect with supporters like you.
-                  </p>
-                  
-                  {/* Bonus message */}
-                  <div className="mt-4 p-4 bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-950/30 dark:to-purple-950/30 rounded-xl border border-blue-200 dark:border-blue-800">
-                    <div className="flex items-start gap-3">
-                      <div className="p-2 bg-gradient-to-r from-blue-500 to-purple-600 rounded-lg flex-shrink-0">
-                        <Gift className="h-5 w-5 text-white" />
-                      </div>
-                      <div className="flex-1">
-                        <p className="text-sm font-semibold text-gray-900 dark:text-white mb-1">
-                          You'll Earn Rewards! 🎉
-                        </p>
-                        <p className="text-sm text-gray-700 dark:text-gray-300">
-                          Once they sign up, you'll receive <span className="font-bold text-blue-600 dark:text-blue-400">100 points</span> to spend in the Merchant Hub!
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                </motion.div>
-
-                {/* Email Input */}
-                <motion.div
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.4 }}
-                  className="mb-6"
-                >
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    Organization Email Address
+                <div className="mb-5">
+                  <label htmlFor="invite-org-email" className="sr-only">
+                    Organization email
                   </label>
                   <div className="relative">
-                    <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
+                    <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-blue-500/70 dark:text-purple-400/80" />
                     <Input
+                      id="invite-org-email"
                       type="email"
-                      placeholder="Enter their email address"
+                      placeholder="Organization email"
                       value={email}
                       onChange={(e) => {
                         setEmail(e.target.value)
                         setEmailError("")
                       }}
-                      className={`pl-10 h-12 bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white rounded-xl ${
-                        emailError ? "border-red-500 focus:border-red-500" : ""
-                      }`}
+                      className={`h-10 rounded-xl border-gray-200 bg-white pl-9 text-sm transition-shadow focus-visible:border-blue-400 focus-visible:ring-2 focus-visible:ring-blue-500/25 dark:border-gray-600 dark:bg-gray-700/80 dark:focus-visible:border-purple-400 dark:focus-visible:ring-purple-500/25 ${emailError ? "border-red-500" : ""}`}
                       disabled={isSubmitting}
+                      autoComplete="email"
                     />
                   </div>
-                  {emailError && (
-                    <p className="mt-1 text-sm text-red-600 dark:text-red-400">{emailError}</p>
-                  )}
-                  <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                    We'll send them an invitation to join our platform
-                  </p>
-                </motion.div>
+                  {emailError ? <p className="mt-1.5 text-xs text-red-600 dark:text-red-400">{emailError}</p> : null}
+                </div>
 
-                {/* Buttons */}
-                <motion.div
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.5 }}
-                  className="flex flex-col gap-3"
-                >
-                  <Button
-                    type="submit"
-                    disabled={isSubmitting || !email.trim()}
-                    className="w-full h-12 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-semibold rounded-xl shadow-lg hover:shadow-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {isSubmitting ? (
-                      <>
-                        <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
-                        Sending...
-                      </>
-                    ) : (
-                      <>
-                        <Send className="h-5 w-5 mr-2" />
-                        Send Invitation
-                      </>
-                    )}
-                  </Button>
+                <div className="flex w-full gap-2">
                   <Button
                     type="button"
-                    onClick={onClose}
                     variant="outline"
+                    size="sm"
                     disabled={isSubmitting}
-                    className="w-full h-11 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-xl"
+                    onClick={onClose}
+                    className="h-10 min-w-0 flex-1 basis-0 rounded-xl border-blue-200 bg-white/80 text-gray-700 hover:bg-blue-50/80 dark:border-purple-500/35 dark:bg-gray-800/80 dark:text-gray-200 dark:hover:bg-purple-950/35"
                   >
                     Cancel
                   </Button>
-                </motion.div>
+                  <Button
+                    type="submit"
+                    size="sm"
+                    disabled={isSubmitting || !email.trim()}
+                    className="h-10 min-w-0 flex-1 basis-0 rounded-xl bg-gradient-to-r from-blue-600 to-purple-600 font-semibold text-white shadow-lg shadow-blue-600/25 transition hover:from-blue-700 hover:to-purple-700 dark:shadow-purple-900/40"
+                  >
+                    {isSubmitting ? (
+                      <span className="inline-flex items-center justify-center gap-2">
+                        <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                        Sending
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center justify-center gap-1.5">
+                        <Send className="h-3.5 w-3.5 shrink-0" />
+                        Send
+                      </span>
+                    )}
+                  </Button>
+                </div>
               </form>
             </div>
           </motion.div>

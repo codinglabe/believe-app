@@ -28,6 +28,8 @@ interface Props {
     can_purchase: boolean
     purchase_message: string | null
     max_quantity: number | null
+    pickup_available?: boolean
+    pickup_address?: string | null
   }
 }
 
@@ -171,6 +173,14 @@ export default function MarketplaceProductShow({ product }: Props) {
               <p className="text-sm text-muted-foreground mb-4">
                 Purchases use the same cart, checkout, payment, and shipping (Shippo for physical items) as nonprofit marketplace listings.
               </p>
+
+              {product.pickup_available && product.pickup_address && ["physical", "service", "media"].includes(product.product_type) && (
+                <div className="mb-4 rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-3 py-2 text-sm text-muted-foreground">
+                  <p className="font-medium text-foreground mb-1">Local pickup available</p>
+                  <p className="whitespace-pre-line">{product.pickup_address}</p>
+                  <p className="mt-1 text-xs">If you choose pickup at checkout, shipping is free.</p>
+                </div>
+              )}
 
               {product.can_purchase && product.marketplace_product_id ? (
                 <div className="space-y-4">

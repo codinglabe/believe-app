@@ -348,7 +348,7 @@ export default function HubOfferDetail({ offer, relatedOffers = [] }: Props) {
                       disabled={isProcessing}
                       className="w-full bg-gradient-to-r from-[#2563EB] to-[#1D4ED8] text-white text-lg py-3 h-auto disabled:opacity-50"
                     >
-                      {isProcessing ? 'Processing...' : 'Redeem Offer'}
+                      {isProcessing ? 'Processing...' : 'Claim offer'}
                     </MerchantButton>
                   ) : null}
 

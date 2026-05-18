@@ -4,7 +4,9 @@ namespace App\Providers;
 
 use App\Listeners\AwardInviteRewardPoints;
 use App\Listeners\CompleteBelievePointPurchaseFromStripeWebhook;
+use App\Listeners\GrantAiMediaStudioCreditsOnPlanSubscriptionRenewal;
 use App\Listeners\SyncLedgerTransactionStripeFees;
+use App\Listeners\SyncMainDonationFromStripeWebhook;
 use App\Models\BelievePointPurchase;
 use App\Models\Donation;
 use App\Models\Enrollment;
@@ -22,8 +24,11 @@ use App\Observers\JobApplicationObserver;
 use App\Observers\NodeSellObserver;
 use Illuminate\Auth\Events\Verified;
 use Illuminate\Notifications\ChannelManager;
+use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use Inertia\Inertia;
 use Laravel\Cashier\Cashier;
@@ -44,6 +49,10 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        RateLimiter::for('wallet-balance', function (Request $request) {
+            return Limit::perMinute(30)->by($request->user()?->id ?: $request->ip());
+        });
+
         NodeSell::observe(NodeSellObserver::class);
         FundMeDonation::observe(FundMeDonationObserver::class);
         BelievePointPurchase::observe(BelievePointPurchaseObserver::class);
@@ -52,7 +61,9 @@ class AppServiceProvider extends ServiceProvider
         JobApplication::observe(JobApplicationObserver::class);
         Cashier::useCustomerModel(User::class);
         Cashier::useSubscriptionModel(AppSubscription::class);
-        Cashier::calculateTaxes();
+        if ((bool) config('services.stripe.automatic_tax', false)) {
+            Cashier::calculateTaxes();
+        }
 
         // Register event listener for email verification
         Event::listen(Verified::class, AwardInviteRewardPoints::class);
@@ -60,6 +71,8 @@ class AppServiceProvider extends ServiceProvider
         // Cashier Stripe webhooks: sync ledger fees from PaymentIntent metadata; Believe Points settlement
         Event::listen(WebhookReceived::class, SyncLedgerTransactionStripeFees::class);
         Event::listen(WebhookReceived::class, CompleteBelievePointPurchaseFromStripeWebhook::class);
+        Event::listen(WebhookReceived::class, SyncMainDonationFromStripeWebhook::class);
+        Event::listen(WebhookReceived::class, GrantAiMediaStudioCreditsOnPlanSubscriptionRenewal::class);
 
         Inertia::share([
             'auth' => function () {

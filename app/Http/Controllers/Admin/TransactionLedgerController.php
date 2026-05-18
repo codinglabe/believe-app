@@ -2378,7 +2378,7 @@ class TransactionLedgerController extends Controller
             ],
             MerchantHubOfferRedemption::class => [
                 'kind' => 'Merchant Hub redemption',
-                'purpose' => 'A user redeemed an offer (points/cash, verified receipt). The redemption links to the offer and merchant workflow.',
+                'purpose' => 'A user claimed a merchant hub offer (reward points or cash, verified receipt). Links to the offer and merchant workflow.',
             ],
             MerchantHubReferralReward::class => [
                 'kind' => 'Merchant referral reward',

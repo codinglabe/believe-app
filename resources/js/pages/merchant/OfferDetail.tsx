@@ -163,7 +163,7 @@ export default function OfferDetail({ offer }: OfferDetailProps) {
                   </ul>
                 </div>
 
-                {/* Redeem Button */}
+                {/* Claim offer button */}
                 {showRedeemButton && (
                   <motion.div
                     initial={{ opacity: 0, y: 20 }}
@@ -174,7 +174,7 @@ export default function OfferDetail({ offer }: OfferDetailProps) {
                       className="w-full bg-green-600 hover:bg-green-700 text-white text-lg font-semibold h-12"
                       onClick={handleRedeem}
                     >
-                      Redeem Now
+                      Claim now
                     </Button>
                   </motion.div>
                 )}
@@ -184,7 +184,7 @@ export default function OfferDetail({ offer }: OfferDetailProps) {
                     className="w-full bg-green-600 hover:bg-green-700 text-white text-lg font-semibold h-12"
                     onClick={() => setShowRedeemButton(true)}
                   >
-                    Select Option to Redeem
+                    Select option to claim
                   </Button>
                 )}
               </CardContent>

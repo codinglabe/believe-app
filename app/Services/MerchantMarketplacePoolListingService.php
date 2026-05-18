@@ -61,6 +61,7 @@ class MerchantMarketplacePoolListingService
                 'supporter_message' => null,
                 'is_featured' => false,
                 'status' => 'active',
+                'pickup_available' => (bool) ($mp->pickup_available ?? false),
             ]
         );
     }

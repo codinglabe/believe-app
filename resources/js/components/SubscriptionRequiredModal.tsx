@@ -121,7 +121,7 @@ export function SubscriptionRequiredModal({
                 }
             case 'newsletter_targeting':
                 return {
-                    title: 'Pro newsletter targeting',
+                    title: 'Pro Engagement targeting',
                     description:
                         newsletterPayOnceEnabled && newsletterPayOnceUsd > 0
                             ? 'Unlock advanced audience selection for this account. Separate from your platform subscription — pay once, use forever.'

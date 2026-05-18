@@ -490,8 +490,8 @@ class OrganizationRegisterController extends Controller
                         'inviter_id' => $invite->inviter_id,
                     ]);
 
-                    // Note: Believe points (100) will be awarded to the inviter 
-                    // automatically when the organization verifies their email
+                    // Believe Points schedule for the inviter starts when the org verifies email
+                    // (installment 1); further months run via organizations:process-invite-believe-point-schedule.
                     // See: App\Listeners\AwardInviteRewardPoints
                 }
             }

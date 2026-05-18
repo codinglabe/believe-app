@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useState, useMemo, useEffect } from "react"
 import { Head, router, usePage } from "@inertiajs/react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -16,12 +16,12 @@ import {
   AlertCircle,
   KeyRound,
   Hash,
-  VideoOff,
-  Mic,
-  MicOff,
   ChevronDown,
 } from "lucide-react"
 import { Link } from "@inertiajs/react"
+import { RecordingConsentBarrier } from "@/components/livestreams/RecordingConsentBarrier"
+import VdoMeetingIframe from "@/components/meeting/VdoMeetingIframe"
+import { applyVdoGroupRoomPresentation, vdoUiAvatarUrl } from "@/lib/vdoMeeting"
 
 const BRAND = {
   from: "#9333ea",
@@ -36,6 +36,8 @@ interface Livestream {
   roomName: string
   participantUrl: string
   status: string
+  recordingEnabled?: boolean
+  declineContext?: { kind: "user" | "organization"; id: number }
 }
 
 interface Organization {
@@ -46,27 +48,48 @@ interface Organization {
 interface Props {
   errors?: Record<string, string[]>
   oldMeetingId?: string
+  /** True after server found the meeting and a passcode is required (or after wrong passcode). */
+  requiresPasscodeStep?: boolean
+  pendingMeetingTitle?: string | null
   livestream?: Livestream
   organization?: Organization
+  /** Logged-in user's display name for VDO label (server-set after meeting lookup). */
+  joinDisplayName?: string
 }
 
 export default function SupporterMeetJoin({
   errors: propsErrors,
   oldMeetingId,
+  requiresPasscodeStep: requiresPasscodeStepProp,
+  pendingMeetingTitle,
   livestream,
   organization,
+  joinDisplayName: joinDisplayNameProp,
 }: Props) {
-  const pageProps = usePage().props as Props
+  const pageProps = usePage().props as unknown as Props
   const errors = propsErrors ?? pageProps.errors
+  const joinDisplayName = joinDisplayNameProp ?? pageProps.joinDisplayName ?? ""
+  const displayLabel = joinDisplayName.trim() || "Guest"
+  const requiresPasscodeStep =
+    requiresPasscodeStepProp ?? pageProps.requiresPasscodeStep ?? false
   const [meetingId, setMeetingId] = useState(oldMeetingId ?? "")
   const [passcode, setPasscode] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
 
-  // Step 2: after ID+passcode validated — enter name and join in-page
-  const [displayName, setDisplayName] = useState("")
-  const [cameraOn, setCameraOn] = useState(true)
-  const [micOn, setMicOn] = useState(true)
+  const showPasscodeStep =
+    requiresPasscodeStep || (!!errors?.passcode?.[0] && !!(oldMeetingId ?? "").trim())
+
+  // Step 2: after ID+passcode validated — join in-page (VDO label = auth user name from server)
   const [joined, setJoined] = useState(false)
+  const [recordingConsentAccepted, setRecordingConsentAccepted] = useState(false)
+
+  useEffect(() => {
+    if (!livestream) {
+      setRecordingConsentAccepted(false)
+      return
+    }
+    setRecordingConsentAccepted(!(livestream.recordingEnabled ?? false))
+  }, [livestream?.id, livestream?.recordingEnabled])
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -80,23 +103,24 @@ export default function SupporterMeetJoin({
     })
   }
 
-  const errorMsg = (errors?.passcode?.[0] ?? errors?.meeting_id?.[0]) ?? null
+  const meetingIdError = errors?.meeting_id?.[0] ?? null
+  const passcodeError = errors?.passcode?.[0] ?? null
 
-  const canJoin = livestream && ["draft", "scheduled", "meeting_live", "live"].includes(livestream.status)
+  const canJoin = livestream && ["draft", "meeting_live", "live"].includes(livestream.status)
 
   const iframeUrl = useMemo(() => {
     if (!livestream?.participantUrl || !joined) return null
     const url = new URL(livestream.participantUrl)
-    const name = (displayName || "Guest").trim()
-    if (name) url.searchParams.set("label", name)
-    if (!cameraOn) url.searchParams.set("novideo", "1")
-    if (!micOn) url.searchParams.set("nomicrophone", "1")
+    applyVdoGroupRoomPresentation(url)
+    if (displayLabel) {
+      url.searchParams.set("label", displayLabel)
+      url.searchParams.set("avatar", vdoUiAvatarUrl(displayLabel))
+    }
     return url.toString()
-  }, [livestream?.participantUrl, joined, displayName, cameraOn, micOn])
+  }, [livestream?.participantUrl, joined, displayLabel])
 
   // Step 2b: In-meeting view — iframe on same page
   if (livestream && joined && iframeUrl) {
-    const displayLabel = (displayName || "Guest").trim()
     const initial = displayLabel.charAt(0).toUpperCase() || "G"
 
     return (
@@ -127,12 +151,7 @@ export default function SupporterMeetJoin({
             <span className="shrink-0 text-xs font-medium text-muted-foreground">{displayLabel}</span>
           </div>
           <div className="flex-1 min-h-0 relative bg-black">
-            <iframe
-              src={iframeUrl}
-              title="Meeting"
-              allow="camera;microphone;display-capture;fullscreen;autoplay"
-              className="absolute inset-0 w-full h-full border-0"
-            />
+            <VdoMeetingIframe src={iframeUrl} title="Meeting" />
           </div>
         </div>
       </UnityMeetLayout>
@@ -162,11 +181,31 @@ export default function SupporterMeetJoin({
     )
   }
 
-  // Step 2a: Livestream validated — enter name and join (same page)
+  // Step 2a: Livestream validated — recording consent first when the host enabled recording
+  if (livestream && canJoin && (livestream.recordingEnabled ?? false) && livestream.declineContext && !recordingConsentAccepted) {
+    return (
+      <UnityMeetLayout>
+        <Head title={`Join: ${livestream.title || "Meeting"}`} />
+        <RecordingConsentBarrier
+          open
+          appearance="dark"
+          meetingTitle={livestream.title}
+          organizerLabel={organization?.name ?? null}
+          livestreamKind={livestream.declineContext.kind}
+          livestreamId={livestream.declineContext.id}
+          guestLabel={displayLabel}
+          onAccepted={() => setRecordingConsentAccepted(true)}
+          returnToAfterDecline="/livestreams/supporter/join"
+        />
+      </UnityMeetLayout>
+    )
+  }
+
+  // Step 2b: enter name and join (same page)
   if (livestream && canJoin) {
     return (
       <UnityMeetLayout>
-        <PageHead title="Join meeting" description={livestream.title || "Enter your name to join"} />
+        <PageHead title="Join meeting" description={livestream.title || "Join with your account name"} />
         <Head title={`Join: ${livestream.title || "Meeting"}`} />
         <div className="min-h-screen bg-background">
           <div
@@ -204,52 +243,13 @@ export default function SupporterMeetJoin({
           <div className="w-full max-w-md mx-auto px-4 py-10 md:px-6">
             <Card className="border-border bg-card shadow-lg">
               <CardHeader>
-                <CardTitle>Enter your name</CardTitle>
+                <CardTitle>Ready to join</CardTitle>
                 <CardDescription>
-                  Your name will be shown to others in the meeting. The meeting will start on this page.
+                  You’ll appear as <span className="font-medium text-foreground">{displayLabel}</span> (from your account).
+                  Turn your camera or mic on inside the meeting when you’re ready.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="display-name">Your name</Label>
-                  <Input
-                    id="display-name"
-                    type="text"
-                    placeholder="e.g. John"
-                    value={displayName}
-                    onChange={(e) => setDisplayName(e.target.value)}
-                    className="bg-muted/50 border-border"
-                    autoFocus
-                  />
-                </div>
-                <div className="flex items-center justify-center gap-6 py-2">
-                  <button
-                    type="button"
-                    onClick={() => setCameraOn((v) => !v)}
-                    className={`flex flex-col items-center gap-1.5 p-3 rounded-xl min-w-[72px] transition-colors ${
-                      cameraOn
-                        ? "bg-primary/10 text-primary hover:bg-primary/20"
-                        : "bg-muted text-muted-foreground hover:bg-muted/80"
-                    }`}
-                    aria-label={cameraOn ? "Camera on" : "Camera off"}
-                  >
-                    {cameraOn ? <Video className="h-6 w-6" /> : <VideoOff className="h-6 w-6" />}
-                    <span className="text-xs font-medium">{cameraOn ? "Camera on" : "Off"}</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setMicOn((v) => !v)}
-                    className={`flex flex-col items-center gap-1.5 p-3 rounded-xl min-w-[72px] transition-colors ${
-                      micOn
-                        ? "bg-primary/10 text-primary hover:bg-primary/20"
-                        : "bg-muted text-muted-foreground hover:bg-muted/80"
-                    }`}
-                    aria-label={micOn ? "Microphone on" : "Microphone off"}
-                  >
-                    {micOn ? <Mic className="h-6 w-6" /> : <MicOff className="h-6 w-6" />}
-                    <span className="text-xs font-medium">{micOn ? "Mic on" : "Off"}</span>
-                  </button>
-                </div>
                 <Button
                   type="button"
                   className="w-full h-11 text-white"
@@ -273,7 +273,7 @@ export default function SupporterMeetJoin({
     <UnityMeetLayout>
       <PageHead
         title="Join a meeting"
-        description="Enter the meeting ID and passcode to join a Unity Meet"
+        description="Enter the meeting ID first; enter a passcode only when your host secured the meeting."
       />
       <Head title="Join a meeting" />
       <div className="min-h-screen bg-background">
@@ -304,7 +304,7 @@ export default function SupporterMeetJoin({
                   Join a meeting
                 </h1>
                 <p className="text-sm text-muted-foreground">
-                  Enter the meeting ID and passcode from your host
+                  Enter the meeting ID from your host — passcode only if the meeting is locked
                 </p>
               </div>
             </div>
@@ -316,62 +316,116 @@ export default function SupporterMeetJoin({
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <LogIn className="h-5 w-5" />
-                Meeting ID & passcode
+                {showPasscodeStep ? "Enter passcode" : "Meeting ID"}
               </CardTitle>
               <CardDescription>
-                Ask the host for the meeting ID (e.g. sup_abc12345) and passcode to join.
+                {showPasscodeStep
+                  ? "This meeting is protected. Enter the passcode from your host."
+                  : "Enter the meeting ID from your host. You’ll only be asked for a passcode if the host enabled one."}
               </CardDescription>
             </CardHeader>
             <CardContent>
               <form onSubmit={handleSubmit} className="space-y-4">
-                {errorMsg && (
+                {meetingIdError && !showPasscodeStep && (
                   <Alert variant="destructive">
                     <AlertCircle className="h-4 w-4" />
-                    <AlertDescription>{errorMsg}</AlertDescription>
+                    <AlertDescription>{meetingIdError}</AlertDescription>
                   </Alert>
                 )}
-                <div className="space-y-2">
-                  <Label htmlFor="meeting-id">
-                    <Hash className="inline h-4 w-4 mr-1.5 -mt-0.5" />
-                    Meeting ID
-                  </Label>
-                  <Input
-                    id="meeting-id"
-                    type="text"
-                    placeholder="e.g. sup_abc12345"
-                    value={meetingId}
-                    onChange={(e) => setMeetingId(e.target.value)}
-                    className="bg-muted/50 border-border font-mono"
-                    autoComplete="off"
-                    autoFocus
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="passcode">
-                    <KeyRound className="inline h-4 w-4 mr-1.5 -mt-0.5" />
-                    Passcode
-                  </Label>
-                  <Input
-                    id="passcode"
-                    type="password"
-                    placeholder="Enter passcode"
-                    value={passcode}
-                    onChange={(e) => setPasscode(e.target.value)}
-                    className="bg-muted/50 border-border"
-                    autoComplete="off"
-                  />
-                </div>
-                <Button
-                  type="submit"
-                  className="w-full h-11 text-white"
-                  disabled={!meetingId.trim() || !passcode || isSubmitting}
-                  style={{
-                    background: `linear-gradient(135deg, ${BRAND.from}, ${BRAND.to})`,
-                  }}
-                >
-                  <LogIn className="mr-2 h-4 w-4" />
-                  {isSubmitting ? "Joining…" : "Join meeting"}
-                </Button>
+                {passcodeError && showPasscodeStep && (
+                  <Alert variant="destructive">
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertDescription>{passcodeError}</AlertDescription>
+                  </Alert>
+                )}
+                {!showPasscodeStep ? (
+                  <>
+                    <div className="space-y-2">
+                      <Label htmlFor="meeting-id">
+                        <Hash className="inline h-4 w-4 mr-1.5 -mt-0.5" />
+                        Meeting ID
+                      </Label>
+                      <Input
+                        id="meeting-id"
+                        type="text"
+                        placeholder="e.g. uni-john-smith-50"
+                        value={meetingId}
+                        onChange={(e) => setMeetingId(e.target.value)}
+                        className="bg-muted/50 border-border font-mono"
+                        autoComplete="off"
+                        autoFocus
+                      />
+                    </div>
+                    <Button
+                      type="submit"
+                      className="w-full h-11 text-white"
+                      disabled={!meetingId.trim() || isSubmitting}
+                      style={{
+                        background: `linear-gradient(135deg, ${BRAND.from}, ${BRAND.to})`,
+                      }}
+                    >
+                      <LogIn className="mr-2 h-4 w-4" />
+                      {isSubmitting ? "Checking…" : "Continue"}
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    {(pendingMeetingTitle ?? "").trim().length > 0 && (
+                      <p className="rounded-lg border border-border bg-muted/40 px-3 py-2 text-sm text-foreground">
+                        <span className="text-muted-foreground">Meeting: </span>
+                        {pendingMeetingTitle}
+                      </p>
+                    )}
+                    <div className="space-y-2">
+                      <Label htmlFor="meeting-id-readonly">
+                        <Hash className="inline h-4 w-4 mr-1.5 -mt-0.5" />
+                        Meeting ID
+                      </Label>
+                      <Input
+                        id="meeting-id-readonly"
+                        type="text"
+                        readOnly
+                        value={meetingId}
+                        className="bg-muted/50 border-border font-mono text-muted-foreground"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="passcode">
+                        <KeyRound className="inline h-4 w-4 mr-1.5 -mt-0.5" />
+                        Passcode
+                      </Label>
+                      <Input
+                        id="passcode"
+                        type="password"
+                        placeholder="Enter passcode"
+                        value={passcode}
+                        onChange={(e) => setPasscode(e.target.value)}
+                        className="bg-muted/50 border-border"
+                        autoComplete="off"
+                        autoFocus
+                      />
+                    </div>
+                    <Button
+                      type="submit"
+                      className="w-full h-11 text-white"
+                      disabled={!meetingId.trim() || !passcode.trim() || isSubmitting}
+                      style={{
+                        background: `linear-gradient(135deg, ${BRAND.from}, ${BRAND.to})`,
+                      }}
+                    >
+                      <LogIn className="mr-2 h-4 w-4" />
+                      {isSubmitting ? "Joining…" : "Join meeting"}
+                    </Button>
+                    <div className="text-center">
+                      <Link
+                        href="/livestreams/supporter/join"
+                        className="text-sm text-muted-foreground hover:text-foreground underline-offset-4 hover:underline"
+                      >
+                        Use a different meeting ID
+                      </Link>
+                    </div>
+                  </>
+                )}
               </form>
             </CardContent>
           </Card>

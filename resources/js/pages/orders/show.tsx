@@ -138,9 +138,7 @@ interface Order {
     donation_amount: number;
     shipping_cost: number;
     tax_amount: number;
-    stripe_tax_amount?: number | null;
     stripe_fee_amount?: number | null;
-    stripe_tax_calculation_id?: string | null;
     total_amount: number;
     status: string;
     payment_status: string;
@@ -627,7 +625,7 @@ export default function Show({ order, userRole }: Props) {
                                                 {formatCurrency(order.financial_breakdown.platform_payment_fee)}
                                             </div>
                                             <div className="text-xs text-amber-100 bg-amber-600/30 rounded-md px-2 py-1 inline-block mt-2">
-                                                Organization pays (Not on receipt)
+                                                Included on the buyer receipt
                                             </div>
                                         </div>
                                     </div>
@@ -644,7 +642,7 @@ export default function Show({ order, userRole }: Props) {
                                                 Platform / Payment Fee
                                             </p>
                                             <p className="text-sm text-amber-700 dark:text-amber-300 mt-1">
-                                                This fee is paid by the nonprofit organization and does not appear on the customer receipt.
+                                                This is the platform fee charged on the order and it is included in the buyer-facing total.
                                             </p>
                                         </div>
                                     </div>
@@ -740,18 +738,12 @@ export default function Show({ order, userRole }: Props) {
                                     <span className="font-medium">{formatCurrency(order.shipping_cost || 0)}</span>
                                 </div>
                                 <div className="flex justify-between gap-4">
-                                    <span className="text-muted-foreground">
-                                        {(order.stripe_tax_amount != null && Number(order.stripe_tax_amount) > 0)
-                                            ? 'Sales tax (Stripe)'
-                                            : 'Tax'}
-                                    </span>
-                                    <span className="font-medium">
-                                        {formatCurrency(
-                                            (order.stripe_tax_amount != null && Number(order.stripe_tax_amount) > 0
-                                                ? Number(order.stripe_tax_amount)
-                                                : order.tax_amount) || 0
-                                        )}
-                                    </span>
+                                    <span className="text-muted-foreground">Platform fee</span>
+                                    <span className="font-medium">{formatCurrency(order.platform_fee || 0)}</span>
+                                </div>
+                                <div className="flex justify-between gap-4">
+                                    <span className="text-muted-foreground">Tax</span>
+                                    <span className="font-medium">{formatCurrency(order.tax_amount || 0)}</span>
                                 </div>
                                 {Number(order.stripe_fee_amount) > 0 && (
                                     <div className="flex justify-between gap-4">

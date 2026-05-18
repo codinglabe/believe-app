@@ -374,7 +374,7 @@ export default function LivestockDashboardLayout({ children }: LivestockDashboar
                                     Home
                                 </Button>
                             </Link>
-                            <Link href={route('marketplace.index')}>
+                            <Link href={route('livestock.marketplace.index')}>
                                 <Button variant="ghost" size="sm" className="hidden sm:flex">
                                     <ShoppingBag className="h-4 w-4 mr-2" />
                                     Browse

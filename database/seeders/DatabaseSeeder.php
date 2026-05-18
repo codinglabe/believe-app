@@ -53,6 +53,7 @@ class DatabaseSeeder extends Seeder
         $this->callUnlessSeeded(CategorySeeder::class);
         $this->callUnlessSeeded(PositionCategoriesAndJobPositionsSeeder::class);
         $this->callUnlessSeeded(EventTypesTableSeeder::class);
+        $this->callUnlessSeeded(CompanionEventTypesSeeder::class);
         $this->callUnlessSeeded(ChatRoomsSeeder::class);
         $this->callUnlessSeeded(PlanSeeder::class);
         $this->callUnlessSeeded(WalletPlanSeeder::class);
@@ -60,6 +61,9 @@ class DatabaseSeeder extends Seeder
         $this->callUnlessSeeded(ContactPageContentSeeder::class);
         $this->callUnlessSeeded(PromotionalBannerSeeder::class);
         $this->callUnlessSeeded(FundMeCategorySeeder::class);
+        $this->callUnlessSeeded(ChallengeHubCategoriesSeeder::class);
+        $this->callUnlessSeeded(LevelUpChallengeEntriesSeeder::class);
+        $this->callUnlessSeeded(GiftOccasionSeeder::class);
 
         // Step 5: Seed organization-related data
         $this->callUnlessSeeded(PrimaryActionCategoriesSeeder::class);

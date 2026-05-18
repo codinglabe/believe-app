@@ -31,7 +31,7 @@ interface Brand {
     productDescription?: string
     termsAndConditions?: string
     howToUse?: string
-    expiryAndValidity?: string // Text format like "1 YEAR" or "4 Months to claim, 7 Months to redeem"
+    expiryAndValidity?: string // Text format like "1 YEAR" or "4 Months to claim, 7 Months to use balance"
     discount?: number
     [key: string]: unknown
 }

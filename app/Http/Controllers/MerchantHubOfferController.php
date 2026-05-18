@@ -4,8 +4,10 @@ namespace App\Http\Controllers;
 
 use App\Models\Category;
 use App\Models\MarketplaceProduct;
+use App\Models\Merchant;
 use App\Models\MerchantHubCategory;
 use App\Models\MerchantHubOffer;
+use App\Support\MarketplacePickup;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
 use Inertia\Inertia;
@@ -281,38 +283,15 @@ class MerchantHubOfferController extends Controller
 
         // Find the Merchant model by matching name to get website
         $merchantWebsite = null;
-        $merchantModel = \App\Models\Merchant::where('business_name', $offer->merchant->name)
+        $merchantModel = Merchant::where('business_name', $offer->merchant->name)
             ->orWhere('name', $offer->merchant->name)
             ->first();
         if ($merchantModel && $merchantModel->website) {
             $merchantWebsite = $merchantModel->website;
         }
-
-        // Get related offers (same category, exclude current)
-        $relatedOffers = MerchantHubOffer::with(['merchant', 'category'])
-            ->where('merchant_hub_category_id', $offer->merchant_hub_category_id)
-            ->where('id', '!=', $offer->id)
-            ->active()
-            ->withAvailableInventory()
-            ->limit(6)
-            ->get()
-            ->map(function ($relatedOffer) {
-                $relImage = $relatedOffer->image_url;
-                if ($relImage && ! filter_var($relImage, FILTER_VALIDATE_URL)) {
-                    $relImage = asset('storage/'.ltrim($relImage, '/'));
-                }
-
-                return [
-                    'id' => (string) $relatedOffer->id,
-                    'title' => $relatedOffer->title,
-                    'image' => $relImage ?: '/placeholder.jpg',
-                    'pointsRequired' => $relatedOffer->points_required,
-                    'cashRequired' => $relatedOffer->cash_required ? (float) $relatedOffer->cash_required : null,
-                    'merchantName' => $relatedOffer->merchant->name,
-                    'category' => $relatedOffer->category->name,
-                    'description' => $relatedOffer->short_description ?: $relatedOffer->description,
-                ];
-            });
+        $pickupAddress = ($offer->pickup_available ?? false) && $merchantModel
+            ? MarketplacePickup::pickupAddressForMerchantHubOffer($offer, $merchantModel)
+            : null;
 
         // Convert image_url to same-origin URL (works locally and on live)
         $imageUrl = $offer->image_url;
@@ -367,11 +346,11 @@ class MerchantHubOfferController extends Controller
                     // Allow redeem via cash even when not enough points (reason explains points shortfall)
                     $redemptionEligibility['canRedeem'] = true;
                     $redemptionEligibility['canPayWithCash'] = true;
-                    $redemptionEligibility['reason'] = 'You need '.number_format($offer->points_required).' points to redeem with points, but you have '.number_format($userPoints).'. You can pay with cash below (full amount).';
+                    $redemptionEligibility['reason'] = 'You need '.number_format($offer->points_required).' reward points to claim this offer with points, but you have '.number_format($userPoints).'. You can pay with cash below (full amount).';
                 } else {
                     // Points-only offer: no monthly cap anymore, but still require enough points.
                     $redemptionEligibility['canRedeem'] = false;
-                    $redemptionEligibility['reason'] = 'You need '.number_format($offer->points_required).' points to redeem this offer.';
+                    $redemptionEligibility['reason'] = 'You need '.number_format($offer->points_required).' reward points to claim this offer.';
                 }
             }
         }
@@ -455,6 +434,8 @@ class MerchantHubOfferController extends Controller
             'discountCap' => $offer->discount_cap ? (float) $offer->discount_cap : null,
             'eligibleItems' => $eligibleItems,
             'pricingBreakdown' => $pricingBreakdown,
+            'pickupAvailable' => (bool) ($offer->pickup_available ?? false),
+            'pickupAddress' => $pickupAddress,
         ];
 
         // Get redemption success data from session if exists
@@ -463,7 +444,6 @@ class MerchantHubOfferController extends Controller
         return Inertia::render('frontend/merchant-hub/OfferDetail', [
             'offerId' => $id,
             'offer' => $transformedOffer,
-            'relatedOffers' => $relatedOffers,
             'redemptionEligibility' => $redemptionEligibility,
             'redemption_success' => $redemptionSuccess,
         ]);

@@ -1,7 +1,7 @@
 "use client"
 
 import { Head, router, useForm, usePage } from "@inertiajs/react"
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/frontend/ui/card"
 import { Button } from "@/components/frontend/ui/button"
 import { Input } from "@/components/frontend/ui/input"
@@ -25,7 +25,10 @@ import toast from "react-hot-toast"
 import {
     Select,
     SelectContent,
+    SelectGroup,
     SelectItem,
+    SelectLabel,
+    SelectSeparator,
     SelectTrigger,
     SelectValue,
 } from "@/components/ui/select"
@@ -33,6 +36,8 @@ import {
 interface Brand {
     productId?: number
     productName?: string
+    /** From server: false for Visa/Mastercard-style open-loop products */
+    allowedForGiftedPoints?: boolean
     productImage?: string
     denominations?: number[]
     valueRestrictions?: {
@@ -52,6 +57,10 @@ interface Organization {
     gift_card_terms_approved?: boolean
 }
 
+interface OrganizationGiftCardPurchase extends Organization {
+    purchased_total?: number
+}
+
 interface PurchaseDetailsProps {
     brand: Brand
     country: string
@@ -61,13 +70,34 @@ interface PurchaseDetailsProps {
         email: string
         role: string
     } | null
-    followingOrganizations: Organization[]
+    organizations: Organization[]
+    giftCardPurchaseOrganizations?: OrganizationGiftCardPurchase[]
 }
 
-export default function PurchaseDetailsPage({ brand, country, user, followingOrganizations }: PurchaseDetailsProps) {
+/** Phaze HTML often includes inline dark colors; force readable text in light + dark mode */
+const brandHtmlBlockClassName =
+    "prose prose-sm max-w-none dark:prose-invert " +
+    "text-slate-700 dark:text-slate-200 " +
+    "[&_*]:!text-slate-700 dark:[&_*]:!text-slate-200 [&_a]:!text-primary dark:[&_a]:!text-primary " +
+    "[&_strong]:!text-slate-900 dark:[&_strong]:!text-slate-100 [&_*]:break-words"
+
+export default function PurchaseDetailsPage({
+    brand,
+    country,
+    user,
+    organizations: organizationsProp,
+    giftCardPurchaseOrganizations: giftCardPurchaseOrganizationsProp = [],
+}: PurchaseDetailsProps) {
     const page = usePage()
+    const pageProps = page.props as PurchaseDetailsProps & { auth?: unknown }
+    const organizations = pageProps.organizations ?? organizationsProp
+    const giftCardPurchaseOrganizations = pageProps.giftCardPurchaseOrganizations ?? giftCardPurchaseOrganizationsProp
     const auth = (page.props as any).auth
-    const currentBalance = parseFloat(auth?.user?.believe_points) || 0
+    const purchasedBelievePoints = parseFloat(auth?.user?.believe_points) || 0
+    const giftedBelievePoints = parseFloat(auth?.user?.gifted_believe_points) || 0
+    const totalBelievePoints =
+        parseFloat(auth?.user?.believe_points_total) || purchasedBelievePoints + giftedBelievePoints
+    const skuAllowsGifted = brand.allowedForGiftedPoints !== false
 
     const [selectedAmount, setSelectedAmount] = useState<number | null>(null)
     const [customAmount, setCustomAmount] = useState("")
@@ -134,10 +164,23 @@ export default function PurchaseDetailsPage({ brand, country, user, followingOrg
         setData('organization_id', parseInt(orgId))
     }
 
-    // Get selected organization details (guard null id from bad API data)
-    const selectedOrganization = followingOrganizations.find(
-        (org) => org.id != null && String(org.id) === selectedOrganizationId
+    const purchaseOrgIds = useMemo(
+        () => new Set(giftCardPurchaseOrganizations.map((o) => Number(o.id))),
+        [giftCardPurchaseOrganizations],
     )
+    const organizationsRest = useMemo(
+        () => organizations.filter((o) => o.id != null && !purchaseOrgIds.has(Number(o.id))),
+        [organizations, purchaseOrgIds],
+    )
+
+    // Get selected organization details (guard null id from bad API data)
+    const selectedOrganization = useMemo(() => {
+        if (!selectedOrganizationId) return undefined
+        return (
+            giftCardPurchaseOrganizations.find((org) => org.id != null && String(org.id) === selectedOrganizationId) ??
+            organizations.find((org) => org.id != null && String(org.id) === selectedOrganizationId)
+        )
+    }, [selectedOrganizationId, giftCardPurchaseOrganizations, organizations])
     const isOrganizationApproved = selectedOrganization?.gift_card_terms_approved ?? false
 
     const handlePurchase = (e: React.FormEvent) => {
@@ -196,6 +239,10 @@ export default function PurchaseDetailsPage({ brand, country, user, followingOrg
                           (maxVal === null || data.amount <= maxVal) &&
                           data.amount > 0
     const isValidForm = isValidAmount && selectedOrganizationId
+
+    const believePointsSufficientForSku =
+        data.amount > 0 &&
+        (skuAllowsGifted ? totalBelievePoints >= data.amount : purchasedBelievePoints >= data.amount)
 
     return (
         <FrontendLayout>
@@ -267,7 +314,7 @@ export default function PurchaseDetailsPage({ brand, country, user, followingOrg
                                                 About This Brand
                                             </h3>
                                             <div
-                                                className="text-muted-foreground prose prose-sm max-w-none dark:prose-invert"
+                                                className={brandHtmlBlockClassName}
                                                 dangerouslySetInnerHTML={{ __html: brand.productDescription }}
                                             />
                                         </div>
@@ -278,7 +325,7 @@ export default function PurchaseDetailsPage({ brand, country, user, followingOrg
                                         <div>
                                             <h3 className="text-lg font-semibold mb-3 dark:text-white">How to Use</h3>
                                             <div
-                                                className="text-muted-foreground prose prose-sm max-w-none dark:prose-invert"
+                                                className={brandHtmlBlockClassName}
                                                 dangerouslySetInnerHTML={{ __html: brand.howToUse }}
                                             />
                                         </div>
@@ -289,7 +336,7 @@ export default function PurchaseDetailsPage({ brand, country, user, followingOrg
                                         <div>
                                             <h3 className="text-lg font-semibold mb-3 dark:text-white">Terms and Conditions</h3>
                                             <div
-                                                className="text-muted-foreground prose prose-sm max-w-none dark:prose-invert"
+                                                className={brandHtmlBlockClassName}
                                                 dangerouslySetInnerHTML={{ __html: brand.termsAndConditions }}
                                             />
                                         </div>
@@ -303,7 +350,7 @@ export default function PurchaseDetailsPage({ brand, country, user, followingOrg
                                                 Expiry & Validity
                                             </h3>
                                             <div
-                                                className="text-muted-foreground prose prose-sm max-w-none dark:prose-invert"
+                                                className={brandHtmlBlockClassName}
                                                 dangerouslySetInnerHTML={{ __html: brand.expiryAndValidity }}
                                             />
                                         </div>
@@ -329,7 +376,7 @@ export default function PurchaseDetailsPage({ brand, country, user, followingOrg
                                         )}
 
                                         {/* Organization Selection */}
-                                        {user && user.role === 'user' && followingOrganizations.length > 0 && (
+                                        {user && user.role === 'user' && organizations.length > 0 && (
                                             <div>
                                                 <Label className="text-base mb-4 block dark:text-gray-300">
                                                     Select Organization <span className="text-destructive">*</span>
@@ -339,18 +386,49 @@ export default function PurchaseDetailsPage({ brand, country, user, followingOrg
                                                         <Building2 className="h-4 w-4 mr-2" />
                                                         <SelectValue placeholder="Choose an organization" />
                                                     </SelectTrigger>
-                                                    <SelectContent className="dark:bg-gray-800">
-                                                        {followingOrganizations
-                                                            .filter((org) => org.id != null)
-                                                            .map((org) => (
-                                                            <SelectItem
-                                                                key={org.id}
-                                                                value={String(org.id)}
-                                                                className="dark:hover:bg-gray-700"
-                                                            >
-                                                                {org.name}
-                                                            </SelectItem>
-                                                        ))}
+                                                    <SelectContent className="dark:bg-gray-800 max-h-80">
+                                                        {giftCardPurchaseOrganizations.filter((org) => org.id != null).length > 0 && (
+                                                            <SelectGroup>
+                                                                <SelectLabel className="text-muted-foreground text-xs font-semibold uppercase tracking-wide">
+                                                                    Your gift card purchases
+                                                                </SelectLabel>
+                                                                {giftCardPurchaseOrganizations
+                                                                    .filter((org) => org.id != null)
+                                                                    .map((org) => (
+                                                                        <SelectItem
+                                                                            key={org.id}
+                                                                            value={String(org.id)}
+                                                                            className="dark:hover:bg-gray-700"
+                                                                        >
+                                                                            {org.name}
+                                                                            {typeof org.purchased_total === "number" && org.purchased_total > 0
+                                                                                ? ` — ${formatCurrency(org.purchased_total)} total`
+                                                                                : ""}
+                                                                        </SelectItem>
+                                                                    ))}
+                                                            </SelectGroup>
+                                                        )}
+                                                        {giftCardPurchaseOrganizations.length > 0 && organizationsRest.length > 0 && (
+                                                            <SelectSeparator className="dark:bg-gray-600" />
+                                                        )}
+                                                        {organizationsRest.length > 0 && (
+                                                            <SelectGroup>
+                                                                {giftCardPurchaseOrganizations.length > 0 && (
+                                                                    <SelectLabel className="text-muted-foreground text-xs font-semibold uppercase tracking-wide">
+                                                                        All organizations
+                                                                    </SelectLabel>
+                                                                )}
+                                                                {organizationsRest.map((org) => (
+                                                                    <SelectItem
+                                                                        key={org.id}
+                                                                        value={String(org.id)}
+                                                                        className="dark:hover:bg-gray-700"
+                                                                    >
+                                                                        {org.name}
+                                                                    </SelectItem>
+                                                                ))}
+                                                            </SelectGroup>
+                                                        )}
                                                     </SelectContent>
                                                 </Select>
                                                 {errors.organization_id && (
@@ -493,31 +571,39 @@ export default function PurchaseDetailsPage({ brand, country, user, followingOrg
                                                         paymentMethod === 'believe_points'
                                                             ? 'border-primary bg-primary/10 dark:bg-primary/20'
                                                             : 'border-input hover:border-primary/50 dark:border-gray-600 dark:hover:border-gray-500'
-                                                    } ${currentBalance < data.amount ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                                                    } ${!believePointsSufficientForSku ? 'opacity-50 cursor-not-allowed' : ''}`}>
                                                         <input
                                                             type="radio"
                                                             name="payment_method"
                                                             value="believe_points"
                                                             checked={paymentMethod === 'believe_points'}
                                                             onChange={(e) => setPaymentMethod(e.target.value as 'stripe' | 'believe_points')}
-                                                            disabled={currentBalance < data.amount}
+                                                            disabled={!believePointsSufficientForSku}
                                                             className="w-4 h-4 text-primary"
                                                         />
                                                         <Coins className="h-5 w-5 text-yellow-600" />
                                                         <div className="flex-1">
                                                             <div className="font-semibold flex items-center gap-2 dark:text-white">
                                                                 Pay with Believe Points
-                                                                {currentBalance < data.amount && (
+                                                                {!believePointsSufficientForSku && (
                                                                     <Badge variant="destructive" className="text-xs">
                                                                         Insufficient
                                                                     </Badge>
                                                                 )}
                                                             </div>
                                                             <div className="text-sm text-muted-foreground">
-                                                                Your balance: {currentBalance.toFixed(2)} points
-                                                                {currentBalance >= data.amount && (
-                                                                    <span className="text-green-600 dark:text-green-400 ml-2">
-                                                                        (You'll have {(currentBalance - data.amount).toFixed(2)} points remaining)
+                                                                Total: {totalBelievePoints.toFixed(2)} points
+                                                                <span className="block text-xs mt-0.5">
+                                                                    Purchased {purchasedBelievePoints.toFixed(2)}
+                                                                    {giftedBelievePoints > 0 && (
+                                                                        <span className="text-amber-600 dark:text-amber-400">
+                                                                            {' '}· Gifted {giftedBelievePoints.toFixed(2)}
+                                                                        </span>
+                                                                    )}
+                                                                </span>
+                                                                {believePointsSufficientForSku && (
+                                                                    <span className="text-green-600 dark:text-green-400 ml-2 block sm:inline">
+                                                                        (About {(totalBelievePoints - data.amount).toFixed(2)} points remaining after purchase)
                                                                     </span>
                                                                 )}
                                                             </div>
@@ -525,10 +611,18 @@ export default function PurchaseDetailsPage({ brand, country, user, followingOrg
                                                     </label>
                                                 </div>
 
-                                                {paymentMethod === 'believe_points' && currentBalance < data.amount && (
+                                                {!skuAllowsGifted && giftedBelievePoints > 0 && (
+                                                    <p className="text-xs text-amber-700 dark:text-amber-300 bg-amber-500/10 border border-amber-500/30 rounded-md p-2">
+                                                        Gifted Believe Points cannot be used for Visa or Mastercard products. This card can only be paid with your purchased Believe Points balance.
+                                                    </p>
+                                                )}
+
+                                                {paymentMethod === 'believe_points' && !believePointsSufficientForSku && (
                                                     <p className="text-sm text-destructive flex items-center gap-1">
                                                         <CheckCircle className="h-4 w-4" />
-                                                        You need {data.amount.toFixed(2)} points but only have {currentBalance.toFixed(2)} points.
+                                                        {skuAllowsGifted
+                                                            ? `You need ${data.amount.toFixed(2)} points but only have ${totalBelievePoints.toFixed(2)} points.`
+                                                            : `You need ${data.amount.toFixed(2)} purchased points for this card; you have ${purchasedBelievePoints.toFixed(2)} purchased (${giftedBelievePoints.toFixed(2)} gifted cannot be applied here).`}
                                                     </p>
                                                 )}
                                             </div>
@@ -548,16 +642,16 @@ export default function PurchaseDetailsPage({ brand, country, user, followingOrg
                                             <Button disabled className="w-full" variant="outline" size="lg">
                                                 Only users can purchase gift cards
                                             </Button>
-                                        ) : followingOrganizations.length === 0 ? (
+                                        ) : organizations.length === 0 ? (
                                             <Button disabled className="w-full" variant="outline" size="lg">
-                                                You need to follow at least one organization to purchase gift cards
+                                                No organizations are available for gift card purchase
                                             </Button>
                                         ) : (
                                             <Button
                                                 type="submit"
                                                 className="w-full bg-gradient-to-r from-primary to-primary/90 hover:from-primary/90 hover:to-primary shadow-lg dark:from-primary dark:to-primary/90"
                                                 size="lg"
-                                                disabled={!isValidForm || processing || !isOrganizationApproved || (paymentMethod === 'believe_points' && currentBalance < data.amount)}
+                                                disabled={!isValidForm || processing || !isOrganizationApproved || (paymentMethod === 'believe_points' && !believePointsSufficientForSku)}
                                             >
                                                 {processing ? (
                                                     <>
@@ -619,9 +713,7 @@ export default function PurchaseDetailsPage({ brand, country, user, followingOrg
                                                     Organization:
                                                 </span>
                                                 <span className="font-medium text-right max-w-[150px] truncate dark:text-white">
-                                                    {followingOrganizations.find(
-                                                    (org) => org.id != null && String(org.id) === selectedOrganizationId
-                                                )?.name || ''}
+                                                    {selectedOrganization?.name || ""}
                                                 </span>
                                             </div>
                                         )}
@@ -692,7 +784,7 @@ export default function PurchaseDetailsPage({ brand, country, user, followingOrg
                                 </CardContent>
                             </Card>
 
-                            {brand.discount && brand.discount > 0 && (
+                            {(brand.discount ?? 0) > 0 && (
                                 <Card className="bg-gradient-to-r from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-800/20 border-2 border-green-300 dark:border-green-700 shadow-lg">
                                     <CardContent className="pt-6">
                                         <div className="flex flex-col items-center gap-2 text-center">

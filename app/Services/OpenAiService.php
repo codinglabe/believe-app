@@ -25,7 +25,7 @@ class OpenAiService
 
         return Http::withOptions(['verify' => $verify])
             ->withHeaders([
-                'Authorization' => 'Bearer ' . $this->apiKey,
+                'Authorization' => 'Bearer '.$this->apiKey,
                 'Content-Type' => 'application/json',
             ])
             ->timeout(120)
@@ -38,21 +38,21 @@ class OpenAiService
 
         try {
             $response = $this->httpClient()->post($this->apiUrl, [
-                    'model' => 'gpt-3.5-turbo',
-                    'messages' => [
-                        [
-                            'role' => 'system',
-                            'content' => $systemPrompt,
-                        ],
-                        [
-                            'role' => 'user',
-                            'content' => $prompt,
-                        ],
+                'model' => 'gpt-3.5-turbo',
+                'messages' => [
+                    [
+                        'role' => 'system',
+                        'content' => $systemPrompt,
                     ],
-                    'temperature' => 0.7,
-                    'max_tokens' => 4000,
-                    'top_p' => 0.9,
-                ]);
+                    [
+                        'role' => 'user',
+                        'content' => $prompt,
+                    ],
+                ],
+                'temperature' => 0.7,
+                'max_tokens' => 4000,
+                'top_p' => 0.9,
+            ]);
 
             if ($response->failed()) {
                 $errorBody = $response->body();
@@ -61,7 +61,7 @@ class OpenAiService
                     'body' => $errorBody,
                     'prompt' => substr($prompt, 0, 100),
                 ]);
-                throw new \Exception('OpenAI API Error: ' . $response->status() . ' - ' . $errorBody);
+                throw new \Exception('OpenAI API Error: '.$response->status().' - '.$errorBody);
             }
 
             $content = $response->json('choices.0.message.content');
@@ -173,10 +173,10 @@ PROMPT;
                 'error' => json_last_error_msg(),
                 'json' => substr($jsonString, 0, 500),
             ]);
-            throw new \Exception('JSON parse error: ' . json_last_error_msg());
+            throw new \Exception('JSON parse error: '.json_last_error_msg());
         }
 
-        if (!is_array($parsed)) {
+        if (! is_array($parsed)) {
             throw new \Exception('Parsed content is not an array');
         }
 
@@ -187,8 +187,9 @@ PROMPT;
         $validatedItems = [];
         foreach ($parsed as $index => $item) {
             // Ensure required fields exist
-            if (!isset($item['title']) || !isset($item['body'])) {
-                Log::warning('Invalid item structure at index ' . $index, ['item' => $item]);
+            if (! isset($item['title']) || ! isset($item['body'])) {
+                Log::warning('Invalid item structure at index '.$index, ['item' => $item]);
+
                 continue;
             }
 
@@ -197,7 +198,8 @@ PROMPT;
             $body = trim(strip_tags($item['body'] ?? ''));
 
             if (empty($title) || empty($body)) {
-                Log::warning('Empty title or body at index ' . $index);
+                Log::warning('Empty title or body at index '.$index);
+
                 continue;
             }
 
@@ -238,7 +240,7 @@ PROMPT;
                     'status' => $response->status(),
                     'body' => $errorBody,
                 ]);
-                throw new \Exception('OpenAI API Error: ' . $response->status() . ' - ' . $errorBody);
+                throw new \Exception('OpenAI API Error: '.$response->status().' - '.$errorBody);
             }
 
             $content = $response->json('choices.0.message.content');
@@ -266,7 +268,7 @@ PROMPT;
      *
      * @param  ?float  $temperature  Defaults to 0.35 (conservative). Pass higher (e.g. 0.7) for creative HTML/newsletter drafts.
      * @param  ?int  $maxTokensOverride  Override max output tokens for long JSON (e.g. HTML bodies).
-     * @return array{content: string, total_tokens: int, finish_reason: ?string}
+     * @return array{content: string, total_tokens: int, finish_reason: ?string, prompt_tokens: int, completion_tokens: int}
      */
     public function chatCompletionJson(array $messages, ?string $model = null, ?float $temperature = null, ?int $maxTokensOverride = null): array
     {
@@ -298,6 +300,8 @@ PROMPT;
             $content = $response->json('choices.0.message.content');
             $usage = $response->json('usage') ?? [];
             $totalTokens = (int) ($usage['total_tokens'] ?? 0);
+            $promptTokens = (int) ($usage['prompt_tokens'] ?? 0);
+            $completionTokens = (int) ($usage['completion_tokens'] ?? 0);
             $finishReason = $response->json('choices.0.finish_reason');
 
             if ($finishReason === 'length') {
@@ -314,6 +318,8 @@ PROMPT;
             return [
                 'content' => trim($content),
                 'total_tokens' => $totalTokens,
+                'prompt_tokens' => $promptTokens,
+                'completion_tokens' => $completionTokens,
                 'finish_reason' => is_string($finishReason) ? $finishReason : null,
             ];
         } catch (\Exception $e) {
@@ -322,5 +328,107 @@ PROMPT;
             ]);
             throw $e;
         }
+    }
+
+    /**
+     * Structured creative package for BIU AI Media Studio (short-form video).
+     * Returns script for humans, a single-paragraph fal-ready prompt, caption, and hashtags (no # prefix).
+     *
+     * @param  array{
+     *   title: string,
+     *   user_prompt?: ?string,
+     *   template_key?: ?string,
+     *   template_label?: ?string,
+     *   template_inputs?: ?array,
+     *   orientation?: ?string,
+     *   duration_seconds?: ?int,
+     * }  $context
+     * @return array{
+     *   ai_script: string,
+     *   fal_video_prompt: string,
+     *   caption: string,
+     *   hashtags: array<int, string>,
+     *   total_tokens: int
+     * }
+     */
+    public function generateAiMediaStudioPackage(array $context): array
+    {
+        if (! is_string($this->apiKey) || $this->apiKey === '') {
+            throw new \RuntimeException('OPENAI_API_KEY is not configured.');
+        }
+
+        $model = (string) config('services.ai_media_studio.openai_model', 'gpt-4o-mini');
+        $minD = (int) config('services.ai_media_studio.video_duration_min', 5);
+        $maxD = (int) config('services.ai_media_studio.video_duration_max', 10);
+        if ($maxD < $minD) {
+            $maxD = $minD;
+        }
+        $dsec = max($minD, min($maxD, (int) ($context['duration_seconds'] ?? $maxD)));
+
+        $userPayload = [
+            'video_title' => $context['title'],
+            'user_prompt' => $context['user_prompt'] ?? '',
+            'template_key' => $context['template_key'] ?? null,
+            'template_label' => $context['template_label'] ?? null,
+            'template_inputs' => $context['template_inputs'] ?? [],
+            'orientation' => $context['orientation'] ?? '9:16',
+            'duration_seconds' => $dsec,
+        ];
+
+        $system = <<<PROMPT
+You are a senior creative director for short vertical nonprofit/social videos (faith-friendly, inclusive tone).
+Return ONLY a single JSON object (no markdown) with these exact keys:
+- "ai_script": string — multi-sentence production brief: scenes, camera, lighting, emotion, pacing, on-screen text ideas, optional voiceover lines. Plain text inside the string (use \n for newlines).
+- "fal_video_prompt": string — ONE dense English paragraph suitable for a text-to-video model: concrete visuals, motion, setting, subjects, style; no hashtags; no JSON inside this string; no quotes that would break JSON (escape internal quotes).
+- "caption": string — short social caption (under 2200 chars), engaging, line breaks ok as \n.
+- "hashtags": array of 5–12 short strings WITHOUT the # character (e.g. "nonprofit" not "#nonprofit").
+
+Rules: Keep content appropriate for all ages; avoid graphic violence, hate, or medical claims. If inputs are sparse, still produce a coherent mini-story.
+The video runtime target is **{$dsec} seconds** (hard platform limit: {$minD}–{$maxD} seconds). Pace scenes and detail for exactly that length.
+PROMPT;
+
+        $userJson = json_encode($userPayload, JSON_INVALID_UTF8_SUBSTITUTE);
+        if ($userJson === false) {
+            throw new \RuntimeException('Could not encode video context for OpenAI.');
+        }
+
+        $messages = [
+            ['role' => 'system', 'content' => $system],
+            ['role' => 'user', 'content' => $userJson],
+        ];
+
+        $result = $this->chatCompletionJson($messages, $model, 0.55, 4096);
+        $decoded = json_decode($result['content'], true);
+        if (! is_array($decoded)) {
+            throw new \RuntimeException('OpenAI returned invalid JSON for AI Media Studio.');
+        }
+
+        $aiScript = trim((string) ($decoded['ai_script'] ?? ''));
+        $falPrompt = trim((string) ($decoded['fal_video_prompt'] ?? ''));
+        $caption = trim((string) ($decoded['caption'] ?? ''));
+        $hashtags = $decoded['hashtags'] ?? [];
+
+        if ($aiScript === '' || $falPrompt === '') {
+            throw new \RuntimeException('OpenAI package missing ai_script or fal_video_prompt.');
+        }
+
+        if (! is_array($hashtags)) {
+            $hashtags = [];
+        }
+
+        $hashtags = array_values(array_filter(array_map(static function ($h) {
+            $s = is_string($h) ? trim($h) : '';
+            $s = ltrim($s, '#');
+
+            return $s !== '' ? mb_substr($s, 0, 80) : '';
+        }, $hashtags)));
+
+        return [
+            'ai_script' => $aiScript,
+            'fal_video_prompt' => $falPrompt,
+            'caption' => $caption,
+            'hashtags' => $hashtags,
+            'total_tokens' => (int) ($result['total_tokens'] ?? 0),
+        ];
     }
 }

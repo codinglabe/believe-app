@@ -5,10 +5,9 @@ namespace App\Http\Controllers\Merchant\Auth;
 use App\Http\Controllers\Controller;
 use App\Models\Merchant;
 use Illuminate\Auth\Events\Registered;
-use Illuminate\Http\Request;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rules;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -40,7 +39,7 @@ class MerchantAuthController extends Controller
         $merchant = Merchant::create([
             'name' => $request->name,
             'email' => $request->email,
-            'password' => Hash::make($request->password),
+            'password' => $request->password,
             'business_name' => $request->business_name,
             'status' => 'active',
             'role' => 'merchant',
@@ -50,7 +49,7 @@ class MerchantAuthController extends Controller
 
         Auth::guard('merchant')->login($merchant);
 
-        return redirect()->route('merchant.dashboard');
+        return redirect()->route('merchant.dashboard', [], 303);
     }
 
     /**
@@ -79,7 +78,11 @@ class MerchantAuthController extends Controller
         if (Auth::guard('merchant')->attempt($request->only('email', 'password'), $request->boolean('remember'))) {
             $request->session()->regenerate();
 
-            return redirect()->intended(route('merchant.dashboard'));
+            // Do not use intended(): it may point at the main app and breaks subdomain auth.
+            // 303: POST→redirect must not replay POST on the next hop (Inertia only upgrades DELETE etc. to 303).
+            $request->session()->forget('url.intended');
+
+            return redirect()->route('merchant.dashboard', [], 303);
         }
 
         throw \Illuminate\Validation\ValidationException::withMessages([

@@ -143,7 +143,7 @@ export default function MarketplaceShow({ listing }: ShowProps) {
         }
 
         // Redirect to Stripe Checkout
-        post(route('marketplace.checkout', listing.id), {
+        post(route('livestock.marketplace.checkout', listing.id), {
             onSuccess: () => {
                 // Redirect will happen via Inertia::location in the controller
             },
@@ -162,7 +162,7 @@ export default function MarketplaceShow({ listing }: ShowProps) {
             
             <div className="min-h-screen bg-gradient-to-br from-amber-50 via-white to-orange-50 dark:from-gray-950 dark:via-gray-900 dark:to-gray-950 py-8">
                 <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-                    <Link href={route('marketplace.index')}>
+                    <Link href={route('livestock.marketplace.index')}>
                         <Button variant="ghost" className="mb-6">
                             <ArrowLeft className="h-4 w-4 mr-2" />
                             Back to Marketplace

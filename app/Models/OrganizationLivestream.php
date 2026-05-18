@@ -108,6 +108,17 @@ class OrganizationLivestream extends Model
     }
 
     /**
+     * Whether guests must enter a passcode to join. Driven by the
+     * settings['require_passcode'] flag set at create/update time. A
+     * room_password always exists (used for the VDO &password= param), but
+     * it is only *enforced* on the join flow when this returns true.
+     */
+    public function requiresPasscode(): bool
+    {
+        return (bool) ($this->settings['require_passcode'] ?? false);
+    }
+
+    /**
      * Get the encrypted YouTube stream key.
      */
     public function getEncryptedStreamKey(): ?string
@@ -158,20 +169,22 @@ class OrganizationLivestream extends Model
         $this->loadMissing('organization');
         $settings = $this->settings ?? [];
         $displayName = $settings['display_name'] ?? null;
+        $recordEnabled = (bool) ($settings['record_meeting'] ?? true);
         $orgName = $displayName ?: ($this->organization?->name ?? 'Host');
         $label = rawurlencode($orgName);
         $password = $this->getDecryptedPassword();
         $room = rawurlencode($this->getVdoRoomName());
         $pass = rawurlencode((string) $password);
+        $passwordParam = $pass !== '' ? '&password=' . $pass : '';
 
         $layouts = $this->getVdoGridLayouts();
         $layoutsParam = '&slotmode&layouts=' . rawurlencode(json_encode($layouts));
-        // openscene = allow scene viewers (e.g. Unity Live embed) to receive scene 0. showlabels=1 = names in grid (avatar labels).
+        // openscene = allow scene viewers (e.g. Unity Live embed) to receive scene 0. showlabels=zoom = Meet-style names on tiles.
         // No &record = no recording from director tab. Do NOT add &autorecordremote (value is bitrate; 0 would enable with 0 kbps and start extra recordings when guests join).
-        $base = "https://vdo.ninja/?director={$room}&password={$pass}&clearstorage&label={$label}&showlabels=1&activespeaker=1&cleandirector&openscene{$layoutsParam}";
+        $base = "https://vdo.ninja/?director={$room}{$passwordParam}&clearstorage&label={$label}&showlabels=zoom&fontsize=82&activespeaker=1&cleandirector&openscene{$layoutsParam}";
 
         // Dropbox: same as host push — ensure folder exists, then add params so Director recordings save in folder (only when $recordToDropbox)
-        if ($recordToDropbox && $this->organization) {
+        if ($recordEnabled && $recordToDropbox && $this->organization) {
             $oauthService = app(\App\Services\DropboxOAuthService::class);
             $dropboxToken = $oauthService->getAccessTokenForOrganization($this->organization);
             if (! empty($dropboxToken)) {
@@ -229,19 +242,59 @@ class OrganizationLivestream extends Model
 
     /**
      * Get the VDO.Ninja participant/guest URL.
-     * &label= (empty) prompts for display name. &showall &showlabels=1 &style=6 = grid.
-     * Omitted videodevice = VDO.Ninja uses system default camera. Do NOT use videodevice=0 — vd=0 disables the camera.
-     * &audiodevice=1 = auto-select system default microphone.
-     * &norecord = no recording for participants; only the host/director should record.
-     * &avatar= shows initial until they enable camera. Participants can turn on webcam from the UI.
+     * Same publisher path as host: &webcam + &ssb + &vdo=1 + &audiodevice=1 + &proaudio + &stereo=2 (no &intro — host does not use intro).
+     * &label= (empty) can be set by the app to the signed-in name. &showlabels=zoom &showall &rows=1 = group grid + names on tiles + one row (two people side-by-side).
+     * Virtual backgrounds: {@see \App\Support\VdoMeetingVirtualBackground::querySegment()} (gallery + &virtualbackground).
+     * Do not use &style=6 with &showall — style overrides and breaks the grid.
+     * &vdo=1 + &audiodevice=1 pre-select default camera/mic; &autostart keeps the room view stable.
      */
-    public function getParticipantUrl(): string
+    public function getParticipantUrl(?int $seat = null): string
     {
         $password = $this->getDecryptedPassword();
         $room = rawurlencode($this->getVdoRoomName());
         $pass = rawurlencode((string) $password);
-        $avatarInitialUrl = 'https://ui-avatars.com/api/?name=Guest&size=256&length=1';
-        return "https://vdo.ninja/?room={$room}&password={$pass}&label=&audiodevice=1&norecord&showlabels=1&showall&style=6&avatar=" . rawurlencode($avatarInitialUrl) . '&autostart&noheader';
+        $passwordParam = $pass !== '' ? '&password=' . $pass : '';
+        $avatarInitialUrl = 'https://ui-avatars.com/api/?name=' . rawurlencode('Guest') . '&size=256&length=2';
+        $base = 'https://vdo.ninja/?room=' . $room . $passwordParam . '&label=&webcam&ssb&vdo=1&audiodevice=1&proaudio&stereo=2&norecord&showlabels=zoom&showall&rows=1&fontsize=82&nocontrols&clock=false&avatar=' . rawurlencode($avatarInitialUrl) . \App\Support\VdoMeetingVirtualBackground::querySegment() . '&autostart&noheader';
+
+        // When canvas mode is enabled AND the caller allocated a seat, also publish
+        // this participant's camera to MediaMTX at ls_<id>_s<seat> so the canvas
+        // mixer can WHEP-subscribe and composite. seat is null elsewhere (e.g. UI
+        // rendering of the shared URL) — single-host flow stays untouched.
+        if ($seat !== null && $this->isCanvasModeEnabled()) {
+            $host = \App\Support\StreamingWorkerSourceUrl::bridgeMediaMtxHost();
+            if ($host !== null) {
+                $seatPath = \App\Support\StreamingWorkerSourceUrl::streamPath($this).'_s'.max(2, min(6, $seat));
+                $base .= '&push=' . rawurlencode($seatPath) . '&mediamtx=' . $host . '&codec=vp8';
+            }
+        }
+        return $base;
+    }
+
+    /**
+     * Canvas mode opt-in flag (settings.canvas_mode). Off by default so the
+     * proven single-host pipeline keeps working untouched until canvas mode is
+     * explicitly enabled on a livestream.
+     */
+    public function isCanvasModeEnabled(): bool
+    {
+        return (bool) (($this->settings ?? [])['canvas_mode'] ?? true);
+    }
+
+    /**
+     * Allocate the next guest seat (2..6) and persist the cursor in settings.
+     * Best-effort MVP allocator: wraps after 6 (no leave/reconnect handling per
+     * approved scope — fixed 6 grid, no dynamic seats). Host is always seat 1.
+     */
+    public function allocateNextGuestSeat(): int
+    {
+        $settings = $this->settings ?? [];
+        $cursor = (int) ($settings['next_guest_seat'] ?? 2);
+        $seat = max(2, min(6, $cursor));
+        $next = $seat >= 6 ? 2 : $seat + 1;
+        $settings['next_guest_seat'] = $next;
+        $this->update(['settings' => $settings]);
+        return $seat;
     }
 
     /**
@@ -269,7 +322,7 @@ class OrganizationLivestream extends Model
      * Room view URL: view-only (no camera/screen prompt). Same content the host sees.
      * - nopush / viewonly: receive only, no publishing (viewers never prompted to share).
      * - showall: show every participant (host + guests) who is pushing screen or webcam.
-     * - activespeaker=1: emphasize active speaker; showlabels=1 for names.
+     * - activespeaker=1: emphasize active speaker; showlabels=zoom + fontsize for names on tiles.
      * So: host's feed, any participant's share, and whatever the host is watching is what goes live.
      */
     public function getRoomViewUrl(): string
@@ -277,7 +330,7 @@ class OrganizationLivestream extends Model
         $room = rawurlencode($this->getVdoRoomName());
         $pw = rawurlencode((string) $this->getDecryptedPassword());
         $passwordParam = $pw !== '' ? '&password=' . $pw : '';
-        return "https://vdo.ninja/?room={$room}{$passwordParam}&nopush&viewonly&activespeaker=1&showall&showlabels=1&cleanoutput&noheader&nopreview&nocontrols&nosettings&autostart";
+        return "https://vdo.ninja/?room={$room}{$passwordParam}&nopush&viewonly&activespeaker=1&showall&showlabels=zoom&rows=1&fontsize=82&cleanoutput&noheader&nopreview&nocontrols&nosettings&clock=false&autostart";
     }
 
     /**
@@ -292,7 +345,7 @@ class OrganizationLivestream extends Model
         $room = rawurlencode($roomName);
         $pw = rawurlencode((string) $this->getDecryptedPassword());
         $passwordParam = $pw !== '' ? '&password=' . $pw : '';
-        return "https://vdo.ninja/?view={$view}&solo&fullscreen&room={$room}{$passwordParam}&cleanoutput&noheader&nopreview&nocontrols&nosettings&autostart";
+        return "https://vdo.ninja/?view={$view}&solo&fullscreen&room={$room}{$passwordParam}&showlabels=zoom&fontsize=82&cleanoutput&noheader&nopreview&nocontrols&nosettings&autostart";
     }
 
     /**
@@ -339,25 +392,50 @@ class OrganizationLivestream extends Model
     }
 
     /**
-     * Get the VDO.Ninja host push link (no OBS): host joins and pushes their stream.
-     * Uses push={roomName} so stream ID matches getPublicViewUrl (view=roomName). label= sets display name.
-     * &record = host can record. &showlabels=1 &showall = grid; &style=6 = avatar (initial) until video.
-     * quality=0 = let VDO.Ninja/browser pick resolution and framerate (avoids "Camera failed to load" on webcams that don't support fixed 1080p30).
-     * No fixed width/height/framerate so the camera can load with its native or negotiated settings.
-     * Omitted videodevice = VDO.Ninja uses system default camera. Do NOT use videodevice=0 — vd=0 disables the camera.
+     * Participant canvas mixer URL (MVP, approved 2026-05-17). The page WHEP-
+     * subscribes the 6 seat paths from MediaMTX, composites a fixed 3x2 grid,
+     * mixes audio, and WHIP-publishes the combined stream to streamPath — the
+     * exact path the bridge -> FFmpeg worker -> YouTube pipeline already pulls.
+     */
+    public function getCanvasUrl(): string
+    {
+        return url('/livestreams/canvas/'.$this->room_name);
+    }
+
+    /**
+     * Returns null for now. Was previously intended to publish a scene composite of all room
+     * participants to MediaMTX via VDO.Ninja's &scene+&push+&mediamtx flags — but scene mode in
+     * VDO.Ninja is receive-only (designed as an OBS Browser Source), so the iframe loaded but
+     * never published anything and the bridge stayed empty. Superseded by the canvas mixer
+     * ({@see getCanvasUrl()}); kept returning null so any old callers stay inert.
+     */
+    public function getScenePushUrl(): ?string
+    {
+        return null;
+    }
+
+    /**
+     * Get the VDO.Ninja host push link (no OBS). &webcam + &ssb avoids the camera vs screenshare fork for publishers.
+     * Do not use &style=6 with &showall — style overrides and breaks the multi-participant grid.
+     * &vdo=1 + &audiodevice=1 pre-select default camera/mic; &autostart keeps room/grid behavior stable.
      * Custom host avatar: set livestream settings['host_avatar_url'] to a full image URL; otherwise no avatar param.
-     * Do not use &novideo for host — it blocks receiving video (participant screen shares would not show).
      * @param bool $recordToDropbox If true and org has Dropbox, add dropbox params so recordings save to Dropbox. If false, recording is local only (browser download).
+     *
+     * `room` must match {@see getParticipantUrl()} / {@see getVdoRoomName()} so host and guests share one VDO room (grid).
+     * `push` remains {@see StreamingWorkerSourceUrl::streamPath()} for stable WHIP / worker ingest identity.
+     * &nocontrols hides per-tile play/progress bar; &clock=false disables wall-clock overlay.
+     * Virtual backgrounds: {@see \App\Support\VdoMeetingVirtualBackground::querySegment()} (gallery + &virtualbackground).
      */
     public function getHostPushUrl(bool $recordToDropbox = true): string
     {
         $this->loadMissing('organization');
         $settings = $this->settings ?? [];
         $displayName = $settings['display_name'] ?? null;
+        $recordEnabled = (bool) ($settings['record_meeting'] ?? true);
         $hostName = $displayName ?: ($this->organization?->name ?? 'Host');
-        $roomName = $this->getVdoRoomName();
-        $room = rawurlencode($roomName);
-        $push = rawurlencode($roomName);
+        $streamKey = \App\Support\StreamingWorkerSourceUrl::streamPath($this);
+        $room = rawurlencode($this->getVdoRoomName());
+        $push = rawurlencode($streamKey);
         $label = rawurlencode($hostName);
         $pass = rawurlencode((string) $this->getDecryptedPassword());
         $passwordParam = $pass !== '' ? '&password=' . $pass : '';
@@ -366,12 +444,34 @@ class OrganizationLivestream extends Model
         if (!empty($avatarUrl) && filter_var($avatarUrl, FILTER_VALIDATE_URL)) {
             $avatarParam = '&avatar=' . rawurlencode($avatarUrl);
         } else {
-            $initial = mb_substr(trim($hostName), 0, 1) ?: 'H';
-            $avatarParam = '&avatar=' . rawurlencode("https://ui-avatars.com/api/?name={$initial}&size=256&length=1");
+            $hn = trim($hostName) !== '' ? trim($hostName) : 'Host';
+            $avatarImage = 'https://ui-avatars.com/api/?name=' . rawurlencode($hn) . '&size=256&length=2';
+            $avatarParam = '&avatar=' . rawurlencode($avatarImage);
         }
         // No width/height/framerate — fixed 1920x1080@30 caused "Camera failed to load" on some webcams. quality=0 + bitrate let the camera use supported resolution.
-        $base = "https://vdo.ninja/?room={$room}&push={$push}&label={$label}&record&quality=0&bitrate=6000&audiodevice=1&showlabels=1&showall&style=6{$avatarParam}&autostart&noheader{$passwordParam}";
-        if ($recordToDropbox && $this->organization) {
+        $recordParam = $recordEnabled ? '&record' : '';
+        // In canvas mode, the host publishes to seat 1 path so the canvas mixer
+        // can WHEP-subscribe it alongside the guest seats. The canvas page then
+        // publishes the combined output to streamPath (where the worker pulls).
+        // Single-host (default) mode keeps publishing directly to streamPath.
+        $effectivePush = $this->isCanvasModeEnabled()
+            ? rawurlencode($streamKey.'_s1')
+            : $push;
+        $base = "https://vdo.ninja/?room={$room}&push={$effectivePush}&label={$label}{$recordParam}&quality=0&bitrate=6000&webcam&ssb&vdo=1&audiodevice=1&proaudio&stereo=2&showlabels=zoom&showall&rows=1&fontsize=82&nocontrols&clock=false{$avatarParam}" . \App\Support\VdoMeetingVirtualBackground::querySegment() . "&autostart&noheader{$passwordParam}";
+
+        // Restore the MediaMTX push so the host's webcam reaches the bridge and the AWS worker can
+        // pull and forward to YouTube. (Was dropped under the assumption that getScenePushUrl
+        // would replace it; that assumption was wrong — VDO.Ninja scene mode is receive-only.)
+        $mediaMtxHost = \App\Support\StreamingWorkerSourceUrl::bridgeMediaMtxHost();
+        if ($mediaMtxHost !== null) {
+            // VP8, not H264: every browser can VP8-encode for WebRTC, so the
+            // video track is always published. Forcing H264 made browsers that
+            // can't H264-encode drop video entirely (audio-only on YouTube).
+            // The MediaMTX bridge transcodes VP8 -> H264 for the RTMP/YouTube leg.
+            $base .= '&mediamtx=' . $mediaMtxHost . '&codec=vp8';
+        }
+
+        if ($recordEnabled && $recordToDropbox && $this->organization) {
             $oauthService = app(\App\Services\DropboxOAuthService::class);
             $dropboxToken = $oauthService->getAccessTokenForOrganization($this->organization);
             if (! empty($dropboxToken)) {
@@ -421,7 +521,7 @@ class OrganizationLivestream extends Model
      */
     public function canGoLive(): bool
     {
-        return in_array($this->status, ['draft', 'scheduled', 'meeting_live']);
+        return in_array($this->status, ['draft', 'scheduled', 'meeting_live', 'ended'], true);
     }
 
     /**

@@ -1,16 +1,54 @@
 <?php
 
+use App\Http\Controllers\AboutPageController;
+use App\Http\Controllers\Admin\AdminChallengeHubController;
+use App\Http\Controllers\Admin\AdminKybVerificationController;
+use App\Http\Controllers\Admin\AdminKycVerificationController;
+use App\Http\Controllers\Admin\BarterAuditController;
+use App\Http\Controllers\Admin\BiuFeeSettingsController;
 use App\Http\Controllers\Admin\ComplianceApplicationController as AdminComplianceApplicationController;
+use App\Http\Controllers\Admin\ContactPageController;
+use App\Http\Controllers\Admin\ContactSubmissionController;
+use App\Http\Controllers\Admin\CountryController;
+use App\Http\Controllers\Admin\EmailPackageController;
+use App\Http\Controllers\Admin\ExemptionCertificateController;
 use App\Http\Controllers\Admin\FeesController;
 use App\Http\Controllers\Admin\Form1023ApplicationController as AdminForm1023ApplicationController;
+use App\Http\Controllers\Admin\FractionalAssetController;
+use App\Http\Controllers\Admin\FractionalOfferingController;
+use App\Http\Controllers\Admin\FractionalOrderController;
+use App\Http\Controllers\Admin\FundraiseLeadController;
+use App\Http\Controllers\Admin\IrsBoardMemberController;
+use App\Http\Controllers\Admin\KioskManagementController;
+use App\Http\Controllers\Admin\KioskProviderController;
+use App\Http\Controllers\Admin\KioskServiceRequestsController;
+use App\Http\Controllers\Admin\KioskSubcategoryController;
+use App\Http\Controllers\Admin\LivestockController;
+use App\Http\Controllers\Admin\MerchantHubCategoryController;
+use App\Http\Controllers\Admin\MerchantHubController;
+use App\Http\Controllers\Admin\PhazeWebhookManagementController;
+use App\Http\Controllers\Admin\PlanController;
+use App\Http\Controllers\Admin\PreGeneratedTagController;
+use App\Http\Controllers\Admin\PrimaryActionCategoryController;
+use App\Http\Controllers\Admin\ProcessingFeeSettingsController;
+use App\Http\Controllers\Admin\PromotionalBannerController;
+use App\Http\Controllers\Admin\PushNotificationsController;
 use App\Http\Controllers\Admin\RewardPointController;
 use App\Http\Controllers\Admin\SeoController as AdminSeoController;
+use App\Http\Controllers\Admin\ServiceCategoryController;
 use App\Http\Controllers\Admin\ServiceSellerController;
 use App\Http\Controllers\Admin\TransactionLedgerController;
+use App\Http\Controllers\Admin\WalletFeeController;
+use App\Http\Controllers\Admin\WalletPlanController;
 use App\Http\Controllers\AdminAboutPageController;
 use App\Http\Controllers\AiCampaignController;
 use App\Http\Controllers\AiChatController;
+use App\Http\Controllers\AiMediaStudioController;
+use App\Http\Controllers\Barter\BarterNetworkController;
+use App\Http\Controllers\BelievePointController;
 use App\Http\Controllers\BoardMemberController;
+use App\Http\Controllers\BridgeWalletController;
+use App\Http\Controllers\BridgeWebhookController;
 use App\Http\Controllers\CampaignController;
 use App\Http\Controllers\CareAlliance\CareAllianceCampaignManageController;
 use App\Http\Controllers\CareAlliance\CareAllianceDashboardController;
@@ -23,6 +61,7 @@ use App\Http\Controllers\CareAlliance\CareAllianceOrgMembershipController;
 use App\Http\Controllers\CareAlliance\CareAlliancePublicController;
 use App\Http\Controllers\CartController;
 use App\Http\Controllers\CategoryController;
+use App\Http\Controllers\ChallengeLevelUpController;
 use App\Http\Controllers\ChatController;
 use App\Http\Controllers\ChatTopicController;
 use App\Http\Controllers\CheckoutController;
@@ -31,12 +70,14 @@ use App\Http\Controllers\ClassificationCodeController;
 use App\Http\Controllers\CommunityVideoEngagementController;
 use App\Http\Controllers\CommunityVideosController;
 use App\Http\Controllers\ComplianceApplicationController;
+use App\Http\Controllers\ContactController;
 use App\Http\Controllers\ContentItemController;
 use App\Http\Controllers\CourseController;
 use App\Http\Controllers\CreditPurchaseController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DeductibilityCodeController;
 use App\Http\Controllers\DonationController;
+use App\Http\Controllers\EmailInviteController;
 use App\Http\Controllers\EnrollmentController;
 use App\Http\Controllers\EventController;
 use App\Http\Controllers\EventTypeController;
@@ -45,24 +86,40 @@ use App\Http\Controllers\ExploreByCauseController;
 use App\Http\Controllers\Facebook\AuthController;
 use App\Http\Controllers\Facebook\ConfigurationController;
 use App\Http\Controllers\Facebook\PostController;
+use App\Http\Controllers\FindCareAlliancesController;
+use App\Http\Controllers\FindSupportersController;
 use App\Http\Controllers\FollowerController;
 use App\Http\Controllers\Form1023ApplicationController;
+use App\Http\Controllers\FractionalCertificateController;
+use App\Http\Controllers\FractionalOwnershipController;
 use App\Http\Controllers\FrontendCourseController;
 use App\Http\Controllers\FundMeCampaignController;
 use App\Http\Controllers\FundMeController;
 use App\Http\Controllers\FundMeDonationController;
+use App\Http\Controllers\FundraiseController;
+use App\Http\Controllers\GiftCardController;
 use App\Http\Controllers\GovernanceComplianceController;
 use App\Http\Controllers\HomeController;
+use App\Http\Controllers\ImpactScoreController;
 use App\Http\Controllers\IntegrationsController;
+use App\Http\Controllers\InvestController;
+use App\Http\Controllers\IrsBmfController;
 use App\Http\Controllers\JobApplicationController;
 use App\Http\Controllers\JobPositionController;
 use App\Http\Controllers\JobPostController;
 use App\Http\Controllers\JobsController;
+use App\Http\Controllers\KioskController;
+use App\Http\Controllers\KioskDashboardController;
+use App\Http\Controllers\KioskServiceRequestController;
+use App\Http\Controllers\LivestreamRecordingDeclineController;
 use App\Http\Controllers\LiveViewController;
 use App\Http\Controllers\ManageDataController;
 use App\Http\Controllers\ManageDatasetController;
 use App\Http\Controllers\MarketplaceController;
 use App\Http\Controllers\MarketplaceOrganizationProductController;
+use App\Http\Controllers\MerchantHubMarketplaceProductController;
+use App\Http\Controllers\MerchantHubOfferController;
+use App\Http\Controllers\MerchantRedemptionController;
 use App\Http\Controllers\NewsletterController;
 use App\Http\Controllers\NodeBossController;
 use App\Http\Controllers\NodeReferralController;
@@ -73,10 +130,16 @@ use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\NteeCodeController;
 use App\Http\Controllers\OrderController;
 use App\Http\Controllers\OrderItemController;
+use App\Http\Controllers\Organization\LivestreamController;
+use App\Http\Controllers\Organization\MarketplaceProductPoolController;
+use App\Http\Controllers\Organization\OrganizationKioskProviderController;
 use App\Http\Controllers\OrganizationController;
+use App\Http\Controllers\OrganizationStripeConnectController;
 use App\Http\Controllers\OwnershipVerificationController;
 use App\Http\Controllers\PaymentMethodSettingController;
+use App\Http\Controllers\PhazeWebhookController;
 use App\Http\Controllers\PlaidVerificationController;
+use App\Http\Controllers\PlansController;
 use App\Http\Controllers\PositionCategoryController;
 use App\Http\Controllers\PrintifyProductController;
 use App\Http\Controllers\PrintifyWebhookController;
@@ -92,11 +155,16 @@ use App\Http\Controllers\SitemapController;
 use App\Http\Controllers\SocialMediaController;
 use App\Http\Controllers\StatusCodeController;
 use App\Http\Controllers\SupporterActivityController;
+use App\Http\Controllers\SupporterBelievePointGiftController;
+use App\Http\Controllers\SupporterLivestreamController;
 use App\Http\Controllers\TopicController;
 use App\Http\Controllers\TransactionController;
 use App\Http\Controllers\UnityLiveController;
+use App\Http\Controllers\UnityLoavesController;
+use App\Http\Controllers\DashboardUnityLoavesController;
 use App\Http\Controllers\UserProfileController;
 use App\Http\Controllers\UsersInterestedTopicsController;
+use App\Http\Controllers\VolunteerAvailableSupportersController;
 use App\Http\Controllers\VolunteerController;
 use App\Http\Controllers\VolunteerSupporterInterestsController;
 use App\Http\Controllers\VolunteerTimesheetController;
@@ -106,6 +174,7 @@ use App\Http\Controllers\WithdrawalController;
 use Illuminate\Support\Facades\Broadcast;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
+use SimpleSoftwareIO\QrCode\Facades\QrCode;
 
 // ============================================
 // MERCHANT DOMAIN ROUTES - MUST BE FIRST
@@ -151,32 +220,62 @@ Route::get('/robots.txt', function () {
 })->name('robots');
 
 // Discover Care Alliances (public — same listing whether or not you’re logged in)
-Route::get('/find-care-alliances', [\App\Http\Controllers\FindCareAlliancesController::class, 'index'])->name('find-care-alliances.index');
+Route::get('/find-care-alliances', [FindCareAlliancesController::class, 'index'])->name('find-care-alliances.index');
+
+// Unity Loaves Network Directory (public)
+Route::get('/unity-loaves', [UnityLoavesController::class, 'index'])->name('unity-loaves.index');
 
 // Social Media Feed Routes
 Route::middleware(['auth', 'EnsureEmailIsVerified'])->group(function () {
-    Route::get('/social-feed', [\App\Http\Controllers\PostController::class, 'index'])->name('social-feed.index');
-    Route::get('/find-supporters', [\App\Http\Controllers\FindSupportersController::class, 'index'])->name('find-supporters.index');
-    Route::get('/search', [\App\Http\Controllers\PostController::class, 'searchPage'])->name('search.index');
-    Route::get('/social-feed/search', [\App\Http\Controllers\PostController::class, 'search'])->name('social-feed.search');
+    Route::get('/social-feed', [App\Http\Controllers\PostController::class, 'index'])->name('social-feed.index');
+    Route::get('/find-supporters', [FindSupportersController::class, 'index'])->name('find-supporters.index');
+    Route::get('/supporters/gift/{recipient}', [SupporterBelievePointGiftController::class, 'showGift'])->name('supporters.gift');
+    Route::post('/supporters/gift/{recipient}', [SupporterBelievePointGiftController::class, 'sendGift'])->name('supporters.gift.send');
+    Route::get('/supporters/birthday-gift/{celebrant}', [SupporterBelievePointGiftController::class, 'showBirthdayGift'])->name('supporters.birthday-gift');
+    Route::post('/supporters/birthday-gift/{celebrant}', [SupporterBelievePointGiftController::class, 'sendBirthdayGift'])->name('supporters.birthday-gift.send');
+    Route::get('/search', [App\Http\Controllers\PostController::class, 'searchPage'])->name('search.index');
+    Route::get('/social-feed/search', [App\Http\Controllers\PostController::class, 'search'])->name('social-feed.search');
     // Toggle favorite organization — supporter accounts only (see User::canFollowOrganizations)
-    Route::post('/organizations/{id}/toggle-favorite', [\App\Http\Controllers\OrganizationController::class, 'toggleFavorite'])->name('organizations.toggle-favorite-search');
-    Route::post('/organizations/{id}/toggle-favorite', [\App\Http\Controllers\OrganizationController::class, 'toggleFavorite'])->name('user.organizations.toggle-favorite');
-    Route::post('/organizations/{id}/toggle-favorite', [\App\Http\Controllers\OrganizationController::class, 'toggleFavorite'])->name('organizations.toggle-favorite');
+    Route::post('/organizations/{id}/toggle-favorite', [OrganizationController::class, 'toggleFavorite'])->name('organizations.toggle-favorite-search');
+    Route::post('/organizations/{id}/toggle-favorite', [OrganizationController::class, 'toggleFavorite'])->name('user.organizations.toggle-favorite');
+    Route::post('/organizations/{id}/toggle-favorite', [OrganizationController::class, 'toggleFavorite'])->name('organizations.toggle-favorite');
     Route::post('/organizations/{id}/toggle-notifications', [OrganizationController::class, 'toggleNotifications'])->name('organizations.toggle-notifications');
     // GET fallback: if user hits toggle-favorite with GET (e.g. refresh/back), redirect to organization page
     Route::get('/organizations/{id}/toggle-favorite', function (string $id) {
         return redirect()->route('organizations.show', $id);
     })->name('organizations.toggle-favorite.get');
-    Route::post('/posts', [\App\Http\Controllers\PostController::class, 'store'])->name('posts.store');
-    Route::put('/posts/{post}', [\App\Http\Controllers\PostController::class, 'update'])->name('posts.update');
-    Route::delete('/posts/{post}', [\App\Http\Controllers\PostController::class, 'destroy'])->name('posts.destroy');
-    Route::post('/posts/{post}/react', [\App\Http\Controllers\PostController::class, 'react'])->name('posts.react');
-    Route::delete('/posts/{post}/reaction', [\App\Http\Controllers\PostController::class, 'removeReaction'])->name('posts.remove-reaction');
-    Route::post('/posts/{post}/comment', [\App\Http\Controllers\PostController::class, 'comment'])->name('posts.comment');
-    Route::get('/posts/{post}/comments', [\App\Http\Controllers\PostController::class, 'getComments'])->name('posts.comments');
-    Route::post('/posts/{post}/seen', [\App\Http\Controllers\PostController::class, 'markAsSeen'])->name('posts.mark-seen');
-    Route::delete('/comments/{comment}', [\App\Http\Controllers\PostController::class, 'deleteComment'])->name('comments.destroy');
+    Route::post('/posts', [App\Http\Controllers\PostController::class, 'store'])->name('posts.store');
+    Route::post('/posts/share-from-video-hub', [App\Http\Controllers\PostController::class, 'shareVideoFromHub'])->name('posts.share-from-video-hub');
+    Route::put('/posts/{post}', [App\Http\Controllers\PostController::class, 'update'])->name('posts.update');
+    Route::delete('/posts/{post}', [App\Http\Controllers\PostController::class, 'destroy'])->name('posts.destroy');
+    Route::post('/posts/{post}/react', [App\Http\Controllers\PostController::class, 'react'])->name('posts.react');
+    Route::delete('/posts/{post}/reaction', [App\Http\Controllers\PostController::class, 'removeReaction'])->name('posts.remove-reaction');
+    Route::post('/posts/{post}/comment', [App\Http\Controllers\PostController::class, 'comment'])->name('posts.comment');
+    Route::get('/posts/{post}/comments', [App\Http\Controllers\PostController::class, 'getComments'])->name('posts.comments');
+    Route::post('/posts/{post}/seen', [App\Http\Controllers\PostController::class, 'markAsSeen'])->name('posts.mark-seen');
+    Route::delete('/comments/{comment}', [App\Http\Controllers\PostController::class, 'deleteComment'])->name('comments.destroy');
+});
+
+Route::permanentRedirect('/level-up', '/challenge-hub');
+Route::permanentRedirect('/level-up/{track}', '/challenge-hub/{track}');
+
+Route::middleware(['auth', 'EnsureEmailIsVerified'])->prefix('challenge-hub')->name('challenge-hub.')->group(function () {
+    Route::get('/', [ChallengeLevelUpController::class, 'index'])->name('index');
+    Route::get('/{track:slug}/play/{challenge?}', [ChallengeLevelUpController::class, 'play'])->name('play');
+    Route::get('/{track:slug}', [ChallengeLevelUpController::class, 'challenges'])->name('challenges');
+    Route::post('/{track:slug}/next', [ChallengeLevelUpController::class, 'next'])
+        ->middleware('throttle:45,1')
+        ->name('next');
+    Route::post('/{track:slug}/answer', [ChallengeLevelUpController::class, 'answer'])
+        ->middleware('throttle:90,1')
+        ->name('answer');
+    Route::post('/{track:slug}/finish', [ChallengeLevelUpController::class, 'finish'])
+        ->middleware('throttle:45,1')
+        ->name('finish');
+    /** GET refresh fallback for POST-only quiz routes (avoids Method Not Allowed on reload). */
+    Route::get('/{track:slug}/next', [ChallengeLevelUpController::class, 'restorePlayFromGet'])->name('next.get');
+    Route::get('/{track:slug}/answer', [ChallengeLevelUpController::class, 'restorePlayFromGet'])->name('answer.get');
+    Route::get('/{track:slug}/finish', [ChallengeLevelUpController::class, 'restorePlayFromGet'])->name('finish.get');
 });
 
 Route::get('pwa-setup', function () {
@@ -184,7 +283,7 @@ Route::get('pwa-setup', function () {
 })->name('pwa.install');
 Route::get('/pwa/install-qr', [PwaInstallController::class, 'installQr'])->name('pwa.install-qr');
 
-Route::get('/about', \App\Http\Controllers\AboutPageController::class)->name('about');
+Route::get('/about', AboutPageController::class)->name('about');
 
 Route::get('/privacy-policy', function () {
     return Inertia::render('frontend/PrivacyPolicy');
@@ -194,22 +293,22 @@ Route::get('/terms-of-service', function () {
     return Inertia::render('frontend/TermsOfService');
 })->name('terms.service');
 
-Route::get('/contact', [App\Http\Controllers\ContactController::class, 'index'])->name('contact');
-Route::post('/contact', [App\Http\Controllers\ContactController::class, 'store'])->name('contact.store');
+Route::get('/contact', [ContactController::class, 'index'])->name('contact');
+Route::post('/contact', [ContactController::class, 'store'])->name('contact.store');
 
-Route::get('/kiosk', [App\Http\Controllers\KioskController::class, 'index'])->name('kiosk.index');
-Route::get('/kiosk/services', [App\Http\Controllers\KioskController::class, 'services'])->name('kiosk.services');
-Route::post('/kiosk/services/geo', [App\Http\Controllers\KioskController::class, 'updateServicesGeo'])->name('kiosk.services.geo');
+Route::get('/kiosk', [KioskController::class, 'index'])->name('kiosk.index');
+Route::get('/kiosk/services', [KioskController::class, 'services'])->name('kiosk.services');
+Route::post('/kiosk/services/geo', [KioskController::class, 'updateServicesGeo'])->name('kiosk.services.geo');
 Route::middleware('auth')->group(function () {
-    Route::post('/kiosk/service-requests', [App\Http\Controllers\KioskServiceRequestController::class, 'store'])->name('kiosk.service-requests.store');
+    Route::post('/kiosk/service-requests', [KioskServiceRequestController::class, 'store'])->name('kiosk.service-requests.store');
 });
-Route::patch('/kiosk/service-requests/{serviceRequest}/link', [App\Http\Controllers\KioskServiceRequestController::class, 'updateLink'])->name('kiosk.service-requests.update-link');
+Route::patch('/kiosk/service-requests/{serviceRequest}/link', [KioskServiceRequestController::class, 'updateLink'])->name('kiosk.service-requests.update-link');
 
 Route::middleware(['auth', 'EnsureEmailIsVerified'])->prefix('kiosk/dashboard')->name('kiosk.dashboard.')->group(function () {
-    Route::get('/', [App\Http\Controllers\KioskDashboardController::class, 'index'])->name('index');
-    Route::get('/{category_slug}', [App\Http\Controllers\KioskDashboardController::class, 'show'])->name('show');
-    Route::post('/log-action', [App\Http\Controllers\KioskDashboardController::class, 'logAction'])->name('log-action');
-    Route::patch('/context', [App\Http\Controllers\KioskDashboardController::class, 'updateContext'])->name('update-context');
+    Route::get('/', [KioskDashboardController::class, 'index'])->name('index');
+    Route::get('/{category_slug}', [KioskDashboardController::class, 'show'])->name('show');
+    Route::post('/log-action', [KioskDashboardController::class, 'logAction'])->name('log-action');
+    Route::patch('/context', [KioskDashboardController::class, 'updateContext'])->name('update-context');
 });
 
 Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:admin'])->group(function () {
@@ -217,42 +316,84 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:admin'])->group(functi
     Route::put('/admin/about', [AdminAboutPageController::class, 'update'])->name('admin.about.update');
     Route::get('/admin/seo', [AdminSeoController::class, 'index'])->name('admin.seo.index');
     Route::put('/admin/seo', [AdminSeoController::class, 'update'])->name('admin.seo.update');
-    Route::get('/admin/processing-fees', [\App\Http\Controllers\Admin\ProcessingFeeSettingsController::class, 'index'])->name('admin.processing-fees.index');
-    Route::put('/admin/processing-fees', [\App\Http\Controllers\Admin\ProcessingFeeSettingsController::class, 'update'])->name('admin.processing-fees.update');
-    Route::get('/admin/biu-fee', [\App\Http\Controllers\Admin\BiuFeeSettingsController::class, 'index'])->name('admin.biu-fee.index');
-    Route::put('/admin/biu-fee', [\App\Http\Controllers\Admin\BiuFeeSettingsController::class, 'update'])->name('admin.biu-fee.update');
+    Route::get('/admin/processing-fees', [ProcessingFeeSettingsController::class, 'index'])->name('admin.processing-fees.index');
+    Route::put('/admin/processing-fees', [ProcessingFeeSettingsController::class, 'update'])->name('admin.processing-fees.update');
+    Route::get('/admin/biu-fee', [BiuFeeSettingsController::class, 'index'])->name('admin.biu-fee.index');
+    Route::put('/admin/biu-fee', [BiuFeeSettingsController::class, 'update'])->name('admin.biu-fee.update');
+
+    Route::redirect('/admin/challenge-hub', '/admin/challenge-hub/categories', 302)->name('admin.challenge-hub.index');
+    Route::get('/admin/challenge-hub/categories', [AdminChallengeHubController::class, 'categoriesIndex'])->name('admin.challenge-hub.categories.index');
+    Route::get('/admin/challenge-hub/categories/create', [AdminChallengeHubController::class, 'createCategory'])->name('admin.challenge-hub.categories.create');
+    Route::post('/admin/challenge-hub/categories', [AdminChallengeHubController::class, 'storeCategory'])->name('admin.challenge-hub.categories.store');
+    Route::get('/admin/challenge-hub/subcategories', [AdminChallengeHubController::class, 'subcategoriesIndex'])->name('admin.challenge-hub.subcategories.index');
+    Route::get('/admin/challenge-hub/subcategories/create', [AdminChallengeHubController::class, 'createSubcategory'])->name('admin.challenge-hub.subcategories.create');
+    Route::post('/admin/challenge-hub/subcategories', [AdminChallengeHubController::class, 'storeSubcategory'])->name('admin.challenge-hub.subcategories.store');
+    Route::get('/admin/challenge-hub/subcategories/{subcategory}/edit', [AdminChallengeHubController::class, 'editSubcategory'])->name('admin.challenge-hub.subcategories.edit');
+    Route::put('/admin/challenge-hub/subcategories/{subcategory}', [AdminChallengeHubController::class, 'updateSubcategory'])->name('admin.challenge-hub.subcategories.update');
+    Route::delete('/admin/challenge-hub/subcategories/{subcategory}', [AdminChallengeHubController::class, 'destroySubcategory'])->name('admin.challenge-hub.subcategories.destroy');
+    Route::delete('/admin/challenge-hub/categories/{category:slug}', [AdminChallengeHubController::class, 'destroyCategory'])->name('admin.challenge-hub.categories.destroy');
+    Route::get('/admin/challenge-hub/tracks', [AdminChallengeHubController::class, 'tracksIndex'])->name('admin.challenge-hub.tracks.index');
+    Route::get('/admin/challenge-hub/tracks/create', [AdminChallengeHubController::class, 'createTrack'])->name('admin.challenge-hub.tracks.create');
+    Route::post('/admin/challenge-hub/tracks', [AdminChallengeHubController::class, 'storeTrack'])->name('admin.challenge-hub.tracks.store');
+    Route::get('/admin/challenge-hub/questions', [AdminChallengeHubController::class, 'questionsIndex'])->name('admin.challenge-hub.questions.index');
+    // CSV / Excel import temporarily disabled — uncomment routes + controller methods + QuestionsBank UI to restore.
+    // Route::post('/admin/challenge-hub/questions/import', [AdminChallengeHubController::class, 'importQuestions'])->name('admin.challenge-hub.questions.import');
+    // Route::get('/admin/challenge-hub/questions/import-template', [AdminChallengeHubController::class, 'downloadQuestionImportTemplate'])->name('admin.challenge-hub.questions.import-template');
+    Route::get('/admin/challenge-hub/questions/create', [AdminChallengeHubController::class, 'createQuestion'])->name('admin.challenge-hub.questions.create');
+    Route::post('/admin/challenge-hub/questions', [AdminChallengeHubController::class, 'storeQuestion'])->name('admin.challenge-hub.questions.store');
+    Route::get('/admin/challenge-hub/questions/{question}/edit', [AdminChallengeHubController::class, 'editQuestion'])->name('admin.challenge-hub.questions.edit');
+    Route::put('/admin/challenge-hub/questions/{question}', [AdminChallengeHubController::class, 'updateQuestion'])->name('admin.challenge-hub.questions.update');
+    Route::delete('/admin/challenge-hub/questions/{question}', [AdminChallengeHubController::class, 'destroyQuestion'])->name('admin.challenge-hub.questions.destroy');
+    Route::get('/admin/challenge-hub/tracks/{track:slug}/edit', [AdminChallengeHubController::class, 'editTrack'])->name('admin.challenge-hub.tracks.edit');
+    Route::delete('/admin/challenge-hub/tracks/{track:slug}', [AdminChallengeHubController::class, 'destroyTrack'])->name('admin.challenge-hub.tracks.destroy');
+    Route::put('/admin/challenge-hub/tracks/{track:slug}', [AdminChallengeHubController::class, 'updateTrack'])->name('admin.challenge-hub.tracks.update');
+    Route::post('/admin/challenge-hub/tracks/{track:slug}/generate-cover', [AdminChallengeHubController::class, 'generateTrackCover'])->name('admin.challenge-hub.tracks.generate-cover');
+    Route::post('/admin/challenge-hub/tracks/{track:slug}/upload-cover', [AdminChallengeHubController::class, 'uploadTrackCover'])->name('admin.challenge-hub.tracks.upload-cover');
+    Route::post('/admin/challenge-hub/tracks/{track:slug}/entries', [AdminChallengeHubController::class, 'storeEntry'])->name('admin.challenge-hub.tracks.entries.store');
+    Route::put('/admin/challenge-hub/entries/{entry}', [AdminChallengeHubController::class, 'updateEntry'])->name('admin.challenge-hub.entries.update');
+    Route::delete('/admin/challenge-hub/entries/{entry}', [AdminChallengeHubController::class, 'destroyEntry'])->name('admin.challenge-hub.entries.destroy');
+    Route::post('/admin/challenge-hub/entries/{entry}/generate-cover', [AdminChallengeHubController::class, 'generateEntryCover'])->name('admin.challenge-hub.entries.generate-cover');
+    Route::post('/admin/challenge-hub/entries/{entry}/upload-cover', [AdminChallengeHubController::class, 'uploadEntryCover'])->name('admin.challenge-hub.entries.upload-cover');
+    Route::get('/admin/challenge-hub/challenges', [AdminChallengeHubController::class, 'challengesIndex'])->name('admin.challenge-hub.challenges.index');
+    Route::get('/admin/challenge-hub/challenges/create', [AdminChallengeHubController::class, 'createChallenge'])->name('admin.challenge-hub.challenges.create');
+    Route::post('/admin/challenge-hub/challenges', [AdminChallengeHubController::class, 'storeChallenge'])->name('admin.challenge-hub.challenges.store');
+    Route::get('/admin/challenge-hub/challenges/{entry}/edit', [AdminChallengeHubController::class, 'editChallenge'])->name('admin.challenge-hub.challenges.edit');
+    Route::get('/admin/challenge-hub/categories/{category:slug}/edit', [AdminChallengeHubController::class, 'editCategory'])->name('admin.challenge-hub.categories.edit');
+    Route::put('/admin/challenge-hub/categories/{category:slug}', [AdminChallengeHubController::class, 'updateCategory'])->name('admin.challenge-hub.categories.update');
+    Route::post('/admin/challenge-hub/categories/{category:slug}/generate-cover', [AdminChallengeHubController::class, 'generateCategoryCover'])->name('admin.challenge-hub.categories.generate-cover');
+    Route::post('/admin/challenge-hub/categories/{category:slug}/upload-cover', [AdminChallengeHubController::class, 'uploadCategoryCover'])->name('admin.challenge-hub.categories.upload-cover');
     Route::redirect('/admin/donation-fees', '/admin/processing-fees', 301);
-    Route::put('/admin/donation-fees', [\App\Http\Controllers\Admin\ProcessingFeeSettingsController::class, 'update'])->name('admin.donation-fees.update');
-    Route::get('/admin/kiosk', [App\Http\Controllers\Admin\KioskManagementController::class, 'index'])->name('admin.kiosk.index');
-    Route::put('/admin/kiosk/hero', [App\Http\Controllers\Admin\KioskManagementController::class, 'updateHero'])->name('admin.kiosk.update-hero');
-    Route::get('/admin/kiosk/categories/create', [App\Http\Controllers\Admin\KioskManagementController::class, 'create'])->name('admin.kiosk.categories.create');
-    Route::post('/admin/kiosk/categories', [App\Http\Controllers\Admin\KioskManagementController::class, 'store'])->name('admin.kiosk.categories.store');
-    Route::put('/admin/kiosk/categories/{kiosk}', [App\Http\Controllers\Admin\KioskManagementController::class, 'updateCategory'])->name('admin.kiosk.update-category');
-    Route::get('/admin/kiosk/categories/{kiosk}/edit', [App\Http\Controllers\Admin\KioskManagementController::class, 'edit'])->name('admin.kiosk.categories.edit');
-    Route::patch('/admin/kiosk/categories/{kiosk}/toggle-active', [App\Http\Controllers\Admin\KioskManagementController::class, 'toggleActive'])->name('admin.kiosk.toggle-active');
-    Route::delete('/admin/kiosk/categories/{kiosk}', [App\Http\Controllers\Admin\KioskManagementController::class, 'destroy'])->name('admin.kiosk.destroy');
+    Route::put('/admin/donation-fees', [ProcessingFeeSettingsController::class, 'update'])->name('admin.donation-fees.update');
+    Route::get('/admin/kiosk', [KioskManagementController::class, 'index'])->name('admin.kiosk.index');
+    Route::put('/admin/kiosk/hero', [KioskManagementController::class, 'updateHero'])->name('admin.kiosk.update-hero');
+    Route::get('/admin/kiosk/categories/create', [KioskManagementController::class, 'create'])->name('admin.kiosk.categories.create');
+    Route::post('/admin/kiosk/categories', [KioskManagementController::class, 'store'])->name('admin.kiosk.categories.store');
+    Route::put('/admin/kiosk/categories/{kiosk}', [KioskManagementController::class, 'updateCategory'])->name('admin.kiosk.update-category');
+    Route::get('/admin/kiosk/categories/{kiosk}/edit', [KioskManagementController::class, 'edit'])->name('admin.kiosk.categories.edit');
+    Route::patch('/admin/kiosk/categories/{kiosk}/toggle-active', [KioskManagementController::class, 'toggleActive'])->name('admin.kiosk.toggle-active');
+    Route::delete('/admin/kiosk/categories/{kiosk}', [KioskManagementController::class, 'destroy'])->name('admin.kiosk.destroy');
 
-    Route::get('/admin/kiosk/requests', [App\Http\Controllers\Admin\KioskServiceRequestsController::class, 'index'])->name('admin.kiosk.requests.index');
+    Route::get('/admin/kiosk/requests', [KioskServiceRequestsController::class, 'index'])->name('admin.kiosk.requests.index');
     // More specific route first so {id} never competes with the static "edit" segment
-    Route::get('/admin/kiosk/requests/{id}/edit', [App\Http\Controllers\Admin\KioskServiceRequestsController::class, 'edit'])->whereNumber('id')->name('admin.kiosk.requests.edit');
-    Route::get('/admin/kiosk/requests/{id}', [App\Http\Controllers\Admin\KioskServiceRequestsController::class, 'show'])->whereNumber('id')->name('admin.kiosk.requests.show');
-    Route::put('/admin/kiosk/requests/{id}', [App\Http\Controllers\Admin\KioskServiceRequestsController::class, 'update'])->whereNumber('id')->name('admin.kiosk.requests.update');
-    Route::patch('/admin/kiosk/requests/{id}/status', [App\Http\Controllers\Admin\KioskServiceRequestsController::class, 'updateStatus'])->whereNumber('id')->name('admin.kiosk.requests.update-status');
-    Route::delete('/admin/kiosk/requests/{id}', [App\Http\Controllers\Admin\KioskServiceRequestsController::class, 'destroy'])->whereNumber('id')->name('admin.kiosk.requests.destroy');
+    Route::get('/admin/kiosk/requests/{id}/edit', [KioskServiceRequestsController::class, 'edit'])->whereNumber('id')->name('admin.kiosk.requests.edit');
+    Route::get('/admin/kiosk/requests/{id}', [KioskServiceRequestsController::class, 'show'])->whereNumber('id')->name('admin.kiosk.requests.show');
+    Route::put('/admin/kiosk/requests/{id}', [KioskServiceRequestsController::class, 'update'])->whereNumber('id')->name('admin.kiosk.requests.update');
+    Route::patch('/admin/kiosk/requests/{id}/status', [KioskServiceRequestsController::class, 'updateStatus'])->whereNumber('id')->name('admin.kiosk.requests.update-status');
+    Route::delete('/admin/kiosk/requests/{id}', [KioskServiceRequestsController::class, 'destroy'])->whereNumber('id')->name('admin.kiosk.requests.destroy');
 
-    Route::get('/admin/kiosk/subcategories', [App\Http\Controllers\Admin\KioskSubcategoryController::class, 'index'])->name('admin.kiosk.subcategories.index');
-    Route::get('/admin/kiosk/subcategories/create', [App\Http\Controllers\Admin\KioskSubcategoryController::class, 'create'])->name('admin.kiosk.subcategories.create');
-    Route::post('/admin/kiosk/subcategories', [App\Http\Controllers\Admin\KioskSubcategoryController::class, 'store'])->name('admin.kiosk.subcategories.store');
-    Route::get('/admin/kiosk/subcategories/{subcategory}/edit', [App\Http\Controllers\Admin\KioskSubcategoryController::class, 'edit'])->name('admin.kiosk.subcategories.edit');
-    Route::put('/admin/kiosk/subcategories/{subcategory}', [App\Http\Controllers\Admin\KioskSubcategoryController::class, 'update'])->name('admin.kiosk.subcategories.update');
-    Route::delete('/admin/kiosk/subcategories/{subcategory}', [App\Http\Controllers\Admin\KioskSubcategoryController::class, 'destroy'])->name('admin.kiosk.subcategories.destroy');
+    Route::get('/admin/kiosk/subcategories', [KioskSubcategoryController::class, 'index'])->name('admin.kiosk.subcategories.index');
+    Route::get('/admin/kiosk/subcategories/create', [KioskSubcategoryController::class, 'create'])->name('admin.kiosk.subcategories.create');
+    Route::post('/admin/kiosk/subcategories', [KioskSubcategoryController::class, 'store'])->name('admin.kiosk.subcategories.store');
+    Route::get('/admin/kiosk/subcategories/{subcategory}/edit', [KioskSubcategoryController::class, 'edit'])->name('admin.kiosk.subcategories.edit');
+    Route::put('/admin/kiosk/subcategories/{subcategory}', [KioskSubcategoryController::class, 'update'])->name('admin.kiosk.subcategories.update');
+    Route::delete('/admin/kiosk/subcategories/{subcategory}', [KioskSubcategoryController::class, 'destroy'])->name('admin.kiosk.subcategories.destroy');
 
-    Route::get('/admin/kiosk/providers', [App\Http\Controllers\Admin\KioskProviderController::class, 'index'])->name('admin.kiosk.providers.index');
-    Route::get('/admin/kiosk/providers/create', [App\Http\Controllers\Admin\KioskProviderController::class, 'create'])->name('admin.kiosk.providers.create');
-    Route::post('/admin/kiosk/providers', [App\Http\Controllers\Admin\KioskProviderController::class, 'store'])->name('admin.kiosk.providers.store');
-    Route::get('/admin/kiosk/providers/{kioskProvider}/edit', [App\Http\Controllers\Admin\KioskProviderController::class, 'edit'])->name('admin.kiosk.providers.edit');
-    Route::put('/admin/kiosk/providers/{kioskProvider}', [App\Http\Controllers\Admin\KioskProviderController::class, 'update'])->name('admin.kiosk.providers.update');
-    Route::delete('/admin/kiosk/providers/{kioskProvider}', [App\Http\Controllers\Admin\KioskProviderController::class, 'destroy'])->name('admin.kiosk.providers.destroy');
+    Route::get('/admin/kiosk/providers', [KioskProviderController::class, 'index'])->name('admin.kiosk.providers.index');
+    Route::get('/admin/kiosk/providers/create', [KioskProviderController::class, 'create'])->name('admin.kiosk.providers.create');
+    Route::post('/admin/kiosk/providers', [KioskProviderController::class, 'store'])->name('admin.kiosk.providers.store');
+    Route::get('/admin/kiosk/providers/{kioskProvider}/edit', [KioskProviderController::class, 'edit'])->name('admin.kiosk.providers.edit');
+    Route::put('/admin/kiosk/providers/{kioskProvider}', [KioskProviderController::class, 'update'])->name('admin.kiosk.providers.update');
+    Route::delete('/admin/kiosk/providers/{kioskProvider}', [KioskProviderController::class, 'destroy'])->name('admin.kiosk.providers.destroy');
 });
 
 Route::get('/nonprofit-news', [NonprofitNewsController::class, 'index'])
@@ -284,26 +425,35 @@ Route::get('/unity-live/{slug}', [UnityLiveController::class, 'show'])->name('un
 
 // Unity Meet (supporter UI): personal meetings — also available to org / care alliance accounts from dashboard Tools
 Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:user|organization|organization_pending|care_alliance'])->group(function () {
-    Route::get('/livestreams/supporter', [\App\Http\Controllers\SupporterLivestreamController::class, 'index'])->name('livestreams.supporter.index');
-    Route::get('/livestreams/supporter/create', [\App\Http\Controllers\SupporterLivestreamController::class, 'create'])->name('livestreams.supporter.create');
-    Route::post('/livestreams/supporter', [\App\Http\Controllers\SupporterLivestreamController::class, 'store'])->name('livestreams.supporter.store');
-    Route::get('/livestreams/supporter/ready/{id}', [\App\Http\Controllers\SupporterLivestreamController::class, 'ready'])->name('livestreams.supporter.ready')->where('id', '[0-9]+');
-    Route::get('/livestreams/supporter/join', [\App\Http\Controllers\SupporterLivestreamController::class, 'joinPage'])->name('livestreams.supporter.join');
-    Route::post('/livestreams/supporter/join', [\App\Http\Controllers\SupporterLivestreamController::class, 'joinWithPasscode'])->name('livestreams.supporter.join.submit');
-    Route::get('/livestreams/supporter/{id}/edit', [\App\Http\Controllers\SupporterLivestreamController::class, 'edit'])->name('livestreams.supporter.edit')->where('id', '[0-9]+');
-    Route::put('/livestreams/supporter/{id}', [\App\Http\Controllers\SupporterLivestreamController::class, 'update'])->name('livestreams.supporter.update')->where('id', '[0-9]+');
-    Route::delete('/livestreams/supporter/{id}', [\App\Http\Controllers\SupporterLivestreamController::class, 'destroy'])->name('livestreams.supporter.destroy')->where('id', '[0-9]+');
-    Route::get('/livestreams/supporter/{id}', [\App\Http\Controllers\SupporterLivestreamController::class, 'show'])->name('livestreams.supporter.show')->where('id', '[0-9]+');
-    Route::post('/livestreams/supporter/{id}/start-meeting', [\App\Http\Controllers\SupporterLivestreamController::class, 'startMeeting'])->name('livestreams.supporter.start-meeting')->where('id', '[0-9]+');
-    Route::post('/livestreams/supporter/{id}/set-live', [\App\Http\Controllers\SupporterLivestreamController::class, 'setLive'])->name('livestreams.supporter.set-live')->where('id', '[0-9]+');
-    Route::post('/livestreams/supporter/{id}/end-stream', [\App\Http\Controllers\SupporterLivestreamController::class, 'endStream'])->name('livestreams.supporter.end-stream')->where('id', '[0-9]+');
-    Route::patch('/livestreams/supporter/{id}/visibility', [\App\Http\Controllers\SupporterLivestreamController::class, 'updateVisibility'])->name('livestreams.supporter.update-visibility')->where('id', '[0-9]+');
-    Route::patch('/livestreams/supporter/{id}/stream-key', [\App\Http\Controllers\SupporterLivestreamController::class, 'updateStreamKey'])->name('livestreams.supporter.update-stream-key')->where('id', '[0-9]+');
-    Route::post('/livestreams/supporter/{id}/go-live-obs-auto', [\App\Http\Controllers\SupporterLivestreamController::class, 'goLiveOBSAuto'])->name('livestreams.supporter.go-live-obs-auto')->where('id', '[0-9]+');
+    Route::get('/livestreams/supporter', [SupporterLivestreamController::class, 'index'])->name('livestreams.supporter.index');
+    Route::get('/livestreams/supporter/live', [SupporterLivestreamController::class, 'live'])->name('livestreams.supporter.live');
+    Route::get('/livestreams/supporter/recordings/search', [SupporterLivestreamController::class, 'recordingsSearch'])->name('livestreams.supporter.recordings.search');
+    Route::get('/livestreams/supporter/recordings/download', [SupporterLivestreamController::class, 'recordingDownload'])->name('livestreams.supporter.recordings.download');
+    Route::delete('/livestreams/supporter/recordings/file', [SupporterLivestreamController::class, 'recordingDelete'])->name('livestreams.supporter.recordings.file.delete');
+    Route::put('/livestreams/supporter/recordings/file', [SupporterLivestreamController::class, 'recordingRename'])->name('livestreams.supporter.recordings.file.rename');
+    Route::get('/livestreams/supporter/recordings', [SupporterLivestreamController::class, 'recordings'])->name('livestreams.supporter.recordings');
+    Route::get('/livestreams/supporter/create', [SupporterLivestreamController::class, 'create'])->name('livestreams.supporter.create');
+    Route::post('/livestreams/supporter', [SupporterLivestreamController::class, 'store'])->name('livestreams.supporter.store');
+    Route::post('/livestreams/supporter/schedule', [SupporterLivestreamController::class, 'schedule'])->name('livestreams.supporter.schedule');
+    Route::get('/livestreams/supporter/ready/{id}', [SupporterLivestreamController::class, 'ready'])->name('livestreams.supporter.ready')->where('id', '[0-9]+');
+    Route::get('/livestreams/supporter/join', [SupporterLivestreamController::class, 'joinPage'])->name('livestreams.supporter.join');
+    Route::post('/livestreams/supporter/join', [SupporterLivestreamController::class, 'joinWithPasscode'])->name('livestreams.supporter.join.submit');
+    Route::get('/livestreams/supporter/{id}/edit', [SupporterLivestreamController::class, 'edit'])->name('livestreams.supporter.edit')->where('id', '[0-9]+');
+    Route::put('/livestreams/supporter/{id}', [SupporterLivestreamController::class, 'update'])->name('livestreams.supporter.update')->where('id', '[0-9]+');
+    Route::delete('/livestreams/supporter/{id}', [SupporterLivestreamController::class, 'destroy'])->name('livestreams.supporter.destroy')->where('id', '[0-9]+');
+    Route::get('/livestreams/supporter/{id}', [SupporterLivestreamController::class, 'show'])->name('livestreams.supporter.show')->where('id', '[0-9]+');
+    Route::post('/livestreams/supporter/{id}/start-meeting', [SupporterLivestreamController::class, 'startMeeting'])->name('livestreams.supporter.start-meeting')->where('id', '[0-9]+');
+    Route::post('/livestreams/supporter/{id}/set-live', [SupporterLivestreamController::class, 'setLive'])->name('livestreams.supporter.set-live')->where('id', '[0-9]+');
+    Route::post('/livestreams/supporter/{id}/end-stream', [SupporterLivestreamController::class, 'endStream'])->name('livestreams.supporter.end-stream')->where('id', '[0-9]+');
+    Route::patch('/livestreams/supporter/{id}/visibility', [SupporterLivestreamController::class, 'updateVisibility'])->name('livestreams.supporter.update-visibility')->where('id', '[0-9]+');
+    Route::patch('/livestreams/supporter/{id}/stream-key', [SupporterLivestreamController::class, 'updateStreamKey'])->name('livestreams.supporter.update-stream-key')->where('id', '[0-9]+');
+    Route::post('/livestreams/supporter/{id}/prepare-youtube-live', [SupporterLivestreamController::class, 'prepareYouTubeLive'])->name('livestreams.supporter.prepare-youtube-live')->where('id', '[0-9]+');
+    Route::post('/livestreams/supporter/{id}/queue-stream-relay', [SupporterLivestreamController::class, 'queueStreamRelayJob'])->name('livestreams.supporter.queue-stream-relay')->where('id', '[0-9]+');
+    Route::post('/livestreams/supporter/{id}/go-live-obs-auto', [SupporterLivestreamController::class, 'queueStreamRelayJob'])->name('livestreams.supporter.go-live-obs-auto')->where('id', '[0-9]+');
 });
 
 // VDO.Ninja meeting: guest join by secure token (public)
-Route::get('/join/{token}', [\App\Http\Controllers\Organization\LivestreamController::class, 'guestJoinByToken'])->name('livestreams.guest-join-by-token')->where('token', '[a-zA-Z0-9_-]+');
+Route::get('/join/{token}', [LivestreamController::class, 'guestJoinByToken'])->name('livestreams.guest-join-by-token')->where('token', '[a-zA-Z0-9_-]+');
 // Viewer page: /live/{slug} — view-only with Mute + Volume (public, when stream is live)
 Route::get('/live/{slug}', [LiveViewController::class, 'show'])->name('live.show')->where('slug', '[a-zA-Z0-9_]+');
 
@@ -311,6 +461,9 @@ Route::get('/jobs', [JobsController::class, 'index'])->name('jobs.index');
 Route::get('/volunteer-opportunities', [JobsController::class, 'volunteerOpportunities'])->name('volunteer-opportunities.index');
 Route::post('/volunteer-opportunities/volunteer-interests', [JobsController::class, 'saveVolunteerInterestStatement'])
     ->name('volunteer-opportunities.save-interests')
+    ->middleware(['auth', 'EnsureEmailIsVerified', 'role:user']);
+Route::post('/volunteer-opportunities/saved-positions', [JobsController::class, 'saveVolunteerPreferredPositions'])
+    ->name('volunteer-opportunities.save-positions')
     ->middleware(['auth', 'EnsureEmailIsVerified', 'role:user']);
 Route::get('/jobs/{id}', [JobsController::class, 'show'])->name('jobs.show');
 Route::get('/get-job-positions', [JobsController::class, 'getJobPositions'])->name('jobs.positions.by-category');
@@ -355,22 +508,22 @@ Route::prefix('alliances/{allianceSlug}')
         Route::get('/supporters', [CareAlliancePublicController::class, 'supporters'])->name('alliances.supporters');
     });
 
-Route::get('/pricing', [App\Http\Controllers\PlansController::class, 'pricing'])->name('pricing');
+Route::get('/pricing', [PlansController::class, 'pricing'])->name('pricing');
 
 // Support a Project — public landing: Give (FundMe) or Grow (Invest / Wefunder)
-Route::get('/support-a-project', [App\Http\Controllers\FundraiseController::class, 'supportAProject'])->name('support-a-project');
+Route::get('/support-a-project', [FundraiseController::class, 'supportAProject'])->name('support-a-project');
 
 // Public branded funnel: explain → qualify form → redirect to Wefunder (lead capture)
-Route::get('/fundraise', [App\Http\Controllers\FundraiseController::class, 'index'])->name('fundraise');
-Route::post('/fundraise', [App\Http\Controllers\FundraiseController::class, 'store'])->name('fundraise.store');
+Route::get('/fundraise', [FundraiseController::class, 'index'])->name('fundraise');
+Route::post('/fundraise', [FundraiseController::class, 'store'])->name('fundraise.store');
 // Project applications requested (authenticated supporters can view)
-Route::get('/fundraise/applications', [App\Http\Controllers\FundraiseController::class, 'projectApplications'])->name('fundraise.applications')
+Route::get('/fundraise/applications', [FundraiseController::class, 'projectApplications'])->name('fundraise.applications')
     ->middleware(['auth']);
 // Invest redirect: log click then redirect to Wefunder project URL (auth optional so we can track guest clicks too)
-Route::get('/invest/redirect/{lead}', [App\Http\Controllers\InvestController::class, 'redirect'])->name('invest.redirect')
+Route::get('/invest/redirect/{lead}', [InvestController::class, 'redirect'])->name('invest.redirect')
     ->where('lead', '[0-9]+');
 // Org-only: Support Community Projects (Donation vs Investment / Wefunder)
-Route::get('/fundraise/community-projects', [App\Http\Controllers\FundraiseController::class, 'communityProjects'])->name('fundraise.community-projects')
+Route::get('/fundraise/community-projects', [FundraiseController::class, 'communityProjects'])->name('fundraise.community-projects')
     ->middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|organization_pending|care_alliance']);
 
 // Believe FundMe – public listing and campaign pages
@@ -392,50 +545,50 @@ Route::post('/product/{product}/bid', [ProductController::class, 'placeBid'])->n
 // Note: Public route for products moved after resource routes to avoid conflict with /products/create
 
 /* Service Hub - Fiverr-like service marketplace */
-Route::get('/service-hub', [App\Http\Controllers\ServiceHubController::class, 'index'])->name('service-hub.index');
-Route::get('/service-hub/create', [App\Http\Controllers\ServiceHubController::class, 'create'])->name('service-hub.create')->middleware(['auth', 'EnsureEmailIsVerified']);
-Route::post('/service-hub', [App\Http\Controllers\ServiceHubController::class, 'store'])->name('service-hub.store')->middleware(['auth', 'EnsureEmailIsVerified']);
+Route::get('/service-hub', [ServiceHubController::class, 'index'])->name('service-hub.index');
+Route::get('/service-hub/create', [ServiceHubController::class, 'create'])->name('service-hub.create')->middleware(['auth', 'EnsureEmailIsVerified']);
+Route::post('/service-hub', [ServiceHubController::class, 'store'])->name('service-hub.store')->middleware(['auth', 'EnsureEmailIsVerified']);
 
 // Seller Profile Routes
-Route::get('/service-hub/seller-dashboard', [App\Http\Controllers\ServiceHubController::class, 'sellerDashboard'])->name('service-hub.seller-dashboard')->middleware(['auth', 'EnsureEmailIsVerified']);
-Route::get('/service-hub/seller-profile/create', [App\Http\Controllers\ServiceHubController::class, 'sellerProfileCreate'])->name('service-hub.seller-profile.create')->middleware(['auth', 'EnsureEmailIsVerified']);
-Route::post('/service-hub/seller-profile', [App\Http\Controllers\ServiceHubController::class, 'sellerProfileStore'])->name('service-hub.seller-profile.store')->middleware(['auth', 'EnsureEmailIsVerified']);
-Route::get('/service-hub/seller-profile/edit', [App\Http\Controllers\ServiceHubController::class, 'sellerProfileEdit'])->name('service-hub.seller-profile.edit')->middleware(['auth', 'EnsureEmailIsVerified']);
-Route::post('/service-hub/seller-profile/update', [App\Http\Controllers\ServiceHubController::class, 'sellerProfileUpdate'])->name('service-hub.seller-profile.update')->middleware(['auth', 'EnsureEmailIsVerified']);
-Route::get('/service-hub/{slug}/edit', [App\Http\Controllers\ServiceHubController::class, 'edit'])->name('service-hub.edit')->middleware(['auth', 'EnsureEmailIsVerified']);
-Route::put('/service-hub/{slug}', [App\Http\Controllers\ServiceHubController::class, 'update'])->name('service-hub.update')->middleware(['auth', 'EnsureEmailIsVerified']);
-Route::delete('/service-hub/services/{gig}', [App\Http\Controllers\ServiceHubController::class, 'destroyService'])
+Route::get('/service-hub/seller-dashboard', [ServiceHubController::class, 'sellerDashboard'])->name('service-hub.seller-dashboard')->middleware(['auth', 'EnsureEmailIsVerified']);
+Route::get('/service-hub/seller-profile/create', [ServiceHubController::class, 'sellerProfileCreate'])->name('service-hub.seller-profile.create')->middleware(['auth', 'EnsureEmailIsVerified']);
+Route::post('/service-hub/seller-profile', [ServiceHubController::class, 'sellerProfileStore'])->name('service-hub.seller-profile.store')->middleware(['auth', 'EnsureEmailIsVerified']);
+Route::get('/service-hub/seller-profile/edit', [ServiceHubController::class, 'sellerProfileEdit'])->name('service-hub.seller-profile.edit')->middleware(['auth', 'EnsureEmailIsVerified']);
+Route::post('/service-hub/seller-profile/update', [ServiceHubController::class, 'sellerProfileUpdate'])->name('service-hub.seller-profile.update')->middleware(['auth', 'EnsureEmailIsVerified']);
+Route::get('/service-hub/{slug}/edit', [ServiceHubController::class, 'edit'])->name('service-hub.edit')->middleware(['auth', 'EnsureEmailIsVerified']);
+Route::put('/service-hub/{slug}', [ServiceHubController::class, 'update'])->name('service-hub.update')->middleware(['auth', 'EnsureEmailIsVerified']);
+Route::delete('/service-hub/services/{gig}', [ServiceHubController::class, 'destroyService'])
     ->name('service-hub.services.destroy')
     ->middleware(['auth', 'EnsureEmailIsVerified']);
 
-Route::post('/service-hub/{slug}/create-offer', [App\Http\Controllers\ServiceHubController::class, 'createCustomOffer'])->name('service-hub.create-offer')->middleware(['auth', 'EnsureEmailIsVerified']);
-Route::post('/service-hub/offers/{offerId}/accept', [App\Http\Controllers\ServiceHubController::class, 'acceptCustomOffer'])->name('service-hub.accept-offer')->middleware(['auth', 'EnsureEmailIsVerified']);
-Route::post('/service-hub/offers/{offerId}/reject', [App\Http\Controllers\ServiceHubController::class, 'rejectCustomOffer'])->name('service-hub.reject-offer')->middleware(['auth', 'EnsureEmailIsVerified']);
+Route::post('/service-hub/{slug}/create-offer', [ServiceHubController::class, 'createCustomOffer'])->name('service-hub.create-offer')->middleware(['auth', 'EnsureEmailIsVerified']);
+Route::post('/service-hub/offers/{offerId}/accept', [ServiceHubController::class, 'acceptCustomOffer'])->name('service-hub.accept-offer')->middleware(['auth', 'EnsureEmailIsVerified']);
+Route::post('/service-hub/offers/{offerId}/reject', [ServiceHubController::class, 'rejectCustomOffer'])->name('service-hub.reject-offer')->middleware(['auth', 'EnsureEmailIsVerified']);
 // Keep old URL for backward compatibility
-Route::get('/service-hub/order', [App\Http\Controllers\ServiceHubController::class, 'order'])->middleware(['auth', 'EnsureEmailIsVerified']);
+Route::get('/service-hub/order', [ServiceHubController::class, 'order'])->middleware(['auth', 'EnsureEmailIsVerified']);
 // Create order route
-Route::get('/service-hub/create-order', [App\Http\Controllers\ServiceHubController::class, 'order'])->name('service-hub.order')->middleware(['auth', 'EnsureEmailIsVerified']);
-Route::post('/service-hub/create-order', [App\Http\Controllers\ServiceHubController::class, 'orderStore'])->name('service-hub.order.store')->middleware(['auth', 'EnsureEmailIsVerified']);
+Route::get('/service-hub/create-order', [ServiceHubController::class, 'order'])->name('service-hub.order')->middleware(['auth', 'EnsureEmailIsVerified']);
+Route::post('/service-hub/create-order', [ServiceHubController::class, 'orderStore'])->name('service-hub.order.store')->middleware(['auth', 'EnsureEmailIsVerified']);
 // Separate route for Stripe checkout session creation
-Route::post('/service-hub/checkout/create-session', [App\Http\Controllers\ServiceHubController::class, 'createCheckoutSession'])->name('service-hub.checkout.create-session')->middleware(['auth', 'EnsureEmailIsVerified']);
-Route::post('/service-hub/calculate-fees', [App\Http\Controllers\ServiceHubController::class, 'calculateFees'])->name('service-hub.calculate-fees')->middleware(['auth', 'EnsureEmailIsVerified']);
-Route::get('/service-hub/order/success', [App\Http\Controllers\ServiceHubController::class, 'orderSuccess'])->name('service-hub.order.success')->middleware(['auth', 'EnsureEmailIsVerified']);
-Route::get('/service-hub/seller/{id}', [App\Http\Controllers\ServiceHubController::class, 'sellerProfile'])->name('service-hub.seller.profile');
-Route::get('/service-hub/seller/{id}/reviews', [App\Http\Controllers\ServiceHubController::class, 'sellerReviews'])->name('service-hub.seller.reviews');
-Route::get('/service-hub/my-orders', [App\Http\Controllers\ServiceHubController::class, 'myOrders'])->name('service-hub.my-orders')->middleware(['auth', 'EnsureEmailIsVerified']);
-Route::get('/service-hub/seller-orders', [App\Http\Controllers\ServiceHubController::class, 'sellerOrders'])->name('service-hub.seller-orders')->middleware(['auth', 'EnsureEmailIsVerified']);
-Route::get('/service-hub/orders/{orderId}', [App\Http\Controllers\ServiceHubController::class, 'orderDetail'])->name('service-hub.order.detail')->middleware(['auth', 'EnsureEmailIsVerified']);
-Route::post('/service-hub/orders/{orderId}/deliver', [App\Http\Controllers\ServiceHubController::class, 'deliverOrder'])->name('service-hub.order.deliver')->middleware(['auth', 'EnsureEmailIsVerified']);
-Route::post('/service-hub/orders/{orderId}/accept-delivery', [App\Http\Controllers\ServiceHubController::class, 'acceptDelivery'])->name('service-hub.order.accept-delivery')->middleware(['auth', 'EnsureEmailIsVerified']);
-Route::post('/service-hub/orders/{orderId}/complete', [App\Http\Controllers\ServiceHubController::class, 'completeOrder'])->name('service-hub.order.complete')->middleware(['auth', 'EnsureEmailIsVerified']);
-Route::post('/service-hub/orders/{orderId}/approve', [App\Http\Controllers\ServiceHubController::class, 'approveOrder'])->name('service-hub.order.approve')->middleware(['auth', 'EnsureEmailIsVerified']);
-Route::post('/service-hub/orders/{orderId}/reject', [App\Http\Controllers\ServiceHubController::class, 'rejectOrder'])->name('service-hub.order.reject')->middleware(['auth', 'EnsureEmailIsVerified']);
-Route::post('/service-hub/{slug}/favorite', [App\Http\Controllers\ServiceHubController::class, 'toggleFavorite'])->name('service-hub.favorite')->middleware(['auth', 'EnsureEmailIsVerified']);
-Route::post('/service-hub/{slug}/reviews', [App\Http\Controllers\ServiceHubController::class, 'reviewsStore'])->name('service-hub.reviews.store')->middleware(['auth', 'EnsureEmailIsVerified']);
-Route::post('/service-hub/orders/{orderId}/seller-review', [App\Http\Controllers\ServiceHubController::class, 'sellerReviewStore'])->name('service-hub.order.seller-review')->middleware(['auth', 'EnsureEmailIsVerified']);
-Route::get('/service-hub/test-email', [App\Http\Controllers\ServiceHubController::class, 'testEmailNotifications'])->name('service-hub.test-email')->middleware(['auth', 'EnsureEmailIsVerified']);
-Route::get('/service-hub/{slug}/reviews', [App\Http\Controllers\ServiceHubController::class, 'reviews'])->name('service-hub.reviews');
-Route::get('/service-hub/{slug}', [App\Http\Controllers\ServiceHubController::class, 'show'])->name('service-hub.show');
+Route::post('/service-hub/checkout/create-session', [ServiceHubController::class, 'createCheckoutSession'])->name('service-hub.checkout.create-session')->middleware(['auth', 'EnsureEmailIsVerified']);
+Route::post('/service-hub/calculate-fees', [ServiceHubController::class, 'calculateFees'])->name('service-hub.calculate-fees')->middleware(['auth', 'EnsureEmailIsVerified']);
+Route::get('/service-hub/order/success', [ServiceHubController::class, 'orderSuccess'])->name('service-hub.order.success')->middleware(['auth', 'EnsureEmailIsVerified']);
+Route::get('/service-hub/seller/{id}', [ServiceHubController::class, 'sellerProfile'])->name('service-hub.seller.profile');
+Route::get('/service-hub/seller/{id}/reviews', [ServiceHubController::class, 'sellerReviews'])->name('service-hub.seller.reviews');
+Route::get('/service-hub/my-orders', [ServiceHubController::class, 'myOrders'])->name('service-hub.my-orders')->middleware(['auth', 'EnsureEmailIsVerified']);
+Route::get('/service-hub/seller-orders', [ServiceHubController::class, 'sellerOrders'])->name('service-hub.seller-orders')->middleware(['auth', 'EnsureEmailIsVerified']);
+Route::get('/service-hub/orders/{orderId}', [ServiceHubController::class, 'orderDetail'])->name('service-hub.order.detail')->middleware(['auth', 'EnsureEmailIsVerified']);
+Route::post('/service-hub/orders/{orderId}/deliver', [ServiceHubController::class, 'deliverOrder'])->name('service-hub.order.deliver')->middleware(['auth', 'EnsureEmailIsVerified']);
+Route::post('/service-hub/orders/{orderId}/accept-delivery', [ServiceHubController::class, 'acceptDelivery'])->name('service-hub.order.accept-delivery')->middleware(['auth', 'EnsureEmailIsVerified']);
+Route::post('/service-hub/orders/{orderId}/complete', [ServiceHubController::class, 'completeOrder'])->name('service-hub.order.complete')->middleware(['auth', 'EnsureEmailIsVerified']);
+Route::post('/service-hub/orders/{orderId}/approve', [ServiceHubController::class, 'approveOrder'])->name('service-hub.order.approve')->middleware(['auth', 'EnsureEmailIsVerified']);
+Route::post('/service-hub/orders/{orderId}/reject', [ServiceHubController::class, 'rejectOrder'])->name('service-hub.order.reject')->middleware(['auth', 'EnsureEmailIsVerified']);
+Route::post('/service-hub/{slug}/favorite', [ServiceHubController::class, 'toggleFavorite'])->name('service-hub.favorite')->middleware(['auth', 'EnsureEmailIsVerified']);
+Route::post('/service-hub/{slug}/reviews', [ServiceHubController::class, 'reviewsStore'])->name('service-hub.reviews.store')->middleware(['auth', 'EnsureEmailIsVerified']);
+Route::post('/service-hub/orders/{orderId}/seller-review', [ServiceHubController::class, 'sellerReviewStore'])->name('service-hub.order.seller-review')->middleware(['auth', 'EnsureEmailIsVerified']);
+Route::get('/service-hub/test-email', [ServiceHubController::class, 'testEmailNotifications'])->name('service-hub.test-email')->middleware(['auth', 'EnsureEmailIsVerified']);
+Route::get('/service-hub/{slug}/reviews', [ServiceHubController::class, 'reviews'])->name('service-hub.reviews');
+Route::get('/service-hub/{slug}', [ServiceHubController::class, 'show'])->name('service-hub.show');
 
 // Cancel order route
 Route::post('/service-hub/orders/{orderId}/cancel', [ServiceHubController::class, 'cancelOrder'])
@@ -462,66 +615,88 @@ Route::prefix('admin')->middleware(['auth', 'role:admin'])->group(function () {
 
 // Service Chat Routes
 Route::prefix('service-hub')->middleware(['auth', 'EnsureEmailIsVerified'])->name('service-hub.chat.')->group(function () {
-    Route::post('/{slug}/chat', [App\Http\Controllers\ServiceHubController::class, 'createOrGetServiceChat'])->name('create-or-get');
-    Route::get('/chat/{chatId}/messagesget', [App\Http\Controllers\ServiceHubController::class, 'getServiceChatMessages'])->name('messages');
-    Route::post('/chat/{chatId}/messages', [App\Http\Controllers\ServiceHubController::class, 'sendServiceChatMessage'])->name('send-message');
-    Route::get('/chats', [App\Http\Controllers\ServiceHubController::class, 'getServiceChats'])->name('list');
-    Route::get('/chats/unreadcountget', [App\Http\Controllers\ServiceHubController::class, 'getUnreadCount'])->name('unread-count');
-    Route::get('/chats/list', [App\Http\Controllers\ServiceHubController::class, 'chats'])->name('chats');
+    Route::post('/{slug}/chat', [ServiceHubController::class, 'createOrGetServiceChat'])->name('create-or-get');
+    Route::get('/chat/{chatId}/messagesget', [ServiceHubController::class, 'getServiceChatMessages'])->name('messages');
+    Route::post('/chat/{chatId}/messages', [ServiceHubController::class, 'sendServiceChatMessage'])->name('send-message');
+    Route::get('/chats', [ServiceHubController::class, 'getServiceChats'])->name('list');
+    Route::get('/chats/unreadcountget', [ServiceHubController::class, 'getUnreadCount'])->name('unread-count');
+    Route::get('/chats/list', [ServiceHubController::class, 'chats'])->name('chats');
 });
-Route::get('/service-hub/chat/{chatId}', [App\Http\Controllers\ServiceHubController::class, 'serviceChat'])->name('service-hub.chat.show')->middleware(['auth', 'EnsureEmailIsVerified']);
+Route::get('/service-hub/chat/{chatId}', [ServiceHubController::class, 'serviceChat'])->name('service-hub.chat.show')->middleware(['auth', 'EnsureEmailIsVerified']);
 
 // Cart routes (protected)
 // Believe Points Routes (organization_pending cannot access until onboarding complete)
 Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin|user|care_alliance'])->prefix('believe-points')->name('believe-points.')->group(function () {
-    Route::get('/', [App\Http\Controllers\BelievePointController::class, 'index'])->name('index');
-    Route::post('/purchase', [App\Http\Controllers\BelievePointController::class, 'purchase'])->name('purchase');
-    Route::get('/success', [App\Http\Controllers\BelievePointController::class, 'success'])->name('success');
-    Route::get('/cancel', [App\Http\Controllers\BelievePointController::class, 'cancel'])->name('cancel');
-    Route::get('/refunds', [App\Http\Controllers\BelievePointController::class, 'refunds'])->name('refunds');
-    Route::post('/refunds/{purchaseId}', [App\Http\Controllers\BelievePointController::class, 'refund'])->name('refund');
-    Route::post('/auto-replenish/settings', [App\Http\Controllers\BelievePointController::class, 'updateAutoReplenishSettings'])->name('auto-replenish.settings');
-    Route::get('/auto-replenish/setup', [App\Http\Controllers\BelievePointController::class, 'autoReplenishSetupPayment'])->name('auto-replenish.setup');
-    Route::get('/auto-replenish/setup-success', [App\Http\Controllers\BelievePointController::class, 'autoReplenishSetupSuccess'])->name('auto-replenish.setup-success');
-    Route::post('/auto-replenish/remove-payment', [App\Http\Controllers\BelievePointController::class, 'autoReplenishRemovePaymentMethod'])->name('auto-replenish.remove-payment');
+    Route::get('/', [BelievePointController::class, 'index'])->name('index');
+    Route::post('/purchase', [BelievePointController::class, 'purchase'])->name('purchase');
+    Route::get('/success', [BelievePointController::class, 'success'])->name('success');
+    Route::get('/cancel', [BelievePointController::class, 'cancel'])->name('cancel');
+    Route::get('/refunds', [BelievePointController::class, 'refunds'])->name('refunds');
+    Route::post('/refunds/{purchaseId}', [BelievePointController::class, 'refund'])->name('refund');
+    Route::post('/auto-replenish/settings', [BelievePointController::class, 'updateAutoReplenishSettings'])->name('auto-replenish.settings');
+    Route::get('/auto-replenish/setup', [BelievePointController::class, 'autoReplenishSetupPayment'])->name('auto-replenish.setup');
+    Route::get('/auto-replenish/setup-success', [BelievePointController::class, 'autoReplenishSetupSuccess'])->name('auto-replenish.setup-success');
+    Route::post('/auto-replenish/remove-payment', [BelievePointController::class, 'autoReplenishRemovePaymentMethod'])->name('auto-replenish.remove-payment');
+});
+
+Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin|user|care_alliance'])->group(function () {
+    Route::get('/brp-campaigns', [\App\Http\Controllers\BrpCampaignBrowserController::class, 'index'])
+        ->name('frontend.brp-campaigns.index');
+    Route::get('/feedback-campaigns', [\App\Http\Controllers\FeedbackCampaignBrowserController::class, 'index'])
+        ->name('feedback-campaigns.index');
+    Route::get('/feedback/{uuid}', [\App\Http\Controllers\SupporterFeedbackController::class, 'show'])
+        ->name('feedback-campaigns.show');
+    Route::post('/feedback/{uuid}', [\App\Http\Controllers\SupporterFeedbackController::class, 'submit'])
+        ->name('feedback-campaigns.submit');
+        
+    // Dashboard Unity Loaves
+    Route::prefix('dashboard/unity-loaves')->name('dashboard.unity-loaves.')->group(function () {
+        Route::get('/', [\App\Http\Controllers\DashboardUnityLoavesController::class, 'index'])->name('index');
+        Route::get('/create', [\App\Http\Controllers\DashboardUnityLoavesController::class, 'create'])->name('create');
+        Route::post('/', [\App\Http\Controllers\DashboardUnityLoavesController::class, 'store'])->name('store');
+        Route::get('/{unityLoaf}/edit', [\App\Http\Controllers\DashboardUnityLoavesController::class, 'edit'])->name('edit');
+        Route::put('/{unityLoaf}', [\App\Http\Controllers\DashboardUnityLoavesController::class, 'update'])->name('update');
+        Route::delete('/{unityLoaf}', [\App\Http\Controllers\DashboardUnityLoavesController::class, 'destroy'])->name('destroy');
+    });
 });
 
 // Merchant Hub Routes (Public - for viewing offers)
 Route::prefix('merchant-hub')->name('merchant-hub.')->group(function () {
-    Route::get('/', [App\Http\Controllers\MerchantHubOfferController::class, 'index'])->name('index');
+    Route::get('/', [MerchantHubOfferController::class, 'index'])->name('index');
     // SEO-friendly referral: /merchant-hub/offers/8/ref/ABC123 — stores ref in session, redirects to offer
-    Route::get('/offers/{id}/ref/{refCode}', [App\Http\Controllers\MerchantRedemptionController::class, 'offerRefRedirect'])->name('offer.show.ref');
-    Route::get('/offers/{id}', [App\Http\Controllers\MerchantHubOfferController::class, 'show'])->name('offer.show');
-    Route::get('/products/{marketplace_product}', [App\Http\Controllers\MerchantHubMarketplaceProductController::class, 'show'])->name('product.show');
+    Route::get('/offers/{id}/ref/{refCode}', [MerchantRedemptionController::class, 'offerRefRedirect'])->name('offer.show.ref');
+    Route::get('/offers/{id}', [MerchantHubOfferController::class, 'show'])->name('offer.show');
+    Route::get('/products/{marketplace_product}', [MerchantHubMarketplaceProductController::class, 'show'])->name('product.show');
 });
 
 // Merchant Hub Redemption Routes (Requires auth)
 Route::middleware(['auth', 'EnsureEmailIsVerified'])->prefix('merchant-hub')->name('merchant-hub.')->group(function () {
-    Route::get('/my-purchases', [App\Http\Controllers\MerchantRedemptionController::class, 'myPurchases'])->name('my-purchases');
-    Route::get('/offers/{id}/checkout', [App\Http\Controllers\MerchantRedemptionController::class, 'checkoutShow'])->name('offer.checkout');
-    Route::post('/checkout', [App\Http\Controllers\MerchantRedemptionController::class, 'checkoutStore'])->name('checkout.store');
-    Route::post('/redeem', [App\Http\Controllers\MerchantRedemptionController::class, 'redeem'])->name('redeem');
-    Route::get('/redemption/stripe-success', [App\Http\Controllers\MerchantRedemptionController::class, 'stripeSuccess'])->name('redemption.stripe-success');
-    Route::get('/redemption/confirmed/{code?}', [App\Http\Controllers\MerchantRedemptionController::class, 'confirmed'])->name('redemption.confirmed');
-    Route::get('/redemption/verify/{code}', [App\Http\Controllers\MerchantRedemptionController::class, 'verify'])->name('redemption.verify');
+    Route::get('/my-purchases', [MerchantRedemptionController::class, 'myPurchases'])->name('my-purchases');
+    Route::get('/offers/{id}/checkout', [MerchantRedemptionController::class, 'checkoutShow'])->name('offer.checkout');
+    Route::post('/checkout/rates', [MerchantRedemptionController::class, 'checkoutRates'])->name('checkout.rates');
+    Route::post('/checkout', [MerchantRedemptionController::class, 'checkoutStore'])->name('checkout.store');
+    Route::post('/redeem', [MerchantRedemptionController::class, 'redeem'])->name('redeem');
+    Route::get('/redemption/stripe-success', [MerchantRedemptionController::class, 'stripeSuccess'])->name('redemption.stripe-success');
+    Route::get('/redemption/confirmed/{code?}', [MerchantRedemptionController::class, 'confirmed'])->name('redemption.confirmed');
+    Route::get('/redemption/verify/{code}', [MerchantRedemptionController::class, 'verify'])->name('redemption.verify');
 });
 
 // Merchant QR verification route (requires merchant auth)
 Route::middleware(['auth:merchant'])->prefix('merchant-hub')->name('merchant-hub.')->group(function () {
-    Route::post('/redemption/verify-from-qr', [App\Http\Controllers\MerchantRedemptionController::class, 'verifyFromQr'])->name('redemption.verify-from-qr');
+    Route::post('/redemption/verify-from-qr', [MerchantRedemptionController::class, 'verifyFromQr'])->name('redemption.verify-from-qr');
 });
 
 // Merchant verification route (requires merchant auth for approval)
 Route::middleware(['auth:merchant'])->prefix('merchant-hub')->name('merchant-hub.')->group(function () {
-    Route::post('/redemption/{code}/mark-used', [App\Http\Controllers\MerchantRedemptionController::class, 'markAsUsed'])->name('redemption.mark-used');
-    Route::post('/redemption/{code}/cancel', [App\Http\Controllers\MerchantRedemptionController::class, 'cancelRedemption'])->name('redemption.cancel');
+    Route::post('/redemption/{code}/mark-used', [MerchantRedemptionController::class, 'markAsUsed'])->name('redemption.mark-used');
+    Route::post('/redemption/{code}/cancel', [MerchantRedemptionController::class, 'cancelRedemption'])->name('redemption.cancel');
 });
 
 // Public QR code route (no auth required - code in URL is sufficient security)
-Route::get('/merchant-hub/redemption/qr-code/{code}', [App\Http\Controllers\MerchantRedemptionController::class, 'generateQrCode'])->name('merchant-hub.redemption.qr-code');
+Route::get('/merchant-hub/redemption/qr-code/{code}', [MerchantRedemptionController::class, 'generateQrCode'])->name('merchant-hub.redemption.qr-code');
 
 // Public verification page route (for merchants scanning QR codes)
-Route::get('/merchant-hub/redemption/verify/{code}', [App\Http\Controllers\MerchantRedemptionController::class, 'verifyPage'])->name('merchant-hub.redemption.verify-page');
+Route::get('/merchant-hub/redemption/verify/{code}', [MerchantRedemptionController::class, 'verifyPage'])->name('merchant-hub.redemption.verify-page');
 
 // Merchant Program Routes
 Route::middleware(['auth', 'EnsureEmailIsVerified'])->prefix('merchant')->name('merchant.')->group(function () {
@@ -544,18 +719,14 @@ Route::middleware(['auth', 'EnsureEmailIsVerified'])->prefix('merchant')->name('
     })->name('offers.show');
 
     // Redemption routes
-    Route::post('/redeem', [App\Http\Controllers\MerchantRedemptionController::class, 'redeem'])->name('redeem');
-    Route::get('/redemption-confirmed/{code?}', [App\Http\Controllers\MerchantRedemptionController::class, 'confirmed'])->name('redemption.confirmed');
-    Route::get('/redemption/qr-code/{code}', [App\Http\Controllers\MerchantRedemptionController::class, 'generateQrCode'])->name('redemption.qr-code');
-    Route::get('/redemption/verify/{code}', [App\Http\Controllers\MerchantRedemptionController::class, 'verify'])->name('redemption.verify');
+    Route::post('/redeem', [MerchantRedemptionController::class, 'redeem'])->name('redeem');
+    Route::get('/redemption-confirmed/{code?}', [MerchantRedemptionController::class, 'confirmed'])->name('redemption.confirmed');
+    Route::get('/redemption/qr-code/{code}', [MerchantRedemptionController::class, 'generateQrCode'])->name('redemption.qr-code');
+    Route::get('/redemption/verify/{code}', [MerchantRedemptionController::class, 'verify'])->name('redemption.verify');
 
     Route::get('/qr-code', function () {
         return Inertia::render('merchant/QRCode');
     })->name('qr-code');
-
-    Route::get('/dashboard', function () {
-        return Inertia::render('merchant/Dashboard');
-    })->name('dashboard');
 });
 
 Route::middleware(['auth', 'EnsureEmailIsVerified'])->group(function () {
@@ -592,14 +763,14 @@ Route::middleware(['auth', 'EnsureEmailIsVerified'])->group(function () {
 });
 
 /* fractional ownership */
-Route::get('/fractional', [\App\Http\Controllers\FractionalOwnershipController::class, 'index'])->name('fractional.index');
-Route::get('/fractional/{offering}', [\App\Http\Controllers\FractionalOwnershipController::class, 'show'])->name('fractional.show');
-Route::post('/fractional/{offering}/purchase', [\App\Http\Controllers\FractionalOwnershipController::class, 'purchase'])->middleware('auth')->name('fractional.purchase');
-Route::get('/fractional/purchase/success', [\App\Http\Controllers\FractionalOwnershipController::class, 'purchaseSuccess'])->middleware('auth')->name('fractional.purchase.success');
-Route::get('/fractional/purchase/cancel', [\App\Http\Controllers\FractionalOwnershipController::class, 'purchaseCancel'])->middleware('auth')->name('fractional.purchase.cancel');
-Route::get('/fractional/certificate/{order}', [\App\Http\Controllers\FractionalCertificateController::class, 'show'])->middleware('auth')->name('fractional.certificate.show');
-Route::get('/fractional/certificate/{order}/download', [\App\Http\Controllers\FractionalCertificateController::class, 'download'])->middleware('auth')->name('fractional.certificate.download');
-Route::get('/fractional/certificate/{order}/download-pdf', [\App\Http\Controllers\FractionalCertificateController::class, 'downloadPdf'])->middleware('auth')->name('fractional.certificate.download-pdf');
+Route::get('/fractional', [FractionalOwnershipController::class, 'index'])->name('fractional.index');
+Route::get('/fractional/{offering}', [FractionalOwnershipController::class, 'show'])->name('fractional.show');
+Route::post('/fractional/{offering}/purchase', [FractionalOwnershipController::class, 'purchase'])->middleware('auth')->name('fractional.purchase');
+Route::get('/fractional/purchase/success', [FractionalOwnershipController::class, 'purchaseSuccess'])->middleware('auth')->name('fractional.purchase.success');
+Route::get('/fractional/purchase/cancel', [FractionalOwnershipController::class, 'purchaseCancel'])->middleware('auth')->name('fractional.purchase.cancel');
+Route::get('/fractional/certificate/{order}', [FractionalCertificateController::class, 'show'])->middleware('auth')->name('fractional.certificate.show');
+Route::get('/fractional/certificate/{order}/download', [FractionalCertificateController::class, 'download'])->middleware('auth')->name('fractional.certificate.download');
+Route::get('/fractional/certificate/{order}/download-pdf', [FractionalCertificateController::class, 'downloadPdf'])->middleware('auth')->name('fractional.certificate.download-pdf');
 
 /* events */
 Route::get('/all-events', [EventController::class, 'alleventsPage'])->name('alleventsPage');
@@ -632,9 +803,20 @@ Route::get('/organizations/{slug}/details', [OrganizationController::class, 'det
 Route::get('/organizations/{slug}/contact', [OrganizationController::class, 'contact'])->name('organizations.contact');
 
 // Public livestream guest join (no auth) — registered first so /livestreams/join/{roomName} is not matched by /livestreams/{id}
-Route::get('/livestreams/join/{roomName}', [\App\Http\Controllers\Organization\LivestreamController::class, 'guestJoin'])
-    ->where('roomName', '[a-zA-Z0-9_]+')
+Route::get('/livestreams/join/{roomName}', [LivestreamController::class, 'guestJoin'])
+    ->where('roomName', '[a-zA-Z0-9_-]+')
     ->name('livestreams.guest-join');
+
+// Hidden participant canvas mixer (MVP). Public, room-name addressed like guest join.
+// Opened in a browser; WHEP-subscribes the 6 seat paths, composites a 3x2 grid,
+// and WHIP-publishes the combined stream to the path the worker already pulls.
+Route::get('/livestreams/canvas/{roomName}', [\App\Http\Controllers\LivestreamCanvasController::class, 'show'])
+    ->where('roomName', '[a-zA-Z0-9_-]+')
+    ->name('livestreams.canvas');
+
+Route::post('/livestreams/recording-decline', [LivestreamRecordingDeclineController::class, 'store'])
+    ->middleware('throttle:30,1')
+    ->name('livestreams.recording-decline.store');
 
 // API route for inviting unregistered organizations (requires auth)
 Route::middleware(['auth', 'web'])->post('/api/organizations/invite', [OrganizationController::class, 'inviteOrganization'])->name('api.organizations.invite');
@@ -648,6 +830,28 @@ Route::get('/api/cities-by-state', [OrganizationController::class, 'getCitiesByS
 Route::middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected'])->group(function () {
     Route::get('/profile/donations', [UserProfileController::class, 'donations'])->name('profile.donations');
 });
+
+// BIU AI Media Studio — nonprofits + supporters (OpenAI → fal.ai → Dropbox; work runs on the queue worker).
+Route::middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected', 'permission:ai.media.read', 'role:user|organization|organization_pending|care_alliance|admin'])
+    ->prefix('ai-media-studio')
+    ->name('ai-media-studio.')
+    ->group(function () {
+        Route::get('/', [AiMediaStudioController::class, 'index'])->name('index');
+        Route::get('/create', [AiMediaStudioController::class, 'create'])->middleware('permission:ai.media.create')->name('create');
+        Route::post('/', [AiMediaStudioController::class, 'store'])->middleware('permission:ai.media.create')->name('store');
+        Route::get('/{ai_video}/download', [AiMediaStudioController::class, 'download'])->name('download');
+        Route::get('/{ai_video}', [AiMediaStudioController::class, 'show'])->name('show');
+    });
+
+// Credit purchases — wallet credits + AI Media Studio packs (supporters + organizations).
+Route::middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected', 'role:user|organization|organization_pending|care_alliance|admin'])
+    ->group(function () {
+        Route::get('/credits/purchase', [CreditPurchaseController::class, 'index'])->name('credits.purchase');
+        Route::post('/credits/checkout', [CreditPurchaseController::class, 'checkout'])->name('credits.checkout');
+        Route::post('/credits/pay-believe-points', [CreditPurchaseController::class, 'payWithBelievePoints'])->name('credits.pay-believe-points');
+        Route::get('/credits/success', [CreditPurchaseController::class, 'success'])->name('credits.success');
+        Route::get('/credits/cancel', [CreditPurchaseController::class, 'cancel'])->name('credits.cancel');
+    });
 
 // Profile routes
 Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:user'])->name('user.')->group(function () {
@@ -676,9 +880,9 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:user'])->name('user.')
     Route::get('/profile/transactions', [TransactionController::class, 'index'])->name('profile.transactions');
     Route::get('/profile/billing', [UserProfileController::class, 'billing'])->name('profile.billing');
     Route::get('/profile/timesheet', [UserProfileController::class, 'timesheet'])->name('profile.timesheet');
-    Route::get('/profile/impact-score', [\App\Http\Controllers\ImpactScoreController::class, 'show'])->name('profile.impact-score');
-    Route::get('/api/impact-score', [\App\Http\Controllers\ImpactScoreController::class, 'index'])->name('api.impact-score');
-    Route::get('/profile/fractional-ownership', [\App\Http\Controllers\FractionalOwnershipController::class, 'myPurchases'])->name('profile.fractional-ownership');
+    Route::get('/profile/impact-score', [ImpactScoreController::class, 'show'])->name('profile.impact-score');
+    Route::get('/api/impact-score', [ImpactScoreController::class, 'index'])->name('api.impact-score');
+    Route::get('/profile/fractional-ownership', [FractionalOwnershipController::class, 'myPurchases'])->name('profile.fractional-ownership');
     Route::get('nodeboss/shares', [NodeShareController::class, 'index'])->name('nodeboss.sahres');
 
     Route::post('/organizations/{orgId}/save-positions-follow', [OrganizationController::class, 'savePositionsAndFollow'])
@@ -731,7 +935,9 @@ Route::prefix('chat')->middleware(['auth', 'EnsureEmailIsVerified', 'topics.sele
 // Wallet Routes
 Route::prefix('wallet')->middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected', 'care_alliance.wallet'])->name('wallet.')->group(function () {
     Route::post('/connect', [WalletController::class, 'connect'])->name('connect');
-    Route::get('/balance', [WalletController::class, 'getBalance'])->name('balance');
+    Route::get('/balance', [WalletController::class, 'getBalance'])
+        ->middleware('throttle:wallet-balance')
+        ->name('balance');
     Route::get('/status', [WalletController::class, 'status'])->name('status');
     Route::get('/activity', [WalletController::class, 'getActivity'])->name('activity');
     Route::get('/activity/all', [WalletController::class, 'getAllActivity'])->name('activity.all');
@@ -741,44 +947,44 @@ Route::prefix('wallet')->middleware(['auth', 'EnsureEmailIsVerified', 'topics.se
     Route::post('/disconnect', [WalletController::class, 'disconnect'])->name('disconnect');
 
     // Bridge Wallet Routes
-    Route::post('/bridge/initialize', [App\Http\Controllers\BridgeWalletController::class, 'initializeBridge'])->name('bridge.initialize');
-    Route::post('/bridge/create-wallet', [App\Http\Controllers\BridgeWalletController::class, 'createWalletAfterKYC'])->name('bridge.create-wallet');
-    Route::get('/bridge/status', [App\Http\Controllers\BridgeWalletController::class, 'checkBridgeStatus'])->name('bridge.status');
-    Route::get('/bridge/balance', [App\Http\Controllers\BridgeWalletController::class, 'getBridgeBalance'])->name('bridge.balance');
-    Route::post('/bridge/kyc-link', [App\Http\Controllers\BridgeWalletController::class, 'createKYCLink'])->name('bridge.kyc-link');
-    Route::post('/bridge/deposit', [App\Http\Controllers\BridgeWalletController::class, 'deposit'])->name('bridge.deposit');
-    Route::post('/bridge/send', [App\Http\Controllers\BridgeWalletController::class, 'send'])->name('bridge.send');
+    Route::post('/bridge/initialize', [BridgeWalletController::class, 'initializeBridge'])->name('bridge.initialize');
+    Route::post('/bridge/create-wallet', [BridgeWalletController::class, 'createWalletAfterKYC'])->name('bridge.create-wallet');
+    Route::get('/bridge/status', [BridgeWalletController::class, 'checkBridgeStatus'])->name('bridge.status');
+    Route::get('/bridge/balance', [BridgeWalletController::class, 'getBridgeBalance'])->name('bridge.balance');
+    Route::post('/bridge/kyc-link', [BridgeWalletController::class, 'createKYCLink'])->name('bridge.kyc-link');
+    Route::post('/bridge/deposit', [BridgeWalletController::class, 'deposit'])->name('bridge.deposit');
+    Route::post('/bridge/send', [BridgeWalletController::class, 'send'])->name('bridge.send');
 
     // Custom KYC Routes
-    Route::get('/bridge/tos-link', [App\Http\Controllers\BridgeWalletController::class, 'getTosLink'])->name('bridge.tos-link');
-    Route::get('/bridge/tos-status', [App\Http\Controllers\BridgeWalletController::class, 'checkTosStatus'])->name('bridge.tos-status');
-    Route::post('/bridge/sync-tos-status', [App\Http\Controllers\BridgeWalletController::class, 'syncTosStatus'])->name('bridge.sync-tos-status');
-    Route::post('/bridge/create-customer-kyc', [App\Http\Controllers\BridgeWalletController::class, 'createCustomerWithKyc'])->name('bridge.create-customer-kyc');
-    Route::post('/bridge/control-person-kyc-link', [App\Http\Controllers\BridgeWalletController::class, 'getControlPersonKycLink'])->name('bridge.control-person-kyc-link');
-    Route::get('/bridge/business-details', [App\Http\Controllers\BridgeWalletController::class, 'getBusinessDetails'])->name('bridge.business-details');
+    Route::get('/bridge/tos-link', [BridgeWalletController::class, 'getTosLink'])->name('bridge.tos-link');
+    Route::get('/bridge/tos-status', [BridgeWalletController::class, 'checkTosStatus'])->name('bridge.tos-status');
+    Route::post('/bridge/sync-tos-status', [BridgeWalletController::class, 'syncTosStatus'])->name('bridge.sync-tos-status');
+    Route::post('/bridge/create-customer-kyc', [BridgeWalletController::class, 'createCustomerWithKyc'])->name('bridge.create-customer-kyc');
+    Route::post('/bridge/control-person-kyc-link', [BridgeWalletController::class, 'getControlPersonKycLink'])->name('bridge.control-person-kyc-link');
+    Route::get('/bridge/business-details', [BridgeWalletController::class, 'getBusinessDetails'])->name('bridge.business-details');
 
     // Bridge Virtual Account & External Account Routes (for USD top-up)
-    Route::post('/bridge/virtual-account', [App\Http\Controllers\BridgeWalletController::class, 'createVirtualAccountForWallet'])->name('bridge.virtual-account.create');
-    Route::get('/bridge/virtual-accounts', [App\Http\Controllers\BridgeWalletController::class, 'getVirtualAccounts'])->name('bridge.virtual-accounts');
-    Route::post('/bridge/external-account', [App\Http\Controllers\BridgeWalletController::class, 'createExternalAccount'])->name('bridge.external-account.create');
-    Route::get('/bridge/external-accounts', [App\Http\Controllers\BridgeWalletController::class, 'getExternalAccounts'])->name('bridge.external-accounts');
-    Route::post('/bridge/transfer-from-external', [App\Http\Controllers\BridgeWalletController::class, 'createTransferFromExternalAccount'])->name('bridge.transfer-from-external');
-    Route::post('/bridge/transfer-to-external', [App\Http\Controllers\BridgeWalletController::class, 'createTransferToExternalAccount'])->name('bridge.transfer-to-external');
-    Route::get('/bridge/deposit-instructions', [App\Http\Controllers\BridgeWalletController::class, 'getDepositInstructions'])->name('bridge.deposit-instructions');
-    Route::get('/bridge/deposit-qr-code', [App\Http\Controllers\BridgeWalletController::class, 'getDepositQrCode'])->name('bridge.deposit-qr-code');
+    Route::post('/bridge/virtual-account', [BridgeWalletController::class, 'createVirtualAccountForWallet'])->name('bridge.virtual-account.create');
+    Route::get('/bridge/virtual-accounts', [BridgeWalletController::class, 'getVirtualAccounts'])->name('bridge.virtual-accounts');
+    Route::post('/bridge/external-account', [BridgeWalletController::class, 'createExternalAccount'])->name('bridge.external-account.create');
+    Route::get('/bridge/external-accounts', [BridgeWalletController::class, 'getExternalAccounts'])->name('bridge.external-accounts');
+    Route::post('/bridge/transfer-from-external', [BridgeWalletController::class, 'createTransferFromExternalAccount'])->name('bridge.transfer-from-external');
+    Route::post('/bridge/transfer-to-external', [BridgeWalletController::class, 'createTransferToExternalAccount'])->name('bridge.transfer-to-external');
+    Route::get('/bridge/deposit-instructions', [BridgeWalletController::class, 'getDepositInstructions'])->name('bridge.deposit-instructions');
+    Route::get('/bridge/deposit-qr-code', [BridgeWalletController::class, 'getDepositQrCode'])->name('bridge.deposit-qr-code');
 
     // Card Account Routes
-    Route::get('/bridge/card-account', [App\Http\Controllers\BridgeWalletController::class, 'getCardAccount'])->name('bridge.card-account.get');
-    Route::post('/bridge/card-account', [App\Http\Controllers\BridgeWalletController::class, 'createCardAccount'])->name('bridge.card-account.create');
+    Route::get('/bridge/card-account', [BridgeWalletController::class, 'getCardAccount'])->name('bridge.card-account.get');
+    Route::post('/bridge/card-account', [BridgeWalletController::class, 'createCardAccount'])->name('bridge.card-account.create');
 
     // Liquidation Address Routes (for crypto deposits)
-    Route::post('/bridge/liquidation-address', [App\Http\Controllers\BridgeWalletController::class, 'createLiquidationAddress'])->name('bridge.liquidation-address.create');
-    Route::get('/bridge/liquidation-addresses', [App\Http\Controllers\BridgeWalletController::class, 'getLiquidationAddresses'])->name('bridge.liquidation-addresses');
-    Route::get('/bridge/liquidation-address-qr-code', [App\Http\Controllers\BridgeWalletController::class, 'getLiquidationAddressQrCode'])->name('bridge.liquidation-address-qr-code');
+    Route::post('/bridge/liquidation-address', [BridgeWalletController::class, 'createLiquidationAddress'])->name('bridge.liquidation-address.create');
+    Route::get('/bridge/liquidation-addresses', [BridgeWalletController::class, 'getLiquidationAddresses'])->name('bridge.liquidation-addresses');
+    Route::get('/bridge/liquidation-address-qr-code', [BridgeWalletController::class, 'getLiquidationAddressQrCode'])->name('bridge.liquidation-address-qr-code');
 
     // Bridge Webhook Routes
-    Route::get('/bridge/webhooks/{webhookId}/events', [App\Http\Controllers\BridgeWalletController::class, 'getWebhookEvents'])->name('bridge.webhooks.events');
-    Route::get('/bridge/webhooks/{webhookId}/events/{eventId}', [App\Http\Controllers\BridgeWalletController::class, 'getWebhookEvent'])->name('bridge.webhooks.event');
+    Route::get('/bridge/webhooks/{webhookId}/events', [BridgeWalletController::class, 'getWebhookEvents'])->name('bridge.webhooks.events');
+    Route::get('/bridge/webhooks/{webhookId}/events/{eventId}', [BridgeWalletController::class, 'getWebhookEvent'])->name('bridge.webhooks.event');
 
     // User Rewards Routes
     Route::get('/rewards/balance', [WalletController::class, 'getRewardBalance'])->name('rewards.balance');
@@ -793,19 +999,19 @@ Route::prefix('wallet')->middleware(['auth', 'EnsureEmailIsVerified', 'topics.se
 // Route::get('/ai-chat/context', [AiChatController::class, 'getContext'])->name('ai-chat.context');
 
 // KYC/KYB Callback Routes (after verification completion - no auth required for redirect)
-Route::get('/wallet/kyc-callback', [App\Http\Controllers\BridgeWalletController::class, 'kycCallback'])->name('bridge.kyc-callback');
-Route::get('/wallet/kyb-callback', [App\Http\Controllers\BridgeWalletController::class, 'kybCallback'])->name('bridge.kyb-callback');
+Route::get('/wallet/kyc-callback', [BridgeWalletController::class, 'kycCallback'])->name('bridge.kyc-callback');
+Route::get('/wallet/kyb-callback', [BridgeWalletController::class, 'kybCallback'])->name('bridge.kyb-callback');
 // TOS callback - GET doesn't require auth (Bridge redirect), POST requires auth (from frontend)
-Route::get('/wallet/tos-callback', [App\Http\Controllers\BridgeWalletController::class, 'tosCallback'])->name('bridge.tos-callback');
-Route::post('/wallet/tos-callback', [App\Http\Controllers\BridgeWalletController::class, 'tosCallback'])->middleware('auth')->name('bridge.tos-callback.post');
+Route::get('/wallet/tos-callback', [BridgeWalletController::class, 'tosCallback'])->name('bridge.tos-callback');
+Route::post('/wallet/tos-callback', [BridgeWalletController::class, 'tosCallback'])->middleware('auth')->name('bridge.tos-callback.post');
 
 // Raffle Payment Routes (must come before admin routes to avoid conflicts)
 // Stop impersonation route (must be accessible to any authenticated user, including impersonated users)
 Route::post('/users/stop-impersonate', [RolePermissionController::class, 'stopImpersonate'])->middleware(['auth'])->name('users.stop-impersonate');
 
 Route::middleware(['web', 'auth', 'EnsureEmailIsVerified'])->group(function () {
-    Route::get('/raffles/success', [App\Http\Controllers\RaffleController::class, 'success'])->name('raffles.success');
-    Route::get('/raffles/cancel', [App\Http\Controllers\RaffleController::class, 'cancel'])->name('raffles.cancel');
+    Route::get('/raffles/success', [RaffleController::class, 'success'])->name('raffles.success');
+    Route::get('/raffles/cancel', [RaffleController::class, 'cancel'])->name('raffles.cancel');
 });
 
 // Route::prefix('excel-data')->name('excel-data.')->middleware(['auth', 'EnsureEmailIsVerified', 'role:admin', 'topics.selected'])->group(function () {
@@ -878,29 +1084,30 @@ Route::prefix('admin/fractional')
     ->name('admin.fractional.')
     ->group(function () {
         // Assets routes
-        Route::get('/assets', [\App\Http\Controllers\Admin\FractionalAssetController::class, 'index'])->name('assets.index');
-        Route::get('/assets/create', [\App\Http\Controllers\Admin\FractionalAssetController::class, 'create'])->name('assets.create');
-        Route::post('/assets', [\App\Http\Controllers\Admin\FractionalAssetController::class, 'store'])->name('assets.store');
-        Route::get('/assets/{asset}/edit', [\App\Http\Controllers\Admin\FractionalAssetController::class, 'edit'])->name('assets.edit');
-        Route::put('/assets/{asset}', [\App\Http\Controllers\Admin\FractionalAssetController::class, 'update'])->name('assets.update');
-        Route::delete('/assets/{asset}', [\App\Http\Controllers\Admin\FractionalAssetController::class, 'destroy'])->name('assets.destroy');
+        Route::get('/assets', [FractionalAssetController::class, 'index'])->name('assets.index');
+        Route::get('/assets/create', [FractionalAssetController::class, 'create'])->name('assets.create');
+        Route::post('/assets', [FractionalAssetController::class, 'store'])->name('assets.store');
+        Route::get('/assets/{asset}/edit', [FractionalAssetController::class, 'edit'])->name('assets.edit');
+        Route::put('/assets/{asset}', [FractionalAssetController::class, 'update'])->name('assets.update');
+        Route::delete('/assets/{asset}', [FractionalAssetController::class, 'destroy'])->name('assets.destroy');
 
         // Offerings routes
-        Route::get('/offerings', [\App\Http\Controllers\Admin\FractionalOfferingController::class, 'index'])->name('offerings.index');
-        Route::get('/offerings/create', [\App\Http\Controllers\Admin\FractionalOfferingController::class, 'create'])->name('offerings.create');
-        Route::post('/offerings', [\App\Http\Controllers\Admin\FractionalOfferingController::class, 'store'])->name('offerings.store');
-        Route::get('/offerings/{offering}', [\App\Http\Controllers\Admin\FractionalOfferingController::class, 'show'])->name('offerings.show');
-        Route::get('/offerings/{offering}/edit', [\App\Http\Controllers\Admin\FractionalOfferingController::class, 'edit'])->name('offerings.edit');
-        Route::put('/offerings/{offering}', [\App\Http\Controllers\Admin\FractionalOfferingController::class, 'update'])->name('offerings.update');
-        Route::delete('/offerings/{offering}', [\App\Http\Controllers\Admin\FractionalOfferingController::class, 'destroy'])->name('offerings.destroy');
+        Route::get('/offerings', [FractionalOfferingController::class, 'index'])->name('offerings.index');
+        Route::get('/offerings/create', [FractionalOfferingController::class, 'create'])->name('offerings.create');
+        Route::post('/offerings', [FractionalOfferingController::class, 'store'])->name('offerings.store');
+        Route::get('/offerings/{offering}', [FractionalOfferingController::class, 'show'])->name('offerings.show');
+        Route::get('/offerings/{offering}/edit', [FractionalOfferingController::class, 'edit'])->name('offerings.edit');
+        Route::put('/offerings/{offering}', [FractionalOfferingController::class, 'update'])->name('offerings.update');
+        Route::delete('/offerings/{offering}', [FractionalOfferingController::class, 'destroy'])->name('offerings.destroy');
 
         // Orders routes
-        Route::get('/orders', [\App\Http\Controllers\Admin\FractionalOrderController::class, 'index'])->name('orders.index');
-        Route::get('/orders/{order}', [\App\Http\Controllers\Admin\FractionalOrderController::class, 'show'])->name('orders.show');
+        Route::get('/orders', [FractionalOrderController::class, 'index'])->name('orders.index');
+        Route::get('/orders/{order}', [FractionalOrderController::class, 'show'])->name('orders.show');
     });
 
 Route::middleware(['auth', 'EnsureEmailIsVerified'])->group(function () {
-    Route::get('/notifications', [NotificationController::class, 'index']);
+    Route::get('/notifications/api', [NotificationController::class, 'apiIndex'])->name('notifications.api');
+    Route::get('/notifications', [NotificationController::class, 'inbox'])->name('notifications.index');
     Route::post('/notifications/{notification}/read', [NotificationController::class, 'markAsRead']);
     Route::post('/notifications/mark-all-read', [NotificationController::class, 'markAllAsRead']);
     Route::post('/notifications/clear-all', [NotificationController::class, 'clearAll']);
@@ -950,12 +1157,6 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|care_alli
     Route::put('/ai-chat/conversations/{id}', [AiChatController::class, 'updateConversation'])->name('ai-chat.update-conversation');
     Route::delete('/ai-chat/conversations/{id}', [AiChatController::class, 'deleteConversation'])->name('ai-chat.delete-conversation');
 
-    // Credit Purchase Routes
-    Route::get('/credits/purchase', [CreditPurchaseController::class, 'index'])->name('credits.purchase');
-    Route::post('/credits/checkout', [CreditPurchaseController::class, 'checkout'])->name('credits.checkout');
-    Route::get('/credits/success', [CreditPurchaseController::class, 'success'])->name('credits.success');
-    Route::get('/credits/cancel', [CreditPurchaseController::class, 'cancel'])->name('credits.cancel');
-
     // Organization routes follwers
     Route::prefix('organization')->group(function () {
         Route::get('/followers', [FollowerController::class, 'index'])
@@ -985,12 +1186,45 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|care_alli
             [FollowerController::class, 'bulkDestroy']
         )
             ->name('organization.followers.bulk-destroy');
+
+        // Kiosk directory listings (org-scoped rows in `kiosk_providers`)
+        Route::get('/kiosk-providers', [OrganizationKioskProviderController::class, 'index'])
+            ->name('organization.kiosk-providers.index');
+        Route::get('/kiosk-providers/create', [OrganizationKioskProviderController::class, 'create'])
+            ->name('organization.kiosk-providers.create');
+        Route::post('/kiosk-providers', [OrganizationKioskProviderController::class, 'store'])
+            ->name('organization.kiosk-providers.store');
+        Route::get('/kiosk-providers/{kioskProvider}/edit', [OrganizationKioskProviderController::class, 'edit'])
+            ->name('organization.kiosk-providers.edit');
+        Route::put('/kiosk-providers/{kioskProvider}', [OrganizationKioskProviderController::class, 'update'])
+            ->name('organization.kiosk-providers.update');
+        Route::get('/kiosk-providers/{kioskProvider}', [OrganizationKioskProviderController::class, 'show'])
+            ->name('organization.kiosk-providers.show');
+        Route::delete('/kiosk-providers/{kioskProvider}', [OrganizationKioskProviderController::class, 'destroy'])
+            ->name('organization.kiosk-providers.destroy');
     });
 
     Route::prefix('marketplace/product-pool')->name('marketplace.product-pool.')->group(function () {
-        Route::get('/', [\App\Http\Controllers\Organization\MarketplaceProductPoolController::class, 'index'])->name('index');
-        Route::post('/adopt', [\App\Http\Controllers\Organization\MarketplaceProductPoolController::class, 'store'])->name('adopt');
+        Route::get('/', [MarketplaceProductPoolController::class, 'index'])->name('index');
+        Route::post('/adopt', [MarketplaceProductPoolController::class, 'store'])->name('adopt');
+        Route::patch('/listing/{organization_product}', [MarketplaceProductPoolController::class, 'updateListing'])->name('listing.update');
     });
+
+    // Organization Feedback & Rewards
+    Route::prefix('organization/feedback-rewards')
+        ->name('org.feedback-rewards.')
+        ->group(function () {
+            Route::get('/', [\App\Http\Controllers\Organization\OrganizationFeedbackRewardsController::class, 'index'])->name('index');
+            Route::get('/create', [\App\Http\Controllers\Organization\OrganizationFeedbackRewardsController::class, 'create'])->name('create');
+            Route::post('/', [\App\Http\Controllers\Organization\OrganizationFeedbackRewardsController::class, 'store'])->name('store');
+            Route::get('/{campaign}', [\App\Http\Controllers\Organization\OrganizationFeedbackRewardsController::class, 'show'])->name('show');
+            Route::get('/{campaign}/edit', [\App\Http\Controllers\Organization\OrganizationFeedbackRewardsController::class, 'edit'])->name('edit');
+            Route::put('/{campaign}', [\App\Http\Controllers\Organization\OrganizationFeedbackRewardsController::class, 'update'])->name('update');
+            Route::post('/{campaign}/launch', [\App\Http\Controllers\Organization\OrganizationFeedbackRewardsController::class, 'launch'])->name('launch');
+            Route::post('/{campaign}/end', [\App\Http\Controllers\Organization\OrganizationFeedbackRewardsController::class, 'end'])->name('end');
+        });
+
+    // Organization BRP Wallet routes removed — organizations use the existing Believe Points (BP) wallet
 
     // old Facebook Integration Routes
     // Route::prefix('facebook')->group(function () {
@@ -1037,45 +1271,47 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|care_alli
 
 Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin|organization_pending|care_alliance', 'topics.selected'])->group(function () {
     Route::get('dashboard', [DashboardController::class, 'index'])->name('dashboard');
-    Route::get('dashboard/project-applications', [App\Http\Controllers\FundraiseController::class, 'dashboardProjectApplications'])->name('dashboard.project-applications');
-    Route::put('dashboard/project-applications/{lead}', [App\Http\Controllers\FundraiseController::class, 'updateProjectApplication'])->name('dashboard.project-applications.update')->where('lead', '[0-9]+');
+    Route::get('dashboard/project-applications', [FundraiseController::class, 'dashboardProjectApplications'])->name('dashboard.project-applications');
+    Route::put('dashboard/project-applications/{lead}', [FundraiseController::class, 'updateProjectApplication'])->name('dashboard.project-applications.update')->where('lead', '[0-9]+');
 
     // Organization Livestreams
     Route::prefix('livestreams')->name('organization.livestreams.')->group(function () {
-        Route::get('/', [\App\Http\Controllers\Organization\LivestreamController::class, 'index'])->name('index');
-        Route::get('/create', [\App\Http\Controllers\Organization\LivestreamController::class, 'create'])->name('create');
-        Route::post('/', [\App\Http\Controllers\Organization\LivestreamController::class, 'store'])->name('store');
-        Route::get('/{id}/ready', [\App\Http\Controllers\Organization\LivestreamController::class, 'ready'])->name('ready');
-        Route::get('/{id}', [\App\Http\Controllers\Organization\LivestreamController::class, 'show'])->name('show');
-        Route::post('/{id}/start-meeting', [\App\Http\Controllers\Organization\LivestreamController::class, 'startMeeting'])->name('start-meeting');
-        Route::post('/{id}/generate-invite', [\App\Http\Controllers\Organization\LivestreamController::class, 'generateInviteToken'])->name('generate-invite');
-        Route::post('/{id}/go-live', [\App\Http\Controllers\Organization\LivestreamController::class, 'goLive'])->name('go-live');
-        Route::post('/{id}/set-live', [\App\Http\Controllers\Organization\LivestreamController::class, 'setLive'])->name('set-live');
-        Route::post('/{id}/go-live-obs-auto', [\App\Http\Controllers\Organization\LivestreamController::class, 'goLiveOBSAuto'])->name('go-live-obs-auto');
-        Route::post('/{id}/go-live-browser', [\App\Http\Controllers\Organization\LivestreamController::class, 'goLiveBrowser'])->name('go-live-browser');
-        Route::post('/{id}/end-stream', [\App\Http\Controllers\Organization\LivestreamController::class, 'endStream'])->name('end-stream');
-        Route::patch('/{id}/status', [\App\Http\Controllers\Organization\LivestreamController::class, 'updateStatus'])->name('update-status');
-        Route::patch('/{id}/stream-key', [\App\Http\Controllers\Organization\LivestreamController::class, 'updateStreamKey'])->name('update-stream-key');
-        Route::patch('/{id}/visibility', [\App\Http\Controllers\Organization\LivestreamController::class, 'updateVisibility'])->name('update-visibility');
-        Route::delete('/{id}', [\App\Http\Controllers\Organization\LivestreamController::class, 'destroy'])->name('destroy');
+        Route::get('/', [LivestreamController::class, 'index'])->name('index');
+        Route::get('/create', [LivestreamController::class, 'create'])->name('create');
+        Route::post('/', [LivestreamController::class, 'store'])->name('store');
+        Route::get('/{id}/ready', [LivestreamController::class, 'ready'])->name('ready');
+        Route::get('/{id}', [LivestreamController::class, 'show'])->name('show');
+        Route::post('/{id}/start-meeting', [LivestreamController::class, 'startMeeting'])->name('start-meeting');
+        Route::post('/{id}/generate-invite', [LivestreamController::class, 'generateInviteToken'])->name('generate-invite');
+        Route::post('/{id}/go-live', [LivestreamController::class, 'goLive'])->name('go-live');
+        Route::post('/{id}/set-live', [LivestreamController::class, 'setLive'])->name('set-live');
+        Route::post('/{id}/queue-stream-relay', [LivestreamController::class, 'queueStreamRelayJob'])->name('queue-stream-relay');
+        Route::post('/{id}/go-live-obs-auto', [LivestreamController::class, 'queueStreamRelayJob'])->name('go-live-obs-auto');
+        Route::post('/{id}/go-live-browser', [LivestreamController::class, 'goLiveBrowser'])->name('go-live-browser');
+        Route::post('/{id}/end-stream', [LivestreamController::class, 'endStream'])->name('end-stream');
+        Route::patch('/{id}/status', [LivestreamController::class, 'updateStatus'])->name('update-status');
+        Route::patch('/{id}/stream-key', [LivestreamController::class, 'updateStreamKey'])->name('update-stream-key');
+        Route::post('/{id}/prepare-youtube-live', [LivestreamController::class, 'prepareYouTubeLive'])->name('prepare-youtube-live');
+        Route::patch('/{id}/visibility', [LivestreamController::class, 'updateVisibility'])->name('update-visibility');
+        Route::delete('/{id}', [LivestreamController::class, 'destroy'])->name('destroy');
     });
 
     // Nonprofit Barter Network (NNBN) – EIN + KYB + Board + Bridge + Admin approved only
     Route::middleware('barter.access')->prefix('barter')->name('barter.')->group(function () {
-        Route::get('/', [\App\Http\Controllers\Barter\BarterNetworkController::class, 'index'])->name('index');
-        Route::get('/marketplace', [\App\Http\Controllers\Barter\BarterNetworkController::class, 'marketplace'])->name('marketplace');
-        Route::get('/my-listings', [\App\Http\Controllers\Barter\BarterNetworkController::class, 'myListings'])->name('my-listings');
-        Route::get('/listings/{listing}', [\App\Http\Controllers\Barter\BarterNetworkController::class, 'showListing'])->name('listings.show');
-        Route::post('/listings', [\App\Http\Controllers\Barter\BarterNetworkController::class, 'storeListing'])->name('listings.store');
-        Route::put('/listings/{listing}', [\App\Http\Controllers\Barter\BarterNetworkController::class, 'updateListing'])->name('listings.update');
-        Route::post('/request-trade', [\App\Http\Controllers\Barter\BarterNetworkController::class, 'requestTrade'])->name('request-trade');
-        Route::get('/incoming-requests', [\App\Http\Controllers\Barter\BarterNetworkController::class, 'incomingRequests'])->name('incoming-requests');
-        Route::post('/transactions/{transaction}/accept', [\App\Http\Controllers\Barter\BarterNetworkController::class, 'acceptRequest'])->name('transactions.accept');
-        Route::post('/transactions/{transaction}/reject', [\App\Http\Controllers\Barter\BarterNetworkController::class, 'rejectRequest'])->name('transactions.reject');
-        Route::get('/active-trades', [\App\Http\Controllers\Barter\BarterNetworkController::class, 'activeTrades'])->name('active-trades');
-        Route::get('/trade-history', [\App\Http\Controllers\Barter\BarterNetworkController::class, 'tradeHistory'])->name('trade-history');
-        Route::get('/points-wallet', [\App\Http\Controllers\Barter\BarterNetworkController::class, 'pointsWallet'])->name('points-wallet');
-        Route::get('/reputation', [\App\Http\Controllers\Barter\BarterNetworkController::class, 'reputation'])->name('reputation');
+        Route::get('/', [BarterNetworkController::class, 'index'])->name('index');
+        Route::get('/marketplace', [BarterNetworkController::class, 'marketplace'])->name('marketplace');
+        Route::get('/my-listings', [BarterNetworkController::class, 'myListings'])->name('my-listings');
+        Route::get('/listings/{listing}', [BarterNetworkController::class, 'showListing'])->name('listings.show');
+        Route::post('/listings', [BarterNetworkController::class, 'storeListing'])->name('listings.store');
+        Route::put('/listings/{listing}', [BarterNetworkController::class, 'updateListing'])->name('listings.update');
+        Route::post('/request-trade', [BarterNetworkController::class, 'requestTrade'])->name('request-trade');
+        Route::get('/incoming-requests', [BarterNetworkController::class, 'incomingRequests'])->name('incoming-requests');
+        Route::post('/transactions/{transaction}/accept', [BarterNetworkController::class, 'acceptRequest'])->name('transactions.accept');
+        Route::post('/transactions/{transaction}/reject', [BarterNetworkController::class, 'rejectRequest'])->name('transactions.reject');
+        Route::get('/active-trades', [BarterNetworkController::class, 'activeTrades'])->name('active-trades');
+        Route::get('/trade-history', [BarterNetworkController::class, 'tradeHistory'])->name('trade-history');
+        Route::get('/points-wallet', [BarterNetworkController::class, 'pointsWallet'])->name('points-wallet');
+        Route::get('/reputation', [BarterNetworkController::class, 'reputation'])->name('reputation');
     });
 
     Route::middleware('permission:dashboard.read')->group(function () {
@@ -1224,8 +1460,12 @@ Route::get('/products/{id}', [ProductController::class, 'show'])->name('products
 // Printify Integration Routes
 Route::middleware(['auth', 'topics.selected', 'role:admin|organization|care_alliance'])->group(function () {
     Route::get('/printify/providers', [PrintifyProductController::class, 'getProviders'])->name('printify.providers');
+    Route::get('/printify/provider-comparison', [PrintifyProductController::class, 'getProviderComparison'])->name('printify.provider-comparison');
     Route::get('/printify/variants', [PrintifyProductController::class, 'getVariants'])->name('printify.variants');
     Route::get('/printify/shipping', [PrintifyProductController::class, 'getShipping'])->name('printify.shipping');
+    Route::post('/printify/preview-variant-costs', [PrintifyProductController::class, 'previewVariantCosts'])
+        ->middleware('throttle:12,1')
+        ->name('printify.preview-variant-costs');
     // Route::post('/printify/products/sync', [ProductController::class, 'syncFromPrintify'])->name('printify.products.sync');
 });
 
@@ -1254,8 +1494,6 @@ Route::resource('raffles', RaffleController::class)->middleware([
 
 Route::post('raffles/{raffle}/purchase', [RaffleController::class, 'purchaseTickets'])->name('raffles.purchase')->middleware('permission:raffle.purchase');
 Route::post('raffles/{raffle}/draw', [RaffleController::class, 'drawWinners'])->name('raffles.draw')->middleware('permission:raffle.draw');
-Route::get('raffles/tickets/{ticket}/qr-code', [RaffleController::class, 'generateTicketQrCode'])->name('raffles.ticket.qr-code')->middleware('permission:raffle.read');
-Route::get('raffles/tickets/{ticket}/verify', [RaffleController::class, 'verifyTicket'])->name('raffles.verify-ticket')->middleware('permission:raffle.read');
 
 Route::resource('position-categories', PositionCategoryController::class)->except(['show'])->middleware([
     'index' => 'permission:job.position.categories.read',
@@ -1300,11 +1538,11 @@ Route::put('job-applications/{jobApplication}/update-status', [JobApplicationCon
     ->middleware(['role:organization|care_alliance', 'permission:job.posts.read']);
 
 // Volunteers Routes
-Route::get('explore-by-cause', [\App\Http\Controllers\ExploreByCauseController::class, 'index'])
+Route::get('explore-by-cause', [ExploreByCauseController::class, 'index'])
     ->name('explore-by-cause.index')
     ->middleware(['auth', 'EnsureEmailIsVerified']);
 
-Route::post('explore-by-cause/toggle-interest/{category}', [\App\Http\Controllers\ExploreByCauseController::class, 'toggleUserInterest'])
+Route::post('explore-by-cause/toggle-interest/{category}', [ExploreByCauseController::class, 'toggleUserInterest'])
     ->name('explore-by-cause.toggle-interest')
     ->middleware(['auth', 'EnsureEmailIsVerified'])
     ->where('category', '[0-9]+');
@@ -1321,6 +1559,9 @@ Route::get('volunteers', [VolunteerController::class, 'index'])
     ->middleware(['role:organization|care_alliance', 'permission:volunteer.read']);
 Route::get('volunteers/supporter-interests', [VolunteerSupporterInterestsController::class, 'index'])
     ->name('volunteers.supporter-interests.index')
+    ->middleware(['role:organization|care_alliance', 'permission:volunteer.read']);
+Route::get('volunteers/volunteer-interests', [VolunteerAvailableSupportersController::class, 'index'])
+    ->name('volunteers.volunteer-interests')
     ->middleware(['role:organization|care_alliance', 'permission:volunteer.read']);
 
 // Volunteer Time Sheet Routes (must come before volunteers/{volunteer} to avoid route conflicts)
@@ -1493,8 +1734,8 @@ Route::post('withdrawals/{withdrawal}/make-payment', [WithdrawalController::clas
 //     Route::post('/payment-methods', [PaymentMethodSettingController::class, 'update'])->name('payment-methods.update');
 // });
 
-// Newsletter Routes
-Route::prefix('newsletter')->name('newsletter.')->group(function () {
+// Newsletter Routes (auth required — guests are redirected to login, not 403)
+Route::middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected'])->prefix('newsletter')->name('newsletter.')->group(function () {
     Route::get('/', [NewsletterController::class, 'index'])->name('index');
     Route::get('/templates', [NewsletterController::class, 'templates'])->name('templates');
     Route::get('/templates/create', [NewsletterController::class, 'createTemplate'])->name('templates.create');
@@ -1642,17 +1883,17 @@ Route::prefix('webhooks')->group(function () {
     Route::match(['get', 'head'], '/bridge', function () {
         return response()->json(['status' => 'ok', 'message' => 'Bridge webhook endpoint is active'], 200);
     });
-    Route::post('/bridge', [App\Http\Controllers\BridgeWebhookController::class, 'handle'])->name('webhooks.bridge');
+    Route::post('/bridge', [BridgeWebhookController::class, 'handle'])->name('webhooks.bridge');
     // Phaze webhook (no auth required - API key verified in controller)
-    Route::post('/phaze', [App\Http\Controllers\PhazeWebhookController::class, 'handle'])->name('webhooks.phaze');
+    Route::post('/phaze', [PhazeWebhookController::class, 'handle'])->name('webhooks.phaze');
 });
 
 Route::prefix('admin')->middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected', 'role:admin|'])->group(function () {
     // Wallet Fees Management
     Route::prefix('wallet-fees')->name('admin.wallet-fees.')->group(function () {
-        Route::get('/', [App\Http\Controllers\Admin\WalletFeeController::class, 'index'])->name('index');
-        Route::put('/{walletFee}', [App\Http\Controllers\Admin\WalletFeeController::class, 'update'])->name('update');
-        Route::post('/{walletFee}/toggle', [App\Http\Controllers\Admin\WalletFeeController::class, 'toggleActive'])->name('toggle');
+        Route::get('/', [WalletFeeController::class, 'index'])->name('index');
+        Route::put('/{walletFee}', [WalletFeeController::class, 'update'])->name('update');
+        Route::post('/{walletFee}/toggle', [WalletFeeController::class, 'toggleActive'])->name('toggle');
     });
 
     Route::get('/webhooks', [WebhookManagementController::class, 'index'])->name('admin.webhooks.index');
@@ -1661,37 +1902,37 @@ Route::prefix('admin')->middleware(['auth', 'EnsureEmailIsVerified', 'topics.sel
     Route::delete('/webhooks/printify/{webhookId}', [WebhookManagementController::class, 'deleteWebhook'])->name('admin.webhooks.delete');
 
     // FCM / Push Notifications overview (admin only)
-    Route::get('/push-notifications', [App\Http\Controllers\Admin\PushNotificationsController::class, 'index'])->name('admin.push-notifications.index');
-    Route::post('/push-notifications/send-test', [App\Http\Controllers\Admin\PushNotificationsController::class, 'sendTest'])->name('admin.push-notifications.send-test');
-    Route::post('/push-notifications/request-reregister', [App\Http\Controllers\Admin\PushNotificationsController::class, 'requestReregister'])->name('admin.push-notifications.request-reregister');
-    Route::post('/push-notifications/invalidate-token', [App\Http\Controllers\Admin\PushNotificationsController::class, 'invalidateToken'])->name('admin.push-notifications.invalidate-token');
+    Route::get('/push-notifications', [PushNotificationsController::class, 'index'])->name('admin.push-notifications.index');
+    Route::post('/push-notifications/send-test', [PushNotificationsController::class, 'sendTest'])->name('admin.push-notifications.send-test');
+    Route::post('/push-notifications/request-reregister', [PushNotificationsController::class, 'requestReregister'])->name('admin.push-notifications.request-reregister');
+    Route::post('/push-notifications/invalidate-token', [PushNotificationsController::class, 'invalidateToken'])->name('admin.push-notifications.invalidate-token');
 
     // Barter Network audit (both nonprofits, listings, delta, ledger, status, dispute)
-    Route::get('/barter', [App\Http\Controllers\Admin\BarterAuditController::class, 'index'])->name('admin.barter.index');
-    Route::get('/barter/{transaction}', [App\Http\Controllers\Admin\BarterAuditController::class, 'show'])->name('admin.barter.show');
+    Route::get('/barter', [BarterAuditController::class, 'index'])->name('admin.barter.index');
+    Route::get('/barter/{transaction}', [BarterAuditController::class, 'show'])->name('admin.barter.show');
 
     // KYB Verification Routes
     Route::prefix('kyb-verification')->name('admin.kyb-verification.')->middleware('permission:kyb.verification.read')->group(function () {
-        Route::get('/', [App\Http\Controllers\Admin\AdminKybVerificationController::class, 'index'])->name('index');
-        Route::get('/{id}', [App\Http\Controllers\Admin\AdminKybVerificationController::class, 'show'])->name('show');
-        Route::post('/{id}/approve', [App\Http\Controllers\Admin\AdminKybVerificationController::class, 'approve'])->name('approve')->middleware('permission:kyb.verification.approve');
-        Route::post('/{id}/reject', [App\Http\Controllers\Admin\AdminKybVerificationController::class, 'reject'])->name('reject')->middleware('permission:kyb.verification.reject');
-        Route::post('/{id}/document/{documentType}/approve', [App\Http\Controllers\Admin\AdminKybVerificationController::class, 'approveDocument'])->name('document.approve')->middleware('permission:kyb.verification.approve');
-        Route::post('/{id}/document/{documentType}/reject', [App\Http\Controllers\Admin\AdminKybVerificationController::class, 'rejectDocument'])->name('document.reject')->middleware('permission:kyb.verification.reject');
-        Route::post('/{id}/request-refill', [App\Http\Controllers\Admin\AdminKybVerificationController::class, 'requestRefill'])->name('request-refill')->middleware('permission:kyb.verification.manage');
-        Route::post('/{id}/update-documents-to-send', [App\Http\Controllers\Admin\AdminKybVerificationController::class, 'updateDocumentsToSend'])->name('update-documents-to-send')->middleware('permission:kyb.verification.manage');
+        Route::get('/', [AdminKybVerificationController::class, 'index'])->name('index');
+        Route::get('/{id}', [AdminKybVerificationController::class, 'show'])->name('show');
+        Route::post('/{id}/approve', [AdminKybVerificationController::class, 'approve'])->name('approve')->middleware('permission:kyb.verification.approve');
+        Route::post('/{id}/reject', [AdminKybVerificationController::class, 'reject'])->name('reject')->middleware('permission:kyb.verification.reject');
+        Route::post('/{id}/document/{documentType}/approve', [AdminKybVerificationController::class, 'approveDocument'])->name('document.approve')->middleware('permission:kyb.verification.approve');
+        Route::post('/{id}/document/{documentType}/reject', [AdminKybVerificationController::class, 'rejectDocument'])->name('document.reject')->middleware('permission:kyb.verification.reject');
+        Route::post('/{id}/request-refill', [AdminKybVerificationController::class, 'requestRefill'])->name('request-refill')->middleware('permission:kyb.verification.manage');
+        Route::post('/{id}/update-documents-to-send', [AdminKybVerificationController::class, 'updateDocumentsToSend'])->name('update-documents-to-send')->middleware('permission:kyb.verification.manage');
     });
 
     // KYB Settings Route
-    Route::post('/settings/direct-bridge-submission', [App\Http\Controllers\Admin\AdminKybVerificationController::class, 'updateDirectBridgeSetting'])->name('admin.kyb-verification.settings.direct-bridge-submission')->middleware('permission:kyb.verification.manage');
+    Route::post('/settings/direct-bridge-submission', [AdminKybVerificationController::class, 'updateDirectBridgeSetting'])->name('admin.kyb-verification.settings.direct-bridge-submission')->middleware('permission:kyb.verification.manage');
 
     // KYC Verification Routes
     Route::prefix('kyc-verification')->name('admin.kyc-verification.')->middleware('permission:kyc.verification.read')->group(function () {
-        Route::get('/', [App\Http\Controllers\Admin\AdminKycVerificationController::class, 'index'])->name('index');
-        Route::get('/{id}', [App\Http\Controllers\Admin\AdminKycVerificationController::class, 'show'])->name('show');
-        Route::post('/{id}/approve', [App\Http\Controllers\Admin\AdminKycVerificationController::class, 'approve'])->name('approve')->middleware('permission:kyc.verification.approve');
-        Route::post('/{id}/reject', [App\Http\Controllers\Admin\AdminKycVerificationController::class, 'reject'])->name('reject')->middleware('permission:kyc.verification.reject');
-        Route::post('/request/{customerId}', [App\Http\Controllers\Admin\AdminKycVerificationController::class, 'request'])->name('request')->middleware('permission:kyc.verification.request');
+        Route::get('/', [AdminKycVerificationController::class, 'index'])->name('index');
+        Route::get('/{id}', [AdminKycVerificationController::class, 'show'])->name('show');
+        Route::post('/{id}/approve', [AdminKycVerificationController::class, 'approve'])->name('approve')->middleware('permission:kyc.verification.approve');
+        Route::post('/{id}/reject', [AdminKycVerificationController::class, 'reject'])->name('reject')->middleware('permission:kyc.verification.reject');
+        Route::post('/request/{customerId}', [AdminKycVerificationController::class, 'request'])->name('request')->middleware('permission:kyc.verification.request');
     });
 });
 
@@ -1700,37 +1941,37 @@ Route::prefix('admin/livestock')
     ->middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected', 'role:admin', 'permission:admin.livestock.read'])
     ->name('admin.livestock.')
     ->group(function () {
-        Route::get('/', [\App\Http\Controllers\Admin\LivestockController::class, 'index'])->name('index');
-        Route::get('/sellers', [\App\Http\Controllers\Admin\LivestockController::class, 'sellers'])->name('sellers');
-        Route::get('/sellers/{id}', [\App\Http\Controllers\Admin\LivestockController::class, 'showSeller'])->name('sellers.show');
-        Route::get('/sellers/{id}/listings', [\App\Http\Controllers\Admin\LivestockController::class, 'sellerListings'])->name('sellers.listings');
-        Route::put('/sellers/{id}/verify', [\App\Http\Controllers\Admin\LivestockController::class, 'verifySeller'])->name('sellers.verify')->middleware('permission:admin.livestock.manage');
-        Route::put('/sellers/{id}/reject', [\App\Http\Controllers\Admin\LivestockController::class, 'rejectSeller'])->name('sellers.reject')->middleware('permission:admin.livestock.manage');
-        Route::delete('/sellers/{id}', [\App\Http\Controllers\Admin\LivestockController::class, 'deleteSeller'])->name('sellers.delete')->middleware('permission:admin.livestock.manage');
-        Route::get('/listings', [\App\Http\Controllers\Admin\LivestockController::class, 'fractionalListings'])->name('listings');
-        Route::get('/listings/{id}', [\App\Http\Controllers\Admin\LivestockController::class, 'showFractionalListing'])->name('listings.show');
-        Route::put('/listings/{id}/link-asset', [\App\Http\Controllers\Admin\LivestockController::class, 'linkAssetToFractionalListing'])->name('listings.link-asset')->middleware('permission:admin.livestock.manage');
-        Route::delete('/listings/{id}', [\App\Http\Controllers\Admin\LivestockController::class, 'removeListing'])->name('listings.remove')->middleware('permission:admin.livestock.manage');
-        Route::get('/payouts', [\App\Http\Controllers\Admin\LivestockController::class, 'payouts'])->name('payouts');
-        Route::put('/payouts/{id}/approve', [\App\Http\Controllers\Admin\LivestockController::class, 'approvePayout'])->name('payouts.approve')->middleware('permission:admin.livestock.manage');
+        Route::get('/', [LivestockController::class, 'index'])->name('index');
+        Route::get('/sellers', [LivestockController::class, 'sellers'])->name('sellers');
+        Route::get('/sellers/{id}', [LivestockController::class, 'showSeller'])->name('sellers.show');
+        Route::get('/sellers/{id}/listings', [LivestockController::class, 'sellerListings'])->name('sellers.listings');
+        Route::put('/sellers/{id}/verify', [LivestockController::class, 'verifySeller'])->name('sellers.verify')->middleware('permission:admin.livestock.manage');
+        Route::put('/sellers/{id}/reject', [LivestockController::class, 'rejectSeller'])->name('sellers.reject')->middleware('permission:admin.livestock.manage');
+        Route::delete('/sellers/{id}', [LivestockController::class, 'deleteSeller'])->name('sellers.delete')->middleware('permission:admin.livestock.manage');
+        Route::get('/listings', [LivestockController::class, 'fractionalListings'])->name('listings');
+        Route::get('/listings/{id}', [LivestockController::class, 'showFractionalListing'])->name('listings.show');
+        Route::put('/listings/{id}/link-asset', [LivestockController::class, 'linkAssetToFractionalListing'])->name('listings.link-asset')->middleware('permission:admin.livestock.manage');
+        Route::delete('/listings/{id}', [LivestockController::class, 'removeListing'])->name('listings.remove')->middleware('permission:admin.livestock.manage');
+        Route::get('/payouts', [LivestockController::class, 'payouts'])->name('payouts');
+        Route::put('/payouts/{id}/approve', [LivestockController::class, 'approvePayout'])->name('payouts.approve')->middleware('permission:admin.livestock.manage');
 
         // Buyers routes
-        Route::get('/buyers', [\App\Http\Controllers\Admin\LivestockController::class, 'buyers'])->name('buyers');
-        Route::get('/buyers/create', [\App\Http\Controllers\Admin\LivestockController::class, 'createBuyer'])->name('buyers.create');
-        Route::post('/buyers', [\App\Http\Controllers\Admin\LivestockController::class, 'storeBuyer'])->name('buyers.store');
-        Route::get('/buyers/{id}', [\App\Http\Controllers\Admin\LivestockController::class, 'showBuyer'])->name('buyers.show');
-        Route::put('/buyers/{id}/link-asset', [\App\Http\Controllers\Admin\LivestockController::class, 'linkAssetToBuyer'])->name('buyers.link-asset')->middleware('permission:admin.livestock.manage');
-        Route::put('/buyers/{id}/verify', [\App\Http\Controllers\Admin\LivestockController::class, 'verifyBuyer'])->name('buyers.verify')->middleware('permission:admin.livestock.manage');
-        Route::put('/buyers/{id}/reject', [\App\Http\Controllers\Admin\LivestockController::class, 'rejectBuyer'])->name('buyers.reject')->middleware('permission:admin.livestock.manage');
-        Route::delete('/buyers/{id}', [\App\Http\Controllers\Admin\LivestockController::class, 'deleteBuyer'])->name('buyers.delete')->middleware('permission:admin.livestock.manage');
+        Route::get('/buyers', [LivestockController::class, 'buyers'])->name('buyers');
+        Route::get('/buyers/create', [LivestockController::class, 'createBuyer'])->name('buyers.create');
+        Route::post('/buyers', [LivestockController::class, 'storeBuyer'])->name('buyers.store');
+        Route::get('/buyers/{id}', [LivestockController::class, 'showBuyer'])->name('buyers.show');
+        Route::put('/buyers/{id}/link-asset', [LivestockController::class, 'linkAssetToBuyer'])->name('buyers.link-asset')->middleware('permission:admin.livestock.manage');
+        Route::put('/buyers/{id}/verify', [LivestockController::class, 'verifyBuyer'])->name('buyers.verify')->middleware('permission:admin.livestock.manage');
+        Route::put('/buyers/{id}/reject', [LivestockController::class, 'rejectBuyer'])->name('buyers.reject')->middleware('permission:admin.livestock.manage');
+        Route::delete('/buyers/{id}', [LivestockController::class, 'deleteBuyer'])->name('buyers.delete')->middleware('permission:admin.livestock.manage');
 
         // Pre-Generated Tags Routes
-        Route::get('/pre-generated-tags', [\App\Http\Controllers\Admin\PreGeneratedTagController::class, 'index'])->name('pre-generated-tags.index');
-        Route::post('/pre-generated-tags', [\App\Http\Controllers\Admin\PreGeneratedTagController::class, 'store'])->name('pre-generated-tags.store');
-        Route::post('/pre-generated-tags/generate', [\App\Http\Controllers\Admin\PreGeneratedTagController::class, 'generate'])->name('pre-generated-tags.generate');
-        Route::post('/pre-generated-tags/{id}/assign', [\App\Http\Controllers\Admin\PreGeneratedTagController::class, 'assign'])->name('pre-generated-tags.assign');
-        Route::post('/pre-generated-tags/{id}/unassign', [\App\Http\Controllers\Admin\PreGeneratedTagController::class, 'unassign'])->name('pre-generated-tags.unassign');
-        Route::delete('/pre-generated-tags/{id}', [\App\Http\Controllers\Admin\PreGeneratedTagController::class, 'destroy'])->name('pre-generated-tags.destroy');
+        Route::get('/pre-generated-tags', [PreGeneratedTagController::class, 'index'])->name('pre-generated-tags.index');
+        Route::post('/pre-generated-tags', [PreGeneratedTagController::class, 'store'])->name('pre-generated-tags.store');
+        Route::post('/pre-generated-tags/generate', [PreGeneratedTagController::class, 'generate'])->name('pre-generated-tags.generate');
+        Route::post('/pre-generated-tags/{id}/assign', [PreGeneratedTagController::class, 'assign'])->name('pre-generated-tags.assign');
+        Route::post('/pre-generated-tags/{id}/unassign', [PreGeneratedTagController::class, 'unassign'])->name('pre-generated-tags.unassign');
+        Route::delete('/pre-generated-tags/{id}', [PreGeneratedTagController::class, 'destroy'])->name('pre-generated-tags.destroy');
     });
 
 // Country Management Routes (Admin Only)
@@ -1738,12 +1979,12 @@ Route::prefix('admin/countries')
     ->middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected', 'role:admin', 'permission:admin.countries.read'])
     ->name('admin.countries.')
     ->group(function () {
-        Route::get('/', [\App\Http\Controllers\Admin\CountryController::class, 'index'])->name('index');
-        Route::get('/create', [\App\Http\Controllers\Admin\CountryController::class, 'create'])->name('create')->middleware('permission:admin.countries.create');
-        Route::post('/', [\App\Http\Controllers\Admin\CountryController::class, 'store'])->name('store')->middleware('permission:admin.countries.create');
-        Route::get('/{country}/edit', [\App\Http\Controllers\Admin\CountryController::class, 'edit'])->name('edit')->middleware('permission:admin.countries.update');
-        Route::put('/{country}', [\App\Http\Controllers\Admin\CountryController::class, 'update'])->name('update')->middleware('permission:admin.countries.update');
-        Route::delete('/{country}', [\App\Http\Controllers\Admin\CountryController::class, 'destroy'])->name('destroy')->middleware('permission:admin.countries.delete');
+        Route::get('/', [CountryController::class, 'index'])->name('index');
+        Route::get('/create', [CountryController::class, 'create'])->name('create')->middleware('permission:admin.countries.create');
+        Route::post('/', [CountryController::class, 'store'])->name('store')->middleware('permission:admin.countries.create');
+        Route::get('/{country}/edit', [CountryController::class, 'edit'])->name('edit')->middleware('permission:admin.countries.update');
+        Route::put('/{country}', [CountryController::class, 'update'])->name('update')->middleware('permission:admin.countries.update');
+        Route::delete('/{country}', [CountryController::class, 'destroy'])->name('destroy')->middleware('permission:admin.countries.delete');
     });
 
 Route::middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected'])->group(function () {
@@ -1816,6 +2057,11 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin|org
     Route::get('/dropbox/download', [IntegrationsController::class, 'downloadFile'])->name('dropbox.download');
     Route::delete('/dropbox/file', [IntegrationsController::class, 'deleteFile'])->name('dropbox.file.delete');
     Route::put('/dropbox/file', [IntegrationsController::class, 'renameFile'])->name('dropbox.file.rename');
+
+    Route::get('/stripe-connect', [OrganizationStripeConnectController::class, 'show'])->name('stripe-connect');
+    Route::get('/stripe-connect/start', [OrganizationStripeConnectController::class, 'start'])->name('stripe-connect.start');
+    Route::get('/stripe-connect/return', [OrganizationStripeConnectController::class, 'onboardingReturn'])->name('stripe-connect.return');
+    Route::get('/stripe-connect/refresh', [OrganizationStripeConnectController::class, 'onboardingRefresh'])->name('stripe-connect.refresh');
 });
 
 // YouTube integration: organization + supporter (outside dashboard group so role:user can access)
@@ -1878,48 +2124,48 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|organizat
 
 // Gift Cards routes
 // Public routes (browse brands - everyone can see)
-Route::get('/gift-cards', [App\Http\Controllers\GiftCardController::class, 'index'])->name('gift-cards.index');
-Route::get('/gift-cards/brands', [App\Http\Controllers\GiftCardController::class, 'getBrands'])->name('gift-cards.brands');
+Route::get('/gift-cards', [GiftCardController::class, 'index'])->name('gift-cards.index');
+Route::get('/gift-cards/brands', [GiftCardController::class, 'getBrands'])->name('gift-cards.brands');
 
 // Organization routes (view purchased cards) - organization_pending cannot access until onboarding complete
 Route::middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected', 'role:organization|admin|care_alliance'])->group(function () {
-    Route::get('/gift-cards/purchased', [App\Http\Controllers\GiftCardController::class, 'createdCards'])->name('gift-cards.created');
+    Route::get('/gift-cards/purchased', [GiftCardController::class, 'createdCards'])->name('gift-cards.created');
 });
 
 // Authenticated user routes (purchase) - Must come after specific routes
 Route::middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected', 'role.simple:user'])->group(function () {
-    Route::get('/gift-cards/purchase/{brand}', [App\Http\Controllers\GiftCardController::class, 'showPurchase'])->name('gift-cards.purchase')->where('brand', '.*');
-    Route::post('/gift-cards/purchase', [App\Http\Controllers\GiftCardController::class, 'purchase'])->name('gift-cards.purchase.store');
-    Route::get('/gift-cards/my-cards', [App\Http\Controllers\GiftCardController::class, 'myCards'])->name('gift-cards.my-cards');
-    Route::get('/gift-cards/payment/success', [App\Http\Controllers\GiftCardController::class, 'success'])->name('gift-cards.success');
+    Route::get('/gift-cards/purchase/{brand}', [GiftCardController::class, 'showPurchase'])->name('gift-cards.purchase')->where('brand', '.*');
+    Route::post('/gift-cards/purchase', [GiftCardController::class, 'purchase'])->name('gift-cards.purchase.store');
+    Route::get('/gift-cards/my-cards', [GiftCardController::class, 'myCards'])->name('gift-cards.my-cards');
+    Route::get('/gift-cards/payment/success', [GiftCardController::class, 'success'])->name('gift-cards.success');
 });
 
 // Public route for viewing brand details (before purchase) - must come before parameterized route
-Route::get('/gift-cards/show', [App\Http\Controllers\GiftCardController::class, 'show'])->name('gift-cards.show');
+Route::get('/gift-cards/show', [GiftCardController::class, 'show'])->name('gift-cards.show');
 // PDF download route - must come before parameterized route
 Route::middleware(['auth', 'EnsureEmailIsVerified'])->group(function () {
-    Route::get('/gift-cards/{giftCard}/download-pdf', [App\Http\Controllers\GiftCardController::class, 'downloadPdf'])->name('gift-cards.download-pdf');
+    Route::get('/gift-cards/{giftCard}/download-pdf', [GiftCardController::class, 'downloadPdf'])->name('gift-cards.download-pdf');
     // Transaction lookup by order ID (for testing)
-    Route::get('/gift-cards/transaction/lookup/{orderId}', [App\Http\Controllers\GiftCardController::class, 'lookupTransaction'])->name('gift-cards.transaction.lookup');
+    Route::get('/gift-cards/transaction/lookup/{orderId}', [GiftCardController::class, 'lookupTransaction'])->name('gift-cards.transaction.lookup');
 });
 // This parameterized route must come LAST to avoid catching specific routes - for viewing purchased cards
 // Requires authentication to view purchased gift cards
 Route::middleware(['auth', 'EnsureEmailIsVerified'])->group(function () {
-    Route::get('/gift-cards/{giftCard}', [App\Http\Controllers\GiftCardController::class, 'show'])->name('gift-cards.show.id');
+    Route::get('/gift-cards/{giftCard}', [GiftCardController::class, 'show'])->name('gift-cards.show.id');
 });
 
 // Plans route
 Route::middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected'])->group(function () {
-    Route::get('/plans', [App\Http\Controllers\PlansController::class, 'index'])->name('plans.index');
-    Route::post('/plans/{plan}/subscribe', [App\Http\Controllers\PlansController::class, 'subscribe'])->name('plans.subscribe');
-    Route::get('/plans/success', [App\Http\Controllers\PlansController::class, 'success'])->name('plans.success');
-    Route::post('/plans/cancel', [App\Http\Controllers\PlansController::class, 'cancel'])->name('plans.cancel');
+    Route::get('/plans', [PlansController::class, 'index'])->name('plans.index');
+    Route::post('/plans/{plan}/subscribe', [PlansController::class, 'subscribe'])->name('plans.subscribe');
+    Route::get('/plans/success', [PlansController::class, 'success'])->name('plans.success');
+    Route::post('/plans/cancel', [PlansController::class, 'cancel'])->name('plans.cancel');
 
     // Wallet subscription routes
-    Route::get('/wallet/plans', [App\Http\Controllers\PlansController::class, 'getWalletPlans'])->name('wallet.plans');
-    Route::post('/wallet/subscribe/{walletPlan}', [App\Http\Controllers\PlansController::class, 'subscribeWallet'])->name('wallet.subscribe');
-    Route::get('/wallet/subscription/success', [App\Http\Controllers\PlansController::class, 'walletSubscriptionSuccess'])->name('wallet.subscription.success');
-    Route::get('/wallet/subscription/cancel', [App\Http\Controllers\PlansController::class, 'walletSubscriptionCancel'])->name('wallet.subscription.cancel');
+    Route::get('/wallet/plans', [PlansController::class, 'getWalletPlans'])->name('wallet.plans');
+    Route::post('/wallet/subscribe/{walletPlan}', [PlansController::class, 'subscribeWallet'])->name('wallet.subscribe');
+    Route::get('/wallet/subscription/success', [PlansController::class, 'walletSubscriptionSuccess'])->name('wallet.subscription.success');
+    Route::get('/wallet/subscription/cancel', [PlansController::class, 'walletSubscriptionCancel'])->name('wallet.subscription.cancel');
 });
 
 // Admin Phaze Webhook Management
@@ -1927,9 +2173,9 @@ Route::prefix('admin/phaze-webhooks')
     ->middleware(['auth', 'EnsureEmailIsVerified', 'role:admin', 'topics.selected'])
     ->name('admin.phaze-webhooks.')
     ->group(function () {
-        Route::get('/', [App\Http\Controllers\Admin\PhazeWebhookManagementController::class, 'index'])->name('index');
-        Route::post('/', [App\Http\Controllers\Admin\PhazeWebhookManagementController::class, 'store'])->name('store');
-        Route::delete('/{id}', [App\Http\Controllers\Admin\PhazeWebhookManagementController::class, 'destroy'])->name('destroy');
+        Route::get('/', [PhazeWebhookManagementController::class, 'index'])->name('index');
+        Route::post('/', [PhazeWebhookManagementController::class, 'store'])->name('store');
+        Route::delete('/{id}', [PhazeWebhookManagementController::class, 'destroy'])->name('destroy');
     });
 
 // Admin Email Packages Management
@@ -1937,12 +2183,12 @@ Route::prefix('admin/email-packages')
     ->middleware(['auth', 'EnsureEmailIsVerified', 'role:admin', 'topics.selected'])
     ->name('admin.email-packages.')
     ->group(function () {
-        Route::get('/', [App\Http\Controllers\Admin\EmailPackageController::class, 'index'])->name('index');
-        Route::get('/create', [App\Http\Controllers\Admin\EmailPackageController::class, 'create'])->name('create');
-        Route::post('/', [App\Http\Controllers\Admin\EmailPackageController::class, 'store'])->name('store');
-        Route::get('/{emailPackage}/edit', [App\Http\Controllers\Admin\EmailPackageController::class, 'edit'])->name('edit');
-        Route::put('/{emailPackage}', [App\Http\Controllers\Admin\EmailPackageController::class, 'update'])->name('update');
-        Route::delete('/{emailPackage}', [App\Http\Controllers\Admin\EmailPackageController::class, 'destroy'])->name('destroy');
+        Route::get('/', [EmailPackageController::class, 'index'])->name('index');
+        Route::get('/create', [EmailPackageController::class, 'create'])->name('create');
+        Route::post('/', [EmailPackageController::class, 'store'])->name('store');
+        Route::get('/{emailPackage}/edit', [EmailPackageController::class, 'edit'])->name('edit');
+        Route::put('/{emailPackage}', [EmailPackageController::class, 'update'])->name('update');
+        Route::delete('/{emailPackage}', [EmailPackageController::class, 'destroy'])->name('destroy');
     });
 
 // Admin Service Categories Management
@@ -1950,12 +2196,12 @@ Route::prefix('admin/service-categories')
     ->middleware(['auth', 'EnsureEmailIsVerified', 'role:admin', 'topics.selected'])
     ->name('admin.service-categories.')
     ->group(function () {
-        Route::get('/', [App\Http\Controllers\Admin\ServiceCategoryController::class, 'index'])->name('index');
-        Route::get('/create', [App\Http\Controllers\Admin\ServiceCategoryController::class, 'create'])->name('create');
-        Route::post('/', [App\Http\Controllers\Admin\ServiceCategoryController::class, 'store'])->name('store');
-        Route::get('/{serviceCategory}/edit', [App\Http\Controllers\Admin\ServiceCategoryController::class, 'edit'])->name('edit');
-        Route::put('/{serviceCategory}', [App\Http\Controllers\Admin\ServiceCategoryController::class, 'update'])->name('update');
-        Route::delete('/{serviceCategory}', [App\Http\Controllers\Admin\ServiceCategoryController::class, 'destroy'])->name('destroy');
+        Route::get('/', [ServiceCategoryController::class, 'index'])->name('index');
+        Route::get('/create', [ServiceCategoryController::class, 'create'])->name('create');
+        Route::post('/', [ServiceCategoryController::class, 'store'])->name('store');
+        Route::get('/{serviceCategory}/edit', [ServiceCategoryController::class, 'edit'])->name('edit');
+        Route::put('/{serviceCategory}', [ServiceCategoryController::class, 'update'])->name('update');
+        Route::delete('/{serviceCategory}', [ServiceCategoryController::class, 'destroy'])->name('destroy');
     });
 
 // Org registration: Category Grid (Primary Action) — lookup table managed by admins
@@ -1963,10 +2209,10 @@ Route::prefix('admin/primary-action-categories')
     ->middleware(['auth', 'EnsureEmailIsVerified', 'role:admin', 'topics.selected'])
     ->name('admin.primary-action-categories.')
     ->group(function () {
-        Route::get('/', [App\Http\Controllers\Admin\PrimaryActionCategoryController::class, 'index'])->name('index');
-        Route::post('/', [App\Http\Controllers\Admin\PrimaryActionCategoryController::class, 'store'])->name('store');
-        Route::put('/{primaryActionCategory}', [App\Http\Controllers\Admin\PrimaryActionCategoryController::class, 'update'])->name('update');
-        Route::delete('/{primaryActionCategory}', [App\Http\Controllers\Admin\PrimaryActionCategoryController::class, 'destroy'])->name('destroy');
+        Route::get('/', [PrimaryActionCategoryController::class, 'index'])->name('index');
+        Route::post('/', [PrimaryActionCategoryController::class, 'store'])->name('store');
+        Route::put('/{primaryActionCategory}', [PrimaryActionCategoryController::class, 'update'])->name('update');
+        Route::delete('/{primaryActionCategory}', [PrimaryActionCategoryController::class, 'destroy'])->name('destroy');
     });
 
 // Admin Merchant Hub Categories Management
@@ -1974,12 +2220,12 @@ Route::prefix('admin/merchant-hub-categories')
     ->middleware(['auth', 'EnsureEmailIsVerified', 'role:admin', 'topics.selected'])
     ->name('admin.merchant-hub-categories.')
     ->group(function () {
-        Route::get('/', [App\Http\Controllers\Admin\MerchantHubCategoryController::class, 'index'])->name('index');
-        Route::get('/create', [App\Http\Controllers\Admin\MerchantHubCategoryController::class, 'create'])->name('create');
-        Route::post('/', [App\Http\Controllers\Admin\MerchantHubCategoryController::class, 'store'])->name('store');
-        Route::get('/{merchantHubCategory}/edit', [App\Http\Controllers\Admin\MerchantHubCategoryController::class, 'edit'])->name('edit');
-        Route::put('/{merchantHubCategory}', [App\Http\Controllers\Admin\MerchantHubCategoryController::class, 'update'])->name('update');
-        Route::delete('/{merchantHubCategory}', [App\Http\Controllers\Admin\MerchantHubCategoryController::class, 'destroy'])->name('destroy');
+        Route::get('/', [MerchantHubCategoryController::class, 'index'])->name('index');
+        Route::get('/create', [MerchantHubCategoryController::class, 'create'])->name('create');
+        Route::post('/', [MerchantHubCategoryController::class, 'store'])->name('store');
+        Route::get('/{merchantHubCategory}/edit', [MerchantHubCategoryController::class, 'edit'])->name('edit');
+        Route::put('/{merchantHubCategory}', [MerchantHubCategoryController::class, 'update'])->name('update');
+        Route::delete('/{merchantHubCategory}', [MerchantHubCategoryController::class, 'destroy'])->name('destroy');
     });
 
 // Admin Merchant Hub Management
@@ -1988,32 +2234,32 @@ Route::prefix('admin/merchant-hub')
     ->name('admin.merchant-hub.')
     ->group(function () {
         // Dashboard
-        Route::get('/', [App\Http\Controllers\Admin\MerchantHubController::class, 'index'])->name('index');
+        Route::get('/', [MerchantHubController::class, 'index'])->name('index');
 
         // Merchants
         Route::prefix('merchants')->name('merchants.')->group(function () {
-            Route::get('/', [App\Http\Controllers\Admin\MerchantHubController::class, 'merchantsIndex'])->name('index');
-            Route::get('/create', [App\Http\Controllers\Admin\MerchantHubController::class, 'merchantsCreate'])->name('create');
-            Route::post('/', [App\Http\Controllers\Admin\MerchantHubController::class, 'merchantsStore'])->name('store');
-            Route::get('/{merchant}/edit', [App\Http\Controllers\Admin\MerchantHubController::class, 'merchantsEdit'])->name('edit');
-            Route::put('/{merchant}', [App\Http\Controllers\Admin\MerchantHubController::class, 'merchantsUpdate'])->name('update');
-            Route::delete('/{merchant}', [App\Http\Controllers\Admin\MerchantHubController::class, 'merchantsDestroy'])->name('destroy');
+            Route::get('/', [MerchantHubController::class, 'merchantsIndex'])->name('index');
+            Route::get('/create', [MerchantHubController::class, 'merchantsCreate'])->name('create');
+            Route::post('/', [MerchantHubController::class, 'merchantsStore'])->name('store');
+            Route::get('/{merchant}/edit', [MerchantHubController::class, 'merchantsEdit'])->name('edit');
+            Route::put('/{merchant}', [MerchantHubController::class, 'merchantsUpdate'])->name('update');
+            Route::delete('/{merchant}', [MerchantHubController::class, 'merchantsDestroy'])->name('destroy');
         });
 
         // Offers
         Route::prefix('offers')->name('offers.')->group(function () {
-            Route::get('/', [App\Http\Controllers\Admin\MerchantHubController::class, 'offersIndex'])->name('index');
-            Route::get('/create', [App\Http\Controllers\Admin\MerchantHubController::class, 'offersCreate'])->name('create');
-            Route::post('/', [App\Http\Controllers\Admin\MerchantHubController::class, 'offersStore'])->name('store');
-            Route::get('/{offer}/edit', [App\Http\Controllers\Admin\MerchantHubController::class, 'offersEdit'])->name('edit');
-            Route::put('/{offer}', [App\Http\Controllers\Admin\MerchantHubController::class, 'offersUpdate'])->name('update');
-            Route::delete('/{offer}', [App\Http\Controllers\Admin\MerchantHubController::class, 'offersDestroy'])->name('destroy');
+            Route::get('/', [MerchantHubController::class, 'offersIndex'])->name('index');
+            Route::get('/create', [MerchantHubController::class, 'offersCreate'])->name('create');
+            Route::post('/', [MerchantHubController::class, 'offersStore'])->name('store');
+            Route::get('/{offer}/edit', [MerchantHubController::class, 'offersEdit'])->name('edit');
+            Route::put('/{offer}', [MerchantHubController::class, 'offersUpdate'])->name('update');
+            Route::delete('/{offer}', [MerchantHubController::class, 'offersDestroy'])->name('destroy');
         });
 
         // Redemptions
         Route::prefix('redemptions')->name('redemptions.')->group(function () {
-            Route::get('/', [App\Http\Controllers\Admin\MerchantHubController::class, 'redemptionsIndex'])->name('index');
-            Route::put('/{redemption}/status', [App\Http\Controllers\Admin\MerchantHubController::class, 'redemptionsUpdateStatus'])->name('update-status');
+            Route::get('/', [MerchantHubController::class, 'redemptionsIndex'])->name('index');
+            Route::put('/{redemption}/status', [MerchantHubController::class, 'redemptionsUpdateStatus'])->name('update-status');
         });
     });
 
@@ -2022,10 +2268,10 @@ Route::prefix('admin/exemption-certificates')
     ->middleware(['auth', 'EnsureEmailIsVerified', 'role:admin', 'topics.selected'])
     ->name('admin.exemption-certificates.')
     ->group(function () {
-        Route::get('/', [App\Http\Controllers\Admin\ExemptionCertificateController::class, 'index'])->name('index');
-        Route::get('/{exemptionCertificate}', [App\Http\Controllers\Admin\ExemptionCertificateController::class, 'show'])->name('show');
-        Route::post('/{exemptionCertificate}/approve', [App\Http\Controllers\Admin\ExemptionCertificateController::class, 'approve'])->name('approve');
-        Route::post('/{exemptionCertificate}/reject', [App\Http\Controllers\Admin\ExemptionCertificateController::class, 'reject'])->name('reject');
+        Route::get('/', [ExemptionCertificateController::class, 'index'])->name('index');
+        Route::get('/{exemptionCertificate}', [ExemptionCertificateController::class, 'show'])->name('show');
+        Route::post('/{exemptionCertificate}/approve', [ExemptionCertificateController::class, 'approve'])->name('approve');
+        Route::post('/{exemptionCertificate}/reject', [ExemptionCertificateController::class, 'reject'])->name('reject');
     });
 
 // Admin Promotional Banners Management
@@ -2033,13 +2279,13 @@ Route::prefix('admin/promotional-banners')
     ->middleware(['auth', 'EnsureEmailIsVerified', 'role:admin', 'topics.selected', 'permission:promotional.banner.read'])
     ->name('admin.promotional-banners.')
     ->group(function () {
-        Route::get('/', [App\Http\Controllers\Admin\PromotionalBannerController::class, 'index'])->name('index');
-        Route::get('/create', [App\Http\Controllers\Admin\PromotionalBannerController::class, 'create'])->name('create');
-        Route::post('/', [App\Http\Controllers\Admin\PromotionalBannerController::class, 'store'])->name('store');
-        Route::patch('/show-on-dashboard', [App\Http\Controllers\Admin\PromotionalBannerController::class, 'toggleShowOnDashboard'])->name('toggle-dashboard');
-        Route::get('/{promotionalBanner}/edit', [App\Http\Controllers\Admin\PromotionalBannerController::class, 'edit'])->name('edit');
-        Route::put('/{promotionalBanner}', [App\Http\Controllers\Admin\PromotionalBannerController::class, 'update'])->name('update');
-        Route::delete('/{promotionalBanner}', [App\Http\Controllers\Admin\PromotionalBannerController::class, 'destroy'])->name('destroy');
+        Route::get('/', [PromotionalBannerController::class, 'index'])->name('index');
+        Route::get('/create', [PromotionalBannerController::class, 'create'])->name('create');
+        Route::post('/', [PromotionalBannerController::class, 'store'])->name('store');
+        Route::patch('/show-on-dashboard', [PromotionalBannerController::class, 'toggleShowOnDashboard'])->name('toggle-dashboard');
+        Route::get('/{promotionalBanner}/edit', [PromotionalBannerController::class, 'edit'])->name('edit');
+        Route::put('/{promotionalBanner}', [PromotionalBannerController::class, 'update'])->name('update');
+        Route::delete('/{promotionalBanner}', [PromotionalBannerController::class, 'destroy'])->name('destroy');
     });
 
 // Admin Contact Page Management
@@ -2047,10 +2293,10 @@ Route::prefix('admin/contact-page')
     ->middleware(['auth', 'EnsureEmailIsVerified', 'role:admin', 'topics.selected'])
     ->name('admin.contact-page.')
     ->group(function () {
-        Route::get('/', [App\Http\Controllers\Admin\ContactPageController::class, 'index'])->name('index');
-        Route::get('/{section}/edit', [App\Http\Controllers\Admin\ContactPageController::class, 'edit'])->name('edit');
-        Route::put('/{section}', [App\Http\Controllers\Admin\ContactPageController::class, 'update'])->name('update');
-        Route::delete('/{contactPageContent}', [App\Http\Controllers\Admin\ContactPageController::class, 'destroy'])->name('destroy');
+        Route::get('/', [ContactPageController::class, 'index'])->name('index');
+        Route::get('/{section}/edit', [ContactPageController::class, 'edit'])->name('edit');
+        Route::put('/{section}', [ContactPageController::class, 'update'])->name('update');
+        Route::delete('/{contactPageContent}', [ContactPageController::class, 'destroy'])->name('destroy');
     });
 
 // Admin Contact Submissions Management
@@ -2058,10 +2304,10 @@ Route::prefix('admin/contact-submissions')
     ->middleware(['auth', 'EnsureEmailIsVerified', 'role:admin', 'topics.selected'])
     ->name('admin.contact-submissions.')
     ->group(function () {
-        Route::get('/', [App\Http\Controllers\Admin\ContactSubmissionController::class, 'index'])->name('index');
-        Route::get('/{contactSubmission}', [App\Http\Controllers\Admin\ContactSubmissionController::class, 'show'])->name('show');
-        Route::put('/{contactSubmission}/status', [App\Http\Controllers\Admin\ContactSubmissionController::class, 'updateStatus'])->name('update-status');
-        Route::delete('/{contactSubmission}', [App\Http\Controllers\Admin\ContactSubmissionController::class, 'destroy'])->name('destroy');
+        Route::get('/', [ContactSubmissionController::class, 'index'])->name('index');
+        Route::get('/{contactSubmission}', [ContactSubmissionController::class, 'show'])->name('show');
+        Route::put('/{contactSubmission}/status', [ContactSubmissionController::class, 'updateStatus'])->name('update-status');
+        Route::delete('/{contactSubmission}', [ContactSubmissionController::class, 'destroy'])->name('destroy');
     });
 
 // Admin IRS Board Members (System Management)
@@ -2069,7 +2315,7 @@ Route::prefix('admin/irs-members')
     ->middleware(['auth', 'EnsureEmailIsVerified', 'role:admin', 'topics.selected'])
     ->name('admin.irs-members.')
     ->group(function () {
-        Route::get('/', [App\Http\Controllers\Admin\IrsBoardMemberController::class, 'index'])->name('index');
+        Route::get('/', [IrsBoardMemberController::class, 'index'])->name('index');
     });
 
 // Admin Fundraise Leads (qualified leads from /fundraise funnel → Wefunder)
@@ -2077,7 +2323,7 @@ Route::prefix('admin/fundraise-leads')
     ->middleware(['auth', 'EnsureEmailIsVerified', 'role:admin', 'topics.selected'])
     ->name('admin.fundraise-leads.')
     ->group(function () {
-        Route::get('/', [App\Http\Controllers\Admin\FundraiseLeadController::class, 'index'])->name('index');
+        Route::get('/', [FundraiseLeadController::class, 'index'])->name('index');
     });
 
 // Admin Plans Management
@@ -2085,19 +2331,19 @@ Route::prefix('admin/plans')
     ->middleware(['auth', 'EnsureEmailIsVerified', 'role:admin', 'topics.selected'])
     ->name('admin.plans.')
     ->group(function () {
-        Route::get('/', [App\Http\Controllers\Admin\PlanController::class, 'index'])->name('index');
-        Route::get('/subscribers', [App\Http\Controllers\Admin\PlanController::class, 'subscribers'])->name('subscribers');
-        Route::get('/create', [App\Http\Controllers\Admin\PlanController::class, 'create'])->name('create');
-        Route::post('/', [App\Http\Controllers\Admin\PlanController::class, 'store'])->name('store');
-        Route::get('/{plan}', [App\Http\Controllers\Admin\PlanController::class, 'show'])->name('show');
-        Route::get('/{plan}/edit', [App\Http\Controllers\Admin\PlanController::class, 'edit'])->name('edit');
-        Route::put('/{plan}', [App\Http\Controllers\Admin\PlanController::class, 'update'])->name('update');
-        Route::delete('/{plan}', [App\Http\Controllers\Admin\PlanController::class, 'destroy'])->name('destroy');
+        Route::get('/', [PlanController::class, 'index'])->name('index');
+        Route::get('/subscribers', [PlanController::class, 'subscribers'])->name('subscribers');
+        Route::get('/create', [PlanController::class, 'create'])->name('create');
+        Route::post('/', [PlanController::class, 'store'])->name('store');
+        Route::get('/{plan}', [PlanController::class, 'show'])->name('show');
+        Route::get('/{plan}/edit', [PlanController::class, 'edit'])->name('edit');
+        Route::put('/{plan}', [PlanController::class, 'update'])->name('update');
+        Route::delete('/{plan}', [PlanController::class, 'destroy'])->name('destroy');
 
         // Plan Features
-        Route::post('/{plan}/features', [App\Http\Controllers\Admin\PlanController::class, 'storeFeature'])->name('features.store');
-        Route::put('/{plan}/features/{feature}', [App\Http\Controllers\Admin\PlanController::class, 'updateFeature'])->name('features.update');
-        Route::delete('/{plan}/features/{feature}', [App\Http\Controllers\Admin\PlanController::class, 'destroyFeature'])->name('features.destroy');
+        Route::post('/{plan}/features', [PlanController::class, 'storeFeature'])->name('features.store');
+        Route::put('/{plan}/features/{feature}', [PlanController::class, 'updateFeature'])->name('features.update');
+        Route::delete('/{plan}/features/{feature}', [PlanController::class, 'destroyFeature'])->name('features.destroy');
     });
 
 // Admin Wallet Plans Management
@@ -2105,32 +2351,29 @@ Route::prefix('admin/wallet-plans')
     ->middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected'])
     ->name('admin.wallet-plans.')
     ->group(function () {
-        Route::get('/', [App\Http\Controllers\Admin\WalletPlanController::class, 'index'])->middleware('permission:wallet.plan.read')->name('index');
-        Route::get('/create', [App\Http\Controllers\Admin\WalletPlanController::class, 'create'])->middleware('permission:wallet.plan.create')->name('create');
-        Route::post('/', [App\Http\Controllers\Admin\WalletPlanController::class, 'store'])->middleware('permission:wallet.plan.create')->name('store');
-        Route::get('/{walletPlan}/edit', [App\Http\Controllers\Admin\WalletPlanController::class, 'edit'])->middleware('permission:wallet.plan.edit')->name('edit');
-        Route::put('/{walletPlan}', [App\Http\Controllers\Admin\WalletPlanController::class, 'update'])->middleware('permission:wallet.plan.update')->name('update');
-        Route::delete('/{walletPlan}', [App\Http\Controllers\Admin\WalletPlanController::class, 'destroy'])->middleware('permission:wallet.plan.delete')->name('destroy');
+        Route::get('/', [WalletPlanController::class, 'index'])->middleware('permission:wallet.plan.read')->name('index');
+        Route::get('/create', [WalletPlanController::class, 'create'])->middleware('permission:wallet.plan.create')->name('create');
+        Route::post('/', [WalletPlanController::class, 'store'])->middleware('permission:wallet.plan.create')->name('store');
+        Route::get('/{walletPlan}/edit', [WalletPlanController::class, 'edit'])->middleware('permission:wallet.plan.edit')->name('edit');
+        Route::put('/{walletPlan}', [WalletPlanController::class, 'update'])->middleware('permission:wallet.plan.update')->name('update');
+        Route::delete('/{walletPlan}', [WalletPlanController::class, 'destroy'])->middleware('permission:wallet.plan.delete')->name('destroy');
     });
 
 // IRS BMF Management Routes
 Route::prefix('irs-bmf')->name('irs-bmf.')->middleware(['auth', 'EnsureEmailIsVerified'])->group(function () {
-    Route::get('/', [App\Http\Controllers\IrsBmfController::class, 'index'])->name('index');
-    Route::get('/search', [App\Http\Controllers\IrsBmfController::class, 'search'])->name('search');
-    Route::get('/{record}', [App\Http\Controllers\IrsBmfController::class, 'show'])->name('show');
-    Route::post('/import', [App\Http\Controllers\IrsBmfController::class, 'triggerImport'])->name('import');
+    Route::get('/', [IrsBmfController::class, 'index'])->name('index');
+    Route::get('/search', [IrsBmfController::class, 'search'])->name('search');
+    Route::get('/{record}', [IrsBmfController::class, 'show'])->name('show');
+    Route::post('/import', [IrsBmfController::class, 'triggerImport'])->name('import');
 });
 
-// Frontend Raffle Routes (for users to browse and purchase)
-// Public QR Code Route (no authentication required)
-Route::get('/raffles/tickets/{ticket}/qr-code', [App\Http\Controllers\RaffleController::class, 'generateTicketQrCode'])->name('raffles.ticket.qr-code.public');
-
-// Public QR Code Verification Route (no authentication required)
-Route::get('/raffles/tickets/{ticket}/verify', [App\Http\Controllers\RaffleController::class, 'verifyTicket'])->name('raffles.verify-ticket.public');
+// Raffle ticket QR + verify: public so <img src> and phone scans work without raffle.read permission
+Route::get('/raffles/tickets/{ticket}/qr-code', [RaffleController::class, 'generateTicketQrCode'])->name('raffles.ticket.qr-code');
+Route::get('/raffles/tickets/{ticket}/verify', [RaffleController::class, 'verifyTicket'])->name('raffles.verify-ticket');
 
 // Test QR Code Route
 Route::get('/test-qr', function () {
-    $qrCode = \SimpleSoftwareIO\QrCode\Facades\QrCode::format('png')
+    $qrCode = QrCode::format('png')
         ->size(200)
         ->margin(2)
         ->color(0, 0, 0)
@@ -2146,9 +2389,9 @@ Route::get('/test-qr', function () {
 });
 
 Route::middleware(['web', 'auth', 'EnsureEmailIsVerified'])->prefix('frontend')->name('frontend.')->group(function () {
-    Route::get('/raffles', [App\Http\Controllers\RaffleController::class, 'frontendIndex'])->name('raffles.index');
-    Route::get('/raffles/{raffle}', [App\Http\Controllers\RaffleController::class, 'frontendShow'])->name('raffles.show');
-    Route::post('/raffles/{raffle}/purchase', [App\Http\Controllers\RaffleController::class, 'purchaseTickets'])->name('raffles.purchase');
+    Route::get('/raffles', [RaffleController::class, 'frontendIndex'])->name('raffles.index');
+    Route::get('/raffles/{raffle}', [RaffleController::class, 'frontendShow'])->name('raffles.show');
+    Route::post('/raffles/{raffle}/purchase', [RaffleController::class, 'purchaseTickets'])->name('raffles.purchase');
 });
 
 // Note: Stripe webhooks are handled by Laravel Cashier at /stripe/webhook
@@ -2157,18 +2400,18 @@ Route::middleware(['web', 'auth', 'EnsureEmailIsVerified'])->prefix('frontend')-
 
 // Email Invite Routes
 Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|care_alliance', 'topics.selected'])->prefix('email-invite')->name('email-invite.')->group(function () {
-    Route::get('/', [App\Http\Controllers\EmailInviteController::class, 'index'])->name('index');
-    Route::match(['get', 'post'], '/connect/gmail', [App\Http\Controllers\EmailInviteController::class, 'connectGmail'])->name('connect.gmail');
-    Route::match(['get', 'post'], '/connect/outlook', [App\Http\Controllers\EmailInviteController::class, 'connectOutlook'])->name('connect.outlook');
-    Route::get('/callback', [App\Http\Controllers\EmailInviteController::class, 'callback'])->name('callback');
-    Route::post('/connections/{connection}/sync', [App\Http\Controllers\EmailInviteController::class, 'syncContacts'])->name('sync');
-    Route::get('/connections/{connection}/sync-status', [App\Http\Controllers\EmailInviteController::class, 'checkSyncStatus'])->name('sync-status');
-    Route::get('/contacts', [App\Http\Controllers\EmailInviteController::class, 'getContacts'])->name('contacts');
-    Route::post('/send-invites', [App\Http\Controllers\EmailInviteController::class, 'sendInvites'])->name('send-invites');
-    Route::post('/purchase-emails', [App\Http\Controllers\EmailInviteController::class, 'purchaseEmails'])->name('purchase-emails');
-    Route::get('/purchase/success', [App\Http\Controllers\EmailInviteController::class, 'purchaseSuccess'])->name('purchase.success');
-    Route::delete('/connections/{connection}', [App\Http\Controllers\EmailInviteController::class, 'disconnect'])->name('disconnect');
-    Route::delete('/contacts/{contact}', [App\Http\Controllers\EmailInviteController::class, 'deleteContact'])->name('contacts.delete');
+    Route::get('/', [EmailInviteController::class, 'index'])->name('index');
+    Route::match(['get', 'post'], '/connect/gmail', [EmailInviteController::class, 'connectGmail'])->name('connect.gmail');
+    Route::match(['get', 'post'], '/connect/outlook', [EmailInviteController::class, 'connectOutlook'])->name('connect.outlook');
+    Route::get('/callback', [EmailInviteController::class, 'callback'])->name('callback');
+    Route::post('/connections/{connection}/sync', [EmailInviteController::class, 'syncContacts'])->name('sync');
+    Route::get('/connections/{connection}/sync-status', [EmailInviteController::class, 'checkSyncStatus'])->name('sync-status');
+    Route::get('/contacts', [EmailInviteController::class, 'getContacts'])->name('contacts');
+    Route::post('/send-invites', [EmailInviteController::class, 'sendInvites'])->name('send-invites');
+    Route::post('/purchase-emails', [EmailInviteController::class, 'purchaseEmails'])->name('purchase-emails');
+    Route::get('/purchase/success', [EmailInviteController::class, 'purchaseSuccess'])->name('purchase.success');
+    Route::delete('/connections/{connection}', [EmailInviteController::class, 'disconnect'])->name('disconnect');
+    Route::delete('/contacts/{contact}', [EmailInviteController::class, 'deleteContact'])->name('contacts.delete');
 });
 
 require __DIR__.'/settings.php';

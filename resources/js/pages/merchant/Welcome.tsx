@@ -69,7 +69,7 @@ export default function MerchantWelcome() {
                     className="w-full h-20 bg-blue-600 hover:bg-blue-700 text-white text-lg font-semibold shadow-lg"
                   >
                     <Gift className="w-6 h-6 mr-3" />
-                    Redeem Points
+                    Merchant Hub
                   </Button>
                 </Link>
               </motion.div>

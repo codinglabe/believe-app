@@ -42,13 +42,14 @@ interface Product {
     unit_price: number;
     /** Your cost / listing cost saved at create (own or Merchant Hub sourced). */
     source_cost?: number | string | null;
-    profit_margin_percentage: number;
+    profit_margin_percentage?: number | null;
     owned_by: string;
     organization_id?: number | null;
     status: string;
     publish_status: string;
     sku: string;
     type: string;
+    pickup_available?: boolean;
     tags: string | null;
     image?: string | null;
     printify_product_id?: string | null;
@@ -138,6 +139,9 @@ export default function Edit({
 }: Props) {
     const isPrintify = Boolean(is_printify_product || product.printify_product_id);
     const isManualPhysical = !isPrintify && product.type === 'physical';
+    /** Nonprofit “My Source” catalog rows are scoped by organization_id (edit list is org-filtered). */
+    const isOrganizationSourceProduct =
+        isManualPhysical && product.organization_id != null && Number(product.organization_id) > 0;
     const printifyProviderResolved = isPrintifyProvider(printify_provider) ? printify_provider : null;
 
     const [formData, setFormData] = useState({
@@ -156,6 +160,7 @@ export default function Edit({
         parcel_width_in: '',
         parcel_height_in: '',
         parcel_weight_oz: '',
+        pickup_available: false,
     });
 
     const [errors, setErrors] = useState<Record<string, string>>({});
@@ -185,6 +190,7 @@ export default function Edit({
             parcel_width_in: numStr(product.parcel_width_in),
             parcel_height_in: numStr(product.parcel_height_in),
             parcel_weight_oz: numStr(product.parcel_weight_oz),
+            pickup_available: !!product.pickup_available,
         });
     }, [product, selectedCategories]);
 
@@ -215,7 +221,7 @@ export default function Edit({
                 ? 'Offers'
                 : 'Fixed price';
 
-    const handleChange = (field: string, value: string | number) => {
+    const handleChange = (field: string, value: string | number | boolean) => {
         setFormData((prev) => ({ ...prev, [field]: value }));
         if (errors[field]) {
             setErrors((prev) => {
@@ -309,6 +315,10 @@ export default function Edit({
             if (formData.parcel_width_in) fd.append('parcel_width_in', formData.parcel_width_in);
             if (formData.parcel_height_in) fd.append('parcel_height_in', formData.parcel_height_in);
             if (formData.parcel_weight_oz) fd.append('parcel_weight_oz', formData.parcel_weight_oz);
+        }
+
+        if (isOrganizationSourceProduct) {
+            fd.append('pickup_available', formData.pickup_available ? '1' : '0');
         }
 
         fd.append('_method', 'PUT');
@@ -452,9 +462,7 @@ export default function Edit({
                                                 <p>Offer to next if unpaid: {product.offer_to_next_if_unpaid ? 'Yes' : 'No'}</p>
                                             </div>
                                         )}
-                                        <p className="text-muted-foreground">
-                                            Profit margin: {product.profit_margin_percentage ?? '—'}%
-                                        </p>
+                                        {/* Markup removed: at-cost pricing */}
                                     </CardContent>
                                 </Card>
                             )}
@@ -474,19 +482,8 @@ export default function Edit({
                                             {printifyProviderResolved.location.city},{' '}
                                             {printifyProviderResolved.location.region}
                                         </p>
-                                        <p className="mt-3 border-t border-green-200 pt-3 dark:border-green-800">
-                                            <span className="text-green-900/80 dark:text-green-100/80">
-                                                Selling price markup (at creation):
-                                            </span>{' '}
-                                            <span className="font-medium">
-                                                {product.profit_margin_percentage != null &&
-                                                String(product.profit_margin_percentage) !== ''
-                                                    ? `${Number(product.profit_margin_percentage).toFixed(2)}%`
-                                                    : '—'}
-                                            </span>
-                                        </p>
-                                        <p className="mt-1 text-xs opacity-90">
-                                            Variant production costs live in Printify; retail uses cost × (1 + markup ÷ 100).
+                                        <p className="mt-3 border-t border-green-200 pt-3 text-xs opacity-90 dark:border-green-800">
+                                            This product is sold at cost. Typical retail is a reference-only display.
                                         </p>
                                     </CardContent>
                                 </Card>
@@ -501,19 +498,8 @@ export default function Edit({
                                         </CardDescription>
                                     </CardHeader>
                                     <CardContent className="text-sm text-green-800 dark:text-green-200">
-                                        <p>
-                                            <span className="text-green-900/80 dark:text-green-100/80">
-                                                Selling price markup (at creation):
-                                            </span>{' '}
-                                            <span className="font-medium">
-                                                {product.profit_margin_percentage != null &&
-                                                String(product.profit_margin_percentage) !== ''
-                                                    ? `${Number(product.profit_margin_percentage).toFixed(2)}%`
-                                                    : '—'}
-                                            </span>
-                                        </p>
-                                        <p className="mt-1 text-xs opacity-90">
-                                            Production cost per variant is in Printify; retail uses cost × (1 + markup ÷ 100).
+                                        <p className="text-xs opacity-90">
+                                            This product is sold at cost. Typical retail is a reference-only display.
                                         </p>
                                     </CardContent>
                                 </Card>
@@ -690,6 +676,31 @@ export default function Edit({
                                                 />
                                             </div>
                                         </div>
+                                        {isOrganizationSourceProduct && (
+                                            <div className="mt-6 border-t border-sky-200 pt-6 dark:border-sky-800">
+                                                <p className="text-muted-foreground mb-3 text-xs font-medium uppercase tracking-wide">
+                                                    Pickup at your location
+                                                </p>
+                                                <div className="flex items-start gap-3 rounded-lg border border-emerald-200 bg-emerald-50/80 p-3 dark:border-emerald-900/50 dark:bg-emerald-950/30">
+                                                    <input
+                                                        id="edit_pickup_available"
+                                                        type="checkbox"
+                                                        checked={!!formData.pickup_available}
+                                                        onChange={(e) => handleChange('pickup_available', e.target.checked)}
+                                                        className="mt-0.5 h-4 w-4 shrink-0"
+                                                    />
+                                                    <label
+                                                        htmlFor="edit_pickup_available"
+                                                        className="cursor-pointer text-sm leading-snug text-gray-800 dark:text-gray-100"
+                                                    >
+                                                        <span className="font-medium">Allow local pickup</span> at our
+                                                        organization address. Buyers who choose pickup at checkout pay no
+                                                        shipping; they see your nonprofit location (keep your org profile
+                                                        address complete).
+                                                    </label>
+                                                </div>
+                                            </div>
+                                        )}
                                     </CardContent>
                                 </Card>
                             )}

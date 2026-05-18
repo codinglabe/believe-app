@@ -37,6 +37,7 @@ class Product extends Model
         'publish_status',
         'sku',
         'type',
+        'pickup_available',
         'tags',
         'image',
         'quantity_ordered',
@@ -73,6 +74,7 @@ class Product extends Model
         'winner_payment_deadline' => 'datetime',
         'auto_extend' => 'boolean',
         'offer_to_next_if_unpaid' => 'boolean',
+        'pickup_available' => 'boolean',
     ];
 
     /**

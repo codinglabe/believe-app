@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+import { useMemo, useState, useEffect, useRef } from "react"
 import UnityMeetLayout from "@/layouts/UnityMeetLayout"
 import { Head, Link, router } from "@inertiajs/react"
 import axios from "axios"
@@ -8,6 +8,8 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -22,9 +24,30 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { ArrowLeft, Cloud, MoreHorizontal, Download, Pencil, Trash2, Video, FileVideo, HardDrive, Search, Loader2, Link2Off, ChevronLeft, ChevronRight, Calendar } from "lucide-react"
+import {
+  ArrowLeft,
+  Cloud,
+  MoreHorizontal,
+  MoreVertical,
+  Download,
+  Pencil,
+  Trash2,
+  Video,
+  FileVideo,
+  HardDrive,
+  Search,
+  Loader2,
+  Link2Off,
+  ChevronLeft,
+  ChevronRight,
+  Calendar,
+  Play,
+  Filter,
+  ChevronDown,
+} from "lucide-react"
 import { toast } from "react-hot-toast"
 import { PageHead } from "@/components/frontend/PageHead"
+import { cn } from "@/lib/utils"
 
 const BRAND = {
   from: "#9333ea",
@@ -40,6 +63,11 @@ interface DropboxFile {
   client_modified: string | null
 }
 
+interface MeetingTitleHint {
+  roomName: string
+  title: string | null
+}
+
 interface Props {
   dropboxLinked: boolean
   dropboxRedirectUri?: string | null
@@ -47,7 +75,55 @@ interface Props {
   dropboxFolderPath: string
   dropboxFiles: DropboxFile[]
   backUrl?: string
+  /** Unity Meet sidebar: only this user’s meetings (personal Dropbox or org folder filtered by room name). */
+  unityMeetRecordings?: boolean
+  /** False when using organization Dropbox so we don’t offer “disconnect” for the whole org from this page. */
+  recordingsDisconnectAvailable?: boolean
+  recordingsBackedByOrganization?: boolean
+  meetingTitleHints?: MeetingTitleHint[]
 }
+
+function isVideoFile(name: string): boolean {
+  const ext = name.split(".").pop()?.toLowerCase() ?? ""
+  return ["webm", "mp4", "mkv", "mov", "avi", "m4v"].includes(ext)
+}
+
+function displayNameWithoutExtension(name: string): string {
+  const lastDot = name.lastIndexOf(".")
+  return lastDot > 0 ? name.slice(0, lastDot) : name
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes === 0) return "0 B"
+  const k = 1024
+  const sizes = ["B", "KB", "MB", "GB"]
+  const i = Math.floor(Math.log(bytes) / Math.log(k))
+  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`
+}
+
+function formatDate(iso: string): string {
+  try {
+    const d = new Date(iso)
+    return d.toLocaleDateString(undefined, { dateStyle: "short" }) + " " + d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })
+  } catch {
+    return iso
+  }
+}
+
+function formatRecordingDateTime(iso: string | null): string {
+  if (!iso) return "—"
+  try {
+    const d = new Date(iso)
+    if (Number.isNaN(d.getTime())) return "—"
+    const datePart = d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })
+    const timePart = d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })
+    return `${datePart} · ${timePart}`
+  } catch {
+    return "—"
+  }
+}
+
+type RecordingTypeFilter = "all" | "video" | "other"
 
 export default function SupporterDropbox({
   dropboxLinked,
@@ -55,13 +131,23 @@ export default function SupporterDropbox({
   dropboxFolderPath = "",
   dropboxFiles = [],
   backUrl = "/livestreams/supporter",
+  unityMeetRecordings = false,
+  recordingsDisconnectAvailable = true,
+  recordingsBackedByOrganization = false,
+  meetingTitleHints = [],
 }: Props) {
   const PER_PAGE = 24
+  const [tab, setTab] = useState<"cloud" | "local">("cloud")
   const [searchQuery, setSearchQuery] = useState("")
   const [searchResults, setSearchResults] = useState<DropboxFile[] | null>(null)
   const [searching, setSearching] = useState(false)
   const [currentPage, setCurrentPage] = useState(1)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [renameTarget, setRenameTarget] = useState<DropboxFile | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<DropboxFile | null>(null)
+  const [newName, setNewName] = useState("")
+  const [renaming, setRenaming] = useState(false)
+  const [deleting, setDeleting] = useState(false)
 
   const filesToShow = searchQuery.trim() !== "" ? (searchResults ?? []) : dropboxFiles
   const totalItems = filesToShow.length
@@ -89,7 +175,7 @@ export default function SupporterDropbox({
     setSearching(true)
     debounceRef.current = setTimeout(() => {
       axios
-        .get(route("integrations.dropbox.search"), { params: { q } })
+        .get(unityMeetRecordings ? route("livestreams.supporter.recordings.search") : route("integrations.dropbox.search"), { params: { q } })
         .then((res) => {
           setSearchResults(res.data.files ?? [])
         })
@@ -100,24 +186,309 @@ export default function SupporterDropbox({
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current)
     }
-  }, [searchQuery])
+  }, [searchQuery, unityMeetRecordings])
 
   const isSearching = searchQuery.trim() !== "" && searching
+  const hintMap = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const h of meetingTitleHints) {
+      const room = (h.roomName ?? "").trim()
+      const title = (h.title ?? "").trim()
+      if (room && title) {
+        map.set(room.toLowerCase(), title)
+      }
+    }
+    return map
+  }, [meetingTitleHints])
+
+  const getMeetingTitleFromFilename = (name: string): string => {
+    const lower = name.toLowerCase()
+    for (const [roomLower, title] of hintMap.entries()) {
+      if (lower.includes(roomLower)) return title
+    }
+    return displayNameWithoutExtension(name)
+  }
+
+  const handleRename = () => {
+    if (!renameTarget) return
+    const trimmed = newName.trim()
+    if (!trimmed || trimmed === renameTarget.name) {
+      setRenameTarget(null)
+      return
+    }
+    setRenaming(true)
+    router.put(
+      unityMeetRecordings ? route("livestreams.supporter.recordings.file.rename") : route("integrations.dropbox.file.rename"),
+      { path: renameTarget.path_display, new_name: trimmed },
+      {
+        preserveScroll: true,
+        onFinish: () => setRenaming(false),
+        onSuccess: () => {
+          toast.success("File renamed.")
+          setRenameTarget(null)
+        },
+        onError: () => toast.error("Could not rename file."),
+      },
+    )
+  }
+
+  const handleDelete = () => {
+    if (!deleteTarget) return
+    setDeleting(true)
+    router.delete(unityMeetRecordings ? route("livestreams.supporter.recordings.file.delete") : route("integrations.dropbox.file.delete"), {
+      data: { path: deleteTarget.path_display },
+      preserveScroll: true,
+      onFinish: () => setDeleting(false),
+      onSuccess: () => {
+        toast.success("File deleted.")
+        setDeleteTarget(null)
+      },
+      onError: () => toast.error("Could not delete file."),
+    })
+  }
 
   return (
     <UnityMeetLayout
       breadcrumbs={[
         { title: 'Dashboard', href: '/dashboard' },
         { title: 'Unity Meet Communications', href: '/livestreams/supporter' },
-        { title: 'Dropbox recordings', href: '#' },
+        { title: unityMeetRecordings ? 'Recordings' : 'Dropbox recordings', href: '#' },
       ]}
     >
-      <PageHead title="Dropbox recordings" description="View and manage your meeting recordings saved to Dropbox." />
-      <Head title="Dropbox recordings" />
+      <PageHead title={unityMeetRecordings ? "Recordings" : "Dropbox recordings"} description="View and manage your meeting recordings saved to Dropbox." />
+      <Head title={unityMeetRecordings ? "Recordings" : "Dropbox recordings"} />
 
       <div className="min-h-screen bg-background">
-        {/* Hero header – match supporter livestream index */}
-        <div
+        {unityMeetRecordings ? (
+          <div className="w-full px-4 py-8 md:px-6 lg:px-8">
+            <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+              <h1 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">Recordings</h1>
+
+              <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:items-center">
+                <div className="relative w-full sm:w-72">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+                  <Input
+                    type="search"
+                    placeholder="Search recordings..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="h-10 w-full pl-9"
+                  />
+                  {isSearching ? (
+                    <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-muted-foreground" />
+                  ) : null}
+                </div>
+
+                <Button type="button" variant="outline" className="h-10 gap-2">
+                  <Filter className="h-4 w-4" />
+                  Filter
+                  <ChevronDown className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+
+            <Tabs value={tab} onValueChange={(v) => setTab(v as "cloud" | "local")} className="w-full">
+              <TabsList className="bg-transparent p-0">
+                <TabsTrigger
+                  value="cloud"
+                  className="rounded-none border-b-2 border-transparent px-3 pb-3 data-[state=active]:border-primary data-[state=active]:bg-transparent"
+                >
+                  Cloud Recordings
+                </TabsTrigger>
+                <TabsTrigger
+                  value="local"
+                  className="rounded-none border-b-2 border-transparent px-3 pb-3 data-[state=active]:border-primary data-[state=active]:bg-transparent"
+                >
+                  Local Recordings
+                </TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="cloud" className="mt-6">
+                <Card className="border-border bg-card shadow-sm">
+                  <CardContent className="p-0">
+                    {!dropboxLinked ? (
+                      <div className="px-6 py-14 text-center text-sm text-muted-foreground">
+                        Connect Dropbox to see your cloud recordings.
+                      </div>
+                    ) : filesToShow.length === 0 ? (
+                      <div className="px-6 py-14 text-center text-sm text-muted-foreground">
+                        No recordings found.
+                      </div>
+                    ) : (
+                      <>
+                        <div className="overflow-x-auto">
+                          <Table>
+                            <TableHeader>
+                              <TableRow>
+                                <TableHead className="pl-6">Meeting Title</TableHead>
+                                <TableHead>Date &amp; Time</TableHead>
+                                <TableHead>Duration</TableHead>
+                                <TableHead>Size</TableHead>
+                                <TableHead className="pr-6">Actions</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {paginatedFiles.map((file) => {
+                                const title = getMeetingTitleFromFilename(file.name)
+                                const when = formatRecordingDateTime(file.client_modified)
+                                const size = formatFileSize(file.size)
+                                const downloadUrl = route("livestreams.supporter.recordings.download", { path: file.path_display })
+                                const playUrl = isVideoFile(file.name) ? downloadUrl : null
+                                return (
+                                  <TableRow key={file.path_display}>
+                                    <TableCell className="pl-6 font-medium text-foreground">{title}</TableCell>
+                                    <TableCell className="text-muted-foreground whitespace-nowrap">{when}</TableCell>
+                                    <TableCell className="text-muted-foreground">—</TableCell>
+                                    <TableCell className="text-muted-foreground whitespace-nowrap">{size}</TableCell>
+                                    <TableCell className="pr-6">
+                                      <div className="flex items-center gap-2">
+                                        <Button asChild variant="outline" size="sm" className="h-9 gap-2">
+                                          <a href={playUrl ?? downloadUrl} target="_blank" rel="noopener noreferrer">
+                                            <Play className="h-4 w-4" />
+                                            Play
+                                          </a>
+                                        </Button>
+                                        <Button asChild variant="outline" size="sm" className="h-9 gap-2">
+                                          <a href={downloadUrl} target="_blank" rel="noopener noreferrer">
+                                            <Download className="h-4 w-4" />
+                                            Download
+                                          </a>
+                                        </Button>
+                                        <DropdownMenu>
+                                          <DropdownMenuTrigger asChild>
+                                            <Button variant="outline" size="icon" className="h-9 w-9" aria-label="More">
+                                              <MoreVertical className="h-4 w-4" />
+                                            </Button>
+                                          </DropdownMenuTrigger>
+                                          <DropdownMenuContent align="end" className="w-44">
+                                            <DropdownMenuItem onClick={() => window.open(downloadUrl, "_blank")}>Open</DropdownMenuItem>
+                                            <DropdownMenuItem
+                                              onClick={() => {
+                                                setNewName(file.name)
+                                                setRenameTarget(file)
+                                              }}
+                                            >
+                                              <Pencil className="h-4 w-4" />
+                                              Rename
+                                            </DropdownMenuItem>
+                                            <DropdownMenuItem
+                                              className="text-destructive focus:text-destructive"
+                                              onClick={() => setDeleteTarget(file)}
+                                              disabled={deleting}
+                                            >
+                                              <Trash2 className="h-4 w-4" />
+                                              Delete
+                                            </DropdownMenuItem>
+                                          </DropdownMenuContent>
+                                        </DropdownMenu>
+                                      </div>
+                                    </TableCell>
+                                  </TableRow>
+                                )
+                              })}
+                            </TableBody>
+                          </Table>
+                        </div>
+
+                        <div className="flex flex-col gap-4 border-t border-border px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
+                          <p className="text-sm text-muted-foreground">
+                            Showing {startItem} to {endItem} of {totalItems} recordings
+                          </p>
+                          {totalPages > 1 ? (
+                            <div className="flex items-center gap-1">
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="icon"
+                                className="h-9 w-9"
+                                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                                disabled={currentPage <= 1}
+                              >
+                                <ChevronLeft className="h-4 w-4" />
+                              </Button>
+                              <Button type="button" variant="outline" size="sm" className="h-9 w-9">
+                                {currentPage}
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="icon"
+                                className="h-9 w-9"
+                                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                                disabled={currentPage >= totalPages}
+                              >
+                                <ChevronRight className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          ) : null}
+                        </div>
+
+                        <Dialog open={!!renameTarget} onOpenChange={(open) => !open && setRenameTarget(null)}>
+                          <DialogContent>
+                            <DialogHeader>
+                              <DialogTitle>Rename file</DialogTitle>
+                              <DialogDescription>Enter a new name for this recording file.</DialogDescription>
+                            </DialogHeader>
+                            <div className="grid gap-2 py-2">
+                              <Label htmlFor="rename-input">File name</Label>
+                              <Input
+                                id="rename-input"
+                                value={newName}
+                                onChange={(e) => setNewName(e.target.value)}
+                                placeholder="recording.webm"
+                              />
+                            </div>
+                            <DialogFooter>
+                              <Button variant="outline" onClick={() => setRenameTarget(null)}>
+                                Cancel
+                              </Button>
+                              <Button onClick={handleRename} disabled={renaming || !newName.trim()}>
+                                {renaming ? "Renaming…" : "Rename"}
+                              </Button>
+                            </DialogFooter>
+                          </DialogContent>
+                        </Dialog>
+
+                        <Dialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
+                          <DialogContent>
+                            <DialogHeader>
+                              <DialogTitle>Delete file?</DialogTitle>
+                              <DialogDescription>
+                                Delete &quot;{deleteTarget?.name}&quot;? This cannot be undone.
+                              </DialogDescription>
+                            </DialogHeader>
+                            <DialogFooter>
+                              <Button variant="outline" onClick={() => setDeleteTarget(null)}>
+                                Cancel
+                              </Button>
+                              <Button variant="destructive" onClick={handleDelete} disabled={deleting} className="gap-2">
+                                <Trash2 className="h-4 w-4 shrink-0" />
+                                {deleting ? "Deleting…" : "Delete"}
+                              </Button>
+                            </DialogFooter>
+                          </DialogContent>
+                        </Dialog>
+                      </>
+                    )}
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              <TabsContent value="local" className="mt-6">
+                <Card className="border-border bg-card shadow-sm">
+                  <CardContent className="px-6 py-14 text-center text-sm text-muted-foreground">
+                    Local recordings are saved to your device when you stop recording.
+                  </CardContent>
+                </Card>
+              </TabsContent>
+            </Tabs>
+          </div>
+        ) : null}
+
+        {!unityMeetRecordings ? (
+          <>
+            {/* Hero header – match supporter livestream index */}
+            <div
           className="relative overflow-hidden border-b border-purple-200 dark:border-purple-500/20"
           style={{
             background: `linear-gradient(135deg, ${BRAND.fromMuted} 0%, rgba(147,51,234,0.25) 30%, rgba(37,99,235,0.2) 70%, ${BRAND.toMuted} 100%)`,
@@ -145,17 +516,24 @@ export default function SupporterDropbox({
                     <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-foreground">Dropbox recordings</h1>
                     <p className="text-sm text-muted-foreground mt-0.5">
                       {dropboxLinked
-                        ? "Recordings saved to your Dropbox. View, download, or manage below."
+                        ? unityMeetRecordings
+                          ? "Only recordings tied to your Unity Meet meetings appear here."
+                          : "Recordings saved to your Dropbox. View, download, or manage below."
                         : "Connect Dropbox to save meeting recordings to your account."}
                     </p>
+                    {dropboxLinked && unityMeetRecordings && recordingsBackedByOrganization ? (
+                      <p className="text-xs text-muted-foreground mt-1 max-w-xl">
+                        Your organization shares one Dropbox folder. We only list files whose names include your meeting ID (room name).
+                      </p>
+                    ) : null}
                   </div>
                 </div>
               </div>
-              {dropboxLinked && (
+              {dropboxLinked && recordingsDisconnectAvailable ? (
                 <div className="shrink-0">
                   <DisconnectButton />
                 </div>
-              )}
+              ) : null}
             </div>
           </div>
         </div>
@@ -224,7 +602,7 @@ export default function SupporterDropbox({
                   <>
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
                       {paginatedFiles.map((file) => (
-                        <FileCard key={file.path_display} file={file} />
+                        <FileCard key={file.path_display} file={file} unityMeetRecordings={unityMeetRecordings} />
                       ))}
                     </div>
                     {totalPages > 1 && (
@@ -312,46 +690,23 @@ export default function SupporterDropbox({
             </section>
           )}
         </main>
+          </>
+        ) : null}
       </div>
     </UnityMeetLayout>
   )
 }
 
-function formatFileSize(bytes: number): string {
-  if (bytes === 0) return "0 B"
-  const k = 1024
-  const sizes = ["B", "KB", "MB", "GB"]
-  const i = Math.floor(Math.log(bytes) / Math.log(k))
-  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`
-}
-
-function formatDate(iso: string): string {
-  try {
-    const d = new Date(iso)
-    return d.toLocaleDateString(undefined, { dateStyle: "short" }) + " " + d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })
-  } catch {
-    return iso
-  }
-}
-
-function isVideoFile(name: string): boolean {
-  const ext = name.split(".").pop()?.toLowerCase() ?? ""
-  return ["webm", "mp4", "mkv", "mov", "avi", "m4v"].includes(ext)
-}
-
-function displayNameWithoutExtension(name: string): string {
-  const lastDot = name.lastIndexOf(".")
-  return lastDot > 0 ? name.slice(0, lastDot) : name
-}
-
-function FileCard({ file }: { file: DropboxFile }) {
+function FileCard({ file, unityMeetRecordings = false }: { file: DropboxFile; unityMeetRecordings?: boolean }) {
   const [renameOpen, setRenameOpen] = useState(false)
   const [newName, setNewName] = useState(file.name)
   const [renaming, setRenaming] = useState(false)
   const [deleting, setDeleting] = useState(false)
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const [videoLoaded, setVideoLoaded] = useState(false)
-  const downloadUrl = route("integrations.dropbox.download", { path: file.path_display })
+  const downloadUrl = unityMeetRecordings
+    ? route("livestreams.supporter.recordings.download", { path: file.path_display })
+    : route("integrations.dropbox.download", { path: file.path_display })
   const showVideo = isVideoFile(file.name)
 
   const handleRename = () => {
@@ -361,18 +716,25 @@ function FileCard({ file }: { file: DropboxFile }) {
       return
     }
     setRenaming(true)
-    router.put(route("integrations.dropbox.file.rename"), { path: file.path_display, new_name: trimmed }, {
-      preserveScroll: true,
-      onFinish: () => { setRenaming(false); setRenameOpen(false) },
-      onSuccess: () => toast.success("File renamed."),
-      onError: () => toast.error("Could not rename file."),
-    })
+    router.put(
+      unityMeetRecordings ? route("livestreams.supporter.recordings.file.rename") : route("integrations.dropbox.file.rename"),
+      { path: file.path_display, new_name: trimmed },
+      {
+        preserveScroll: true,
+        onFinish: () => {
+          setRenaming(false)
+          setRenameOpen(false)
+        },
+        onSuccess: () => toast.success("File renamed."),
+        onError: () => toast.error("Could not rename file."),
+      },
+    )
   }
 
   const handleDelete = () => {
     setDeleteConfirmOpen(false)
     setDeleting(true)
-    router.delete(route("integrations.dropbox.file.delete"), {
+    router.delete(unityMeetRecordings ? route("livestreams.supporter.recordings.file.delete") : route("integrations.dropbox.file.delete"), {
       data: { path: file.path_display },
       preserveScroll: true,
       onFinish: () => setDeleting(false),

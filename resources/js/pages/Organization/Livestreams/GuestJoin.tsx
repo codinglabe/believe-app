@@ -1,23 +1,13 @@
 "use client"
 
-import { useState, useRef, useEffect } from "react"
-import { Head, Link } from "@inertiajs/react"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
-import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Badge } from "@/components/ui/badge"
+import { useEffect, useState, type ReactNode } from "react"
+import { usePage } from "@inertiajs/react"
 import FrontendLayout from "@/layouts/frontend/frontend-layout"
-import {
-  Video,
-  ExternalLink,
-  Camera,
-  CameraOff,
-  Mic,
-  MicOff,
-  CheckCircle2,
-  AlertCircle,
-  Info,
-} from "lucide-react"
+import { GuestMeetJoinExperience } from "@/components/livestreams/GuestMeetJoinExperience"
+import { BelieveInUnityBrandMark } from "@/components/site-title"
+import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Button } from "@/components/ui/button"
+import { Calendar, CheckCircle2, AlertCircle, Info, Video } from "lucide-react"
 
 interface Livestream {
   id: number
@@ -26,7 +16,11 @@ interface Livestream {
   roomName: string
   roomPassword: string
   participantUrl: string
-  status: "draft" | "scheduled" | "live" | "ended" | "cancelled"
+  status: "draft" | "scheduled" | "meeting_live" | "live" | "ended" | "cancelled"
+  scheduledAt?: string | null
+  participantEmails?: string[] | null
+  recordingEnabled?: boolean
+  declineContext?: { kind: "user" | "organization"; id: number }
 }
 
 interface Organization {
@@ -37,213 +31,261 @@ interface Organization {
 interface Props {
   livestream: Livestream
   organization: Organization
+  recordingDeclineReturnTo: string
 }
 
-export default function GuestJoin({ livestream, organization }: Props) {
-  const [cameraEnabled, setCameraEnabled] = useState(false)
-  const [micEnabled, setMicEnabled] = useState(false)
-  const [stream, setStream] = useState<MediaStream | null>(null)
-  const videoRef = useRef<HTMLVideoElement>(null)
+function formatScheduledAt(iso: string | null | undefined): string | null {
+  if (!iso) return null
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return iso
+  return d.toLocaleString(undefined, {
+    weekday: "short",
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  })
+}
+
+export default function GuestJoin({ livestream, organization, recordingDeclineReturnTo }: Props) {
+  const page = usePage()
+  const authUser = (page.props as { auth?: { user?: { email?: string; name?: string } } }).auth?.user
+  const authEmail = authUser?.email?.trim()
+  const authName = authUser?.name?.trim()
+
+  const [inviteEmail, setInviteEmail] = useState("")
+  const [inviteChecked, setInviteChecked] = useState(false)
 
   useEffect(() => {
-    return () => {
-      // Cleanup: stop all tracks when component unmounts
-      if (stream) {
-        stream.getTracks().forEach((track) => track.stop())
-      }
+    if (authEmail && !inviteEmail) {
+      setInviteEmail(authEmail)
     }
-  }, [stream])
+  }, [authEmail, inviteEmail])
 
-  const testCamera = async () => {
-    try {
-      const mediaStream = await navigator.mediaDevices.getUserMedia({
-        video: true,
-        audio: true,
-      })
-      setStream(mediaStream)
-      setCameraEnabled(true)
-      setMicEnabled(true)
+  const scheduledLabel = formatScheduledAt(livestream.scheduledAt)
+  const scheduledTimeReached = (() => {
+    if (livestream.status !== "scheduled" || !livestream.scheduledAt) return false
+    const d = new Date(livestream.scheduledAt)
+    return !Number.isNaN(d.getTime()) && d.getTime() <= Date.now()
+  })()
 
-      if (videoRef.current) {
-        videoRef.current.srcObject = mediaStream
-      }
-    } catch (error) {
-      console.error("Error accessing camera/microphone:", error)
-      alert("Unable to access camera/microphone. Please check your permissions.")
-    }
+  const normalizedParticipantEmails = (livestream.participantEmails ?? [])
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean)
+  const inviteRequired = livestream.status === "scheduled" && normalizedParticipantEmails.length > 0
+  const inviteEmailNormalized = inviteEmail.trim().toLowerCase()
+  const isInvited =
+    !inviteRequired || normalizedParticipantEmails.includes(inviteEmailNormalized)
+  const allowedByInvite =
+    !inviteRequired || ((authEmail ? true : inviteChecked) && isInvited)
+
+  const activeStatuses = ["draft", "meeting_live", "live", "scheduled"] as const
+  const isActive = activeStatuses.includes(livestream.status as (typeof activeStatuses)[number])
+  const isEnded = livestream.status === "ended" || livestream.status === "cancelled"
+  const isScheduledWaiting =
+    livestream.status === "scheduled" && !scheduledTimeReached
+  const canEnterMeeting =
+    isActive &&
+    !isEnded &&
+    !isScheduledWaiting &&
+    allowedByInvite
+
+  const inviteLobbyBlock =
+    inviteRequired && !isScheduledWaiting ? (
+      <div className="mb-6 rounded-xl border border-border/80 bg-muted/30 p-4 space-y-3">
+        <div>
+          <p className="text-sm font-medium text-foreground">Participants only</p>
+          <p className="text-xs text-muted-foreground mt-1">
+            {authEmail
+              ? "We’ll use your account email to confirm you’re on the guest list."
+              : "Enter your email to confirm you’re on the guest list."}
+          </p>
+        </div>
+        <div className="flex gap-2">
+          <input
+            value={inviteEmail}
+            onChange={(e) => setInviteEmail(e.target.value)}
+            placeholder="you@example.com"
+            className="h-10 flex-1 rounded-md border border-border bg-background px-3 text-sm outline-none focus:border-purple-500/50 disabled:opacity-70"
+            type="email"
+            autoComplete="email"
+            readOnly={!!authEmail}
+            disabled={!!authEmail}
+          />
+          {!authEmail && (
+            <Button
+              type="button"
+              variant="outline"
+              className="h-10 shrink-0"
+              onClick={() => setInviteChecked(true)}
+              disabled={!inviteEmail.trim()}
+            >
+              Check
+            </Button>
+          )}
+        </div>
+        {(authEmail ? true : inviteChecked) && !isInvited && (
+          <Alert variant="destructive">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>
+              This email is not on the participant list for this meeting.
+            </AlertDescription>
+          </Alert>
+        )}
+        {(authEmail ? true : inviteChecked) && isInvited && livestream.status === "scheduled" && (
+          <Alert className="border-purple-500/20 bg-purple-500/5">
+            <CheckCircle2 className="h-4 w-4 text-purple-600" />
+            <AlertDescription>
+              You’re on the participant list. You can join when the host starts the meeting.
+            </AlertDescription>
+          </Alert>
+        )}
+      </div>
+    ) : null
+
+  if (isEnded) {
+    return (
+      <FrontendLayout>
+        <GuestJoinStatusPage
+          icon={<Video className="h-8 w-8 text-muted-foreground" />}
+          title={livestream.title || "Meeting"}
+          organizationName={organization.name}
+          heading="This meeting has ended"
+          description="The host has closed this session. Contact them if you need a new invite link."
+        />
+      </FrontendLayout>
+    )
   }
 
-  const stopTest = () => {
-    if (stream) {
-      stream.getTracks().forEach((track) => track.stop())
-      setStream(null)
-      setCameraEnabled(false)
-      setMicEnabled(false)
-      if (videoRef.current) {
-        videoRef.current.srcObject = null
-      }
-    }
+  if (isScheduledWaiting) {
+    return (
+      <FrontendLayout>
+        <GuestJoinStatusPage
+          icon={<Calendar className="h-8 w-8 text-purple-600" />}
+          title={livestream.title || "Meeting"}
+          organizationName={organization.name}
+          heading="You’re a bit early"
+          description="This meeting hasn’t started yet. Come back at the scheduled time."
+          extra={
+            <div className="w-full space-y-4">
+              {scheduledLabel && (
+                <ScheduledTimeRow label={scheduledLabel} />
+              )}
+              {inviteLobbyBlock}
+              <p className="text-center text-xs text-muted-foreground">
+                Tip: bookmark this page and refresh near the scheduled time.
+              </p>
+            </div>
+          }
+        />
+      </FrontendLayout>
+    )
   }
 
-  const getStatusBadge = () => {
-    if (livestream.status === "live") {
-      return <Badge className="bg-red-500/20 text-red-400 animate-pulse">Live Now</Badge>
-    }
-    if (livestream.status === "scheduled") {
-      return <Badge className="bg-blue-500/20 text-blue-400">Scheduled</Badge>
-    }
-    if (livestream.status === "ended") {
-      return <Badge className="bg-gray-500/20 text-gray-400">Ended</Badge>
-    }
-    return <Badge className="bg-gray-500/20 text-gray-400">Draft</Badge>
+  if (inviteRequired && (authEmail ? false : !inviteChecked) && livestream.status === "scheduled") {
+    return (
+      <FrontendLayout>
+        <GuestJoinStatusPage
+          icon={<Calendar className="h-8 w-8 text-purple-600" />}
+          title={livestream.title || "Meeting"}
+          organizationName={organization.name}
+          heading="Confirm your invite"
+          description="This scheduled meeting is for invited participants only."
+          extra={inviteLobbyBlock}
+        />
+      </FrontendLayout>
+    )
   }
 
-  const canJoin = livestream.status === "live" || livestream.status === "scheduled" || livestream.status === "draft"
+  if (inviteRequired && (authEmail ? true : inviteChecked) && !isInvited) {
+    return (
+      <FrontendLayout>
+        <GuestJoinStatusPage
+          icon={<AlertCircle className="h-8 w-8 text-destructive" />}
+          title={livestream.title || "Meeting"}
+          organizationName={organization.name}
+          heading="You’re not on the guest list"
+          description="This email isn’t invited to this meeting. Use the email your host sent the invite to, or ask them to add you."
+          extra={inviteLobbyBlock}
+        />
+      </FrontendLayout>
+    )
+  }
 
   return (
     <FrontendLayout>
-      <Head title={`Join Livestream: ${livestream.title || "Untitled"}`} />
-      <div className="container mx-auto py-12 px-4 max-w-4xl">
-        <div className="mb-8 text-center">
-          <h1 className="text-4xl font-bold mb-2">
-            {livestream.title || "Join Livestream"}
-          </h1>
-          <p className="text-gray-400 text-lg mb-4">{organization.name}</p>
-          {getStatusBadge()}
-        </div>
-
-        {livestream.description && (
-          <Card className="mb-6">
-            <CardContent className="pt-6">
-              <p className="text-gray-300">{livestream.description}</p>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Camera Test */}
-        <Card className="mb-6">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Camera className="w-5 h-5" />
-              Test Your Camera & Microphone
-            </CardTitle>
-            <CardDescription>
-              Make sure your camera and microphone are working before joining
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="relative bg-black rounded-lg aspect-video overflow-hidden">
-              {cameraEnabled ? (
-                <video
-                  ref={videoRef}
-                  autoPlay
-                  playsInline
-                  muted
-                  className="w-full h-full object-cover"
-                />
-              ) : (
-                <div className="flex items-center justify-center h-full text-gray-500">
-                  <CameraOff className="w-16 h-16" />
-                </div>
-              )}
-            </div>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <div className="flex items-center gap-2">
-                  {cameraEnabled ? (
-                    <CheckCircle2 className="w-5 h-5 text-green-400" />
-                  ) : (
-                    <AlertCircle className="w-5 h-5 text-gray-500" />
-                  )}
-                  <span className="text-sm">Camera</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  {micEnabled ? (
-                    <CheckCircle2 className="w-5 h-5 text-green-400" />
-                  ) : (
-                    <AlertCircle className="w-5 h-5 text-gray-500" />
-                  )}
-                  <span className="text-sm">Microphone</span>
-                </div>
-              </div>
-              <div className="flex gap-2">
-                {!cameraEnabled ? (
-                  <Button onClick={testCamera} variant="outline">
-                    <Camera className="w-4 h-4 mr-2" />
-                    Test Camera
-                  </Button>
-                ) : (
-                  <Button onClick={stopTest} variant="outline">
-                    <CameraOff className="w-4 h-4 mr-2" />
-                    Stop Test
-                  </Button>
-                )}
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Join Button */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Ready to Join?</CardTitle>
-            <CardDescription>
-              Click the button below to join the livestream room
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {!canJoin && (
-              <Alert>
-                <AlertCircle className="w-4 h-4" />
+      <GuestMeetJoinExperience
+        livestream={livestream}
+        organization={organization}
+        recordingDeclineReturnTo={recordingDeclineReturnTo}
+        canEnterMeeting={canEnterMeeting}
+        defaultDisplayName={authName ?? ""}
+        consentAppearance="light"
+        lobbyBeforeJoin={
+          <>
+            {livestream.description ? (
+              <p className="mb-6 text-center text-sm text-muted-foreground">{livestream.description}</p>
+            ) : null}
+            {inviteLobbyBlock}
+            {livestream.status === "scheduled" && scheduledTimeReached && (
+              <Alert className="mb-6 border-purple-500/20 bg-purple-500/5">
+                <Info className="h-4 w-4" />
                 <AlertDescription>
-                  This livestream is not currently available to join.
+                  The scheduled time has started. If the room is empty, the host may not have opened the meeting yet — try
+                  refreshing in a moment.
                 </AlertDescription>
               </Alert>
             )}
-
-            {canJoin && (
-              <>
-                <Alert>
-                  <Info className="w-4 h-4" />
-                  <AlertDescription>
-                    <strong>No account needed!</strong> Just click the button below and allow camera/microphone access when prompted.
-                  </AlertDescription>
-                </Alert>
-
-                <Button
-                  onClick={() => window.open(livestream.participantUrl, "_blank")}
-                  className="w-full bg-gradient-to-r from-[#FF1493] to-[#DC143C] hover:from-[#FF1493]/90 hover:to-[#DC143C]/90 text-lg py-6"
-                  size="lg"
-                >
-                  <ExternalLink className="w-5 h-5 mr-2" />
-                  Join Livestream
-                </Button>
-
-                <p className="text-sm text-gray-400 text-center">
-                  The livestream will open in a new window. Make sure pop-ups are enabled.
-                </p>
-              </>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Instructions */}
-        <Card className="mt-6 bg-blue-500/10 border-blue-500/30">
-          <CardHeader>
-            <CardTitle className="text-sm">What to expect</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <ul className="list-disc list-inside space-y-2 text-sm text-gray-300">
-              <li>You'll be asked to allow camera and microphone access</li>
-              <li>Your video will appear in the livestream</li>
-              <li>The host can see and hear you</li>
-              <li>You can mute/unmute yourself using the controls</li>
-              <li>No software installation required - it all works in your browser!</li>
-            </ul>
-          </CardContent>
-        </Card>
-      </div>
+          </>
+        }
+        pageClassName="min-h-screen"
+      />
     </FrontendLayout>
   )
 }
 
+function ScheduledTimeRow({ label }: { label: string }) {
+  return (
+    <div className="flex items-center justify-between gap-4 rounded-lg border border-border bg-card px-4 py-3">
+      <span className="text-sm text-muted-foreground">Scheduled for</span>
+      <span className="text-sm font-semibold text-foreground text-right">{label}</span>
+    </div>
+  )
+}
+
+function GuestJoinStatusPage({
+  icon,
+  title,
+  organizationName,
+  heading,
+  description,
+  extra,
+}: {
+  icon: ReactNode
+  title: string
+  organizationName: string
+  heading: string
+  description: string
+  extra?: ReactNode
+}) {
+  return (
+    <div className="flex min-h-screen flex-col items-center justify-center bg-background p-4 sm:p-6">
+      <div className="w-full max-w-[420px]">
+        <div className="mb-8 flex flex-col items-center text-center">
+          <BelieveInUnityBrandMark className="mb-6 justify-center" />
+          <p className="mb-1 text-sm text-muted-foreground">{organizationName}</p>
+          <h1 className="text-xl font-semibold text-foreground sm:text-2xl">{title}</h1>
+        </div>
+        <div className="rounded-2xl border border-border/80 bg-card p-6 shadow-xl text-center">
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-muted">
+            {icon}
+          </div>
+          <h2 className="text-lg font-semibold text-foreground">{heading}</h2>
+          <p className="mt-2 text-sm text-muted-foreground">{description}</p>
+          {extra ? <div className="mt-6 text-left">{extra}</div> : null}
+        </div>
+      </div>
+    </div>
+  )
+}

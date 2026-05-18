@@ -11,7 +11,6 @@ use App\Services\BelievePointPurchaseSettlementService;
 use App\Services\BelievePointsPaymentMethodSyncService;
 use App\Services\DonationProcessingFeeEstimator;
 use App\Services\StripeEnvironmentSyncService;
-use App\Support\StripeAutomaticTax;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -212,8 +211,6 @@ class BelievePointController extends Controller
                     ],
                 ],
             ];
-
-            $checkoutOptions = StripeAutomaticTax::mergeCheckoutOptions($checkoutOptions);
 
             $checkout = $user->checkoutCharge(
                 $amountInCents,

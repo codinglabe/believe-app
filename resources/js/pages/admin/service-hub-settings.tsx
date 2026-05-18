@@ -228,11 +228,11 @@ export default function ServiceHubSettings({ settings, states, certificates = []
                   Fee Configuration
                 </CardTitle>
                 <CardDescription>
-                  Platform fee % is shared across all sales modules — edit it under{" "}
+                  Service Hub uses the <span className="font-medium text-foreground">global sales</span> platform fee from{" "}
                   <Link href="/admin/biu-fee" className="text-primary font-medium underline-offset-4 hover:underline">
                     BIU fee (platform)
-                  </Link>
-                  . Here you can adjust Service Hub transaction rates and the monthly ad fee.
+                  </Link>{" "}
+                  (marketplace carts use tiered rates on that page). Here you can adjust Service Hub transaction rates and the monthly ad fee.
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -244,7 +244,7 @@ export default function ServiceHubSettings({ settings, states, certificates = []
                     </Label>
                     <p className="text-2xl font-semibold">{platformPct}%</p>
                     <p className="text-sm text-muted-foreground">
-                      Deducted from seller earnings on service orders (same % as marketplace, courses, raffles, gift cards, merchant hub).
+                      Deducted from seller earnings on service orders — same global % as courses, raffles, gift cards, and merchant hub cash redemptions.
                     </p>
                   </div>
 

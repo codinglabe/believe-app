@@ -17,7 +17,6 @@ use App\Models\ServiceReview;
 use App\Models\ServiceSellerProfile;
 use App\Services\ServiceHubFeeService;
 use App\Services\StripeConfigService;
-use App\Support\StripeAutomaticTax;
 use App\Support\StripeCustomerChargeAmount;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -1035,7 +1034,7 @@ class ServiceHubController extends Controller
                 ],
             ];
 
-            $session = StripeSession::create(StripeAutomaticTax::mergeCheckoutSessionParams([
+            $session = StripeSession::create([
                 'payment_method_types' => ['card'],
                 'line_items' => $lineItems,
                 'mode' => 'payment',
@@ -1049,7 +1048,7 @@ class ServiceHubController extends Controller
                     'package_id' => $package->id,
                     'type' => 'service_order',
                 ],
-            ]));
+            ]);
 
             // Store Stripe session ID in order when checkout session is created
             $order->update([

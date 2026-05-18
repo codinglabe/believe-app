@@ -4,12 +4,16 @@ namespace App\Models;
 
 use App\Jobs\ProcessBelievePointsAutoReplenishJob;
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
+use App\Notifications\VerifyEmailNotification;
+use Database\Factories\UserFactory;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
+use Illuminate\Notifications\DatabaseNotification;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
@@ -20,7 +24,7 @@ use Spatie\Permission\Traits\HasRoles;
 
 class User extends Authenticatable implements MustVerifyEmail
 {
-    /** @use HasFactory<\Database\Factories\UserFactory> */
+    /** @use HasFactory<UserFactory> */
     use Billable, HasApiTokens, HasFactory, HasRoles, Notifiable;
 
     /**
@@ -46,6 +50,7 @@ class User extends Authenticatable implements MustVerifyEmail
         'balance',
         'reward_points',
         'believe_points',
+        'gifted_believe_points',
         'believe_points_auto_replenish_enabled',
         'believe_points_auto_replenish_threshold',
         'believe_points_auto_replenish_amount',
@@ -105,6 +110,12 @@ class User extends Authenticatable implements MustVerifyEmail
         'city',
         'state',
         'zipcode',
+        'primary_organization_id',
+        'account_visibility',
+        'message_audience',
+        'appearance_preference',
+        'secondary_organization_ids',
+        'religion',
         'volunteer_interest_statement',
         'youtube_channel_url',
         'youtube_access_token',
@@ -114,6 +125,12 @@ class User extends Authenticatable implements MustVerifyEmail
         'dropbox_access_token',
         'dropbox_token_expires_at',
         'dropbox_folder_name',
+        'account_visibility',
+        'messaging_policy',
+        'primary_organization_id',
+        'secondary_organization_ids',
+        'preferred_theme',
+        'auto_share_youtube_imports_to_feed',
     ];
 
     /**
@@ -139,6 +156,7 @@ class User extends Authenticatable implements MustVerifyEmail
             'email_verified_at' => 'datetime',
             'ownership_verified_at' => 'datetime',
             'verification_metadata' => 'array',
+            'secondary_organization_ids' => 'array',
             'password' => 'hashed',
             'wallet_token_expires_at' => 'datetime',
             'wallet_connected_at' => 'datetime',
@@ -155,7 +173,9 @@ class User extends Authenticatable implements MustVerifyEmail
             'newsletter_pro_targeting_purchased_at' => 'datetime',
             'ai_tokens_included' => 'integer',
             'ai_tokens_used' => 'integer',
+            'ai_media_studio_credits' => 'decimal:2',
             'believe_points' => 'decimal:2',
+            'gifted_believe_points' => 'decimal:2',
             'believe_points_auto_replenish_enabled' => 'boolean',
             'believe_points_auto_replenish_threshold' => 'decimal:2',
             'believe_points_auto_replenish_amount' => 'decimal:2',
@@ -163,6 +183,8 @@ class User extends Authenticatable implements MustVerifyEmail
             'believe_points_last_auto_replenish_at' => 'datetime',
             'youtube_token_expires_at' => 'datetime',
             'dropbox_token_expires_at' => 'datetime',
+            'secondary_organization_ids' => 'array',
+            'auto_share_youtube_imports_to_feed' => 'boolean',
         ];
     }
 
@@ -277,6 +299,19 @@ class User extends Authenticatable implements MustVerifyEmail
     {
         return $this->belongsToMany(Organization::class, 'user_favorite_organizations')
             ->withTimestamps()->with(['user', 'nteeCode']);
+    }
+
+    public function aiVideos(): HasMany
+    {
+        return $this->hasMany(AiVideo::class);
+    }
+
+    /**
+     * Primary organization affiliation selected by supporter.
+     */
+    public function primaryOrganization(): BelongsTo
+    {
+        return $this->belongsTo(Organization::class, 'primary_organization_id');
     }
 
     public function savedNewsArticles(): BelongsToMany
@@ -757,7 +792,7 @@ class User extends Authenticatable implements MustVerifyEmail
      */
     public function notifications()
     {
-        return $this->morphMany(\Illuminate\Notifications\DatabaseNotification::class, 'notifiable')
+        return $this->morphMany(DatabaseNotification::class, 'notifiable')
             ->orderBy('created_at', 'desc');
     }
 
@@ -787,7 +822,7 @@ class User extends Authenticatable implements MustVerifyEmail
     /**
      * Get the user's current plan
      */
-    public function currentPlan(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    public function currentPlan(): BelongsTo
     {
         return $this->belongsTo(Plan::class, 'current_plan_id');
     }
@@ -813,6 +848,19 @@ class User extends Authenticatable implements MustVerifyEmail
             'primary_action_category_user',
             'user_id',
             'primary_action_category_id'
+        )->withTimestamps();
+    }
+
+    /**
+     * Job positions (volunteer role types) this supporter saved on /volunteer-opportunities.
+     */
+    public function volunteerPreferredJobPositions(): BelongsToMany
+    {
+        return $this->belongsToMany(
+            JobPosition::class,
+            'user_volunteer_job_positions',
+            'user_id',
+            'job_position_id'
         )->withTimestamps();
     }
 
@@ -897,6 +945,81 @@ class User extends Authenticatable implements MustVerifyEmail
     }
 
     /**
+     * Purchased Believe Points + Gifted Believe Points (display total wallet).
+     */
+    public function totalBelievePointsBalance(): float
+    {
+        $p = round((float) ($this->believe_points ?? 0), 2);
+        $g = round((float) ($this->gifted_believe_points ?? 0), 2);
+
+        return round($p + $g, 2);
+    }
+
+    /**
+     * Credit points received as a supporter gift (restricted bucket).
+     */
+    public function addGiftedBelievePoints(float $points): void
+    {
+        $points = round(max(0, (float) $points), 2);
+        if ($points <= 0) {
+            return;
+        }
+        $this->increment('gifted_believe_points', $points);
+    }
+
+    /**
+     * Deduct Believe Points for a gift-card purchase, consuming gifted balance first when the SKU allows it.
+     *
+     * @return array{from_gifted: float, from_purchased: float}|null Null if insufficient balance.
+     */
+    public function deductBelievePointsForGiftCard(float $amount, bool $productAllowsGifted): ?array
+    {
+        $amount = round(max(0, (float) $amount), 2);
+        if ($amount <= 0) {
+            return ['from_gifted' => 0.0, 'from_purchased' => 0.0];
+        }
+
+        $this->refresh();
+        $gifted = round((float) ($this->gifted_believe_points ?? 0), 2);
+        $purchased = round((float) ($this->believe_points ?? 0), 2);
+
+        $fromGifted = $productAllowsGifted ? min($gifted, $amount) : 0.0;
+        $fromPurchased = round($amount - $fromGifted, 2);
+
+        if ($fromPurchased > $purchased + 0.000001) {
+            return null;
+        }
+
+        if ($fromGifted > 0) {
+            $this->decrement('gifted_believe_points', $fromGifted);
+        }
+        if ($fromPurchased > 0) {
+            $this->decrement('believe_points', $fromPurchased);
+            ProcessBelievePointsAutoReplenishJob::dispatch($this->id)->afterResponse();
+        }
+
+        return [
+            'from_gifted' => round($fromGifted, 2),
+            'from_purchased' => round($fromPurchased, 2),
+        ];
+    }
+
+    /**
+     * Refund a gift-card Believe Points payment back into the same buckets.
+     */
+    public function refundBelievePointsGiftCardBuckets(float $fromGifted, float $fromPurchased): void
+    {
+        $fromGifted = round(max(0, (float) $fromGifted), 2);
+        $fromPurchased = round(max(0, (float) $fromPurchased), 2);
+        if ($fromGifted > 0) {
+            $this->increment('gifted_believe_points', $fromGifted);
+        }
+        if ($fromPurchased > 0) {
+            $this->increment('believe_points', $fromPurchased);
+        }
+    }
+
+    /**
      * Get the current believe points balance of the user.
      */
     public function currentBelievePoints(): float
@@ -938,25 +1061,27 @@ class User extends Authenticatable implements MustVerifyEmail
     /**
      * Deduct reward points from the user's balance and create a ledger entry.
      *
-     * @param  string  $source  (e.g., 'merchant_reward_redemption')
-     * @param  int|null  $referenceId  (e.g., redemption_id)
-     * @return bool Returns true if deduction was successful, false if insufficient points
+     * @param  bool  $allowNegativeBalance  When true (e.g. quiz wrong answers), deduct full amount even if balance goes below zero.
+     * @return bool Returns true if deduction succeeded; without {@see $allowNegativeBalance}, false means insufficient balance.
      */
     public function deductRewardPoints(
         int|float $points,
         string $source,
         ?int $referenceId = null,
         ?string $description = null,
-        ?array $metadata = null
+        ?array $metadata = null,
+        bool $allowNegativeBalance = false
     ): bool {
         $points = round((float) $points, 2);
         if ($points <= 0) {
             return true;
         }
 
-        $balance = round((float) ($this->reward_points ?? 0), 2);
-        if ($balance < $points) {
-            return false;
+        if (! $allowNegativeBalance) {
+            $balance = round((float) ($this->reward_points ?? 0), 2);
+            if ($balance < $points) {
+                return false;
+            }
         }
 
         $this->decrement('reward_points', $points);
@@ -998,6 +1123,6 @@ class User extends Authenticatable implements MustVerifyEmail
             $domain = $scheme.'://'.$host.($port && $port != 80 && $port != 443 ? ':'.$port : '');
         }
 
-        $this->notify(new \App\Notifications\VerifyEmailNotification($domain));
+        $this->notify(new VerifyEmailNotification($domain));
     }
 }

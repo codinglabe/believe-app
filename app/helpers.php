@@ -1,10 +1,39 @@
 <?php
 
-if (!function_exists('is_livestock_domain')) {
+if (! function_exists('request_is_merchant_portal')) {
+    /**
+     * True when the request is on the merchant portal host (see config('merchant.domain')).
+     */
+    function request_is_merchant_portal(?\Illuminate\Http\Request $request = null): bool
+    {
+        $request ??= function_exists('request') ? request() : null;
+
+        if (! $request instanceof \Illuminate\Http\Request) {
+            return false;
+        }
+
+        $host = strtolower($request->getHost());
+        $configured = config('merchant.domain');
+
+        if (is_string($configured) && $configured !== '') {
+            $normalized = $configured;
+            if (str_contains($normalized, '://')) {
+                $normalized = (string) parse_url($normalized, PHP_URL_HOST);
+            }
+            $normalized = strtolower(explode(':', $normalized)[0]);
+
+            if ($normalized !== '' && $host === $normalized) {
+                return true;
+            }
+        }
+
+        return str_contains($host, 'merchant.');
+    }
+}
+
+if (! function_exists('is_livestock_domain')) {
     /**
      * Check if the current request is on the livestock domain.
-     *
-     * @return bool
      */
     function is_livestock_domain(): bool
     {
@@ -24,5 +53,19 @@ if (!function_exists('is_livestock_domain')) {
     }
 }
 
+if (! function_exists('streaming_status_callback_url')) {
+    /**
+     * Absolute URL enqueued for the AWS streaming worker to report status.
+     * When STREAMING_CALLBACK_BASE_URL is set (e.g. ngrok), AWS can reach your local Laravel.
+     */
+    function streaming_status_callback_url(): string
+    {
+        $base = trim((string) config('streaming.callback_base_url'));
 
+        if ($base !== '') {
+            return rtrim($base, '/').'/api/streaming/status';
+        }
 
+        return route('api.streaming.status');
+    }
+}

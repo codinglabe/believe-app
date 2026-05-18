@@ -137,7 +137,7 @@ export default function HubIndex({ offers, categories, filters: initialFilters }
               Browse Offers
             </h1>
             <p className="text-[#1F3A5F] text-lg max-w-2xl mx-auto">
-              Discover amazing rewards and redeem them with your points
+              Discover amazing rewards and claim them with your reward points
             </p>
           </div>
 

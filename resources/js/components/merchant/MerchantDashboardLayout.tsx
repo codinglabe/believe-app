@@ -47,8 +47,12 @@ export function MerchantDashboardLayout({ children }: MerchantDashboardLayoutPro
           },
         }}
       />
-      <div className="min-h-screen bg-gradient-to-br from-[#0A2540] via-[#061a2f] to-black text-white">
-        <div className="absolute inset-0 bg-gradient-to-r from-[#2563EB]/10 via-transparent to-transparent pointer-events-none" />
+      <div
+        data-merchant-dashboard
+        className="min-h-screen bg-[#0a0c1b] text-white scheme-dark selection:bg-purple-500/30"
+      >
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(139,92,246,0.12),transparent_55%)]" />
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_bottom_right,_rgba(59,130,246,0.08),transparent_45%)]" />
 
         {/* Sidebar */}
         <MerchantSidebar />
@@ -57,8 +61,8 @@ export function MerchantDashboardLayout({ children }: MerchantDashboardLayoutPro
         <MerchantDashboardHeader />
 
         {/* Main Content */}
-        <main className="lg:pl-64 pt-16 min-h-screen">
-          <div className="p-4 sm:p-6 relative z-10">{children}</div>
+        <main className="min-h-screen pt-[4.25rem] sm:pt-16 lg:pl-64">
+          <div className="relative z-10 p-4 sm:p-6 lg:p-8">{children}</div>
         </main>
       </div>
     </>

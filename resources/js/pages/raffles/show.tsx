@@ -24,6 +24,7 @@ import {
 import { PermissionButton } from '@/components/ui/permission-guard';
 import { PageProps } from '@/types';
 import AppLayout from '@/layouts/app-layout';
+import { SweepstakesComplianceBanner } from '@/components/raffles/SweepstakesComplianceBanner';
 
 interface RaffleTicket {
     id: number;
@@ -103,15 +104,28 @@ export default function RaffleShow({ raffle, userTickets }: RaffleShowProps) {
 
     const getStatusBadge = () => {
         if (raffle.is_completed) {
-            return <Badge variant="secondary" className="bg-green-100 text-green-800"><CheckCircle className="w-3 h-3 mr-1" />Completed</Badge>;
+            return (
+                <Badge variant="secondary" className="bg-green-100 text-green-800">
+                    <CheckCircle className="mr-1 h-3 w-3" />
+                    Completed
+                </Badge>
+            );
+        }
+        if (raffle.status === 'cancelled') {
+            return <Badge variant="outline">Cancelled</Badge>;
         }
         if (raffle.is_draw_time) {
-            return <Badge variant="destructive" className="bg-red-100 text-red-800"><Clock className="w-3 h-3 mr-1" />Draw Time!</Badge>;
+            return (
+                <Badge variant="outline" className="border-amber-200 bg-amber-100 text-amber-900">
+                    <Clock className="mr-1 h-3 w-3" />
+                    Draw near
+                </Badge>
+            );
         }
         if (raffle.is_active) {
             return <Badge variant="default" className="bg-blue-100 text-blue-800">Active</Badge>;
         }
-        return <Badge variant="outline">Cancelled</Badge>;
+        return <Badge variant="outline">Inactive</Badge>;
     };
 
     const formatDate = (dateString: string) => {
@@ -138,6 +152,7 @@ export default function RaffleShow({ raffle, userTickets }: RaffleShowProps) {
             <Head title={raffle.title} />
             
             <div className="max-w-6xl mx-auto space-y-6">
+                <SweepstakesComplianceBanner />
                 {/* Header */}
                 <div className="flex items-start justify-between">
                     <div className="flex-1">
@@ -162,7 +177,7 @@ export default function RaffleShow({ raffle, userTickets }: RaffleShowProps) {
                             <PermissionButton permission="raffle.draw">
                                 <Button onClick={handleDraw} className="bg-gradient-to-r from-red-600 to-pink-600 hover:from-red-700 hover:to-pink-700">
                                     <Trophy className="w-4 h-4 mr-2" />
-                                    Draw Winners
+                                    Select winners randomly
                                 </Button>
                             </PermissionButton>
                         )}
@@ -273,16 +288,16 @@ export default function RaffleShow({ raffle, userTickets }: RaffleShowProps) {
                                 <CardHeader>
                                     <CardTitle className="flex items-center">
                                         <Ticket className="w-5 h-5 mr-2" />
-                                        Buy Tickets
+                                        Enter sweepstakes
                                     </CardTitle>
                                     <CardDescription>
-                                        ${raffle.ticket_price} per ticket
+                                        ${raffle.ticket_price} suggested donation per entry
                                     </CardDescription>
                                 </CardHeader>
                                 <CardContent>
                                     <form onSubmit={handlePurchase} className="space-y-4">
                                         <div className="space-y-2">
-                                            <Label htmlFor="quantity">Quantity</Label>
+                                            <Label htmlFor="quantity">Number of entries</Label>
                                             <Input
                                                 id="quantity"
                                                 type="number"
@@ -298,7 +313,7 @@ export default function RaffleShow({ raffle, userTickets }: RaffleShowProps) {
                                                 ${(raffle.ticket_price * quantity).toFixed(2)}
                                             </p>
                                             <p className="text-sm text-gray-600 dark:text-gray-400">
-                                                Total for {quantity} ticket{quantity !== 1 ? 's' : ''}
+                                                Total for {quantity} entr{quantity !== 1 ? 'ies' : 'y'}
                                             </p>
                                         </div>
 
@@ -308,13 +323,13 @@ export default function RaffleShow({ raffle, userTickets }: RaffleShowProps) {
                                                 disabled={processing || raffle.available_tickets < quantity}
                                                 className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
                                             >
-                                                {processing ? 'Processing...' : 'Buy Tickets'}
+                                                {processing ? 'Processing...' : 'Support this cause'}
                                             </Button>
                                         </PermissionButton>
                                         
                                         {raffle.available_tickets < quantity && (
                                             <p className="text-sm text-red-500 text-center">
-                                                Not enough tickets available
+                                                Not enough entries available
                                             </p>
                                         )}
                                     </form>
@@ -325,13 +340,13 @@ export default function RaffleShow({ raffle, userTickets }: RaffleShowProps) {
                         {/* Raffle Stats */}
                         <Card>
                             <CardHeader>
-                                <CardTitle>Raffle Details</CardTitle>
+                                <CardTitle>Campaign details</CardTitle>
                             </CardHeader>
                             <CardContent className="space-y-4">
                                 <div className="flex items-center justify-between">
                                     <span className="flex items-center text-gray-600 dark:text-gray-400">
                                         <DollarSign className="w-4 h-4 mr-1" />
-                                        Ticket Price
+                                        Suggested donation
                                     </span>
                                     <span className="font-semibold">${raffle.ticket_price}</span>
                                 </div>
@@ -339,7 +354,7 @@ export default function RaffleShow({ raffle, userTickets }: RaffleShowProps) {
                                 <div className="flex items-center justify-between">
                                     <span className="flex items-center text-gray-600 dark:text-gray-400">
                                         <Users className="w-4 h-4 mr-1" />
-                                        Tickets Sold
+                                        Entries issued
                                     </span>
                                     <span className="font-semibold">
                                         {raffle.sold_tickets}/{raffle.total_tickets}
@@ -349,7 +364,7 @@ export default function RaffleShow({ raffle, userTickets }: RaffleShowProps) {
                                 <div className="flex items-center justify-between">
                                     <span className="flex items-center text-gray-600 dark:text-gray-400">
                                         <Ticket className="w-4 h-4 mr-1" />
-                                        Available
+                                        Entries available
                                     </span>
                                     <span className="font-semibold">{raffle.available_tickets}</span>
                                 </div>
@@ -357,7 +372,7 @@ export default function RaffleShow({ raffle, userTickets }: RaffleShowProps) {
                                 <div className="flex items-center justify-between">
                                     <span className="flex items-center text-gray-600 dark:text-gray-400">
                                         <Calendar className="w-4 h-4 mr-1" />
-                                        Draw Date
+                                        Winner selection
                                     </span>
                                     <span className="font-semibold text-sm">
                                         {formatDate(raffle.draw_date)}
@@ -367,7 +382,7 @@ export default function RaffleShow({ raffle, userTickets }: RaffleShowProps) {
                                 {/* Progress Bar */}
                                 <div className="space-y-1">
                                     <div className="flex justify-between text-xs text-gray-600 dark:text-gray-400">
-                                        <span>Progress</span>
+                                        <span>Entry capacity</span>
                                         <span>{Math.round((raffle.sold_tickets / raffle.total_tickets) * 100)}%</span>
                                     </div>
                                     <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
@@ -384,9 +399,9 @@ export default function RaffleShow({ raffle, userTickets }: RaffleShowProps) {
                         {userTickets.length > 0 && (
                             <Card>
                                 <CardHeader>
-                                    <CardTitle>My Tickets</CardTitle>
+                                    <CardTitle>My entries</CardTitle>
                                     <CardDescription>
-                                        {userTickets.length} ticket{userTickets.length !== 1 ? 's' : ''} purchased
+                                        {userTickets.length} entr{userTickets.length !== 1 ? 'ies' : 'y'} on file
                                     </CardDescription>
                                 </CardHeader>
                                 <CardContent>

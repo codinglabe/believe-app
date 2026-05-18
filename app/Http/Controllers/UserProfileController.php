@@ -3,8 +3,11 @@
 namespace App\Http\Controllers;
 
 use App\Jobs\IngestKioskProvidersForGeoJob;
+use App\Models\AdminSetting;
 use App\Models\Bid;
+use App\Models\ChatRoom;
 use App\Models\Donation;
+use App\Models\Enrollment;
 use App\Models\ExcelData;
 use App\Models\FundraiseLead;
 use App\Models\JobApplication;
@@ -28,11 +31,15 @@ use App\Services\ExcelDataTransformer;
 use App\Services\ImpactScoreService;
 use App\Services\KioskProviderAiIngestService;
 use App\Services\PrintifyService;
+use App\Services\YouTubeService;
+use App\Support\ProfileReligions;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -61,7 +68,7 @@ class UserProfileController extends Controller
         // Fetch actual wallet balance from WalletController
         $walletBalance = 0;
         if ($walletConnected && ! $walletExpired) {
-            $walletController = new \App\Http\Controllers\WalletController;
+            $walletController = new WalletController;
             $balanceResponse = $walletController->getBalance($request);
             $balanceData = $balanceResponse->getData(true); // Get array from JSON response
             if ($balanceData['success']) {
@@ -100,7 +107,7 @@ class UserProfileController extends Controller
 
         if ($youtubeChannelUrl) {
             try {
-                $youtubeService = app(\App\Services\YouTubeService::class);
+                $youtubeService = app(YouTubeService::class);
                 $details = $youtubeService->getChannelDetails($youtubeChannelUrl);
                 if ($details) {
                     $myChannel = [
@@ -123,10 +130,17 @@ class UserProfileController extends Controller
         ]);
     }
 
-    public function edit()
+    public function edit(Request $request)
     {
         $user = auth()->user();
-        $user->load(['supporterPositions', 'supporterInterestCategories']);
+        $user->load([
+            'supporterPositions',
+            'supporterInterestCategories',
+            'favoriteOrganizations' => function ($q) {
+                $q->select('organizations.id', 'organizations.name', 'organizations.user_id')
+                    ->with(['user:id,image']);
+            },
+        ]);
 
         // সব active positions + ইউজারের বর্তমান positions
         $positions = SupporterPosition::where('is_active', 1)
@@ -142,6 +156,66 @@ class UserProfileController extends Controller
             ->get(['id', 'name']);
 
         $userSupporterInterestIds = $user->supporterInterestCategories->pluck('id')->toArray();
+        $affiliatedOrganizations = $user->favoriteOrganizations
+            ->map(function (Organization $org) {
+                $logoUrl = null;
+                if ($org->relationLoaded('user') && $org->user?->image) {
+                    $logoUrl = Storage::url($org->user->image);
+                }
+
+                return [
+                    'id' => (int) $org->id,
+                    'name' => (string) $org->name,
+                    'logo_url' => $logoUrl,
+                ];
+            })
+            ->values()
+            ->all();
+
+        $favoriteOrgIds = $user->favoriteOrganizations->pluck('id')->map(fn ($id) => (int) $id)->values()->all();
+        $primaryOrgId = $user->primary_organization_id ? (int) $user->primary_organization_id : null;
+        $storedSecondary = $user->secondary_organization_ids;
+        if (is_array($storedSecondary) && count($storedSecondary) > 0) {
+            $secondaryOrgIds = array_values(array_unique(array_filter(array_map('intval', $storedSecondary))));
+        } else {
+            $secondaryOrgIds = array_values(array_filter(
+                $favoriteOrgIds,
+                fn (int $id) => $primaryOrgId === null || $id !== $primaryOrgId
+            ));
+        }
+
+        $slugPart = trim((string) ($user->slug ?? ''));
+        if ($slugPart === '') {
+            $slugPart = Str::slug((string) $user->name) ?: 'supporter';
+        }
+        $unityMeetingId = 'uni-'.$slugPart.'-'.$user->id;
+
+        $seedIds = array_values(array_unique(array_filter(array_merge(
+            [$user->primary_organization_id],
+            $user->secondary_organization_ids ?? [],
+        ))));
+
+        $organizationOptions = [];
+        if (count($seedIds) > 0) {
+            $organizationOptions = Organization::query()
+                ->whereIn('id', $seedIds)
+                ->orderBy('name')
+                ->get(['id', 'name', 'registered_user_image'])
+                ->map(static function (Organization $o) {
+                    return [
+                        'id' => $o->id,
+                        'name' => $o->name,
+                        'image' => $o->registered_user_image ? Storage::url($o->registered_user_image) : null,
+                    ];
+                })
+                ->values()
+                ->all();
+        }
+
+        $organizationPicker = null;
+        if ($request->filled('org_picker_page')) {
+            $organizationPicker = $this->organizationPickerPayload($request);
+        }
 
         return Inertia::render('frontend/user-profile/edit', [
             'user' => [
@@ -157,16 +231,97 @@ class UserProfileController extends Controller
                 'city' => $user->city,
                 'state' => $user->state,
                 'zipcode' => $user->zipcode,
+                'religion' => $user->religion,
+                'primary_organization_id' => $user->primary_organization_id ? (int) $user->primary_organization_id : null,
+                'secondary_organization_ids' => $secondaryOrgIds,
+                'unity_meeting_id' => $unityMeetingId,
+                'account_visibility' => in_array((string) ($user->account_visibility ?? 'public'), ['public', 'private'], true)
+                    ? (string) $user->account_visibility
+                    : 'public',
+                'messaging_policy' => in_array((string) ($user->messaging_policy ?? $user->message_audience ?? 'everyone'), [
+                    'everyone', 'followers_only', 'organizations_i_follow', 'no_one',
+                ], true)
+                    ? (string) ($user->messaging_policy ?? $user->message_audience ?? 'everyone')
+                    : 'everyone',
+                'preferred_theme' => in_array((string) ($user->preferred_theme ?? $user->appearance_preference ?? 'system'), ['system', 'light', 'dark'], true)
+                    ? (string) ($user->preferred_theme ?? $user->appearance_preference ?? 'system')
+                    : 'system',
             ],
             'availablePositions' => $positions,
             'availableSupporterInterests' => $supporterInterests,
+            'affiliatedOrganizations' => $affiliatedOrganizations,
+            'religionOptions' => ProfileReligions::values(),
+            'organizations' => $organizationOptions,
+            'organizationPicker' => $organizationPicker,
         ]);
+    }
+
+    /**
+     * Paginated organization list for profile edit pickers (Inertia partial reload only).
+     *
+     * @return array{target: string, items: array<int, array{id: int, name: string, image: string|null}>, has_more: bool, page: int, search: string}
+     */
+    private function organizationPickerPayload(Request $request): array
+    {
+        $validated = $request->validate([
+            'org_picker_page' => ['required', 'integer', 'min:1'],
+            'org_picker_q' => ['nullable', 'string', 'max:100'],
+            'org_picker_exclude' => ['nullable', 'string', 'max:2000'],
+            'org_picker_target' => ['required', 'in:primary,secondary'],
+        ]);
+
+        $page = (int) $validated['org_picker_page'];
+        $perPage = 30;
+        $search = trim((string) ($validated['org_picker_q'] ?? ''));
+        $excludeRaw = (string) ($validated['org_picker_exclude'] ?? '');
+        $excludeIds = collect(explode(',', $excludeRaw))
+            ->map(fn ($v) => (int) trim((string) $v))
+            ->filter(fn ($id) => $id > 0)
+            ->unique()
+            ->values()
+            ->all();
+
+        $query = Organization::query()
+            ->active()
+            ->excludingCareAllianceHubs()
+            ->when($search !== '', function ($q) use ($search) {
+                $escaped = addcslashes($search, '%_\\');
+                $q->where('name', 'like', '%'.$escaped.'%');
+            })
+            ->when(count($excludeIds) > 0, fn ($q) => $q->whereNotIn('id', $excludeIds))
+            ->orderBy('name');
+
+        $paginator = $query->paginate($perPage, ['id', 'name', 'registered_user_image'], 'page', $page);
+
+        $items = $paginator->getCollection()->map(static function (Organization $o) {
+            return [
+                'id' => $o->id,
+                'name' => $o->name,
+                'image' => $o->registered_user_image ? Storage::url($o->registered_user_image) : null,
+            ];
+        })->values()->all();
+
+        return [
+            'target' => $validated['org_picker_target'],
+            'items' => $items,
+            'has_more' => $paginator->hasMorePages(),
+            'page' => $paginator->currentPage(),
+            'search' => $search,
+        ];
     }
 
     public function update(Request $request)
     {
         $user = $request->user();
         $isSupporter = ($user->role ?? null) === 'user';
+
+        if ($request->has('primary_organization_id') && $request->input('primary_organization_id') === '') {
+            $request->merge(['primary_organization_id' => null]);
+        }
+
+        if ($request->has('religion') && $request->input('religion') === '') {
+            $request->merge(['religion' => null]);
+        }
 
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255'],
@@ -199,8 +354,55 @@ class UserProfileController extends Controller
             'timezone' => ['nullable', 'string', 'max:255'],
             'city' => [Rule::requiredIf($isSupporter), 'nullable', 'string', 'max:255'],
             'state' => [Rule::requiredIf($isSupporter), 'nullable', 'string', 'max:2'],
-            'zipcode' => ['nullable', 'string', 'max:10'],
+            'zipcode' => [Rule::requiredIf($isSupporter), 'nullable', 'string', 'max:10'],
+            'religion' => ['sometimes', 'nullable', 'string', Rule::in(ProfileReligions::values())],
+            'account_visibility' => ['sometimes', 'string', Rule::in(['public', 'private'])],
+            'messaging_policy' => ['sometimes', 'string', Rule::in(['everyone', 'followers_only', 'organizations_i_follow', 'no_one'])],
+            'primary_organization_id' => ['nullable', 'integer', Rule::exists('organizations', 'id')],
+            'secondary_organization_ids' => ['sometimes', 'array'],
+            'secondary_organization_ids.*' => ['integer', Rule::exists('organizations', 'id')],
+            'preferred_theme' => ['nullable', 'string', Rule::in(['system', 'light', 'dark'])],
         ]);
+
+        $primaryOrganizationId = isset($validated['primary_organization_id']) && $validated['primary_organization_id'] !== null
+            ? (int) $validated['primary_organization_id']
+            : null;
+
+        if ($isSupporter) {
+            $favoriteOrganizationIds = $user->favoriteOrganizations()
+                ->pluck('organizations.id')
+                ->map(fn ($id) => (int) $id)
+                ->all();
+
+            if (count($favoriteOrganizationIds) > 0 && $primaryOrganizationId === null) {
+                return back()->withErrors([
+                    'primary_organization_id' => 'Please select a primary organization.',
+                ])->withInput();
+            }
+
+            if ($primaryOrganizationId !== null && ! in_array($primaryOrganizationId, $favoriteOrganizationIds, true)) {
+                return back()->withErrors([
+                    'primary_organization_id' => 'Your primary organization must be one of your followed organizations.',
+                ])->withInput();
+            }
+
+            $secondaryIds = array_values(array_unique(array_filter(
+                array_map('intval', $validated['secondary_organization_ids'] ?? []),
+                fn (int $id) => $id > 0
+            )));
+            foreach ($secondaryIds as $sid) {
+                if (! in_array($sid, $favoriteOrganizationIds, true)) {
+                    return back()->withErrors([
+                        'secondary_organization_ids' => 'Secondary organizations must be organizations you follow.',
+                    ])->withInput();
+                }
+                if ($primaryOrganizationId !== null && $sid === $primaryOrganizationId) {
+                    return back()->withErrors([
+                        'secondary_organization_ids' => 'Secondary organizations cannot include your primary organization.',
+                    ])->withInput();
+                }
+            }
+        }
 
         // Email changed? Send verification
         if ($user->email !== $validated['email']) {
@@ -241,7 +443,36 @@ class UserProfileController extends Controller
             'city' => $geoAfterNorm['city'],
             'state' => $geoAfterNorm['state'],
             'zipcode' => $geoAfterNorm['zip'] !== '' ? $geoAfterNorm['zip'] : null,
+            'primary_organization_id' => $primaryOrganizationId,
         ];
+
+        if ($isSupporter) {
+            $secondaryIds = array_values(array_unique(array_filter(
+                array_map('intval', $validated['secondary_organization_ids'] ?? []),
+                fn (int $id) => $id > 0
+            )));
+            $primaryForSecondary = (int) ($primaryOrganizationId ?? 0);
+            if ($primaryForSecondary > 0) {
+                $secondaryIds = array_values(array_filter($secondaryIds, fn (int $id) => $id !== $primaryForSecondary));
+            }
+            $updateData['secondary_organization_ids'] = $secondaryIds;
+
+            if (array_key_exists('account_visibility', $validated)) {
+                $updateData['account_visibility'] = $validated['account_visibility'];
+            }
+            if (array_key_exists('messaging_policy', $validated)) {
+                $updateData['messaging_policy'] = $validated['messaging_policy'];
+                $updateData['message_audience'] = $validated['messaging_policy'];
+            }
+            if (array_key_exists('preferred_theme', $validated)) {
+                $updateData['preferred_theme'] = $validated['preferred_theme'];
+                $updateData['appearance_preference'] = $validated['preferred_theme'];
+            }
+        }
+
+        if (array_key_exists('religion', $validated)) {
+            $updateData['religion'] = $validated['religion'];
+        }
 
         // Update timezone if provided and valid
         if (isset($validated['timezone']) && ! empty($validated['timezone'])) {
@@ -286,6 +517,7 @@ class UserProfileController extends Controller
                 fn (int $id) => $id > 0
             )));
             $user->supporterInterestCategories()->sync($ids);
+            app(\App\Services\CauseGroupChatService::class)->ensureForUserAndCategoryIds($user, $ids);
         }
 
         return back()->with('success', 'Profile updated successfully!');
@@ -641,6 +873,8 @@ class UserProfileController extends Controller
                     'status' => $order->status,
                     'payment_status' => $order->payment_status,
                     'payment_method' => $order->payment_method ?? null,
+                    'subtotal' => $order->subtotal,
+                    'platform_fee' => $order->platform_fee,
                     'total_amount' => $order->total_amount,
                     'shipping_cost' => $order->shipping_cost,
                     'tax_amount' => $order->tax_amount,
@@ -928,7 +1162,6 @@ class UserProfileController extends Controller
             'subtotal' => $order->subtotal,
             'shipping_cost' => $order->shipping_cost,
             'tax_amount' => $order->tax_amount,
-            'stripe_tax_amount' => $order->stripe_tax_amount,
             'stripe_fee_amount' => $order->stripe_fee_amount,
             'stripe_processing_fee_addon' => $order->stripe_processing_fee_addon !== null ? (float) $order->stripe_processing_fee_addon : null,
             'printify_tax_amount' => (float) ($order->printify_tax_amount ?? 0),
@@ -1024,16 +1257,55 @@ class UserProfileController extends Controller
     {
         $user = $request->user();
 
-        $raffleTickets = RaffleTicket::with([
-            'raffle.organization',
-            'raffle.winners.ticket',
-        ])
-            ->where('user_id', $user->id)
-            ->orderBy('created_at', 'desc')
-            ->get();
+        $request->validate([
+            'search' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'page' => ['sometimes', 'integer', 'min:1'],
+        ]);
+
+        $search = trim((string) $request->input('search', ''));
+        $status = $request->input('status', 'all');
+        if (! is_string($status) || ! in_array($status, ['all', 'active', 'completed', 'cancelled'], true)) {
+            $status = 'all';
+        }
 
         return Inertia::render('frontend/user-profile/raffle-tickets', [
-            'raffleTickets' => $raffleTickets,
+            'filters' => [
+                'search' => $search,
+                'status' => $status,
+            ],
+            'raffleTickets' => Inertia::defer(function () use ($user, $search, $status) {
+                $query = RaffleTicket::with([
+                    'raffle.organization.organization',
+                    'raffle.winners.ticket',
+                ])
+                    ->where('user_id', $user->id);
+
+                if ($search !== '') {
+                    $term = '%'.addcslashes($search, '%_\\').'%';
+                    // Stored ticket numbers omit dashes/spaces (e.g. T591979) while UIs show T591-979 — match both.
+                    $alnumOnly = preg_replace('/[^A-Za-z0-9]/', '', $search);
+                    $termAlnum = ($alnumOnly !== '')
+                        ? '%'.addcslashes($alnumOnly, '%_\\').'%'
+                        : null;
+
+                    $query->where(function ($q) use ($term, $termAlnum) {
+                        $q->where(function ($tq) use ($term, $termAlnum) {
+                            $tq->where('ticket_number', 'like', $term);
+                            if ($termAlnum !== null && $termAlnum !== $term) {
+                                $tq->orWhere('ticket_number', 'like', $termAlnum);
+                            }
+                        })->orWhereHas('raffle', function ($rq) use ($term) {
+                            $rq->where('title', 'like', $term);
+                        });
+                    });
+                }
+
+                if ($status !== 'all') {
+                    $query->whereHas('raffle', fn ($rq) => $rq->where('status', $status));
+                }
+
+                return $query->orderByDesc('created_at')->paginate(4)->withQueryString();
+            }),
         ]);
     }
 
@@ -1050,7 +1322,7 @@ class UserProfileController extends Controller
         // Fetch actual wallet balance
         $walletBalance = (float) ($user->balance ?? 0);
         try {
-            $walletController = new \App\Http\Controllers\WalletController;
+            $walletController = new WalletController;
             $balanceResponse = $walletController->getBalance($request);
             $balanceData = $balanceResponse->getData(true);
             if (isset($balanceData['success']) && $balanceData['success']) {
@@ -1145,7 +1417,7 @@ class UserProfileController extends Controller
             $q->where('user_id', $user->id);
         })->sum('hours');
 
-        $hourlyRate = (float) \App\Models\AdminSetting::get('volunteer_hourly_reward_points', 10.00);
+        $hourlyRate = (float) AdminSetting::get('volunteer_hourly_reward_points', 10.00);
         $totalRewardPoints = $totalHours * $hourlyRate;
 
         return Inertia::render('frontend/user-profile/timesheet', [
@@ -1337,7 +1609,7 @@ class UserProfileController extends Controller
         $followingCount = UserFavoriteOrganization::where('user_id', $user->id)->count();
 
         // Get user's chat groups count
-        $groupsCount = \App\Models\ChatRoom::whereHas('members', function ($query) use ($user) {
+        $groupsCount = ChatRoom::whereHas('members', function ($query) use ($user) {
             $query->where('user_id', $user->id);
         })
             ->where('is_active', true)
@@ -1377,7 +1649,7 @@ class UserProfileController extends Controller
             });
 
         // Get enrollments for Activity tab
-        $enrollments = \App\Models\Enrollment::where('user_id', $user->id)
+        $enrollments = Enrollment::where('user_id', $user->id)
             ->with('course:id,name')
             ->latest()
             ->limit(10)
@@ -1391,19 +1663,14 @@ class UserProfileController extends Controller
                 ];
             });
 
-        // Get believe points
-        $believePointsBalance = (float) ($user->believe_points ?? 0);
-        $believePointsEarned = (float) ($totalDonated ?? 0);
-        $believePointsSpent = 0; // TODO: Calculate if needed
-
-        // Get reward points earned and spent from ledger
-        $rewardPointsEarned = (int) RewardPointLedger::where('user_id', $user->id)
-            ->where('type', 'credit')
-            ->sum('points');
-        $rewardPointsSpent = (int) RewardPointLedger::where('user_id', $user->id)
-            ->where('type', 'debit')
-            ->sum('points');
-        $rewardPointsBalance = (float) ($user->reward_points ?? 0);
+        [
+            'believePointsEarned' => $believePointsEarned,
+            'believePointsSpent' => $believePointsSpent,
+            'believePointsBalance' => $believePointsBalance,
+            'rewardPointsEarned' => $rewardPointsEarned,
+            'rewardPointsSpent' => $rewardPointsSpent,
+            'rewardPointsBalance' => $rewardPointsBalance,
+        ] = $this->publicProfilePointStats($user, $isOwnProfile, (float) ($totalDonated ?? 0));
 
         // Get recent posts (limit to 5 for initial load)
         $authUserId = $authUser ? $authUser->id : null;
@@ -1424,7 +1691,7 @@ class UserProfileController extends Controller
                 ->whereNotNull('organization_id')
                 ->pluck('organization_id')
                 ->map(function ($orgId) {
-                    $org = \App\Models\Organization::find($orgId);
+                    $org = Organization::find($orgId);
 
                     return $org ? $org->user_id : null;
                 })
@@ -1437,9 +1704,9 @@ class UserProfileController extends Controller
                 ->whereNotNull('excel_data_id')
                 ->pluck('excel_data_id')
                 ->map(function ($excelDataId) {
-                    $excelData = \App\Models\ExcelData::find($excelDataId);
+                    $excelData = ExcelData::find($excelDataId);
                     if ($excelData) {
-                        $org = \App\Models\Organization::where('ein', $excelData->ein)
+                        $org = Organization::where('ein', $excelData->ein)
                             ->where('registration_status', 'approved')
                             ->excludingCareAllianceHubs()
                             ->first();
@@ -1454,7 +1721,7 @@ class UserProfileController extends Controller
                 ->toArray();
 
             // Get followed user IDs
-            $followedUserIds = \App\Models\UserFollow::where('follower_id', $authUserId)
+            $followedUserIds = UserFollow::where('follower_id', $authUserId)
                 ->pluck('following_id')
                 ->toArray();
 
@@ -1632,7 +1899,7 @@ class UserProfileController extends Controller
                         'excel_data_id' => $excelDataMap->get($org->ein) ?? null,
                         'slug' => $org->user?->slug ?? null,
                         'name' => $org->name,
-                        'org' => $org->description ? \Illuminate\Support\Str::limit($org->description, 30) : 'Organization',
+                        'org' => $org->description ? Str::limit($org->description, 30) : 'Organization',
                         'avatar' => $org->user?->image ? '/storage/'.$org->user->image : null,
                     ];
                 })->toArray();
@@ -1665,7 +1932,7 @@ class UserProfileController extends Controller
                         'excel_data_id' => $excelDataMap->get($org->ein) ?? null,
                         'slug' => $org->user?->slug ?? null,
                         'name' => $org->name,
-                        'desc' => $org->description ? \Illuminate\Support\Str::limit($org->description, 50) : 'Organization description',
+                        'desc' => $org->description ? Str::limit($org->description, 50) : 'Organization description',
                         'color' => $colors[$index % count($colors)],
                     ];
                 })->toArray();
@@ -1690,7 +1957,7 @@ class UserProfileController extends Controller
         ];
 
         $seoDescription = $user->bio
-            ? \Illuminate\Support\Str::limit($user->bio, 160)
+            ? Str::limit($user->bio, 160)
             : 'View '.$user->name."'s profile on ".config('app.name');
 
         return Inertia::render('frontend/user/user-show', [
@@ -1721,6 +1988,54 @@ class UserProfileController extends Controller
             'enrollments' => $enrollments,
             'currentPage' => 'posts', // Default to posts tab
         ]);
+    }
+
+    /**
+     * Believer / reward point stats for the public profile. Only the profile owner sees real values;
+     * others get zeros so balances are not exposed in props or network responses.
+     *
+     * @return array{
+     *     believePointsEarned: float,
+     *     believePointsSpent: int,
+     *     believePointsBalance: float,
+     *     rewardPointsEarned: int,
+     *     rewardPointsSpent: int,
+     *     rewardPointsBalance: float
+     * }
+     */
+    private function publicProfilePointStats(User $user, bool $isOwnProfile, float $totalDonated): array
+    {
+        if (! $isOwnProfile) {
+            return [
+                'believePointsEarned' => 0.0,
+                'believePointsSpent' => 0,
+                'believePointsBalance' => 0.0,
+                'rewardPointsEarned' => 0,
+                'rewardPointsSpent' => 0,
+                'rewardPointsBalance' => 0.0,
+            ];
+        }
+
+        $believePointsBalance = (float) ($user->believe_points ?? 0);
+        $believePointsEarned = $totalDonated;
+        $believePointsSpent = 0;
+
+        $rewardPointsEarned = (int) RewardPointLedger::where('user_id', $user->id)
+            ->where('type', 'credit')
+            ->sum('points');
+        $rewardPointsSpent = (int) RewardPointLedger::where('user_id', $user->id)
+            ->where('type', 'debit')
+            ->sum('points');
+        $rewardPointsBalance = (float) ($user->reward_points ?? 0);
+
+        return [
+            'believePointsEarned' => $believePointsEarned,
+            'believePointsSpent' => $believePointsSpent,
+            'believePointsBalance' => $believePointsBalance,
+            'rewardPointsEarned' => $rewardPointsEarned,
+            'rewardPointsSpent' => $rewardPointsSpent,
+            'rewardPointsBalance' => $rewardPointsBalance,
+        ];
     }
 
     /**
@@ -1760,22 +2075,17 @@ class UserProfileController extends Controller
         $followersCount = UserFollow::where('following_id', $user->id)->count();
         $followingCount = UserFavoriteOrganization::where('user_id', $user->id)->count();
 
-        // Get believe points
-        $believePointsBalance = (float) ($user->believe_points ?? 0);
-        $believePointsEarned = (float) ($totalDonated ?? 0);
-        $believePointsSpent = 0;
-
-        // Get reward points earned and spent from ledger
-        $rewardPointsEarned = (int) \App\Models\RewardPointLedger::where('user_id', $user->id)
-            ->where('type', 'credit')
-            ->sum('points');
-        $rewardPointsSpent = (int) \App\Models\RewardPointLedger::where('user_id', $user->id)
-            ->where('type', 'debit')
-            ->sum('points');
-        $rewardPointsBalance = (float) ($user->reward_points ?? 0);
+        [
+            'believePointsEarned' => $believePointsEarned,
+            'believePointsSpent' => $believePointsSpent,
+            'believePointsBalance' => $believePointsBalance,
+            'rewardPointsEarned' => $rewardPointsEarned,
+            'rewardPointsSpent' => $rewardPointsSpent,
+            'rewardPointsBalance' => $rewardPointsBalance,
+        ] = $this->publicProfilePointStats($user, $isOwnProfile, (float) ($totalDonated ?? 0));
 
         // Get user's public chat groups count (only public groups they're a member of)
-        $groupsCount = \App\Models\ChatRoom::where('type', 'public')
+        $groupsCount = ChatRoom::where('type', 'public')
             ->where('is_active', true)
             ->whereHas('members', function ($query) use ($user) {
                 $query->where('user_id', $user->id);
@@ -1799,7 +2109,7 @@ class UserProfileController extends Controller
 
             if ($suggestedOrgs->isNotEmpty()) {
                 $eins = $suggestedOrgs->pluck('ein')->filter()->unique()->toArray();
-                $excelDataMap = \App\Models\ExcelData::whereIn('ein', $eins)
+                $excelDataMap = ExcelData::whereIn('ein', $eins)
                     ->where('status', 'complete')
                     ->orderBy('id', 'desc')
                     ->get()
@@ -1814,7 +2124,7 @@ class UserProfileController extends Controller
                         'excel_data_id' => $excelDataMap->get($org->ein) ?? null,
                         'slug' => $org->user?->slug ?? null,
                         'name' => $org->name,
-                        'org' => $org->description ? \Illuminate\Support\Str::limit($org->description, 30) : 'Organization',
+                        'org' => $org->description ? Str::limit($org->description, 30) : 'Organization',
                         'avatar' => $org->user?->image ? '/storage/'.$org->user->image : null,
                     ];
                 })->toArray();
@@ -1829,7 +2139,7 @@ class UserProfileController extends Controller
 
             if ($trendingOrgs->isNotEmpty()) {
                 $eins = $trendingOrgs->pluck('ein')->filter()->unique()->toArray();
-                $excelDataMap = \App\Models\ExcelData::whereIn('ein', $eins)
+                $excelDataMap = ExcelData::whereIn('ein', $eins)
                     ->where('status', 'complete')
                     ->orderBy('id', 'desc')
                     ->get()
@@ -1877,11 +2187,11 @@ class UserProfileController extends Controller
             'created_at' => $user->created_at,
             'positions' => $user->supporterPositions->pluck('name')->toArray(),
             'is_own_profile' => $isOwnProfile,
-            'reward_points' => (float) ($user->reward_points ?? 0),
+            'reward_points' => $isOwnProfile ? (float) ($user->reward_points ?? 0) : 0,
         ];
 
         $seoDescription = $user->bio
-            ? \Illuminate\Support\Str::limit($user->bio, 160)
+            ? Str::limit($user->bio, 160)
             : 'View '.$user->name."'s profile on ".config('app.name');
 
         return [
@@ -1933,7 +2243,7 @@ class UserProfileController extends Controller
                 ->whereNotNull('organization_id')
                 ->pluck('organization_id')
                 ->map(function ($orgId) {
-                    $org = \App\Models\Organization::find($orgId);
+                    $org = Organization::find($orgId);
 
                     return $org ? $org->user_id : null;
                 })
@@ -1946,9 +2256,9 @@ class UserProfileController extends Controller
                 ->whereNotNull('excel_data_id')
                 ->pluck('excel_data_id')
                 ->map(function ($excelDataId) {
-                    $excelData = \App\Models\ExcelData::find($excelDataId);
+                    $excelData = ExcelData::find($excelDataId);
                     if ($excelData) {
-                        $org = \App\Models\Organization::where('ein', $excelData->ein)
+                        $org = Organization::where('ein', $excelData->ein)
                             ->where('registration_status', 'approved')
                             ->excludingCareAllianceHubs()
                             ->first();
@@ -1963,7 +2273,7 @@ class UserProfileController extends Controller
                 ->toArray();
 
             // Get followed user IDs
-            $followedUserIds = \App\Models\UserFollow::where('follower_id', $authUserId)
+            $followedUserIds = UserFollow::where('follower_id', $authUserId)
                 ->pluck('following_id')
                 ->toArray();
 
@@ -2049,7 +2359,7 @@ class UserProfileController extends Controller
 
                 // Check if user has an organization - load it manually to avoid relationship issues
                 if ($post->user && $post->user->role === 'organization') {
-                    $org = \App\Models\Organization::where('user_id', $post->user->id)->first();
+                    $org = Organization::where('user_id', $post->user->id)->first();
                     if ($org) {
                         $creator = [
                             'id' => $org->id,
@@ -2157,19 +2467,19 @@ class UserProfileController extends Controller
                 ];
             });
 
-        $enrollments = \App\Models\Enrollment::where('user_id', $user->id)
-            ->with('course:id,title')
+        $enrollments = Enrollment::where('user_id', $user->id)
+            ->with('course:id,name')
             ->get()
             ->map(function ($enrollment) {
                 return [
                     'id' => 'enrollment_'.$enrollment->id,
                     'type' => 'enrollment',
-                    'title' => 'Enrolled in '.($enrollment->course->title ?? 'Unknown Course'),
+                    'title' => 'Enrolled in '.($enrollment->course->name ?? 'Unknown Course'),
                     'description' => 'Status: '.ucfirst($enrollment->status),
                     'date' => $enrollment->enrolled_at ?? $enrollment->created_at,
                     'data' => [
                         'id' => $enrollment->id,
-                        'course_title' => $enrollment->course->title ?? 'Unknown Course',
+                        'course_title' => $enrollment->course->name ?? 'Unknown Course',
                         'status' => $enrollment->status,
                     ],
                 ];
@@ -2182,7 +2492,7 @@ class UserProfileController extends Controller
                     'id' => 'post_'.$post->id,
                     'type' => 'post',
                     'title' => 'Posted in community feed',
-                    'description' => $post->content ? \Illuminate\Support\Str::limit($post->content, 100) : null,
+                    'description' => $post->content ? Str::limit($post->content, 100) : null,
                     'date' => $post->created_at,
                     'data' => [
                         'id' => $post->id,
@@ -2256,7 +2566,7 @@ class UserProfileController extends Controller
         }
 
         // Only public group chats where this user is a member
-        $chatGroups = \App\Models\ChatRoom::where('type', 'public')
+        $chatGroups = ChatRoom::where('type', 'public')
             ->where('is_active', true)
             ->whereHas('members', function ($query) use ($user) {
                 $query->where('user_id', $user->id);
@@ -2364,8 +2674,8 @@ class UserProfileController extends Controller
     /**
      * Map favorite rows to sidebar / Following tab (nonprofits, Excel-only, Care Alliances).
      *
-     * @param  \Illuminate\Support\Collection<int, UserFavoriteOrganization>  $favorites
-     * @return \Illuminate\Support\Collection<int, array<string, mixed>>
+     * @param  Collection<int, UserFavoriteOrganization>  $favorites
+     * @return Collection<int, array<string, mixed>>
      */
     private function mapUserFavoritesForPublicProfile($favorites)
     {

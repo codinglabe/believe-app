@@ -983,7 +983,7 @@ export default function QRCodeScannerSimple({ isOpen, onClose, merchantId }: QRC
                           <div>
                             <p className="text-xs text-gray-400 mb-1 flex items-center gap-1">
                               <Calendar className="w-3 h-3" />
-                              Redeemed At
+                              Claimed at
                             </p>
                             <p className="text-sm text-gray-300">
                               {new Date(redemptionData.redeemed_at).toLocaleString()}

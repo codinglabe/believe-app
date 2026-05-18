@@ -240,8 +240,10 @@ class OrderController extends Controller
             ? ($salesTaxCollected / ($productPrice + $shippingCharged)) * 100
             : 0;
 
-        // Customer Total Paid = Product Price + Shipping Charged + Sales Tax Collected
-        $customerTotalPaid = $productPrice + $shippingCharged + $salesTaxCollected;
+        $platformFee = (float) ($order->platform_fee ?? 0);
+
+        // Customer Total Paid = Product Price + platform fee + Shipping Charged + Sales Tax Collected
+        $customerTotalPaid = $productPrice + $platformFee + $shippingCharged + $salesTaxCollected;
 
         // Recognized Revenue = Product Price + Shipping Charged (NOT including tax)
         $recognizedRevenue = $productPrice + $shippingCharged;
@@ -249,8 +251,7 @@ class OrderController extends Controller
         // Gross Profit = Recognized Revenue - Printify Product Cost - Printify Shipping
         $grossProfit = $recognizedRevenue - $printifyProductCost - $printifyShipping;
 
-        // Platform / Payment Fee = (Product Price + Shipping Charged) * 2%
-        $platformPaymentFee = ($productPrice + $shippingCharged) * 0.02;
+        $platformPaymentFee = $platformFee;
 
         $orderData = [
             'id' => $order->id,
@@ -259,9 +260,7 @@ class OrderController extends Controller
             'subtotal_amount' => $orderSubtotal, // Add subtotal
             'shipping_cost' => $order->shipping_cost,
             'tax_amount' => $order->tax_amount,
-            'stripe_tax_amount' => $order->stripe_tax_amount,
             'stripe_fee_amount' => $order->stripe_fee_amount,
-            'stripe_tax_calculation_id' => $order->stripe_tax_calculation_id,
             'platform_fee' => $order->platform_fee,
             'subtotal' => $order->subtotal,
             'donation_amount' => $order->donation_amount,

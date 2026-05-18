@@ -14,6 +14,15 @@ use Inertia\Inertia;
 
 class MerchantDashboardController extends Controller
 {
+    protected function pctChange(float $recent, float $prior): ?float
+    {
+        if ($prior <= 0.0) {
+            return $recent > 0 ? 100.0 : null;
+        }
+
+        return round((($recent - $prior) / $prior) * 100, 1);
+    }
+
     /**
      * Get or create MerchantHubMerchant for the authenticated merchant
      */
@@ -58,13 +67,78 @@ class MerchantDashboardController extends Controller
         $weeklyRedemptions = [];
         $recentRedemptions = [];
         $rewardsData = [];
+        $totalCustomers = 0;
+        $weeklyPointsChartGrowthPercent = null;
+        $weeklyRedemptionsCountGrowthPercent = null;
+        $growth = [
+            'activeOffersNew' => null,
+            'redemptions' => null,
+            'pointsEarned' => null,
+            'customers' => null,
+        ];
+
+        $redemptionBase = fn () => MerchantHubOfferRedemption::whereIn('merchant_hub_offer_id', $offerIds);
 
         if (!empty($offerIds)) {
             // Total redemptions
-            $totalRedemptions = MerchantHubOfferRedemption::whereIn('merchant_hub_offer_id', $offerIds)->count();
+            $totalRedemptions = (int) $redemptionBase()->count();
 
-            // Weekly redemptions (last 7 weeks)
-            $weeklyData = MerchantHubOfferRedemption::whereIn('merchant_hub_offer_id', $offerIds)
+            $totalCustomers = (int) $redemptionBase()->distinct('user_id')->count('user_id');
+
+            $last7 = now()->subDays(7);
+            $prev7End = $last7;
+            $prev7Start = now()->subDays(14);
+
+            $newOffersLast7 = (int) MerchantHubOffer::where('merchant_hub_merchant_id', $merchantHubMerchant->id)
+                ->where('created_at', '>=', $last7)
+                ->count();
+            $newOffersPrev7 = (int) MerchantHubOffer::where('merchant_hub_merchant_id', $merchantHubMerchant->id)
+                ->where('created_at', '>=', $prev7Start)
+                ->where('created_at', '<', $prev7End)
+                ->count();
+
+            $redemptionsLast7 = (int) $redemptionBase()->clone()->where('created_at', '>=', $last7)->count();
+            $redemptionsPrev7 = (int) $redemptionBase()->clone()
+                ->where('created_at', '>=', $prev7Start)
+                ->where('created_at', '<', $prev7End)
+                ->count();
+
+            $pointsLast7 = (int) $redemptionBase()->clone()->where('created_at', '>=', $last7)->sum('points_spent');
+            $pointsPrev7 = (int) $redemptionBase()->clone()
+                ->where('created_at', '>=', $prev7Start)
+                ->where('created_at', '<', $prev7End)
+                ->sum('points_spent');
+
+            $customersLast7 = (int) $redemptionBase()->clone()->where('created_at', '>=', $last7)->distinct('user_id')->count('user_id');
+            $customersPrev7 = (int) $redemptionBase()->clone()
+                ->where('created_at', '>=', $prev7Start)
+                ->where('created_at', '<', $prev7End)
+                ->distinct('user_id')
+                ->count('user_id');
+
+            $growth['activeOffersNew'] = $this->pctChange((float) $newOffersLast7, (float) $newOffersPrev7);
+            $growth['redemptions'] = $this->pctChange((float) $redemptionsLast7, (float) $redemptionsPrev7);
+            $growth['pointsEarned'] = $this->pctChange((float) $pointsLast7, (float) $pointsPrev7);
+            $growth['customers'] = $this->pctChange((float) $customersLast7, (float) $customersPrev7);
+
+            $last7WeeksStart = now()->subDays(49);
+            $prev7WeeksStart = now()->subDays(98);
+            $pointsRollingLast7w = (int) $redemptionBase()->clone()->where('created_at', '>=', $last7WeeksStart)->sum('points_spent');
+            $pointsRollingPrev7w = (int) $redemptionBase()->clone()
+                ->where('created_at', '>=', $prev7WeeksStart)
+                ->where('created_at', '<', $last7WeeksStart)
+                ->sum('points_spent');
+            $weeklyPointsChartGrowthPercent = $this->pctChange((float) $pointsRollingLast7w, (float) $pointsRollingPrev7w);
+
+            $countsRollingLast7w = (int) $redemptionBase()->clone()->where('created_at', '>=', $last7WeeksStart)->count();
+            $countsRollingPrev7w = (int) $redemptionBase()->clone()
+                ->where('created_at', '>=', $prev7WeeksStart)
+                ->where('created_at', '<', $last7WeeksStart)
+                ->count();
+            $weeklyRedemptionsCountGrowthPercent = $this->pctChange((float) $countsRollingLast7w, (float) $countsRollingPrev7w);
+
+            // Weekly points redeemed (chart — last 7 rolling week buckets from DB)
+            $weeklyData = $redemptionBase()->clone()
                 ->select(
                     DB::raw('WEEK(created_at) as week'),
                     DB::raw('YEAR(created_at) as year'),
@@ -80,17 +154,16 @@ class MerchantDashboardController extends Controller
             $weekCounter = 1;
             foreach ($weeklyData->reverse() as $week) {
                 $weeklyRedemptions[] = [
-                    'week' => 'Week ' . $weekCounter,
-                    'value' => (int) $week->total_points
+                    'week' => 'W' . $weekCounter,
+                    'value' => (int) $week->total_points,
                 ];
                 $weekCounter++;
             }
 
-            // Fill in missing weeks with 0
             while (count($weeklyRedemptions) < 7) {
                 $weeklyRedemptions[] = [
-                    'week' => 'Week ' . count($weeklyRedemptions) + 1,
-                    'value' => 0
+                    'week' => 'W' . (count($weeklyRedemptions) + 1),
+                    'value' => 0,
                 ];
             }
 
@@ -108,12 +181,13 @@ class MerchantDashboardController extends Controller
                         'code' => $redemption->receipt_code,
                         'customer_name' => $redemption->user->name ?? 'N/A',
                         'offer_title' => $redemption->offer->title ?? 'N/A',
+                        'offer_image_url' => $redemption->offer->image_url ?? null,
                         'created_at' => $redemption->created_at->toIso8601String(),
                     ];
                 });
 
-            // Weekly rewards data (last 7 weeks) - count of redemptions per week
-            $rewardsWeeklyData = MerchantHubOfferRedemption::whereIn('merchant_hub_offer_id', $offerIds)
+            // Weekly reward redemption counts for bar chart
+            $rewardsWeeklyData = $redemptionBase()->clone()
                 ->select(
                     DB::raw('WEEK(created_at) as week'),
                     DB::raw('YEAR(created_at) as year'),
@@ -130,42 +204,42 @@ class MerchantDashboardController extends Controller
             foreach ($rewardsWeeklyData->reverse() as $week) {
                 $rewardsData[] = [
                     'week' => 'W' . $weekCounter,
-                    'value' => (int) $week->count
+                    'value' => (int) $week->count,
                 ];
                 $weekCounter++;
             }
 
-            // Fill in missing weeks with 0
             while (count($rewardsData) < 7) {
                 $rewardsData[] = [
                     'week' => 'W' . (count($rewardsData) + 1),
-                    'value' => 0
+                    'value' => 0,
                 ];
             }
         } else {
-            // No offers yet, return empty data
             for ($i = 1; $i <= 7; $i++) {
-                $weeklyRedemptions[] = ['week' => 'Week ' . $i, 'value' => 0];
+                $weeklyRedemptions[] = ['week' => 'W' . $i, 'value' => 0];
                 $rewardsData[] = ['week' => 'W' . $i, 'value' => 0];
             }
         }
 
-        // Calculate total points earned from all redemptions
-        $totalPointsEarned = 0;
-        if (!empty($offerIds)) {
-            $totalPointsEarned = MerchantHubOfferRedemption::whereIn('merchant_hub_offer_id', $offerIds)
-                ->sum('points_spent');
-        }
+        $totalPointsEarned = empty($offerIds)
+            ? 0
+            : (int) $redemptionBase()->sum('points_spent');
 
-        // Calculate total rewards redeemed (count of redemptions)
         $totalRewardsRedeemed = $totalRedemptions;
+        $weeklyPointsRedeemedTotal = array_sum(array_column($weeklyRedemptions, 'value'));
 
         return Inertia::render('merchant/Dashboard', [
             'stats' => [
                 'activeOffers' => $activeOffers,
                 'totalRedemptions' => $totalRedemptions,
-                'totalPointsEarned' => (int) $totalPointsEarned,
+                'totalPointsEarned' => $totalPointsEarned,
                 'totalRewardsRedeemed' => $totalRewardsRedeemed,
+                'totalCustomers' => $totalCustomers,
+                'growth' => $growth,
+                'weeklyPointsRedeemedTotal' => $weeklyPointsRedeemedTotal,
+                'weeklyPointsChartGrowthPercent' => $weeklyPointsChartGrowthPercent,
+                'weeklyRedemptionsCountGrowthPercent' => $weeklyRedemptionsCountGrowthPercent,
             ],
             'weeklyRedemptions' => $weeklyRedemptions,
             'recentRedemptions' => $recentRedemptions,

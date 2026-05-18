@@ -30,10 +30,20 @@ interface Step2Data {
   donationAmount: number
 }
 
+interface PlatformFeeLine {
+  key: string
+  label: string
+  percent: number
+  base_usd: number
+  fee_usd: number
+}
+
 interface Step2Props {
   items: CartItem[]
   subtotal: number
-  // platform_fee: number // Removed - customers don't pay platform fee
+  platform_fee_percentage: number
+  platform_fee: number
+  platform_fee_lines?: PlatformFeeLine[]
   donation_amount: number
   step2Data: Step2Data
   stripePublishableKey: string
@@ -63,7 +73,16 @@ const cardElementOptions = {
   hidePostalCode: true,
 }
 
-function Step2Form({ items, subtotal, donation_amount, step2Data, onBack }: Omit<Step2Props, "stripePublishableKey">) {
+function Step2Form({
+  items,
+  subtotal,
+  platform_fee_percentage,
+  platform_fee,
+  platform_fee_lines = [],
+  donation_amount,
+  step2Data,
+  onBack,
+}: Omit<Step2Props, "stripePublishableKey">) {
   const stripe = useStripe()
   const elements = useElements()
   const [stripeLoaded, setStripeLoaded] = useState(false)
@@ -141,7 +160,7 @@ function Step2Form({ items, subtotal, donation_amount, step2Data, onBack }: Omit
     const m = step2Data.shippingMethods.find((x: { id?: string | number }) => String(x?.id) === String(methodId))
     if (m && typeof m.cost === "number") {
       setCurrentShippingCost(m.cost)
-      const nextBasket = subtotal + m.cost + currentTaxAmount
+      const nextBasket = subtotal + platform_fee + m.cost + currentTaxAmount
       setBasketTotalAmount(nextBasket)
       setCurrentTotalAmount(nextBasket)
     }
@@ -161,7 +180,7 @@ function Step2Form({ items, subtotal, donation_amount, step2Data, onBack }: Omit
     const m = step2Data.shippingMethods.find((x: { id?: string | number }) => String(x?.id) === String(selectedShippingMethod))
     const ship = m && typeof m.cost === "number" ? m.cost : step2Data.shippingCost
     const tax = isTaxCalculated ? currentTaxAmount : step2Data.taxAmount
-    const nextBasket = subtotal + ship + tax
+    const nextBasket = subtotal + platform_fee + ship + tax
     setCurrentShippingCost(ship)
     setCurrentTaxAmount(tax)
     setBasketTotalAmount(nextBasket)
@@ -573,7 +592,13 @@ function Step2Form({ items, subtotal, donation_amount, step2Data, onBack }: Omit
                 Choose how your order ships. Totals update when you change selection; click calculate / pay again if you already started card payment.
               </p>
               <div className="space-y-2">
-                {step2Data.shippingMethods.map((m: { id: string | number; name?: string; cost: number; estimated_days?: string }) => (
+                {step2Data.shippingMethods.map((m: {
+                  id: string | number
+                  name?: string
+                  cost: number
+                  estimated_days?: string
+                  pickup_address?: string
+                }) => (
                   <label
                     key={String(m.id)}
                     className={`flex cursor-pointer items-start gap-3 rounded-lg border-2 p-4 transition-all ${
@@ -591,12 +616,22 @@ function Step2Form({ items, subtotal, donation_amount, step2Data, onBack }: Omit
                     />
                     <div className="flex-1 min-w-0">
                       <div className="font-medium text-gray-900 dark:text-white">{m.name || "Shipping"}</div>
-                      {m.estimated_days != null && m.estimated_days !== "—" && (
-                        <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                          Est.{" "}
-                          {String(m.estimated_days).toLowerCase().includes("business day")
-                            ? m.estimated_days
-                            : `${m.estimated_days} business days`}
+                      {String(m.id) === "pickup" ? (
+                        <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">No shipping charge</div>
+                      ) : (
+                        m.estimated_days != null &&
+                        m.estimated_days !== "—" && (
+                          <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                            Est.{" "}
+                            {String(m.estimated_days).toLowerCase().includes("business day")
+                              ? m.estimated_days
+                              : `${m.estimated_days} business days`}
+                          </div>
+                        )
+                      )}
+                      {m.pickup_address && String(selectedShippingMethod) === String(m.id) && (
+                        <div className="mt-2 text-xs text-gray-600 dark:text-gray-300 whitespace-pre-line rounded-md border border-emerald-500/30 bg-emerald-500/5 p-2">
+                          {m.pickup_address}
                         </div>
                       )}
                     </div>
@@ -817,7 +852,32 @@ function Step2Form({ items, subtotal, donation_amount, step2Data, onBack }: Omit
               <span>Subtotal</span>
               <span>${subtotal.toFixed(2)}</span>
             </div>
-            {/* Platform Fee removed - customers don't pay it */}
+            {platform_fee_lines.length > 1 ? (
+              <>
+                {platform_fee_lines.map((row) => (
+                  <div key={row.key} className="flex justify-between text-sm text-gray-600 dark:text-gray-400">
+                    <span className="pr-2">
+                      {row.label} ({Number(row.percent).toFixed(2)}% on ${row.base_usd.toFixed(2)})
+                    </span>
+                    <span>${row.fee_usd.toFixed(2)}</span>
+                  </div>
+                ))}
+                <div className="flex justify-between text-sm text-gray-600 dark:text-gray-400 font-medium">
+                  <span>Platform fee total</span>
+                  <span>${platform_fee.toFixed(2)}</span>
+                </div>
+              </>
+            ) : platform_fee_lines.length === 1 ? (
+              <div className="flex justify-between text-sm text-gray-600 dark:text-gray-400">
+                <span>Platform fee ({platform_fee_lines[0].percent.toFixed(2)}%)</span>
+                <span>${platform_fee.toFixed(2)}</span>
+              </div>
+            ) : (
+              <div className="flex justify-between text-sm text-gray-600 dark:text-gray-400">
+                <span>Platform fee ({platform_fee_percentage.toFixed(2)}% blended)</span>
+                <span>${platform_fee.toFixed(2)}</span>
+              </div>
+            )}
             {/* Donation Amount - Removed for Printify products */}
 
             <div className="flex justify-between text-sm text-gray-600 dark:text-gray-400">
@@ -850,10 +910,6 @@ function Step2Form({ items, subtotal, donation_amount, step2Data, onBack }: Omit
                     <span>${additionalTaxLine.toFixed(2)}</span>
                   </div>
                 )}
-                <div className="flex justify-between text-sm font-medium text-gray-700 dark:text-gray-300">
-                  <span>Total tax</span>
-                  <span>${currentTaxAmount.toFixed(2)}</span>
-                </div>
               </>
             ) : (
               <div className="flex justify-between text-sm">
@@ -887,11 +943,10 @@ function Step2Form({ items, subtotal, donation_amount, step2Data, onBack }: Omit
 
             {paymentMethod === "stripe" &&
               isTaxCalculated &&
-              customerPaysProcessingFee &&
               stripeProcessingFeeAddon > 0.0005 && (
                 <>
                   <div className="flex justify-between text-sm border-t border-gray-200 dark:border-gray-700 pt-3 mt-1">
-                    <span className="text-gray-600 dark:text-gray-400">Order total (subtotal, shipping & tax)</span>
+                    <span className="text-gray-600 dark:text-gray-400">Order total (subtotal, platform fee, shipping & tax)</span>
                     <span className="font-medium text-gray-900 dark:text-white tabular-nums">
                       ${basketTotalAmount.toFixed(2)}
                     </span>
@@ -919,7 +974,6 @@ function Step2Form({ items, subtotal, donation_amount, step2Data, onBack }: Omit
               }>
                 {paymentMethod === "stripe" &&
                 isTaxCalculated &&
-                customerPaysProcessingFee &&
                 stripeProcessingFeeAddon > 0.0005
                   ? "Total charged"
                   : "Total"}
@@ -969,10 +1023,9 @@ function Step2Form({ items, subtotal, donation_amount, step2Data, onBack }: Omit
               </svg>
               <span className="text-sm font-medium">
                 {paymentMethod === "stripe" &&
-                customerPaysProcessingFee &&
                 stripeProcessingFeeAddon > 0.0005
-                  ? "Estimated Stripe processing fee is shown above and included in your card total when applicable."
-                  : "Shipping and tax are shown in your order summary. Paying by card may include a processing fee pass-through when enabled for your site."}
+                  ? "Estimated Stripe processing fee is shown above and included in your card total."
+                  : "Platform fee, shipping, and tax are shown in your order summary."}
               </span>
             </div>
           </div>

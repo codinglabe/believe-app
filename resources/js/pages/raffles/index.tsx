@@ -10,6 +10,7 @@ import { PermissionButton } from '@/components/ui/permission-guard';
 import { PageProps } from '@/types';
 import AppLayout from '@/layouts/app-layout';
 import CountdownTimer from '@/components/ui/countdown-timer';
+import { SweepstakesComplianceBanner } from '@/components/raffles/SweepstakesComplianceBanner';
 
 interface Raffle {
     id: number;
@@ -63,19 +64,26 @@ export default function RafflesIndex({ raffles, filters }: RafflesIndexProps) {
 
     const getStatusBadge = (raffle: Raffle) => {
         if (raffle.is_completed) {
-            return <Badge variant="secondary" className="bg-green-100 text-green-800"><CheckCircle className="w-3 h-3 mr-1" />Completed</Badge>;
-        }
-        if (raffle.is_draw_time) {
-            return <Badge variant="destructive" className="bg-red-100 text-red-800"><Clock className="w-3 h-3 mr-1" />Draw Time!</Badge>;
-        }
-        if (raffle.status === 'active' && raffle.is_active) {
-            return <Badge variant="default" className="bg-blue-100 text-blue-800">Active</Badge>;
+            return (
+                <Badge variant="secondary" className="bg-green-100 text-green-800">
+                    <CheckCircle className="mr-1 h-3 w-3" />
+                    Completed
+                </Badge>
+            );
         }
         if (raffle.status === 'cancelled') {
             return <Badge variant="outline">Cancelled</Badge>;
         }
-        if (raffle.status === 'active' && !raffle.is_active) {
-            return <Badge variant="destructive" className="bg-red-100 text-red-800"><Clock className="w-3 h-3 mr-1" />Draw Time!</Badge>;
+        if (raffle.is_draw_time) {
+            return (
+                <Badge variant="outline" className="border-amber-200 bg-amber-100 text-amber-900">
+                    <Clock className="mr-1 h-3 w-3" />
+                    Draw near
+                </Badge>
+            );
+        }
+        if (raffle.is_active) {
+            return <Badge variant="default" className="bg-blue-100 text-blue-800">Active</Badge>;
         }
         return <Badge variant="outline">Inactive</Badge>;
     };
@@ -92,20 +100,23 @@ export default function RafflesIndex({ raffles, filters }: RafflesIndexProps) {
 
     return (
         <AppLayout>
-            <Head title="Raffle Draws" />
-            
+            <Head title="Sweepstakes campaigns" />
+
             <div className="space-y-6 px-4">
+                <SweepstakesComplianceBanner />
                 {/* Header */}
                 <div className="flex items-center justify-between">
                     <div>
-                        <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Raffle Draws</h1>
-                        <p className="text-gray-600 dark:text-gray-400">Manage and participate in raffle draws</p>
+                        <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Sweepstakes campaigns</h1>
+                        <p className="text-gray-600 dark:text-gray-400">
+                            Manage campaigns, entries, and winner selection
+                        </p>
                     </div>
                     <PermissionButton permission="raffle.create">
                         <Link href={route('raffles.create')}>
                             <Button>
-                                <Plus className="w-4 h-4 mr-2" />
-                                Create Raffle
+                                <Plus className="mr-2 h-4 w-4" />
+                                Create sweepstakes
                             </Button>
                         </Link>
                     </PermissionButton>
@@ -119,7 +130,7 @@ export default function RafflesIndex({ raffles, filters }: RafflesIndexProps) {
                                 <div className="relative">
                                     <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
                                     <Input
-                                        placeholder="Search raffles..."
+                                        placeholder="Search campaigns…"
                                         value={search}
                                         onChange={(e) => setSearch(e.target.value)}
                                         className="pl-10"
@@ -181,7 +192,7 @@ export default function RafflesIndex({ raffles, filters }: RafflesIndexProps) {
                                     </div>
                                     <div className="flex items-center text-gray-600 dark:text-gray-400">
                                         <Users className="w-4 h-4 mr-1" />
-                                        {raffle.sold_tickets}/{raffle.total_tickets}
+                                        {raffle.sold_tickets}/{raffle.total_tickets} entries
                                     </div>
                                     <div className="flex items-center text-gray-600 dark:text-gray-400">
                                         <Gift className="w-4 h-4 mr-1" />
@@ -199,7 +210,7 @@ export default function RafflesIndex({ raffles, filters }: RafflesIndexProps) {
                                 {/* Progress Bar */}
                                 <div className="space-y-1">
                                     <div className="flex justify-between text-xs text-gray-600 dark:text-gray-400">
-                                        <span>Progress</span>
+                                        <span>Entry capacity</span>
                                         <span>{Math.round((raffle.sold_tickets / raffle.total_tickets) * 100)}%</span>
                                     </div>
                                     <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
@@ -223,7 +234,7 @@ export default function RafflesIndex({ raffles, filters }: RafflesIndexProps) {
                                         <Link href={route('raffles.show', raffle.id)}>
                                             <Button className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700">
                                                 <Gift className="w-4 h-4 mr-1" />
-                                                Buy Tickets
+                                                Enter to win
                                             </Button>
                                         </Link>
                                     </PermissionButton>
@@ -238,18 +249,18 @@ export default function RafflesIndex({ raffles, filters }: RafflesIndexProps) {
                     <Card>
                         <CardContent className="text-center py-12">
                             <Gift className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">No raffles found</h3>
+                            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">No campaigns found</h3>
                             <p className="text-gray-600 dark:text-gray-400 mb-4">
                                 {filters.search || filters.status 
                                     ? 'Try adjusting your search criteria.'
-                                    : 'Get started by creating your first raffle draw.'
+                                    : 'Get started by creating your first sweepstakes campaign.'
                                 }
                             </p>
                             <PermissionButton permission="raffle.create">
                                 <Link href={route('raffles.create')}>
                                     <Button>
                                         <Plus className="w-4 h-4 mr-2" />
-                                        Create Raffle
+                                        Create sweepstakes
                                     </Button>
                                 </Link>
                             </PermissionButton>

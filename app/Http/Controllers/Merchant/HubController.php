@@ -208,7 +208,7 @@ class HubController extends Controller
         if (! $userModel) {
             return response()->json([
                 'success' => false,
-                'error' => 'You must be logged in to redeem offers.',
+                'error' => 'You must be logged in to claim merchant offers.',
             ], 401);
         }
 
@@ -440,7 +440,7 @@ class HubController extends Controller
                             'points_spent' => $redemption->points_spent,
                             'offer_id' => $redemption->offer->id,
                             'receipt_code' => $redemption->receipt_code,
-                        ], BiuPlatformFeeService::ledgerMetaSlice((float) $redemption->cash_spent)),
+                        ], BiuPlatformFeeService::merchantHubCatalogLedgerMetaSlice((float) ($redemption->subtotal_amount ?? $redemption->cash_spent))),
                         'processed_at' => now(),
                     ]);
                 } else {
@@ -478,7 +478,7 @@ class HubController extends Controller
                             'points_spent' => 0,
                             'offer_id' => $redemption->offer->id,
                             'receipt_code' => $redemption->receipt_code,
-                        ], BiuPlatformFeeService::ledgerMetaSlice((float) $redemption->cash_spent)),
+                        ], BiuPlatformFeeService::merchantHubCatalogLedgerMetaSlice((float) ($redemption->subtotal_amount ?? $redemption->cash_spent))),
                         'processed_at' => now(),
                     ]);
                 }
@@ -550,7 +550,7 @@ class HubController extends Controller
             Log::error('Offer redemption success handler error: '.$e->getMessage());
 
             return redirect()->route('hub.index')
-                ->with('error', 'An error occurred while processing your redemption. Please contact support.');
+                ->with('error', 'Something went wrong completing your claim. Please contact support.');
         }
     }
 }

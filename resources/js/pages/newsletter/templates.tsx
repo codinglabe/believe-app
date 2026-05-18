@@ -60,6 +60,19 @@ export default function NewsletterTemplates({ templates }: NewsletterTemplatesPr
         }
     }
 
+    const getTemplateTypeLabel = (type: string) => {
+        switch (type) {
+            case 'newsletter':
+                return 'Email'
+            case 'announcement':
+                return 'Announcement'
+            case 'event':
+                return 'Event'
+            default:
+                return type
+        }
+    }
+
     const formatDate = (dateString: string) => {
         return new Date(dateString).toLocaleDateString('en-US', {
             year: 'numeric',
@@ -135,48 +148,48 @@ export default function NewsletterTemplates({ templates }: NewsletterTemplatesPr
 
     return (
         <AppSidebarLayout>
-            <Head title="Newsletter Templates" />
+            <Head title="Engagement · Templates" />
             <style>{`
-                .newsletter-preview-content {
+                .engagement-preview-content {
                     max-width: 100%;
                     overflow-x: auto;
                     font-size: 12px;
                 }
-                .newsletter-preview-content * {
+                .engagement-preview-content * {
                     max-width: 100% !important;
                     box-sizing: border-box;
                 }
-                .newsletter-preview-content table {
+                .engagement-preview-content table {
                     width: 100% !important;
                     max-width: 100% !important;
                     font-size: inherit;
                 }
-                .newsletter-preview-content img {
+                .engagement-preview-content img {
                     max-width: 100% !important;
                     height: auto !important;
                 }
-                .newsletter-preview-content h1,
-                .newsletter-preview-content h2,
-                .newsletter-preview-content h3 {
+                .engagement-preview-content h1,
+                .engagement-preview-content h2,
+                .engagement-preview-content h3 {
                     font-size: 1.2em !important;
                     margin: 0.5em 0 !important;
                 }
-                .newsletter-preview-content p {
+                .engagement-preview-content p {
                     font-size: 1em !important;
                     margin: 0.5em 0 !important;
                 }
-                .newsletter-preview-content .container {
+                .engagement-preview-content .container {
                     max-width: 100% !important;
                     margin: 0 !important;
                     padding: 0.5rem !important;
                 }
                 @media (min-width: 640px) {
-                    .newsletter-preview-content {
+                    .engagement-preview-content {
                         font-size: 14px;
                     }
                 }
                 @media (min-width: 1024px) {
-                    .newsletter-preview-content {
+                    .engagement-preview-content {
                         font-size: 16px;
                     }
                 }
@@ -186,8 +199,11 @@ export default function NewsletterTemplates({ templates }: NewsletterTemplatesPr
                 {/* Header */}
                 <div className="flex flex-col space-y-4 sm:space-y-0 sm:flex-row sm:items-center sm:justify-between">
                     <div className="space-y-2 animate-in slide-in-from-left duration-700">
+                        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">
+                            Engagement
+                        </p>
                         <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-gray-900 dark:text-white">
-                            Newsletter Templates
+                            Templates
                         </h1>
                         <p className="text-sm sm:text-base lg:text-lg text-gray-600 dark:text-gray-400">
                             Manage your email templates
@@ -200,7 +216,7 @@ export default function NewsletterTemplates({ templates }: NewsletterTemplatesPr
                                 className="w-full sm:w-auto shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105 cursor-pointer"
                             >
                                 <Plus className="mr-2 h-4 w-4 sm:h-5 sm:w-5" />
-                                <span className="hidden sm:inline">Create Template</span>
+                                <span className="hidden sm:inline">Create template</span>
                                 <span className="sm:hidden">Create</span>
                             </Button>
                         </Link>
@@ -230,7 +246,7 @@ export default function NewsletterTemplates({ templates }: NewsletterTemplatesPr
                                             </div>
                                             <div className="flex items-center gap-2 flex-wrap">
                                                 <Badge className={getTemplateTypeColor(template.template_type)}>
-                                                    {template.template_type}
+                                                    {getTemplateTypeLabel(template.template_type)}
                                                 </Badge>
                                                 <Badge className={getFrequencyColor(template)}>
                                                     {getFrequencyDisplay(template)}
@@ -323,7 +339,7 @@ export default function NewsletterTemplates({ templates }: NewsletterTemplatesPr
                                         No templates yet
                                     </h3>
                                     <p className="text-gray-600 dark:text-gray-400 mb-6">
-                                        Create your first template to start building consistent newsletters
+                                        Create your first template for consistent Engagement
                                     </p>
                                     <Link href={route('newsletter.templates.create')}>
                                         <Button className="flex items-center gap-2">
@@ -439,7 +455,7 @@ export default function NewsletterTemplates({ templates }: NewsletterTemplatesPr
                             <div className="p-3 sm:p-6 overflow-y-auto max-h-[calc(95vh-140px)] sm:max-h-[calc(90vh-120px)]">
                                 <div className="bg-gray-50 dark:bg-gray-900 rounded-lg p-2 sm:p-4 border border-gray-200 dark:border-gray-700">
                                     <div 
-                                        className="newsletter-preview-content"
+                                        className="engagement-preview-content"
                                         dangerouslySetInnerHTML={{ 
                                             __html: modalPreviewTemplate.html_content || '' 
                                         }}

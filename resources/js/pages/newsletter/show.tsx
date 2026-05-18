@@ -199,23 +199,28 @@ export default function NewsletterShow({ newsletter, previewData }: NewsletterSh
 
     return (
         <AppSidebarLayout>
-            <Head title={`Newsletter: ${newsletter.subject}`} />
+            <Head title={`Engagement · ${newsletter.subject}`} />
 
             <div className="space-y-6 sm:space-y-8 animate-in fade-in duration-500 m-10">
                 {/* Header */}
                 <div className="flex flex-col space-y-4 sm:space-y-0 sm:flex-row sm:items-center sm:justify-between">
                     <div className="space-y-2 animate-in slide-in-from-left duration-700">
-                        <div className="flex items-center gap-3">
-                            <Link href={route('newsletter.index')}>
+                        <div className="flex items-start gap-3">
+                            <Link href={route('newsletter.index')} className="shrink-0 pt-1">
                                 <Button variant="outline" size="sm" className="hover:bg-gray-50 dark:hover:bg-gray-800">
                                     <ArrowLeft className="h-4 w-4 mr-2" />
-                                    <span className="hidden sm:inline">Back to Newsletters</span>
+                                    <span className="hidden sm:inline">Back to Engagement</span>
                                     <span className="sm:hidden">Back</span>
                                 </Button>
                             </Link>
-                            <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-gray-900 dark:text-white">
-                                {newsletter.subject}
-                            </h1>
+                            <div className="min-w-0 space-y-1">
+                                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">
+                                    Engagement
+                                </p>
+                                <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-gray-900 dark:text-white">
+                                    {newsletter.subject}
+                                </h1>
+                            </div>
                         </div>
                         <div className="flex flex-wrap items-center gap-3">
                             <Badge className={getStatusColor(newsletter.status)}>
@@ -223,7 +228,7 @@ export default function NewsletterShow({ newsletter, previewData }: NewsletterSh
                                 <span className="ml-1 capitalize">{newsletter.status}</span>
                             </Badge>
                             <Badge variant="outline" className="border-violet-300 text-violet-800 dark:border-violet-700 dark:text-violet-200 font-normal">
-                                Send via: {sendViaLabel(newsletter.send_via)}
+                                Channel: {sendViaLabel(newsletter.send_via)}
                             </Badge>
                             {newsletter.sent_at_formatted && (
                                 <span className="text-sm text-gray-600 dark:text-gray-400">
@@ -245,7 +250,7 @@ export default function NewsletterShow({ newsletter, previewData }: NewsletterSh
                                     <Link href={route('newsletter.edit', newsletter.id)}>
                                         <Button variant="outline">
                                             <Edit className="mr-2 h-4 w-4" />
-                                            <span className="hidden sm:inline">Edit Newsletter</span>
+                                            <span className="hidden sm:inline">Edit Engagement</span>
                                             <span className="sm:hidden">Edit</span>
                                         </Button>
                                     </Link>
@@ -254,8 +259,8 @@ export default function NewsletterShow({ newsletter, previewData }: NewsletterSh
                                         className="bg-green-600 hover:bg-green-700"
                                     >
                                         <Send className="mr-2 h-4 w-4" />
-                                        <span className="hidden sm:inline">Send Now</span>
-                                        <span className="sm:hidden">Send</span>
+                                        <span className="hidden sm:inline">Start now</span>
+                                        <span className="sm:hidden">Start</span>
                                     </Button>
                                     <Button
                                         onClick={() => setIsDeleteModalOpen(true)}
@@ -274,7 +279,7 @@ export default function NewsletterShow({ newsletter, previewData }: NewsletterSh
                                     <Link href={route('newsletter.edit', newsletter.id)}>
                                         <Button variant="outline">
                                             <Edit className="mr-2 h-4 w-4" />
-                                            <span className="hidden sm:inline">Edit Newsletter</span>
+                                            <span className="hidden sm:inline">Edit Engagement</span>
                                             <span className="sm:hidden">Edit</span>
                                         </Button>
                                     </Link>
@@ -313,8 +318,8 @@ export default function NewsletterShow({ newsletter, previewData }: NewsletterSh
                                         className="bg-green-600 hover:bg-green-700"
                                     >
                                         <Send className="mr-2 h-4 w-4" />
-                                        <span className="hidden sm:inline">Send Now</span>
-                                        <span className="sm:hidden">Send</span>
+                                        <span className="hidden sm:inline">Start now</span>
+                                        <span className="sm:hidden">Start</span>
                                     </Button>
                                     <Button
                                         onClick={() => setIsPauseModalOpen(true)}
@@ -351,8 +356,8 @@ export default function NewsletterShow({ newsletter, previewData }: NewsletterSh
                                         className="bg-green-600 hover:bg-green-700"
                                     >
                                             <Send className="mr-2 h-4 w-4" />
-                                            <span className="hidden sm:inline">Send Now</span>
-                                            <span className="sm:hidden">Send</span>
+                                            <span className="hidden sm:inline">Start now</span>
+                                            <span className="sm:hidden">Start</span>
                                         </Button>
                                     <Button
                                         onClick={() => setIsPauseModalOpen(true)}
@@ -384,8 +389,8 @@ export default function NewsletterShow({ newsletter, previewData }: NewsletterSh
                                         className="bg-green-600 hover:bg-green-700"
                                     >
                                         <Send className="mr-2 h-4 w-4" />
-                                        <span className="hidden sm:inline">Send Again</span>
-                                        <span className="sm:hidden">Send</span>
+                                            <span className="hidden sm:inline">Start again</span>
+                                            <span className="sm:hidden">Again</span>
                                     </Button>
                                     <Button
                                         onClick={() => setIsDeleteModalOpen(true)}
@@ -406,7 +411,7 @@ export default function NewsletterShow({ newsletter, previewData }: NewsletterSh
                                         className="bg-green-600 hover:bg-green-700"
                                     >
                                         <Send className="mr-2 h-4 w-4" />
-                                        <span className="hidden sm:inline">Retry Send</span>
+                                            <span className="hidden sm:inline">Retry</span>
                                         <span className="sm:hidden">Retry</span>
                                     </Button>
                                     <Button
@@ -429,10 +434,10 @@ export default function NewsletterShow({ newsletter, previewData }: NewsletterSh
                         <CardHeader>
                             <CardTitle className="flex items-center gap-2">
                                 <Calendar className="h-5 w-5" />
-                                Update Newsletter Schedule
+                                Update schedule
                             </CardTitle>
                             <CardDescription>
-                                Change when this newsletter will be sent
+                                Change when this Engagement goes out
                             </CardDescription>
                         </CardHeader>
                         <CardContent>
@@ -552,17 +557,17 @@ export default function NewsletterShow({ newsletter, previewData }: NewsletterSh
                     </Card>
                 </div>
 
-                {/* Newsletter Details */}
+                {/* Engagement details */}
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    {/* Newsletter Content */}
+                    {/* Message content */}
                     <Card className="shadow-lg">
                         <CardHeader>
                             <CardTitle className="flex items-center gap-2">
                                 <Mail className="h-5 w-5" />
-                                Newsletter Content
+                                Message content
                             </CardTitle>
                             <CardDescription>
-                                Preview of the newsletter content
+                                Preview of the message
                             </CardDescription>
                         </CardHeader>
                         <CardContent>
@@ -789,12 +794,12 @@ export default function NewsletterShow({ newsletter, previewData }: NewsletterSh
                     <DialogContent>
                         <DialogHeader>
                             <DialogTitle>
-                                {newsletter.status === 'draft' ? 'Send Newsletter' : 'Resume Newsletter'}
+                                {newsletter.status === 'draft' ? 'Start Engagement' : 'Resume Engagement'}
                             </DialogTitle>
                             <DialogDescription>
                                 {newsletter.status === 'draft'
-                                    ? 'Are you sure you want to send this newsletter now?'
-                                    : 'Choose how to resume this newsletter:'}
+                                    ? 'Start this Engagement now?'
+                                    : 'Choose how to resume this Engagement:'}
                             </DialogDescription>
                         </DialogHeader>
                         {newsletter.status === 'paused' && (
@@ -811,7 +816,7 @@ export default function NewsletterShow({ newsletter, previewData }: NewsletterSh
                                         className="w-full mt-2"
                                     />
                                     <p className="text-xs text-gray-500 mt-1">
-                                        Leave empty to send immediately, or set a future time to schedule
+                                        Leave empty to start immediately, or set a future time to schedule
                                     </p>
                                 </div>
                             </div>
@@ -857,8 +862,8 @@ export default function NewsletterShow({ newsletter, previewData }: NewsletterSh
                                 className="bg-green-600 hover:bg-green-700"
                             >
                                 {newsletter.status === 'draft'
-                                    ? 'Send Now'
-                                    : (resumeScheduleTime ? 'Schedule' : 'Send Now')}
+                                    ? 'Start now'
+                                    : (resumeScheduleTime ? 'Schedule' : 'Start now')}
                             </Button>
                         </DialogFooter>
                     </DialogContent>
@@ -868,8 +873,8 @@ export default function NewsletterShow({ newsletter, previewData }: NewsletterSh
                 <ConfirmationModal
                     isOpen={isPauseModalOpen}
                     onChange={setIsPauseModalOpen}
-                    title="Pause Newsletter"
-                    description="Are you sure you want to pause this newsletter? It will be moved back to draft status and the schedule will be cleared."
+                    title="Pause Engagement"
+                    description="Are you sure you want to pause this Engagement? It will be moved back to draft status and the schedule will be cleared."
                     confirmLabel="Pause"
                     cancelLabel="Cancel"
                     onConfirm={() => {
@@ -895,9 +900,9 @@ export default function NewsletterShow({ newsletter, previewData }: NewsletterSh
                         console.log('Manual send modal state changed:', open);
                         setIsManualSendModalOpen(open);
                     }}
-                    title="Send Newsletter Manually"
-                    description="Are you sure you want to send this newsletter immediately? This will override any scheduled time."
-                    confirmLabel="Send Now"
+                    title="Start Engagement"
+                    description="Start this Engagement immediately? This will override any scheduled time."
+                    confirmLabel="Start now"
                     cancelLabel="Cancel"
                     onConfirm={() => {
                         try {
@@ -924,7 +929,7 @@ export default function NewsletterShow({ newsletter, previewData }: NewsletterSh
                             form.submit();
                         } catch (error) {
                             console.error('Error submitting manual send form:', error);
-                            alert('Error sending newsletter. Please try again.');
+                            alert('Could not start Engagement. Please try again.');
                         }
                     }}
                 />
@@ -933,7 +938,7 @@ export default function NewsletterShow({ newsletter, previewData }: NewsletterSh
                 <ConfirmationModal
                     isOpen={isDeleteModalOpen}
                     onChange={setIsDeleteModalOpen}
-                    title="Delete Newsletter"
+                    title="Delete Engagement"
                     description={`Are you sure you want to delete "${newsletter.subject}"? This action cannot be undone.`}
                     confirmLabel="Delete"
                     cancelLabel="Cancel"
@@ -944,7 +949,7 @@ export default function NewsletterShow({ newsletter, previewData }: NewsletterSh
                             },
                             onError: (errors) => {
                                 console.error('Delete error:', errors)
-                                alert('Failed to delete newsletter. Please try again.')
+                                alert('Failed to delete. Please try again.')
                             }
                         })
                     }}

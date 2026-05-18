@@ -200,7 +200,7 @@ export default function NewsletterEdit({ newsletter, templates, previewData }: N
     const handleDelete = () => {
         setConfirmationModal({
             isOpen: true,
-            title: 'Delete Newsletter',
+            title: 'Delete Engagement',
             description: `Are you sure you want to delete "${newsletter.subject}"? This action cannot be undone.`,
             onConfirm: () => {
                 router.delete(route('newsletter.destroy', newsletter.id))
@@ -211,8 +211,8 @@ export default function NewsletterEdit({ newsletter, templates, previewData }: N
     const handleSend = () => {
         setConfirmationModal({
             isOpen: true,
-            title: 'Send Newsletter',
-            description: `Are you sure you want to send "${data.subject}" to all subscribers?`,
+            title: 'Start Engagement',
+            description: `Start "${data.subject}" to all subscribers now?`,
             onConfirm: () => {
                 router.post(route('newsletter.send', newsletter.id))
             }
@@ -221,7 +221,7 @@ export default function NewsletterEdit({ newsletter, templates, previewData }: N
 
     return (
         <AppSidebarLayout>
-            <Head title={`Edit Newsletter: ${newsletter.subject}`} />
+            <Head title={`Engagement · Edit · ${newsletter.subject}`} />
 
             <div className="w-full min-w-0 max-w-full space-y-6 px-4 py-6 sm:space-y-8 sm:px-6 lg:px-8 animate-in fade-in duration-500">
                 {/* Header */}
@@ -237,9 +237,14 @@ export default function NewsletterEdit({ newsletter, templates, previewData }: N
                                 <ArrowLeft className="h-4 w-4 mr-2" />
                                 Back
                             </Button>
-                            <h1 className="min-w-0 break-words text-2xl font-bold text-gray-900 sm:text-3xl lg:text-4xl dark:text-white">
-                                Edit Newsletter
-                            </h1>
+                            <div className="min-w-0 space-y-1">
+                                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">
+                                    Engagement
+                                </p>
+                                <h1 className="min-w-0 break-words text-2xl font-bold text-gray-900 sm:text-3xl lg:text-4xl dark:text-white">
+                                    Edit Engagement
+                                </h1>
+                            </div>
                         </div>
                         <p className="text-sm text-gray-600 sm:text-base lg:text-lg dark:text-gray-400">
                             Update your email campaign content and settings
@@ -261,8 +266,8 @@ export default function NewsletterEdit({ newsletter, templates, previewData }: N
                                 className="min-w-0 shrink-0 whitespace-nowrap bg-green-600 hover:bg-green-700"
                             >
                                 <Send className="h-4 w-4 mr-2 shrink-0" />
-                                <span className="hidden sm:inline">Send Now</span>
-                                <span className="sm:hidden">Send</span>
+                                <span className="hidden sm:inline">Start now</span>
+                                <span className="sm:hidden">Start</span>
                             </Button>
                         </div>
                     </div>
@@ -275,7 +280,7 @@ export default function NewsletterEdit({ newsletter, templates, previewData }: N
                         <div className="min-w-0 space-y-6 lg:col-span-2">
                             <Card className="shadow-lg">
                                 <CardHeader>
-                                    <CardTitle>Send via</CardTitle>
+                                    <CardTitle>Channel</CardTitle>
                                     <CardDescription>
                                         SMS is plain text only. Both requires SMS plain text and HTML for email.
                                     </CardDescription>
@@ -319,7 +324,7 @@ export default function NewsletterEdit({ newsletter, templates, previewData }: N
                                 <CardHeader>
                                     <CardTitle className="flex items-center gap-2">
                                         <Mail className="h-5 w-5" />
-                                        Newsletter Content
+                                        Message content
                                     </CardTitle>
                                     <CardDescription>
                                         {data.send_via === "sms" &&
@@ -336,7 +341,7 @@ export default function NewsletterEdit({ newsletter, templates, previewData }: N
                                             type="text"
                                             value={data.subject}
                                             onChange={(e) => setData('subject', e.target.value)}
-                                            placeholder="Enter newsletter subject..."
+                                            placeholder="Enter subject…"
                                             className="mt-1"
                                         />
                                         {errors.subject && (
@@ -414,12 +419,12 @@ export default function NewsletterEdit({ newsletter, templates, previewData }: N
                                         Template
                                     </CardTitle>
                                     <CardDescription>
-                                        Choose a template for your newsletter
+                                        Choose a template for this Engagement
                                     </CardDescription>
                                 </CardHeader>
                                 <CardContent>
                                     <div>
-                                        <Label htmlFor="template">Newsletter Template</Label>
+                                        <Label htmlFor="template">Template</Label>
                                         <Select
                                             value={
                                                 data.newsletter_template_id === '' || data.newsletter_template_id === null
@@ -589,10 +594,10 @@ export default function NewsletterEdit({ newsletter, templates, previewData }: N
                                 </CardContent>
                             </Card>
 
-                            {/* Newsletter Info */}
+                            {/* Engagement details */}
                             <Card className="shadow-lg">
                                 <CardHeader>
-                                    <CardTitle>Newsletter Info</CardTitle>
+                                    <CardTitle>Engagement details</CardTitle>
                                 </CardHeader>
                                 <CardContent className="space-y-3">
                                     <div className="flex justify-between">
@@ -633,9 +638,9 @@ export default function NewsletterEdit({ newsletter, templates, previewData }: N
                 <Dialog open={showPreview} onOpenChange={setShowPreview}>
                     <DialogContent className="w-[calc(100vw-2rem)] max-w-xl max-h-[min(85vh,720px)] overflow-y-auto sm:max-w-2xl">
                         <DialogHeader>
-                            <DialogTitle>Newsletter Preview</DialogTitle>
+                            <DialogTitle>Preview</DialogTitle>
                             <DialogDescription>
-                                Preview how your newsletter will look to recipients
+                                Preview how your message will look to recipients
                             </DialogDescription>
                         </DialogHeader>
                         <div className="space-y-4">
@@ -643,7 +648,7 @@ export default function NewsletterEdit({ newsletter, templates, previewData }: N
                                 <div className="mb-3 pb-2 border-b border-gray-200 dark:border-gray-700">
                                     <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Subject Preview:</p>
                                     <h3 className="font-semibold text-xl">
-                                        {previewSubject || data.subject || 'Newsletter Subject'}
+                                        {previewSubject || data.subject || 'Subject'}
                                     </h3>
                                 </div>
                                 {previewHtmlContent ? (
@@ -653,7 +658,7 @@ export default function NewsletterEdit({ newsletter, templates, previewData }: N
                                     />
                                 ) : (
                                     <div className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
-                                        {previewContent || data.content || 'Newsletter content will appear here...'}
+                                        {previewContent || data.content || 'Content will appear here…'}
                                     </div>
                                 )}
                             </div>

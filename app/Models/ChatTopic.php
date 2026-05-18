@@ -10,7 +10,8 @@ class ChatTopic extends Model
     protected $fillable = [
         'name',
         'description',
-        'is_active'
+        'is_active',
+        'primary_action_category_id',
     ];
 
     protected $casts = [

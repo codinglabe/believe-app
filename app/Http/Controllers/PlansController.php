@@ -6,7 +6,7 @@ use App\Models\Plan;
 use App\Models\Transaction;
 use App\Models\User;
 use App\Models\WalletPlan;
-use App\Support\StripeAutomaticTax;
+use App\Support\PlanAiMediaStudioSubscriptionCredits;
 use App\Support\StripeCustomerChargeAmount;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -15,6 +15,42 @@ use Laravel\Cashier\Cashier;
 
 class PlansController extends Controller
 {
+    /**
+     * Shape sent to Inertia / JSON for plan pickers and pricing (features ordered for UI lists).
+     *
+     * @return array<string, mixed>
+     */
+    private function planToFrontendArray(Plan $plan): array
+    {
+        $features = $plan->features
+            ->sortBy(fn ($feature) => sprintf('%09d-%09d', (int) ($feature->sort_order ?? 0), $feature->id))
+            ->values()
+            ->map(function ($feature) {
+                return [
+                    'id' => $feature->id,
+                    'name' => $feature->name,
+                    'description' => $feature->description,
+                    'icon' => $feature->icon,
+                    'is_unlimited' => (bool) $feature->is_unlimited,
+                    'sort_order' => (int) ($feature->sort_order ?? 0),
+                ];
+            })
+            ->values()
+            ->all();
+
+        return [
+            'id' => $plan->id,
+            'name' => $plan->name,
+            'price' => (float) $plan->price,
+            'frequency' => $plan->frequency,
+            'is_popular' => (bool) $plan->is_popular,
+            'description' => $plan->description,
+            'trial_days' => (int) ($plan->trial_days ?? 0),
+            'custom_fields' => $plan->custom_fields ?? [],
+            'features' => $features,
+        ];
+    }
+
     /**
      * Display the plans page
      */
@@ -40,27 +76,7 @@ class PlansController extends Controller
                 $query->whereNotIn('stripe_price_id', $walletPlanPriceIds);
             })
             ->get()
-            ->map(function ($plan) {
-                return [
-                    'id' => $plan->id,
-                    'name' => $plan->name,
-                    'price' => (float) $plan->price,
-                    'frequency' => $plan->frequency,
-                    'is_popular' => $plan->is_popular,
-                    'description' => $plan->description,
-                    'trial_days' => (int) ($plan->trial_days ?? 0),
-                    'custom_fields' => $plan->custom_fields ?? [],
-                    'features' => $plan->features->map(function ($feature) {
-                        return [
-                            'id' => $feature->id,
-                            'name' => $feature->name,
-                            'description' => $feature->description,
-                            'icon' => $feature->icon,
-                            'is_unlimited' => $feature->is_unlimited,
-                        ];
-                    }),
-                ];
-            });
+            ->map(fn (Plan $plan) => $this->planToFrontendArray($plan));
 
         // If API request (but NOT Inertia request), return JSON
         // Inertia requests also send X-Requested-With header, so we need to check for X-Inertia header
@@ -88,11 +104,6 @@ class PlansController extends Controller
                 'name' => 'SMS',
                 'price' => '$0.015 per text',
                 'description' => 'Opt-in only',
-            ],
-            [
-                'name' => 'Extra Storage',
-                'price' => '$0.20/GB',
-                'description' => 'For big media orgs',
             ],
             [
                 'name' => 'Raffles Platform Fee',
@@ -161,33 +172,12 @@ class PlansController extends Controller
                 $query->whereNotIn('stripe_price_id', $walletPlanPriceIds);
             })
             ->get()
-            ->map(function ($plan) {
-                return [
-                    'id' => $plan->id,
-                    'name' => $plan->name,
-                    'price' => (float) $plan->price,
-                    'frequency' => $plan->frequency,
-                    'is_popular' => $plan->is_popular,
-                    'description' => $plan->description,
-                    'trial_days' => (int) ($plan->trial_days ?? 0),
-                    'custom_fields' => $plan->custom_fields ?? [],
-                    'features' => $plan->features->map(function ($feature) {
-                        return [
-                            'id' => $feature->id,
-                            'name' => $feature->name,
-                            'description' => $feature->description,
-                            'icon' => $feature->icon,
-                            'is_unlimited' => $feature->is_unlimited,
-                        ];
-                    }),
-                ];
-            });
+            ->map(fn (Plan $plan) => $this->planToFrontendArray($plan));
 
         $addOns = [
             ['name' => 'Email Re-Ups', 'price' => '$1 per 1,000 emails', 'description' => 'Perfect for growth and newsletters'],
             ['name' => 'AI Packs', 'price' => '$5 per 50,000 tokens', 'description' => 'High margin; encourages use'],
             ['name' => 'SMS', 'price' => '$0.015 per text', 'description' => 'Opt-in only'],
-            ['name' => 'Extra Storage', 'price' => '$0.20/GB', 'description' => 'For big media orgs'],
             ['name' => 'Raffles Platform Fee', 'price' => '4% of raised funds', 'description' => 'Direct revenue'],
             ['name' => 'Volunteer Background Checks', 'price' => '$6 each', 'description' => 'Optional'],
         ];
@@ -309,9 +299,7 @@ class PlansController extends Controller
                     $checkoutSessionData['customer_email'] = $user->email;
                 }
 
-                $checkoutSession = $stripe->checkout->sessions->create(
-                    StripeAutomaticTax::mergeCheckoutSessionParams($checkoutSessionData)
-                );
+                $checkoutSession = $stripe->checkout->sessions->create($checkoutSessionData);
 
                 return Inertia::location($checkoutSession->url);
             } else {
@@ -321,9 +309,9 @@ class PlansController extends Controller
                     $amountInCents,
                     "Purchase {$plan->name} Plan".(! empty($currencyFields) ? ' + Add-ons' : ''),
                     1,
-                    StripeAutomaticTax::mergeCheckoutOptions(array_merge($checkoutOptions, [
+                    array_merge($checkoutOptions, [
                         'line_items' => $oneTimeItems,
-                    ]))
+                    ])
                 );
 
                 return Inertia::location($checkout->url);
@@ -874,6 +862,7 @@ class PlansController extends Controller
             $emailsIncluded = 0;
             $aiTokensIncluded = 0;
             $creditsToAdd = 0;
+            $aiMediaStudioCreditsFromPlan = null;
 
             // Process custom fields
             if ($plan->custom_fields && is_array($plan->custom_fields)) {
@@ -898,6 +887,10 @@ class PlansController extends Controller
                     ) {
                         // Remove commas and convert to integer
                         $aiTokensIncluded = (int) str_replace(',', '', $fieldValue);
+                    }
+                    // AI Media Studio (short-form video) credits — separate from wallet `credits`
+                    elseif ($fieldKey === 'ai_media_studio_credits' && $fieldType === 'number') {
+                        $aiMediaStudioCreditsFromPlan = (int) str_replace(',', '', $fieldValue);
                     }
                     // Handle currency fields
                     elseif ($fieldType === 'currency') {
@@ -928,8 +921,12 @@ class PlansController extends Controller
                 'subscribed_at' => now()->toIso8601String(),
                 'emails_included' => $emailsIncluded,
                 'ai_tokens_included' => $aiTokensIncluded,
+                'ai_media_studio_credits_granted' => 0,
                 'custom_fields' => $plan->custom_fields ?? [],
             ];
+
+            $mediaStudioGrant = PlanAiMediaStudioSubscriptionCredits::grantAmountForSubscribe($aiMediaStudioCreditsFromPlan);
+            $planDetails['ai_media_studio_credits_granted'] = $mediaStudioGrant;
 
             // Update user with plan, emails, tokens, and credits
             $user->update([
@@ -943,6 +940,10 @@ class PlansController extends Controller
             $totalCreditsToAdd = $aiTokensIncluded + $creditsToAdd;
             if ($totalCreditsToAdd > 0) {
                 $user->increment('credits', $totalCreditsToAdd);
+            }
+
+            if ($mediaStudioGrant > 0) {
+                $user->increment('ai_media_studio_credits', $mediaStudioGrant);
             }
 
             // Record transaction for billing history
@@ -961,6 +962,7 @@ class PlansController extends Controller
                     'emails_included' => $emailsIncluded,
                     'ai_tokens_included' => $aiTokensIncluded,
                     'credits_added' => $totalCreditsToAdd,
+                    'ai_media_studio_credits_granted' => $mediaStudioGrant,
                     'description' => "Plan Subscription: {$plan->name}".(! empty($currencyFields) ? ' + Add-ons' : ''),
                     'stripe_session_id' => $sessionId,
                     'stripe_payment_intent' => $session->payment_intent ?? null,
@@ -975,6 +977,7 @@ class PlansController extends Controller
                 'emails_included' => $emailsIncluded,
                 'ai_tokens_included' => $aiTokensIncluded,
                 'credits_added' => $totalCreditsToAdd,
+                'ai_media_studio_credits_granted' => $mediaStudioGrant,
                 'total_amount' => $totalAmount,
                 'session_id' => $sessionId,
             ]);
@@ -985,6 +988,9 @@ class PlansController extends Controller
             }
             if ($emailsIncluded > 0) {
                 $successMessage .= " {$emailsIncluded} emails included.";
+            }
+            if ($mediaStudioGrant > 0) {
+                $successMessage .= " {$mediaStudioGrant} AI Media Studio credits added (US\$1 = 1 credit).";
             }
 
             // Render success page instead of redirecting

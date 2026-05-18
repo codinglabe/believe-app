@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\MarketplaceProduct;
+use App\Support\MarketplacePickup;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -46,6 +47,11 @@ class MerchantHubMarketplaceProductController extends Controller
 
         $canPurchase = $marketplace_product->isHubCheckoutEligible();
 
+        $pickupAddress = null;
+        if (($marketplace_product->pickup_available ?? false) && $m && MarketplacePickup::marketplaceProductAllowsPickup($marketplace_product)) {
+            $pickupAddress = MarketplacePickup::formatMerchantAddress($m);
+        }
+
         $purchaseMessage = null;
         if (! $canPurchase) {
             $purchaseMessage = 'This product is not available for purchase (inactive or out of stock).';
@@ -73,6 +79,8 @@ class MerchantHubMarketplaceProductController extends Controller
                 'can_purchase' => $canPurchase,
                 'purchase_message' => $purchaseMessage,
                 'max_quantity' => $maxQty,
+                'pickup_available' => (bool) ($marketplace_product->pickup_available ?? false),
+                'pickup_address' => $pickupAddress,
             ],
         ]);
     }

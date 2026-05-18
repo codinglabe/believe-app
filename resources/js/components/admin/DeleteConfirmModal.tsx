@@ -15,7 +15,12 @@ interface Props {
 
 export default function DeleteConfirmModal({ isOpen, onClose, onConfirm, title, message, isLoading = false }: Props) {
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
+    <Dialog
+      open={isOpen}
+      onOpenChange={(open) => {
+        if (!open) onClose()
+      }}
+    >
       <DialogContent className="sm:max-w-md animate-in fade-in-0 zoom-in-95 duration-300">
         <DialogHeader>
           <DialogTitle className="text-xl font-semibold flex items-center gap-2">

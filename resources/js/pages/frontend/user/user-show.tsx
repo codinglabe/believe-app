@@ -593,15 +593,17 @@ export default function UserPage({
                 <MapPin className="w-4 h-4" />
                 <span className="truncate max-w-[150px] sm:max-w-none">{location}</span>
               </div>
-              <div className="flex items-center gap-1.5">
-                <Zap className="w-4 h-4 text-yellow-500" />
-                <span className="text-gray-900 dark:text-white font-medium">
-                  {believePointsBalance >= 1000
-                    ? `${(believePointsBalance / 1000).toFixed(1)}K`
-                    : believePointsBalance.toLocaleString()}
-                </span>
-                <span>Believer Points</span>
-              </div>
+              {user?.is_own_profile && (
+                <div className="flex items-center gap-1.5">
+                  <Zap className="w-4 h-4 text-yellow-500" />
+                  <span className="text-gray-900 dark:text-white font-medium">
+                    {believePointsBalance >= 1000
+                      ? `${(believePointsBalance / 1000).toFixed(1)}K`
+                      : believePointsBalance.toLocaleString()}
+                  </span>
+                  <span>Believer Points</span>
+                </div>
+              )}
               <div className="flex items-center gap-1.5">
                 <Users className="w-4 h-4" />
                 <span>{followersCount || 0} followers</span>
@@ -671,28 +673,32 @@ export default function UserPage({
                 </div>
 
                 <div className="flex items-end justify-between py-3 border-t border-gray-200 dark:border-white/10">
-                  <div className="text-center flex flex-col">
-                    <p className="text-lg font-bold">
-                      {believePointsBalance >= 1000
-                        ? `${(believePointsBalance / 1000).toFixed(1)}k`
-                        : believePointsBalance.toLocaleString()}
-                    </p>
-                    <p className="text-[10px] text-gray-500 dark:text-gray-500">Believer Points</p>
-                    <div className="mt-1">
-                      <p className="text-[9px] text-green-400">+{believePointsEarned.toLocaleString()} earned</p>
-                    </div>
-                  </div>
-                  <div className="text-center flex flex-col">
-                    <p className="text-lg font-bold text-gray-900 dark:text-white">
-                      {rewardPointsBalance >= 1000
-                        ? `${(rewardPointsBalance / 1000).toFixed(1)}k`
-                        : rewardPointsBalance.toLocaleString()}
-                    </p>
-                    <p className="text-[10px] text-gray-500 dark:text-gray-500">Reward Points</p>
-                    <div className="mt-1">
-                      <p className="text-[9px] text-green-400">+{rewardPointsEarned.toLocaleString()} earned</p>
-                    </div>
-                  </div>
+                  {user?.is_own_profile && (
+                    <>
+                      <div className="text-center flex flex-col">
+                        <p className="text-lg font-bold">
+                          {believePointsBalance >= 1000
+                            ? `${(believePointsBalance / 1000).toFixed(1)}k`
+                            : believePointsBalance.toLocaleString()}
+                        </p>
+                        <p className="text-[10px] text-gray-500 dark:text-gray-500">Believer Points</p>
+                        <div className="mt-1">
+                          <p className="text-[9px] text-green-400">+{believePointsEarned.toLocaleString()} earned</p>
+                        </div>
+                      </div>
+                      <div className="text-center flex flex-col">
+                        <p className="text-lg font-bold text-gray-900 dark:text-white">
+                          {rewardPointsBalance >= 1000
+                            ? `${(rewardPointsBalance / 1000).toFixed(1)}k`
+                            : rewardPointsBalance.toLocaleString()}
+                        </p>
+                        <p className="text-[10px] text-gray-500 dark:text-gray-500">Reward Points</p>
+                        <div className="mt-1">
+                          <p className="text-[9px] text-green-400">+{rewardPointsEarned.toLocaleString()} earned</p>
+                        </div>
+                      </div>
+                    </>
+                  )}
                   <div className="text-center flex flex-col">
                     <p className="text-lg font-bold text-gray-900 dark:text-white">{followersCount || 0}</p>
                     <p className="text-[10px] text-gray-500 dark:text-gray-500">Followers</p>

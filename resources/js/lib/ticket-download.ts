@@ -1,275 +1,173 @@
+import { toPng } from 'html-to-image';
 import html2canvas from 'html2canvas';
 
-export const downloadTicket = async (ticketElement: HTMLElement, ticketNumber: string) => {
+function sanitizeFilenamePart(value: string): string {
+    return value.replace(/[/\\?%*:|"<>]/g, '-').slice(0, 80);
+}
+
+function waitForImages(root: HTMLElement): Promise<void> {
+    const imgs = root.querySelectorAll('img');
+    return Promise.all(
+        Array.from(imgs).map(
+            (img) =>
+                new Promise<void>((resolve) => {
+                    if (img.complete) {
+                        resolve();
+                        return;
+                    }
+                    img.onload = () => resolve();
+                    img.onerror = () => resolve();
+                    setTimeout(() => resolve(), 8000);
+                }),
+        ),
+    ).then(() => undefined);
+}
+
+async function cloneForCapture(source: HTMLElement): Promise<{ clone: HTMLElement; cleanup: () => void }> {
+    const clone = source.cloneNode(true) as HTMLElement;
+    const rect = source.getBoundingClientRect();
+    const width = Math.max(rect.width, source.offsetWidth, 280);
+    const height = Math.max(rect.height, source.offsetHeight, 80);
+
+    clone.style.position = 'fixed';
+    clone.style.left = '-10000px';
+    clone.style.top = '0';
+    clone.style.width = `${width}px`;
+    clone.style.minHeight = `${height}px`;
+    clone.style.margin = '0';
+    clone.style.boxSizing = 'border-box';
+    clone.style.backgroundColor = '#ffffff';
+
+    document.body.appendChild(clone);
+    void clone.offsetHeight;
+
+    await waitForImages(clone);
+
+    const cleanup = () => {
+        clone.parentNode?.removeChild(clone);
+    };
+
+    return { clone, cleanup };
+}
+
+async function renderTicketHtml2Canvas(source: HTMLElement): Promise<string> {
+    const { clone, cleanup } = await cloneForCapture(source);
     try {
-        // Show loading state
-        const originalContent = ticketElement.innerHTML;
-        ticketElement.innerHTML = `
-            <div class="flex items-center justify-center h-48 bg-gray-100 rounded-2xl">
-                <div class="text-center">
-                    <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
-                    <p class="text-gray-600 font-medium">Preparing download...</p>
-                </div>
-            </div>
-        `;
+        const w = Math.max(clone.scrollWidth, clone.offsetWidth, source.offsetWidth, 280);
+        const h = Math.max(clone.scrollHeight, clone.offsetHeight, source.offsetHeight, 80);
 
-        // Wait a moment for the loading state to show
-        await new Promise(resolve => setTimeout(resolve, 1000));
-
-        // Wait for any images to load
-        const images = ticketElement.querySelectorAll('img');
-        await Promise.all(Array.from(images).map(img => {
-            return new Promise((resolve) => {
-                if (img.complete) {
-                    resolve(true);
-                } else {
-                    img.onload = () => resolve(true);
-                    img.onerror = () => resolve(true);
-                    // Timeout after 5 seconds
-                    setTimeout(() => resolve(true), 5000);
-                }
-            });
-        }));
-
-        // Create a canvas from the ticket element
-        const canvas = await html2canvas(ticketElement, {
+        const canvas = await html2canvas(clone, {
             backgroundColor: '#ffffff',
-            scale: 2, // Good resolution for download
+            scale: Math.min(2, window.devicePixelRatio || 2),
             useCORS: true,
             allowTaint: true,
-            width: ticketElement.offsetWidth,
-            height: ticketElement.offsetHeight,
+            width: w,
+            height: h,
             scrollX: 0,
             scrollY: 0,
             logging: false,
-            imageTimeout: 5000,
+            imageTimeout: 15000,
         });
-
-        // Restore original content
-        ticketElement.innerHTML = originalContent;
-
-        // Convert canvas to blob
-        canvas.toBlob((blob) => {
-            if (blob) {
-                // Create download link
-                const url = URL.createObjectURL(blob);
-                const link = document.createElement('a');
-                link.href = url;
-                link.download = `raffle-ticket-${ticketNumber}-${new Date().toISOString().split('T')[0]}.png`;
-                
-                // Trigger download
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
-                
-                // Clean up
-                URL.revokeObjectURL(url);
-
-                // Show success message
-                const successDiv = document.createElement('div');
-                successDiv.className = 'fixed top-4 right-4 bg-green-500 text-white px-6 py-3 rounded-lg shadow-lg z-50 transform transition-all duration-300';
-                successDiv.innerHTML = `
-                    <div class="flex items-center">
-                        <svg class="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
-                            <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
-                        </svg>
-                        Ticket downloaded successfully!
-                    </div>
-                `;
-                document.body.appendChild(successDiv);
-
-                // Remove success message after 3 seconds
-                setTimeout(() => {
-                    successDiv.style.transform = 'translateX(100%)';
-                    setTimeout(() => {
-                        document.body.removeChild(successDiv);
-                    }, 300);
-                }, 3000);
-            }
-        }, 'image/png', 0.95);
-    } catch (error) {
-        console.error('Error downloading ticket:', error);
-        
-        // Show error message
-        const errorDiv = document.createElement('div');
-        errorDiv.className = 'fixed top-4 right-4 bg-red-500 text-white px-6 py-3 rounded-lg shadow-lg z-50 transform transition-all duration-300';
-        errorDiv.innerHTML = `
-            <div class="flex items-center">
-                <svg class="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
-                    <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path>
-                </svg>
-                Failed to download ticket. Please try again.
-            </div>
-        `;
-        document.body.appendChild(errorDiv);
-
-        // Remove error message after 5 seconds
-        setTimeout(() => {
-            errorDiv.style.transform = 'translateX(100%)';
-            setTimeout(() => {
-                document.body.removeChild(errorDiv);
-            }, 300);
-        }, 5000);
+        return canvas.toDataURL('image/png', 0.95);
+    } finally {
+        cleanup();
     }
-};
+}
 
-export const printTicket = (ticketElement: HTMLElement) => {
+/** Prefer html-to-image (SVG/QR + CSS); fallback to html2canvas if it fails. */
+async function captureTicketPngDataUrl(element: HTMLElement): Promise<string> {
+    if (!element.offsetWidth || !element.offsetHeight) {
+        await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    }
+
     try {
-        // Show loading state
-        const originalContent = ticketElement.innerHTML;
-        ticketElement.innerHTML = `
-            <div class="flex items-center justify-center h-48 bg-gray-100 rounded-2xl">
-                <div class="text-center">
-                    <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-green-500 mx-auto mb-4"></div>
-                    <p class="text-gray-600 font-medium">Preparing for print...</p>
-                </div>
-            </div>
-        `;
-
-        // Wait a moment for the loading state to show
-        setTimeout(() => {
-            // Restore original content
-            ticketElement.innerHTML = originalContent;
-
-            // Create a new window for printing
-            const printWindow = window.open('', '_blank');
-            if (!printWindow) {
-                // Show error message
-                const errorDiv = document.createElement('div');
-                errorDiv.className = 'fixed top-4 right-4 bg-red-500 text-white px-6 py-3 rounded-lg shadow-lg z-50 transform transition-all duration-300';
-                errorDiv.innerHTML = `
-                    <div class="flex items-center">
-                        <svg class="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
-                            <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path>
-                        </svg>
-                        Please allow popups to print your ticket.
-                    </div>
-                `;
-                document.body.appendChild(errorDiv);
-
-                // Remove error message after 5 seconds
-                setTimeout(() => {
-                    errorDiv.style.transform = 'translateX(100%)';
-                    setTimeout(() => {
-                        document.body.removeChild(errorDiv);
-                    }, 300);
-                }, 5000);
-                return;
-            }
-
-            // Get the ticket HTML
-            const ticketHTML = ticketElement.outerHTML;
-            
-            // Create print-friendly HTML with better styling
-            const printHTML = `
-                <!DOCTYPE html>
-                <html>
-                <head>
-                    <title>Raffle Ticket - Print</title>
-                    <meta charset="utf-8">
-                    <style>
-                        * {
-                            box-sizing: border-box;
-                        }
-                        body {
-                            margin: 0;
-                            padding: 20px;
-                            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-                            background: white;
-                            color: #000;
-                        }
-                        .ticket-container {
-                            max-width: 100%;
-                            margin: 0 auto;
-                        }
-                        @media print {
-                            body { 
-                                margin: 0; 
-                                padding: 10px; 
-                            }
-                            @page { 
-                                margin: 0.5in;
-                                size: A4 landscape;
-                            }
-                            .ticket-container {
-                                transform: scale(0.8);
-                                transform-origin: top left;
-                            }
-                        }
-                        @media screen {
-                            .ticket-container {
-                                max-width: 800px;
-                            }
-                        }
-                    </style>
-                </head>
-                <body>
-                    <div class="ticket-container">
-                        ${ticketHTML}
-                    </div>
-                </body>
-                </html>
-            `;
-
-            printWindow.document.write(printHTML);
-            printWindow.document.close();
-            
-            // Wait for images to load, then print
-            printWindow.onload = () => {
-                setTimeout(() => {
-                    printWindow.print();
-                    
-                    // Show success message
-                    const successDiv = document.createElement('div');
-                    successDiv.className = 'fixed top-4 right-4 bg-green-500 text-white px-6 py-3 rounded-lg shadow-lg z-50 transform transition-all duration-300';
-                    successDiv.innerHTML = `
-                        <div class="flex items-center">
-                            <svg class="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
-                                <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"></path>
-                            </svg>
-                            Print dialog opened successfully!
-                        </div>
-                    `;
-                    document.body.appendChild(successDiv);
-
-                    // Remove success message after 3 seconds
-                    setTimeout(() => {
-                        successDiv.style.transform = 'translateX(100%)';
-                        setTimeout(() => {
-                            document.body.removeChild(successDiv);
-                        }, 300);
-                    }, 3000);
-
-                    // Close the print window after a delay
-                    setTimeout(() => {
-                        printWindow.close();
-                    }, 1000);
-                }, 1000);
-            };
-        }, 500);
-    } catch (error) {
-        console.error('Error printing ticket:', error);
-        
-        // Show error message
-        const errorDiv = document.createElement('div');
-        errorDiv.className = 'fixed top-4 right-4 bg-red-500 text-white px-6 py-3 rounded-lg shadow-lg z-50 transform transition-all duration-300';
-        errorDiv.innerHTML = `
-            <div class="flex items-center">
-                <svg class="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
-                    <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"></path>
-                </svg>
-                Failed to print ticket. Please try again.
-            </div>
-        `;
-        document.body.appendChild(errorDiv);
-
-        // Remove error message after 5 seconds
-        setTimeout(() => {
-            errorDiv.style.transform = 'translateX(100%)';
-            setTimeout(() => {
-                document.body.removeChild(errorDiv);
-            }, 300);
-        }, 5000);
+        return await toPng(element, {
+            cacheBust: true,
+            pixelRatio: Math.min(2, window.devicePixelRatio || 2),
+            backgroundColor: '#ffffff',
+        });
+    } catch (e) {
+        console.warn('[ticket-download] toPng failed, using html2canvas', e);
+        return renderTicketHtml2Canvas(element);
     }
-};
+}
 
+export async function downloadTicket(ticketElement: HTMLElement, ticketNumber: string): Promise<void> {
+    const dataUrl = await captureTicketPngDataUrl(ticketElement);
+    const safe = sanitizeFilenamePart(ticketNumber);
+
+    const link = document.createElement('a');
+    link.download = `raffle-ticket-${safe}-${new Date().toISOString().split('T')[0]}.png`;
+    link.href = dataUrl;
+    link.rel = 'noopener';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+}
+
+export async function printTicket(ticketElement: HTMLElement): Promise<void> {
+    const dataUrl = await captureTicketPngDataUrl(ticketElement);
+
+    // Do not pass `noopener` in the features string — Chrome returns null and print breaks.
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+        throw new Error('Popup blocked');
+    }
+
+    printWindow.document.open();
+    printWindow.document.write(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Raffle ticket</title>
+  <style>
+    @page { margin: 12mm; size: auto; }
+    html, body { margin: 0; padding: 0; background: #fff; }
+    body { display: flex; justify-content: center; align-items: flex-start; min-height: 100vh; }
+    img { max-width: 100%; height: auto; display: block; }
+  </style>
+</head>
+<body>
+  <img src="" alt="Raffle ticket" />
+</body>
+</html>`);
+
+    const img = printWindow.document.querySelector('img');
+    if (img) {
+        img.src = dataUrl;
+    }
+    printWindow.document.close();
+
+    const runPrint = () => {
+        try {
+            printWindow.focus();
+            printWindow.print();
+        } catch {
+            /* ignore */
+        }
+        printWindow.onafterprint = () => {
+            try {
+                printWindow.close();
+            } catch {
+                /* ignore */
+            }
+        };
+        setTimeout(() => {
+            if (!printWindow.closed) {
+                try {
+                    printWindow.close();
+                } catch {
+                    /* ignore */
+                }
+            }
+        }, 3000);
+    };
+
+    if (img && !img.complete) {
+        img.onload = () => setTimeout(runPrint, 50);
+        img.onerror = () => setTimeout(runPrint, 50);
+    } else {
+        setTimeout(runPrint, 100);
+    }
+}

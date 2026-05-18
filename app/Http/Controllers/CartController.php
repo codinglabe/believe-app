@@ -7,13 +7,17 @@ use App\Models\CartItem;
 use App\Models\MarketplaceProduct;
 use App\Models\OrganizationProduct;
 use App\Models\Product;
+use App\Services\PrintifyService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
 
 class CartController extends Controller
 {
+    public function __construct(private readonly PrintifyService $printifyService) {}
+
     /**
      * Get user's cart
      */
@@ -439,9 +443,8 @@ class CartController extends Controller
      */
     private function createCartItem($cart, $validated, $product, $isPrintifyProduct = false)
     {
-        $basePrice = $product->unit_price ?? 0;
         $priceModifier = $validated['variant_price_modifier'] ?? 0;
-        $totalPrice = $basePrice + $priceModifier;
+        $totalPrice = $this->resolveCheckoutUnitPrice($product, $validated, $isPrintifyProduct);
 
         $variantOptions = $validated['variant_options'] ?? [];
         $variantOptionsJson = ! empty($variantOptions) ? json_encode($variantOptions) : null;
@@ -468,6 +471,64 @@ class CartController extends Controller
         }
 
         $cart->items()->create($cartItemData);
+    }
+
+    /**
+     * Organization-owned products are sold at cost.
+     */
+    private function resolveCheckoutUnitPrice(Product $product, array $validated, bool $isPrintifyProduct): float
+    {
+        if (! $this->usesAtCostPricing($product)) {
+            $basePrice = (float) ($product->unit_price ?? 0);
+            $priceModifier = (float) ($validated['variant_price_modifier'] ?? 0);
+
+            return round($basePrice + $priceModifier, 2);
+        }
+
+        if (! $isPrintifyProduct) {
+            $manualCost = $product->source_cost !== null
+                ? (float) $product->source_cost
+                : (float) ($product->unit_price ?? 0);
+
+            return round($manualCost, 2);
+        }
+
+        $variantCost = $this->resolvePrintifyVariantCost(
+            $product,
+            (string) ($validated['printify_variant_id'] ?? '')
+        );
+
+        return round($variantCost ?? (float) ($product->unit_price ?? 0), 2);
+    }
+
+    private function usesAtCostPricing(Product $product): bool
+    {
+        return ! empty($product->organization_id) && ! $product->isBiddable();
+    }
+
+    private function resolvePrintifyVariantCost(Product $product, string $variantId): ?float
+    {
+        if ($variantId === '' || empty($product->printify_product_id)) {
+            return null;
+        }
+
+        try {
+            $printifyProduct = $this->printifyService->getProduct($product->printify_product_id);
+            foreach (($printifyProduct['variants'] ?? []) as $variant) {
+                if ((string) ($variant['id'] ?? '') === $variantId) {
+                    return isset($variant['cost']) ? ((float) $variant['cost'] / 100) : null;
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Failed to resolve Printify variant cost for at-cost checkout.', [
+                'product_id' => $product->id,
+                'printify_product_id' => $product->printify_product_id,
+                'variant_id' => $variantId,
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        return null;
     }
 
     /**
@@ -645,7 +706,7 @@ class CartController extends Controller
      */
     public function clear(): JsonResponse
     {
-        $cart = auth()->user()->cart;
+        $cart = Auth::user()?->cart;
 
         if ($cart) {
             $cart->items()->delete();

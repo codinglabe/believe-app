@@ -18,6 +18,7 @@ interface Livestream {
   title: string | null
   roomName: string
   roomPassword: string
+  requiresPasscode?: boolean
   joinUrl: string
 }
 
@@ -80,20 +81,22 @@ export default function Ready({ livestream, organization }: Props) {
                   {copied === "room" ? <Check className="h-4 w-4 text-green-600" /> : <Copy className="h-4 w-4" />}
                 </Button>
               </div>
-              <div>
-                <p className="text-sm font-medium text-muted-foreground mb-1">Passcode</p>
-                <div className="flex gap-2">
-                  <Input value={livestream.roomPassword} readOnly className="font-mono" />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="icon"
-                    onClick={() => copy(livestream.roomPassword, "pass")}
-                  >
-                    {copied === "pass" ? <Check className="h-4 w-4 text-green-600" /> : <Copy className="h-4 w-4" />}
-                  </Button>
+              {livestream.requiresPasscode ? (
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground mb-1">Passcode</p>
+                  <div className="flex gap-2">
+                    <Input value={livestream.roomPassword} readOnly className="font-mono" />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      onClick={() => copy(livestream.roomPassword, "pass")}
+                    >
+                      {copied === "pass" ? <Check className="h-4 w-4 text-green-600" /> : <Copy className="h-4 w-4" />}
+                    </Button>
+                  </div>
                 </div>
-              </div>
+              ) : null}
             </CardContent>
           </Card>
 

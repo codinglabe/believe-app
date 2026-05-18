@@ -50,6 +50,8 @@ interface User {
   role: string
   organization?: Organization | null
   interestedTopics?: any[]
+  /** Primary action category IDs from profile (causes) — for filtering group chats */
+  myCauseCategoryIds?: number[]
 }
 
 interface Attachment {
@@ -146,13 +148,25 @@ export interface ChatTopic {
   id: number
   name: string
   description?: string
+  primary_action_category_id?: number | null
 }
 
 const ChatContext = createContext<ChatContextType | undefined>(undefined)
 
 export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { props } = usePage()
-  const [chatRooms, setChatRooms] = useState<ChatRoom[]>((props.chatRooms as ChatRoom[]) || [])
+  const { props, url } = usePage()
+  const p = props as { chatRooms?: ChatRoom[] }
+  const [chatRooms, setChatRooms] = useState<ChatRoom[]>(p.chatRooms || [])
+  const fromServer = p.chatRooms
+  const roomsSyncKey = `${(fromServer?.length ?? 0)}:${(fromServer ?? []).map((r) => r.id).join(",")}`
+
+  useEffect(() => {
+    const next = p.chatRooms
+    if (Array.isArray(next)) {
+      setChatRooms(next)
+    }
+    // Intentional: re-sync on navigation (url) or when the server’s room list set changes; avoid depending on the whole Inertia `props` object.
+  }, [url, roomsSyncKey])
   const [activeRoom, setActiveRoom] = useState<ChatRoom | null>(null)
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [hasMoreMessages, setHasMoreMessages] = useState(false)

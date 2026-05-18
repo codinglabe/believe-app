@@ -124,7 +124,7 @@ const mockDigitalActions = [
   {
     id: '5',
     title: 'Rate Service Experience',
-    description: 'Share your experience after redeeming a service. Internal feedback only.',
+    description: 'Share your experience after claiming a merchant offer. Internal feedback only.',
     category: 'feedback' as const,
     pointsAwarded: 40,
     merchantId: 'merchant_2',

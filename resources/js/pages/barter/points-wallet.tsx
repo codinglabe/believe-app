@@ -36,7 +36,7 @@ export default function BarterPointsWallet({ balance }: PointsWalletProps) {
               href={route("believe-points.index")}
               className="text-sm font-medium text-primary hover:underline"
             >
-              Manage Believe Points
+              Add or manage Believe Points
             </Link>
           </CardContent>
         </Card>

@@ -10,8 +10,18 @@ class OrganizationPendingRoleSeeder extends Seeder
 {
     public function run(): void
     {
-        $permission = Permission::firstOrCreate([
+        $dashboard = Permission::firstOrCreate([
             'name' => 'dashboard.read',
+            'guard_name' => 'web',
+        ]);
+
+        $aiMediaRead = Permission::firstOrCreate([
+            'name' => 'ai.media.read',
+            'guard_name' => 'web',
+        ]);
+
+        $aiMediaCreate = Permission::firstOrCreate([
+            'name' => 'ai.media.create',
             'guard_name' => 'web',
         ]);
 
@@ -20,6 +30,6 @@ class OrganizationPendingRoleSeeder extends Seeder
             'guard_name' => 'web',
         ]);
 
-        $pendingRole->syncPermissions([$permission]);
+        $pendingRole->syncPermissions([$dashboard, $aiMediaRead, $aiMediaCreate]);
     }
 }

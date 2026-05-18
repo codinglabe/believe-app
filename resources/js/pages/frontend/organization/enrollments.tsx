@@ -19,6 +19,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/frontend/
 import { Badge } from "@/components/frontend/ui/badge"
 import { Link } from "@inertiajs/react"
 import { PageHead } from "@/components/frontend/PageHead"
+import type { ConnectionHubType } from "@/lib/connection-hub-type"
+import { connectionHubTypeLabel, isEventsHubType } from "@/lib/connection-hub-type"
 interface User {
   id: number
   name: string
@@ -38,7 +40,7 @@ interface Course {
   id: number
   name: string
   slug: string
-  type: "course" | "event"
+  type: ConnectionHubType
   start_date: string
   start_time: string
   topic: { name: string } | null
@@ -177,21 +179,15 @@ export default function OrganizationEnrollmentsPage({
                             <CardTitle className="text-xl font-bold text-gray-900 dark:text-white">
                               {item.course.name}
                             </CardTitle>
-                            <Badge
-                              className={
-                                item.course.type === "course"
-                                  ? "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200"
-                                  : "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200"
-                              }
-                            >
-                              {item.course.type === "course" ? "Course" : "Event"}
+                            <Badge className="bg-indigo-100 text-indigo-900 dark:bg-indigo-950 dark:text-indigo-200">
+                              {connectionHubTypeLabel(item.course.type)}
                             </Badge>
                           </div>
                           <div className="flex flex-wrap items-center gap-4 text-sm text-gray-600 dark:text-gray-400">
                             <div className="flex items-center gap-1">
                               <BookOpen className="h-4 w-4" />
                               <span>
-                                {item.course.type === "course"
+                                {!isEventsHubType(item.course.type)
                                   ? item.course.topic?.name
                                   : item.course.event_type?.name}
                               </span>

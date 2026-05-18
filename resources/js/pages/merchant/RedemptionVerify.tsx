@@ -265,7 +265,7 @@ export default function RedemptionVerify({ code, redemption, error, merchant }: 
                   </p>
                 </div>
                 <div>
-                  <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">Redeemed At</p>
+                  <p className="text-sm text-gray-500 dark:text-gray-400 mb-1">Claimed at</p>
                   <p className="text-sm font-semibold text-gray-900 dark:text-white">
                     {new Date(redemption.redeemed_at).toLocaleString()}
                   </p>
@@ -280,7 +280,7 @@ export default function RedemptionVerify({ code, redemption, error, merchant }: 
               <CardHeader>
                 <CardTitle>Eligible Items</CardTitle>
                 <CardDescription>
-                  Select the item that was redeemed (optional)
+                  Select the item that was claimed (optional)
                 </CardDescription>
               </CardHeader>
               <CardContent>

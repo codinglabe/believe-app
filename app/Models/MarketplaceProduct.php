@@ -28,6 +28,7 @@ class MarketplaceProduct extends Model
         'suggested_retail_price',
         'nonprofit_approval_type',
         'status',
+        'pickup_available',
     ];
 
     protected function casts(): array
@@ -41,6 +42,7 @@ class MarketplaceProduct extends Model
             'pct_merchant' => 'decimal:2',
             'pct_biu' => 'decimal:2',
             'nonprofit_marketplace_enabled' => 'boolean',
+            'pickup_available' => 'boolean',
             'images' => 'array',
         ];
     }

@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useEffect, useRef, useCallback } from 'react'
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { usePage } from '@inertiajs/react'
 import { Button } from '@/components/frontend/ui/button'
 import { Textarea } from '@/components/frontend/ui/textarea'
@@ -23,6 +23,9 @@ import {
   Angry,
   ChevronLeft,
   ChevronRight,
+  Youtube,
+  Plus,
+  Share2,
 } from 'lucide-react'
 import { Link } from '@inertiajs/react'
 import {
@@ -32,11 +35,15 @@ import {
   DropdownMenuTrigger,
 } from '@/components/frontend/ui/dropdown-menu'
 import { Input } from '@/components/frontend/ui/input'
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion'
 import EmojiPicker from '@/components/meeting/EmojiPicker'
 import {
   Dialog,
   DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
 } from '@/components/frontend/ui/dialog'
 import {
   AlertDialog,
@@ -76,7 +83,13 @@ interface Post {
   id: number
   user_id: number
   user: User
+  post_type?: string | null
   content: string
+  caption?: string | null
+  youtube_url?: string | null
+  youtube_video_id?: string | null
+  youtube_embed_url?: string | null
+  thumbnail_url?: string | null
   images?: string[]
   reactions: Reaction[]
   comments: Comment[]
@@ -88,6 +101,7 @@ interface Post {
   user_reaction?: Reaction
   comments_loaded?: number
   has_more_comments?: boolean
+  attach_context?: { label: string; href: string | null } | null
   creator?: {
     id: number
     name: string
@@ -98,12 +112,55 @@ interface Post {
   creator_name?: string
   creator_slug?: string
   creator_image?: string
+  organization_id?: number | null
+  campaign_id?: number | null
+  fundme_id?: number | null
+}
+
+/** Build iframe src with autoplay for modal player; mirrors server embed defaults. */
+function youtubeShortEmbedSrcAutoplay(post: Post): string | null {
+  let base = post.youtube_embed_url ?? null
+  if (!base && post.youtube_video_id) {
+    const id = encodeURIComponent(post.youtube_video_id)
+    base = `https://www.youtube.com/embed/${id}?playsinline=1&modestbranding=1&rel=0`
+  }
+  if (!base) return null
+  try {
+    const u = new URL(base)
+    u.searchParams.set('autoplay', '1')
+    return u.toString()
+  } catch {
+    const sep = base.includes('?') ? '&' : '?'
+    return `${base}${sep}autoplay=1`
+  }
+}
+
+const stripShortPlayerSlideVariants = {
+  initial: (dir: number) => ({
+    y: dir >= 1 ? '100%' : '-100%',
+  }),
+  animate: { y: 0 },
+  exit: (dir: number) => ({
+    y: dir >= 1 ? '-100%' : '100%',
+  }),
 }
 
 interface SocialFeedProps {
   posts?: Post[]
   next_page_url?: string | null
   has_more?: boolean
+  youtubeShortAttachOptions?: {
+    organizations: { id: number; name: string }[]
+    campaigns: { id: number; name: string }[]
+    fundmes: { id: number; title: string; slug: string | null }[]
+  }
+  feedReels?: Post[]
+  /** Server / parent hints for auto-attaching imports (URL query params override). */
+  shortImportContext?: {
+    organization_id?: number | null
+    campaign_id?: number | null
+    fundme_id?: number | null
+  } | null
 }
 
 const reactionConfig = {
@@ -114,9 +171,50 @@ const reactionConfig = {
   haha: { emoji: '😂', icon: Laugh, color: 'text-yellow-500', bgColor: 'bg-yellow-50 dark:bg-yellow-950/20' },
 }
 
-export default function SocialFeed({ posts: initialPosts = [], next_page_url, has_more: initialHasMore = false }: SocialFeedProps) {
-  const pageProps = usePage<{ auth: { user: User }, csrf_token?: string }>().props
-  const { auth, csrf_token } = pageProps
+export default function SocialFeed({
+  posts: initialPosts = [],
+  next_page_url,
+  has_more: initialHasMore = false,
+  feedReels: initialFeedReels,
+  shortImportContext: shortImportContextProp,
+}: SocialFeedProps) {
+  const inertiaPage = usePage<{
+    auth: { user: User }
+    csrf_token?: string
+    shortImportContext?: SocialFeedProps['shortImportContext']
+  }>()
+  const { auth, csrf_token, shortImportContext: shortImportContextPage } = inertiaPage.props
+
+  const mergedShortImport = useMemo(() => {
+    const server = shortImportContextProp ?? shortImportContextPage
+    const pick = (v: unknown): number | undefined =>
+      typeof v === 'number' && Number.isFinite(v) ? v : undefined
+    let organization_id = pick(server?.organization_id)
+    let campaign_id = pick(server?.campaign_id)
+    let fundme_id = pick(server?.fundme_id)
+
+    const url = inertiaPage.url || ''
+    const qIdx = url.indexOf('?')
+    if (qIdx >= 0) {
+      const params = new URLSearchParams(url.slice(qIdx + 1))
+      const gn = (key: string): number | undefined => {
+        const raw = params.get(key)
+        if (raw == null || raw === '') return undefined
+        const n = parseInt(raw, 10)
+        return Number.isFinite(n) ? n : undefined
+      }
+      organization_id = gn('organization_id') ?? gn('attach_organization_id') ?? organization_id
+      campaign_id = gn('campaign_id') ?? gn('attach_campaign_id') ?? campaign_id
+      fundme_id = gn('fundme_id') ?? gn('attach_fundme_id') ?? fundme_id
+    }
+
+    return { organization_id, campaign_id, fundme_id }
+  }, [shortImportContextProp, shortImportContextPage, inertiaPage.url])
+
+  const [reelsStrip, setReelsStrip] = useState<Post[]>(() =>
+    Array.isArray(initialFeedReels) ? initialFeedReels : [],
+  )
+
   const currentUser = auth?.user
 
   // Get CSRF token from props or meta tag
@@ -137,6 +235,10 @@ export default function SocialFeed({ posts: initialPosts = [], next_page_url, ha
     }
   }, [csrf_token, csrfToken])
 
+  useEffect(() => {
+    setReelsStrip(Array.isArray(initialFeedReels) ? initialFeedReels : [])
+  }, [initialFeedReels])
+
   const [posts, setPosts] = useState<Post[]>(initialPosts || [])
   const [loading, setLoading] = useState(false)
   const [hasMore, setHasMore] = useState(initialHasMore)
@@ -150,10 +252,16 @@ export default function SocialFeed({ posts: initialPosts = [], next_page_url, ha
   const [showPostForm, setShowPostForm] = useState(false)
   const [postContent, setPostContent] = useState('')
   const [postImages, setPostImages] = useState<File[]>([])
+  const [youtubeShortModalOpen, setYoutubeShortModalOpen] = useState(false)
+  const [shortYoutubeUrl, setShortYoutubeUrl] = useState('')
+  const [isPostingShort, setIsPostingShort] = useState(false)
   const [editingPostImages, setEditingPostImages] = useState<Record<number, { existing: string[], new: File[] }>>({})
   const [loadingComments, setLoadingComments] = useState<Record<number, boolean>>({})
   const [seenPosts, setSeenPosts] = useState<Set<number>>(new Set())
   const [imageViewer, setImageViewer] = useState<{ images: string[], currentIndex: number } | null>(null)
+  const [stripPlayingShortPost, setStripPlayingShortPost] = useState<Post | null>(null)
+  const [stripTransitionDir, setStripTransitionDir] = useState<1 | -1>(1)
+  const prefersReducedMotion = useReducedMotion()
   const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null)
   const observerTarget = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -161,6 +269,220 @@ export default function SocialFeed({ posts: initialPosts = [], next_page_url, ha
   const editFileInputRefs = useRef<Record<number, HTMLInputElement | null>>({})
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const postRefs = useRef<Record<number, HTMLDivElement | null>>({})
+
+  const reelsStripRef = useRef(reelsStrip)
+  const stripPlayingShortPostRef = useRef(stripPlayingShortPost)
+  const stripPlayerShellRef = useRef<HTMLDivElement | null>(null)
+  const stripShortOverlayRef = useRef<HTMLDivElement | null>(null)
+  const stripWheelNavAtRef = useRef(0)
+  const stripDragRef = useRef<{
+    active: boolean
+    pointerId: number
+    startY: number
+    startX: number
+    startT: number
+  } | null>(null)
+  const stripSpringTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    reelsStripRef.current = reelsStrip
+  }, [reelsStrip])
+  useEffect(() => {
+    stripPlayingShortPostRef.current = stripPlayingShortPost
+  }, [stripPlayingShortPost])
+  useEffect(() => {
+    if (!stripPlayingShortPost) {
+      stripDragRef.current = null
+    }
+    const el = stripPlayerShellRef.current
+    if (!el || !stripPlayingShortPost) return
+    el.style.transition = ''
+    el.style.transform = ''
+  }, [stripPlayingShortPost])
+
+  useEffect(() => {
+    if (!stripPlayingShortPost || !youtubeShortEmbedSrcAutoplay(stripPlayingShortPost)) return
+
+    let cleaned = false
+    let detachWheel: (() => void) | undefined
+
+    const raf = window.requestAnimationFrame(() => {
+      if (cleaned) return
+      const el = stripShortOverlayRef.current
+      if (!el) return
+
+      const throttleMs = 340
+      const minDelta = 22
+      const dismissDelta = 72
+
+      const onWheel = (e: WheelEvent) => {
+        if (stripDragRef.current?.active) return
+        e.preventDefault()
+
+        const now = performance.now()
+        if (now - stripWheelNavAtRef.current < throttleMs) return
+
+        const dy = e.deltaY
+        if (Math.abs(dy) < minDelta) return
+
+        const list = reelsStripRef.current
+        const cur = stripPlayingShortPostRef.current
+        const idx = cur ? list.findIndex((p) => p.id === cur.id) : -1
+        if (idx < 0) return
+
+        if (dy > 0) {
+          if (idx < list.length - 1) {
+            stripWheelNavAtRef.current = now
+            stripPlayerShellRef.current?.style.setProperty('transform', '')
+            setStripTransitionDir(1)
+            setStripPlayingShortPost(list[idx + 1])
+          }
+          return
+        }
+
+        if (idx > 0) {
+          stripWheelNavAtRef.current = now
+          stripPlayerShellRef.current?.style.setProperty('transform', '')
+          setStripTransitionDir(-1)
+          setStripPlayingShortPost(list[idx - 1])
+          return
+        }
+
+        if (Math.abs(dy) >= dismissDelta) {
+          stripWheelNavAtRef.current = now
+          setStripPlayingShortPost(null)
+        }
+      }
+
+      el.addEventListener('wheel', onWheel, { passive: false })
+      detachWheel = () => el.removeEventListener('wheel', onWheel)
+    })
+
+    return () => {
+      cleaned = true
+      window.cancelAnimationFrame(raf)
+      detachWheel?.()
+    }
+  }, [stripPlayingShortPost?.id])
+
+  const clearStripSpringTimeout = () => {
+    if (stripSpringTimeoutRef.current !== null) {
+      window.clearTimeout(stripSpringTimeoutRef.current)
+      stripSpringTimeoutRef.current = null
+    }
+  }
+
+  const snapStripPlayerShellBack = () => {
+    const el = stripPlayerShellRef.current
+    clearStripSpringTimeout()
+    if (!el) return
+    const reduceMotion =
+      typeof window !== 'undefined' &&
+      window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches
+    if (reduceMotion) {
+      el.style.transition = ''
+      el.style.transform = ''
+      return
+    }
+    el.style.transition = 'transform 0.22s cubic-bezier(0.22, 1, 0.36, 1)'
+    el.style.transform = 'translateY(0)'
+    stripSpringTimeoutRef.current = window.setTimeout(() => {
+      stripSpringTimeoutRef.current = null
+      if (stripPlayerShellRef.current) stripPlayerShellRef.current.style.transition = ''
+    }, 230)
+  }
+
+  const onStripShortPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (stripPlayingShortPostRef.current === null) return
+    if (e.pointerType === 'mouse' && e.button !== 0) return
+    clearStripSpringTimeout()
+    stripDragRef.current = {
+      active: true,
+      pointerId: e.pointerId,
+      startY: e.clientY,
+      startX: e.clientX,
+      startT: performance.now(),
+    }
+    const shell = stripPlayerShellRef.current
+    if (shell) shell.style.transition = 'none'
+    e.currentTarget.setPointerCapture(e.pointerId)
+  }
+
+  const onStripShortPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    const d = stripDragRef.current
+    if (!d?.active || e.pointerId !== d.pointerId) return
+    const dyRaw = e.clientY - d.startY
+    const dxRaw = e.clientX - d.startX
+    if (Math.abs(dxRaw) > Math.abs(dyRaw) + 20) return
+
+    const list = reelsStripRef.current
+    const cur = stripPlayingShortPostRef.current
+    const idx = cur ? list.findIndex((p) => p.id === cur.id) : -1
+
+    let dy = dyRaw
+    if (
+      (dyRaw < 0 && idx >= 0 && idx >= list.length - 1)
+      || (dyRaw > 0 && idx <= 0)
+    ) {
+      dy = dyRaw * 0.32
+    }
+    stripPlayerShellRef.current?.style.setProperty('transform', `translateY(${dy}px)`)
+  }
+
+  const onStripShortPointerEnd = (e: React.PointerEvent<HTMLDivElement>) => {
+    const d = stripDragRef.current
+    if (!d?.active || e.pointerId !== d.pointerId) return
+    stripDragRef.current = null
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId)
+    } catch {
+      /* already released */
+    }
+
+    const dy = e.clientY - d.startY
+    const dx = e.clientX - d.startX
+    const dt = performance.now() - d.startT
+
+    if (Math.abs(dx) > Math.abs(dy) + 24) {
+      snapStripPlayerShellBack()
+      return
+    }
+
+    const velocity = dy / Math.max(dt, 1)
+    const DIST = 56
+    const VEL = 0.42
+    const DISMISS_DY = 108
+    const DISMISS_VEL = 0.62
+
+    const list = reelsStripRef.current
+    const cur = stripPlayingShortPostRef.current
+    const idx = cur ? list.findIndex((p) => p.id === cur.id) : -1
+
+    const wantNext = dy < -DIST || velocity < -VEL
+    const wantPrevOrDismiss = dy > DIST || velocity > VEL
+
+    if (wantNext && idx >= 0 && idx < list.length - 1) {
+      stripPlayerShellRef.current?.style.setProperty('transform', '')
+      setStripTransitionDir(1)
+      setStripPlayingShortPost(list[idx + 1])
+      return
+    }
+
+    if (wantPrevOrDismiss) {
+      if (idx > 0) {
+        stripPlayerShellRef.current?.style.setProperty('transform', '')
+        setStripTransitionDir(-1)
+        setStripPlayingShortPost(list[idx - 1])
+        return
+      }
+      if (dy > DISMISS_DY || velocity > DISMISS_VEL) {
+        setStripPlayingShortPost(null)
+        return
+      }
+    }
+
+    snapStripPlayerShellBack()
+  }
 
   const loadMorePosts = useCallback(async () => {
     if (!nextPageUrl || loading) return
@@ -480,6 +802,64 @@ export default function SocialFeed({ posts: initialPosts = [], next_page_url, ha
     }
   }
 
+  const handleYoutubeShortSubmit = async () => {
+    const trimmed = shortYoutubeUrl.trim()
+    if (!trimmed) {
+      toast.error('Paste a YouTube Shorts URL (youtube.com/shorts/…).')
+      return
+    }
+
+    const body: Record<string, unknown> = {
+      post_type: 'youtube_short',
+      youtube_url: trimmed,
+    }
+    if (mergedShortImport.fundme_id !== undefined) {
+      body.fundme_id = mergedShortImport.fundme_id
+    }
+    if (mergedShortImport.campaign_id !== undefined) {
+      body.campaign_id = mergedShortImport.campaign_id
+    }
+    if (mergedShortImport.organization_id !== undefined) {
+      body.organization_id = mergedShortImport.organization_id
+    }
+
+    setIsPostingShort(true)
+    try {
+      const token = csrfToken || document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || ''
+      const response = await fetch('/posts', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'X-CSRF-TOKEN': token,
+          'X-Requested-With': 'XMLHttpRequest',
+        },
+        credentials: 'include',
+        body: JSON.stringify(body),
+      })
+
+      if (response.ok) {
+        const data = await response.json() as { post: Post; message?: string }
+        setPosts(prev => [data.post, ...prev])
+        setReelsStrip(prev => {
+          const next = [data.post, ...prev.filter((p) => p.id !== data.post.id)]
+          return next.slice(0, 32)
+        })
+        setYoutubeShortModalOpen(false)
+        setShortYoutubeUrl('')
+        toast.success(data.message || 'Your YouTube Short was shared to the community feed.')
+      } else {
+        const errorData = await response.json().catch(() => ({})) as { message?: string }
+        toast.error(errorData.message || 'Could not post short. Try again.', { duration: 5000 })
+      }
+    } catch (error) {
+      console.error('Error posting YouTube short:', error)
+      toast.error('Network error. Please try again.', { duration: 5000 })
+    } finally {
+      setIsPostingShort(false)
+    }
+  }
+
   const handleEditSubmit = async (postId: number) => {
     if (!editingPost) return
 
@@ -767,23 +1147,129 @@ export default function SocialFeed({ posts: initialPosts = [], next_page_url, ha
               />
             </div>
           </div>
-          <div className="flex items-center justify-around pt-3">
+          <div className="flex items-center justify-around gap-1 pt-3 border-t border-gray-200 dark:border-gray-700 sm:border-0">
             <Button
               type="button"
               variant="ghost"
               size="sm"
-              className="flex-1 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg px-3 py-2 transition-colors font-medium text-sm"
+              className="flex-1 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg px-2 py-2 transition-colors font-medium text-sm"
               onClick={() => {
                 setShowPostForm(true)
                 fileInputRef.current?.click()
               }}
             >
-              <ImageIcon className="w-5 h-5 mr-2 text-blue-500 flex-shrink-0" />
-              <span>Photo/Video</span>
+              <ImageIcon className="w-5 h-5 mr-1.5 text-blue-500 flex-shrink-0" />
+              <span className="truncate">Photo/Video</span>
+            </Button>
+            <span className="text-gray-300 dark:text-gray-600 select-none" aria-hidden>|</span>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="flex-1 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg px-2 py-2 transition-colors font-medium text-sm"
+              onClick={() => setYoutubeShortModalOpen(true)}
+            >
+              <Youtube className="w-5 h-5 mr-1.5 text-blue-600 dark:text-purple-400 flex-shrink-0" />
+              <span className="truncate">YouTube Short</span>
             </Button>
           </div>
         </CardContent>
       </Card>
+
+      {/* Shorts strip (horizontal tiles) */}
+      <div className="w-full">
+        <div className="flex gap-2.5 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:gap-3">
+          <button
+            type="button"
+            aria-label="Add your YouTube Short"
+            onClick={() => setYoutubeShortModalOpen(true)}
+            className="flex-shrink-0 w-[118px] text-left outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 focus-visible:ring-offset-background rounded-2xl"
+          >
+            <div className="relative aspect-[9/16] w-full overflow-hidden rounded-2xl bg-zinc-800 dark:bg-zinc-900">
+              {currentUser?.image ? (
+                <img
+                  src={currentUser.image}
+                  alt=""
+                  className="absolute inset-0 h-full w-full object-cover"
+                />
+              ) : (
+                <div className="absolute inset-0 bg-gradient-to-b from-zinc-600 to-zinc-900 dark:from-zinc-700 dark:to-black" />
+              )}
+              <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/25 to-transparent" aria-hidden />
+              <div className="absolute bottom-12 left-1/2 flex h-10 w-10 -translate-x-1/2 items-center justify-center rounded-full bg-gradient-to-r from-blue-600 to-purple-600 text-white shadow-lg ring-2 ring-black/10">
+                <Plus className="h-5 w-5" strokeWidth={2.5} aria-hidden />
+              </div>
+              <div className="absolute bottom-2 left-2 right-2 text-center">
+                <span className="text-[13px] font-semibold leading-tight text-white drop-shadow-sm">
+                  Create Short
+                </span>
+              </div>
+            </div>
+          </button>
+
+          {reelsStrip.map((reelPost) => {
+            const vid = reelPost.youtube_video_id ?? ''
+            const thumb =
+              reelPost.thumbnail_url ||
+              (vid ? `https://img.youtube.com/vi/${vid}/mqdefault.jpg` : '')
+            const creator = reelPost.creator_name || reelPost.user?.name || 'Creator'
+            const avatarSrc =
+              reelPost.creator_image || reelPost.creator?.image || reelPost.user?.image
+            return (
+              <button
+                key={reelPost.id}
+                type="button"
+                aria-label={`Open Short by ${creator}`}
+                onClick={() => {
+                  const src = youtubeShortEmbedSrcAutoplay(reelPost)
+                  if (!src) {
+                    toast.error('This Short cannot be played here.')
+                    return
+                  }
+                  setStripPlayingShortPost(reelPost)
+                }}
+                className="flex-shrink-0 w-[118px] text-left outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 focus-visible:ring-offset-background rounded-2xl"
+              >
+                <div className="relative aspect-[9/16] w-full overflow-hidden rounded-2xl bg-zinc-100 ring-1 ring-blue-600/10 dark:bg-zinc-900 dark:ring-purple-400/15">
+                  {thumb ? (
+                    <img
+                      src={thumb}
+                      alt=""
+                      className="absolute inset-0 h-full w-full object-cover"
+                    />
+                  ) : (
+                    <div className="absolute inset-0 flex items-center justify-center bg-zinc-200 dark:bg-zinc-800">
+                      <Youtube className="h-10 w-10 text-blue-600 dark:text-purple-400" aria-hidden />
+                    </div>
+                  )}
+                  <div
+                    className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/90 via-transparent to-black/35"
+                    aria-hidden
+                  />
+                  <div className="absolute left-2 top-2 z-10">
+                    {avatarSrc ? (
+                      <img
+                        src={avatarSrc}
+                        alt=""
+                        className="h-8 w-8 rounded-full object-cover shadow-md ring-2 ring-white/50"
+                      />
+                    ) : (
+                      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-r from-blue-600 to-purple-600 text-xs font-bold text-white shadow-md ring-2 ring-white/50">
+                        {creator.trim().charAt(0)?.toUpperCase() || '?'}
+                      </div>
+                    )}
+                  </div>
+                  <div className="absolute bottom-0 left-0 right-0 px-2 pb-2 pt-10">
+                    <p className="whitespace-normal break-words text-left text-[11px] font-semibold leading-snug text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">
+                      {creator}
+                    </p>
+                  </div>
+                </div>
+              </button>
+            )
+          })}
+        </div>
+      </div>
 
       {/* Expanded Post Form */}
       <AnimatePresence>
@@ -961,6 +1447,7 @@ export default function SocialFeed({ posts: initialPosts = [], next_page_url, ha
       {posts.map((post) => (
         <motion.div
           key={post.id}
+          id={`feed-post-${post.id}`}
           ref={(el) => { postRefs.current[post.id] = el }}
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -996,6 +1483,15 @@ export default function SocialFeed({ posts: initialPosts = [], next_page_url, ha
                         {post.creator_name || post.user?.name}
                       </h3>
                     )}
+                    {post.post_type === 'youtube_short' ? (
+                      <p className="text-xs text-gray-600 dark:text-gray-400 mt-0.5">
+                        shared a YouTube Short
+                      </p>
+                    ) : post.post_type === 'youtube_video' ? (
+                      <p className="text-xs text-gray-600 dark:text-gray-400 mt-0.5">
+                        shared a video
+                      </p>
+                    ) : null}
                     <div className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
                       <span>{formatTime(post.created_at)}</span>
                       {post.is_edited && (
@@ -1017,8 +1513,11 @@ export default function SocialFeed({ posts: initialPosts = [], next_page_url, ha
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end" className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
-                      <DropdownMenuItem 
+                      <DropdownMenuItem
                         onClick={() => {
+                          if (post.post_type === 'youtube_short' || post.post_type === 'youtube_video') {
+                            return
+                          }
                           setEditingPost({ ...post, content: post.content })
                           setEditingPostImages(prev => ({
                             ...prev,
@@ -1028,7 +1527,8 @@ export default function SocialFeed({ posts: initialPosts = [], next_page_url, ha
                             }
                           }))
                         }}
-                        className="hover:bg-gray-100 dark:hover:bg-gray-700"
+                        disabled={post.post_type === 'youtube_short' || post.post_type === 'youtube_video'}
+                        className="hover:bg-gray-100 dark:hover:bg-gray-700 disabled:pointer-events-none disabled:opacity-40"
                       >
                         <Edit className="w-4 h-4 mr-2" />
                         Edit
@@ -1168,12 +1668,62 @@ export default function SocialFeed({ posts: initialPosts = [], next_page_url, ha
                 </div>
               ) : (
                 <>
-                  {post.content && (
+                  {(post.post_type === 'youtube_short' || post.post_type === 'youtube_video' ? (post.content || post.caption) : post.content) ? (
                     <p className="text-sm mb-3 whitespace-pre-wrap break-words text-gray-900 dark:text-gray-100 leading-relaxed">
-                      {post.content}
+                      {post.post_type === 'youtube_short' || post.post_type === 'youtube_video' ? (post.content || post.caption || '') : post.content}
                     </p>
-                  )}
-                  {post.images && post.images.length > 0 && (
+                  ) : null}
+
+                  {post.attach_context?.label ? (
+                    <div className="mb-3">
+                      {post.attach_context.href ? (
+                        <Link
+                          href={post.attach_context.href}
+                          className="inline-flex rounded-full bg-violet-100 px-3 py-1 text-xs font-medium text-violet-800 hover:bg-violet-200 dark:bg-violet-950/60 dark:text-violet-200 dark:hover:bg-violet-900/80"
+                        >
+                          {post.attach_context.label}
+                        </Link>
+                      ) : (
+                        <span className="inline-flex rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-700 dark:bg-gray-800 dark:text-gray-200">
+                          {post.attach_context.label}
+                        </span>
+                      )}
+                    </div>
+                  ) : null}
+
+                  {(post.post_type === 'youtube_short' || post.post_type === 'youtube_video') && post.youtube_embed_url ? (
+                    post.post_type === 'youtube_short' ? (
+                      <div className="mb-3 flex w-full justify-center">
+                        <div className="short-player relative aspect-[9/16] w-full max-w-[420px] overflow-hidden rounded-[18px] bg-black shadow-lg ring-1 ring-black/10 dark:ring-white/15">
+                          <iframe
+                            title="YouTube Short"
+                            src={post.youtube_embed_url}
+                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                            referrerPolicy="strict-origin-when-cross-origin"
+                            allowFullScreen
+                            loading="lazy"
+                            className="absolute inset-0 h-full w-full rounded-[18px]"
+                          />
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="mb-3 flex w-full justify-center">
+                        <div className="video-player relative aspect-video w-full max-w-4xl overflow-hidden rounded-xl bg-black shadow-lg ring-1 ring-black/10 dark:ring-white/15">
+                          <iframe
+                            title="YouTube video"
+                            src={post.youtube_embed_url}
+                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                            referrerPolicy="strict-origin-when-cross-origin"
+                            allowFullScreen
+                            loading="lazy"
+                            className="absolute inset-0 h-full w-full rounded-xl"
+                          />
+                        </div>
+                      </div>
+                    )
+                  ) : null}
+
+                  {(!post.post_type || (post.post_type !== 'youtube_short' && post.post_type !== 'youtube_video')) && post.images && post.images.length > 0 && (
                     <div className={`grid gap-2 mb-3 rounded-lg overflow-hidden ${
                       post.images.length === 1 ? 'grid-cols-1' :
                       post.images.length === 2 ? 'grid-cols-2' :
@@ -1307,7 +1857,45 @@ export default function SocialFeed({ posts: initialPosts = [], next_page_url, ha
                   <MessageCircle className="w-5 h-5 mr-2" />
                   Comment
                 </Button>
+                {(post.post_type === 'youtube_short' || post.post_type === 'youtube_video') && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    type="button"
+                    className="flex-1 justify-center text-gray-600 dark:text-gray-400 hover:bg-primary/10 dark:hover:bg-primary/20 rounded-xl transition-all duration-200 font-medium"
+                    onClick={() => {
+                      const url = `${typeof window !== 'undefined' ? window.location.origin : ''}/social-feed#feed-post-${post.id}`
+                      if (typeof navigator !== 'undefined' && navigator.share) {
+                        navigator.share({ title: document.title, url }).catch(() => {
+                          void navigator.clipboard.writeText(url)
+                          toast.success('Link copied')
+                        })
+                      } else {
+                        void navigator.clipboard.writeText(url)
+                        toast.success('Link copied')
+                      }
+                    }}
+                  >
+                    <Share2 className="w-5 h-5 mr-2" />
+                    Share
+                  </Button>
+                )}
               </div>
+
+              {(post.post_type === 'youtube_short' || post.post_type === 'youtube_video') && post.attach_context?.href ? (
+                <div className="flex flex-wrap gap-2 pt-2 border-t border-gray-200 dark:border-gray-700">
+                  <Link
+                    href={post.attach_context.href}
+                    className={`inline-flex flex-1 min-w-[140px] justify-center rounded-lg border px-3 py-2 text-xs font-semibold transition-colors ${
+                      post.fundme_id
+                        ? 'border-emerald-500/40 bg-emerald-500/10 text-emerald-800 dark:text-emerald-200 hover:bg-emerald-500/20'
+                        : 'border-violet-500/40 bg-violet-500/10 text-violet-800 dark:text-violet-200 hover:bg-violet-500/20'
+                    }`}
+                  >
+                    {post.fundme_id ? 'Donate' : 'Support organization'}
+                  </Link>
+                </div>
+              ) : null}
 
               {/* Comments Section */}
               <AnimatePresence>
@@ -1448,6 +2036,138 @@ export default function SocialFeed({ posts: initialPosts = [], next_page_url, ha
           </CardContent>
         </Card>
       )}
+
+      <Dialog
+        open={youtubeShortModalOpen}
+        onOpenChange={(open) => {
+          setYoutubeShortModalOpen(open)
+          if (!open) {
+            setShortYoutubeUrl('')
+          }
+        }}
+      >
+        <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Import YouTube Short</DialogTitle>
+            <DialogDescription>
+              Paste a Shorts link and import. We&apos;ll pull the title and thumbnail, add your Short to the community feed and Media library, and attach it to your profile or page context automatically when available.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 pt-2">
+            <div>
+              <label htmlFor="yt-short-url" className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                Paste URL
+              </label>
+              <Input
+                id="yt-short-url"
+                type="url"
+                placeholder="https://www.youtube.com/shorts/xxxxxxxxxxx"
+                value={shortYoutubeUrl}
+                onChange={(e) => setShortYoutubeUrl(e.target.value)}
+                className="mt-1.5"
+              />
+            </div>
+          </div>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button type="button" variant="outline" onClick={() => setYoutubeShortModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              disabled={isPostingShort}
+              onClick={() => void handleYoutubeShortSubmit()}
+              className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white"
+            >
+              {isPostingShort ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Importing…
+                </>
+              ) : (
+                'Import Short'
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Shorts strip → same custom embed player as feed, in overlay */}
+      <Dialog
+        open={stripPlayingShortPost !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setStripPlayingShortPost(null)
+            setStripTransitionDir(1)
+          }
+        }}
+      >
+        <DialogContent className="flex w-[min(100vw,420px,calc(85dvh*9/16))] max-w-none translate-x-[-50%] translate-y-[-50%] flex-col items-stretch gap-0 border-0 bg-transparent p-0 shadow-none [&>button:last-child]:hidden rounded-none sm:rounded-xl">
+          {stripPlayingShortPost ? (
+            <>
+              <DialogHeader className="sr-only">
+                <DialogTitle>
+                  YouTube Short
+                  {(stripPlayingShortPost.creator_name || stripPlayingShortPost.user?.name)
+                    ? ` — ${stripPlayingShortPost.creator_name || stripPlayingShortPost.user?.name}`
+                    : ''}
+                </DialogTitle>
+              </DialogHeader>
+              {(() => {
+                const src = youtubeShortEmbedSrcAutoplay(stripPlayingShortPost)
+                if (!src) {
+                  return (
+                    <p className="px-[max(1rem,env(safe-area-inset-left))] py-8 pb-[max(2rem,env(safe-area-inset-bottom))] text-center text-sm text-white drop-shadow">
+                      This Short could not be loaded.
+                    </p>
+                  )
+                }
+                return (
+                  <AnimatePresence initial={false} custom={stripTransitionDir} mode="sync">
+                    <motion.div
+                      key={stripPlayingShortPost.id}
+                      layout={false}
+                      custom={stripTransitionDir}
+                      variants={stripShortPlayerSlideVariants}
+                      initial="initial"
+                      animate="animate"
+                      exit="exit"
+                      transition={
+                        prefersReducedMotion
+                          ? { duration: 0 }
+                          : { duration: 0.38, ease: [0.22, 1, 0.36, 1] }
+                      }
+                      className="relative aspect-[9/16] w-full max-h-[85dvh] overflow-hidden rounded-none sm:rounded-xl touch-none"
+                    >
+                      <div ref={stripPlayerShellRef} className="absolute inset-0">
+                        <iframe
+                          key={stripPlayingShortPost.id}
+                          title="YouTube Short"
+                          src={src}
+                          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                          referrerPolicy="strict-origin-when-cross-origin"
+                          allowFullScreen
+                          className="pointer-events-none absolute inset-0 h-full w-full rounded-none sm:rounded-xl"
+                        />
+                        <div
+                          role="presentation"
+                          aria-label="Swipe vertically, or scroll with the mouse wheel: scroll down for next short, scroll up for previous short or to close"
+                          className="absolute inset-0 z-10 cursor-grab bg-transparent active:cursor-grabbing"
+                          style={{ touchAction: 'none' }}
+                          ref={stripShortOverlayRef}
+                          onPointerDown={onStripShortPointerDown}
+                          onPointerMove={onStripShortPointerMove}
+                          onPointerUp={onStripShortPointerEnd}
+                          onPointerCancel={onStripShortPointerEnd}
+                        />
+                      </div>
+                    </motion.div>
+                  </AnimatePresence>
+                )
+              })()}
+            </>
+          ) : null}
+        </DialogContent>
+      </Dialog>
 
       {/* Image Viewer Modal */}
       <Dialog open={!!imageViewer} onOpenChange={() => setImageViewer(null)}>

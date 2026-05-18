@@ -46,7 +46,7 @@ export default function SellerDashboardLayout({ children }: SellerDashboardLayou
     const navItems: NavItem[] = [
         { name: "Dashboard", href: route('seller.dashboard'), icon: LayoutDashboard },
         { name: "My Animals", href: route('animals.index'), icon: Heart },
-        { name: "Marketplace", href: route('marketplace.index'), icon: ShoppingBag },
+        { name: "Marketplace", href: route('livestock.marketplace.index'), icon: ShoppingBag },
         { name: "Breeding", href: route('breeding.index'), icon: Activity },
         { name: "Payouts", href: route('payouts.index'), icon: DollarSign },
         { name: "Profile", href: route('seller.edit'), icon: User },
@@ -205,7 +205,7 @@ export default function SellerDashboardLayout({ children }: SellerDashboardLayou
                                     Home
                                 </Button>
                             </Link>
-                            <Link href={route('marketplace.index')}>
+                            <Link href={route('livestock.marketplace.index')}>
                                 <Button variant="ghost" size="sm" className="hidden sm:flex">
                                     <ShoppingBag className="h-4 w-4 mr-2" />
                                     Browse

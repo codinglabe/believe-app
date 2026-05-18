@@ -20,6 +20,8 @@ import {
   Hash,
   FileText,
 } from "lucide-react"
+import type { ConnectionHubType } from "@/lib/connection-hub-type"
+import { connectionHubTypeLabel, isEventsHubType } from "@/lib/connection-hub-type"
 import { Button } from "@/components/admin/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/admin/ui/card"
 import { Badge } from "@/components/admin/ui/badge"
@@ -59,13 +61,13 @@ interface Course {
   name: string
   slug: string
   description: string
-  type: "course" | "event"
+  type: ConnectionHubType
   pricing_type: "free" | "paid"
   course_fee: number | null
   start_date: string
   start_time: string
   end_date: string | null
-  duration: "1_session" | "1_week" | "2_weeks" | "1_month" | "6_weeks" | "3_months"
+  session_duration_minutes: number
   format: "online" | "in_person" | "hybrid"
   max_participants: number
   language: string
@@ -92,6 +94,7 @@ interface Course {
   image_url: string | null
   formatted_price: string
   formatted_duration: string
+  formatted_program_length?: string | null
   formatted_format: string
 }
 
@@ -151,7 +154,7 @@ export default function AdminCoursesShow({ course, enrollmentStats, status }: Ad
 
   return (
     <AppLayout>
-      <Head title={`${course.type === "event" ? "Event" : "Course"} Details - ${course.name} - Courses & Events`} />
+      <Head title={`${connectionHubTypeLabel(course.type)} details - ${course.name} - Connection Hub`} />
 
       <div className="space-y-6 m-10">
         {/* Header */}
@@ -159,7 +162,7 @@ export default function AdminCoursesShow({ course, enrollmentStats, status }: Ad
           <Link href={route("admin.courses.index")}>
             <Button variant="outline" size="sm">
               <ArrowLeft className="mr-2 h-4 w-4" />
-              Back to Courses
+              Back to Connection Hub
             </Button>
           </Link>
           <div className="flex items-center gap-3">
@@ -167,8 +170,12 @@ export default function AdminCoursesShow({ course, enrollmentStats, status }: Ad
               <Heart className="h-7 w-7 text-primary" />
             </div>
             <div>
-              <h1 className="text-3xl font-bold tracking-tight text-foreground">{course.type === "event" ? "Event" : "Course"} Details</h1>
-              <p className="text-muted-foreground">View and manage {course.type === "event" ? "event" : "course"} information</p>
+              <h1 className="text-3xl font-bold tracking-tight text-foreground">
+                {connectionHubTypeLabel(course.type)} details
+              </h1>
+              <p className="text-muted-foreground">
+                View and manage this {connectionHubTypeLabel(course.type)} listing
+              </p>
             </div>
           </div>
           <div className="ml-auto flex gap-2">
@@ -179,7 +186,7 @@ export default function AdminCoursesShow({ course, enrollmentStats, status }: Ad
               </Button>
             </Link>
             <Link href={route("admin.courses.edit", course.slug)}>
-              <Button>Edit {course.type === "event" ? "Event" : "Course"}</Button>
+              <Button>Edit {connectionHubTypeLabel(course.type)}</Button>
             </Link>
             <Link href={`/courses/${course.slug}`} target="_blank">
               <Button variant="outline">View Public</Button>
@@ -197,12 +204,16 @@ export default function AdminCoursesShow({ course, enrollmentStats, status }: Ad
                   <div>
                     <CardTitle className="text-2xl mb-2">{course.name}</CardTitle>
                     <div className="flex items-center gap-2 mb-4">
-                      <Badge className={course.type === "event" ? "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200" : "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200"}>
-                        {course.type === "event" ? "Event" : "Course"}
+                      <Badge className="bg-indigo-100 text-indigo-900 dark:bg-indigo-950 dark:text-indigo-200">
+                        {connectionHubTypeLabel(course.type)}
                       </Badge>
                       <Badge className={getStatusColor(status)}>{status.replace("_", " ")}</Badge>
-                      {course.type === "course" && course.topic && <Badge variant="outline">{course.topic.name}</Badge>}
-                      {course.type === "event" && course.event_type && <Badge variant="outline">{course.event_type.name}</Badge>}
+                      {!isEventsHubType(course.type) && course.topic && (
+                        <Badge variant="outline">{course.topic.name}</Badge>
+                      )}
+                      {isEventsHubType(course.type) && course.event_type && (
+                        <Badge variant="outline">{course.event_type.name}</Badge>
+                      )}
                       <Badge variant={course.pricing_type === "free" ? "secondary" : "default"}>
                         {course.formatted_price}
                       </Badge>
@@ -244,7 +255,9 @@ export default function AdminCoursesShow({ course, enrollmentStats, status }: Ad
                 {/* Learning Outcomes */}
                 {course.learning_outcomes.length > 0 && (
                   <div>
-                    <h3 className="font-semibold mb-2">{course.type === "course" ? "Learning Outcomes" : "Event Outcomes"}</h3>
+                    <h3 className="font-semibold mb-2">
+                      {!isEventsHubType(course.type) ? "Learning outcomes" : "Event outcomes"}
+                    </h3>
                     <ul className="list-disc list-inside space-y-1">
                       {course.learning_outcomes.map((outcome, index) => (
                         <li key={index} className="text-muted-foreground">
@@ -374,7 +387,7 @@ export default function AdminCoursesShow({ course, enrollmentStats, status }: Ad
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <ImageIcon className="h-5 w-5" />
-                    {course.type === "course" ? "Course" : "Event"} Image
+                    Image
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
@@ -468,7 +481,7 @@ export default function AdminCoursesShow({ course, enrollmentStats, status }: Ad
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <BookOpen className="h-5 w-5" />
-                  {course.type === "course" ? "Course" : "Event"} Details
+                  Listing details
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">

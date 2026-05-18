@@ -50,6 +50,19 @@ export default function TemplateShow({ template }: TemplateShowProps) {
         }
     }
 
+    const getTemplateTypeLabel = (type: string) => {
+        switch (type) {
+            case 'newsletter':
+                return 'Email'
+            case 'announcement':
+                return 'Announcement'
+            case 'event':
+                return 'Event'
+            default:
+                return type
+        }
+    }
+
     const getFrequencyText = (frequency: string) => {
         switch (frequency) {
             case 'daily': return 'Daily'
@@ -71,7 +84,7 @@ export default function TemplateShow({ template }: TemplateShowProps) {
 
     return (
         <AppSidebarLayout>
-            <Head title={`Template: ${template.name}`} />
+            <Head title={`Engagement · ${template.name}`} />
             
             <div className="space-y-6 sm:space-y-8 animate-in fade-in duration-500 m-10">
                 {/* Header */}
@@ -83,11 +96,14 @@ export default function TemplateShow({ template }: TemplateShowProps) {
                                 Back
                             </Button>
                             <div>
+                                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500 dark:text-gray-400">
+                                    Engagement
+                                </p>
                                 <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-gray-900 dark:text-white">
                                     {template.name}
                                 </h1>
                                 <p className="text-sm sm:text-base lg:text-lg text-gray-600 dark:text-gray-400">
-                                    Template Details
+                                    Template details
                                 </p>
                             </div>
                         </div>
@@ -144,7 +160,7 @@ export default function TemplateShow({ template }: TemplateShowProps) {
                                     </CardDescription>
                                 </div>
                                 <Badge className={getTemplateTypeColor(template.template_type)}>
-                                    {template.template_type}
+                                    {getTemplateTypeLabel(template.template_type)}
                                 </Badge>
                             </div>
                         </CardHeader>
@@ -160,7 +176,7 @@ export default function TemplateShow({ template }: TemplateShowProps) {
                                 </div>
                                 <div>
                                     <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Type</label>
-                                    <p className="text-gray-900 dark:text-white font-medium capitalize">{template.template_type}</p>
+                                    <p className="text-gray-900 dark:text-white font-medium">{getTemplateTypeLabel(template.template_type)}</p>
                                 </div>
                                 <div>
                                     <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Status</label>

@@ -3,16 +3,15 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\Post;
-use App\Models\Organization;
-use App\Models\User;
 use App\Models\BridgeIntegration;
+use App\Models\Organization;
+use App\Models\Post;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rules\Password;
 
 class UserController extends Controller
@@ -35,6 +34,8 @@ class UserController extends Controller
             'balance' => $user->balance ?? 0,
             'reward_points' => $user->reward_points ?? 0,
             'believe_points' => $user->believe_points ?? 0,
+            'gifted_believe_points' => $user->gifted_believe_points ?? 0,
+            'believe_points_total' => $user->totalBelievePointsBalance(),
             'created_at' => $user->created_at,
             'role' => $user->role ?? 'user',
             'kyc_status' => 'not_started',
@@ -48,7 +49,7 @@ class UserController extends Controller
                 $orgDisplayImage = $org->registered_user_image;
                 if ($org->registered_user_image && str_starts_with($org->registered_user_image, 'organizations/') && $user->image) {
                     $orgDisplayImage = $user->image;
-                } elseif (!$org->registered_user_image && $user->image) {
+                } elseif (! $org->registered_user_image && $user->image) {
                     $orgDisplayImage = $user->image;
                 }
                 $data['organization'] = [
@@ -134,7 +135,7 @@ class UserController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Validation error',
-                'errors' => $validator->errors()
+                'errors' => $validator->errors(),
             ], 422);
         }
 
@@ -142,7 +143,7 @@ class UserController extends Controller
 
         // Handle image upload: store new image first, then delete old one from storage
         if ($request->hasFile('image')) {
-            $filename = 'profile-' . $user->id . '-' . time() . '.' . $request->file('image')->extension();
+            $filename = 'profile-'.$user->id.'-'.time().'.'.$request->file('image')->extension();
             $path = $request->file('image')->storeAs('profile-photos', $filename, 'public');
             $updateData['image'] = $path;
 
@@ -185,7 +186,7 @@ class UserController extends Controller
                 'contact_number' => $user->contact_number,
                 'dob' => $user->dob,
                 'image' => $user->image,
-            ]
+            ],
         ]);
     }
 
@@ -197,7 +198,7 @@ class UserController extends Controller
         $user = $request->user();
         $org = Organization::where('user_id', $user->id)->first();
 
-        if (!$org) {
+        if (! $org) {
             return response()->json([
                 'success' => false,
                 'message' => 'No organization found for this account.',
@@ -233,7 +234,7 @@ class UserController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Validation error',
-                'errors' => $validator->errors()
+                'errors' => $validator->errors(),
             ], 422);
         }
 
@@ -261,7 +262,7 @@ class UserController extends Controller
                 'website' => $org->website,
                 'description' => $org->description,
                 'mission' => $org->mission,
-            ]
+            ],
         ]);
     }
 
@@ -272,7 +273,7 @@ class UserController extends Controller
     {
         $validator = Validator::make($request->all(), [
             'current_password' => ['required', 'string', function ($attr, $value, $fail) use ($request) {
-                if (!Hash::check($value, $request->user()->password)) {
+                if (! Hash::check($value, $request->user()->password)) {
                     $fail('The current password is incorrect.');
                 }
             }],
@@ -283,7 +284,7 @@ class UserController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Validation error',
-                'errors' => $validator->errors()
+                'errors' => $validator->errors(),
             ], 422);
         }
 
@@ -303,6 +304,7 @@ class UserController extends Controller
     public function getSecurityPrefs(Request $request)
     {
         $user = $request->user();
+
         return response()->json([
             'success' => true,
             'data' => [
@@ -332,6 +334,7 @@ class UserController extends Controller
             $user->biometric_enabled = $request->boolean('biometric_enabled');
         }
         $user->save();
+
         return response()->json([
             'success' => true,
             'message' => 'Preferences updated.',
@@ -366,6 +369,7 @@ class UserController extends Controller
             ->get()
             ->map(function ($token) use ($currentTokenId) {
                 $name = $token->name && $token->name !== 'auth_token' ? $token->name : 'Web Device';
+
                 return [
                     'id' => $token->id,
                     'device_name' => $name,
@@ -375,6 +379,7 @@ class UserController extends Controller
                     'is_current' => $token->id === $currentTokenId,
                 ];
             });
+
         return response()->json([
             'success' => true,
             'data' => ['sessions' => $tokens],
@@ -402,6 +407,7 @@ class UserController extends Controller
                 $revoked++;
             }
         });
+
         return response()->json([
             'success' => true,
             'message' => $revoked > 0 ? "Signed out {$revoked} other device(s)." : 'No other sessions to sign out.',
@@ -416,13 +422,14 @@ class UserController extends Controller
     {
         $user = $request->user();
         $token = $user->tokens()->where('id', $id)->where('revoked', false)->first();
-        if (!$token) {
+        if (! $token) {
             return response()->json([
                 'success' => false,
                 'message' => 'Session not found or already signed out.',
             ], 404);
         }
         $token->revoke();
+
         return response()->json([
             'success' => true,
             'message' => 'Session signed out.',
@@ -441,7 +448,7 @@ class UserController extends Controller
             'data' => [
                 'balance' => $user->balance ?? 0,
                 'currency' => 'USD',
-            ]
+            ],
         ]);
     }
 
@@ -457,7 +464,9 @@ class UserController extends Controller
             'data' => [
                 'reward_points' => $user->reward_points ?? 0,
                 'believe_points' => $user->believe_points ?? 0,
-            ]
+                'gifted_believe_points' => $user->gifted_believe_points ?? 0,
+                'believe_points_total' => $user->totalBelievePointsBalance(),
+            ],
         ]);
     }
 
@@ -481,6 +490,7 @@ class UserController extends Controller
         $posts->getCollection()->transform(function ($post) use ($currentUserId) {
             $userReaction = $post->reactions()->where('user_id', $currentUserId)->first();
             $post->user_reaction = $userReaction;
+
             return $post;
         });
 
@@ -493,8 +503,8 @@ class UserController extends Controller
                     'last_page' => $posts->lastPage(),
                     'per_page' => $posts->perPage(),
                     'total' => $posts->total(),
-                ]
-            ]
+                ],
+            ],
         ]);
     }
 
@@ -527,7 +537,7 @@ class UserController extends Controller
 
         return response()->json([
             'success' => true,
-            'data' => $organizations
+            'data' => $organizations,
         ]);
     }
 
@@ -558,7 +568,7 @@ class UserController extends Controller
 
         return response()->json([
             'success' => true,
-            'data' => $suggestedUsers
+            'data' => $suggestedUsers,
         ]);
     }
 
@@ -615,7 +625,7 @@ class UserController extends Controller
 
         return response()->json([
             'success' => true,
-            'data' => $causes
+            'data' => $causes,
         ]);
     }
 }

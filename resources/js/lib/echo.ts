@@ -41,10 +41,20 @@ export interface MeetingEvent {
   data?: any
 }
 
-// Echo / Reverb: use VITE_REVERB_* in env; in production use current host when not set (avoid 127.0.0.1)
-const getReverbHost = () =>
-  import.meta.env.VITE_REVERB_HOST ||
-  (typeof window !== "undefined" ? window.location.hostname : "localhost");
+const isLoopbackHost = (host?: string) =>
+  Boolean(host && ["127.0.0.1", "0.0.0.0", "localhost"].includes(host))
+
+// Prefer the current host when the built env still points at loopback but the page is remote.
+const getReverbHost = () => {
+  const configuredHost = import.meta.env.VITE_REVERB_HOST
+  const runtimeHost = typeof window !== "undefined" ? window.location.hostname : "localhost"
+
+  if (isLoopbackHost(configuredHost) && !isLoopbackHost(runtimeHost)) {
+    return runtimeHost
+  }
+
+  return configuredHost || runtimeHost
+}
 const echoConfig = {
   broadcaster: "reverb",
   key: import.meta.env.VITE_REVERB_APP_KEY,

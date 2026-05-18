@@ -132,8 +132,22 @@ class EventTypesTableSeeder extends Seeder
             ['name' => 'Social Impact Meetups', 'category' => 'Non-Profit Organization Events', 'description' => 'Social impact and community meetups'],
         ];
 
+        $companionTypesPath = __DIR__.'/data/companion_event_types.php';
+        if (is_file($companionTypesPath)) {
+            $eventTypes = array_merge($eventTypes, require $companionTypesPath);
+        }
+
         foreach ($eventTypes as $eventType) {
-            EventType::create($eventType);
+            EventType::updateOrCreate(
+                [
+                    'name' => $eventType['name'],
+                    'category' => $eventType['category'],
+                ],
+                [
+                    'description' => $eventType['description'],
+                    'is_active' => true,
+                ]
+            );
         }
     }
 }

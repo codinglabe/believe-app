@@ -15,12 +15,33 @@ interface Product {
   name: string
   description: string
   unit_price: number
+  source_cost?: number | null
+  profit_margin_percentage?: number | null
+  pricing_model?: string | null
+  organization_id?: number | null
   image: string | null
   slug: string
   status: string
   publish_status: string
   categories?: Array<{ id: number; name: string }>
   variants?: Array<any>
+}
+
+/** Aligns with marketplace: cost from source_cost, else implied from margin (retail = cost × (1 + p/100)). */
+function manualCatalogUnitCostUsd(product: Product): number | null {
+  const retail = Number(product.unit_price) || 0
+  if (retail <= 0.0001) {
+    return null
+  }
+  const sc = product.source_cost
+  if (sc != null && sc !== "" && Number(sc) > 0.0001) {
+    return Math.round(Math.min(Number(sc), retail) * 100) / 100
+  }
+  const p = Number(product.profit_margin_percentage) || 0
+  if (p > 0.0001) {
+    return Math.round((retail * 100) / (100 + p) * 100) / 100
+  }
+  return null
 }
 
 interface Props {
@@ -55,12 +76,6 @@ export default function OrganizationProducts({ organization, auth, products }: P
   const productsList = products?.data || (Array.isArray(products) ? products : [])
   const isEmpty = !productsList || productsList.length === 0
 
-  // Debug: Log products data structure
-  if (process.env.NODE_ENV === 'development') {
-    console.log('Products data:', products)
-    console.log('Products list:', productsList)
-  }
-
   return (
     <FrontendLayout>
       <Head title={`${organization.name} - Products`} />
@@ -92,6 +107,18 @@ export default function OrganizationProducts({ organization, auth, products }: P
                 className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6"
               >
                 {productsList.map((product) => (
+                  (() => {
+                    const retail = Number(product.unit_price) || 0
+                    const unitCost = manualCatalogUnitCostUsd(product)
+                    const isAtCostPricing =
+                      Boolean(product.organization_id) &&
+                      product.pricing_model === "fixed" &&
+                      unitCost != null &&
+                      unitCost < retail - 0.001
+                    const atCost = isAtCostPricing && unitCost != null ? unitCost : retail
+                    const platformFee = Number((atCost * 0.1).toFixed(2))
+
+                    return (
                   <motion.div key={product.id} variants={itemVariants}>
                     <Card className="group hover:shadow-2xl transition-all duration-300 border-0 shadow-lg overflow-hidden bg-white dark:bg-gray-800">
                       <div className="relative overflow-hidden">
@@ -111,7 +138,7 @@ export default function OrganizationProducts({ organization, auth, products }: P
                         )}
                         <div className="absolute top-4 right-4">
                           <Badge className="bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm">
-                            ${product.unit_price?.toFixed(2) || '0.00'}
+                            {isAtCostPricing ? `$${atCost?.toFixed(2) || '0.00'} At Cost` : `$${product.unit_price?.toFixed(2) || '0.00'}`}
                           </Badge>
                         </div>
                       </div>
@@ -124,6 +151,17 @@ export default function OrganizationProducts({ organization, auth, products }: P
                           {product.description}
                         </CardDescription>
                       </CardHeader>
+
+                      {isAtCostPricing && (
+                        <CardContent className="pt-0">
+                          <div className="rounded-2xl bg-slate-950 text-white p-4">
+                            <p className="text-xs uppercase tracking-[0.18em] text-emerald-300/80 mb-1">At Cost Pricing</p>
+                            <p className="text-sm text-slate-200 line-through">Typical Retail: ${product.unit_price?.toFixed(2) || '0.00'}</p>
+                            <p className="text-2xl font-bold text-emerald-300">Your Price: ${atCost?.toFixed(2) || '0.00'} At Cost</p>
+                            <p className="text-sm text-slate-300 mt-2">10% platform fee adds ${platformFee.toFixed(2)} at checkout</p>
+                          </div>
+                        </CardContent>
+                      )}
 
                       {product.categories && product.categories.length > 0 && (
                         <CardContent>
@@ -148,6 +186,8 @@ export default function OrganizationProducts({ organization, auth, products }: P
                       </CardFooter>
                     </Card>
                   </motion.div>
+                    )
+                  })()
                 ))}
               </motion.div>
 

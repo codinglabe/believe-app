@@ -19,6 +19,17 @@ interface SocialFeedPageProps {
   }
   peopleYouMayKnow?: any[]
   trendingOrganizations?: any[]
+  youtubeShortAttachOptions?: {
+    organizations: { id: number; name: string }[]
+    campaigns: { id: number; name: string }[]
+    fundmes: { id: number; title: string; slug: string | null }[]
+  }
+  feedReels?: any[]
+  shortImportContext?: {
+    organization_id?: number | null
+    campaign_id?: number | null
+    fundme_id?: number | null
+  } | null
 }
 
 export default function SocialFeedPage() {
@@ -29,6 +40,9 @@ export default function SocialFeedPage() {
     userStats = {},
     peopleYouMayKnow = [],
     trendingOrganizations = [],
+    youtubeShortAttachOptions,
+    feedReels,
+    shortImportContext,
   } = usePage<SocialFeedPageProps>().props
 
   return (
@@ -39,7 +53,14 @@ export default function SocialFeedPage() {
       trendingOrganizations={trendingOrganizations}
     >
       <PageHead title="Social Feed" description="Stay connected with nonprofits and supporters. See updates, share posts, and engage with your community." />
-      <SocialFeed posts={posts} next_page_url={next_page_url} has_more={has_more} />
+      <SocialFeed
+        posts={posts}
+        next_page_url={next_page_url}
+        has_more={has_more}
+        youtubeShortAttachOptions={youtubeShortAttachOptions}
+        feedReels={feedReels}
+        shortImportContext={shortImportContext}
+      />
     </SocialFeedLayout>
   )
 }

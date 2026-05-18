@@ -29,7 +29,7 @@ class DropboxOrgApi
     {
         $path = trim($path);
         if ($path === '' || $path[0] !== '/') {
-            $path = '/' . $path;
+            $path = '/'.$path;
         }
 
         // If folder already exists, do nothing — avoids multiple folders
@@ -38,13 +38,13 @@ class DropboxOrgApi
         }
 
         $response = Http::withHeaders([
-            'Authorization' => 'Bearer ' . $this->accessToken,
+            'Authorization' => 'Bearer '.$this->accessToken,
             'Content-Type' => 'application/json',
         ])->withOptions(['verify' => config('services.dropbox.verify', true)])
-          ->post(self::API_URL . '/files/create_folder_v2', [
-              'path' => $path,
-              'autorename' => false,
-          ]);
+            ->post(self::API_URL.'/files/create_folder_v2', [
+                'path' => $path,
+                'autorename' => false,
+            ]);
 
         if ($response->successful()) {
             return true;
@@ -60,6 +60,7 @@ class DropboxOrgApi
             'path' => $path,
             'body' => $response->body(),
         ]);
+
         return false;
     }
 
@@ -70,22 +71,23 @@ class DropboxOrgApi
     {
         $path = trim($path);
         if ($path === '' || $path[0] !== '/') {
-            $path = '/' . $path;
+            $path = '/'.$path;
         }
 
         $response = Http::withHeaders([
-            'Authorization' => 'Bearer ' . $this->accessToken,
+            'Authorization' => 'Bearer '.$this->accessToken,
             'Content-Type' => 'application/json',
         ])->withOptions(['verify' => config('services.dropbox.verify', true)])
-          ->post(self::API_URL . '/files/get_metadata', [
-              'path' => $path,
-          ]);
+            ->post(self::API_URL.'/files/get_metadata', [
+                'path' => $path,
+            ]);
 
         if (! $response->successful()) {
             return false;
         }
 
         $data = $response->json();
+
         return ($data['.tag'] ?? '') === 'folder';
     }
 
@@ -112,10 +114,10 @@ class DropboxOrgApi
             $endpoint = $cursor !== null ? '/files/list_folder/continue' : '/files/list_folder';
 
             $response = Http::withHeaders([
-                'Authorization' => 'Bearer ' . $this->accessToken,
+                'Authorization' => 'Bearer '.$this->accessToken,
                 'Content-Type' => 'application/json',
             ])->withOptions(['verify' => config('services.dropbox.verify', true)])
-              ->post(self::API_URL . $endpoint, $body);
+                ->post(self::API_URL.$endpoint, $body);
 
             if (! $response->successful()) {
                 break;
@@ -152,32 +154,34 @@ class DropboxOrgApi
     public function moveFile(string $fromPath, string $toPath): bool
     {
         $response = Http::withHeaders([
-            'Authorization' => 'Bearer ' . $this->accessToken,
+            'Authorization' => 'Bearer '.$this->accessToken,
             'Content-Type' => 'application/json',
         ])->withOptions(['verify' => config('services.dropbox.verify', true)])
-          ->post(self::API_URL . '/files/move_v2', [
-              'from_path' => $fromPath,
-              'to_path' => $toPath,
-              'autorename' => true,
-          ]);
+            ->post(self::API_URL.'/files/move_v2', [
+                'from_path' => $fromPath,
+                'to_path' => $toPath,
+                'autorename' => true,
+            ]);
 
         if (! $response->successful()) {
             Log::warning('Dropbox move_v2 failed', ['from' => $fromPath, 'to' => $toPath, 'body' => $response->body()]);
+
             return false;
         }
+
         return true;
     }
 
     /**
      * List contents of a folder (files and subfolders). Returns array of file/folder info.
      *
-     * @return array<int, array{name: string, path_display: string, tag: string, size?: int, client_modified?: string}> 
+     * @return array<int, array{name: string, path_display: string, tag: string, size?: int, client_modified?: string}>
      */
     public function listFolder(string $path): array
     {
         $path = trim($path);
         if ($path === '' || $path[0] !== '/') {
-            $path = '/' . $path;
+            $path = '/'.$path;
         }
 
         $out = [];
@@ -190,10 +194,10 @@ class DropboxOrgApi
             $endpoint = $cursor !== null ? '/files/list_folder/continue' : '/files/list_folder';
 
             $response = Http::withHeaders([
-                'Authorization' => 'Bearer ' . $this->accessToken,
+                'Authorization' => 'Bearer '.$this->accessToken,
                 'Content-Type' => 'application/json',
             ])->withOptions(['verify' => config('services.dropbox.verify', true)])
-              ->post(self::API_URL . $endpoint, $body);
+                ->post(self::API_URL.$endpoint, $body);
 
             if (! $response->successful()) {
                 return $out;
@@ -217,28 +221,161 @@ class DropboxOrgApi
     }
 
     /**
+     * Upload file contents to Dropbox (add, autorename on conflict).
+     * Pass a stream resource to avoid loading large videos into memory.
+     *
+     * @param  string|resource  $body
+     * @return array{path_display: string}|null
+     */
+    public function upload(string $path, $body): ?array
+    {
+        $path = trim($path);
+        if ($path === '' || $path[0] !== '/') {
+            $path = '/'.$path;
+        }
+
+        $arg = json_encode([
+            'path' => $path,
+            'mode' => 'add',
+            'autorename' => true,
+            'mute' => false,
+        ], JSON_THROW_ON_ERROR);
+
+        $response = Http::withHeaders([
+            'Authorization' => 'Bearer '.$this->accessToken,
+            'Content-Type' => 'application/octet-stream',
+            'Dropbox-API-Arg' => $arg,
+        ])->withOptions(['verify' => config('services.dropbox.verify', true)])
+            ->timeout(600)
+            ->connectTimeout(60)
+            ->send('POST', 'https://content.dropboxapi.com/2/files/upload', [
+                'body' => $body,
+            ]);
+
+        if (! $response->successful()) {
+            Log::warning('Dropbox files/upload failed', [
+                'path' => $path,
+                'status' => $response->status(),
+                'body' => $response->body(),
+            ]);
+
+            return null;
+        }
+
+        $data = $response->json();
+        $display = $data['path_display'] ?? $data['path_lower'] ?? null;
+
+        return is_string($display) && $display !== '' ? ['path_display' => $display] : null;
+    }
+
+    /**
+     * Upload a local file path to Dropbox (streams from disk; suitable for large MP4s).
+     *
+     * @return array{path_display: string}|null
+     */
+    public function uploadFromLocalPath(string $dropboxPath, string $absoluteLocalPath): ?array
+    {
+        if (! is_readable($absoluteLocalPath)) {
+            Log::warning('Dropbox uploadFromLocalPath: file not readable', ['path' => $absoluteLocalPath]);
+
+            return null;
+        }
+
+        $stream = fopen($absoluteLocalPath, 'rb');
+        if ($stream === false) {
+            return null;
+        }
+
+        try {
+            return $this->upload($dropboxPath, $stream);
+        } finally {
+            if (is_resource($stream)) {
+                fclose($stream);
+            }
+        }
+    }
+
+    /**
+     * Create a viewable shared link for a file path (best-effort).
+     */
+    public function createSharedLink(string $path): ?string
+    {
+        $path = trim($path);
+        if ($path === '' || $path[0] !== '/') {
+            $path = '/'.$path;
+        }
+
+        $response = Http::withHeaders([
+            'Authorization' => 'Bearer '.$this->accessToken,
+            'Content-Type' => 'application/json',
+        ])->withOptions(['verify' => config('services.dropbox.verify', true)])
+            ->post(self::API_URL.'/sharing/create_shared_link_with_settings', [
+                'path' => $path,
+                'settings' => [
+                    'requested_visibility' => ['.tag' => 'public'],
+                ],
+            ]);
+
+        if (! $response->successful()) {
+            $response = Http::withHeaders([
+                'Authorization' => 'Bearer '.$this->accessToken,
+                'Content-Type' => 'application/json',
+            ])->withOptions(['verify' => config('services.dropbox.verify', true)])
+                ->post(self::API_URL.'/sharing/create_shared_link_with_settings', [
+                    'path' => $path,
+                ]);
+        }
+
+        if ($response->successful()) {
+            $url = $response->json('url');
+            if (is_string($url) && $url !== '') {
+                return str_contains($url, '?') ? $url.'&raw=1' : $url.'?raw=1';
+            }
+        }
+
+        $body = $response->json();
+        $err = $body['error'] ?? [];
+        $errTag = is_array($err) ? ($err['.tag'] ?? '') : '';
+        if ($errTag === 'shared_link_already_exists' && is_array($err['shared_link_already_exists'] ?? null)) {
+            $inner = $err['shared_link_already_exists'];
+            $url = $inner['url'] ?? ($inner['metadata']['url'] ?? null);
+            if (is_string($url) && $url !== '') {
+                return str_contains($url, '?') ? $url.'&raw=1' : $url.'?raw=1';
+            }
+        }
+
+        Log::warning('Dropbox create_shared_link_with_settings failed', [
+            'path' => $path,
+            'body' => $response->body(),
+        ]);
+
+        return null;
+    }
+
+    /**
      * Get a temporary download link for a file (valid for a few hours).
      */
     public function getTemporaryLink(string $path): ?string
     {
         $path = trim($path);
         if ($path === '' || $path[0] !== '/') {
-            $path = '/' . $path;
+            $path = '/'.$path;
         }
 
         $response = Http::withHeaders([
-            'Authorization' => 'Bearer ' . $this->accessToken,
+            'Authorization' => 'Bearer '.$this->accessToken,
             'Content-Type' => 'application/json',
         ])->withOptions(['verify' => config('services.dropbox.verify', true)])
-          ->post(self::API_URL . '/files/get_temporary_link', [
-              'path' => $path,
-          ]);
+            ->post(self::API_URL.'/files/get_temporary_link', [
+                'path' => $path,
+            ]);
 
         if (! $response->successful()) {
             return null;
         }
 
         $data = $response->json();
+
         return $data['link'] ?? null;
     }
 
@@ -249,21 +386,23 @@ class DropboxOrgApi
     {
         $path = trim($path);
         if ($path === '' || $path[0] !== '/') {
-            $path = '/' . $path;
+            $path = '/'.$path;
         }
 
         $response = Http::withHeaders([
-            'Authorization' => 'Bearer ' . $this->accessToken,
+            'Authorization' => 'Bearer '.$this->accessToken,
             'Content-Type' => 'application/json',
         ])->withOptions(['verify' => config('services.dropbox.verify', true)])
-          ->post(self::API_URL . '/files/delete_v2', [
-              'path' => $path,
-          ]);
+            ->post(self::API_URL.'/files/delete_v2', [
+                'path' => $path,
+            ]);
 
         if (! $response->successful()) {
             Log::warning('Dropbox delete_v2 failed', ['path' => $path, 'body' => $response->body()]);
+
             return false;
         }
+
         return true;
     }
 
@@ -276,7 +415,7 @@ class DropboxOrgApi
     {
         $path = trim($path);
         if ($path === '' || $path[0] !== '/') {
-            $path = '/' . $path;
+            $path = '/'.$path;
         }
         $query = trim($query);
         if ($query === '') {
@@ -300,10 +439,10 @@ class DropboxOrgApi
 
             $endpoint = $cursor !== null ? '/files/search/continue_v2' : '/files/search_v2';
             $response = Http::withHeaders([
-                'Authorization' => 'Bearer ' . $this->accessToken,
+                'Authorization' => 'Bearer '.$this->accessToken,
                 'Content-Type' => 'application/json',
             ])->withOptions(['verify' => config('services.dropbox.verify', true)])
-              ->post(self::API_URL . $endpoint, $body);
+                ->post(self::API_URL.$endpoint, $body);
 
             if (! $response->successful()) {
                 Log::warning('Dropbox search_v2 failed', ['path' => $path, 'query' => $query, 'body' => $response->body()]);

@@ -26,12 +26,22 @@ interface Step1CompleteData {
   donationAmount: number
 }
 
+interface PlatformFeeLine {
+  key: string
+  label: string
+  percent: number
+  base_usd: number
+  fee_usd: number
+}
+
 interface Step1Props {
   items: CartItem[]
   subtotal: number
   platform_fee_percentage: number
   platform_fee: number
+  platform_fee_lines?: PlatformFeeLine[]
   donation_percentage: number
+  pickupAvailableAtCheckout?: boolean
   onComplete: (data: Step1CompleteData) => void
 }
 
@@ -42,7 +52,9 @@ export default function Step1({
   subtotal,
   platform_fee_percentage,
   platform_fee,
+  platform_fee_lines = [],
   donation_percentage,
+  pickupAvailableAtCheckout = false,
   onComplete,
 }: Step1Props) {
   const [formData, setFormData] = useState({
@@ -59,8 +71,7 @@ export default function Step1({
   const [isLoading, setIsLoading] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
 
-  // Platform fee removed - customers don't pay it
-  const orderTotal = subtotal
+  const orderTotal = subtotal + platform_fee
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target
@@ -121,7 +132,6 @@ export default function Step1({
     try {
       const response = await axios.post("/checkout/step1", {
         ...formData,
-        // platform_fee: Number.parseFloat(platform_fee.toFixed(2)), // Removed - customers don't pay platform fee
         donation_amount: 0, // Donation disabled for Printify products
       })
 
@@ -165,6 +175,14 @@ export default function Step1({
             {/* Shipping Information */}
             <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
               <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-6">Shipping Information</h2>
+
+              {pickupAvailableAtCheckout && (
+                <div className="mb-6 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-100">
+                  <strong className="font-semibold">Local pickup</strong> is available for this order. After you continue,
+                  step 2 will list <strong>Pick up at seller location</strong> with $0 shipping. Choose that option if you
+                  will collect the order in person.
+                </div>
+              )}
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="md:col-span-2">
@@ -379,7 +397,32 @@ export default function Step1({
                 <span>Subtotal</span>
                 <span>${subtotal.toFixed(2)}</span>
               </div>
-              {/* Platform Fee removed - customers don't pay it */}
+              {platform_fee_lines.length > 1 ? (
+                <>
+                  {platform_fee_lines.map((row) => (
+                    <div key={row.key} className="flex justify-between text-gray-600 dark:text-gray-400 text-sm">
+                      <span className="pr-2">
+                        {row.label} ({Number(row.percent).toFixed(2)}% on ${row.base_usd.toFixed(2)})
+                      </span>
+                      <span>${row.fee_usd.toFixed(2)}</span>
+                    </div>
+                  ))}
+                  <div className="flex justify-between text-gray-600 dark:text-gray-400 font-medium">
+                    <span>Platform fee total</span>
+                    <span>${platform_fee.toFixed(2)}</span>
+                  </div>
+                </>
+              ) : platform_fee_lines.length === 1 ? (
+                <div className="flex justify-between text-gray-600 dark:text-gray-400">
+                  <span>Platform fee ({platform_fee_lines[0].percent.toFixed(2)}%)</span>
+                  <span>${platform_fee.toFixed(2)}</span>
+                </div>
+              ) : (
+                <div className="flex justify-between text-gray-600 dark:text-gray-400">
+                  <span>Platform fee ({platform_fee_percentage.toFixed(2)}% blended)</span>
+                  <span>${platform_fee.toFixed(2)}</span>
+                </div>
+              )}
               <div className="flex justify-between font-bold text-gray-900 dark:text-white border-t border-gray-200 dark:border-gray-700 pt-3">
                 <span>Before Shipping & Tax</span>
                 <span>${orderTotal.toFixed(2)}</span>

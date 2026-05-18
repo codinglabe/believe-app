@@ -22,7 +22,7 @@ class SeoService
         'search' => 'Search',
         'organizations' => 'Organizations',
         'marketplace' => 'Marketplace',
-        'courses' => 'Courses & Events',
+        'courses' => 'Connection Hub',
         'all_events' => 'All Events',
         'terms_of_service' => 'Terms of Service',
         'privacy_policy' => 'Privacy Policy',
@@ -31,6 +31,7 @@ class SeoService
         'volunteer_opportunities' => 'Volunteer Opportunities',
         'social_feed' => 'Social Feed',
         'fundraise' => 'Raise Capital',
+        'unity_loaves' => 'Unity Loaves Directory',
     ];
 
     /**
@@ -58,7 +59,7 @@ class SeoService
                 'search' => ['title' => 'Search', 'description' => 'Search supporters, organizations, and posts. Find people and causes that match your interests.'],
                 'organizations' => ['title' => 'Organizations', 'description' => 'Browse verified nonprofits by cause, location, and name. Find organizations to support and donate to.'],
                 'marketplace' => ['title' => 'Marketplace', 'description' => 'Discover products from verified nonprofits. Shop and support causes you care about.'],
-                'courses' => ['title' => 'Courses & Events', 'description' => 'Discover courses and events from verified nonprofits. Learn new skills, attend workshops, and join community events—online or in person.'],
+                'courses' => ['title' => 'Connection Hub', 'description' => 'Discover courses and events from verified nonprofits in Connection Hub. Learn new skills, attend workshops, and join community events—online or in person.'],
                 'all_events' => ['title' => 'All Events', 'description' => 'Discover and join events from nonprofits. Find upcoming, ongoing, and past events by location, type, and date.'],
                 'terms_of_service' => ['title' => 'Terms of Service', 'description' => 'Read the terms of service for using our platform. Understand your rights and responsibilities when donating and engaging with nonprofits.'],
                 'privacy_policy' => ['title' => 'Privacy Policy', 'description' => 'Learn how we collect, use, and protect your personal information. Your privacy matters to us.'],
@@ -67,6 +68,7 @@ class SeoService
                 'volunteer_opportunities' => ['title' => 'Volunteer Opportunities', 'description' => 'Discover volunteer opportunities at nonprofits. Give your time and skills.'],
                 'social_feed' => ['title' => 'Social Feed', 'description' => 'Stay connected with nonprofits and supporters. See updates, share posts, and engage with your community.'],
                 'fundraise' => ['title' => 'Raise Capital | Community-Powered Crowdfunding', 'description' => 'Raise capital through community-powered crowdfunding. Start your application and connect with investors on Wefunder.'],
+                'unity_loaves' => ['title' => 'Unity Loaves Directory', 'description' => 'Find feeding locations, donate money, and drop off non-perishable food. Search meal programs, food pantries, and community kitchens near you.'],
             ],
         ];
     }

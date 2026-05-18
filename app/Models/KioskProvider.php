@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class KioskProvider extends Model
 {
     protected $fillable = [
+        'organization_id',
         'state_abbr',
         'normalized_city',
         'zip_normalized',
@@ -30,5 +31,10 @@ class KioskProvider extends Model
     public function category(): BelongsTo
     {
         return $this->belongsTo(KioskCategory::class, 'category_slug', 'slug');
+    }
+
+    public function organization(): BelongsTo
+    {
+        return $this->belongsTo(Organization::class);
     }
 }

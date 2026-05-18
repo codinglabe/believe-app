@@ -43,7 +43,6 @@ final class StripeLedgerTransactionWebhookSync
             return;
         }
 
-        $taxUsd = self::checkoutSessionTaxUsd($session);
         $tx = self::resolveTransactionFromMetadata($meta);
         if ($tx) {
             self::applyStripeFinancials(
@@ -51,26 +50,19 @@ final class StripeLedgerTransactionWebhookSync
                 $piId,
                 self::filteredMergeMeta([
                     'stripe_checkout_session_id' => $session['id'] ?? null,
-                    'stripe_tax_amount' => $taxUsd,
                 ])
             );
         }
 
         self::syncOrderStripeFeeFromPaymentIntent($piId);
 
-        if ($taxUsd !== null) {
-            Order::query()->where('stripe_payment_intent_id', $piId)->update([
-                'stripe_tax_amount' => $taxUsd,
-            ]);
-        }
-
-        self::syncServiceOrderFromCheckoutSession($meta, $piId, $taxUsd);
+        self::syncServiceOrderFromCheckoutSession($meta, $piId);
     }
 
     /**
      * @param  array<string, string>  $meta
      */
-    private static function syncServiceOrderFromCheckoutSession(array $meta, string $paymentIntentId, ?float $taxUsd): void
+    private static function syncServiceOrderFromCheckoutSession(array $meta, string $paymentIntentId): void
     {
         if (($meta['type'] ?? '') !== 'service_order') {
             return;
@@ -87,9 +79,6 @@ final class StripeLedgerTransactionWebhookSync
             'stripe_payment_intent_id' => $paymentIntentId,
             'transaction_fee' => round((float) $feeUsd, 2),
         ];
-        if ($taxUsd !== null) {
-            $patch['sales_tax'] = $taxUsd;
-        }
 
         ServiceOrder::query()->whereKey((int) $rawId)->update($patch);
     }
@@ -148,23 +137,6 @@ final class StripeLedgerTransactionWebhookSync
             $meta,
             static fn ($v) => $v !== null && $v !== ''
         );
-    }
-
-    /**
-     * @param  array<string, mixed>  $session
-     */
-    private static function checkoutSessionTaxUsd(array $session): ?float
-    {
-        $td = $session['total_details'] ?? null;
-        if (! is_array($td)) {
-            return null;
-        }
-        $cents = (int) ($td['amount_tax'] ?? 0);
-        if ($cents <= 0) {
-            return null;
-        }
-
-        return round($cents / 100, 2);
     }
 
     /**

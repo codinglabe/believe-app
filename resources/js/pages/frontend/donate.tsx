@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import type { PageProps as InertiaPageProps } from "@inertiajs/core"
 import { router, usePage, Link } from "@inertiajs/react"
 import { PageHead } from "@/components/frontend/PageHead"
 import { useNotification } from "@/components/frontend/notification-provider"
@@ -43,6 +44,8 @@ interface DonateCause {
   supporters: number
   alliance_slug?: string
   care_alliance_id?: number
+  /** Lifetime total this logged-in user has donated to this recipient (from server). */
+  donated_total?: number
 }
 
 function CauseAvatar({
@@ -108,9 +111,11 @@ const DEFAULT_PROCESSING_FEE_RATES: ProcessingFeeRates = {
   ach_fee_cap_usd: 5,
 }
 
-interface DonatePageProps {
+interface DonatePageProps extends InertiaPageProps {
   seo?: { title: string; description?: string }
   organizations: DonateCause[]
+  /** Causes the current user has donated to (with totals); empty when logged out. */
+  donatedCauses?: DonateCause[]
   user?: User | null
   message?: string
   searchQuery?: string
@@ -118,6 +123,8 @@ interface DonatePageProps {
   givingGoal?: number
   topOrganizations?: TopOrganization[]
   feePreview?: FeePreviewFromServer | null
+  /** Checkout total for each rail (same gift + “Make Full Impact” as active preview). */
+  feePreviewCheckoutTotalsByRail?: { card: number; bank: number } | null
 }
 
 const amountConfig = [
@@ -145,9 +152,18 @@ const NON_CASH_TYPES: { id: NonCashType; label: string; icon: typeof Gift }[] = 
 const CONDITION_OPTIONS = ["New", "Like New", "Good", "Fair", "Poor"]
 
 // The component now accepts props from Laravel via Inertia
+function causeMatchesSearch(cause: DonateCause, rawQuery: string): boolean {
+  const q = rawQuery.trim().toLowerCase()
+  if (!q) return true
+  if (cause.name.toLowerCase().includes(q)) return true
+  if (cause.description && cause.description.toLowerCase().includes(q)) return true
+  return false
+}
+
 export default function DonatePage({
   seo,
   organizations: initialOrganizations,
+  donatedCauses: initialDonatedCauses = [],
   user,
   searchQuery: initialSearchQuery = "",
   thisYearDonated = 0,
@@ -157,6 +173,7 @@ export default function DonatePage({
   const page = usePage<DonatePageProps & { processingFeeRates?: ProcessingFeeRates }>()
   const processingFeeRates = page.props.processingFeeRates ?? DEFAULT_PROCESSING_FEE_RATES
   const feePreview = page.props.feePreview ?? null
+  const feePreviewCheckoutTotalsByRail = page.props.feePreviewCheckoutTotalsByRail ?? null
   const flash = page.props
   const { showNotification } = useNotification()
 
@@ -190,6 +207,7 @@ export default function DonatePage({
   // Get user's Believe Points balance
   const pageProps = usePage().props as any
   const authUser = pageProps.auth?.user || null
+  const donatedCauses = (pageProps.donatedCauses as DonateCause[] | undefined) ?? initialDonatedCauses
   const currentBalance = parseFloat(authUser?.believe_points || '0') || 0
   const [searchQuery, setSearchQuery] = useState(initialSearchQuery) // Initialize with prop from Laravel
   const [isSearchFocused, setIsSearchFocused] = useState(false)
@@ -231,7 +249,7 @@ export default function DonatePage({
         preserveScroll: true,
         preserveState: true,
         replace: true,
-        only: ["organizations", "searchQuery", "feePreview"],
+        only: ["organizations", "searchQuery", "feePreview", "feePreviewCheckoutTotalsByRail"],
         onFinish: () => {
           setFeePreviewLoading(false)
           setIsSearchingOrganizations(false)
@@ -291,8 +309,22 @@ export default function DonatePage({
   const givingProgress = givingGoal > 0 ? Math.min(100, (thisYearDonated / givingGoal) * 100) : 0
 
   const selectedCause = useMemo(() => {
-    return initialOrganizations.find((cause) => cause.id === selectedCauseId)
-  }, [selectedCauseId, initialOrganizations])
+    if (!selectedCauseId) return undefined
+    return (
+      initialOrganizations.find((cause) => cause.id === selectedCauseId) ??
+      donatedCauses.find((cause) => cause.id === selectedCauseId)
+    )
+  }, [selectedCauseId, initialOrganizations, donatedCauses])
+
+  const donatedCausesFiltered = useMemo(
+    () => donatedCauses.filter((c) => causeMatchesSearch(c, searchQuery)),
+    [donatedCauses, searchQuery],
+  )
+  const allOrganizationsFiltered = useMemo(() => {
+    const matched = initialOrganizations.filter((c) => causeMatchesSearch(c, searchQuery))
+    const donatedIds = new Set(donatedCausesFiltered.map((c) => c.id))
+    return matched.filter((c) => !donatedIds.has(c.id))
+  }, [initialOrganizations, searchQuery, donatedCausesFiltered])
 
   const donationSubscriptionModalRecipientKind = useMemo((): "organization" | "care_alliance" => {
     if (selectedCause?.kind === "care_alliance") {
@@ -544,13 +576,13 @@ export default function DonatePage({
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5 }}
-              className="rounded-2xl border border-slate-200/70 bg-white/60 backdrop-blur-xl shadow-xl shadow-black/10 overflow-hidden text-slate-900 dark:text-white dark:border-white/10 dark:bg-purple-950/40"
+              className="relative z-30 rounded-2xl border border-slate-200/70 bg-white/60 backdrop-blur-xl shadow-xl shadow-black/10 overflow-visible text-slate-900 dark:text-white dark:border-white/10 dark:bg-purple-950/40"
             >
-              <div className="px-5 py-4 flex items-center gap-2 border-b border-slate-200/70 dark:border-white/10">
+              <div className="rounded-t-2xl px-5 py-4 flex items-center gap-2 border-b border-slate-200/70 dark:border-white/10">
                 <Heart className="h-5 w-5 text-purple-300 fill-purple-400/80 shrink-0" />
                 <h2 className="text-lg font-bold text-slate-900 dark:text-white">Select Your Donation</h2>
               </div>
-              <div className="p-5 space-y-5">
+              <div className="p-5 space-y-5 rounded-b-2xl">
                 <p className="text-sm text-slate-600 dark:text-white/70">Choose amount to donate.</p>
                 {/* Org search */}
                 <div className="relative" ref={searchContainerRef}>
@@ -600,29 +632,74 @@ export default function DonatePage({
                       </motion.div>
                     )}
                   </AnimatePresence>
-                  {isSearchFocused && !selectedCause && (searchQuery || initialOrganizations.length > 0) && (
-                    <div className="absolute z-20 w-full mt-1 rounded-lg border border-slate-200/70 bg-white/90 backdrop-blur-xl shadow-xl max-h-52 overflow-y-auto dark:border-white/20 dark:bg-purple-950/95">
+                  {isSearchFocused &&
+                    !selectedCause &&
+                    (searchQuery || initialOrganizations.length > 0 || donatedCauses.length > 0) && (
+                    <div className="absolute left-0 right-0 top-full z-50 mt-1 rounded-lg border border-slate-200/70 bg-white/90 backdrop-blur-xl shadow-xl max-h-72 overflow-y-auto dark:border-white/20 dark:bg-purple-950/95">
                       {isSearchingOrganizations ? (
                         <div className="p-3 text-center text-sm text-slate-600/70 dark:text-white/60 flex items-center justify-center gap-2">
                           <Loader2 className="h-4 w-4 animate-spin" /> Searching...
                         </div>
-                      ) : initialOrganizations.length === 0 ? (
+                      ) : donatedCausesFiltered.length === 0 && allOrganizationsFiltered.length === 0 ? (
                         <p className="p-3 text-sm text-slate-600/70 dark:text-white/60">No organizations found.</p>
                       ) : (
-                        initialOrganizations.map((cause) => (
-                          <button
-                            key={cause.id}
-                            type="button"
-                            className="w-full p-3 text-left hover:bg-white/80 flex items-center gap-3 text-slate-900 dark:hover:bg-white/10 dark:text-white"
-                            onClick={() => handleCauseSelect(cause.id)}
-                          >
-                            <CauseAvatar name={cause.name} src={cause.image} shape="square" className="h-9 w-9" />
-                            <div className="min-w-0 flex flex-col gap-1">
-                              <div className="font-medium text-sm truncate">{cause.name}</div>
-                              <CauseKindBadge kind={cause.kind} />
+                        <>
+                          {donatedCausesFiltered.length > 0 && (
+                            <div role="group" aria-label="Organizations you have donated to">
+                              <div className="sticky top-0 z-10 px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500 bg-white/95 border-b border-slate-200/60 dark:text-white/55 dark:bg-purple-950/98 dark:border-white/10">
+                                Organizations you&apos;ve supported
+                              </div>
+                              {donatedCausesFiltered.map((cause) => (
+                                <button
+                                  key={cause.id}
+                                  type="button"
+                                  className="w-full p-3 text-left hover:bg-white/80 flex items-center gap-3 text-slate-900 border-b border-slate-100/80 dark:hover:bg-white/10 dark:text-white dark:border-white/5"
+                                  onClick={() => handleCauseSelect(cause.id)}
+                                >
+                                  <CauseAvatar name={cause.name} src={cause.image} shape="square" className="h-9 w-9" />
+                                  <div className="min-w-0 flex flex-col gap-0.5 flex-1">
+                                    <div className="font-medium text-sm truncate">{cause.name}</div>
+                                    <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                                      <CauseKindBadge kind={cause.kind} />
+                                      {typeof cause.donated_total === "number" && cause.donated_total > 0 && (
+                                        <span className="text-xs text-slate-600 dark:text-white/55">
+                                          You gave $
+                                          {cause.donated_total.toLocaleString("en-US", {
+                                            minimumFractionDigits: 0,
+                                            maximumFractionDigits: 2,
+                                          })}
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                </button>
+                              ))}
                             </div>
-                          </button>
-                        ))
+                          )}
+                          {allOrganizationsFiltered.length > 0 && (
+                            <div role="group" aria-label="All organizations">
+                              {donatedCausesFiltered.length > 0 && (
+                                <div className="sticky top-0 z-10 px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500 bg-white/95 border-b border-slate-200/60 dark:text-white/55 dark:bg-purple-950/98 dark:border-white/10">
+                                  All organizations
+                                </div>
+                              )}
+                              {allOrganizationsFiltered.map((cause) => (
+                                <button
+                                  key={cause.id}
+                                  type="button"
+                                  className="w-full p-3 text-left hover:bg-white/80 flex items-center gap-3 text-slate-900 border-b border-slate-100/80 last:border-b-0 dark:hover:bg-white/10 dark:text-white dark:border-white/5"
+                                  onClick={() => handleCauseSelect(cause.id)}
+                                >
+                                  <CauseAvatar name={cause.name} src={cause.image} shape="square" className="h-9 w-9" />
+                                  <div className="min-w-0 flex flex-col gap-1">
+                                    <div className="font-medium text-sm truncate">{cause.name}</div>
+                                    <CauseKindBadge kind={cause.kind} />
+                                  </div>
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </>
                       )}
                     </div>
                   )}
@@ -704,29 +781,39 @@ export default function DonatePage({
                 {paymentMethod === "stripe" && getCurrentAmount() > 0 && (
                   <div className="rounded-xl border border-slate-200/60 bg-white/40 p-4 space-y-3 dark:border-white/15 dark:bg-white/5">
                     <div>
-                      <div className="text-xs text-slate-600/80 dark:text-white/65 mb-2 font-medium">Fee estimate for</div>
+                      <div className="text-xs text-slate-600/80 dark:text-white/65 mb-2 font-medium">Fee preview for</div>
                       <div className="grid grid-cols-2 gap-2">
                         <button
                           type="button"
                           onClick={() => setFeePreviewRail("card")}
-                          className={`rounded-xl border-2 px-3 py-2.5 text-sm font-semibold transition-all ${
+                          className={`flex flex-col items-center justify-center rounded-xl border-2 px-3 py-2.5 text-center text-sm font-semibold transition-all ${
                             feePreviewRail === "card"
                               ? "border-purple-400 bg-purple-500/25 text-slate-900 dark:text-white"
                               : "border-slate-200/60 bg-white/50 text-slate-700 hover:border-purple-400/40 dark:border-white/15 dark:bg-white/5 dark:text-white/90"
                           }`}
                         >
-                          Card
+                          <span>Card</span>
+                          {feePreviewCheckoutTotalsByRail ? (
+                            <span className="mt-1 text-xs font-medium tabular-nums text-slate-600 dark:text-white/75">
+                              Total Charged: ${feePreviewCheckoutTotalsByRail.card.toFixed(2)}
+                            </span>
+                          ) : null}
                         </button>
                         <button
                           type="button"
                           onClick={() => setFeePreviewRail("bank")}
-                          className={`rounded-xl border-2 px-3 py-2.5 text-sm font-semibold transition-all ${
+                          className={`flex flex-col items-center justify-center rounded-xl border-2 px-3 py-2.5 text-center text-sm font-semibold transition-all ${
                             feePreviewRail === "bank"
                               ? "border-purple-400 bg-purple-500/25 text-slate-900 dark:text-white"
                               : "border-slate-200/60 bg-white/50 text-slate-700 hover:border-purple-400/40 dark:border-white/15 dark:bg-white/5 dark:text-white/90"
                           }`}
                         >
-                          Bank (ACH)
+                          <span>Bank (ACH)</span>
+                          {feePreviewCheckoutTotalsByRail ? (
+                            <span className="mt-1 text-xs font-medium tabular-nums text-slate-600 dark:text-white/75">
+                              Total Charged: ${feePreviewCheckoutTotalsByRail.bank.toFixed(2)}
+                            </span>
+                          ) : null}
                         </button>
                       </div>
                       <p className="text-[11px] text-slate-500 dark:text-white/45 mt-2 leading-snug">
@@ -737,10 +824,11 @@ export default function DonatePage({
                     </div>
                     <div className="flex items-center justify-between gap-3">
                       <div className="min-w-0">
-                        <div className="text-sm font-semibold text-slate-900 dark:text-white">Cover processing fees</div>
+                        <div className="text-sm font-semibold text-slate-900 dark:text-white">Make Full Impact</div>
                         <p className="text-xs text-slate-600/85 dark:text-white/60 mt-0.5 leading-snug">
-                          On: your charge is adjusted so the nonprofit keeps your full gift. Off: fees come out of your
-                          donation. Final total is confirmed in Stripe Checkout.
+                          On: cover fees so 100% of your donation goes to the nonprofit—the extra covers processing.
+                          Off: processing fees reduce what the nonprofit receives. Final total is confirmed in Stripe
+                          Checkout.
                         </p>
                       </div>
                       <Switch checked={donorCoversProcessingFees} onCheckedChange={setDonorCoversProcessingFees} />
@@ -749,43 +837,47 @@ export default function DonatePage({
                       {feePreviewLoading && !feePreview ? (
                         <div className="flex items-center justify-center gap-2 py-6 text-slate-600/80 dark:text-white/60">
                           <Loader2 className="h-5 w-5 animate-spin shrink-0" aria-hidden />
-                          <span>Loading fee estimate…</span>
+                          <span>Loading fee preview…</span>
                         </div>
                       ) : null}
                       {feePreview ? (
                         <div className={cn("relative space-y-1.5", feePreviewLoading && "opacity-60")}>
                           {feePreview.mode === "donor_covers" ? (
                             <>
+                              <div className="flex justify-between font-semibold text-slate-900 dark:text-white">
+                                <span>Total Charged</span>
+                                <span className="tabular-nums">${feePreview.checkout_total_usd.toFixed(2)}</span>
+                              </div>
                               <div className="flex justify-between text-slate-700 dark:text-white/85">
-                                <span>Gift to nonprofit</span>
+                                <span>Donation to Nonprofit</span>
                                 <span className="font-medium tabular-nums">${feePreview.base_gift_usd.toFixed(2)}</span>
                               </div>
                               <div className="flex justify-between text-slate-600/90 dark:text-white/65">
-                                <span>
-                                  Est. processing add-on ({(feePreview.rail ?? "card") === "bank" ? "ACH" : "card"})
-                                </span>
-                                <span className="tabular-nums">+${feePreview.processing_fee_estimate.toFixed(2)}</span>
+                                <span>Processing Fees (covered by you)</span>
+                                <span className="tabular-nums">${feePreview.processing_fee_estimate.toFixed(2)}</span>
                               </div>
-                              <div className="flex justify-between font-semibold text-slate-900 dark:text-white pt-1">
-                                <span>Est. charge</span>
-                                <span className="tabular-nums">${feePreview.checkout_total_usd.toFixed(2)}</span>
+                              <div className="flex justify-between font-semibold text-slate-900 dark:text-white pt-1 border-t border-slate-200/40 dark:border-white/10">
+                                <span>✓ Nonprofit receives</span>
+                                <span className="tabular-nums">${feePreview.estimated_net_to_org_usd.toFixed(2)}</span>
                               </div>
                             </>
                           ) : (
                             <>
+                              <div className="flex justify-between font-semibold text-slate-900 dark:text-white">
+                                <span>Total Charged</span>
+                                <span className="tabular-nums">${feePreview.checkout_total_usd.toFixed(2)}</span>
+                              </div>
                               <div className="flex justify-between text-slate-700 dark:text-white/85">
-                                <span>Your donation</span>
-                                <span className="font-medium tabular-nums">${feePreview.base_gift_usd.toFixed(2)}</span>
+                                <span>Donation to Nonprofit</span>
+                                <span className="font-medium tabular-nums">${feePreview.estimated_net_to_org_usd.toFixed(2)}</span>
                               </div>
                               <div className="flex justify-between text-slate-600/90 dark:text-white/65">
-                                <span>
-                                  Est. Stripe fee ({(feePreview.rail ?? "card") === "bank" ? "ACH" : "card"})
-                                </span>
-                                <span className="tabular-nums">−${feePreview.processing_fee_estimate.toFixed(2)}</span>
+                                <span>Processing Fees</span>
+                                <span className="tabular-nums">${feePreview.processing_fee_estimate.toFixed(2)}</span>
                               </div>
-                              <div className="flex justify-between text-slate-700 dark:text-white/85 pt-1">
-                                <span>Est. to nonprofit after fees</span>
-                                <span className="font-medium tabular-nums">${feePreview.estimated_net_to_org_usd.toFixed(2)}</span>
+                              <div className="flex justify-between font-semibold text-slate-900 dark:text-white pt-1 border-t border-slate-200/40 dark:border-white/10">
+                                <span>✓ Nonprofit receives</span>
+                                <span className="tabular-nums">${feePreview.estimated_net_to_org_usd.toFixed(2)}</span>
                               </div>
                             </>
                           )}
@@ -798,7 +890,8 @@ export default function DonatePage({
                       ) : null}
                       <p className="text-[11px] text-slate-500 dark:text-white/50 pt-1 flex items-start gap-1.5">
                         <Landmark className="h-3.5 w-3.5 shrink-0 mt-0.5 opacity-80" />
-                        Sales tax may apply at checkout when enabled in Stripe.                         Stripe Checkout will only show {feePreviewRail === "bank" ? "US bank account (ACH)" : "card"} for this
+                        Sales tax may apply at checkout when enabled in Stripe. Stripe Checkout will only show{" "}
+                        {feePreviewRail === "bank" ? "US bank account (ACH)" : "card"} for this
                         donation, matching your selection above.
                       </p>
                     </div>
@@ -833,7 +926,7 @@ export default function DonatePage({
                     <span className="h-10 w-10 rounded-lg bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center shrink-0">
                       <Coins className="h-5 w-5 text-white" />
                     </span>
-                    <span className="font-semibold">Purchase Believe Points</span>
+                    <span className="font-semibold">Add Believe Points</span>
                   </span>
                   <ChevronRight className="h-5 w-5 text-slate-600/50 shrink-0 dark:text-white/70" />
                 </Link>
@@ -965,13 +1058,13 @@ export default function DonatePage({
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.1 }}
-              className="rounded-2xl border border-slate-200/80 bg-white/75 backdrop-blur-xl shadow-xl shadow-black/10 overflow-hidden text-slate-900 dark:text-white dark:border-white/10 dark:bg-purple-950/40"
+              className="relative z-30 rounded-2xl border border-slate-200/80 bg-white/75 backdrop-blur-xl shadow-xl shadow-black/10 overflow-visible text-slate-900 dark:text-white dark:border-white/10 dark:bg-purple-950/40"
             >
-              <div className="px-5 py-4 flex items-center gap-2 border-b border-slate-200/80 dark:border-white/10">
+              <div className="rounded-t-2xl px-5 py-4 flex items-center gap-2 border-b border-slate-200/80 dark:border-white/10">
                 <FileText className="h-5 w-5 text-purple-300 shrink-0" />
                 <h2 className="text-lg font-bold text-slate-900 dark:text-white">Donate a Non-Cash Asset</h2>
               </div>
-              <div className="p-5 space-y-4">
+              <div className="p-5 space-y-4 rounded-b-2xl">
                 <div>
                   <Label className="text-sm text-slate-700/80 dark:text-white/80 mb-1 block">Donation Item</Label>
                   <Input
@@ -1042,7 +1135,7 @@ export default function DonatePage({
                     ) : null}
                   </div>
                   {nonCashSearchFocused && (
-                    <div className="absolute z-20 w-full mt-1 rounded-lg border border-slate-200/70 bg-white/90 backdrop-blur-xl shadow-xl max-h-48 overflow-y-auto dark:border-white/20 dark:bg-purple-950/95">
+                    <div className="absolute left-0 right-0 top-full z-50 mt-1 rounded-lg border border-slate-200/70 bg-white/90 backdrop-blur-xl shadow-xl max-h-48 overflow-y-auto dark:border-white/20 dark:bg-purple-950/95">
                       {initialOrganizations
                         .filter((o) => !nonCashSearchQuery || o.name.toLowerCase().includes(nonCashSearchQuery.toLowerCase()))
                         .slice(0, 8)

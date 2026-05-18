@@ -32,6 +32,10 @@ interface ListingPayload {
         business_name: string | null;
     };
     max_quantity: number | null;
+    pickup_offered?: boolean;
+    pickup_address_preview?: string | null;
+    merchant_pickup_enabled?: boolean;
+    listing_pickup_enabled?: boolean;
 }
 
 interface PageProps {
@@ -136,6 +140,24 @@ export default function MarketplacePoolShow({ listing }: PageProps) {
                                 {listing.product.name}
                             </h1>
                             <p className="text-lg text-purple-600 dark:text-purple-400 font-semibold mb-4">{priceDisplay}</p>
+
+                            {listing.pickup_offered && listing.pickup_address_preview && (
+                                <div className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50/80 px-4 py-3 text-sm text-gray-800 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-50">
+                                    <p className="font-semibold text-emerald-900 dark:text-emerald-200 mb-1">Local pickup available</p>
+                                    <p className="whitespace-pre-line text-gray-700 dark:text-gray-300">{listing.pickup_address_preview}</p>
+                                    <p className="mt-2 text-xs text-gray-600 dark:text-gray-400">
+                                        Choose pickup at checkout to pay no shipping (nonprofit location above).
+                                    </p>
+                                </div>
+                            )}
+                            {!listing.pickup_offered &&
+                                listing.merchant_pickup_enabled &&
+                                !listing.listing_pickup_enabled &&
+                                ["physical", "service", "media"].includes(String(listing.product.product_type || "")) && (
+                                    <p className="text-xs text-muted-foreground mb-4">
+                                        The merchant allows pickup on this product, but this nonprofit listing does not offer local pickup yet.
+                                    </p>
+                                )}
 
                             <Card className="mb-6 border-emerald-200 dark:border-emerald-900/50 bg-emerald-50/50 dark:bg-emerald-950/20">
                                 <CardContent className="p-4">

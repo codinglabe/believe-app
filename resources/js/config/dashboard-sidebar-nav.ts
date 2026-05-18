@@ -49,6 +49,7 @@ import {
     Send,
     Store,
     CreditCard,
+    Landmark,
     FolderOpen,
     ShoppingBag,
     Search,
@@ -69,6 +70,7 @@ import {
     Activity,
     MessageCircle,
     Sparkles,
+    Trophy,
 } from 'lucide-react';
 
 /**
@@ -112,7 +114,7 @@ export const dashboardSidebarNavItems: (NavItem | NavGroup)[] = [
                 role: 'organization',
             },
             {
-                title: 'Raffles',
+                title: 'Sweepstakes',
                 href: '/raffles',
                 icon: Gift,
                 permission: 'raffle.read',
@@ -162,10 +164,30 @@ export const dashboardSidebarNavItems: (NavItem | NavGroup)[] = [
                 ],
             },
             {
-                title: 'Messaging Hb',
+                title: 'AI Media Studio',
+                href: '/ai-media-studio',
+                icon: Video,
+                permission: 'ai.media.read',
+                role: ['organization', 'organization_pending', 'care_alliance', 'user'],
+            },
+            {
+                title: 'Engagement',
                 href: '/newsletter',
                 icon: Mail,
                 permission: 'newsletter.read',
+            },
+            {
+                title: 'Email',
+                href: '/newsletter',
+                icon: Mail,
+                permission: 'newsletter.read',
+                role: ['organization', 'organization_pending', 'care_alliance', 'admin'],
+            },
+            {
+                title: 'Email Packages',
+                href: '/admin/email-packages',
+                icon: Mail,
+                role: 'admin',
             },
             {
                 title: 'Social',
@@ -281,7 +303,7 @@ export const dashboardSidebarNavItems: (NavItem | NavGroup)[] = [
                     },
                     {
                         title: 'Merchant product pool',
-                        href: '/marketplace/product-pool',
+                        href: route('marketplace.product-pool.index'),
                         icon: Package,
                         permission: 'product.read',
                     },
@@ -344,11 +366,11 @@ export const dashboardSidebarNavItems: (NavItem | NavGroup)[] = [
         icon: GraduationCap,
         items: [
             {
-                title: 'Courses',
+                title: 'Connection Hub',
                 icon: GraduationCap,
                 items: [
                     {
-                        title: 'Courses & events',
+                        title: 'Connections',
                         href: '/admin/courses-events',
                         icon: GraduationCap,
                         permission: 'course.read',
@@ -401,8 +423,14 @@ export const dashboardSidebarNavItems: (NavItem | NavGroup)[] = [
     {
         title: 'Community',
         icon: Users,
-        role: 'organization',
+        role: ['organization', 'user'],
         items: [
+            {
+                title: 'Unity Loaves',
+                href: '/dashboard/unity-loaves',
+                icon: Heart,
+                role: ['organization', 'user'],
+            },
             {
                 title: 'Followers',
                 href: route('organization.followers.index'),
@@ -410,6 +438,21 @@ export const dashboardSidebarNavItems: (NavItem | NavGroup)[] = [
                 permission: 'organization.followers.read',
                 role: 'organization',
             },
+            {
+                title: 'Kiosk listings',
+                href: route('organization.kiosk-providers.index'),
+                icon: Monitor,
+                permission: 'organization.followers.read',
+                role: 'organization',
+            },
+            {
+                title: 'Feedback & Rewards',
+                href: '/organization/feedback-rewards',
+                icon: MessageSquare,
+                role: 'organization',
+            },
+           
+
             {
                 title: 'Chat',
                 icon: MessageCircle,
@@ -438,6 +481,7 @@ export const dashboardSidebarNavItems: (NavItem | NavGroup)[] = [
         ],
     },
 
+
     {
         title: 'Opportunities',
         icon: Puzzle,
@@ -448,7 +492,7 @@ export const dashboardSidebarNavItems: (NavItem | NavGroup)[] = [
                 icon: UserCheck,
                 items: [
                     {
-                        title: 'Volunteers',
+                        title: 'Approved Volunteers',
                         href: '/volunteers',
                         icon: UserCheck,
                         permission: 'volunteer.read',
@@ -458,6 +502,13 @@ export const dashboardSidebarNavItems: (NavItem | NavGroup)[] = [
                         title: 'Supporter volunteer interests',
                         href: '/volunteers/supporter-interests',
                         icon: HeartHandshake,
+                        permission: 'volunteer.read',
+                        role: 'organization',
+                    },
+                    {
+                        title: 'Volunteer Interests',
+                        href: route('volunteers.volunteer-interests'),
+                        icon: Sparkles,
                         permission: 'volunteer.read',
                         role: 'organization',
                     },
@@ -660,6 +711,43 @@ export const dashboardSidebarNavItems: (NavItem | NavGroup)[] = [
                         role: 'admin',
                     },
                     {
+                        title: 'Challenge Hub',
+                        icon: Trophy,
+                        role: 'admin',
+                        items: [
+                            {
+                                title: 'Categories',
+                                href: route('admin.challenge-hub.categories.index'),
+                                icon: Layers,
+                                role: 'admin',
+                            },
+                            {
+                                title: 'Tracks',
+                                href: route('admin.challenge-hub.tracks.index'),
+                                icon: LayoutGrid,
+                                role: 'admin',
+                            },
+                            {
+                                title: 'Challenges',
+                                href: route('admin.challenge-hub.challenges.index'),
+                                icon: Sparkles,
+                                role: 'admin',
+                            },
+                            {
+                                title: 'Questions bank',
+                                href: route('admin.challenge-hub.questions.index'),
+                                icon: BookOpen,
+                                role: 'admin',
+                            },
+                            {
+                                title: 'Subcategories',
+                                href: route('admin.challenge-hub.subcategories.index'),
+                                icon: Tag,
+                                role: 'admin',
+                            },
+                        ],
+                    },
+                    {
                         title: 'Stripe processing fees',
                         href: '/admin/processing-fees',
                         icon: Percent,
@@ -857,6 +945,12 @@ export const dashboardSidebarNavItems: (NavItem | NavGroup)[] = [
                         role: 'organization',
                     },
                     {
+                        title: 'Stripe payouts (donations)',
+                        href: route('integrations.stripe-connect'),
+                        icon: Landmark,
+                        role: 'organization',
+                    },
+                    {
                         title: 'Dropbox (recordings)',
                         href: route('integrations.dropbox'),
                         icon: Cloud,
@@ -871,7 +965,7 @@ export const dashboardSidebarNavItems: (NavItem | NavGroup)[] = [
                 ],
             },
             {
-                title: 'Wallet',
+                title: 'Add Points',
                 href: '/believe-points',
                 icon: Wallet,
                 role: 'user',
@@ -888,7 +982,13 @@ export const dashboardSidebarNavItems: (NavItem | NavGroup)[] = [
                 href: '/ai-chat',
                 icon: Bot,
                 permission: 'ai.chat.use',
-                role: 'organization',
+                role: ['organization', 'care_alliance'],
+            },
+            {
+                title: 'AI Top Up',
+                href: '/credits/purchase',
+                icon: Coins,
+                role: ['organization', 'care_alliance'],
             },
             {
                 title: 'Livestream',

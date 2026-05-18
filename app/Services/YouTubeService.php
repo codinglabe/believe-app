@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Organization;
+use App\Models\User;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Http;
@@ -115,7 +116,7 @@ class YouTubeService
      * Fetch recent uploads from a channel. Returns array of video items for frontend.
      * Cached 5 minutes per channel so index page loads quickly on first visit and reload.
      *
-     * @return array<int, array{id: string, title: string, thumbnail_url: string, published_at: string, views: int, views_formatted: string, duration: string, watch_url: string}>
+     * @return array<int, array<string, mixed>>
      */
     public function getChannelVideos(string $channelUrl, int $maxResults = 24): array
     {
@@ -133,7 +134,8 @@ class YouTubeService
             return [];
         }
 
-        $cacheKey = 'youtube_channel_videos_' . md5($channelUrl) . '_' . $maxResults;
+        // Bump cache key when video row shape changes (Shorts classification fields).
+        $cacheKey = 'youtube_channel_videos_v2_' . md5($channelUrl) . '_' . $maxResults;
 
         return Cache::remember($cacheKey, 300, fn () => $this->fetchPlaylistVideos($uploadsPlaylistId, $maxResults));
     }
@@ -210,6 +212,11 @@ class YouTubeService
                     'views' => (int) ($detail['viewCount'] ?? 0),
                     'views_formatted' => number_format((int) ($detail['viewCount'] ?? 0)),
                     'duration' => 'LIVE',
+                    'duration_seconds' => 0,
+                    'description' => '',
+                    'thumbnail_width' => 0,
+                    'thumbnail_height' => 0,
+                    'is_youtube_short' => false,
                     'watch_url' => 'https://www.youtube.com/watch?v=' . $videoId,
                     'likes' => $likeCount,
                     'likes_formatted' => $detail['likes_formatted'] ?? number_format($likeCount),
@@ -305,7 +312,7 @@ class YouTubeService
     }
 
     /**
-     * @return array<int, array{id: string, title: string, thumbnail_url: string, published_at: string, views: int, views_formatted: string, duration: string, watch_url: string}>
+     * @return array<int, array<string, mixed>>
      */
     private function fetchPlaylistVideos(string $playlistId, int $maxResults): array
     {
@@ -340,29 +347,140 @@ class YouTubeService
                 continue;
             }
             $snippet = $item['snippet'] ?? [];
-            $thumb = $this->bestThumbnail($snippet['thumbnails'] ?? []);
+            $thumbMeta = $this->bestThumbnailMeta($snippet['thumbnails'] ?? []);
+            $thumb = $thumbMeta['url'];
             if ($thumb === '') {
                 $thumb = 'https://img.youtube.com/vi/' . $videoId . '/mqdefault.jpg';
             }
             $likeCount = (int) ($detail['likeCount'] ?? 0);
             $commentCount = (int) ($detail['commentCount'] ?? 0);
-            $out[] = [
+            $isoDuration = $detail['duration'] ?? 'PT0S';
+            $durationSeconds = $this->iso8601DurationToSeconds($isoDuration);
+            $description = (string) ($snippet['description'] ?? '');
+            $row = [
                 'id' => $videoId,
                 'title' => $snippet['title'] ?? 'Video',
+                'description' => $description,
                 'thumbnail_url' => $thumb,
+                'thumbnail_width' => $thumbMeta['width'],
+                'thumbnail_height' => $thumbMeta['height'],
                 'published_at' => $snippet['publishedAt'] ?? '',
                 'views' => (int) ($detail['viewCount'] ?? 0),
                 'views_formatted' => number_format((int) ($detail['viewCount'] ?? 0)),
-                'duration' => $this->formatIsoDuration($detail['duration'] ?? 'PT0S'),
+                'duration' => $this->formatIsoDuration($isoDuration),
+                'duration_seconds' => $durationSeconds,
                 'watch_url' => 'https://www.youtube.com/watch?v=' . $videoId,
                 'likes' => $likeCount,
                 'likes_formatted' => $detail['likes_formatted'] ?? number_format($likeCount),
                 'comment_count' => $commentCount,
                 'comment_count_formatted' => $detail['comment_count_formatted'] ?? number_format($commentCount),
             ];
+            $row['is_youtube_short'] = $this->isYoutubeShort($row);
+            if ($this->shouldOmitFromVideoHub($row)) {
+                continue;
+            }
+            $out[] = $row;
         }
 
         return $out;
+    }
+
+    /**
+     * Drop placeholders and API gaps: no empty or 0:00 duration in Videos or Shorts. LIVE streams are kept.
+     *
+     * @param  array<string, mixed>  $v
+     */
+    public function shouldOmitFromVideoHub(array $v): bool
+    {
+        $d = $v['duration'] ?? null;
+        if ($d === 'LIVE') {
+            return false;
+        }
+        if (! is_string($d) || $d === '' || trim($d) === '0:00') {
+            return true;
+        }
+        $sec = (int) ($v['duration_seconds'] ?? 0);
+        if ($sec < 1) {
+            $sec = $this->formattedDurationToSeconds($d);
+        }
+
+        return $sec < 1;
+    }
+
+    /**
+     * True when the upload should appear in the Shorts hub (not merely ≤60s horizontal clips).
+     * Uses duration (1–60s) plus Shorts hashtag / Shorts URL in metadata or portrait thumbnail from the API.
+     *
+     * @param  array<string, mixed>  $v
+     */
+    public function isYoutubeShort(array $v): bool
+    {
+        if (($v['duration'] ?? '') === 'LIVE') {
+            return false;
+        }
+
+        $seconds = (int) ($v['duration_seconds'] ?? 0);
+        if ($seconds < 1 || $seconds > 60) {
+            $seconds = $this->formattedDurationToSeconds(is_string($v['duration'] ?? null) ? (string) $v['duration'] : '');
+        }
+        if ($seconds < 1 || $seconds > 60) {
+            return false;
+        }
+
+        $title = strtolower((string) ($v['title'] ?? ''));
+        $desc = strtolower((string) ($v['description'] ?? ''));
+        if (str_contains($title, '#shorts') || str_contains($desc, '#shorts')) {
+            return true;
+        }
+        if (str_contains($desc, 'youtube.com/shorts/')) {
+            return true;
+        }
+
+        $tw = (int) ($v['thumbnail_width'] ?? 0);
+        $th = (int) ($v['thumbnail_height'] ?? 0);
+        if ($tw > 0 && $th > 0 && $th > $tw) {
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * Parse M:SS or H:M:SS from {@see formatIsoDuration()} output.
+     */
+    private function formattedDurationToSeconds(string $formatted): int
+    {
+        $formatted = trim($formatted);
+        if ($formatted === '' || $formatted === 'LIVE' || $formatted === '0:00') {
+            return 0;
+        }
+        $parts = array_map('intval', explode(':', $formatted));
+        if (count($parts) === 2) {
+            return $parts[0] * 60 + $parts[1];
+        }
+        if (count($parts) === 3) {
+            return $parts[0] * 3600 + $parts[1] * 60 + $parts[2];
+        }
+
+        return 0;
+    }
+
+    /**
+     * @return array{url: string, width: int, height: int}
+     */
+    private function bestThumbnailMeta(array $thumbnails): array
+    {
+        foreach (['maxres', 'standard', 'high', 'medium', 'default'] as $key) {
+            if (! empty($thumbnails[$key]['url'])) {
+                return [
+                    'url' => (string) $thumbnails[$key]['url'],
+                    'width' => (int) ($thumbnails[$key]['width'] ?? 0),
+                    'height' => (int) ($thumbnails[$key]['height'] ?? 0),
+                ];
+            }
+        }
+
+        return ['url' => '', 'width' => 0, 'height' => 0];
     }
 
     /**
@@ -404,6 +522,8 @@ class YouTubeService
         $likeCount = (int) ($stats['likeCount'] ?? 0);
         $commentCount = (int) ($stats['commentCount'] ?? 0);
 
+        $durationIso = $item['contentDetails']['duration'] ?? 'PT0S';
+
         return [
             'id' => $videoId,
             'title' => $snippet['title'] ?? 'Video',
@@ -419,8 +539,26 @@ class YouTubeService
             'likes_formatted' => number_format($likeCount),
             'comment_count' => $commentCount,
             'comment_count_formatted' => number_format($commentCount),
-            'duration' => $this->formatIsoDuration($item['contentDetails']['duration'] ?? 'PT0S'),
+            'duration' => $this->formatIsoDuration($durationIso),
+            'duration_seconds' => $this->iso8601DurationToSeconds($durationIso),
         ];
+    }
+
+    /**
+     * Parse ISO 8601 duration (e.g. PT1M30S) to total seconds for Shorts / uploads.
+     */
+    private function iso8601DurationToSeconds(string $iso): int
+    {
+        try {
+            $interval = new \DateInterval($iso);
+
+            return ($interval->days * 86400)
+                + ($interval->h * 3600)
+                + ($interval->i * 60)
+                + $interval->s;
+        } catch (\Exception $e) {
+            return 0;
+        }
     }
 
     /**
@@ -564,6 +702,86 @@ class YouTubeService
     }
 
     /**
+     * Valid access token for the connected supporter (user) OAuth.
+     */
+    public function getValidAccessTokenForUser(User $user): ?string
+    {
+        $expiresAt = $user->youtube_token_expires_at;
+        $bufferMinutes = 5;
+        if ($expiresAt && $expiresAt->copy()->subMinutes($bufferMinutes)->isFuture()) {
+            try {
+                return Crypt::decryptString($user->youtube_access_token);
+            } catch (\Exception $e) {
+                Log::warning('YouTube access token decrypt failed for user, will try refresh', ['user_id' => $user->id]);
+            }
+        }
+
+        return $this->refreshYoutubeTokenForUser($user);
+    }
+
+    /**
+     * Refresh YouTube OAuth tokens for a user (supporter integrations).
+     *
+     * @return string|null New access token or null on failure
+     */
+    public function refreshYoutubeTokenForUser(User $user): ?string
+    {
+        $refreshToken = $user->youtube_refresh_token;
+        if (empty($refreshToken)) {
+            Log::warning('YouTube refresh token missing', ['user_id' => $user->id]);
+
+            return null;
+        }
+
+        try {
+            $decryptedRefresh = Crypt::decryptString($refreshToken);
+        } catch (\Exception $e) {
+            Log::warning('YouTube refresh token decrypt failed', ['user_id' => $user->id]);
+
+            return null;
+        }
+
+        $clientId = config('services.youtube.client_id');
+        $clientSecret = config('services.youtube.client_secret');
+        if (empty($clientId) || empty($clientSecret)) {
+            Log::warning('YouTube OAuth client not configured');
+
+            return null;
+        }
+
+        $response = $this->http()->asForm()->post('https://oauth2.googleapis.com/token', [
+            'client_id' => $clientId,
+            'client_secret' => $clientSecret,
+            'refresh_token' => $decryptedRefresh,
+            'grant_type' => 'refresh_token',
+        ]);
+
+        if (! $response->successful()) {
+            Log::error('YouTube token refresh failed', [
+                'user_id' => $user->id,
+                'status' => $response->status(),
+                'body' => $response->body(),
+            ]);
+
+            return null;
+        }
+
+        $data = $response->json();
+        $accessToken = $data['access_token'] ?? null;
+        $expiresIn = (int) ($data['expires_in'] ?? 3600);
+        if (! $accessToken) {
+            return null;
+        }
+
+        $user->update([
+            'youtube_access_token' => Crypt::encryptString($accessToken),
+            'youtube_token_expires_at' => now()->addSeconds($expiresIn),
+        ]);
+
+        return $accessToken;
+    }
+
+    /**
      * Refresh YouTube OAuth access token using the organization's refresh_token and persist to DB.
      *
      * @return string|null New access token or null on failure
@@ -642,6 +860,16 @@ class YouTubeService
         ?\DateTime $scheduledStartTime = null
     ): ?array {
         try {
+            $existingBroadcast = $this->findBroadcastStreamKeyByTitle($accessToken, $title);
+            if ($existingBroadcast !== null) {
+                Log::info('YouTube broadcast create skipped; existing broadcast reused by title', [
+                    'title' => $title,
+                    'broadcast_id' => $existingBroadcast['broadcast_id'],
+                ]);
+
+                return $existingBroadcast;
+            }
+
             // YouTube API requires scheduledStartTime for every broadcast. Use "now" when starting immediately.
             $startTime = $scheduledStartTime ?? new \DateTime('now', new \DateTimeZone('UTC'));
             $scheduledStartTimeIso = $startTime->format('Y-m-d\TH:i:s\Z');
@@ -684,45 +912,64 @@ class YouTubeService
                 return null;
             }
 
-            // Step 2: Create the stream (API requires cdn.resolution and cdn.frameRate; cdn.format is deprecated)
-            $streamData = [
-                'snippet' => [
-                    'title' => $title . ' Stream',
-                ],
-                'cdn' => [
-                    'ingestionType' => 'rtmp',
-                    'resolution' => '1080p',
-                    'frameRate' => '30fps',
-                ],
-            ];
-
-            $streamResponse = $this->http()
-                ->withToken($accessToken)
-                ->asJson()
-                ->post($this->baseUrl . '/liveStreams?part=snippet,cdn&key=' . $this->apiKey, $streamData);
-
-            if (!$streamResponse->successful()) {
-                Log::error('YouTube stream creation failed', [
-                    'status' => $streamResponse->status(),
-                    'body' => $streamResponse->body(),
+            // Step 2: Reuse the YouTube live stream/key with this name if it already exists.
+            // This keeps one stream key per livestream title instead of creating duplicates.
+            $streamTitle = $title . ' Stream';
+            $existingStream = $this->findLiveStreamByTitle($accessToken, $streamTitle);
+            if ($existingStream !== null) {
+                Log::info('YouTube live stream reused by title', [
+                    'title' => $streamTitle,
+                    'stream_id' => $existingStream['stream_id'],
                 ]);
-                // Try to delete the broadcast we created
-                $this->http()
+
+                $streamId = $existingStream['stream_id'];
+                $streamKey = $existingStream['stream_key'];
+                $rtmpUrl = $existingStream['rtmp_url'];
+            } else {
+                // API requires cdn.resolution and cdn.frameRate; cdn.format is deprecated.
+                $streamData = [
+                    'snippet' => [
+                        'title' => $streamTitle,
+                    ],
+                    'cdn' => [
+                        'ingestionType' => 'rtmp',
+                        'resolution' => '1080p',
+                        'frameRate' => '30fps',
+                    ],
+                ];
+
+                $streamResponse = $this->http()
                     ->withToken($accessToken)
-                    ->delete($this->baseUrl . '/liveBroadcasts', [
-                        'id' => $broadcastId,
-                        'key' => $this->apiKey,
+                    ->asJson()
+                    ->post($this->baseUrl . '/liveStreams?part=snippet,cdn&key=' . $this->apiKey, $streamData);
+
+                if (!$streamResponse->successful()) {
+                    Log::error('YouTube stream creation failed', [
+                        'status' => $streamResponse->status(),
+                        'body' => $streamResponse->body(),
                     ]);
-                return null;
+                    // Try to delete the broadcast we created.
+                    $this->http()
+                        ->withToken($accessToken)
+                        ->delete($this->baseUrl . '/liveBroadcasts', [
+                            'id' => $broadcastId,
+                            'key' => $this->apiKey,
+                        ]);
+                    return null;
+                }
+
+                $stream = $streamResponse->json();
+                $streamId = $stream['id'] ?? null;
+                $streamKey = $stream['cdn']['ingestionInfo']['streamName'] ?? null;
+                $rtmpUrl = $stream['cdn']['ingestionInfo']['ingestionAddress'] ?? null;
             }
 
-            $stream = $streamResponse->json();
-            $streamId = $stream['id'] ?? null;
-            $streamKey = $stream['cdn']['ingestionInfo']['streamName'] ?? null;
-            $rtmpUrl = $stream['cdn']['ingestionInfo']['ingestionAddress'] ?? null;
-
             if (!$streamId || !$streamKey || !$rtmpUrl) {
-                Log::error('YouTube stream data incomplete', ['response' => $stream]);
+                Log::error('YouTube stream data incomplete', [
+                    'stream_id' => $streamId,
+                    'has_stream_key' => ! empty($streamKey),
+                    'rtmp_url' => $rtmpUrl,
+                ]);
                 return null;
             }
 
@@ -758,6 +1005,140 @@ class YouTubeService
             ]);
             return null;
         }
+    }
+
+    /**
+     * Find an existing non-completed broadcast on the channel by exact title and return its stream key.
+     * Used so a user creating a meeting whose name matches an existing YouTube live reuses that broadcast
+     * (and its stream key) instead of accidentally spawning duplicates.
+     *
+     * @param string $accessToken OAuth access token
+     * @param string $title Broadcast title to match (case/whitespace-insensitive)
+     * @return array{broadcast_id: string, stream_key: string, rtmp_url: string}|null
+     */
+    public function findBroadcastStreamKeyByTitle(string $accessToken, string $title): ?array
+    {
+        try {
+            $response = $this->http()
+                ->withToken($accessToken)
+                ->get($this->baseUrl . '/liveBroadcasts', [
+                    'mine' => 'true',
+                    'part' => 'snippet,contentDetails,status',
+                    'maxResults' => 50,
+                    'key' => $this->apiKey,
+                ]);
+
+            if (! $response->successful()) {
+                Log::error('YouTube broadcast title lookup failed', [
+                    'status' => $response->status(),
+                    'body' => $response->body(),
+                    'title' => $title,
+                ]);
+                return null;
+            }
+
+            $targetTitle = $this->normalizeBroadcastTitle($title);
+            foreach (($response->json('items') ?? []) as $item) {
+                $broadcastTitle = $this->normalizeBroadcastTitle((string) ($item['snippet']['title'] ?? ''));
+                if ($broadcastTitle !== $targetTitle) {
+                    continue;
+                }
+
+                $lifeCycleStatus = (string) ($item['status']['lifeCycleStatus'] ?? '');
+                if (in_array($lifeCycleStatus, ['complete', 'revoked'], true)) {
+                    continue;
+                }
+
+                $broadcastId = (string) ($item['id'] ?? '');
+                if ($broadcastId === '') {
+                    continue;
+                }
+
+                $streamData = $this->getBroadcastStreamKey($accessToken, $broadcastId);
+                if (! $streamData || empty($streamData['stream_key'])) {
+                    continue;
+                }
+
+                return [
+                    'broadcast_id' => $broadcastId,
+                    'stream_key' => $streamData['stream_key'],
+                    'rtmp_url' => $streamData['rtmp_url'],
+                ];
+            }
+        } catch (\Exception $e) {
+            Log::error('YouTube broadcast title lookup exception', [
+                'title' => $title,
+                'message' => $e->getMessage(),
+            ]);
+        }
+
+        return null;
+    }
+
+    private function normalizeBroadcastTitle(string $title): string
+    {
+        return mb_strtolower(trim(preg_replace('/\s+/', ' ', $title) ?? ''));
+    }
+
+    /**
+     * Find an existing YouTube live stream resource by exact title and return its reusable stream key.
+     *
+     * @param string $accessToken OAuth access token
+     * @param string $title Live stream title to match (case/whitespace-insensitive)
+     * @return array{stream_id: string, stream_key: string, rtmp_url: string}|null
+     */
+    private function findLiveStreamByTitle(string $accessToken, string $title): ?array
+    {
+        try {
+            $response = $this->http()
+                ->withToken($accessToken)
+                ->get($this->baseUrl . '/liveStreams', [
+                    'mine' => 'true',
+                    'part' => 'id,snippet,cdn',
+                    'maxResults' => 50,
+                    'key' => $this->apiKey,
+                ]);
+
+            if (! $response->successful()) {
+                Log::error('YouTube live stream title lookup failed', [
+                    'status' => $response->status(),
+                    'body' => $response->body(),
+                    'title' => $title,
+                ]);
+
+                return null;
+            }
+
+            $targetTitle = $this->normalizeBroadcastTitle($title);
+            foreach (($response->json('items') ?? []) as $item) {
+                $streamTitle = $this->normalizeBroadcastTitle((string) ($item['snippet']['title'] ?? ''));
+                if ($streamTitle !== $targetTitle) {
+                    continue;
+                }
+
+                $streamId = (string) ($item['id'] ?? '');
+                $cdn = $item['cdn']['ingestionInfo'] ?? [];
+                $streamKey = $cdn['streamName'] ?? null;
+                $rtmpUrl = $cdn['ingestionAddress'] ?? null;
+
+                if ($streamId === '' || ! $streamKey || ! $rtmpUrl) {
+                    continue;
+                }
+
+                return [
+                    'stream_id' => $streamId,
+                    'stream_key' => $streamKey,
+                    'rtmp_url' => $rtmpUrl,
+                ];
+            }
+        } catch (\Exception $e) {
+            Log::error('YouTube live stream title lookup exception', [
+                'title' => $title,
+                'message' => $e->getMessage(),
+            ]);
+        }
+
+        return null;
     }
 
     /**

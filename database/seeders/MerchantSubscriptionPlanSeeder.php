@@ -144,7 +144,7 @@ class MerchantSubscriptionPlanSeeder extends Seeder
 
             // Configure Stripe from database using StripeConfigService
             $stripeConfigured = StripeConfigService::configureStripe();
-            
+
             if (!$stripeConfigured) {
                 $this->command->warn("  ⚠ Stripe not configured in database. Plan will be created without Stripe IDs.");
             } else {

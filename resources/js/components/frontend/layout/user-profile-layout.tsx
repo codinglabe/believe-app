@@ -37,6 +37,7 @@ import {
   Globe,
   Youtube,
   Gavel,
+  Video,
 } from "lucide-react"
 import { Button } from "@/components/frontend/ui/button"
 import { Card, CardContent } from "@/components/frontend/ui/card"
@@ -139,17 +140,17 @@ const navigationItems = [
     color: "from-amber-500 to-yellow-600",
   },
   {
-    name: "Course",
+    name: "Connection Hub",
     href: "/profile/course",
     icon: GraduationCap,
-    description: "Course management",
+    description: "Manage listings",
     color: "from-purple-500 to-indigo-600",
   },
   {
     name: "Enrollments",
     href: "/profile/my-enrollments",
     icon: BookOpen,
-    description: "Course enrollments",
+    description: "Your enrollments",
     color: "from-purple-500 to-violet-600",
   },
   {
@@ -160,10 +161,10 @@ const navigationItems = [
     color: "from-blue-500 to-cyan-600",
   },
   {
-    name: "Raffle Tickets",
+    name: "Sweepstakes entries",
     href: "/profile/raffle-tickets",
     icon: Award,
-    description: "My raffle tickets",
+    description: "My sweepstakes entries",
     color: "from-yellow-500 to-orange-600",
   },
   {
@@ -174,10 +175,10 @@ const navigationItems = [
     color: "from-pink-500 to-rose-600",
   },
   {
-    name: "Believe Points",
+    name: "Add Points",
     href: "/believe-points",
     icon: Coins,
-    description: "Purchase and manage Believe Points",
+    description: "Fund your Believe Points wallet (1 Point = $1 USD)",
     color: "from-blue-500 to-purple-600",
   },
   {
@@ -195,10 +196,10 @@ const navigationItems = [
     color: "from-amber-500 to-yellow-600",
   },
   {
-    name: "Redemptions",
+    name: "Merchant claims",
     href: "/profile/redemptions",
     icon: QrCode,
-    description: "Merchant offer redemptions",
+    description: "Offers you claimed with reward points",
     color: "from-purple-500 to-pink-600",
   },
   // {
@@ -228,6 +229,13 @@ const navigationItems = [
     icon: CreditCard,
     description: "Billing & wallet",
     color: "from-indigo-500 to-purple-600",
+  },
+  {
+    name: "AI Media Studio",
+    href: "/ai-media-studio",
+    icon: Video,
+    description: "Short AI videos (OpenAI + fal.ai), queued in the background",
+    color: "from-fuchsia-500 to-purple-600",
   },
   {
     name: "Integrations",

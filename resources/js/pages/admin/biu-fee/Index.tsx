@@ -11,6 +11,8 @@ import { Coins, Save } from "lucide-react"
 
 interface Props {
   sales_platform_fee_percentage: number
+  marketplace_printify_organization_fee_percentage: number
+  marketplace_merchant_pool_fee_percentage: number
 }
 
 const breadcrumbs: BreadcrumbItem[] = [
@@ -19,9 +21,17 @@ const breadcrumbs: BreadcrumbItem[] = [
   { title: "BIU fee (platform)", href: "/admin/biu-fee" },
 ]
 
-export default function AdminBiuFeeIndex({ sales_platform_fee_percentage }: Props) {
+export default function AdminBiuFeeIndex({
+  sales_platform_fee_percentage,
+  marketplace_printify_organization_fee_percentage,
+  marketplace_merchant_pool_fee_percentage,
+}: Props) {
   const { data, setData, put, processing, errors } = useForm({
     sales_platform_fee_percentage: String(sales_platform_fee_percentage ?? 0),
+    marketplace_printify_organization_fee_percentage: String(
+      marketplace_printify_organization_fee_percentage ?? 0,
+    ),
+    marketplace_merchant_pool_fee_percentage: String(marketplace_merchant_pool_fee_percentage ?? 0),
   })
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -29,7 +39,9 @@ export default function AdminBiuFeeIndex({ sales_platform_fee_percentage }: Prop
     put(route("admin.biu-fee.update"))
   }
 
-  const pct = parseFloat(data.sales_platform_fee_percentage) || 0
+  const salesPct = parseFloat(data.sales_platform_fee_percentage) || 0
+  const printifyOrgPct = parseFloat(data.marketplace_printify_organization_fee_percentage) || 0
+  const merchantPoolPct = parseFloat(data.marketplace_merchant_pool_fee_percentage) || 0
 
   return (
     <AppLayout breadcrumbs={breadcrumbs}>
@@ -38,30 +50,30 @@ export default function AdminBiuFeeIndex({ sales_platform_fee_percentage }: Prop
         <div className="w-full space-y-2">
           <div className="inline-flex items-center gap-2 rounded-full border border-primary/25 bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
             <Coins className="h-3.5 w-3.5" />
-            Admin · All sales modules
+            Admin · Platform fees
           </div>
           <h1 className="text-3xl font-bold text-foreground">BIU fee (platform)</h1>
           <p className="max-w-2xl text-muted-foreground">
-            One percentage for every <span className="font-medium text-foreground">sales</span> module: marketplace cart subtotal, Service Hub order
-            amount, course or event enrollment fee, raffle tickets (face total), gift card purchase amount, and merchant hub cash redemptions. The buyer
-            still pays only the listed price plus tax/shipping where applicable — this fee is{" "}
-            <span className="font-medium text-foreground">deducted on the seller / ledger side</span>, matching the workbook (platform fee + processing
-            come out of margin, not added on top for the customer).
+            <span className="font-medium text-foreground">Marketplace checkout</span> charges supporters a platform fee on each line&apos;s subtotal: one
+            rate for Printify and organization catalog goods, and another for merchant marketplace items and organization-adopted merchant pool listings.
+            Mixed carts combine both.{" "}
+            <span className="font-medium text-foreground">Other sales modules</span> (Service Hub, courses, raffles, gift cards, merchant hub cash) use the
+            global sales rate below on each module&apos;s sale base.
           </p>
         </div>
 
         <Card className="max-w-xl border-muted">
           <CardHeader>
-            <CardTitle className="text-base">Example (like your workbook)</CardTitle>
-            <CardDescription>
-              Selling price $37.50 + tax + shipping = customer total. If this rate is ~1.87%, platform fee on the selling price is about $0.70 — shown
-              in ledger, not added to checkout.
-            </CardDescription>
+            <CardTitle className="text-base">Quick reference</CardTitle>
+            <CardDescription>Example on a $100 sale base before Stripe / transaction fees.</CardDescription>
           </CardHeader>
-          <CardContent className="text-sm text-muted-foreground space-y-1">
+          <CardContent className="text-sm text-muted-foreground space-y-2">
             <p>
-              On a $100 <span className="text-foreground font-medium">sale base</span> at {pct}%: platform fee = ${((100 * pct) / 100).toFixed(2)}{" "}
-              (before Stripe / transaction fees).
+              Global sales @ {salesPct}% → ${((100 * salesPct) / 100).toFixed(2)} platform fee.
+            </p>
+            <p>
+              Marketplace Printify/org @ {printifyOrgPct}% on $60 of lines → ${((60 * printifyOrgPct) / 100).toFixed(2)}; merchant/pool @ {merchantPoolPct}%
+              on $40 → ${((40 * merchantPoolPct) / 100).toFixed(2)} (total ${((60 * printifyOrgPct) / 100 + (40 * merchantPoolPct) / 100).toFixed(2)}).
             </p>
           </CardContent>
         </Card>
@@ -69,8 +81,66 @@ export default function AdminBiuFeeIndex({ sales_platform_fee_percentage }: Prop
         <form onSubmit={handleSubmit} className="w-full max-w-xl space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle>Sales platform fee rate</CardTitle>
-              <CardDescription>Percent of each module&apos;s sale base (see above). Stored once; all modules read it.</CardDescription>
+              <CardTitle>Marketplace — Printify &amp; organization goods</CardTitle>
+              <CardDescription>
+                Applies to organization storefront catalog lines (Printify or manual) that are not merchant-pool listings.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="marketplace_printify_organization_fee_percentage">Percent (%)</Label>
+                <Input
+                  id="marketplace_printify_organization_fee_percentage"
+                  type="number"
+                  step="0.01"
+                  min={0}
+                  max={100}
+                  value={data.marketplace_printify_organization_fee_percentage}
+                  onChange={(e) => setData("marketplace_printify_organization_fee_percentage", e.target.value)}
+                  className="font-mono max-w-xs"
+                />
+                {errors.marketplace_printify_organization_fee_percentage && (
+                  <p className="text-sm text-red-600">{errors.marketplace_printify_organization_fee_percentage}</p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Marketplace — Merchant &amp; merchant pool</CardTitle>
+              <CardDescription>
+                Applies to direct merchant marketplace SKUs, organization pool adoptions, catalog rows linked to a merchant pool product, and{" "}
+                <span className="font-medium text-foreground">Merchant Hub offer</span> cash checkouts.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="marketplace_merchant_pool_fee_percentage">Percent (%)</Label>
+                <Input
+                  id="marketplace_merchant_pool_fee_percentage"
+                  type="number"
+                  step="0.01"
+                  min={0}
+                  max={100}
+                  value={data.marketplace_merchant_pool_fee_percentage}
+                  onChange={(e) => setData("marketplace_merchant_pool_fee_percentage", e.target.value)}
+                  className="font-mono max-w-xs"
+                />
+                {errors.marketplace_merchant_pool_fee_percentage && (
+                  <p className="text-sm text-red-600">{errors.marketplace_merchant_pool_fee_percentage}</p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Global sales platform fee</CardTitle>
+              <CardDescription>
+                Service Hub orders, course or event fees, raffle ticket face totals, gift card purchases, merchant hub cash redemptions — not marketplace
+                cart lines.
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
@@ -85,14 +155,13 @@ export default function AdminBiuFeeIndex({ sales_platform_fee_percentage }: Prop
                   onChange={(e) => setData("sales_platform_fee_percentage", e.target.value)}
                   className="font-mono max-w-xs"
                 />
-                <p className="text-xs text-muted-foreground">Example: 1.87 for about $0.70 on a $37.50 product subtotal.</p>
                 {errors.sales_platform_fee_percentage && (
                   <p className="text-sm text-red-600">{errors.sales_platform_fee_percentage}</p>
                 )}
               </div>
               <Button type="submit" disabled={processing} className="gap-2">
                 <Save className="h-4 w-4" />
-                Save
+                Save all
               </Button>
             </CardContent>
           </Card>

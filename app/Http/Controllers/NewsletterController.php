@@ -15,14 +15,13 @@ use App\Models\User;
 use App\Services\BelievePointsPaymentMethodSyncService;
 use App\Services\NewsletterAiHtmlSanitizer;
 use App\Services\OpenAiService;
-use App\Support\StripeAutomaticTax;
 use App\Support\StripeCustomerChargeAmount;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Bus;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Schema;
@@ -724,7 +723,7 @@ AIHTML;
      * Organization IDs the authenticated user may access for newsletters and templates.
      * Admins: unrestricted (returns null; callers skip org filters).
      *
-     * @return array<int>|null  null = no org filter (admin); empty array = user has no org access
+     * @return array<int>|null null = no org filter (admin); empty array = user has no org access
      */
     protected function newsletterOrganizationScope(Request $request): ?array
     {
@@ -3552,7 +3551,7 @@ TXT;
                 $amountInCents,
                 $package->name,
                 1,
-                StripeAutomaticTax::mergeCheckoutOptions([
+                [
                     'success_url' => route('newsletter.purchase-sms.success').'?'.$successQs,
                     'cancel_url' => $cancelUrl,
                     'metadata' => [
@@ -3565,7 +3564,7 @@ TXT;
                         'return_to' => $returnToNewsletter ? 'newsletter' : '',
                     ],
                     'payment_method_types' => ['card'],
-                ])
+                ]
             );
 
             return Inertia::location($checkout->url);
@@ -3974,7 +3973,7 @@ TXT;
                 $amountInCents,
                 'Newsletter Pro targeting (lifetime)',
                 1,
-                StripeAutomaticTax::mergeCheckoutOptions([
+                [
                     'success_url' => route('newsletter.purchase-pro-targeting.success').'?session_id={CHECKOUT_SESSION_ID}',
                     'cancel_url' => route('newsletter.create-advanced').'?canceled=1',
                     'metadata' => [
@@ -3984,7 +3983,7 @@ TXT;
                         'amount' => (string) $priceUsd,
                     ],
                     'payment_method_types' => ['card'],
-                ])
+                ]
             );
 
             return Inertia::location($checkout->url);

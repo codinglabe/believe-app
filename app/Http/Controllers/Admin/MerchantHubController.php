@@ -107,7 +107,7 @@ class MerchantHubController extends BaseController
             $counter = 1;
             $originalSlug = $validated['slug'];
             while (MerchantHubMerchant::where('slug', $validated['slug'])->exists()) {
-                $validated['slug'] = $originalSlug . '-' . $counter;
+                $validated['slug'] = $originalSlug.'-'.$counter;
                 $counter++;
             }
         }
@@ -124,10 +124,11 @@ class MerchantHubController extends BaseController
             return redirect()->route('admin.merchant-hub.merchants.index')
                 ->with('success', 'Merchant created successfully.');
         } catch (\Exception $e) {
-            Log::error('Merchant hub merchant creation error: ' . $e->getMessage());
+            Log::error('Merchant hub merchant creation error: '.$e->getMessage());
+
             return redirect()->back()
                 ->withInput()
-                ->with('error', 'Failed to create merchant: ' . $e->getMessage());
+                ->with('error', 'Failed to create merchant: '.$e->getMessage());
         }
     }
 
@@ -163,7 +164,7 @@ class MerchantHubController extends BaseController
 
         $validated = $request->validate([
             'name' => 'required|string|max:255',
-            'slug' => 'nullable|string|max:255|unique:merchant_hub_merchants,slug,' . $merchant->id,
+            'slug' => 'nullable|string|max:255|unique:merchant_hub_merchants,slug,'.$merchant->id,
             'logo' => 'nullable|image|mimes:jpeg,png,jpg,gif,webp|max:5120',
             'is_active' => 'boolean',
         ], [
@@ -183,7 +184,7 @@ class MerchantHubController extends BaseController
             $counter = 1;
             $originalSlug = $validated['slug'];
             while (MerchantHubMerchant::where('slug', $validated['slug'])->where('id', '!=', $merchant->id)->exists()) {
-                $validated['slug'] = $originalSlug . '-' . $counter;
+                $validated['slug'] = $originalSlug.'-'.$counter;
                 $counter++;
             }
         }
@@ -217,10 +218,11 @@ class MerchantHubController extends BaseController
             return redirect()->route('admin.merchant-hub.merchants.index')
                 ->with('success', 'Merchant updated successfully.');
         } catch (\Exception $e) {
-            Log::error('Merchant hub merchant update error: ' . $e->getMessage());
+            Log::error('Merchant hub merchant update error: '.$e->getMessage());
+
             return redirect()->back()
                 ->withInput()
-                ->withErrors(['error' => 'Failed to update merchant: ' . $e->getMessage()])
+                ->withErrors(['error' => 'Failed to update merchant: '.$e->getMessage()])
                 ->with('error', 'Failed to update merchant. Please check the form for errors.');
         }
     }
@@ -244,9 +246,10 @@ class MerchantHubController extends BaseController
             return redirect()->route('admin.merchant-hub.merchants.index')
                 ->with('success', 'Merchant deleted successfully.');
         } catch (\Exception $e) {
-            Log::error('Merchant hub merchant deletion error: ' . $e->getMessage());
+            Log::error('Merchant hub merchant deletion error: '.$e->getMessage());
+
             return redirect()->back()
-                ->with('error', 'Failed to delete merchant: ' . $e->getMessage());
+                ->with('error', 'Failed to delete merchant: '.$e->getMessage());
         }
     }
 
@@ -297,6 +300,7 @@ class MerchantHubController extends BaseController
             if ($offer->image_url && strpos($offer->image_url, 'http') !== 0) {
                 $offer->image_url = Storage::disk('public')->url($offer->image_url);
             }
+
             return $offer;
         });
 
@@ -354,6 +358,7 @@ class MerchantHubController extends BaseController
             'starts_at' => 'nullable|date',
             'ends_at' => 'nullable|date|after_or_equal:starts_at',
             'status' => 'required|in:draft,active,paused,expired',
+            'pickup_available' => 'sometimes|boolean',
         ], [
             'merchant_hub_merchant_id.required' => 'Please select a merchant.',
             'merchant_hub_merchant_id.exists' => 'The selected merchant does not exist.',
@@ -387,16 +392,19 @@ class MerchantHubController extends BaseController
         }
         unset($validated['image']); // Remove the file object from validated data
 
+        $validated['pickup_available'] = $request->boolean('pickup_available');
+
         try {
             MerchantHubOffer::create($validated);
 
             return redirect()->route('admin.merchant-hub.offers.index')
                 ->with('success', 'Offer created successfully.');
         } catch (\Exception $e) {
-            Log::error('Merchant hub offer creation error: ' . $e->getMessage());
+            Log::error('Merchant hub offer creation error: '.$e->getMessage());
+
             return redirect()->back()
                 ->withInput()
-                ->withErrors(['error' => 'Failed to create offer: ' . $e->getMessage()])
+                ->withErrors(['error' => 'Failed to create offer: '.$e->getMessage()])
                 ->with('error', 'Failed to create offer. Please check the form for errors.');
         }
     }
@@ -451,6 +459,7 @@ class MerchantHubController extends BaseController
             'starts_at' => 'nullable|date',
             'ends_at' => 'nullable|date|after_or_equal:starts_at',
             'status' => 'required|in:draft,active,paused,expired',
+            'pickup_available' => 'sometimes|boolean',
         ], [
             'merchant_hub_merchant_id.required' => 'Please select a merchant.',
             'merchant_hub_merchant_id.exists' => 'The selected merchant does not exist.',
@@ -501,16 +510,19 @@ class MerchantHubController extends BaseController
         }
         unset($validated['image']); // Remove the file object from validated data
 
+        $validated['pickup_available'] = $request->boolean('pickup_available');
+
         try {
             $offer->update($validated);
 
             return redirect()->route('admin.merchant-hub.offers.index')
                 ->with('success', 'Offer updated successfully.');
         } catch (\Exception $e) {
-            Log::error('Merchant hub offer update error: ' . $e->getMessage());
+            Log::error('Merchant hub offer update error: '.$e->getMessage());
+
             return redirect()->back()
                 ->withInput()
-                ->withErrors(['error' => 'Failed to update offer: ' . $e->getMessage()])
+                ->withErrors(['error' => 'Failed to update offer: '.$e->getMessage()])
                 ->with('error', 'Failed to update offer. Please check the form for errors.');
         }
     }
@@ -534,9 +546,10 @@ class MerchantHubController extends BaseController
             return redirect()->route('admin.merchant-hub.offers.index')
                 ->with('success', 'Offer deleted successfully.');
         } catch (\Exception $e) {
-            Log::error('Merchant hub offer deletion error: ' . $e->getMessage());
+            Log::error('Merchant hub offer deletion error: '.$e->getMessage());
+
             return redirect()->back()
-                ->with('error', 'Failed to delete offer: ' . $e->getMessage());
+                ->with('error', 'Failed to delete offer: '.$e->getMessage());
         }
     }
 
@@ -636,9 +649,10 @@ class MerchantHubController extends BaseController
             return redirect()->back()
                 ->with('success', 'Redemption status updated successfully.');
         } catch (\Exception $e) {
-            \Illuminate\Support\Facades\Log::error('Merchant hub redemption status update error: ' . $e->getMessage());
+            \Illuminate\Support\Facades\Log::error('Merchant hub redemption status update error: '.$e->getMessage());
+
             return redirect()->back()
-                ->with('error', 'Failed to update redemption status: ' . $e->getMessage());
+                ->with('error', 'Failed to update redemption status: '.$e->getMessage());
         }
     }
 }

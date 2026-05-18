@@ -28,6 +28,25 @@ class Organization extends Model
         return $user->organization;
     }
 
+    /**
+     * Display name + label for BIU tax intake (Connection Hub / admin course forms).
+     * Nonprofit org profile name when the user has an org (owner or board-linked); otherwise the account name.
+     *
+     * @return array{name: string, label: 'Organization name'|'Your name'}
+     */
+    public static function biuSellerDisplayForUser(User $user): array
+    {
+        $org = static::forAuthUser($user);
+        if ($org !== null) {
+            $n = trim((string) ($org->name ?? ''));
+            if ($n !== '') {
+                return ['name' => $n, 'label' => 'Organization name'];
+            }
+        }
+
+        return ['name' => (string) ($user->name ?? ''), 'label' => 'Your name'];
+    }
+
     protected $fillable = [
         'user_id',
         'balance',
@@ -73,6 +92,9 @@ class Organization extends Model
         'is_compliance_locked',
         'gift_card_terms_approved',
         'gift_card_terms_approved_at',
+        'stripe_connect_account_id',
+        'stripe_connect_charges_enabled',
+        'stripe_connect_payouts_enabled',
         'dropbox_folder_name',
     ];
 
@@ -93,6 +115,8 @@ class Organization extends Model
         'is_compliance_locked' => 'boolean',
         'gift_card_terms_approved' => 'boolean',
         'gift_card_terms_approved_at' => 'datetime',
+        'stripe_connect_charges_enabled' => 'boolean',
+        'stripe_connect_payouts_enabled' => 'boolean',
         'youtube_token_expires_at' => 'datetime',
         'dropbox_token_expires_at' => 'datetime',
     ];
@@ -218,6 +242,27 @@ class Organization extends Model
         }
 
         return User::query()->whereIn('id', $ids)->get();
+    }
+
+    /**
+     * User IDs to notify when a supporter who favorites this nonprofit has a birthday (primary owner + board).
+     *
+     * @return Collection<int, int>
+     */
+    public function supporterBirthdayNotifyUserIds(): Collection
+    {
+        $ids = collect();
+
+        if ($this->user_id) {
+            $ids->push((int) $this->user_id);
+        }
+
+        $this->boardMembers()
+            ->whereNotNull('user_id')
+            ->pluck('user_id')
+            ->each(fn ($uid) => $ids->push((int) $uid));
+
+        return $ids->unique()->filter()->values();
     }
 
     /**
@@ -463,6 +508,11 @@ class Organization extends Model
         return $this->belongsToMany(User::class, 'user_favorite_organizations', 'organization_id', 'user_id')
             ->withPivot('notifications') // notifications column include
             ->withTimestamps();
+    }
+
+    public function kioskProviders(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(KioskProvider::class, 'organization_id');
     }
 
     /**
@@ -728,5 +778,10 @@ class Organization extends Model
     public function activeLivestreams()
     {
         return $this->livestreams()->where('status', 'live');
+    }
+
+    public function aiVideos()
+    {
+        return $this->hasMany(AiVideo::class);
     }
 }

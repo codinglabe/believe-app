@@ -37,6 +37,7 @@ import {
   Sparkles,
 } from "lucide-react"
 import PromotionalBanner from "@/components/PromotionalBanner"
+import MarketplaceSavingsHighlight from "@/components/frontend/MarketplaceSavingsHighlight"
 import ProfileCompletionBanner from "@/components/ProfileCompletionBanner"
 import { CareAllianceOrgInvitesInline } from "@/components/CareAllianceOrgInvitesInline"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -1158,9 +1159,14 @@ export default function Dashboard({
         {isOrgUser && profileCompletion && profileCompletion.percent < 100 && (
           <ProfileCompletionBanner profileCompletion={profileCompletion} variant="organization" />
         )}
-        {/* Promotional Banner - Only shown for organization users */}
-        {isOrgUser && (promotionalBanners || promotionalBanner) && (
-          <PromotionalBanner banner={promotionalBanner} banners={promotionalBanners || null} />
+        {/* Marketplace savings callout + promotional banners (org dashboard) */}
+        {isOrgUser && (
+          <div className="flex flex-col gap-3">
+            <MarketplaceSavingsHighlight variant="dashboard" />
+            {(promotionalBanners || promotionalBanner) && (
+              <PromotionalBanner banner={promotionalBanner} banners={promotionalBanners || null} />
+            )}
+          </div>
         )}
         {/* <div className="bg-card border-border rounded-lg border p-6 shadow-sm">
           <h1 className="text-2xl font-bold">

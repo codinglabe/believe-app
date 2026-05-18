@@ -42,8 +42,6 @@ class Order extends Model
         'total_amount',
         'shipping_cost',
         'tax_amount',
-        'stripe_tax_amount',
-        'stripe_tax_calculation_id',
         'stripe_fee_amount',
         'stripe_processing_fee_addon',
         'printify_tax_amount',

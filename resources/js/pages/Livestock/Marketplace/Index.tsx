@@ -112,7 +112,7 @@ export default function MarketplaceIndex({ listings, speciesList, breedsList, lo
             if (max) params.max_price = max
             if (loc) params.location = loc
             
-            router.get(route('marketplace.index'), params, {
+            router.get(route('livestock.marketplace.index'), params, {
                 preserveState: true,
                 replace: true
             })
@@ -127,7 +127,7 @@ export default function MarketplaceIndex({ listings, speciesList, breedsList, lo
         setMinPrice('')
         setMaxPrice('')
         setLocation('')
-        router.get(route('marketplace.index'), {}, {
+        router.get(route('livestock.marketplace.index'), {}, {
             preserveState: true,
             replace: true
         })
@@ -426,7 +426,7 @@ export default function MarketplaceIndex({ listings, speciesList, breedsList, lo
                                             
                                             {/* Action Button */}
                                             <div className="pt-2 border-t border-gray-200 dark:border-gray-700">
-                                                <Link href={route('marketplace.show', listing.id)} className="block">
+                                                <Link href={route('livestock.marketplace.show', listing.id)} className="block">
                                                     <Button 
                                                         variant="outline" 
                                                         size="sm" 

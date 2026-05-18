@@ -113,7 +113,7 @@ export default function LivestockLayout({ children }: LivestockLayoutProps) {
                                     Home
                                 </Button>
                             </Link>
-                            <Link href={route('marketplace.index')}>
+                            <Link href={route('livestock.marketplace.index')}>
                                 <Button 
                                     variant="ghost" 
                                     size="sm" 
@@ -159,7 +159,7 @@ export default function LivestockLayout({ children }: LivestockLayoutProps) {
                                                 </div>
                                             </DropdownMenuLabel>
                                             <DropdownMenuSeparator />
-                                            <Link href={route('marketplace.index')}>
+                                            <Link href={route('livestock.marketplace.index')}>
                                                 <DropdownMenuItem className="cursor-pointer">
                                                     <ShoppingBag className="h-4 w-4 mr-2" />
                                                     Browse Marketplace
@@ -277,7 +277,7 @@ export default function LivestockLayout({ children }: LivestockLayoutProps) {
                             <Button variant="ghost" className="w-full justify-start">Home</Button>
                         </Link>
                         <Link
-                            href={route('marketplace.index')}
+                            href={route('livestock.marketplace.index')}
                             className="block"
                             onClick={() => setMobileMenuOpen(false)}
                         >
@@ -304,7 +304,7 @@ export default function LivestockLayout({ children }: LivestockLayoutProps) {
                                         </div>
                                     </div>
                                     <Link
-                                        href={route('marketplace.index')}
+                                        href={route('livestock.marketplace.index')}
                                         className="block mb-2"
                                         onClick={() => setMobileMenuOpen(false)}
                                     >
@@ -411,7 +411,7 @@ export default function LivestockLayout({ children }: LivestockLayoutProps) {
                             <h3 className="font-semibold mb-4 text-base sm:text-lg">For Buyers</h3>
                             <ul className="space-y-3 text-sm sm:text-base text-gray-400">
                                 <li>
-                                    <Link href={route('marketplace.index')} className="hover:text-amber-400 transition-colors">
+                                    <Link href={route('livestock.marketplace.index')} className="hover:text-amber-400 transition-colors">
                                         Browse Animals
                                     </Link>
                                 </li>

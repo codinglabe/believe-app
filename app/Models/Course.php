@@ -28,8 +28,19 @@ class Course extends Model
         'start_date',
         'start_time',
         'end_date',
-        'duration',
+        'session_duration_minutes',
         'format',
+        'course_delivery_type',
+        'has_physical_materials',
+        'pricing_structure',
+        'requires_shipping',
+        'tax_ack_outside_ca',
+        'tax_ack_auto_calculate',
+        'tax_classification',
+        'course_content_type',
+        'digital_course_fee',
+        'materials_fee',
+        'shipping_fee_amount',
         'max_participants',
         'language',
         'target_audience',
@@ -54,14 +65,22 @@ class Course extends Model
         'accessibility_features' => 'array',
         'certificate_provided' => 'boolean',
         'volunteer_opportunities' => 'boolean',
+        'has_physical_materials' => 'boolean',
+        'requires_shipping' => 'boolean',
+        'tax_ack_outside_ca' => 'boolean',
+        'tax_ack_auto_calculate' => 'boolean',
         'course_fee' => 'decimal:2',
+        'digital_course_fee' => 'decimal:2',
+        'materials_fee' => 'decimal:2',
+        'shipping_fee_amount' => 'decimal:2',
         'rating' => 'decimal:1',
         'start_date' => 'date',
         'end_date' => 'date',
         'last_updated' => 'datetime',
+        'session_duration_minutes' => 'integer',
     ];
 
-    protected $appends = ['image_url', 'formatted_price', 'formatted_duration', 'formatted_format'];
+    protected $appends = ['image_url', 'formatted_price', 'formatted_duration', 'formatted_format', 'formatted_program_length'];
 
     // Relationships
     public function topic(): BelongsTo
@@ -141,15 +160,54 @@ class Course extends Model
 
     public function getFormattedDurationAttribute(): string
     {
-        return match ($this->duration) {
-            '1_session' => '1 Session',
-            '1_week' => '1 Week',
-            '2_weeks' => '2 Weeks',
-            '1_month' => '1 Month',
-            '6_weeks' => '6 Weeks',
-            '3_months' => '3 Months',
-            default => ucfirst(str_replace('_', ' ', $this->duration ?? '')),
-        };
+        $m = (int) ($this->session_duration_minutes ?? \App\Support\SessionDurationMinutes::default());
+
+        return $m.' min';
+    }
+
+    /** Inclusive calendar span from start_date through end_date, in weeks (null if no end date). */
+    public function getProgramLengthWeeksAttribute(): ?float
+    {
+        if ($this->start_date === null || $this->end_date === null) {
+            return null;
+        }
+
+        $start = $this->start_date instanceof \Carbon\CarbonInterface
+            ? $this->start_date->copy()->startOfDay()
+            : \Carbon\Carbon::parse($this->start_date)->startOfDay();
+        $end = $this->end_date instanceof \Carbon\CarbonInterface
+            ? $this->end_date->copy()->startOfDay()
+            : \Carbon\Carbon::parse($this->end_date)->startOfDay();
+
+        if ($end->lt($start)) {
+            return null;
+        }
+
+        $days = $start->diffInDays($end) + 1;
+
+        return round($days / 7, 2);
+    }
+
+    /** Human-readable program length when start and end dates are set. */
+    public function getFormattedProgramLengthAttribute(): ?string
+    {
+        $weeks = $this->program_length_weeks;
+        if ($weeks === null) {
+            return null;
+        }
+
+        if ($weeks <= 0) {
+            return null;
+        }
+
+        $rounded = round($weeks, 1);
+        if ($rounded <= 1.0) {
+            return 'About 1 week';
+        }
+
+        return (fmod($rounded, 1.0) < 0.05
+            ? (string) (int) round($rounded, 0)
+            : (string) $rounded).' weeks';
     }
 
     public function getFormattedFormatAttribute(): string

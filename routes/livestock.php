@@ -27,8 +27,8 @@ use Inertia\Inertia;
 // ============================================
 // These routes are only accessible on bidalivestock.test domain
 
-// Public Marketplace Routes
-Route::prefix('marketplace')->name('marketplace.')->group(function () {
+// Public Marketplace Routes (namespaced so Ziggy/main app keep `marketplace.index` for BIU nonprofit marketplace)
+Route::prefix('marketplace')->name('livestock.marketplace.')->group(function () {
     Route::get('/', [LivestockMarketplaceController::class, 'index'])->name('index');
     Route::get('/{id}', [LivestockMarketplaceController::class, 'show'])->name('show');
     
@@ -172,7 +172,7 @@ Route::middleware('guest')->group(function () {
 
 Route::middleware('auth:livestock')->group(function () {
     Route::get('verify-email', LivestockEmailVerificationPromptController::class)
-        ->name('verification.notice');
+        ->name('livestock.verification.notice');
 
     Route::get('verify-email/{id}/{hash}', LivestockVerifyEmailController::class)
         ->middleware(['signed', 'throttle:6,1'])
@@ -180,10 +180,10 @@ Route::middleware('auth:livestock')->group(function () {
 
     Route::post('email/verification-notification', [LivestockEmailVerificationNotificationController::class, 'store'])
         ->middleware('throttle:6,1')
-        ->name('verification.send');
+        ->name('livestock.verification.send');
 
     Route::get('confirm-password', [ConfirmablePasswordController::class, 'show'])
-        ->name('password.confirm');
+        ->name('livestock.password.confirm');
 
     Route::post('confirm-password', [ConfirmablePasswordController::class, 'store']);
 

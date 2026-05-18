@@ -212,7 +212,7 @@ export default function RedemptionShow({ redemption }: Props) {
 
                       <div className="pt-4 border-t border-gray-700 rounded-lg bg-gray-800/50 p-4">
                         <h4 className="text-sm font-semibold text-white mb-1">How the supporter paid</h4>
-                        <p className="text-xs text-gray-400 mb-3">This customer used the following to redeem this offer:</p>
+                        <p className="text-xs text-gray-400 mb-3">This customer used the following to claim this offer:</p>
                         <div className="flex flex-col sm:flex-row gap-3">
                           {redemption.pointsUsed > 0 ? (
                             <div className="flex items-center gap-3 px-4 py-3 bg-[#2563EB]/15 rounded-lg border border-[#2563EB]/40 flex-1">
@@ -407,7 +407,7 @@ export default function RedemptionShow({ redemption }: Props) {
                   <div className="flex items-start gap-3">
                     <div className="w-2 h-2 rounded-full bg-[#2563EB] mt-2 flex-shrink-0"></div>
                     <div className="min-w-0 flex-1">
-                      <p className="text-xs sm:text-sm font-semibold text-white">Redeemed</p>
+                      <p className="text-xs sm:text-sm font-semibold text-white">Claimed</p>
                       <p className="text-xs text-gray-400 break-words">
                         {new Date(redemption.redeemedAt).toLocaleString()}
                       </p>

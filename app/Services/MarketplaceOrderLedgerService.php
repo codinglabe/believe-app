@@ -285,7 +285,6 @@ final class MarketplaceOrderLedgerService
             'gross_amount' => round((float) $order->total_amount, 2),
             'subtotal' => round((float) $order->subtotal, 2),
             'sales_tax' => round((float) ($order->tax_amount ?? 0), 2),
-            'stripe_tax_amount' => round((float) ($order->stripe_tax_amount ?? $order->tax_amount ?? 0), 2),
             'shipping_amount' => round((float) ($order->shipping_cost ?? 0), 2),
             'platform_fee' => round($platformFee, 2),
             'stripe_fee' => round(max(0, $stripeFeeUsd), 2),
@@ -352,7 +351,6 @@ final class MarketplaceOrderLedgerService
         $financials['net_to_organization'] = self::netPayableFromOrder($order, $stripe);
         $financials['subtotal_amount'] = round((float) $order->subtotal, 2);
         $financials['sales_tax_amount'] = round((float) ($order->tax_amount ?? 0), 2);
-        $financials['stripe_tax_amount'] = round((float) ($order->stripe_tax_amount ?? $order->tax_amount ?? 0), 2);
         $financials['stripe_fee_amount'] = round((float) ($order->stripe_fee_amount ?? $financials['stripe_fee'] ?? 0), 2);
         $financials['shipping_amount'] = round((float) ($order->shipping_cost ?? 0), 2);
         $financials['supplier_payout'] = round($merchNet, 2);

@@ -206,7 +206,7 @@ function DateColumn({ newsletter }: { newsletter: Newsletter }) {
         return (
             <div className="text-sm">
                 <p className="font-medium text-zinc-100">{primary}</p>
-                <p className="text-xs text-zinc-500">Scheduled send</p>
+                <p className="text-xs text-zinc-500">Scheduled</p>
             </div>
         )
     }
@@ -332,7 +332,7 @@ export default function NewsletterIndex({
 
     return (
         <AppSidebarLayout>
-            <Head title="Newsletter Dashboard" />
+            <Head title="Engagement" />
 
             <div className="min-h-[calc(100vh-4rem)] w-full max-w-none bg-zinc-950 px-4 py-6 sm:px-6 lg:px-8 xl:px-10">
                 <div className="w-full max-w-none space-y-6">
@@ -375,15 +375,15 @@ export default function NewsletterIndex({
                     {/* Header */}
                     <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                         <div>
-                            <h1 className="text-2xl font-bold tracking-tight text-white sm:text-3xl">Newsletter Dashboard</h1>
+                            <h1 className="text-2xl font-bold tracking-tight text-white sm:text-3xl">Engagement</h1>
                             <p className="mt-1 max-w-xl text-sm text-zinc-500">
-                                Drafts, scheduled sends, and completed newsletters in one place.
+                                Draft, schedule, and track Engagement in one place.
                             </p>
                         </div>
                         <Link href={route("newsletter.create")}>
                             <Button className={cn("w-full sm:w-auto", brandButtonClass)}>
                                 <Plus className="mr-2 h-4 w-4" />
-                                Create newsletter
+                                New Engagement
                             </Button>
                         </Link>
                     </div>
@@ -398,15 +398,16 @@ export default function NewsletterIndex({
                                         variant="outline"
                                         size="sm"
                                         className="border-white/15 bg-zinc-950/80 text-zinc-200 hover:bg-zinc-800"
+                                        aria-label="Quick actions: new Engagement, templates, advanced composer"
                                     >
                                         <LayoutGrid className="mr-2 h-4 w-4" />
-                                        Newsletters
+                                        Quick actions
                                         <ChevronDown className="ml-2 h-3.5 w-3.5 opacity-60" />
                                     </Button>
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="start" className="w-56 border-white/10 bg-zinc-950 text-zinc-100">
                                     <DropdownMenuItem asChild className="focus:bg-zinc-800">
-                                        <Link href={route("newsletter.create")}>New newsletter</Link>
+                                        <Link href={route("newsletter.create")}>New Engagement</Link>
                                     </DropdownMenuItem>
                                     <DropdownMenuItem asChild className="focus:bg-zinc-800">
                                         <Link href={route("newsletter.templates")}>Templates</Link>
@@ -419,7 +420,7 @@ export default function NewsletterIndex({
                             </DropdownMenu>
 
                             <div className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-zinc-950 px-3 py-1 text-xs font-medium text-zinc-300">
-                                <span className="text-zinc-500">Newsletters</span>
+                                <span className="text-zinc-500">Total</span>
                                 <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-emerald-600/90 px-1.5 text-[11px] font-semibold text-white">
                                     {totalOnPage}
                                 </span>
@@ -530,11 +531,11 @@ export default function NewsletterIndex({
                         <div className="relative min-w-0 flex-1">
                             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
                             <Input
-                                placeholder="Search your newsletters…"
+                                placeholder="Search Engagement…"
                                 value={searchTerm}
                                 onChange={(e) => setSearchTerm(e.target.value)}
                                 className="border-white/10 bg-zinc-900/80 pl-9 pr-9 text-zinc-100 placeholder:text-zinc-600"
-                                aria-label="Search newsletters"
+                                aria-label="Search Engagement"
                             />
                             {searchTerm ? (
                                 <button
@@ -549,11 +550,11 @@ export default function NewsletterIndex({
                         </div>
                         <div className="w-full shrink-0 sm:w-56">
                             <Select value={statusFilter} onValueChange={setTabOrStatus}>
-                                <SelectTrigger className="border-white/10 bg-zinc-900/80 text-zinc-100" aria-label="All newsletters">
-                                    <SelectValue placeholder="All newsletters" />
+                                <SelectTrigger className="border-white/10 bg-zinc-900/80 text-zinc-100" aria-label="All Engagement">
+                                    <SelectValue placeholder="All Engagement" />
                                 </SelectTrigger>
                                 <SelectContent className="border-white/10 bg-zinc-950 text-zinc-100">
-                                    <SelectItem value="all">All newsletters</SelectItem>
+                                    <SelectItem value="all">All Engagement</SelectItem>
                                     <SelectItem value="draft">Drafts</SelectItem>
                                     <SelectItem value="scheduled">Scheduled</SelectItem>
                                     <SelectItem value="sent">Sent</SelectItem>
@@ -568,7 +569,7 @@ export default function NewsletterIndex({
                     {/* Main card: tabs + table */}
                     <div className="overflow-hidden rounded-2xl border border-white/10 bg-zinc-900/40 shadow-xl shadow-black/20">
                         <div className="flex flex-col gap-3 border-b border-white/10 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5">
-                            <div className="inline-flex flex-wrap gap-1 rounded-lg bg-zinc-950/80 p-1" aria-label="Newsletter status filters">
+                            <div className="inline-flex flex-wrap gap-1 rounded-lg bg-zinc-950/80 p-1" aria-label="Engagement status filters">
                                 {STATUS_TABS.map((tab) => (
                                     <button
                                         key={tab.id}
@@ -588,10 +589,10 @@ export default function NewsletterIndex({
                             <div className="flex flex-wrap items-center gap-2">
                                 <Select value={statusFilter} onValueChange={setTabOrStatus}>
                                     <SelectTrigger className="h-9 min-w-[150px] border-white/10 bg-zinc-950 text-xs text-zinc-200">
-                                        <SelectValue placeholder="All newsletters" />
+                                        <SelectValue placeholder="All Engagement" />
                                     </SelectTrigger>
                                     <SelectContent className="border-white/10 bg-zinc-950 text-zinc-100">
-                                        <SelectItem value="all">All newsletters</SelectItem>
+                                        <SelectItem value="all">All Engagement</SelectItem>
                                         <SelectItem value="draft">Draft</SelectItem>
                                         <SelectItem value="scheduled">Scheduled</SelectItem>
                                         <SelectItem value="sent">Sent</SelectItem>
@@ -677,7 +678,7 @@ export default function NewsletterIndex({
                                                                 }}
                                                             >
                                                                 <Send className="mr-1.5 h-3.5 w-3.5" />
-                                                                Send
+                                                                Start
                                                             </Button>
                                                         ) : null}
                                                     </div>
@@ -691,14 +692,14 @@ export default function NewsletterIndex({
                                     <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-purple-600/25 to-blue-600/25 text-purple-300">
                                         <Sparkles className="h-6 w-6" aria-hidden />
                                     </div>
-                                    <h3 className="mt-4 text-lg font-semibold text-white">No newsletters match</h3>
+                                    <h3 className="mt-4 text-lg font-semibold text-white">No Engagement matches</h3>
                                     <p className="mx-auto mt-2 max-w-md text-sm text-zinc-500">
-                                        Try another filter or create a new newsletter.
+                                        Try another filter or create new Engagement.
                                     </p>
                                     <Link href={route("newsletter.create")} className="mt-6 inline-block">
                                         <Button className={brandButtonClass}>
                                             <Plus className="mr-2 h-4 w-4" />
-                                            Create newsletter
+                                            New Engagement
                                         </Button>
                                     </Link>
                                 </div>
@@ -760,9 +761,9 @@ export default function NewsletterIndex({
                     <ConfirmationModal
                         isOpen={isSendModalOpen}
                         onChange={setIsSendModalOpen}
-                        title="Send Newsletter"
-                        description={`Are you sure you want to send "${newsletterToSend?.subject}" immediately? This will override any scheduled time.`}
-                        confirmLabel="Send Now"
+                        title="Start Engagement"
+                        description={`Start "${newsletterToSend?.subject}" now? This will override any scheduled time.`}
+                        confirmLabel="Start now"
                         cancelLabel="Cancel"
                         onConfirm={() => {
                             if (newsletterToSend) {

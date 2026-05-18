@@ -1,7 +1,21 @@
 "use client"
 import type React from "react"
 import { Head, useForm, usePage, Link } from "@inertiajs/react"
-import { ArrowLeft, Save, Heart, Calendar, Users, BookOpen, Settings, AlertCircle, CheckCircle } from "lucide-react"
+import {
+  Save,
+  Heart,
+  Calendar,
+  BookOpen,
+  Settings,
+  AlertCircle,
+  CheckCircle,
+  ChevronRight,
+  ArrowLeft,
+  Sparkles,
+  ExternalLink,
+  Users,
+  Star,
+} from "lucide-react"
 import { Button } from "@/components/admin/ui/button"
 import { Input } from "@/components/admin/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -9,16 +23,23 @@ import { Switch } from "@/components/admin/ui/switch"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/admin/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import RichTextEditor from "@/components/admin/rich-text-editor"
-import ArrayInput from "@/components/admin/array-input"
 import { ImageUpload } from "@/components/admin/ImageUpload"
 import type { User } from "@/types"
 import { toast } from "sonner"
 import ProfileLayout from "@/components/frontend/layout/user-profile-layout"
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
+import BiuCourseTaxIntake from "@/components/biu-course-tax-intake"
+import {
+  OrganizationPrimaryActionCategoriesField,
+  type PrimaryActionCategoryOption,
+} from "@/components/organization-primary-action-categories-field"
+import { connectionHubTypeLabel, isEventsHubType, type ConnectionHubType } from "@/lib/connection-hub-type"
+import { SESSION_DURATION_MINUTES_OPTIONS, sessionDurationLabel } from "@/lib/session-duration-options"
 
-interface Topic {
+interface EventType {
   id: number
   name: string
+  category: string
 }
 
 interface Organization {
@@ -33,9 +54,17 @@ interface Creator {
   email: string
 }
 
+interface Topic {
+  id: number
+  name: string
+}
+
 interface Course {
   id: number
+  type: ConnectionHubType
   topic_id: number | null
+  event_type_id: number | null
+  primary_action_category_ids?: number[]
   organization_id: number
   user_id: number
   name: string
@@ -46,7 +75,7 @@ interface Course {
   start_date: string
   start_time: string
   end_date: string | null
-  duration: "1_session" | "1_week" | "2_weeks" | "1_month" | "6_weeks" | "3_months"
+  session_duration_minutes: number
   format: "online" | "in_person" | "hybrid"
   max_participants: number
   language: string
@@ -71,17 +100,42 @@ interface Course {
   image_url: string | null
   formatted_price: string
   formatted_duration: string
+  formatted_program_length?: string | null
   formatted_format: string
   meeting_link?: string | null
+  course_delivery_type?: "online" | "live" | "hybrid" | null
+  has_physical_materials?: boolean | null
+  pricing_structure?: "bundled" | "separate" | null
+  requires_shipping?: boolean | null
+  tax_ack_outside_ca?: boolean | null
+  tax_ack_auto_calculate?: boolean | null
+  tax_classification?: string | null
+  course_content_type?: string | null
+  digital_course_fee?: number | null
+  materials_fee?: number | null
+  shipping_fee_amount?: number | null
 }
 
 interface AdminCoursesEditProps {
   course: Course
-  topics: Topic[]
+  eventTypes: EventType[]
+  companionEventTypes?: EventType[]
+  organizationPrimaryActionCategories: PrimaryActionCategoryOption[]
+  causesCatalogSource?: "organization" | "supporter"
+  organizationName?: string | null
+  sellerNameLabel?: string
 }
 
 export default function AdminCoursesEdit() {
-  const { course, topics } = usePage<AdminCoursesEditProps>().props
+  const {
+    course,
+    eventTypes,
+    companionEventTypes = [],
+    organizationPrimaryActionCategories,
+    causesCatalogSource,
+    organizationName,
+    sellerNameLabel,
+  } = usePage<AdminCoursesEditProps>().props
   const { auth } = usePage().props as { auth: { user: User } }
 
   const [currentTab, setCurrentTab] = useState("basics")
@@ -91,9 +145,11 @@ export default function AdminCoursesEdit() {
 
   const { data, setData, post, processing, errors, reset } = useForm({
     // Basic Information (pre-populated with existing data)
+    type: course.type || "companion",
     name: course.name,
     description: course.description,
-    topic_id: course.topic_id?.toString() || "",
+    event_type_id: course.event_type_id?.toString() || "",
+    primary_action_category_ids: (course.primary_action_category_ids ?? []).map((id) => String(id)),
 
     // Pricing (pre-populated)
     pricing_type: course.pricing_type,
@@ -103,7 +159,7 @@ export default function AdminCoursesEdit() {
     start_date: Date.parse(course.start_date) ? course.start_date.substring(0, 10) : "",
     start_time: course.start_time.substring(0, 5),
     end_date: course.end_date && Date.parse(course.end_date) ? course.end_date.substring(0, 10) : "",
-    duration: course.duration,
+    session_duration_minutes: String(course.session_duration_minutes ?? 60),
     format: course.format,
     meeting_link: course.meeting_link || "", // Added meeting_link field
 
@@ -130,23 +186,101 @@ export default function AdminCoursesEdit() {
 
     // Laravel method spoofing for updates
     _method: "PUT",
+    course_delivery_type:
+      (course.course_delivery_type as "online" | "live" | "hybrid" | undefined) || "online",
+    course_content_type:
+      (course.course_content_type as
+        | "written_material"
+        | "video_streamed"
+        | "video_streamed_downloadable"
+        | "general"
+        | undefined) || "general",
+    has_physical_materials: Boolean(course.has_physical_materials),
+    pricing_structure: (course.pricing_structure as "bundled" | "separate" | undefined) || "",
+    requires_shipping: Boolean(course.requires_shipping),
+    digital_course_fee: course.digital_course_fee != null ? String(course.digital_course_fee) : "",
+    materials_fee: course.materials_fee != null ? String(course.materials_fee) : "",
+    shipping_fee_amount: course.shipping_fee_amount != null ? String(course.shipping_fee_amount) : "",
+    tax_ack_outside_ca: Boolean(course.tax_ack_outside_ca),
+    tax_ack_auto_calculate: Boolean(course.tax_ack_auto_calculate),
   })
+
+  const topicCatalog = useMemo(() => {
+    if (data.type === "companion") return companionEventTypes
+    return eventTypes
+  }, [data.type, companionEventTypes, eventTypes])
+
+  const groupedEventTypes = useMemo(() => {
+    return topicCatalog.reduce(
+      (acc, type) => {
+        const category = type.category || "Other"
+        if (!acc[category]) acc[category] = []
+        acc[category].push(type)
+        return acc
+      },
+      {} as Record<string, EventType[]>,
+    )
+  }, [topicCatalog])
+
+  useEffect(() => {
+    const ids = new Set(topicCatalog.map((t) => t.id.toString()))
+    if (data.event_type_id && ids.has(data.event_type_id)) return
+    setData("event_type_id", topicCatalog[0]?.id?.toString() ?? "")
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally only when hub `type` or topic catalog changes
+  }, [data.type, topicCatalog])
+
+  const formattedProgramLengthPreview = useMemo(() => {
+    if (!data.start_date || !data.end_date) return null
+    const start = new Date(`${data.start_date}T12:00:00`)
+    const end = new Date(`${data.end_date}T12:00:00`)
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end < start) return null
+    const days = Math.floor((end.getTime() - start.getTime()) / 86400000) + 1
+    const weeks = days / 7
+    if (weeks <= 1) return "About 1 week"
+    const rounded = Math.round(weeks * 10) / 10
+    return `${rounded} weeks`
+  }, [data.start_date, data.end_date])
 
   const validateTab = (tab: string): boolean => {
     switch (tab) {
-      case "basics":
-        return !!(data.name && data.description && data.topic_id)
+      case "basics": {
+        const feeSplit =
+          data.pricing_type === "paid" && data.has_physical_materials && data.pricing_structure === "separate"
+        const hasPricing =
+          !!data.pricing_type &&
+          (data.pricing_type === "free" ||
+            (data.pricing_type === "paid" &&
+              (feeSplit ? !!(data.digital_course_fee && data.materials_fee) : !!data.course_fee)))
+        const basicsOk = !!(data.type && data.name && data.description && data.event_type_id && hasPricing)
+        if (!basicsOk) {
+          return false
+        }
+        if (data.pricing_type !== "paid") {
+          return true
+        }
+        if (!data.course_delivery_type) {
+          return false
+        }
+        if (data.course_delivery_type === "online" && !data.course_content_type) {
+          return false
+        }
+        if (data.has_physical_materials && !data.pricing_structure) {
+          return false
+        }
+        if (!data.tax_ack_outside_ca || !data.tax_ack_auto_calculate) {
+          return false
+        }
+        return true
+      }
       case "schedule":
         return !!(
           data.meeting_link &&
           data.format &&
           data.start_date &&
           data.start_time &&
-          data.duration &&
+          data.session_duration_minutes &&
           data.max_participants
         )
-      case "content":
-        return data.learning_outcomes.length > 0
       case "settings":
         return true
       default:
@@ -158,7 +292,6 @@ export default function AdminCoursesEdit() {
     const newTabErrors = {
       basics: !validateTab("basics"),
       schedule: !validateTab("schedule"),
-      content: !validateTab("content"),
       settings: !validateTab("settings"),
     }
     setTabErrors(newTabErrors)
@@ -168,17 +301,33 @@ export default function AdminCoursesEdit() {
     if (Object.keys(errors).length > 0) {
       const errorFields = Object.keys(errors)
       if (
-        errorFields.some((field) => ["name", "description", "topic_id", "pricing_type", "course_fee"].includes(field))
+        errorFields.some((field) =>
+          [
+            "name",
+            "description",
+            "type",
+            "event_type_id",
+            "primary_action_category_ids",
+            "pricing_type",
+            "course_fee",
+            "course_delivery_type",
+            "has_physical_materials",
+            "pricing_structure",
+            "requires_shipping",
+            "tax_ack_outside_ca",
+            "tax_ack_auto_calculate",
+          ].includes(field),
+        )
       ) {
         setCurrentTab("basics")
       } else if (
         errorFields.some((field) =>
-          ["meeting_link", "format", "start_date", "start_time", "duration", "max_participants"].includes(field),
+          ["meeting_link", "format", "start_date", "start_time", "session_duration_minutes", "max_participants"].includes(
+            field,
+          ),
         )
       ) {
         setCurrentTab("schedule")
-      } else if (errorFields.some((field) => ["learning_outcomes"].includes(field))) {
-        setCurrentTab("content")
       }
     }
   }, [errors])
@@ -191,28 +340,40 @@ export default function AdminCoursesEdit() {
     }
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
+  const handleSave = () => {
+    if (!validateTab("basics")) {
+      setCurrentTab("basics")
+      toast.error("Please complete all required fields in the Basics tab.")
+      return
+    }
+    if (!validateTab("schedule")) {
+      setCurrentTab("schedule")
+      toast.error("Please complete all required fields in the Schedule tab.")
+      return
+    }
     post(route("profile.course.update", course.slug), {
       forceFormData: true,
       onSuccess: () => {
-        toast.success("Course updated successfully!", {
-          description: "Your community course has been updated.",
+        toast.success("Listing updated successfully!", {
+          description: "Your Connection Hub listing has been updated.",
         })
       },
       onError: (err) => {
         console.error("Form submission error:", err)
-        toast.error("Failed to update course.", {
+        toast.error("Failed to update listing.", {
           description: "Please check the form for errors and try again.",
         })
       },
     })
   }
 
+  const tabTriggerClass =
+    "relative flex items-center justify-center gap-2 rounded-xl data-[state=active]:bg-white data-[state=active]:text-purple-700 data-[state=active]:shadow-md dark:data-[state=active]:bg-gray-800 dark:data-[state=active]:text-purple-300"
+
   const TabTriggerWithStatus = ({ value, children }: { value: string; children: React.ReactNode }) => (
     <TabsTrigger
       value={value}
-      className={`relative ${!canSwitchTab[value] ? "opacity-50 cursor-not-allowed" : ""}`}
+      className={`${tabTriggerClass} ${!canSwitchTab[value] ? "cursor-not-allowed opacity-50" : ""}`}
       onClick={(e) => {
         if (!canSwitchTab[value]) {
           e.preventDefault()
@@ -226,95 +387,214 @@ export default function AdminCoursesEdit() {
     </TabsTrigger>
   )
 
-  return (
-    <ProfileLayout title="Course Edit" description={`Edit Course - ${course.name}`}>
-      <Head title={`Edit Course - ${course.name}`} />
+  const statCardClass =
+    "rounded-xl border border-gray-200/90 bg-white p-4 shadow-sm transition hover:border-purple-200/60 hover:shadow-md dark:border-gray-800 dark:bg-gray-900/40 dark:hover:border-purple-900/50"
 
-      <div className="space-y-6 m-6">
-        <Card>
-          <CardHeader>
-            <CardTitle>Course Statistics</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-              <div className="text-center p-4 bg-blue-50 rounded-lg">
-                <div className="text-2xl font-bold text-blue-600">{course.enrolled}</div>
-                <div className="text-sm text-muted-foreground">Enrolled Students</div>
+  return (
+    <ProfileLayout title="Edit listing" description={course.name}>
+      <Head title={`Edit listing · ${course.name}`} />
+
+      <div className="mx-auto max-w-7xl animate-in fade-in duration-500 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+        <div className="relative mb-8 overflow-hidden rounded-2xl border border-slate-200/90 bg-gradient-to-br from-white via-slate-50/80 to-purple-50/40 p-6 shadow-sm dark:border-gray-800 dark:from-gray-900 dark:via-gray-900 dark:to-purple-950/30 sm:p-8">
+          <div
+            className="pointer-events-none absolute -right-16 -top-16 h-48 w-48 rounded-full bg-purple-500/15 blur-3xl dark:bg-purple-500/10"
+            aria-hidden
+          />
+          <Link
+            href={route("profile.course.index")}
+            className="mb-4 inline-flex items-center gap-2 text-sm font-medium text-gray-600 transition hover:text-purple-700 dark:text-gray-400 dark:hover:text-purple-400"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Back to Connection Hub
+          </Link>
+          <div className="relative flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
+            <div className="flex max-w-2xl gap-4">
+              <div className="hidden h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-purple-600 to-blue-600 text-white shadow-lg shadow-purple-500/25 sm:flex">
+                <Sparkles className="h-7 w-7" aria-hidden />
               </div>
-              <div className="text-center p-4 bg-green-50 rounded-lg">
-                <div className="text-2xl font-bold text-green-600">{course.rating}</div>
-                <div className="text-sm text-muted-foreground">Average Rating</div>
-              </div>
-              <div className="text-center p-4 bg-purple-50 rounded-lg">
-                <div className="text-2xl font-bold text-purple-600">{course.total_reviews}</div>
-                <div className="text-sm text-muted-foreground">Total Reviews</div>
-              </div>
-              <div className="text-center p-4 bg-orange-50 rounded-lg">
-                <div className="text-2xl font-bold text-orange-600">{course.formatted_duration}</div>
-                <div className="text-sm text-muted-foreground">Duration</div>
+              <div className="min-w-0 space-y-1">
+                <h1 className="text-2xl font-bold tracking-tight text-gray-900 dark:text-white sm:text-3xl">
+                  Edit listing
+                </h1>
+                <p className="line-clamp-2 text-sm text-gray-600 dark:text-gray-400">{course.name}</p>
               </div>
             </div>
-          </CardContent>
-        </Card>
+            <div className="flex flex-wrap gap-2 sm:justify-end">
+              <Link href={`/courses/${course.slug}`} target="_blank" rel="noreferrer">
+                <Button variant="outline" className="gap-2 border-gray-200 bg-white/80 dark:border-gray-700 dark:bg-gray-900/50">
+                  <ExternalLink className="h-4 w-4" />
+                  View public page
+                </Button>
+              </Link>
+              <Link href={route("profile.course.show", course.slug)}>
+                <Button variant="secondary" className="gap-2">
+                  Manage enrollments
+                </Button>
+              </Link>
+            </div>
+          </div>
+        </div>
 
-        <form onSubmit={handleSubmit}>
+        <section className="mb-8">
+          <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+            Listing snapshot
+          </p>
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 lg:gap-4">
+            <div className={statCardClass}>
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <p className="text-xs font-medium text-gray-500 dark:text-gray-400">Enrolled</p>
+                  <p className="mt-1 text-2xl font-bold tabular-nums text-blue-600 dark:text-blue-400">{course.enrolled}</p>
+                </div>
+                <div className="rounded-xl bg-blue-100 p-2.5 dark:bg-blue-900/40">
+                  <Users className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                </div>
+              </div>
+            </div>
+            <div className={statCardClass}>
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <p className="text-xs font-medium text-gray-500 dark:text-gray-400">Avg rating</p>
+                  <p className="mt-1 text-2xl font-bold tabular-nums text-amber-600 dark:text-amber-400">
+                    {course.rating}
+                  </p>
+                </div>
+                <div className="rounded-xl bg-amber-100 p-2.5 dark:bg-amber-900/40">
+                  <Star className="h-5 w-5 fill-amber-500 text-amber-600 dark:text-amber-400" />
+                </div>
+              </div>
+            </div>
+            <div className={statCardClass}>
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <p className="text-xs font-medium text-gray-500 dark:text-gray-400">Reviews</p>
+                  <p className="mt-1 text-2xl font-bold tabular-nums text-purple-600 dark:text-purple-300">
+                    {course.total_reviews}
+                  </p>
+                </div>
+                <div className="rounded-xl bg-purple-100 p-2.5 dark:bg-purple-900/40">
+                  <Heart className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+                </div>
+              </div>
+            </div>
+            <div className={statCardClass}>
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <p className="text-xs font-medium text-gray-500 dark:text-gray-400">Session</p>
+                  <p className="mt-1 text-lg font-bold tabular-nums text-orange-600 dark:text-orange-300">
+                    {course.formatted_duration}
+                  </p>
+                </div>
+                <div className="rounded-xl bg-orange-100 p-2.5 dark:bg-orange-900/40">
+                  <Calendar className="h-5 w-5 text-orange-600 dark:text-orange-400" />
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <form
+          onSubmit={(e) => {
+            e.preventDefault()
+          }}
+        >
           <Tabs value={currentTab} onValueChange={handleTabChange} className="space-y-6">
-            <TabsList className="grid w-full grid-cols-4">
+            <TabsList className="grid h-auto w-full grid-cols-3 gap-2 rounded-2xl border border-gray-200/90 bg-gray-50/90 p-2 dark:border-gray-800 dark:bg-gray-900/50">
               <TabTriggerWithStatus value="basics">
-                <BookOpen className="h-4 w-4" />
-                Basics
+                <BookOpen className="h-4 w-4 shrink-0" />
+                <span className="hidden sm:inline">Basics</span>
+                <span className="sm:hidden">1</span>
               </TabTriggerWithStatus>
               <TabTriggerWithStatus value="schedule">
-                <Calendar className="h-4 w-4" />
-                Schedule
+                <Calendar className="h-4 w-4 shrink-0" />
+                <span className="hidden sm:inline">Schedule</span>
+                <span className="sm:hidden">2</span>
               </TabTriggerWithStatus>
-              <TabTriggerWithStatus value="content">
-                <Users className="h-4 w-4" />
-                Content
-              </TabTriggerWithStatus>
-              <TabsTrigger value="settings" className="flex items-center gap-2">
-                <Settings className="h-4 w-4" />
-                Settings
+              <TabsTrigger value="settings" className={tabTriggerClass}>
+                <Settings className="h-4 w-4 shrink-0" />
+                <span className="hidden sm:inline">Settings</span>
+                <span className="sm:hidden">3</span>
+                {tabErrors.settings && <AlertCircle className="h-3 w-3 shrink-0 text-destructive" />}
               </TabsTrigger>
             </TabsList>
 
             <TabsContent value="basics">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Course Basics</CardTitle>
+              <Card className="overflow-hidden rounded-2xl border border-gray-200/90 shadow-lg dark:border-gray-800">
+                <CardHeader className="border-b border-gray-100 bg-gray-50/50 dark:border-gray-800 dark:bg-gray-900/30">
+                  <CardTitle className="text-lg font-semibold">{connectionHubTypeLabel(data.type)} basics</CardTitle>
+                  <p className="text-sm font-normal text-gray-500 dark:text-gray-400">
+                    Name, topic, pricing, causes, and description
+                  </p>
                 </CardHeader>
                 <CardContent className="space-y-6">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="space-y-2">
+                      <label htmlFor="type" className="text-sm font-medium">
+                        Type *
+                      </label>
+                      <Select value={data.type} onValueChange={(value) => setData("type", value as ConnectionHubType)}>
+                        <SelectTrigger className={errors.type ? "border-destructive" : ""}>
+                          <SelectValue placeholder="Select type" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="companion">Companion</SelectItem>
+                          <SelectItem value="learning">{connectionHubTypeLabel("learning")}</SelectItem>
+                          <SelectItem value="events">Events</SelectItem>
+                          {data.type === "earning" && (
+                            <SelectItem value="earning">{connectionHubTypeLabel("earning")}</SelectItem>
+                          )}
+                        </SelectContent>
+                      </Select>
+                      {errors.type && <p className="text-sm text-destructive">{errors.type}</p>}
+                    </div>
+
+                    <div className="space-y-2">
                       <label htmlFor="name" className="text-sm font-medium">
-                        Course Name *
+                        Name *
                       </label>
                       <Input
                         id="name"
                         value={data.name}
                         onChange={(e) => setData("name", e.target.value)}
-                        placeholder="e.g., Digital Literacy for Seniors"
+                        placeholder={
+                          isEventsHubType(data.type)
+                            ? "e.g., Community Health Fair"
+                            : "e.g., Digital Literacy for Seniors"
+                        }
                         className={errors.name ? "border-destructive" : ""}
                       />
                       {errors.name && <p className="text-sm text-destructive">{errors.name}</p>}
                     </div>
 
                     <div className="space-y-2">
-                      <label htmlFor="topic_id" className="text-sm font-medium">
-                        Course Topic *
+                      <label htmlFor="event_type_id" className="text-sm font-medium">
+                        Topic *
                       </label>
-                      <Select value={data.topic_id.toString()} onValueChange={(value) => setData("topic_id", value)}>
-                        <SelectTrigger className={errors.topic_id ? "border-destructive" : ""}>
+                      <Select
+                        value={data.event_type_id || ""}
+                        onValueChange={(value) => setData("event_type_id", value)}
+                      >
+                        <SelectTrigger className={errors.event_type_id ? "border-destructive" : ""}>
                           <SelectValue placeholder="Select topic" />
                         </SelectTrigger>
                         <SelectContent>
-                          {topics.map((topic) => (
-                            <SelectItem key={topic.id} value={topic.id.toString()}>
-                              {topic.name}
-                            </SelectItem>
+                          {Object.entries(groupedEventTypes).map(([category, types]) => (
+                            <div key={category}>
+                              <div className="px-2 py-1.5 text-sm font-semibold text-gray-500 bg-gray-100 dark:bg-gray-800">
+                                {category}
+                              </div>
+                              {types.map((t) => (
+                                <SelectItem key={t.id} value={t.id.toString()}>
+                                  {t.name}
+                                </SelectItem>
+                              ))}
+                            </div>
                           ))}
                         </SelectContent>
                       </Select>
+                      {errors.event_type_id && (
+                        <p className="text-sm text-destructive">{errors.event_type_id}</p>
+                      )}
                     </div>
 
                     <div className="space-y-2">
@@ -342,24 +622,66 @@ export default function AdminCoursesEdit() {
                             <SelectItem value="paid">Paid</SelectItem>
                           </SelectContent>
                         </Select>
-                        {data.pricing_type === "paid" && (
-                          <Input
-                            type="number"
-                            min="0"
-                            step="5"
-                            value={data.course_fee}
-                            onChange={(e) => setData("course_fee", e.target.value)}
-                            placeholder="Price ($)"
-                            className="flex-1"
-                          />
-                        )}
+                        {data.pricing_type === "paid" &&
+                          !(data.has_physical_materials && data.pricing_structure === "separate") && (
+                            <Input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={data.course_fee}
+                              onChange={(e) => setData("course_fee", e.target.value)}
+                              placeholder="Price ($)"
+                              className="flex-1"
+                            />
+                          )}
+                        {data.pricing_type === "paid" &&
+                          data.has_physical_materials &&
+                          data.pricing_structure === "separate" && (
+                            <p className="text-sm text-muted-foreground flex-1">
+                              Set digital, materials, and optional shipping below — total updates the price.
+                            </p>
+                          )}
                       </div>
                     </div>
                   </div>
 
+                  <BiuCourseTaxIntake
+                    show={data.pricing_type === "paid"}
+                    data={{
+                      course_delivery_type: data.course_delivery_type,
+                      course_content_type: data.course_content_type,
+                      has_physical_materials: data.has_physical_materials,
+                      pricing_structure: data.pricing_structure,
+                      requires_shipping: data.requires_shipping,
+                      digital_course_fee: data.digital_course_fee,
+                      materials_fee: data.materials_fee,
+                      shipping_fee_amount: data.shipping_fee_amount,
+                      tax_ack_outside_ca: data.tax_ack_outside_ca,
+                      tax_ack_auto_calculate: data.tax_ack_auto_calculate,
+                    }}
+                    setData={setData}
+                    errors={errors}
+                    organizationName={organizationName}
+                    sellerNameLabel={sellerNameLabel}
+                    hubType={data.type}
+                    pricingType={data.pricing_type}
+                  />
+
+                  <OrganizationPrimaryActionCategoriesField
+                    categories={organizationPrimaryActionCategories}
+                    causesCatalogSource={causesCatalogSource ?? "organization"}
+                    selectedIds={data.primary_action_category_ids}
+                    onSelectionChange={(ids) => setData("primary_action_category_ids", ids)}
+                    error={
+                      typeof errors.primary_action_category_ids === "string"
+                        ? errors.primary_action_category_ids
+                        : undefined
+                    }
+                  />
+
                   <div className="space-y-2">
                     <label htmlFor="description" className="text-sm font-medium">
-                      Course Description *
+                      Description *
                     </label>
                     <RichTextEditor
                       label=""
@@ -371,17 +693,37 @@ export default function AdminCoursesEdit() {
                   </div>
 
                   <div className="space-y-2">
-                    <label className="text-sm font-medium">Course Image</label>
+                    <label className="text-sm font-medium">Listing image</label>
                     <ImageUpload label="" value={null} onChange={(file) => setData("image", file)} />
+                  </div>
+
+                  <div className="flex justify-end border-t border-gray-100 pt-6 dark:border-gray-800">
+                    <Button
+                      type="button"
+                      className="min-w-[160px] bg-gradient-to-r from-purple-600 to-blue-600 shadow-md shadow-purple-500/15 hover:from-purple-700 hover:to-blue-700"
+                      onClick={() => {
+                        if (validateTab("basics")) {
+                          setCurrentTab("schedule")
+                        } else {
+                          toast.error("Please complete all required fields in the Basics tab before continuing.")
+                        }
+                      }}
+                    >
+                      Continue
+                      <ChevronRight className="ml-2 h-4 w-4" aria-hidden />
+                    </Button>
                   </div>
                 </CardContent>
               </Card>
             </TabsContent>
 
             <TabsContent value="schedule">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Schedule & Meeting Details</CardTitle>
+              <Card className="overflow-hidden rounded-2xl border border-gray-200/90 shadow-lg dark:border-gray-800">
+                <CardHeader className="border-b border-gray-100 bg-gray-50/50 dark:border-gray-800 dark:bg-gray-900/30">
+                  <CardTitle className="text-lg font-semibold">Schedule & meeting details</CardTitle>
+                  <p className="text-sm font-normal text-gray-500 dark:text-gray-400">
+                    When participants meet, duration, and capacity
+                  </p>
                 </CardHeader>
                 <CardContent className="space-y-6">
                   <div className="space-y-2">
@@ -398,7 +740,7 @@ export default function AdminCoursesEdit() {
                     />
                     {errors.meeting_link && <p className="text-sm text-destructive">{errors.meeting_link}</p>}
                     <p className="text-xs text-muted-foreground">
-                      Provide the meeting link where participants will join the course
+                      Provide the meeting link where participants will join
                     </p>
                   </div>
 
@@ -444,7 +786,14 @@ export default function AdminCoursesEdit() {
                         className={errors.end_date ? "border-destructive" : ""}
                       />
                       {errors.end_date && <p className="text-sm text-destructive">{errors.end_date}</p>}
-                      <p className="text-xs text-muted-foreground">Optional: Leave blank for single session courses</p>
+                      <p className="text-xs text-muted-foreground">
+                        Optional. When set with a start date, program length is calculated for display (weeks).
+                      </p>
+                      {formattedProgramLengthPreview ? (
+                        <p className="text-xs font-medium text-purple-700 dark:text-purple-300">
+                          Program length: ~{formattedProgramLengthPreview}
+                        </p>
+                      ) : null}
                     </div>
 
                     <div className="space-y-2">
@@ -461,22 +810,27 @@ export default function AdminCoursesEdit() {
                     </div>
 
                     <div className="space-y-2">
-                      <label htmlFor="duration" className="text-sm font-medium">
-                        Duration *
+                      <label htmlFor="session_duration_minutes" className="text-sm font-medium">
+                        Session duration *
                       </label>
-                      <Select value={data.duration} onValueChange={(value) => setData("duration", value)}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select duration" />
+                      <Select
+                        value={data.session_duration_minutes}
+                        onValueChange={(value) => setData("session_duration_minutes", value)}
+                      >
+                        <SelectTrigger id="session_duration_minutes" className={errors.session_duration_minutes ? "border-destructive" : ""}>
+                          <SelectValue placeholder="Minutes per session" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="1_session">Single Session</SelectItem>
-                          <SelectItem value="1_week">1 Week</SelectItem>
-                          <SelectItem value="2_weeks">2 Weeks</SelectItem>
-                          <SelectItem value="1_month">1 Month</SelectItem>
-                          <SelectItem value="6_weeks">6 Weeks</SelectItem>
-                          <SelectItem value="3_months">3 Months</SelectItem>
+                          {SESSION_DURATION_MINUTES_OPTIONS.map((m) => (
+                            <SelectItem key={m} value={String(m)}>
+                              {sessionDurationLabel(m)}
+                            </SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
+                      {errors.session_duration_minutes && (
+                        <p className="text-sm text-destructive">{errors.session_duration_minutes}</p>
+                      )}
                     </div>
 
                     <div className="space-y-2">
@@ -511,78 +865,41 @@ export default function AdminCoursesEdit() {
                       </Select>
                     </div>
                   </div>
-                </CardContent>
-              </Card>
-            </TabsContent>
 
-            <TabsContent value="content">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Course Content & Impact</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                  <ArrayInput
-                    id="learning_outcomes"
-                    label="Learning Outcomes *"
-                    values={data.learning_outcomes}
-                    onChange={(values) => setData("learning_outcomes", values)}
-                    error={errors.learning_outcomes}
-                    placeholder="What will participants learn?"
-                  />
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <ArrayInput
-                      id="prerequisites"
-                      label="Prerequisites"
-                      values={data.prerequisites}
-                      onChange={(values) => setData("prerequisites", values)}
-                      error={errors.prerequisites}
-                      placeholder="Required skills or knowledge"
-                    />
-
-                    <ArrayInput
-                      id="materials_needed"
-                      label="Materials Needed"
-                      values={data.materials_needed}
-                      onChange={(values) => setData("materials_needed", values)}
-                      error={errors.materials_needed}
-                      placeholder="What should participants bring?"
-                    />
+                  <div className="flex flex-wrap items-center justify-between gap-4 border-t border-gray-100 pt-6 dark:border-gray-800">
+                    <Button type="button" variant="outline" onClick={() => setCurrentTab("basics")}>
+                      Back
+                    </Button>
+                    <Button
+                      type="button"
+                      className="min-w-[160px] bg-gradient-to-r from-purple-600 to-blue-600 shadow-md shadow-purple-500/15 hover:from-purple-700 hover:to-blue-700 sm:ml-auto"
+                      onClick={() => {
+                        if (validateTab("schedule")) {
+                          setCurrentTab("settings")
+                        } else {
+                          toast.error("Please complete all required fields in the Schedule tab before continuing.")
+                        }
+                      }}
+                    >
+                      Continue
+                      <ChevronRight className="ml-2 h-4 w-4" aria-hidden />
+                    </Button>
                   </div>
-
-                  <div className="space-y-2">
-                    <label htmlFor="community_impact" className="text-sm font-medium">
-                      Community Impact
-                    </label>
-                    <RichTextEditor
-                      label=""
-                      value={data.community_impact}
-                      onChange={(value) => setData("community_impact", value)}
-                      error={errors.community_impact}
-                      className="mt-1"
-                    />
-                  </div>
-
-                  <ArrayInput
-                    id="accessibility_features"
-                    label="Accessibility Features"
-                    values={data.accessibility_features}
-                    onChange={(values) => setData("accessibility_features", values)}
-                    error={errors.accessibility_features}
-                    placeholder="Sign language, large print, etc."
-                  />
                 </CardContent>
               </Card>
             </TabsContent>
 
             <TabsContent value="settings">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Additional Settings</CardTitle>
+              <Card className="overflow-hidden rounded-2xl border border-gray-200/90 shadow-lg dark:border-gray-800">
+                <CardHeader className="border-b border-gray-100 bg-gray-50/50 dark:border-gray-800 dark:bg-gray-900/30">
+                  <CardTitle className="text-lg font-semibold">Additional settings</CardTitle>
+                  <p className="text-sm font-normal text-gray-500 dark:text-gray-400">
+                    Certificates, volunteering, then save changes
+                  </p>
                 </CardHeader>
                 <CardContent className="space-y-6">
                   <div className="space-y-4">
-                    <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
+                    <div className="flex items-center justify-between rounded-xl border border-gray-200/80 bg-white p-4 dark:border-gray-700 dark:bg-gray-900/40">
                       <div>
                         <label htmlFor="certificate_provided" className="text-sm font-medium">
                           Provide Certificate
@@ -596,13 +913,13 @@ export default function AdminCoursesEdit() {
                       />
                     </div>
 
-                    <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
+                    <div className="flex items-center justify-between rounded-xl border border-gray-200/80 bg-white p-4 dark:border-gray-700 dark:bg-gray-900/40">
                       <div>
                         <label htmlFor="volunteer_opportunities" className="text-sm font-medium">
                           Volunteer Opportunities
                         </label>
                         <p className="text-xs text-muted-foreground">
-                          Allow participants to volunteer for future courses
+                          Allow participants to volunteer for future listings
                         </p>
                       </div>
                       <Switch
@@ -612,31 +929,41 @@ export default function AdminCoursesEdit() {
                       />
                     </div>
                   </div>
+
+                  <div className="flex flex-wrap items-center justify-between gap-4 border-t border-gray-100 pt-6 dark:border-gray-800">
+                    <Button type="button" variant="outline" onClick={() => setCurrentTab("schedule")}>
+                      Back
+                    </Button>
+                    <div className="flex flex-wrap justify-end gap-3">
+                      <Link href={route("profile.course.index")}>
+                        <Button type="button" variant="outline">
+                          Cancel
+                        </Button>
+                      </Link>
+                      <Button
+                        type="button"
+                        disabled={processing}
+                        onClick={handleSave}
+                        className="min-w-[160px] bg-gradient-to-r from-purple-600 to-blue-600 shadow-md shadow-purple-500/15 hover:from-purple-700 hover:to-blue-700"
+                      >
+                        {processing ? (
+                          <>
+                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-current mr-2"></div>
+                            Updating...
+                          </>
+                        ) : (
+                          <>
+                            <Save className="mr-2 h-4 w-4" />
+                            Update listing
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  </div>
                 </CardContent>
               </Card>
             </TabsContent>
           </Tabs>
-
-          <div className="flex justify-end gap-4 pt-6">
-            <Link href={route("admin.courses.index")}>
-              <Button type="button" variant="outline">
-                Cancel
-              </Button>
-            </Link>
-            <Button type="submit" disabled={processing} className="min-w-[140px]">
-              {processing ? (
-                <>
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-current mr-2"></div>
-                  Updating...
-                </>
-              ) : (
-                <>
-                  <Save className="mr-2 h-4 w-4" />
-                  Update Course
-                </>
-              )}
-            </Button>
-          </div>
         </form>
       </div>
     </ProfileLayout>

@@ -28,6 +28,8 @@ import {
 interface Brand {
     productId?: number
     productName?: string
+    /** False when Visa/Mastercard — Gifted Believe Points cannot be used */
+    allowedForGiftedPoints?: boolean
     productImage?: string
     denominations?: number[]
     valueRestrictions?: {
@@ -236,6 +238,14 @@ export default function GiftCardsIndex({ giftCards, user, filters, availableCoun
                                                 alt={brand.productName || 'Gift Card'}
                                                 className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-110"
                                             />
+                                            {brand.allowedForGiftedPoints === false && (
+                                                <Badge
+                                                    variant="secondary"
+                                                    className="absolute top-2 left-2 max-w-[140px] truncate text-[10px] font-normal bg-slate-900/80 text-white border border-white/20"
+                                                >
+                                                    Purchased points only
+                                                </Badge>
+                                            )}
                                             {brand.discount && brand.discount > 0 && (
                                                 <Badge className="absolute top-2 right-2 bg-red-500 text-white">{brand.discount}% OFF</Badge>
                                             )}

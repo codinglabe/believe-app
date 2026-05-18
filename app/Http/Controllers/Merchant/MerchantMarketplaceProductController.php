@@ -173,11 +173,14 @@ class MerchantMarketplaceProductController extends Controller
             'suggested_retail_price' => ['nullable', 'numeric', 'min:0'],
             'nonprofit_approval_type' => ['required', Rule::in(['auto', 'manual'])],
             'status' => ['required', Rule::in(['draft', 'pending_review', 'active', 'inactive'])],
+            'pickup_available' => ['sometimes', 'boolean'],
             'images' => ['nullable', 'array'],
             'images.*' => ['image', 'mimes:jpeg,png,jpg,gif,webp', 'max:5120'],
         ];
 
         $validated = $request->validate($rules);
+        $validated['pickup_available'] = $request->boolean('pickup_available')
+            && in_array((string) ($validated['product_type'] ?? ''), ['physical', 'service', 'media'], true);
         unset($validated['images']);
 
         if (! empty($validated['unlimited_inventory'])) {

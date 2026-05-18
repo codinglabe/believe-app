@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import type { SharedData } from "@/types"
 import { Head, Link, router, useForm, usePage } from '@inertiajs/react';
 import { Button } from '@/components/ui/button';
@@ -9,12 +9,33 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { TextArea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Save, Plus, Minus, Loader2, Upload, Package, DollarSign, ImageIcon, Tag, Settings2, Info, ExternalLink, ShoppingBag, Check, Gavel, TrendingUp, MapPin } from 'lucide-react';
+import {
+    Save,
+    Plus,
+    Minus,
+    Loader2,
+    Upload,
+    Package,
+    DollarSign,
+    ImageIcon,
+    Tag,
+    Settings2,
+    Info,
+    ExternalLink,
+    ShoppingBag,
+    Check,
+    Gavel,
+    TrendingUp,
+    MapPin,
+    RefreshCw,
+} from 'lucide-react';
 import { showErrorToast, showSuccessToast } from '@/lib/toast';
 import AppLayout from "@/layouts/app-layout"
 import type { BreadcrumbItem } from "@/types"
 import axios from 'axios';
 import { ProductSourceSelector } from '@/components/product-source-selector';
+import { PrintifyProviderComparisonList } from '@/components/printify-provider-comparison-list';
+import type { PrintifyProviderComparisonRow } from '@/types/printify';
 
 const breadcrumbs: BreadcrumbItem[] = [
     {
@@ -41,25 +62,20 @@ interface Blueprint {
     images: string[];
 }
 
-interface PrintProvider {
-    id: number;
-    title: string;
-    location: {
-        address1: string;
-        city: string;
-        country: string;
-    };
-}
-
 interface Variant {
     id: number;
     title: string;
     options: {
-        color: string;
-        size: string;
+        color?: string;
+        size?: string;
     };
-    price: number;
-    cost: number;
+    /** Shop product only; catalog variants omit this. */
+    price?: number;
+    cost?: number;
+    /** Merged from Printify v2 standard shipping (US preferred). */
+    shipping_first_item_cents?: number | null;
+    estimated_delivery_label?: string | null;
+    shipping_currency?: string;
 }
 
 interface MerchantShipFromOption {
@@ -82,6 +98,42 @@ interface Props {
     merchants_for_ship_from?: MerchantShipFromOption[];
     blueprints: Blueprint[];
     printify_enabled: boolean;
+    defaultMarkupPercentage?: number;
+    /** Logged-in nonprofit org (organization / organization_pending users only). */
+    default_organization?: { id: number; name: string } | null;
+}
+
+function collectInertiaErrorMessages(err: Record<string, unknown>): string[] {
+    const out: string[] = [];
+    for (const v of Object.values(err)) {
+        if (v == null) continue;
+        if (Array.isArray(v)) out.push(...v.map((x) => String(x)));
+        else if (typeof v === 'string') out.push(v);
+    }
+    return out.filter(Boolean);
+}
+
+function normalizeVariantTitleForMatch(title: string): string {
+    return title
+        .trim()
+        .toLowerCase()
+        .replace(/\s+/g, ' ');
+}
+
+function formatPrintifyMoneyCents(cents: number | null | undefined, currency = 'USD'): string {
+    if (cents == null || !Number.isFinite(cents)) {
+        return '—';
+    }
+    try {
+        return new Intl.NumberFormat('en-US', {
+            style: 'currency',
+            currency: currency || 'USD',
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+        }).format(cents / 100);
+    } catch {
+        return (cents / 100).toFixed(2);
+    }
 }
 
 export default function Create({
@@ -90,8 +142,21 @@ export default function Create({
     merchants_for_ship_from = [],
     blueprints,
     printify_enabled,
+    defaultMarkupPercentage = 25,
+    default_organization = null,
 }: Props) {
-    const { auth, flash } = usePage<SharedData>().props
+    const { auth, flash, ziggy } = usePage<SharedData>().props;
+
+    /** Prefer Inertia shared Ziggy (always current); avoids stale `resources/js/ziggy.js` in the bundle. */
+    const ziggyRoute = useMemo(() => {
+        if (!ziggy || typeof ziggy !== 'object') {
+            return (name: string, params?: Record<string, unknown> | number | string) =>
+                route(name, params as never, true);
+        }
+        const cfg = { ...ziggy } as Parameters<typeof route>[3];
+        return (name: string, params?: Record<string, unknown> | number | string) =>
+            route(name, params as never, true, cfg);
+    }, [ziggy]);
 
 
 
@@ -111,7 +176,6 @@ export default function Create({
 
         // Printify fields
         is_printify_product: false, // Default to manual product
-        profit_margin_percentage: '25',
         printify_blueprint_id: '',
         printify_provider_id: '',
         printify_variants: [] as any[],
@@ -149,8 +213,10 @@ export default function Create({
         parcel_height_in: '',
         parcel_weight_oz: '',
 
-        /** Own manual: your cost × (1 + markup%) → unit_price */
+        /** At cost: this is what the buyer pays (before platform fee). */
         source_cost: '',
+        /** Local pickup at nonprofit address (manual physical org-owned catalog only). */
+        pickup_available: false,
     });
 
     const selectedMerchantShipFrom = useMemo(() => {
@@ -167,17 +233,60 @@ export default function Create({
         return role === 'organization' || role === 'organization_pending';
     }, [auth?.user?.role]);
 
+    const canOfferCatalogPickup = useMemo(() => {
+        const r = auth?.user?.role;
+        const role = Array.isArray(r) ? r[0] : r;
+        const isAdmin = role === 'admin';
+        return (
+            !data.is_printify_product &&
+            data.type === 'physical' &&
+            (isOrgUser || (isAdmin && data.owned_by === 'organization' && String(data.organization_id || '').trim() !== ''))
+        );
+    }, [auth?.user?.role, data.is_printify_product, data.type, data.owned_by, data.organization_id, isOrgUser]);
+
      const [processing, setProcessing] = useState(false);
     const [errors, setErrors] = useState<any>({});
 
 
-    const [providers, setProviders] = useState<PrintProvider[]>([]);
+    const [providerComparisonRows, setProviderComparisonRows] = useState<PrintifyProviderComparisonRow[]>([]);
     const [variants, setVariants] = useState<Variant[]>([]);
     const [selectedVariants, setSelectedVariants] = useState<number[]>([]);
     const [loadingProviders, setLoadingProviders] = useState(false);
     const [loadingVariants, setLoadingVariants] = useState(false);
+    /** Print provider used only to load the catalog variant grid (same blueprint; variant titles map to other providers). */
+    const [referencePrintProviderId, setReferencePrintProviderId] = useState('');
+    /** Stable label for provider comparison (first selected variant); not tied to remapped Printify variant ids. */
+    const [comparisonVariantTitle, setComparisonVariantTitle] = useState<string | null>(null);
+    const printifyVariantRowsRef = useRef<
+        { id: number; title: string; cost?: number; price?: number; enabled?: boolean }[]
+    >([]);
+    /** variantId → fulfillment cost (cents) from a short-lived Printify shop product (see preview endpoint). */
+    const [printifyPreviewCosts, setPrintifyPreviewCosts] = useState<Record<number, number>>({});
+    const [printifyPreviewProviderId, setPrintifyPreviewProviderId] = useState<number | null>(null);
+    const [printifyPreviewLoading, setPrintifyPreviewLoading] = useState(false);
     const [selectedBlueprint, setSelectedBlueprint] = useState<Blueprint | null>(null);
-    const [selectedProvider, setSelectedProvider] = useState<PrintProvider | null>(null);
+
+    const printifyImageFingerprint = useMemo(
+        () =>
+            data.printify_images
+                .map((img: { file?: File; name?: string } | null) => (img?.file ? `${img.file.name}:${img.file.size}` : ''))
+                .join('|'),
+        [data.printify_images],
+    );
+
+    const mergedPrintifyProviderRows = useMemo(() => {
+        const pidStr = data.printify_provider_id;
+        if (!pidStr || printifyPreviewProviderId !== Number(pidStr)) {
+            return providerComparisonRows;
+        }
+        const firstVid = selectedVariants[0];
+        const cents = firstVid != null ? printifyPreviewCosts[firstVid] : undefined;
+        if (cents == null || !Number.isFinite(cents)) {
+            return providerComparisonRows;
+        }
+        const pid = Number(pidStr);
+        return providerComparisonRows.map((row) => (row.id === pid ? { ...row, base_cost_cents: cents } : row));
+    }, [providerComparisonRows, data.printify_provider_id, printifyPreviewProviderId, printifyPreviewCosts, selectedVariants]);
 
     const [selectedCategories, setSelectedCategories] = useState<number[]>([]);
 
@@ -192,26 +301,31 @@ useEffect(() => {
         }
     }, [merchants_for_ship_from.length, data.ship_from_mode, setData]);
 
-    /** Own manual: sync unit_price from cost × (1 + markup%). */
+    /** Org users sell under their nonprofit; default the form so validation and ownership stay consistent. */
+    useEffect(() => {
+        if (!isOrgUser || !default_organization) return;
+        setData('owned_by', 'organization');
+        setData('organization_id', String(default_organization.id));
+    }, [isOrgUser, default_organization?.id, setData]);
+
+    /** At cost: sync unit_price from source_cost. */
     useEffect(() => {
         if (data.is_printify_product) return;
         const pm = data.pricing_model || 'fixed';
         if (pm !== 'fixed' && pm !== 'offer') return;
-        const margin = parseFloat(String(data.profit_margin_percentage ?? ''));
-        if (!Number.isFinite(margin) || margin < 0) return;
 
         const s = String(data.source_cost ?? '').trim();
         if (!s) return;
         const costNum = parseFloat(s);
         if (!Number.isFinite(costNum) || costNum < 0) return;
 
-        const next = (costNum * (1 + margin / 100)).toFixed(2);
+        const next = costNum.toFixed(2);
         const cur = parseFloat(String(data.unit_price ?? ''));
         const nextF = parseFloat(next);
         if (Number.isFinite(cur) && Math.abs(cur - nextF) < 0.0001) return;
 
         setData('unit_price', next);
-    }, [data.is_printify_product, data.pricing_model, data.profit_margin_percentage, data.source_cost]);
+    }, [data.is_printify_product, data.pricing_model, data.source_cost]);
 
 // Simple handler using local state
 const handleCategoryChange = (categoryId: number) => {
@@ -231,56 +345,29 @@ const handleCategoryChange = (categoryId: number) => {
     });
 };
 
-    // Load providers when blueprint is selected
-    useEffect(() => {
-        if (data.printify_blueprint_id) {
-            loadProviders(data.printify_blueprint_id);
-        } else {
-            setProviders([]);
-            setSelectedProvider(null);
-        }
-    }, [data.printify_blueprint_id]);
+    printifyVariantRowsRef.current = data.printify_variants;
 
-    // Load variants when provider is selected
-    useEffect(() => {
-        if (data.printify_blueprint_id && data.printify_provider_id) {
-            loadVariants(data.printify_blueprint_id, data.printify_provider_id);
-        } else {
-            setVariants([]);
-            setSelectedVariants([]);
-        }
-    }, [data.printify_provider_id]);
-
-    const loadProviders = async (blueprintId: string) => {
-        setLoadingProviders(true);
-        try {
-            const response = await axios.get(route('printify.providers'), {
-                params: { blueprint_id: blueprintId }
-            });
-
-            if (response.data.error) {
-                showErrorToast(response.data.error);
-                setProviders([]);
-            } else {
-                setProviders(response.data);
+    const pickReferencePrintProviderId = (providers: { id: number; title?: string }[]): string => {
+        for (const p of providers) {
+            const t = (p.title || '').toLowerCase();
+            if (t && !t.includes('printify choice')) {
+                return String(p.id);
             }
-        } catch (error: any) {
-            console.error('Providers load error:', error);
-            showErrorToast('Failed to load providers: ' + (error.response?.data?.message || error.message));
-            setProviders([]);
-        } finally {
-            setLoadingProviders(false);
         }
+        return providers[0]?.id != null ? String(providers[0].id) : '';
     };
 
-    const loadVariants = async (blueprintId: string, providerId: string) => {
-        setLoadingVariants(true);
+    const loadVariants = async (blueprintId: string, providerId: string, options?: { manageLoading?: boolean }) => {
+        const manageLoading = options?.manageLoading !== false;
+        if (manageLoading) {
+            setLoadingVariants(true);
+        }
         try {
-            const response = await axios.get(route('printify.variants'), {
+            const response = await axios.get(ziggyRoute('printify.variants'), {
                 params: {
                     blueprint_id: blueprintId,
-                    print_provider_id: providerId
-                }
+                    print_provider_id: providerId,
+                },
             });
 
             if (response.data.error) {
@@ -294,9 +381,158 @@ const handleCategoryChange = (categoryId: number) => {
             showErrorToast('Failed to load variants: ' + (error.response?.data?.message || error.message));
             setVariants([]);
         } finally {
+            if (manageLoading) {
+                setLoadingVariants(false);
+            }
+        }
+    };
+
+    const loadReferenceProviderAndVariants = async (blueprintId: string) => {
+        setReferencePrintProviderId('');
+        setVariants([]);
+        setSelectedVariants([]);
+        setProviderComparisonRows([]);
+        setLoadingVariants(true);
+        try {
+            const res = await axios.get(ziggyRoute('printify.providers'), {
+                params: { blueprint_id: blueprintId },
+            });
+            if (res.data?.error) {
+                showErrorToast(res.data.error);
+                return;
+            }
+            const providers = Array.isArray(res.data) ? res.data : [];
+            const refId = pickReferencePrintProviderId(providers);
+            setReferencePrintProviderId(refId);
+            if (refId) {
+                await loadVariants(blueprintId, refId, { manageLoading: false });
+            }
+        } catch (error: any) {
+            console.error('Reference provider / variants load error:', error);
+            showErrorToast('Failed to load catalog variants: ' + (error.response?.data?.message || error.message));
+            setVariants([]);
+        } finally {
             setLoadingVariants(false);
         }
     };
+
+    const loadProviderComparison = async (blueprintId: string, refPid: string, variantTitle: string) => {
+        setLoadingProviders(true);
+        try {
+            const response = await axios.get(ziggyRoute('printify.provider-comparison'), {
+                params: {
+                    blueprint_id: blueprintId,
+                    reference_print_provider_id: refPid,
+                    catalog_variant_title: variantTitle,
+                },
+            });
+
+            if (response.data.error) {
+                showErrorToast(response.data.error);
+                setProviderComparisonRows([]);
+            } else {
+                setProviderComparisonRows(response.data.rows ?? []);
+                const backRef = response.data.reference_print_provider_id;
+                if (backRef != null && String(backRef) !== refPid) {
+                    setReferencePrintProviderId(String(backRef));
+                }
+            }
+        } catch (error: any) {
+            console.error('Providers load error:', error);
+            showErrorToast('Failed to load providers: ' + (error.response?.data?.message || error.message));
+            setProviderComparisonRows([]);
+        } finally {
+            setLoadingProviders(false);
+        }
+    };
+
+    useEffect(() => {
+        if (!data.is_printify_product || !data.printify_blueprint_id || !referencePrintProviderId) {
+            setProviderComparisonRows([]);
+            return;
+        }
+        const t = comparisonVariantTitle?.trim();
+        if (!t) {
+            setProviderComparisonRows([]);
+            return;
+        }
+        void loadProviderComparison(data.printify_blueprint_id, referencePrintProviderId, t);
+    }, [data.is_printify_product, data.printify_blueprint_id, referencePrintProviderId, comparisonVariantTitle]);
+
+    useEffect(() => {
+        setPrintifyPreviewCosts({});
+        setPrintifyPreviewProviderId(null);
+    }, [data.printify_blueprint_id, data.printify_provider_id, selectedVariants, printifyImageFingerprint]);
+
+    useEffect(() => {
+        if (!data.is_printify_product || !data.printify_blueprint_id || !data.printify_provider_id) {
+            return;
+        }
+        if (!referencePrintProviderId) {
+            return;
+        }
+        if (selectedVariants.length === 0) {
+            return;
+        }
+
+        let cancelled = false;
+        const run = async () => {
+            try {
+                const res = await axios.get(ziggyRoute('printify.variants'), {
+                    params: {
+                        blueprint_id: data.printify_blueprint_id,
+                        print_provider_id: data.printify_provider_id,
+                    },
+                });
+                if (cancelled) {
+                    return;
+                }
+                if (res.data.error) {
+                    showErrorToast(res.data.error);
+                    return;
+                }
+                const list: Variant[] = res.data.variants || [];
+                const rows = printifyVariantRowsRef.current;
+                const nextSelected: number[] = [];
+                const nextRows: typeof rows = [];
+                let dropped = 0;
+                for (const row of rows) {
+                    const match = list.find((v) => normalizeVariantTitleForMatch(v.title) === normalizeVariantTitleForMatch(row.title));
+                    if (match) {
+                        nextSelected.push(match.id);
+                        const printCents = typeof match.cost === 'number' && Number.isFinite(match.cost) ? match.cost : 0;
+                        const cost = printCents / 100;
+                        nextRows.push({
+                            ...row,
+                            id: match.id,
+                            cost,
+                            price: parseFloat(cost.toFixed(2)),
+                        });
+                    } else {
+                        dropped += 1;
+                    }
+                }
+                if (dropped > 0) {
+                    showErrorToast(
+                        `${dropped} selected variant(s) are not offered by this print provider under the same color/size name; they were removed from your selection.`,
+                    );
+                }
+                setSelectedVariants(nextSelected);
+                setData('printify_variants', nextRows);
+                setVariants(list);
+            } catch (error: any) {
+                if (!cancelled) {
+                    console.error('Variant remap error:', error);
+                    showErrorToast('Failed to align variants with print provider: ' + (error.response?.data?.message || error.message));
+                }
+            }
+        };
+        void run();
+        return () => {
+            cancelled = true;
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally only when printify_provider_id changes
+    }, [data.printify_provider_id]);
 
     const handleBlueprintSelect = (blueprintId: string) => {
         const blueprint = blueprints.find(b => b.id.toString() === blueprintId);
@@ -304,15 +540,67 @@ const handleCategoryChange = (categoryId: number) => {
         setData('printify_blueprint_id', blueprintId);
         setData('printify_provider_id', '');
         setData('printify_variants', []);
-        setProviders([]);
+        setProviderComparisonRows([]);
         setVariants([]);
         setSelectedVariants([]);
-        setSelectedProvider(null);
+        setComparisonVariantTitle(null);
+        setPrintifyPreviewCosts({});
+        setPrintifyPreviewProviderId(null);
+        void loadReferenceProviderAndVariants(blueprintId);
+    };
+
+    const fetchLivePrintifyProductionCosts = async () => {
+        const validImages = data.printify_images.filter((img): img is { file: File; preview: string; name: string } => Boolean(img?.file));
+        if (!data.printify_blueprint_id || !data.printify_provider_id) {
+            showErrorToast('Select a product type and print provider first.');
+            return;
+        }
+        if (selectedVariants.length === 0) {
+            showErrorToast('Select at least one variant.');
+            return;
+        }
+        if (validImages.length === 0) {
+            showErrorToast('Upload at least one design image (Printify needs artwork to price production).');
+            return;
+        }
+        setPrintifyPreviewLoading(true);
+        try {
+            const fd = new FormData();
+            fd.append('blueprint_id', data.printify_blueprint_id);
+            fd.append('print_provider_id', data.printify_provider_id);
+            selectedVariants.forEach((id) => fd.append('variant_ids[]', String(id)));
+            validImages.forEach((img) => fd.append('printify_images[]', img.file));
+            const res = await axios.post(ziggyRoute('printify.preview-variant-costs'), fd, {
+                headers: { 'Content-Type': 'multipart/form-data' },
+                timeout: 120_000,
+            });
+            if (res.data?.error) {
+                showErrorToast(res.data.error);
+                return;
+            }
+            const rows = (res.data?.variant_costs ?? []) as { id: number; cost_cents: number | null }[];
+            const map: Record<number, number> = {};
+            for (const r of rows) {
+                if (r.cost_cents != null && Number.isFinite(r.cost_cents) && r.cost_cents > 0) {
+                    map[r.id] = r.cost_cents;
+                }
+            }
+            setPrintifyPreviewProviderId(Number(data.printify_provider_id));
+            setPrintifyPreviewCosts(map);
+            if (Object.keys(map).length === 0) {
+                showErrorToast('Printify did not return production costs yet. Wait a few seconds and try again.');
+            } else {
+                showSuccessToast('Live production costs loaded from Printify (temporary preview product was removed).');
+            }
+        } catch (error: any) {
+            const msg = error.response?.data?.error || error.response?.data?.message || error.message;
+            showErrorToast(typeof msg === 'string' ? msg : 'Failed to load costs from Printify.');
+        } finally {
+            setPrintifyPreviewLoading(false);
+        }
     };
 
     const handleProviderSelect = (providerId: string) => {
-        const provider = providers.find(p => p.id.toString() === providerId);
-        setSelectedProvider(provider || null);
         setData('printify_provider_id', providerId);
     };
 
@@ -329,22 +617,29 @@ const handleCategoryChange = (categoryId: number) => {
         newSelectedVariants = selectedVariants.filter(id => id !== variantId);
         updatedVariants = updatedVariants.filter(v => v.id !== variantId);
     } else {
-        // Add variant with default price (50% markup)
+        // Add variant at production cost (at cost)
         newSelectedVariants = [...selectedVariants, variantId];
-        const cost = variant.cost / 100; // Convert to dollars if needed
-        const defaultPrice = cost * 1.5; // 50% markup
+        const printCents = typeof variant.cost === 'number' && Number.isFinite(variant.cost) ? variant.cost : 0;
+        const cost = printCents / 100;
 
         updatedVariants.push({
             id: variant.id,
             title: variant.title,
             cost: cost,
-            price: parseFloat(defaultPrice.toFixed(2)),
+            price: parseFloat(cost.toFixed(2)),
             enabled: true
         });
     }
 
     setSelectedVariants(newSelectedVariants);
     setData('printify_variants', updatedVariants);
+    if (newSelectedVariants.length === 0) {
+        setComparisonVariantTitle(null);
+    } else {
+        const firstId = newSelectedVariants[0];
+        const fv = variants.find((v) => v.id === firstId);
+        setComparisonVariantTitle(fv?.title ?? null);
+    }
 };
 
     // const handleSubmit = (e: React.FormEvent) => {
@@ -388,16 +683,16 @@ const handleCategoryChange = (categoryId: number) => {
                 showErrorToast('Please select a product type.');
                 return;
             }
-            if (!data.printify_provider_id) {
-                setErrors({ printify_provider_id: 'Please select a print provider.' });
-                setProcessing(false);
-                showErrorToast('Please select a print provider.');
-                return;
-            }
             if (data.printify_variants.length === 0) {
                 setErrors({ printify_variants: 'Please select at least one variant.' });
                 setProcessing(false);
                 showErrorToast('Please select at least one variant.');
+                return;
+            }
+            if (!data.printify_provider_id) {
+                setErrors({ printify_provider_id: 'Please select a print provider.' });
+                setProcessing(false);
+                showErrorToast('Please select a print provider.');
                 return;
             }
 
@@ -447,6 +742,18 @@ const handleCategoryChange = (categoryId: number) => {
         } else {
             // Validate manual product required fields (fixed price) or bidding fields
             const pricingModel = data.pricing_model || 'fixed';
+            if (pricingModel === 'fixed' || pricingModel === 'offer') {
+                const scRaw = String(data.source_cost ?? '').trim();
+                const scNum = parseFloat(scRaw);
+                if (scRaw === '' || !Number.isFinite(scNum) || scNum < 0) {
+                    setErrors({
+                        source_cost: 'Enter your cost (what buyers pay) for this own-source product.',
+                    });
+                    setProcessing(false);
+                    showErrorToast('Enter your cost under “Your cost ($)”. That amount is what buyers pay for own-source products.');
+                    return;
+                }
+            }
             if (pricingModel === 'fixed') {
                 if (!data.unit_price || parseFloat(data.unit_price) <= 0) {
                     setErrors({ unit_price: 'Please enter a valid unit price.' });
@@ -533,7 +840,10 @@ const handleCategoryChange = (categoryId: number) => {
         formData.append('name', data.name);
         formData.append('description', data.description);
         formData.append('quantity', data.quantity);
-        formData.append('owned_by', data.owned_by);
+        formData.append(
+            'owned_by',
+            isOrgUser && default_organization ? 'organization' : data.owned_by
+        );
         formData.append('status', data.status);
         formData.append('sku', data.sku);
         formData.append('type', data.type);
@@ -569,10 +879,17 @@ const handleCategoryChange = (categoryId: number) => {
             if (data.parcel_weight_oz) {
                 formData.append('parcel_weight_oz', String(data.parcel_weight_oz));
             }
+            if (canOfferCatalogPickup) {
+                formData.append('pickup_available', data.pickup_available ? '1' : '0');
+            }
         }
 
         if (data.tags) formData.append('tags', data.tags);
-        if (data.organization_id) formData.append('organization_id', data.organization_id);
+        if (isOrgUser && default_organization) {
+            formData.append('organization_id', String(default_organization.id));
+        } else if (data.organization_id) {
+            formData.append('organization_id', String(data.organization_id));
+        }
         formData.append('is_printify_product', data.is_printify_product ? '1' : '0');
         // Categories
         data.categories.forEach(id => formData.append('categories[]', id.toString()));
@@ -610,16 +927,12 @@ const handleCategoryChange = (categoryId: number) => {
             }
             const pmFixed = data.pricing_model || 'fixed';
             if (pmFixed === 'fixed' || pmFixed === 'offer') {
-                if (String(data.source_cost ?? '').trim() !== '') {
-                    formData.append('source_cost', String(data.source_cost));
-                }
-                formData.append('profit_margin_percentage', String(data.profit_margin_percentage ?? '25'));
+                formData.append('source_cost', String(data.source_cost ?? '').trim());
             }
         }
 
         // Printify-specific fields (only if Printify product)
         if (data.is_printify_product) {
-            formData.append('profit_margin_percentage', String(data.profit_margin_percentage ?? '25'));
             if (data.printify_blueprint_id) formData.append('printify_blueprint_id', data.printify_blueprint_id);
             if (data.printify_provider_id) formData.append('printify_provider_id', data.printify_provider_id);
 
@@ -667,6 +980,10 @@ const handleCategoryChange = (categoryId: number) => {
                     showErrorToast(
                         'File size too large. Please ensure each design image is under 1MB (Printify requirement). If you\'re uploading multiple images, try uploading them one at a time or compress your images before uploading.'
                     );
+                } else if (err.printify_error) {
+                    const pe = err.printify_error;
+                    const printifyMsg = Array.isArray(pe) ? pe.join(', ') : String(pe);
+                    showErrorToast(printifyMsg);
                 } else if (err.printify_images) {
                     // Show specific error for printify_images
                     const imageError = Array.isArray(err.printify_images)
@@ -674,7 +991,8 @@ const handleCategoryChange = (categoryId: number) => {
                         : err.printify_images;
                     showErrorToast(`Design image error: ${imageError}`);
                 } else {
-                    showErrorToast('Please fix the errors');
+                    const parts = collectInertiaErrorMessages(err as Record<string, unknown>);
+                    showErrorToast(parts.length ? parts.join(' ') : 'Please fix the errors');
                 }
                 console.log('Errors:', err);
             },
@@ -874,10 +1192,13 @@ const handleCategoryChange = (categoryId: number) => {
                                                     setData('printify_variants', []);
                                                     setData('printify_images', []);
                                                     setSelectedBlueprint(null);
-                                                    setSelectedProvider(null);
-                                                    setProviders([]);
+                                                    setProviderComparisonRows([]);
                                                     setVariants([]);
                                                     setSelectedVariants([]);
+                                                    setReferencePrintProviderId('');
+                                                    setComparisonVariantTitle(null);
+                                                    setPrintifyPreviewCosts({});
+                                                    setPrintifyPreviewProviderId(null);
                                                 } else {
                                                     // Reset manual product fields when enabling Printify
                                                     setData('unit_price', '');
@@ -904,7 +1225,7 @@ const handleCategoryChange = (categoryId: number) => {
                                                 <CardDescription className="mt-1 text-sm sm:text-base">
                                                     To sell items from the merchant pool, add them from{' '}
                                                     <Link
-                                                        href="/marketplace/product-pool"
+                                                        href={route('marketplace.product-pool.index')}
                                                         className="font-medium text-primary underline underline-offset-2"
                                                     >
                                                         Commerce → Merchant product pool
@@ -932,11 +1253,21 @@ const handleCategoryChange = (categoryId: number) => {
                                         </div>
                                     </CardHeader>
                                     <CardContent className="space-y-6 pt-6">
+                                        {errors.printify_error && (
+                                            <div
+                                                role="alert"
+                                                className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-800 dark:border-red-800 dark:bg-red-950/40 dark:text-red-200"
+                                            >
+                                                {Array.isArray(errors.printify_error)
+                                                    ? errors.printify_error.join(' ')
+                                                    : errors.printify_error}
+                                            </div>
+                                        )}
                                         {/* Product Type Selection */}
                                         <div className="space-y-3">
                                             <Label htmlFor="blueprint" className="flex items-center gap-2 text-base font-semibold">
                                                 <Package className="h-4 w-4" />
-                                                Product Type *
+                                                Step 1: Select product type *
                                             </Label>
                                             <Select value={data.printify_blueprint_id} onValueChange={handleBlueprintSelect}>
                                                 <SelectTrigger className="h-11 w-full border-gray-300 bg-white text-base text-gray-900 focus-visible:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100">
@@ -989,82 +1320,18 @@ const handleCategoryChange = (categoryId: number) => {
                                             )}
                                         </div>
 
-                                        {/* Print Provider Selection */}
-                                        {data.printify_blueprint_id && (
-                                            <div className="space-y-3">
-                                                <Label htmlFor="provider" className="flex items-center gap-2 text-base font-semibold">
-                                                    <Package className="h-4 w-4" />
-                                                    Print Provider *
-                                                </Label>
-                                                <Select
-                                                    value={data.printify_provider_id}
-                                                    onValueChange={handleProviderSelect}
-                                                    disabled={loadingProviders}
-                                                >
-                                                    <SelectTrigger
-                                                        className={`h-11 w-full border-gray-300 bg-white text-base text-gray-900 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-100 ${loadingProviders ? 'opacity-50' : ''}`}
-                                                    >
-                                                        {loadingProviders ? (
-                                                            <div className="flex items-center gap-2">
-                                                                <Loader2 className="h-4 w-4 animate-spin text-blue-600 dark:text-blue-400" />
-                                                                <span className="text-gray-600 dark:text-gray-400">Loading providers...</span>
-                                                            </div>
-                                                        ) : (
-                                                            <SelectValue placeholder="Select print provider" />
-                                                        )}
-                                                    </SelectTrigger>
-                                                    <SelectContent className="border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
-                                                        {providers.map((provider) => (
-                                                            <SelectItem
-                                                                key={provider.id}
-                                                                value={provider.id.toString()}
-                                                                className="text-gray-900 hover:bg-gray-100 dark:text-gray-100 dark:hover:bg-gray-700"
-                                                            >
-                                                                <div className="flex flex-col">
-                                                                    <span className="font-medium">{provider.title}</span>
-                                                                </div>
-                                                            </SelectItem>
-                                                        ))}
-                                                    </SelectContent>
-                                                </Select>
-                                                {errors.printify_provider_id && <p className="text-sm text-red-500">{errors.printify_provider_id}</p>}
-
-                                                {selectedProvider && (
-                                                    <div className="mt-3 rounded-xl border-2 border-blue-200 bg-gradient-to-r from-blue-50 to-indigo-50 p-4 shadow-sm dark:border-blue-800 dark:from-blue-950/30 dark:to-indigo-950/30">
-                                                        <div className="flex items-center justify-between">
-                                                            <div>
-                                                                <h5 className="text-sm font-semibold text-blue-900 sm:text-base dark:text-blue-100">
-                                                                    {selectedProvider.title}
-                                                                </h5>
-                                                                {selectedProvider.location && (
-                                                                    <p className="mt-1 text-xs text-blue-700 sm:text-sm dark:text-blue-300">
-                                                                        {selectedProvider.location.city}, {selectedProvider.location.country}
-                                                                    </p>
-                                                                )}
-                                                            </div>
-                                                            <div className="flex items-center gap-2">
-                                                                <div
-                                                                    className="h-2.5 w-2.5 animate-pulse rounded-full bg-green-500 shadow-sm dark:bg-green-400"
-                                                                    title="Available"
-                                                                />
-                                                                <span className="text-xs font-medium text-green-700 dark:text-green-400">
-                                                                    Available
-                                                                </span>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                )}
-                                            </div>
-                                        )}
-
-                                        {/* Variants Selection */}
-                                        {variants.length > 0 && (
+                                        {/* Variants Selection (reference catalog — choose before print provider) */}
+                                        {data.printify_blueprint_id && referencePrintProviderId && (
                                             <div className="space-y-3">
                                                 <Label className="flex items-center gap-2 text-base font-semibold">
                                                     <ShoppingBag className="h-4 w-4" />
-                                                    Product Variants *
+                                                    Step 2: Select product variant *
                                                 </Label>
-                                                <p className="text-muted-foreground text-sm">Select the sizes/colors you want to offer</p>
+                                                <p className="text-muted-foreground text-sm">
+                                                    Choose sizes and colors to offer. Provider comparison uses your{' '}
+                                                    <span className="font-medium text-foreground">first selected</span> variant for shipping and
+                                                    cost estimates.
+                                                </p>
 
                                                 {loadingVariants ? (
                                                     <div className="flex items-center justify-center py-12">
@@ -1213,6 +1480,46 @@ const handleCategoryChange = (categoryId: number) => {
                                                     </div>
                                                 )}
                                                 {errors.printify_variants && <p className="text-sm text-red-500">{errors.printify_variants}</p>}
+                                                {!loadingVariants && variants.length === 0 && (
+                                                    <p className="text-muted-foreground text-sm">
+                                                        No catalog variants were returned for this product type. Check your Printify connection or
+                                                        try another product type.
+                                                    </p>
+                                                )}
+                                            </div>
+                                        )}
+
+                                        {/* Print Provider Comparison (after variant context for shipping / optional base cost) */}
+                                        {data.printify_blueprint_id && referencePrintProviderId && (
+                                            <div className="space-y-3">
+                                                <Label className="flex items-center gap-2 text-base font-semibold">
+                                                    <Package className="h-4 w-4" />
+                                                    Step 3: Select print provider *
+                                                </Label>
+                                                <p className="text-muted-foreground text-sm">
+                                                    <span className="font-medium text-foreground">Shipping</span> and delivery come from
+                                                    Printify&apos;s catalog. <span className="font-medium text-foreground">Print production cost</span>{' '}
+                                                    is not on the catalog API — use{' '}
+                                                    <span className="font-medium text-foreground">Get live costs from Printify</span> below your
+                                                    design uploads (creates a temporary shop product, reads prices, then deletes it). Your final
+                                                    listing still uses the normal save flow.
+                                                </p>
+                                                {!comparisonVariantTitle ? (
+                                                    <p className="text-muted-foreground rounded-lg border border-dashed border-gray-200 px-4 py-6 text-center text-sm dark:border-gray-700">
+                                                        Select at least one product variant in step 2 to load print providers and shipping for that
+                                                        exact color/size.
+                                                    </p>
+                                                ) : (
+                                                    <PrintifyProviderComparisonList
+                                                        rows={mergedPrintifyProviderRows}
+                                                        selectedId={data.printify_provider_id}
+                                                        loading={loadingProviders}
+                                                        onSelect={handleProviderSelect}
+                                                    />
+                                                )}
+                                                {errors.printify_provider_id && (
+                                                    <p className="text-sm text-red-500">{errors.printify_provider_id}</p>
+                                                )}
                                             </div>
                                         )}
 
@@ -1395,6 +1702,64 @@ const handleCategoryChange = (categoryId: number) => {
                                                     ) : null}
                                                 </div>
                                             )}
+
+                                            <div className="rounded-xl border border-indigo-200 bg-indigo-50/80 p-4 dark:border-indigo-800 dark:bg-indigo-950/30">
+                                                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                                                    <div className="min-w-0 space-y-1">
+                                                        <p className="text-sm font-semibold text-indigo-900 dark:text-indigo-100">
+                                                            Get live costs from Printify
+                                                        </p>
+                                                        <p className="text-muted-foreground text-xs leading-relaxed">
+                                                            Uses your current print provider, selected variants, and design files. Printify
+                                                            returns production cost only on a real shop product — we create a short-lived
+                                                            preview product, read variant costs, then remove it (usually a few seconds).
+                                                        </p>
+                                                    </div>
+                                                    <Button
+                                                        type="button"
+                                                        variant="secondary"
+                                                        size="sm"
+                                                        disabled={
+                                                            printifyPreviewLoading ||
+                                                            !data.printify_blueprint_id ||
+                                                            !data.printify_provider_id ||
+                                                            selectedVariants.length === 0 ||
+                                                            !data.printify_images.some((img) => img?.file)
+                                                        }
+                                                        onClick={() => void fetchLivePrintifyProductionCosts()}
+                                                        className="shrink-0 gap-2 border-indigo-300 bg-white text-indigo-900 hover:bg-indigo-50 dark:border-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-50 dark:hover:bg-indigo-900/60"
+                                                    >
+                                                        {printifyPreviewLoading ? (
+                                                            <Loader2 className="h-4 w-4 animate-spin" />
+                                                        ) : (
+                                                            <RefreshCw className="h-4 w-4" />
+                                                        )}
+                                                        {printifyPreviewLoading ? 'Contacting Printify…' : 'Get live costs'}
+                                                    </Button>
+                                                </div>
+                                                {Object.keys(printifyPreviewCosts).length > 0 && printifyPreviewProviderId === Number(data.printify_provider_id) && (
+                                                    <ul className="mt-3 space-y-1 border-t border-indigo-200/80 pt-3 text-xs text-indigo-950 dark:border-indigo-800 dark:text-indigo-100">
+                                                        {selectedVariants.map((vid) => {
+                                                            const cents = printifyPreviewCosts[vid];
+                                                            const v = variants.find((x) => x.id === vid);
+                                                            return (
+                                                                <li key={vid}>
+                                                                    <span className="font-medium">{v?.title ?? `Variant ${vid}`}</span>
+                                                                    {cents != null && Number.isFinite(cents) ? (
+                                                                        <span className="text-muted-foreground">
+                                                                            {' '}
+                                                                            — print production{' '}
+                                                                            {formatPrintifyMoneyCents(cents, 'USD')}
+                                                                        </span>
+                                                                    ) : (
+                                                                        <span className="text-muted-foreground"> — (no cost returned)</span>
+                                                                    )}
+                                                                </li>
+                                                            );
+                                                        })}
+                                                    </ul>
+                                                )}
+                                            </div>
                                         </div>
                                     </CardContent>
                                 </Card>
@@ -2024,10 +2389,10 @@ const handleCategoryChange = (categoryId: number) => {
                                         <>
                                             <div className="space-y-3 sm:col-span-2 rounded-xl border border-emerald-200 bg-emerald-50/40 p-4 dark:border-emerald-900/50 dark:bg-emerald-950/20">
                                                     <p className="text-sm font-semibold text-emerald-900 dark:text-emerald-200">
-                                                        Own product — price from cost &amp; markup
+                                                        Own product — at cost
                                                     </p>
                                                     <p className="text-muted-foreground text-xs leading-relaxed">
-                                                        Selling price = your cost × (1 + markup ÷ 100). Fill both to auto-set unit price, or leave cost empty and enter unit price only.
+                                                        Buyers pay the cost. “Typical Retail” is shown as a reference only.
                                                     </p>
                                                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                                                         <div className="space-y-2">
@@ -2052,20 +2417,22 @@ const handleCategoryChange = (categoryId: number) => {
                                                             )}
                                                         </div>
                                                         <div className="space-y-2">
-                                                            <Label htmlFor="profit_margin_own">Selling price markup (%)</Label>
-                                                            <Input
-                                                                id="profit_margin_own"
-                                                                type="number"
-                                                                step="0.01"
-                                                                min="0"
-                                                                value={data.profit_margin_percentage}
-                                                                onChange={(e) => handleChange('profit_margin_percentage', e.target.value)}
-                                                                placeholder="e.g., 25"
-                                                                className="h-11 text-base"
-                                                            />
-                                                            {errors.profit_margin_percentage && (
-                                                                <p className="text-sm text-red-500">{errors.profit_margin_percentage}</p>
-                                                            )}
+                                                            <Label className="flex items-center gap-2">
+                                                                <TrendingUp className="h-4 w-4" />
+                                                                Typical Retail (est.)
+                                                            </Label>
+                                                            <div className="h-11 rounded-md border border-gray-200 bg-white px-3 flex items-center text-gray-900 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100">
+                                                                {(() => {
+                                                                    const s = String(data.source_cost ?? '').trim()
+                                                                    const c = parseFloat(s)
+                                                                    if (!s || !Number.isFinite(c)) return '—'
+                                                                    const est = c * (1 + (Number(defaultMarkupPercentage) || 0) / 100)
+                                                                    return `$${est.toFixed(2)} (using ${Number(defaultMarkupPercentage) || 0}%)`
+                                                                })()}
+                                                            </div>
+                                                            <p className="text-xs text-muted-foreground">
+                                                                Reference only — checkout uses at-cost pricing.
+                                                            </p>
                                                         </div>
                                                     </div>
                                                 </div>
@@ -2073,7 +2440,7 @@ const handleCategoryChange = (categoryId: number) => {
                                             <div className="space-y-2">
                                                 <Label htmlFor="unit_price" className="flex items-center gap-2">
                                                     <DollarSign className="h-4 w-4" />
-                                                    Unit Price ($) *
+                                                    Unit Price ($)
                                                 </Label>
                                                 <div className="relative">
                                                     <span className="absolute top-1/2 left-3 -translate-y-1/2 transform font-medium text-gray-500 dark:text-gray-400">
@@ -2087,6 +2454,7 @@ const handleCategoryChange = (categoryId: number) => {
                                                         value={data.unit_price}
                                                         onChange={(e) => handleChange('unit_price', e.target.value)}
                                                         placeholder="0.00"
+                                                        disabled
                                                         className={`h-11 pl-8 text-base ${errors.unit_price ? 'border-red-500 focus-visible:ring-red-500 dark:border-red-500' : 'border-gray-300 focus-visible:ring-green-500 dark:border-gray-600'} bg-white text-gray-900 placeholder:text-gray-400 dark:bg-gray-800 dark:text-gray-100 dark:placeholder:text-gray-500`}
                                                     />
                                                 </div>
@@ -2104,32 +2472,31 @@ const handleCategoryChange = (categoryId: number) => {
                                                     </p>
                                                 </div>
                                             )}
+                                            {canOfferCatalogPickup && (
+                                                <div className="flex items-start gap-2.5 rounded-lg border border-emerald-200 bg-emerald-50/80 p-3 dark:border-emerald-900/50 dark:bg-emerald-950/30">
+                                                    <input
+                                                        id="pickup_available_catalog"
+                                                        type="checkbox"
+                                                        checked={!!data.pickup_available}
+                                                        onChange={(e) => setData('pickup_available', e.target.checked)}
+                                                        className="mt-0.5"
+                                                    />
+                                                    <label htmlFor="pickup_available_catalog" className="text-xs leading-relaxed text-emerald-900 sm:text-sm dark:text-emerald-100">
+                                                        <span className="font-semibold">Offer local pickup</span> at our organization address. Buyers who choose pickup pay no shipping; they see your nonprofit location at checkout (same rules as merchant pool listings).
+                                                    </label>
+                                                </div>
+                                            )}
                                         </>
                                     )}
 
                                     {data.is_printify_product && (
-                                        <div className="space-y-2">
-                                            <Label htmlFor="profit_margin_percentage" className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-                                                Selling price markup (%) *
-                                            </Label>
-                                            <p className="text-muted-foreground text-xs leading-relaxed">
-                                                Retail per variant = Printify production cost × (1 + markup ÷ 100). Set your organization&apos;s margin here.
+                                        <div className="sm:col-span-2 rounded-xl border border-indigo-200 bg-indigo-50/40 p-4 dark:border-indigo-900/50 dark:bg-indigo-950/20">
+                                            <p className="text-sm font-semibold text-indigo-900 dark:text-indigo-200">
+                                                Printify pricing
                                             </p>
-                                            <Input
-                                                id="profit_margin_percentage"
-                                                type="number"
-                                                step="0.01"
-                                                min="0"
-                                                value={data.profit_margin_percentage}
-                                                onChange={(e) => handleChange('profit_margin_percentage', e.target.value)}
-                                                placeholder="e.g., 25"
-                                                className={`h-11 text-base ${errors.profit_margin_percentage ? 'border-red-500 focus-visible:ring-red-500 dark:border-red-500' : 'border-gray-300 focus-visible:ring-green-500 dark:border-gray-600'} bg-white text-gray-900 placeholder:text-gray-400 dark:bg-gray-800 dark:text-gray-100 dark:placeholder:text-gray-500`}
-                                            />
-                                            {errors.profit_margin_percentage && (
-                                                <p className="flex items-center gap-1 text-sm text-red-500 dark:text-red-400">
-                                                    <span>⚠</span> {errors.profit_margin_percentage}
-                                                </p>
-                                            )}
+                                            <p className="text-muted-foreground text-xs leading-relaxed">
+                                                This listing is sold <span className="font-medium">at cost</span>. Typical retail is shown using {Number(defaultMarkupPercentage) || 0}% for reference only.
+                                            </p>
                                         </div>
                                     )}
 

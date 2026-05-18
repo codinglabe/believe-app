@@ -1,3 +1,34 @@
+/** Single row for Printify provider comparison on product create (from /printify/provider-comparison). */
+export interface PrintifyProviderComparisonRow {
+    id: number;
+    title: string;
+    is_printify_choice: boolean;
+    /** Lowest base+shipping among comparable providers (same blueprint). */
+    is_recommended: boolean;
+    base_cost_cents: number | null;
+    shipping_first_item_cents: number | null;
+    /** Base + first-item standard shipping (when both known). */
+    total_cost_cents?: number | null;
+    currency: string;
+    /** Legacy name; same as estimated_delivery_label when present. */
+    handling_time_label: string | null;
+    /**
+     * Printify v2 standard shipping: "delivery time in days" (includes production and transit per Printify catalog).
+     */
+    estimated_delivery_label?: string | null;
+    /** Reserved; catalog API does not expose production-only days separately from standard shipping. */
+    production_time_label?: string | null;
+    /** Reserved; catalog API does not expose in-transit-only days separately from standard shipping. */
+    shipping_transit_label?: string | null;
+    country_code: string | null;
+    country_label: string | null;
+    /**
+     * Relative score by cost rank (server-side). Printify does not publish public star ratings;
+     * this is for UI comparison only.
+     */
+    average_rating: number | null;
+}
+
 export interface PrintifyWebhook {
     id: string;
     url: string;

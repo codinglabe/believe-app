@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\OrganizationProduct;
+use App\Support\MarketplacePickup;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -19,6 +20,13 @@ class MarketplaceOrganizationProductController extends Controller
 
         $mp = $organization_product->marketplaceProduct;
         $org = $organization_product->organization;
+
+        $merchantPickup = MarketplacePickup::marketplaceProductAllowsPickup($mp);
+        $listingPickup = (bool) ($organization_product->pickup_available ?? false);
+        $pickupOffered = MarketplacePickup::organizationProductAllowsPickup($organization_product);
+        $pickupAddressPreview = $pickupOffered && $org
+            ? MarketplacePickup::formatOrganizationAddress($org)
+            : null;
 
         $images = $mp->images ?? [];
         $imageUrls = array_map(
@@ -50,6 +58,10 @@ class MarketplaceOrganizationProductController extends Controller
                     'business_name' => $mp->merchant?->business_name ?? $mp->merchant?->name,
                 ],
                 'max_quantity' => $mp->inventory_quantity,
+                'pickup_offered' => $pickupOffered,
+                'pickup_address_preview' => $pickupAddressPreview,
+                'merchant_pickup_enabled' => $merchantPickup,
+                'listing_pickup_enabled' => $listingPickup,
             ],
         ]);
     }

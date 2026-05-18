@@ -6,8 +6,8 @@ use App\Models\GiftCard;
 use App\Models\Organization;
 use App\Models\Transaction;
 use App\Services\BiuPlatformFeeService;
+use App\Services\GiftCardGiftedPointsPolicy;
 use App\Services\GiftCardService;
-use App\Support\StripeAutomaticTax;
 use App\Support\StripeCustomerChargeAmount;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -55,12 +55,13 @@ class GiftCardController extends Controller
             'Japan' => 'Japan',
         ];
 
-        // Fetch brands from Phaze API (cached and optimized with cURL)
-        $brands = $this->giftCardService->getGiftBrands($countryFilter, (int) $currentPage);
+        // Fetch one page from Phaze API (Phaze uses ?currentPage= — already paginated server-side).
+        $pagePayload = $this->giftCardService->getGiftBrandsPagePayload($countryFilter, (int) $currentPage);
+        $brands = $pagePayload['brands'] ?? [];
 
         // Ensure brands is an array
         if (! is_array($brands)) {
-            Log::warning('GiftCardController: getGiftBrands returned non-array', [
+            Log::warning('GiftCardController: getGiftBrandsPagePayload returned non-array brands', [
                 'country' => $countryFilter,
                 'currentPage' => $currentPage,
                 'type' => gettype($brands),
@@ -77,7 +78,7 @@ class GiftCardController extends Controller
             ]);
         }
 
-        // Apply search filter if provided (client-side filtering for better performance)
+        // Apply search filter if provided (filters the current Phaze page only)
         if ($search && ! empty($brands)) {
             $searchLower = strtolower($search);
             $brands = array_filter($brands, function ($brand) use ($searchLower) {
@@ -89,10 +90,32 @@ class GiftCardController extends Controller
             $brands = array_values($brands);
         }
 
-        // Convert to paginated format
-        $total = count($brands);
-        $offset = (($currentPage - 1) * $perPage);
-        $paginatedBrands = array_slice($brands, $offset, $perPage);
+        // Do not slice again by $currentPage/$perPage — that duplicated Phaze pagination and emptied page 2+.
+        $paginatedBrands = array_values($brands);
+
+        $apiTotal = $pagePayload['total'] ?? null;
+        $apiLastPage = $pagePayload['last_page'] ?? null;
+        $apiPerPage = $pagePayload['per_page'] ?? null;
+
+        $n = count($paginatedBrands);
+        $step = max(1, $apiPerPage ?? $n ?: (int) $perPage);
+
+        if ($apiLastPage !== null) {
+            $lastPage = max(1, (int) $apiLastPage);
+        } elseif ($n === 0 && (int) $currentPage > 1) {
+            $lastPage = max(1, (int) $currentPage - 1);
+        } else {
+            // Unknown Phaze totals: allow "next" while this page has rows; stop when user hits an empty page
+            $lastPage = $n > 0 ? (int) $currentPage + 1 : max(1, (int) $currentPage);
+        }
+
+        if ($apiTotal !== null) {
+            $total = (int) $apiTotal;
+        } elseif ($n > 0) {
+            $total = (((int) $currentPage - 1) * $step) + $n;
+        } else {
+            $total = 0;
+        }
 
         // Ensure all brands have productName for display (already handled in service, but double-check)
         $paginatedBrands = array_map(function ($brand) {
@@ -127,19 +150,23 @@ class GiftCardController extends Controller
                 }
             }
 
-            return $brand;
+            return $this->withGiftedEligibility($brand);
         }, $paginatedBrands);
 
-        // Create pagination structure
-        $lastPage = max(1, ceil($total / $perPage));
+        $from = $n > 0 ? $total - $n + 1 : 0;
+        $to = $n > 0 ? $total : 0;
+        if ($apiTotal !== null && $to > $apiTotal) {
+            $to = $apiTotal;
+        }
+
         $giftCards = [
             'data' => $paginatedBrands,
             'current_page' => (int) $currentPage,
             'last_page' => $lastPage,
-            'per_page' => $perPage,
+            'per_page' => (int) $perPage,
             'total' => $total,
-            'from' => $total > 0 ? $offset + 1 : 0,
-            'to' => min($offset + $perPage, $total),
+            'from' => $from,
+            'to' => $to,
             'links' => $this->generatePaginationLinks($currentPage, $lastPage, $request),
         ];
 
@@ -426,24 +453,6 @@ class GiftCardController extends Controller
             // Phaze `/brands/country/{code}` expects codes like USA, Canada — normalize display names (e.g. United States).
             $countryForPhaze = $this->getCountryCode($validated['country']);
 
-            // Verify user follows the selected organization
-            $isFollowing = \App\Models\UserFavoriteOrganization::where('user_id', $user->id)
-                ->where('organization_id', $validated['organization_id'])
-                ->exists();
-
-            if (! $isFollowing) {
-                if ($isInertiaRequest) {
-                    return back()->withErrors([
-                        'organization_id' => 'You can only purchase gift cards for organizations you follow.',
-                    ]);
-                }
-
-                return response()->json([
-                    'success' => false,
-                    'message' => 'You can only purchase gift cards for organizations you follow.',
-                ], 403);
-            }
-
             // Fetch brand details from Phaze API to validate amount restrictions
             $brands = $this->giftCardService->getGiftBrands($countryForPhaze, 1);
             $selectedBrand = null;
@@ -531,33 +540,43 @@ class GiftCardController extends Controller
                 $pointsRequired = $purchaseAmount; // 1$ = 1 believe point
                 $user->refresh(); // Get latest balance
 
-                if ($user->believe_points < $pointsRequired) {
+                $brandForPolicy = $selectedBrand['productName'] ?? $validated['brand_name'];
+                $productAllowsGifted = GiftCardGiftedPointsPolicy::isAllowedForGiftedRedemption($brandForPolicy);
+
+                if ($user->totalBelievePointsBalance() < $pointsRequired) {
                     DB::rollBack();
+                    $have = $user->totalBelievePointsBalance();
                     if ($isInertiaRequest) {
                         return back()->withErrors([
-                            'payment_method' => "Insufficient Believe Points. You need {$pointsRequired} points but only have {$user->believe_points} points.",
+                            'payment_method' => "Insufficient Believe Points. You need {$pointsRequired} points but only have {$have} points.",
                         ]);
                     }
 
                     return response()->json([
                         'success' => false,
-                        'message' => "Insufficient Believe Points. You need {$pointsRequired} points but only have {$user->believe_points} points.",
+                        'message' => "Insufficient Believe Points. You need {$pointsRequired} points but only have {$have} points.",
                     ], 400);
                 }
 
-                // Deduct points
-                if (! $user->deductBelievePoints($pointsRequired)) {
+                $pointsSplit = $user->deductBelievePointsForGiftCard($pointsRequired, $productAllowsGifted);
+                if ($pointsSplit === null) {
                     DB::rollBack();
+                    $purchased = round((float) ($user->believe_points ?? 0), 2);
+                    $gifted = round((float) ($user->gifted_believe_points ?? 0), 2);
+                    $msg = ! $productAllowsGifted
+                        ? "This card cannot be paid with Gifted Believe Points (Visa/Mastercard). You need {$pointsRequired} purchased Believe Points; you have {$purchased}. Your Gifted balance ({$gifted}) can be used on other retail gift cards."
+                        : 'Unable to apply Believe Points to this purchase. Please try again.';
+
                     if ($isInertiaRequest) {
                         return back()->withErrors([
-                            'payment_method' => 'Failed to deduct Believe Points. Please try again.',
+                            'payment_method' => $msg,
                         ]);
                     }
 
                     return response()->json([
                         'success' => false,
-                        'message' => 'Failed to deduct Believe Points. Please try again.',
-                    ], 500);
+                        'message' => $msg,
+                    ], 400);
                 }
 
                 // `$selectedBrand` from the Phaze lookup above is used for meta (same as Stripe flow).
@@ -582,7 +601,7 @@ class GiftCardController extends Controller
 
                 if (! $phazePurchaseResult) {
                     // Refund points if Phaze purchase fails
-                    $user->addBelievePoints($pointsRequired);
+                    $user->refundBelievePointsGiftCardBuckets($pointsSplit['from_gifted'], $pointsSplit['from_purchased']);
                     DB::rollBack();
 
                     // Get more specific error message from logs or Phaze response
@@ -603,7 +622,7 @@ class GiftCardController extends Controller
                 // Check if Phaze returned an error in the response
                 if (isset($phazePurchaseResult['error']) || (isset($phazePurchaseResult['httpStatusCode']) && $phazePurchaseResult['httpStatusCode'] >= 400)) {
                     // Refund points if Phaze purchase has error
-                    $user->addBelievePoints($pointsRequired);
+                    $user->refundBelievePointsGiftCardBuckets($pointsSplit['from_gifted'], $pointsSplit['from_purchased']);
                     DB::rollBack();
 
                     $phazeError = $phazePurchaseResult['error'] ?? 'Unknown error from gift card provider';
@@ -751,6 +770,9 @@ class GiftCardController extends Controller
                         'phaze_status' => $phazePurchaseResult['status'] ?? 'pending',
                         'phaze_initial_response' => $phazePurchaseResult, // Keep initial response
                         'believe_points_used' => $pointsRequired,
+                        'believe_points_from_gifted' => $pointsSplit['from_gifted'],
+                        'believe_points_from_purchased' => $pointsSplit['from_purchased'],
+                        'allowed_for_gifted_points' => $productAllowsGifted,
                         'commission_calculation' => [
                             'commission_percentage' => $commissionPercentage,
                             'total_commission' => $totalCommission,
@@ -801,6 +823,9 @@ class GiftCardController extends Controller
                 $transactionMeta = array_merge([
                     'gift_card_id' => $giftCard->id,
                     'believe_points_used' => $pointsRequired,
+                    'believe_points_from_gifted' => $pointsSplit['from_gifted'],
+                    'believe_points_from_purchased' => $pointsSplit['from_purchased'],
+                    'allowed_for_gifted_points' => $productAllowsGifted,
                     'phaze_order_id' => $phazePurchaseResult['orderId'] ?? null,
                     'brand' => $validated['brand_name'],
                 ], BiuPlatformFeeService::ledgerMetaSlice((float) $purchaseAmount));
@@ -874,7 +899,7 @@ class GiftCardController extends Controller
             }
 
             // Create Stripe checkout session (default payment method)
-            $session = StripeSession::create(StripeAutomaticTax::mergeCheckoutSessionParams([
+            $session = StripeSession::create([
                 'payment_method_types' => ['card'],
                 'line_items' => [[
                     'price_data' => [
@@ -901,7 +926,7 @@ class GiftCardController extends Controller
                     'currency' => $currency,
                     'type' => 'gift_card_purchase',
                 ],
-            ]));
+            ]);
 
             DB::commit();
 
@@ -1618,22 +1643,53 @@ class GiftCardController extends Controller
                 $brand['productName'] = 'Gift Card #'.($brand['productId'] ?? 'Unknown');
             }
 
-            // Get user's following organizations if user is logged in and has user role
-            $followingOrganizations = [];
+            $brand = $this->withGiftedEligibility($brand);
+
+            // All approved nonprofits eligible for beneficiary selection (same idea as /donate).
+            $organizations = Organization::query()
+                ->where('registration_status', 'approved')
+                ->excludingCareAllianceHubs()
+                ->orderBy('name')
+                ->get(['id', 'name', 'gift_card_terms_approved'])
+                ->map(fn (Organization $o) => [
+                    'id' => (int) $o->id,
+                    'name' => $o->name,
+                    'gift_card_terms_approved' => (bool) $o->gift_card_terms_approved,
+                ])
+                ->values()
+                ->all();
+
+            // Orgs this user has bought gift cards for — latest purchase first, with lifetime total.
+            $giftCardPurchaseOrganizations = [];
             if ($user && $user->role === 'user') {
-                $followingOrganizations = \App\Models\UserFavoriteOrganization::with('organization')
+                $aggregates = GiftCard::query()
                     ->where('user_id', $user->id)
-                    ->get()
-                    ->filter(fn ($fav) => $fav->organization_id && $fav->organization)
-                    ->map(function ($fav) {
-                        return [
-                            'id' => (int) $fav->organization_id,
-                            'name' => $fav->organization->name ?? 'Unknown',
-                            'gift_card_terms_approved' => $fav->organization->gift_card_terms_approved ?? false,
-                        ];
-                    })
-                    ->values()
-                    ->toArray();
+                    ->whereNotNull('purchased_at')
+                    ->whereNotNull('organization_id')
+                    ->selectRaw('organization_id')
+                    ->selectRaw('SUM(amount) as purchased_total')
+                    ->selectRaw('MAX(purchased_at) as last_purchased_at')
+                    ->groupBy('organization_id')
+                    ->orderByDesc('last_purchased_at')
+                    ->get();
+
+                $orgById = Organization::query()
+                    ->whereIn('id', $aggregates->pluck('organization_id'))
+                    ->get(['id', 'name', 'gift_card_terms_approved'])
+                    ->keyBy('id');
+
+                foreach ($aggregates as $row) {
+                    $o = $orgById->get($row->organization_id);
+                    if ($o === null) {
+                        continue;
+                    }
+                    $giftCardPurchaseOrganizations[] = [
+                        'id' => (int) $o->id,
+                        'name' => $o->name,
+                        'gift_card_terms_approved' => (bool) $o->gift_card_terms_approved,
+                        'purchased_total' => (float) $row->purchased_total,
+                    ];
+                }
             }
 
             return Inertia::render('GiftCards/PurchaseDetails', [
@@ -1645,7 +1701,8 @@ class GiftCardController extends Controller
                     'email' => $user->email,
                     'role' => $user->role,
                 ] : null,
-                'followingOrganizations' => $followingOrganizations,
+                'organizations' => $organizations,
+                'giftCardPurchaseOrganizations' => $giftCardPurchaseOrganizations,
             ]);
         }
 
@@ -2184,5 +2241,17 @@ class GiftCardController extends Controller
                 'error' => 'Error looking up transaction: '.$e->getMessage(),
             ]);
         }
+    }
+
+    /**
+     * @param  array<string, mixed>  $brand
+     * @return array<string, mixed>
+     */
+    private function withGiftedEligibility(array $brand): array
+    {
+        $name = $brand['productName'] ?? '';
+        $brand['allowedForGiftedPoints'] = GiftCardGiftedPointsPolicy::isAllowedForGiftedRedemption($name);
+
+        return $brand;
     }
 }

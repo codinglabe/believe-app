@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import FrontendLayout from "@/layouts/frontend/frontend-layout";
 import axios from 'axios';
 import { showSuccessToast, showErrorToast } from '@/lib/toast';
-import { Star, ShoppingCart, Heart, Share2, ChevronLeft, ChevronRight, Check, Gavel, Clock, Trophy, Ban } from 'lucide-react';
+import { Star, ShoppingCart, Heart, Share2, ChevronLeft, ChevronRight, Check, Gavel, Clock, Trophy, Ban, TrendingDown } from 'lucide-react';
 
 interface PrintifyVariant {
   id: number;
@@ -28,6 +28,11 @@ interface Product {
   name: string;
   description: string;
   unit_price: number;
+  source_cost?: number | null;
+  organization_id?: number | null;
+  type?: string;
+  owned_by?: string;
+  pickup_available?: boolean;
   image: string;
   quantity_available: number;
   organization: {
@@ -82,6 +87,9 @@ interface ProductViewProps {
   biddingClosed?: boolean;
   winnerStatus?: string | null;
   isCurrentUserWinner?: boolean;
+  platformFeePercentage?: number;
+  catalog_pickup_offered?: boolean;
+  catalog_pickup_address_preview?: string | null;
 }
 
 interface CartItem {
@@ -111,6 +119,9 @@ export default function ProductView({
   biddingClosed = false,
   winnerStatus = null,
   isCurrentUserWinner = false,
+  platformFeePercentage = 10,
+  catalog_pickup_offered = false,
+  catalog_pickup_address_preview = null,
 }: ProductViewProps) {
   const [selectedVariant, setSelectedVariant] = useState<PrintifyVariant | null>(firstVariant || null);
   const [quantity, setQuantity] = useState(1);
@@ -299,15 +310,41 @@ export default function ProductView({
     }
   };
 
-  // Get current variant price or fallback to product price
-  const currentPrice = Number(selectedVariant
+  const isAtCostPricing = Boolean(product.organization_id) && product.pricing_model !== 'auction' && product.pricing_model !== 'blind_bid'
+
+  // Get current variant retail price or fallback to product price
+  const currentRetailPrice = Number(selectedVariant
     ? selectedVariant.price
     : product.unit_price) || 0;
 
-  // Get current variant cost for display
-  const currentCost = selectedVariant
+  // Get current variant cost for display / checkout
+  const currentCost = Number(selectedVariant
     ? selectedVariant.cost
-    : product.unit_price;
+    : (product.source_cost ?? product.unit_price)) || 0;
+
+  const currentCheckoutPrice = isAtCostPricing ? currentCost : currentRetailPrice
+  const platformFeeAmount = Number(((currentCheckoutPrice * platformFeePercentage) / 100).toFixed(2))
+
+  const orgEligibleTypicalHint =
+    Boolean(product.organization_id) &&
+    product.pricing_model !== "auction" &&
+    product.pricing_model !== "blind_bid" &&
+    currentCheckoutPrice > 0.0001 &&
+    currentRetailPrice <= currentCheckoutPrice + 0.001
+
+  const typicalRetailForDisplay = orgEligibleTypicalHint
+    ? Number((currentCheckoutPrice * 1.25).toFixed(2))
+    : currentRetailPrice
+  const typicalRetailIsEstimated = orgEligibleTypicalHint
+
+  const savingsVsTypicalUsd =
+    isAtCostPricing && typicalRetailForDisplay > currentCheckoutPrice + 0.001
+      ? Number((typicalRetailForDisplay - currentCheckoutPrice).toFixed(2))
+      : 0
+  const savingsVsTypicalPct =
+    savingsVsTypicalUsd > 0 && typicalRetailForDisplay > 0
+      ? Math.round((100 * savingsVsTypicalUsd) / typicalRetailForDisplay * 10) / 10
+      : 0
 
   // Get images for selected variant or all product images
   const currentVariantImages = selectedVariant?.images && selectedVariant.images.length > 0
@@ -464,7 +501,6 @@ export default function ProductView({
   const cartItem = getCartItem();
   const productInCart = isProductInCart();
 
-    console.log('product in cart:', productInCart);
   const metaDescription = product.description ? String(product.description).slice(0, 160) : undefined;
 
   return (
@@ -481,6 +517,32 @@ export default function ProductView({
             <span className="text-gray-400 dark:text-gray-600">/</span>
             <span className="text-gray-600 dark:text-gray-400">{product.name}</span>
           </div>
+
+          {savingsVsTypicalUsd > 0 && isAtCostPricing && (
+            <div className="mb-6 flex flex-col gap-1 rounded-xl border border-amber-400/50 bg-gradient-to-r from-amber-50 to-orange-50 px-4 py-3 shadow-sm dark:border-amber-500/30 dark:from-amber-950/50 dark:to-orange-950/40 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-2 text-amber-950 dark:text-amber-100">
+                <TrendingDown className="h-5 w-5 shrink-0" aria-hidden />
+                <div>
+                  <p className="text-sm font-bold uppercase tracking-wide text-amber-900 dark:text-amber-200">
+                    {product.printify_product_id ? "Printify" : "Organization"} · savings vs typical retail
+                  </p>
+                  <p className="text-base font-semibold text-amber-950 dark:text-amber-50">
+                    You save{" "}
+                    <span className="tabular-nums">${savingsVsTypicalUsd.toFixed(2)}</span>
+                    {savingsVsTypicalPct >= 1 ? (
+                      <span className="text-amber-900/90 dark:text-amber-200/90"> ({savingsVsTypicalPct}% below typical retail)</span>
+                    ) : null}{" "}
+                    before checkout fees.
+                  </p>
+                  {typicalRetailIsEstimated ? (
+                    <p className="mt-1 text-sm font-medium text-amber-900/85 dark:text-amber-100/85">
+                      Typical retail shown uses a +25% reference when no separate MSRP is available.
+                    </p>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Main Content */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
@@ -791,23 +853,78 @@ export default function ProductView({
 
               {/* Price (fixed price only) */}
               {!biddingInfo && !biddingClosed && (
-                <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 rounded-xl p-6 border border-blue-100 dark:border-blue-800">
-                  <p className="text-gray-600 dark:text-gray-400 text-sm mb-2">Price</p>
-                  <div className="flex items-baseline gap-3">
-                    <span className="text-4xl font-bold text-blue-600 dark:text-blue-400">
-                      ${typeof currentPrice === 'number' ? currentPrice.toFixed(2) : '0.00'}
-                    </span>
+                <div className="bg-gradient-to-br from-slate-900 via-slate-900 to-indigo-950 rounded-2xl p-6 border border-white/10 shadow-xl">
+                  <div className="flex items-start justify-between gap-4 mb-4">
+                    <div>
+                      <p className="text-xs uppercase tracking-[0.2em] text-emerald-300/80 mb-2">
+                        {isAtCostPricing ? 'At Cost Pricing' : 'Price'}
+                      </p>
+                      <div className="flex items-end gap-3 flex-wrap">
+                        <span className="text-4xl font-extrabold text-emerald-300">
+                          ${currentCheckoutPrice.toFixed(2)}
+                        </span>
+                        {isAtCostPricing && (
+                          <span className="text-xl font-semibold text-emerald-200/90">
+                            At Cost
+                          </span>
+                        )}
+                      </div>
+                    </div>
                     {product.quantity_available <= 5 && product.quantity_available > 0 && (
-                      <span className="text-sm font-medium text-red-600 dark:text-red-400 ml-auto">
+                      <span className="text-sm font-medium text-amber-300 ml-auto">
                         Only {product.quantity_available} left!
                       </span>
                     )}
                     {product.quantity_available === 0 && (
-                      <span className="text-sm font-medium text-red-600 dark:text-red-400 ml-auto">
+                      <span className="text-sm font-medium text-red-300 ml-auto">
                         Out of Stock
                       </span>
                     )}
                   </div>
+                  {isAtCostPricing ? (
+                    <div className="space-y-3">
+                      <p className="text-center text-xs font-bold uppercase tracking-[0.18em] text-emerald-200/90">
+                        {product.printify_product_id ? "Printify" : "Organization"} · compare to typical retail
+                      </p>
+                      <div className="flex items-center justify-between rounded-xl bg-white/5 px-4 py-3 text-sm">
+                        <span className="text-slate-300 line-through">
+                          Typical Retail
+                          {typicalRetailIsEstimated ? (
+                            <span className="mt-0.5 block text-[10px] font-normal normal-case text-amber-200/90">
+                              (est. +25%)
+                            </span>
+                          ) : null}
+                        </span>
+                        <span className="font-semibold text-slate-100">${typicalRetailForDisplay.toFixed(2)}</span>
+                      </div>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <div className="rounded-xl bg-emerald-400/10 px-4 py-3 border border-emerald-300/20">
+                          <p className="text-xs uppercase tracking-wide text-emerald-200/75 mb-1">Your Price</p>
+                          <p className="text-2xl font-bold text-emerald-300">${currentCheckoutPrice.toFixed(2)} <span className="text-base font-semibold">At Cost</span></p>
+                        </div>
+                        <div className="rounded-xl bg-white/5 px-4 py-3 border border-white/10">
+                          <p className="text-xs uppercase tracking-wide text-slate-300 mb-1">Added At Checkout</p>
+                          <p className="text-2xl font-bold text-white">{platformFeePercentage}% Fee: ${platformFeeAmount.toFixed(2)}</p>
+                        </div>
+                      </div>
+                      <p className="text-sm text-slate-300">
+                        No retail markup. Your organization buys this item at cost, and the platform fee is added only at checkout.
+                      </p>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-slate-300">
+                      Final product price before shipping and tax.
+                    </p>
+                  )}
+                  {catalog_pickup_offered && catalog_pickup_address_preview && (
+                    <div className="mt-4 rounded-lg border border-emerald-400/40 bg-emerald-950/40 px-4 py-3 text-sm text-emerald-50">
+                      <p className="font-semibold text-emerald-200 mb-1">Local pickup available</p>
+                      <p className="whitespace-pre-line text-emerald-50/95">{catalog_pickup_address_preview}</p>
+                      <p className="mt-2 text-xs text-emerald-200/80">
+                        Choose pickup at checkout for no shipping charge (nonprofit location above).
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -821,7 +938,7 @@ export default function ProductView({
                         This item is in your cart
                       </p>
                       <p className="text-sm text-green-700 dark:text-green-300">
-                        Quantity: {cartItem.quantity} • ${(cartItem.quantity * (typeof currentPrice === 'number' ? currentPrice : 0)).toFixed(2)}
+                        Quantity: {cartItem.quantity} • ${(cartItem.quantity * currentCheckoutPrice).toFixed(2)}
                       </p>
                     </div>
                   </div>

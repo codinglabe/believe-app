@@ -22,13 +22,24 @@ interface CartItem {
   }
 }
 
+export interface PlatformFeeLine {
+  key: string
+  label: string
+  percent: number
+  base_usd: number
+  fee_usd: number
+}
+
 interface CheckoutProps {
   items: CartItem[]
   subtotal: number
   platform_fee_percentage: number
   platform_fee: number
+  platform_fee_lines?: PlatformFeeLine[]
   donation_percentage: number
   stripePublishableKey: string
+  /** Merchant / pool lines allow unified local pickup at step 2 */
+  pickup_available_at_checkout?: boolean
 }
 
 interface Step2Data {
@@ -47,8 +58,10 @@ export default function CheckoutIndex({
   subtotal,
   platform_fee_percentage,
   platform_fee,
+  platform_fee_lines = [],
   donation_percentage,
   stripePublishableKey,
+  pickup_available_at_checkout = false,
 }: CheckoutProps) {
   const [step, setStep] = useState(1)
   const [step2Data, setStep2Data] = useState<Step2Data | null>(null)
@@ -101,14 +114,18 @@ export default function CheckoutIndex({
               subtotal={subtotal}
               platform_fee_percentage={platform_fee_percentage}
               platform_fee={platform_fee}
+              platform_fee_lines={platform_fee_lines}
               donation_percentage={donation_percentage}
+              pickupAvailableAtCheckout={pickup_available_at_checkout}
               onComplete={handleStep1Complete}
             />
           ) : (
             <Step2
               items={items}
               subtotal={subtotal}
-              // platform_fee={platform_fee} // Removed - customers don't pay platform fee
+              platform_fee_percentage={platform_fee_percentage}
+              platform_fee={platform_fee}
+              platform_fee_lines={platform_fee_lines}
               donation_percentage={donation_percentage}
               donation_amount={donationAmount}
               step2Data={step2Data!}

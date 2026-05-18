@@ -19,6 +19,7 @@ interface Livestream {
   title: string | null
   roomName: string
   roomPassword: string
+  requiresPasscode?: boolean
   joinUrl: string
 }
 
@@ -86,7 +87,8 @@ export default function SupporterReady({ livestream }: Props) {
                   {copied === "room" ? <Check className="h-4 w-4 text-green-600" /> : <Copy className="h-4 w-4" />}
                 </Button>
               </div>
-              <div>
+              {livestream.requiresPasscode ? (
+                <div>
                 <p className="text-sm font-medium text-muted-foreground mb-1">Passcode</p>
                 <div className="flex gap-2">
                   <Input value={livestream.roomPassword} readOnly className="font-mono" />
@@ -99,7 +101,8 @@ export default function SupporterReady({ livestream }: Props) {
                     {copied === "pass" ? <Check className="h-4 w-4 text-green-600" /> : <Copy className="h-4 w-4" />}
                   </Button>
                 </div>
-              </div>
+                </div>
+              ) : null}
             </CardContent>
           </Card>
 

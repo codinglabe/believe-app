@@ -17,6 +17,8 @@ import { Button } from "@/components/admin/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/admin/ui/card"
 import { Badge } from "@/components/admin/ui/badge"
 import AppLayout from "@/layouts/app-layout"
+import type { ConnectionHubType } from "@/lib/connection-hub-type"
+import { connectionHubTypeLabel, isEventsHubType } from "@/lib/connection-hub-type"
 interface User {
   id: number
   name: string
@@ -44,7 +46,7 @@ interface Course {
   id: number
   name: string
   slug: string
-  type: "course" | "event"
+  type: ConnectionHubType
   start_date: string
   start_time: string
   topic: { name: string } | null
@@ -121,7 +123,7 @@ export default function AdminCourseEnrollments({
 
   return (
     <AppLayout>
-      <Head title={`Enrollments - ${course.name} - Courses & Events`} />
+      <Head title={`Enrollments - ${course.name} - Connection Hub`} />
 
       <div className="space-y-6 m-10">
         {/* Header */}
@@ -129,7 +131,7 @@ export default function AdminCourseEnrollments({
           <Link href={route("admin.courses.show", course.slug)}>
             <Button variant="outline" size="sm">
               <ArrowLeft className="mr-2 h-4 w-4" />
-              Back to {course.type === "event" ? "Event" : "Course"} Details
+              Back to {connectionHubTypeLabel(course.type)} details
             </Button>
           </Link>
           <div className="flex items-center gap-3">
@@ -141,7 +143,7 @@ export default function AdminCourseEnrollments({
                 Enrollments - {course.name}
               </h1>
               <p className="text-muted-foreground">
-                View all enrolled users for this {course.type === "event" ? "event" : "course"}
+                View all enrolled users for this {connectionHubTypeLabel(course.type)} listing
               </p>
             </div>
           </div>
@@ -157,7 +159,7 @@ export default function AdminCourseEnrollments({
               <div className="text-center p-4 bg-primary/5 rounded-lg">
                 <div className="text-3xl font-bold text-primary">{enrollmentStats.total_enrolled}</div>
                 <div className="text-sm text-muted-foreground mt-1">
-                  {course.type === "course" ? "Students Enrolled" : "Participants Registered"}
+                  {!isEventsHubType(course.type) ? "Students Enrolled" : "Participants Registered"}
                 </div>
               </div>
               <div className="text-center p-4 bg-blue-500/5 rounded-lg">
@@ -181,7 +183,7 @@ export default function AdminCourseEnrollments({
         {/* Course/Event Info */}
         <Card>
           <CardHeader>
-            <CardTitle>{course.type === "event" ? "Event" : "Course"} Information</CardTitle>
+            <CardTitle>{connectionHubTypeLabel(course.type)} information</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -192,17 +194,17 @@ export default function AdminCourseEnrollments({
               <div>
                 <span className="text-sm text-muted-foreground">Type</span>
                 <div>
-                  <Badge className={course.type === "event" ? "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200" : "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200"}>
-                    {course.type === "event" ? "Event" : "Course"}
+                  <Badge className="bg-indigo-100 text-indigo-900 dark:bg-indigo-950 dark:text-indigo-200">
+                    {connectionHubTypeLabel(course.type)}
                   </Badge>
                 </div>
               </div>
               <div>
                 <span className="text-sm text-muted-foreground">
-                  {course.type === "course" ? "Topic" : "Event Topic"}
+                  Topic
                 </span>
                 <div className="font-semibold">
-                  {course.type === "course" ? course.topic?.name : course.event_type?.name || "N/A"}
+                  {!isEventsHubType(course.type) ? course.topic?.name : course.event_type?.name || "N/A"}
                 </div>
               </div>
               <div>
@@ -229,7 +231,7 @@ export default function AdminCourseEnrollments({
                 <Users className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
                 <h3 className="text-lg font-semibold text-foreground mb-2">No Enrollments Yet</h3>
                 <p className="text-muted-foreground">
-                  This {course.type === "event" ? "event" : "course"} doesn't have any enrollments yet.
+                  This listing doesn't have any enrollments yet.
                 </p>
               </div>
             ) : (

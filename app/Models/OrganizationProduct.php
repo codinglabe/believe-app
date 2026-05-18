@@ -14,6 +14,7 @@ class OrganizationProduct extends Model
         'supporter_message',
         'is_featured',
         'status',
+        'pickup_available',
     ];
 
     protected function casts(): array
@@ -21,6 +22,7 @@ class OrganizationProduct extends Model
         return [
             'custom_price' => 'decimal:2',
             'is_featured' => 'boolean',
+            'pickup_available' => 'boolean',
         ];
     }
 

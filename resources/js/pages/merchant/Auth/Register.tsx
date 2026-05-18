@@ -62,18 +62,18 @@ export default function MerchantRegister() {
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ duration: 0.6, delay: 0.1 }}
                 >
-                  <Link 
-                    href="/" 
-                    className="inline-flex items-center gap-2 text-[#1F3A5F] hover:text-[#2563EB] mb-4 sm:mb-5 transition-colors group"
+                  <Link
+                    href="/"
+                    className="inline-flex items-center gap-2 text-slate-300 hover:text-[#60A5FA] mb-4 sm:mb-5 transition-colors group"
                   >
                     <ArrowLeft className="w-4 h-4 group-hover:-translate-x-1 transition-transform" />
                     <span className="text-sm sm:text-base">Back to home</span>
                   </Link>
                   
-                  <h1 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-extrabold text-[#0A2540] mb-3 sm:mb-4 leading-tight">
+                  <h1 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-extrabold text-white mb-3 sm:mb-4 leading-tight">
                     Join the 10% Discount Merchant Hub
                   </h1>
-                  <p className="text-base sm:text-lg md:text-xl text-[#1F3A5F] mb-4 sm:mb-5 leading-relaxed">
+                  <p className="text-base sm:text-lg md:text-xl text-slate-200 mb-4 sm:mb-5 leading-relaxed">
                     Join thousands of merchants growing their business with Believe Points. Get started in minutes.
                   </p>
                 </motion.div>
@@ -84,9 +84,9 @@ export default function MerchantRegister() {
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.6, delay: 0.2 }}
                 >
-                  <MerchantCard className="border border-gray-200 shadow-sm">
+                  <MerchantCard className="border border-[#60A5FA]/35 bg-[#091730]/75 shadow-sm">
                     <MerchantCardContent className="p-4 sm:p-5 md:p-6">
-                      <h3 className="text-lg sm:text-xl font-bold text-[#0A2540] mb-4 flex items-center gap-2">
+                      <h3 className="text-lg sm:text-xl font-bold text-white mb-4 flex items-center gap-2">
                         <Target className="w-4 h-4 sm:w-5 sm:h-5 text-[#2563EB]" />
                         What's Included:
                       </h3>
@@ -105,7 +105,7 @@ export default function MerchantRegister() {
                                 <Icon className="w-4 h-4 sm:w-5 sm:h-5" />
                               </div>
                               <div className="flex-1 pt-0.5 sm:pt-1">
-                                <p className="text-[#1F3A5F] text-xs sm:text-sm font-medium leading-snug">{benefit.text}</p>
+                                <p className="text-slate-200 text-xs sm:text-sm font-medium leading-snug">{benefit.text}</p>
                               </div>
                             </motion.div>
                           )
@@ -121,31 +121,31 @@ export default function MerchantRegister() {
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.6, delay: 0.4 }}
                 >
-                  <MerchantCard className="bg-gradient-to-r from-[#2563EB]/10 to-[#2563EB]/4 border-2 border-[#2563EB]/40 backdrop-blur-sm shadow-2xl shadow-[#2563EB]/20">
+                  <MerchantCard className="bg-gradient-to-r from-[#2563EB]/15 to-[#2563EB]/6 border-2 border-[#60A5FA]/45 backdrop-blur-sm shadow-2xl shadow-[#2563EB]/20">
                     <MerchantCardContent className="p-4 sm:p-5 md:p-6">
                       <div className="text-center">
-                        <p className="text-xs sm:text-sm text-[#1F3A5F] mb-2 sm:mb-3 font-medium">Simple, Transparent Pricing</p>
+                        <p className="text-xs sm:text-sm text-slate-200 mb-2 sm:mb-3 font-medium">Simple, Transparent Pricing</p>
                         <div className="flex items-baseline justify-center gap-2 mb-3 sm:mb-4">
                           <span className="text-3xl sm:text-4xl md:text-5xl font-extrabold bg-gradient-to-r from-[#2563EB] to-[#1D4ED8] bg-clip-text text-transparent">
                             $9
                           </span>
-                          <span className="text-base sm:text-lg md:text-xl text-gray-600">/month</span>
+                          <span className="text-base sm:text-lg md:text-xl text-slate-300">/month</span>
                         </div>
                         <div className="space-y-1.5 sm:space-y-2">
-                          <p className="text-xs text-gray-400 flex items-center justify-center gap-1.5">
+                          <p className="text-xs text-slate-200 flex items-center justify-center gap-1.5">
                             <CheckCircle2 className="w-3.5 h-3.5 text-[#16A34A]" />
                             <span>No commissions</span>
                           </p>
-                          <p className="text-xs text-gray-400 flex items-center justify-center gap-1.5">
+                          <p className="text-xs text-slate-200 flex items-center justify-center gap-1.5">
                             <CheckCircle2 className="w-3.5 h-3.5 text-[#16A34A]" />
                             <span>No per-redemption fees</span>
                           </p>
-                          <p className="text-xs text-gray-400 flex items-center justify-center gap-1.5">
+                          <p className="text-xs text-slate-200 flex items-center justify-center gap-1.5">
                             <CheckCircle2 className="w-3.5 h-3.5 text-[#16A34A]" />
                             <span>No hidden charges</span>
                           </p>
                         </div>
-                        <p className="text-xs text-gray-600 mt-3 sm:mt-4 pt-3 sm:pt-4 border-t border-[#2563EB]/30">
+                        <p className="text-xs text-slate-300 mt-3 sm:mt-4 pt-3 sm:pt-4 border-t border-[#2563EB]/30">
                           No credit card required • Cancel anytime
                         </p>
                       </div>
@@ -161,13 +161,13 @@ export default function MerchantRegister() {
                 transition={{ duration: 0.6, delay: 0.2 }}
                 className="flex items-center"
               >
-                <MerchantCard className="w-full shadow-lg border border-gray-200">
+                <MerchantCard className="w-full shadow-lg border border-[#60A5FA]/40 bg-[#091730]/82">
                   <MerchantCardContent className="p-6 sm:p-8 lg:p-10">
                     <div className="mb-6 sm:mb-8">
-                      <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-[#0A2540] mb-2 sm:mb-3">
+                      <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-white mb-2 sm:mb-3">
                         Create Your Account
                       </h2>
-                      <p className="text-[#1F3A5F] text-sm sm:text-base md:text-lg">
+                      <p className="text-slate-200 text-sm sm:text-base md:text-lg">
                         Fill in your details to get started
                       </p>
                     </div>
@@ -178,7 +178,7 @@ export default function MerchantRegister() {
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ duration: 0.4, delay: 0.3 }}
                       >
-                        <MerchantLabel htmlFor="name" className="text-sm sm:text-base font-semibold text-[#0A2540]">
+                        <MerchantLabel htmlFor="name" className="text-sm sm:text-base font-semibold text-slate-100">
                           Business Name <span className="text-[#2563EB]">*</span>
                         </MerchantLabel>
                         <MerchantInput
@@ -200,7 +200,7 @@ export default function MerchantRegister() {
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ duration: 0.4, delay: 0.35 }}
                       >
-                        <MerchantLabel htmlFor="email" className="text-sm sm:text-base font-semibold text-[#0A2540]">
+                        <MerchantLabel htmlFor="email" className="text-sm sm:text-base font-semibold text-slate-100">
                           Email Address <span className="text-[#2563EB]">*</span>
                         </MerchantLabel>
                         <MerchantInput
@@ -221,7 +221,7 @@ export default function MerchantRegister() {
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ duration: 0.4, delay: 0.4 }}
                       >
-                        <MerchantLabel htmlFor="password" className="text-sm sm:text-base font-semibold text-[#0A2540]">
+                        <MerchantLabel htmlFor="password" className="text-sm sm:text-base font-semibold text-slate-100">
                           Password <span className="text-[#2563EB]">*</span>
                         </MerchantLabel>
                         <MerchantInput
@@ -235,7 +235,7 @@ export default function MerchantRegister() {
                           className="mt-2 sm:mt-3 text-base"
                         />
                         <InputError message={errors.password} />
-                        <p className="text-xs sm:text-sm text-gray-400 mt-2">
+                        <p className="text-xs sm:text-sm text-slate-300 mt-2">
                           Must be at least 8 characters
                         </p>
                       </motion.div>
@@ -245,7 +245,7 @@ export default function MerchantRegister() {
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ duration: 0.4, delay: 0.45 }}
                       >
-                        <MerchantLabel htmlFor="password_confirmation" className="text-sm sm:text-base font-semibold text-[#0A2540]">
+                        <MerchantLabel htmlFor="password_confirmation" className="text-sm sm:text-base font-semibold text-slate-100">
                           Confirm Password <span className="text-[#2563EB]">*</span>
                         </MerchantLabel>
                         <MerchantInput

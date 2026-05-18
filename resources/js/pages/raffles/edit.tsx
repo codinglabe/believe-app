@@ -9,6 +9,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Plus, Trash2, Upload, Calendar, DollarSign, Users, Gift } from 'lucide-react';
 import { PageProps } from '@/types';
 import AppLayout from '@/layouts/app-layout';
+import { SweepstakesComplianceBanner } from '@/components/raffles/SweepstakesComplianceBanner';
+import { SweepstakesSettingsFields } from '@/components/raffles/SweepstakesSettingsFields';
 
 interface Prize {
     name: string;
@@ -27,6 +29,21 @@ interface Raffle {
     image?: string;
     prizes: Array<{ name: string; description?: string }>;
     winners_count: number;
+    sweepstakes_type?: 'free' | 'donation' | 'hybrid' | null;
+    npn_entry_enabled?: boolean;
+    entry_free_online_enabled?: boolean;
+    entry_donation_enabled?: boolean;
+    entry_mail_in_enabled?: boolean;
+    entry_social_bonus_enabled?: boolean;
+    entry_volunteer_enabled?: boolean;
+    official_rules?: string | null;
+    eligibility_rules?: string | null;
+    max_entries_per_person?: number | null;
+    max_free_entries?: number | null;
+    max_donation_entries?: number | null;
+    minimum_age?: number | null;
+    country_restrictions?: string[] | null;
+    state_restrictions?: string[] | null;
 }
 
 interface RaffleEditProps extends PageProps {
@@ -41,7 +58,7 @@ export default function EditRaffle({ raffle }: RaffleEditProps) {
         { name: '', description: '' }
     ]);
 
-    const { data, setData, put, processing, errors, reset } = useForm({
+    const { data, setData, put, processing, errors } = useForm({
         title: raffle.title,
         description: raffle.description,
         ticket_price: raffle.ticket_price.toString(),
@@ -50,6 +67,25 @@ export default function EditRaffle({ raffle }: RaffleEditProps) {
         image: null as File | null,
         prizes: prizes,
         winners_count: raffle.winners_count,
+        sweepstakes_type: (raffle.sweepstakes_type as 'free' | 'donation' | 'hybrid' | undefined) ?? 'hybrid',
+        npn_entry_enabled: Boolean(raffle.npn_entry_enabled),
+        entry_free_online_enabled: Boolean(raffle.entry_free_online_enabled),
+        entry_donation_enabled: raffle.entry_donation_enabled !== false,
+        entry_mail_in_enabled: Boolean(raffle.entry_mail_in_enabled),
+        entry_social_bonus_enabled: Boolean(raffle.entry_social_bonus_enabled),
+        entry_volunteer_enabled: Boolean(raffle.entry_volunteer_enabled),
+        official_rules: raffle.official_rules ?? '',
+        eligibility_rules: raffle.eligibility_rules ?? '',
+        max_entries_per_person: raffle.max_entries_per_person != null ? String(raffle.max_entries_per_person) : '',
+        max_free_entries: raffle.max_free_entries != null ? String(raffle.max_free_entries) : '',
+        max_donation_entries: raffle.max_donation_entries != null ? String(raffle.max_donation_entries) : '',
+        minimum_age: raffle.minimum_age != null ? String(raffle.minimum_age) : '',
+        country_restrictions_text: Array.isArray(raffle.country_restrictions)
+            ? raffle.country_restrictions.join(', ')
+            : '',
+        state_restrictions_text: Array.isArray(raffle.state_restrictions)
+            ? raffle.state_restrictions.join(', ')
+            : '',
     });
 
     useEffect(() => {
@@ -119,13 +155,15 @@ export default function EditRaffle({ raffle }: RaffleEditProps) {
 
     return (
         <AppLayout>
-            <Head title={`Edit ${raffle.title}`} />
+            <Head title={`Edit: ${raffle.title}`} />
             
             <div className="w-full space-y-6 px-4">
+                <SweepstakesComplianceBanner />
+
                 {/* Header */}
-                <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
-                    <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Edit Raffle Draw</h1>
-                    <p className="text-gray-600 dark:text-gray-400">Update your raffle draw details</p>
+                <div className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm dark:border-gray-700 dark:bg-gray-800">
+                    <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Edit sweepstakes campaign</h1>
+                    <p className="text-gray-600 dark:text-gray-400">Update your campaign details and compliance settings</p>
                 </div>
 
                 <form onSubmit={handleSubmit}>
@@ -145,17 +183,17 @@ export default function EditRaffle({ raffle }: RaffleEditProps) {
                                         Basic Information
                                     </CardTitle>
                                     <CardDescription>
-                                        Update the essential details for your raffle draw
+                                        Campaign basics — use clear titles and descriptions for your public page.
                                     </CardDescription>
                                 </CardHeader>
                                 <CardContent className="space-y-6">
                                     <div className="space-y-2">
-                                        <Label htmlFor="title">Raffle Title *</Label>
+                                        <Label htmlFor="title">Campaign title *</Label>
                                         <Input
                                             id="title"
                                             value={data.title}
                                             onChange={(e) => setData('title', e.target.value)}
-                                            placeholder="Enter raffle title"
+                                            placeholder="Enter campaign title"
                                             className={errors.title ? 'border-red-500' : ''}
                                         />
                                         {errors.title && <p className="text-sm text-red-500">{errors.title}</p>}
@@ -167,7 +205,7 @@ export default function EditRaffle({ raffle }: RaffleEditProps) {
                                             id="description"
                                             value={data.description}
                                             onChange={(e) => setData('description', e.target.value)}
-                                            placeholder="Describe your raffle draw"
+                                            placeholder="Describe your sweepstakes campaign"
                                             rows={4}
                                             className={errors.description ? 'border-red-500' : ''}
                                         />
@@ -177,8 +215,8 @@ export default function EditRaffle({ raffle }: RaffleEditProps) {
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                         <div className="space-y-2">
                                             <Label htmlFor="ticket_price" className="flex items-center">
-                                                <DollarSign className="w-4 h-4 mr-1" />
-                                                Ticket Price *
+                                                <DollarSign className="mr-1 h-4 w-4" />
+                                                Suggested donation amount *
                                             </Label>
                                             <Input
                                                 id="ticket_price"
@@ -187,16 +225,20 @@ export default function EditRaffle({ raffle }: RaffleEditProps) {
                                                 min="0.01"
                                                 value={data.ticket_price}
                                                 onChange={(e) => setData('ticket_price', e.target.value)}
-                                                placeholder="0.00"
+                                                placeholder="e.g. 5.00"
                                                 className={errors.ticket_price ? 'border-red-500' : ''}
                                             />
+                                            <p className="text-xs text-muted-foreground">
+                                                Shown as a suggested donation for donation-based entries. Donations cannot
+                                                be required to enter; enable free / NPN paths in settings.
+                                            </p>
                                             {errors.ticket_price && <p className="text-sm text-red-500">{errors.ticket_price}</p>}
                                         </div>
 
                                         <div className="space-y-2">
                                             <Label htmlFor="total_tickets" className="flex items-center">
-                                                <Users className="w-4 h-4 mr-1" />
-                                                Total Tickets *
+                                                <Users className="mr-1 h-4 w-4" />
+                                                Maximum entries *
                                             </Label>
                                             <Input
                                                 id="total_tickets"
@@ -209,7 +251,7 @@ export default function EditRaffle({ raffle }: RaffleEditProps) {
                                                 className={errors.total_tickets ? 'border-red-500' : ''}
                                             />
                                             <p className="text-xs text-gray-500">
-                                                Minimum: {raffle.sold_tickets} (already sold)
+                                                Minimum: {raffle.sold_tickets} entries already issued
                                             </p>
                                             {errors.total_tickets && <p className="text-sm text-red-500">{errors.total_tickets}</p>}
                                         </div>
@@ -217,8 +259,8 @@ export default function EditRaffle({ raffle }: RaffleEditProps) {
 
                                     <div className="space-y-2">
                                         <Label htmlFor="draw_date" className="flex items-center">
-                                            <Calendar className="w-4 h-4 mr-1" />
-                                            Draw Date & Time *
+                                            <Calendar className="mr-1 h-4 w-4" />
+                                            Winner selection date & time *
                                         </Label>
                                         <Input
                                             id="draw_date"
@@ -231,7 +273,7 @@ export default function EditRaffle({ raffle }: RaffleEditProps) {
                                     </div>
 
                                     <div className="space-y-2">
-                                        <Label htmlFor="image">Raffle Image</Label>
+                                        <Label htmlFor="image">Campaign image</Label>
                                         {raffle.image && (
                                             <div className="mb-4">
                                                 <img
@@ -272,9 +314,7 @@ export default function EditRaffle({ raffle }: RaffleEditProps) {
                                             Add Prize
                                         </Button>
                                     </CardTitle>
-                                    <CardDescription>
-                                        Update the prizes for your raffle draw
-                                    </CardDescription>
+                                    <CardDescription>Define prizes for this sweepstakes campaign.</CardDescription>
                                 </CardHeader>
                                 <CardContent className="space-y-4">
                                     {prizes.map((prize, index) => (
@@ -325,25 +365,28 @@ export default function EditRaffle({ raffle }: RaffleEditProps) {
                         <TabsContent value="settings">
                             <Card>
                                 <CardHeader>
-                                    <CardTitle>Raffle Settings</CardTitle>
+                                    <CardTitle>Compliance & entry configuration</CardTitle>
                                     <CardDescription>
-                                        Update additional settings for your raffle
+                                        Entry methods, limits, eligibility, and winner selection settings.
                                     </CardDescription>
                                 </CardHeader>
-                                <CardContent className="space-y-6">
-                                    <div className="space-y-2">
-                                        <Label htmlFor="winners_count">Number of Winners</Label>
+                                <CardContent className="space-y-10">
+                                    <SweepstakesSettingsFields data={data} setData={setData} errors={errors} />
+                                    <div className="space-y-2 border-t border-border pt-8">
+                                        <Label htmlFor="winners_count">Winner spots</Label>
                                         <Input
                                             id="winners_count"
                                             type="number"
                                             min="1"
                                             max="10"
                                             value={data.winners_count}
-                                            onChange={(e) => setData('winners_count', parseInt(e.target.value))}
+                                            onChange={(e) =>
+                                                setData('winners_count', parseInt(e.target.value, 10) || 1)
+                                            }
                                             placeholder="3"
                                         />
                                         <p className="text-sm text-gray-500">
-                                            How many winners will be selected for this raffle?
+                                            How many winners will be selected when you run winner selection?
                                         </p>
                                         {errors.winners_count && <p className="text-sm text-red-500">{errors.winners_count}</p>}
                                     </div>
@@ -382,7 +425,7 @@ export default function EditRaffle({ raffle }: RaffleEditProps) {
                                     disabled={processing || !validateCurrentTab()} 
                                     className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
                                 >
-                                    {processing ? 'Updating...' : 'Update Raffle'}
+                                    {processing ? 'Saving…' : 'Save sweepstakes'}
                                 </Button>
                             )}
                         </div>

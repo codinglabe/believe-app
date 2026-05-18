@@ -96,7 +96,7 @@ export default function BuyerDashboard({ profile, purchasedAnimals, stats }: Das
                                 Edit Profile
                             </Button>
                         </Link>
-                        <Link href={route('marketplace.index')}>
+                        <Link href={route('livestock.marketplace.index')}>
                             <Button className="bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-white">
                                 <PlusCircle className="h-4 w-4 mr-2" />
                                 Browse Marketplace
@@ -235,7 +235,7 @@ export default function BuyerDashboard({ profile, purchasedAnimals, stats }: Das
                                 </div>
                                 <CardTitle>Purchased Animals</CardTitle>
                             </div>
-                            <Link href={route('marketplace.index')}>
+                            <Link href={route('livestock.marketplace.index')}>
                                 <Button variant="outline" size="sm">
                                     <ShoppingBag className="h-4 w-4 mr-2" />
                                     Browse More
@@ -324,7 +324,7 @@ export default function BuyerDashboard({ profile, purchasedAnimals, stats }: Das
                                 <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
                                     Start browsing the marketplace to find your perfect livestock
                                 </p>
-                                <Link href={route('marketplace.index')}>
+                                <Link href={route('livestock.marketplace.index')}>
                                     <Button className="bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-white">
                                         <ShoppingBag className="h-4 w-4 mr-2" />
                                         Browse Marketplace

@@ -6,7 +6,6 @@ use App\Models\NodeBoss;
 use App\Models\NodeReferral;
 use App\Models\NodeSell;
 use App\Models\NodeShare;
-use App\Support\StripeAutomaticTax;
 use App\Support\StripeCustomerChargeAmount;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -143,7 +142,7 @@ class NodeSellController extends Controller
                 $totalAmountInCents,
                 "Share purchase for {$nodeBoss->name}",
                 1,
-                StripeAutomaticTax::mergeCheckoutOptions([
+                [
                     'success_url' => route('node-share.success').'?session_id={CHECKOUT_SESSION_ID}',
                     'cancel_url' => route('node-share.cancel'),
                     'metadata' => [
@@ -156,7 +155,7 @@ class NodeSellController extends Controller
                         'will_be_big_boss' => $willBeBigBoss ? '1' : '0',
                     ],
                     'payment_method_types' => ['card', 'afterpay_clearpay', 'affirm'],
-                ])
+                ]
             );
 
             return Inertia::location($checkout->url);

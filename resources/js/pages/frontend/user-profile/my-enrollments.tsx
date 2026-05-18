@@ -25,6 +25,7 @@ import { Card, CardContent } from "@/components/frontend/ui/card"
 import { Badge } from "@/components/frontend/ui/badge"
 import { Input } from "@/components/frontend/ui/input"
 import { usePage, router, Link } from "@inertiajs/react"
+import type { ConnectionHubType } from "@/lib/connection-hub-type"
 
 interface Enrollment {
   id: number
@@ -32,7 +33,7 @@ interface Enrollment {
     id: number
     name: string
     slug: string
-    type?: "course" | "event"
+    type?: ConnectionHubType
     image: string | null
     image_url: string | null
     description: string
