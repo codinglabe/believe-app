@@ -90,6 +90,15 @@ async function whepSubscribe(seat){
 // ---- Audio mix (WebAudio -> single destination track) ----
 const actx = new (window.AudioContext||window.webkitAudioContext)();
 const mixDest = actx.createMediaStreamDestination();
+// Always-active silent source so the destination track is guaranteed to emit
+// packets from the moment the WHIP offer is made — without this, no audio
+// flows until a seat audio source connects, and MediaMTX never sees an audio
+// track on the canvas publish. That made the bridge transcode (-c:a aac)
+// have no audio input and the _aac path the worker pulls never became ready.
+const silence = actx.createConstantSource(); silence.offset.value = 0;
+const silenceGain = actx.createGain(); silenceGain.gain.value = 0; // inaudible
+silence.connect(silenceGain).connect(mixDest);
+silence.start();
 function addSeatAudio(seat){
   try {
     const src = actx.createMediaStreamSource(new MediaStream([seat.audioTrack]));
