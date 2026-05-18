@@ -35,7 +35,9 @@ jobs:
         --exclude=.env
         --exclude=.env.*
         --exclude=.htaccess
-        --exclude=public/.htaccess
+        --exclude=docs/
+        --exclude=.deploy/
+        --exclude=*.md
 
     steps:
       - uses: actions/checkout@v4
