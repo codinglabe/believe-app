@@ -26,9 +26,6 @@ jobs:
       DEPLOY_PATH: ${{ vars.DEPLOY_PATH != '' && vars.DEPLOY_PATH || '/home/c3ers/public_html' }}
       APP_URL: ${{ vars.APP_URL != '' && vars.APP_URL || 'https://501c3ers.com' }}
       SSH_PORT: ${{ vars.SSH_PORT != '' && vars.SSH_PORT || '22' }}
-      SSH_DIR: ~/.ssh
-      SSH_CMD: ssh -F ~/.ssh/config -o BatchMode=yes -o ConnectTimeout=30
-      RSYNC_RSH: ssh -F ~/.ssh/config -o BatchMode=yes -o ConnectTimeout=30
       RSYNC_EXCLUDES: >-
         --exclude=.git/
         --exclude=.github/
@@ -95,7 +92,7 @@ jobs:
             echo "::error::Add repository secret CPANEL_SSH_KEY (private key for ${DEPLOY_USER}@${DEPLOY_HOST})."
             exit 1
           fi
-          SSH_DIR="${HOME}/.ssh"
+          SSH_DIR="${GITHUB_WORKSPACE}/.ssh-deploy"
           mkdir -p "${SSH_DIR}"
           chmod 700 "${SSH_DIR}"
           printf '%s\n' "${SSH_PRIVATE_KEY}" > "${SSH_DIR}/cpanel_deploy"
@@ -113,17 +110,21 @@ jobs:
             '  ServerAliveCountMax 3' \
             > "${SSH_DIR}/config"
           chmod 600 "${SSH_DIR}/config"
+          echo "SSH_DIR=${SSH_DIR}" >> "${GITHUB_ENV}"
+          echo "SSH_CMD=ssh -F ${SSH_DIR}/config -o BatchMode=yes -o ConnectTimeout=30" >> "${GITHUB_ENV}"
+          echo "RSYNC_RSH=ssh -F ${SSH_DIR}/config -o BatchMode=yes -o ConnectTimeout=30" >> "${GITHUB_ENV}"
           ssh -F "${SSH_DIR}/config" -o BatchMode=yes -o ConnectTimeout=30 cpanel-deploy "echo SSH_OK && whoami && hostname"
 
       - name: Verify server paths (storage, .env, .htaccess)
         run: |
           set -euo pipefail
-          ${SSH_CMD} cpanel-deploy "set -e
-            for f in storage .env .htaccess; do
-              test -e ${DEPLOY_PATH}/\"\$f\" || { echo \"::error::Missing ${DEPLOY_PATH}/\$f on server\"; exit 1; }
-            done
-            echo 'Server storage, .env, and .htaccess present — will not be overwritten.'
-          "
+          ${SSH_CMD} cpanel-deploy bash -s <<REMOTE
+          set -e
+          for f in storage .env .htaccess public/.htaccess; do
+            test -e "${DEPLOY_PATH}/\$f" || { echo "::error::Missing ${DEPLOY_PATH}/\$f on server"; exit 1; }
+          done
+          echo "Server storage, .env, and .htaccess files present — will not be overwritten."
+          REMOTE
 
       - name: Deploy with rsync
         run: |
