@@ -113,9 +113,11 @@ jobs:
         if: hashFiles('package.json') != ''
         run: |
           set -euo pipefail
+          # config:cache on server makes env() return null for VITE_* — clear first, then read .env via Laravel.
           ${SSH_CMD} cpanel-deploy bash -s > .env.vite <<REMOTE
           set -euo pipefail
           cd "${DEPLOY_PATH}"
+          php artisan config:clear --quiet 2>/dev/null || true
           php -r '
           require "vendor/autoload.php";
           \$app = require "bootstrap/app.php";
@@ -129,17 +131,22 @@ jobs:
           ];
           foreach (\$keys as \$k) {
             \$v = env(\$k);
-            if (\$v !== null && \$v !== "") {
+            if (\$v !== null && \$v !== "" && !str_contains((string) \$v, "\${")) {
               echo \$k."=".\$v.PHP_EOL;
             }
           }
           '
           REMOTE
+          # Fallback: keys still in server .env (e.g. when only referenced as ${OTHER_VAR})
+          ${SSH_CMD} cpanel-deploy "grep -E '^(APP_NAME|APP_URL|VITE_|REVERB_APP_|REVERB_HOST|REVERB_PORT|REVERB_SCHEME)=' '${DEPLOY_PATH}/.env' 2>/dev/null | grep -v '^#'" >> .env.vite || true
+          sort -u -t= -k1,1 .env.vite -o .env.vite
           {
             echo "APP_URL=${APP_URL}"
             cat .env.vite
           } > .env
-          echo "Wrote .env for Vite build ($(wc -l < .env) lines)"
+          lines=$(wc -l < .env)
+          echo "Wrote .env for Vite build (${lines} lines)"
+          test "${lines}" -ge 5 || { echo "::warning::Few VITE lines in CI .env — build may miss Reverb/maps"; grep -E '^VITE_|^APP_' .env | sed 's/=.*$/=***/' || true; }
 
       - name: Build frontend assets
         if: hashFiles('package.json') != ''
