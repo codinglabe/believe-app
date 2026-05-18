@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { cn } from "@/lib/utils"
+import { AiMediaStudioVideoLogoOverlay } from "@/components/ai-media/AiMediaStudioVideoLogoOverlay"
 import { CreatorProgressStepper } from "@/pages/AiMediaStudio/creator-progress-stepper"
 import { Copy, ExternalLink, Loader2, Sparkles } from "lucide-react"
 import { showErrorToast, showSuccessToast } from "@/lib/toast"
@@ -55,7 +56,7 @@ function generationSubtext(status: string): string {
     case "rendering_video":
       return "fal.ai is rendering your MP4 at the resolution and length you chose. This page refreshes automatically."
     case "video_generated":
-      return "Your file is ready to stream. We’re finishing metadata and optional cloud steps."
+      return "Your file is ready. We’re adding the Believe In Unity logo to the MP4, then finishing cloud steps."
     case "uploading_to_dropbox":
       return "Copying the finished video to Dropbox (if connected). You can preview below while this completes."
     case "failed":
@@ -104,11 +105,17 @@ interface VideoDetail {
 export default function AiMediaStudioShow({
   video,
   context,
+  logo_burned_in,
+  watermark_can_apply,
 }: {
   video: VideoDetail
   context: "organization" | "supporter"
+  logo_burned_in: boolean
+  watermark_can_apply: boolean
 }) {
-  const success = usePage<{ success?: string }>().props.success
+  const page = usePage<{ success?: string; error?: string }>()
+  const success = page.props.success
+  const error = page.props.error
   const statusLabel = video.status.replace(/_/g, " ")
   const [previewFailed, setPreviewFailed] = useState(false)
 
@@ -121,16 +128,16 @@ export default function AiMediaStudioShow({
       return
     }
     const t = window.setInterval(() => {
-      router.reload({ only: ["video"] })
+      router.reload({ only: ["video", "logo_burned_in", "watermark_can_apply"] })
     }, 4000)
     return () => window.clearInterval(t)
   }, [video.status, video.id])
 
   const playbackUrl = useMemo(() => {
-    const fal = video.fal_cdn_url?.trim()
-    if (fal) return fal
     const src = video.video_source_url?.trim()
-    return src && src.length > 0 ? src : null
+    if (src) return src
+    const fal = video.fal_cdn_url?.trim()
+    return fal && fal.length > 0 ? fal : null
   }, [video.fal_cdn_url, video.video_source_url])
 
   const copyUrl = (url: string | null | undefined) => {
@@ -160,6 +167,11 @@ export default function AiMediaStudioShow({
         {success ? (
           <div className="rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-900 dark:border-green-900 dark:bg-green-950/40 dark:text-green-100">
             {success}
+          </div>
+        ) : null}
+        {error ? (
+          <div className="rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+            {error}
           </div>
         ) : null}
 
@@ -205,7 +217,7 @@ export default function AiMediaStudioShow({
                 </a>
               </Button>
             ) : null}
-            <Button variant="outline" size="sm" onClick={() => router.reload({ only: ["video"] })}>
+            <Button variant="outline" size="sm" onClick={() => router.reload({ only: ["video", "logo_burned_in", "watermark_can_apply"] })}>
               Refresh status
             </Button>
           </div>
@@ -372,13 +384,16 @@ export default function AiMediaStudioShow({
               </div>
             </CardHeader>
             <CardContent>
-              <video
-                src={playbackUrl}
-                controls
-                playsInline
-                className="max-h-[480px] w-full rounded-md bg-black"
-                onError={() => setPreviewFailed(true)}
-              />
+              <div className="relative">
+                <video
+                  src={playbackUrl}
+                  controls
+                  playsInline
+                  className="max-h-[480px] w-full rounded-md bg-black"
+                  onError={() => setPreviewFailed(true)}
+                />
+                {!logo_burned_in ? <AiMediaStudioVideoLogoOverlay /> : null}
+              </div>
               {previewFailed ? (
                 <p className="text-muted-foreground mt-2 text-sm">
                   This browser could not play the file inline. Use the fal CDN link above (raw MP4),{" "}
@@ -389,10 +404,27 @@ export default function AiMediaStudioShow({
                 </p>
               ) : null}
               <p className="text-muted-foreground mt-2 text-xs">
-                {video.dropbox_path
-                  ? "A copy is archived in your Dropbox; preview prefers the fal stream when available."
-                  : "Streaming from fal. Connect Dropbox under Integrations to archive a copy in your cloud folder."}
+                {logo_burned_in
+                  ? video.dropbox_path
+                    ? "Preview and download include the Believe In Unity logo burned into the MP4 (top-right). A copy is in your Dropbox."
+                    : "Preview and download include the Believe In Unity logo burned into the MP4 (top-right)."
+                  : watermark_can_apply
+                    ? "Showing a preview overlay only — FFmpeg did not run yet, so download may be unbranded until you apply the logo below."
+                    : "Logo is not embedded in the file yet: install FFmpeg on the server (required to burn the BIU logo into MP4s). Preview shows a temporary overlay only."}
               </p>
+              {!logo_burned_in && watermark_can_apply && playbackUrl ? (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  size="sm"
+                  className="mt-3"
+                  onClick={() =>
+                    router.post(route("ai-media-studio.apply-watermark", video.id), {}, { preserveScroll: true })
+                  }
+                >
+                  Apply BIU logo to this video
+                </Button>
+              ) : null}
             </CardContent>
           </Card>
         ) : null}

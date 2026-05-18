@@ -27,18 +27,6 @@ class AiMediaStudioDropboxService
      */
     public function mirrorFalVideoToDropbox(AiVideo $video, string $falVideoUrl): void
     {
-        $video->loadMissing(['user', 'organization']);
-
-        $ctx = $this->resolveTokenAndBaseFolder($video);
-        if ($ctx === null) {
-            Log::info('ai_media_studio.dropbox_skipped', [
-                'ai_video_id' => $video->id,
-                'reason' => 'no_dropbox_token',
-            ]);
-
-            return;
-        }
-
         $tmp = tempnam(sys_get_temp_dir(), 'ams_fal_');
         if ($tmp === false) {
             throw new \RuntimeException('Could not allocate a temp file for the fal.ai video download.');
@@ -59,37 +47,66 @@ class AiMediaStudioDropboxService
                 throw new \RuntimeException('Downloaded video from fal is empty or too small.');
             }
 
-            $api = new DropboxOrgApi($ctx['token']);
-            $base = rtrim($ctx['base_folder'], '/');
-            $sub = trim((string) config('services.ai_media_studio.dropbox_subfolder', 'AI Media Studio'), '/');
-            if ($sub === '') {
-                $sub = 'AI Media Studio';
-            }
-
-            $subPath = $base.'/'.$sub;
-            $api->createFolder($base);
-            $api->createFolder($subPath);
-
-            $filename = $this->safeFilename($video);
-            $dropPath = $subPath.'/'.$filename;
-
-            $uploaded = $api->uploadFromLocalPath($dropPath, $tmp);
-            if ($uploaded === null) {
-                throw new \RuntimeException('Dropbox upload failed for AI Media Studio video.');
-            }
-
-            $finalPath = $uploaded['path_display'];
-            $shared = $api->createSharedLink($finalPath);
-
-            $video->forceFill([
-                'dropbox_path' => $finalPath,
-                'dropbox_shared_link' => $shared,
-            ])->save();
+            $this->mirrorLocalVideoToDropbox($video, $tmp);
         } finally {
             if (is_file($tmp)) {
                 @unlink($tmp);
             }
         }
+    }
+
+    /**
+     * Upload a finished MP4 from disk (e.g. BIU-branded file) into Dropbox.
+     */
+    public function mirrorLocalVideoToDropbox(AiVideo $video, string $localPath): void
+    {
+        if (! is_file($localPath)) {
+            throw new \RuntimeException('Local video file does not exist for Dropbox upload.');
+        }
+
+        $size = filesize($localPath);
+        if ($size === false || $size < 500) {
+            throw new \RuntimeException('Local video file is empty or too small.');
+        }
+
+        $video->loadMissing(['user', 'organization']);
+
+        $ctx = $this->resolveTokenAndBaseFolder($video);
+        if ($ctx === null) {
+            Log::info('ai_media_studio.dropbox_skipped', [
+                'ai_video_id' => $video->id,
+                'reason' => 'no_dropbox_token',
+            ]);
+
+            return;
+        }
+
+        $api = new DropboxOrgApi($ctx['token']);
+        $base = rtrim($ctx['base_folder'], '/');
+        $sub = trim((string) config('services.ai_media_studio.dropbox_subfolder', 'AI Media Studio'), '/');
+        if ($sub === '') {
+            $sub = 'AI Media Studio';
+        }
+
+        $subPath = $base.'/'.$sub;
+        $api->createFolder($base);
+        $api->createFolder($subPath);
+
+        $filename = $this->safeFilename($video);
+        $dropPath = $subPath.'/'.$filename;
+
+        $uploaded = $api->uploadFromLocalPath($dropPath, $localPath);
+        if ($uploaded === null) {
+            throw new \RuntimeException('Dropbox upload failed for AI Media Studio video.');
+        }
+
+        $finalPath = $uploaded['path_display'];
+        $shared = $api->createSharedLink($finalPath);
+
+        $video->forceFill([
+            'dropbox_path' => $finalPath,
+            'dropbox_shared_link' => $shared,
+        ])->save();
     }
 
     /**

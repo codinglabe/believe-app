@@ -177,6 +177,16 @@ return [
         'dropbox_subfolder' => env('AI_MEDIA_STUDIO_DROPBOX_SUBFOLDER', 'AI Media Studio'),
         /** `memory_limit` while ProcessAiVideoGenerationJob runs (OpenAI + fal + Dropbox). */
         'queue_worker_memory_limit' => env('AI_MEDIA_STUDIO_QUEUE_MEMORY', '1024M'),
+        /** Burn Believe In Unity logo (top-right) into finished MP4s via FFmpeg. */
+        'watermark_enabled' => filter_var(env('AI_MEDIA_STUDIO_WATERMARK', true), FILTER_VALIDATE_BOOLEAN),
+        /** Absolute path to ffmpeg binary; falls back to storage/app/bin/ffmpeg then system PATH. */
+        'ffmpeg_path' => env('AI_MEDIA_STUDIO_FFMPEG'),
+        'watermark_logo_path' => env('AI_MEDIA_STUDIO_WATERMARK_LOGO'),
+        'watermark_margin_px' => max(8, (int) env('AI_MEDIA_STUDIO_WATERMARK_MARGIN', 24)),
+        'watermark_width_fraction' => (float) env('AI_MEDIA_STUDIO_WATERMARK_WIDTH_FRACTION', 0.14),
+        'watermark_x264_preset' => env('AI_MEDIA_STUDIO_WATERMARK_X264_PRESET', 'fast'),
+        'watermark_crf' => max(18, min(28, (int) env('AI_MEDIA_STUDIO_WATERMARK_CRF', 23))),
+        'watermark_timeout_seconds' => max(60, (int) env('AI_MEDIA_STUDIO_WATERMARK_TIMEOUT', 600)),
         /**
          * Optional override for retail credit prices (1 credit = US$1.00). Keys: tier => seconds => USD.
          * Omitted keys fall back to BIU suggested retail defaults.
