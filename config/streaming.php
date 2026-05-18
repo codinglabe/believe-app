@@ -20,6 +20,35 @@ return [
      */
     'callback_base_url' => env('STREAMING_CALLBACK_BASE_URL'),
     'max_duration_minutes' => (int) env('STREAMING_MAX_DURATION_MINUTES', 120),
+
+    /*
+     * Application-side lifecycle (do not rely only on AWS worker callbacks).
+     * A scheduled reconcile command and per-request checks clear stuck jobs.
+     */
+    'lifecycle' => [
+        // queued → failed if worker never reports starting
+        'queued_timeout_seconds' => max(60, (int) env('STREAMING_QUEUED_TIMEOUT_SECONDS', 300)),
+        // starting / preparing → failed if startup exceeds limit (client: ~2 min max)
+        'starting_timeout_seconds' => max(60, (int) env('STREAMING_STARTING_TIMEOUT_SECONDS', 120)),
+        // live/starting with no heartbeat (worker polls ~10s when running)
+        'heartbeat_stale_seconds' => max(30, (int) env('STREAMING_HEARTBEAT_STALE_SECONDS', 120)),
+        // after End Stream, force local job stop if worker never callbacks
+        'stop_requested_grace_seconds' => max(15, (int) env('STREAMING_STOP_REQUESTED_GRACE_SECONDS', 45)),
+        // extra minutes after max_duration before auto-stop
+        'max_duration_grace_minutes' => max(0, (int) env('STREAMING_MAX_DURATION_GRACE_MINUTES', 5)),
+    ],
+
+    /*
+     * ECS Fargate worker monitoring (DescribeTasks / StopTask).
+     * Laravel producer IAM user needs ecs:DescribeTasks + ecs:StopTask on the worker
+     * cluster (in addition to sqs:SendMessage). Worker should POST task_arn on callbacks.
+     */
+    'ecs' => [
+        'enabled' => filter_var(env('STREAMING_ECS_MONITOR_ENABLED', true), FILTER_VALIDATE_BOOLEAN),
+        'cluster' => env('STREAMING_ECS_CLUSTER', 'biu-stream-prod-cluster'),
+        'region' => env('STREAMING_ECS_REGION', env('AWS_REGION', 'us-east-1')),
+    ],
+
     // FFmpeg source URL template for worker jobs.
     // Placeholders: {room} {room_slug} {livestream_id} {user_id} {organization_id} {mediamtx_path}
     'worker_source_url_template' => env('STREAMING_WORKER_SOURCE_URL_TEMPLATE', ''),

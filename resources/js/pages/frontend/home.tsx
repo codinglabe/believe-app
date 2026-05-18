@@ -385,9 +385,9 @@ export default function HomePage() {
                 </motion.p>
               </motion.div>
 
-              <motion.div
+                <motion.div
                 initial={{ opacity: 0, y: 16 }}
-                animate={{ opacity: 1, y: 0 }}
+                  animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.55, delay: 0.28 }}
                 className="mt-6 flex flex-wrap gap-2 sm:mt-8 sm:gap-3 lg:flex-nowrap"
               >
@@ -432,7 +432,7 @@ export default function HomePage() {
                     <ChevronRight className="ml-auto h-4 w-4 shrink-0 text-gray-400 sm:ml-2 sm:h-5 sm:w-5" />
                   </button>
                 ))}
-              </motion.div>
+                </motion.div>
             </div>
           </div>
       </section>
@@ -610,10 +610,10 @@ export default function HomePage() {
                               } text-xs font-bold`}
                             >
                               <card.Icon className="h-6 w-6 sm:h-7 sm:w-7 text-white" />
-                            </div>
+                  </div>
                             <div className="mt-1.5 text-xs font-medium text-foreground sm:mt-2 sm:text-sm truncate">{card.name}</div>
                             <div className="text-[10px] text-muted-foreground sm:text-xs line-clamp-2">{card.range}</div>
-                          </div>
+                  </div>
                         ))}
                       </div>
                       <div className="block">
@@ -683,15 +683,15 @@ export default function HomePage() {
                         <Button type="button" className="mt-3 w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white hover:from-blue-700 hover:to-purple-700 sm:mt-4">
                           <Wallet className="mr-2 h-4 w-4" />
                           Add Points Now
-                        </Button>
-                      </div>
+                    </Button>
+            </div>
                       <p className="mt-2 text-center text-xs text-muted-foreground sm:text-sm">
                         Use BP for Donations, Sweepstakes, Gift Cards & Merchants
                       </p>
                     </CardContent>
                   </Card>
-                </div>
-              </div>
+          </div>
+        </div>
 
               {/* Right Column - Sweepstakes & Wallet */}
               <div className="space-y-4 sm:space-y-6 lg:mt-[-5rem]">

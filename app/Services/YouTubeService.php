@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 class YouTubeService
 {
@@ -26,6 +27,105 @@ class YouTubeService
     private function http(): \Illuminate\Http\Client\PendingRequest
     {
         return Http::withOptions(['verify' => false]);
+    }
+
+    /**
+     * OAuth connect: resolve the signed-in Google account's YouTube channel (channels.list?mine=true).
+     *
+     * @return array{channel: array<string, mixed>|null, error_body: string|null}
+     */
+    public function fetchOAuthUserChannel(string $accessToken): array
+    {
+        if ($accessToken === '') {
+            return ['channel' => null, 'error_body' => null];
+        }
+
+        $attempts = [
+            ['use_key' => false],
+        ];
+        if ($this->apiKey !== '') {
+            $attempts[] = ['use_key' => true];
+        }
+
+        $lastBody = null;
+        $lastStatus = null;
+
+        foreach ($attempts as $attempt) {
+            $params = [
+                'part' => 'id,snippet',
+                'mine' => 'true',
+                'maxResults' => 1,
+            ];
+            if ($attempt['use_key']) {
+                $params['key'] = $this->apiKey;
+            }
+
+            $response = $this->http()
+                ->withToken($accessToken)
+                ->get($this->baseUrl . '/channels', $params);
+
+            if ($response->successful()) {
+                $items = $response->json('items') ?? [];
+
+                return [
+                    'channel' => isset($items[0]) ? $items[0] : null,
+                    'error_body' => null,
+                ];
+            }
+
+            $lastBody = $response->body();
+            $lastStatus = $response->status();
+
+            // Browser-restricted API keys often 403 from the server — do not keep retrying with key.
+            if ($attempt['use_key'] && $response->status() === 403) {
+                break;
+            }
+        }
+
+        Log::warning('YouTube OAuth channels.list failed', [
+            'status' => $lastStatus,
+            'body' => $lastBody,
+            'api_key_configured' => $this->apiKey !== '',
+        ]);
+
+        return ['channel' => null, 'error_body' => $lastBody];
+    }
+
+    /**
+     * User-facing message from a YouTube Data API error payload.
+     */
+    public function userMessageFromYoutubeApiError(?string $responseBody): string
+    {
+        if ($responseBody === null || $responseBody === '') {
+            return 'Could not load your YouTube channel. Please try again.';
+        }
+
+        $json = json_decode($responseBody, true);
+        if (! is_array($json)) {
+            return 'Could not load your YouTube channel. Please try again.';
+        }
+
+        $message = (string) ($json['error']['message'] ?? '');
+        $reason = (string) ($json['error']['errors'][0]['reason'] ?? '');
+        $combined = strtolower($message . ' ' . $reason);
+
+        if (str_contains($combined, 'accessnotconfigured') || str_contains($combined, 'has not been used') || str_contains($combined, 'disabled')) {
+            return 'YouTube Data API is not enabled for this app. Enable YouTube Data API v3 in Google Cloud Console (same project as your OAuth client), then try again.';
+        }
+
+        if (str_contains($combined, 'insufficient') || str_contains($combined, 'forbidden') || $reason === 'insufficientPermissions') {
+            return 'YouTube did not grant enough permissions. Disconnect, then connect again and allow all requested access.';
+        }
+
+        if (str_contains($combined, 'quota')) {
+            return 'YouTube API quota exceeded. Try again later or contact support.';
+        }
+
+        if ($message !== '') {
+            return 'Could not load your YouTube channel: ' . Str::limit($message, 120);
+        }
+
+        return 'Could not load your YouTube channel. Please try again.';
     }
 
     /**

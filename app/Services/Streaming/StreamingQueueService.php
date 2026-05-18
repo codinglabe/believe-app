@@ -137,6 +137,12 @@ class StreamingQueueService
             if ($failureReason !== null && $failureReason !== '') {
                 $updates['failure_reason'] = $failureReason;
             }
+            if (in_array($status, ['starting', 'live'], true)) {
+                $updates['last_heartbeat_at'] = now();
+            }
+            if ($status === 'live' && $job->live_at === null) {
+                $updates['live_at'] = now();
+            }
             if (in_array($status, ['completed', 'failed', 'stopped'], true)) {
                 $updates['completed_at'] = now();
             }
@@ -286,24 +292,11 @@ class StreamingQueueService
      */
     public function finalizeAfterHostEndStream(string $livestreamKind, int $livestreamId): bool
     {
-        $job = StreamingJob::query()
-            ->where('livestream_kind', $livestreamKind)
-            ->where('livestream_id', $livestreamId)
-            ->whereIn('status', ['queued', 'starting', 'live'])
-            ->latest('id')
-            ->first();
-
-        if (! $job) {
-            return false;
-        }
-
-        if ($this->shouldSimulateWorker()) {
-            $this->applyCallbackStatus($job, 'stopped', null, null);
-
-            return true;
-        }
-
-        return false;
+        return app(StreamingLifecycleService::class)->forceTerminateActiveJob(
+            $livestreamKind,
+            $livestreamId,
+            'Host ended stream'
+        );
     }
 
     /**
@@ -416,6 +409,14 @@ class StreamingQueueService
      */
     public function queueStatusForUi(?StreamingJob $job, OrganizationLivestream|UserLivestream $livestream): array
     {
+        app(StreamingLifecycleService::class)->reconcileForLivestream($livestream);
+
+        $job = StreamingJob::query()
+            ->where('livestream_kind', $livestream instanceof OrganizationLivestream ? 'organization' : 'user')
+            ->where('livestream_id', $livestream->id)
+            ->latest('id')
+            ->first();
+
         $settings = is_array($livestream->settings) ? $livestream->settings : [];
 
         return [
@@ -424,6 +425,8 @@ class StreamingQueueService
             'streamStopRequested' => ! empty($settings['stream_stop_requested']),
             'updatedAt' => $job?->updated_at?->toIso8601String(),
             'failureReason' => $job?->failure_reason,
+            'ecsTaskArn' => $job?->ecs_task_arn,
+            'ecsLastStatus' => $job?->ecs_last_status,
         ];
     }
 }

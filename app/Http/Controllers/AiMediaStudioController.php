@@ -6,17 +6,21 @@ use App\Jobs\ProcessAiVideoGenerationJob;
 use App\Models\AiVideo;
 use App\Models\Organization;
 use App\Models\User;
+use App\Services\AiMediaStudioBalanceService;
 use App\Services\AiMediaStudioDropboxService;
+use App\Services\AiMediaStudioVideoWatermarkService;
 use App\Support\AiMediaStudioCreditPricing;
 use App\Support\AiMediaStudioResolution;
 use App\Support\AiMediaStudioTemplates;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 class AiMediaStudioController extends Controller
 {
@@ -31,9 +35,25 @@ class AiMediaStudioController extends Controller
     public function index(Request $request): Response
     {
         $user = $request->user();
-        $videos = $this->videosForUser($user)
-            ->latest()
-            ->paginate(20)
+        $balanceService = app(AiMediaStudioBalanceService::class);
+
+        $perPage = (int) $request->query('per_page', 10);
+        if (! in_array($perPage, [10, 20, 50], true)) {
+            $perPage = 10;
+        }
+
+        $statusFilter = (string) $request->query('status', 'all');
+        $allowedFilters = ['all', 'in_progress', 'ready', 'failed', 'refunded'];
+        if (! in_array($statusFilter, $allowedFilters, true)) {
+            $statusFilter = 'all';
+        }
+
+        $query = $balanceService->videosQuery($user)->latest();
+        $this->applyStatusFilter($query, $statusFilter);
+
+        $videos = $query
+            ->paginate($perPage)
+            ->withQueryString()
             ->through(fn (AiVideo $v) => [
                 'id' => $v->id,
                 'title' => $v->title,
@@ -41,11 +61,19 @@ class AiMediaStudioController extends Controller
                 'orientation' => $v->orientation,
                 'resolution' => $v->resolution,
                 'template_key' => $v->template_key,
+                'duration_seconds' => $v->duration_seconds,
+                'preview_url' => $this->videoPreviewUrl($v),
+                'cost_display' => $balanceService->costDisplayForVideo($v),
                 'created_at' => $v->created_at->toIso8601String(),
             ]);
 
         return Inertia::render('AiMediaStudio/Index', [
             'videos' => $videos,
+            'filters' => [
+                'status' => $statusFilter,
+                'per_page' => $perPage,
+            ],
+            'balance' => $balanceService->summaryForUser($user),
             'context' => Organization::forAuthUser($user) ? 'organization' : 'supporter',
             'ai_media_studio_credits' => round((float) ($user->ai_media_studio_credits ?? 0), 2),
             'media_studio_retail_prices' => AiMediaStudioCreditPricing::retailMatrixForFrontend(),
@@ -185,8 +213,13 @@ class AiMediaStudioController extends Controller
         $this->authorizeView($request->user(), $aiVideo);
         $aiVideo->loadMissing(['organization:id,name', 'user:id,name']);
 
+        $watermark = app(AiMediaStudioVideoWatermarkService::class);
+        $logoBurnedIn = $watermark->hasBrandedFile($aiVideo);
+
         return Inertia::render('AiMediaStudio/Show', [
             'context' => Organization::forAuthUser($request->user()) ? 'organization' : 'supporter',
+            'logo_burned_in' => $logoBurnedIn,
+            'watermark_can_apply' => $watermark->canApplyWatermark(),
             'video' => [
                 'id' => $aiVideo->id,
                 'title' => $aiVideo->title,
@@ -227,10 +260,23 @@ class AiMediaStudioController extends Controller
         ]);
     }
 
-    public function download(Request $request, AiVideo $aiVideo): RedirectResponse
+    public function download(Request $request, AiVideo $aiVideo): RedirectResponse|BinaryFileResponse
     {
         $this->authorizeView($request->user(), $aiVideo);
         $aiVideo->refresh();
+
+        $watermark = app(AiMediaStudioVideoWatermarkService::class);
+        if ($watermark->hasBrandedFile($aiVideo)) {
+            $relative = $watermark->storageRelativePath($aiVideo);
+            $filename = str($aiVideo->title)->slug()->append('.mp4')->toString();
+            if ($filename === '.mp4') {
+                $filename = 'ai-video-'.$aiVideo->id.'.mp4';
+            }
+
+            return Storage::disk('public')->download($relative, $filename, [
+                'Content-Type' => 'video/mp4',
+            ]);
+        }
 
         $tmp = app(AiMediaStudioDropboxService::class)->temporaryDownloadUrl($aiVideo);
         if (is_string($tmp) && $tmp !== '') {
@@ -249,14 +295,91 @@ class AiMediaStudioController extends Controller
         abort(404, 'Video file is not available yet.');
     }
 
-    private function videosForUser(User $user): \Illuminate\Database\Eloquent\Builder
+    /**
+     * Re-run FFmpeg logo burn for an existing video (e.g. after installing FFmpeg on the server).
+     */
+    public function applyWatermark(Request $request, AiVideo $aiVideo): RedirectResponse
     {
-        $org = Organization::forAuthUser($user);
-        if ($org) {
-            return AiVideo::query()->where('organization_id', $org->id);
+        $this->authorizeView($request->user(), $aiVideo);
+        $aiVideo->refresh();
+
+        $watermark = app(AiMediaStudioVideoWatermarkService::class);
+        if (! $watermark->canApplyWatermark()) {
+            return redirect()
+                ->route('ai-media-studio.show', $aiVideo)
+                ->with('error', 'Logo burn requires FFmpeg on the server. Ask your host to install ffmpeg, then try again.');
         }
 
-        return AiVideo::query()->where('user_id', $user->id);
+        $sourceUrl = is_string($aiVideo->fal_cdn_url) && str_starts_with($aiVideo->fal_cdn_url, 'http')
+            ? $aiVideo->fal_cdn_url
+            : null;
+        if ($sourceUrl === null && is_string($aiVideo->video_source_url) && str_starts_with($aiVideo->video_source_url, 'http')) {
+            $sourceUrl = $aiVideo->video_source_url;
+        }
+
+        if ($sourceUrl === null) {
+            return redirect()
+                ->route('ai-media-studio.show', $aiVideo)
+                ->with('error', 'No source video URL is available to apply the logo.');
+        }
+
+        try {
+            $branded = $watermark->downloadAndBrand($aiVideo, $sourceUrl);
+        } catch (\Throwable $e) {
+            return redirect()
+                ->route('ai-media-studio.show', $aiVideo)
+                ->with('error', 'Could not apply logo: '.$e->getMessage());
+        }
+
+        if (! is_array($branded)) {
+            return redirect()
+                ->route('ai-media-studio.show', $aiVideo)
+                ->with('error', 'Logo burn failed. Check storage/logs for ai_media_studio.watermark_* entries.');
+        }
+
+        $aiVideo->update(['video_source_url' => $branded['public_url'] ?? $aiVideo->video_source_url]);
+
+        return redirect()
+            ->route('ai-media-studio.show', $aiVideo)
+            ->with('success', 'Believe In Unity logo applied. Preview and download now use the branded file.');
+    }
+
+    /**
+     * @param  \Illuminate\Database\Eloquent\Builder<AiVideo>  $query
+     */
+    private function applyStatusFilter(\Illuminate\Database\Eloquent\Builder $query, string $statusFilter): void
+    {
+        match ($statusFilter) {
+            'in_progress' => $query->whereNotIn('status', [
+                AiVideo::STATUS_READY_FOR_REVIEW,
+                AiVideo::STATUS_APPROVED,
+                AiVideo::STATUS_PUBLISHED,
+                AiVideo::STATUS_FAILED,
+            ]),
+            'ready' => $query->whereIn('status', [
+                AiVideo::STATUS_READY_FOR_REVIEW,
+                AiVideo::STATUS_APPROVED,
+                AiVideo::STATUS_PUBLISHED,
+            ]),
+            'failed' => $query->where('status', AiVideo::STATUS_FAILED)
+                ->whereNull('media_studio_credits_refunded_at'),
+            'refunded' => $query->where('status', AiVideo::STATUS_FAILED)
+                ->whereNotNull('media_studio_credits_refunded_at'),
+            default => null,
+        };
+    }
+
+    private function videoPreviewUrl(AiVideo $video): ?string
+    {
+        if (is_string($video->fal_cdn_url) && str_starts_with($video->fal_cdn_url, 'http')) {
+            return $video->fal_cdn_url;
+        }
+
+        if (is_string($video->video_source_url) && str_starts_with($video->video_source_url, 'http')) {
+            return $video->video_source_url;
+        }
+
+        return null;
     }
 
     private function authorizeView(User $user, AiVideo $video): void

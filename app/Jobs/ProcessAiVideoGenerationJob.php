@@ -5,6 +5,7 @@ namespace App\Jobs;
 use App\Models\AiVideo;
 use App\Models\User;
 use App\Services\AiMediaStudioDropboxService;
+use App\Services\AiMediaStudioVideoWatermarkService;
 use App\Services\FalVideoService;
 use App\Services\OpenAiService;
 use App\Support\AiMediaStudioResolution;
@@ -37,6 +38,7 @@ class ProcessAiVideoGenerationJob implements ShouldQueue
         OpenAiService $openAi,
         FalVideoService $fal,
         AiMediaStudioDropboxService $dropboxService,
+        AiMediaStudioVideoWatermarkService $watermarkService,
     ): void {
         $mem = config('services.ai_media_studio.queue_worker_memory_limit');
         if (is_string($mem) && $mem !== '' && function_exists('ini_set')) {
@@ -124,18 +126,36 @@ class ProcessAiVideoGenerationJob implements ShouldQueue
             $falRequestId = $falOut['request_id'];
             unset($falOut);
 
-            // fal CDN URL is best for <video> and direct access (correct Content-Type). Keep it; do not replace with Dropbox HTML links.
             $video->update([
                 'fal_job_id' => $falRequestId,
                 'fal_cdn_url' => $falUrl,
-                'video_source_url' => $falUrl,
                 'status' => AiVideo::STATUS_VIDEO_GENERATED,
+            ]);
+
+            $branded = null;
+            try {
+                $branded = $watermarkService->downloadAndBrand($video, $falUrl);
+            } catch (\Throwable $brandEx) {
+                Log::warning('ai_media_studio.watermark_failed', [
+                    'ai_video_id' => $video->id,
+                    'error' => $brandEx->getMessage(),
+                ]);
+            }
+
+            $playbackUrl = is_array($branded) ? ($branded['public_url'] ?? $falUrl) : $falUrl;
+            $video->update([
+                'video_source_url' => $playbackUrl,
             ]);
 
             $video->update(['status' => AiVideo::STATUS_UPLOADING_TO_DROPBOX]);
 
             try {
-                $dropboxService->mirrorFalVideoToDropbox($video, $falUrl);
+                $localBranded = is_array($branded) ? ($branded['local_path'] ?? null) : null;
+                if (is_string($localBranded) && is_file($localBranded)) {
+                    $dropboxService->mirrorLocalVideoToDropbox($video, $localBranded);
+                } else {
+                    $dropboxService->mirrorFalVideoToDropbox($video, $falUrl);
+                }
             } catch (\Throwable $dropEx) {
                 Log::warning('ai_media_studio.dropbox_mirror_failed', [
                     'ai_video_id' => $video->id,

@@ -1,4 +1,4 @@
-"use client"
+﻿"use client"
 
 import { useState, useEffect, useMemo } from "react"
 import { Head, router } from "@inertiajs/react"
@@ -23,7 +23,6 @@ import {
   Info,
   CheckCircle2,
   AlertCircle,
-  Monitor,
   Code,
   FileText,
   ArrowLeft,
@@ -284,7 +283,6 @@ export default function ShowLivestream({ livestream, organization, recordingCons
         <Tabs defaultValue="dashboard" className="space-y-6">
           <TabsList>
             <TabsTrigger value="dashboard">Host Dashboard</TabsTrigger>
-            <TabsTrigger value="obs">OBS Setup</TabsTrigger>
             <TabsTrigger value="settings">Settings</TabsTrigger>
           </TabsList>
 
@@ -467,7 +465,7 @@ export default function ShowLivestream({ livestream, organization, recordingCons
                     <Alert>
                       <AlertCircle className="w-4 h-4" />
                       <AlertDescription>
-                        No YouTube stream key configured. Add one in the Settings tab to enable OBS → YouTube streaming.
+                        No YouTube stream key configured. Add one in the Settings tab to enable cloud streaming to YouTube.
                       </AlertDescription>
                     </Alert>
                     {organization.youtubeChannelUrl && (
@@ -488,81 +486,6 @@ export default function ShowLivestream({ livestream, organization, recordingCons
             </Card>
           </TabsContent>
 
-          <TabsContent value="obs" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Monitor className="w-5 h-5" />
-                  OBS Studio Setup Guide
-                </CardTitle>
-                <CardDescription>
-                  Connect guest feeds to OBS and stream to YouTube
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <div>
-                  <h3 className="font-semibold mb-2">Step 1: Add Guest Feeds</h3>
-                  <ol className="list-decimal list-inside space-y-2 text-sm text-gray-300">
-                    <li>Open OBS Studio</li>
-                    <li>For each guest, click <strong>Sources → Add → Browser Source</strong></li>
-                    <li>Paste the guest's VDO.Ninja participant URL</li>
-                    <li>Set width: <code className="bg-gray-800 px-1 rounded">1920</code>, height: <code className="bg-gray-800 px-1 rounded">1080</code></li>
-                    <li>Check "Shutdown source when not visible" and "Refresh browser when scene becomes active"</li>
-                    <li>Repeat for each guest</li>
-                  </ol>
-                </div>
-
-                <div>
-                  <h3 className="font-semibold mb-2">Step 2: Configure YouTube Stream</h3>
-                  <ol className="list-decimal list-inside space-y-2 text-sm text-gray-300">
-                    <li>In OBS, go to <strong>Settings → Stream</strong></li>
-                    <li>Service: <strong>YouTube</strong></li>
-                    <li>Paste your YouTube Stream Key (get it from Settings tab if not set)</li>
-                    <li>Click <strong>OK</strong></li>
-                  </ol>
-                </div>
-
-                <div>
-                  <h3 className="font-semibold mb-2">Step 3: Start Streaming</h3>
-                  <ol className="list-decimal list-inside space-y-2 text-sm text-gray-300">
-                    <li>Arrange your guest feeds in OBS (resize, position, add graphics)</li>
-                    <li>Click <strong>Start Streaming</strong> in OBS</li>
-                    <li>Your stream will appear on YouTube Live</li>
-                  </ol>
-                </div>
-
-                <Alert>
-                  <Info className="w-4 h-4" />
-                  <AlertDescription>
-                    <strong>Pro Tip:</strong> Create different OBS scenes for different layouts (2-person, panel, spotlight).
-                    Switch between scenes during your stream for variety.
-                  </AlertDescription>
-                </Alert>
-              </CardContent>
-            </Card>
-
-            {!livestream.hasStreamKey && (
-              <Card className="bg-yellow-500/10 border-yellow-500/30">
-                <CardHeader>
-                  <CardTitle className="text-sm">⚠️ Stream Key Required</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-sm text-gray-300 mb-4">
-                    You need to add your YouTube stream key before you can broadcast. Go to the Settings tab to add it.
-                  </p>
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      const settingsTab = document.querySelector('[value="settings"]') as HTMLElement
-                      settingsTab?.click()
-                    }}
-                  >
-                    Go to Settings
-                  </Button>
-                </CardContent>
-              </Card>
-            )}
-          </TabsContent>
 
           <TabsContent value="settings" className="space-y-6">
             <Card>
@@ -572,7 +495,7 @@ export default function ShowLivestream({ livestream, organization, recordingCons
                   YouTube Stream Key
                 </CardTitle>
                 <CardDescription>
-                  Add or update your YouTube stream key for OBS broadcasting
+                  Add or update your YouTube stream key for cloud broadcasting
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -581,7 +504,7 @@ export default function ShowLivestream({ livestream, organization, recordingCons
                   <AlertDescription>
                     <strong>How to get your Stream Key:</strong>
                     <ol className="list-decimal list-inside mt-2 space-y-1 text-sm">
-                      <li>Go to <a href="https://studio.youtube.com" target="_blank" className="text-[#FF1493] hover:underline">YouTube Studio</a> → Go Live</li>
+                      <li>Go to <a href="https://studio.youtube.com" target="_blank" rel="noopener noreferrer" className="text-[#FF1493] hover:underline">YouTube Studio</a> → Go Live</li>
                       <li>Create a new stream or select an existing one</li>
                       <li>Copy the "Stream Key" (usually starts with characters like "rtmp://" or a long alphanumeric string)</li>
                       <li>Paste it below</li>

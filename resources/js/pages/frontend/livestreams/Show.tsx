@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useMemo } from "react"
 import { Head, router, usePage } from "@inertiajs/react"
-import { stopOBSStream } from "@/lib/obsLivestream"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -277,7 +276,6 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
   const handleEndStream = () => {
     setIsUpdatingStatus(true)
     setIsEndingStreamPending(true)
-    stopOBSStream(true).catch(() => {})
     router.post(`/livestreams/supporter/${livestream.id}/end-stream`, {}, {
       preserveScroll: true,
       onFinish: () => setIsUpdatingStatus(false),
@@ -851,7 +849,7 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
                 How cloud streaming works
               </div>
               <p className="text-sm text-muted-foreground">
-                Unity Meet relays your meeting picture to YouTube through our AWS worker queue — no OBS required on your computer.
+                Unity Meet relays your meeting picture to YouTube through our AWS worker queue.
               </p>
               <div className="rounded-lg border border-border bg-muted/30 p-4 space-y-3">
                 <div className="flex items-start gap-3">

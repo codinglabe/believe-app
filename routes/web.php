@@ -161,7 +161,6 @@ use App\Http\Controllers\TopicController;
 use App\Http\Controllers\TransactionController;
 use App\Http\Controllers\UnityLiveController;
 use App\Http\Controllers\UnityLoavesController;
-use App\Http\Controllers\DashboardUnityLoavesController;
 use App\Http\Controllers\UserProfileController;
 use App\Http\Controllers\UsersInterestedTopicsController;
 use App\Http\Controllers\VolunteerAvailableSupportersController;
@@ -648,7 +647,7 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin|use
         ->name('feedback-campaigns.show');
     Route::post('/feedback/{uuid}', [\App\Http\Controllers\SupporterFeedbackController::class, 'submit'])
         ->name('feedback-campaigns.submit');
-        
+
     // Dashboard Unity Loaves
     Route::prefix('dashboard/unity-loaves')->name('dashboard.unity-loaves.')->group(function () {
         Route::get('/', [\App\Http\Controllers\DashboardUnityLoavesController::class, 'index'])->name('index');
@@ -840,6 +839,9 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected', 'permissi
         Route::get('/create', [AiMediaStudioController::class, 'create'])->middleware('permission:ai.media.create')->name('create');
         Route::post('/', [AiMediaStudioController::class, 'store'])->middleware('permission:ai.media.create')->name('store');
         Route::get('/{ai_video}/download', [AiMediaStudioController::class, 'download'])->name('download');
+        Route::post('/{ai_video}/apply-watermark', [AiMediaStudioController::class, 'applyWatermark'])
+            ->middleware('permission:ai.media.create')
+            ->name('apply-watermark');
         Route::get('/{ai_video}', [AiMediaStudioController::class, 'show'])->name('show');
     });
 
