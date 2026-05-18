@@ -36,7 +36,7 @@ resolve() {
 
 app_url="${vars[APP_URL]:-}"
 app_name="${vars[APP_NAME]:-}"
-reverb_key="${vars[REVERB_APP_KEY]:-}"
+reverb_key="$(strip_quotes "${vars[REVERB_APP_KEY]:-${vars[VITE_REVERB_APP_KEY]:-}}")"
 reverb_host="$(resolve "${vars[VITE_REVERB_HOST]:-${vars[REVERB_HOST]:-}}")"
 reverb_port="$(resolve "${vars[VITE_REVERB_PORT]:-${vars[REVERB_PORT]:-443}}")"
 reverb_scheme="$(resolve "${vars[VITE_REVERB_SCHEME]:-${vars[REVERB_SCHEME]:-https}}")"

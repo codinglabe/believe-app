@@ -113,7 +113,9 @@ jobs:
         if: hashFiles('package.json') != ''
         run: |
           set -euo pipefail
-          ${SSH_CMD} cpanel-deploy "grep -E '^(APP_NAME|APP_URL|APP_VERSION|REVERB_|VITE_)=' '${DEPLOY_PATH}/.env' | grep -v '^#'" > .env.server
+          ${SSH_CMD} cpanel-deploy "grep -E '^(APP_NAME|APP_URL|APP_VERSION)=|^REVERB_|^VITE_' '${DEPLOY_PATH}/.env' | grep -v '^#'" > .env.server
+          echo "Loaded $(wc -l < .env.server | tr -d ' ') lines from server .env"
+          grep -c '^REVERB_APP_KEY=' .env.server || echo "::warning::REVERB_APP_KEY not in fetched .env.server"
           chmod +x deploy/expand-vite-env.sh
           {
             echo "APP_URL=${APP_URL}"
