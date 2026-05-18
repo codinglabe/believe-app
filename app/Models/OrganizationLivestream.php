@@ -248,14 +248,53 @@ class OrganizationLivestream extends Model
      * Do not use &style=6 with &showall — style overrides and breaks the grid.
      * &vdo=1 + &audiodevice=1 pre-select default camera/mic; &autostart keeps the room view stable.
      */
-    public function getParticipantUrl(): string
+    public function getParticipantUrl(?int $seat = null): string
     {
         $password = $this->getDecryptedPassword();
         $room = rawurlencode($this->getVdoRoomName());
         $pass = rawurlencode((string) $password);
         $passwordParam = $pass !== '' ? '&password=' . $pass : '';
         $avatarInitialUrl = 'https://ui-avatars.com/api/?name=' . rawurlencode('Guest') . '&size=256&length=2';
-        return 'https://vdo.ninja/?room=' . $room . $passwordParam . '&label=&webcam&ssb&vdo=1&audiodevice=1&proaudio&stereo=2&norecord&showlabels=zoom&showall&rows=1&fontsize=82&nocontrols&clock=false&avatar=' . rawurlencode($avatarInitialUrl) . \App\Support\VdoMeetingVirtualBackground::querySegment() . '&autostart&noheader';
+        $base = 'https://vdo.ninja/?room=' . $room . $passwordParam . '&label=&webcam&ssb&vdo=1&audiodevice=1&proaudio&stereo=2&norecord&showlabels=zoom&showall&rows=1&fontsize=82&nocontrols&clock=false&avatar=' . rawurlencode($avatarInitialUrl) . \App\Support\VdoMeetingVirtualBackground::querySegment() . '&autostart&noheader';
+
+        // When canvas mode is enabled AND the caller allocated a seat, also publish
+        // this participant's camera to MediaMTX at ls_<id>_s<seat> so the canvas
+        // mixer can WHEP-subscribe and composite. seat is null elsewhere (e.g. UI
+        // rendering of the shared URL) — single-host flow stays untouched.
+        if ($seat !== null && $this->isCanvasModeEnabled()) {
+            $host = \App\Support\StreamingWorkerSourceUrl::bridgeMediaMtxHost();
+            if ($host !== null) {
+                $seatPath = \App\Support\StreamingWorkerSourceUrl::streamPath($this).'_s'.max(2, min(6, $seat));
+                $base .= '&push=' . rawurlencode($seatPath) . '&mediamtx=' . $host . '&codec=vp8';
+            }
+        }
+        return $base;
+    }
+
+    /**
+     * Canvas mode opt-in flag (settings.canvas_mode). Off by default so the
+     * proven single-host pipeline keeps working untouched until canvas mode is
+     * explicitly enabled on a livestream.
+     */
+    public function isCanvasModeEnabled(): bool
+    {
+        return (bool) (($this->settings ?? [])['canvas_mode'] ?? false);
+    }
+
+    /**
+     * Allocate the next guest seat (2..6) and persist the cursor in settings.
+     * Best-effort MVP allocator: wraps after 6 (no leave/reconnect handling per
+     * approved scope — fixed 6 grid, no dynamic seats). Host is always seat 1.
+     */
+    public function allocateNextGuestSeat(): int
+    {
+        $settings = $this->settings ?? [];
+        $cursor = (int) ($settings['next_guest_seat'] ?? 2);
+        $seat = max(2, min(6, $cursor));
+        $next = $seat >= 6 ? 2 : $seat + 1;
+        $settings['next_guest_seat'] = $next;
+        $this->update(['settings' => $settings]);
+        return $seat;
     }
 
     /**
@@ -411,7 +450,14 @@ class OrganizationLivestream extends Model
         }
         // No width/height/framerate — fixed 1920x1080@30 caused "Camera failed to load" on some webcams. quality=0 + bitrate let the camera use supported resolution.
         $recordParam = $recordEnabled ? '&record' : '';
-        $base = "https://vdo.ninja/?room={$room}&push={$push}&label={$label}{$recordParam}&quality=0&bitrate=6000&webcam&ssb&vdo=1&audiodevice=1&proaudio&stereo=2&showlabels=zoom&showall&rows=1&fontsize=82&nocontrols&clock=false{$avatarParam}" . \App\Support\VdoMeetingVirtualBackground::querySegment() . "&autostart&noheader{$passwordParam}";
+        // In canvas mode, the host publishes to seat 1 path so the canvas mixer
+        // can WHEP-subscribe it alongside the guest seats. The canvas page then
+        // publishes the combined output to streamPath (where the worker pulls).
+        // Single-host (default) mode keeps publishing directly to streamPath.
+        $effectivePush = $this->isCanvasModeEnabled()
+            ? rawurlencode($streamKey.'_s1')
+            : $push;
+        $base = "https://vdo.ninja/?room={$room}&push={$effectivePush}&label={$label}{$recordParam}&quality=0&bitrate=6000&webcam&ssb&vdo=1&audiodevice=1&proaudio&stereo=2&showlabels=zoom&showall&rows=1&fontsize=82&nocontrols&clock=false{$avatarParam}" . \App\Support\VdoMeetingVirtualBackground::querySegment() . "&autostart&noheader{$passwordParam}";
 
         // Restore the MediaMTX push so the host's webcam reaches the bridge and the AWS worker can
         // pull and forward to YouTube. (Was dropped under the assumption that getScenePushUrl

@@ -338,7 +338,12 @@ class LivestreamController extends Controller
             ->first();
 
         if ($orgStream) {
-            $participantUrl = $orgStream->getParticipantUrl();
+            // Canvas mode (opt-in): allocate the next guest seat so this
+            // participant publishes their cam to ls_<id>_s<seat> on MediaMTX
+            // for the canvas mixer to WHEP-subscribe. No-op when canvas_mode
+            // is off — getParticipantUrl(null) is the original single-host URL.
+            $seat = $orgStream->isCanvasModeEnabled() ? $orgStream->allocateNextGuestSeat() : null;
+            $participantUrl = $orgStream->getParticipantUrl($seat);
             $password = $orgStream->getDecryptedPassword();
             $settings = $orgStream->settings ?? [];
             $participantEmails = [];
@@ -380,7 +385,8 @@ class LivestreamController extends Controller
             ->first();
 
         if ($userStream) {
-            $participantUrl = $userStream->getParticipantUrl();
+            $seat = $userStream->isCanvasModeEnabled() ? $userStream->allocateNextGuestSeat() : null;
+            $participantUrl = $userStream->getParticipantUrl($seat);
             $password = $userStream->getDecryptedPassword();
             $settings = $userStream->settings ?? [];
             $participantEmails = [];
@@ -462,7 +468,10 @@ class LivestreamController extends Controller
             ]);
         }
 
-        $participantUrl = $livestream->getParticipantUrl();
+        // Per-invite-token join: allocate a canvas seat when canvas_mode is on
+        // so this specific guest publishes into the mixer.
+        $seat = $livestream->isCanvasModeEnabled() ? $livestream->allocateNextGuestSeat() : null;
+        $participantUrl = $livestream->getParticipantUrl($seat);
         $hasPasscode = ! empty($livestream->getDecryptedPassword());
         $inviteSettings = is_array($livestream->settings) ? $livestream->settings : [];
 

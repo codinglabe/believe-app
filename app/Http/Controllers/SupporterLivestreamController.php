@@ -456,7 +456,9 @@ class SupporterLivestreamController extends Controller
                         ->withErrors(['passcode' => 'Invalid passcode. Try again.']);
                 }
             }
-            $participantUrl = $orgStream->getParticipantUrl();
+            // Canvas-mode seat allocation (no-op when canvas_mode is off).
+            $seat = $orgStream->isCanvasModeEnabled() ? $orgStream->allocateNextGuestSeat() : null;
+            $participantUrl = $orgStream->getParticipantUrl($seat);
             $settings = is_array($orgStream->settings) ? $orgStream->settings : [];
             return Inertia::render('frontend/livestreams/Join', [
                 'livestream' => [
@@ -507,7 +509,8 @@ class SupporterLivestreamController extends Controller
                         ->withErrors(['passcode' => 'Invalid passcode. Try again.']);
                 }
             }
-            $participantUrl = $userStream->getParticipantUrl();
+            $seat = $userStream->isCanvasModeEnabled() ? $userStream->allocateNextGuestSeat() : null;
+            $participantUrl = $userStream->getParticipantUrl($seat);
             $userSettings = is_array($userStream->settings) ? $userStream->settings : [];
             return Inertia::render('frontend/livestreams/Join', [
                 'livestream' => [
