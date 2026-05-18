@@ -108,20 +108,21 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
 
-      # Local deploy uses your machine's .env (VITE_* / Reverb / etc.). Read server .env directly (cPanel php -r breaks on multiline SSH).
+      # Vite cannot expand ${REVERB_APP_KEY} — resolve literals from server .env (see deploy/expand-vite-env.sh).
       - name: Load Vite env from server (match local build)
         if: hashFiles('package.json') != ''
         run: |
           set -euo pipefail
-          ${SSH_CMD} cpanel-deploy "grep -E '^(APP_NAME|APP_URL)=|^VITE_' '${DEPLOY_PATH}/.env' | grep -v '^#'" > .env.vite
+          ${SSH_CMD} cpanel-deploy "grep -E '^(APP_NAME|APP_URL|APP_VERSION|REVERB_|VITE_)=' '${DEPLOY_PATH}/.env' | grep -v '^#'" > .env.server
+          chmod +x deploy/expand-vite-env.sh
           {
             echo "APP_URL=${APP_URL}"
-            cat .env.vite
+            ./deploy/expand-vite-env.sh < .env.server
           } > .env
           lines=$(wc -l < .env | tr -d ' ')
           echo "Wrote .env for Vite build (${lines} lines)"
-          grep -E '^VITE_|^APP_' .env | sed 's/=.*$/=***/' || true
-          test "${lines}" -ge 8 || echo "::warning::Expected more VITE lines in CI .env (got ${lines})"
+          grep -E '^VITE_REVERB_|^APP_' .env | sed 's/=.*$/=***/' || true
+          grep -q '^VITE_REVERB_APP_KEY=.\+' .env || { echo "::error::VITE_REVERB_APP_KEY empty after resolve"; exit 1; }
 
       - name: Build frontend assets
         if: hashFiles('package.json') != ''
@@ -167,6 +168,9 @@ jobs:
           php artisan cache:clear
           php artisan migrate --force
           php artisan storage:link --force
+          if [ -x /home/c3ers/bin/reverb-ensure-running.sh ]; then
+            /home/c3ers/bin/reverb-ensure-running.sh || true
+          fi
           php artisan config:cache
           php artisan view:cache
           # Do not route:cache — duplicate route names on production break serialization and break the whole app.
