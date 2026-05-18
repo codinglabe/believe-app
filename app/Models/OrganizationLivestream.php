@@ -353,14 +353,22 @@ class OrganizationLivestream extends Model
     }
 
     /**
+     * Participant canvas mixer URL (MVP, approved 2026-05-17). The page WHEP-
+     * subscribes the 6 seat paths from MediaMTX, composites a fixed 3x2 grid,
+     * mixes audio, and WHIP-publishes the combined stream to streamPath — the
+     * exact path the bridge -> FFmpeg worker -> YouTube pipeline already pulls.
+     */
+    public function getCanvasUrl(): string
+    {
+        return url('/livestreams/canvas/'.$this->room_name);
+    }
+
+    /**
      * Returns null for now. Was previously intended to publish a scene composite of all room
      * participants to MediaMTX via VDO.Ninja's &scene+&push+&mediamtx flags — but scene mode in
      * VDO.Ninja is receive-only (designed as an OBS Browser Source), so the iframe loaded but
-     * never published anything and the bridge stayed empty. Multi-participant streaming needs a
-     * different architecture (e.g. server-side ffmpeg composite of multiple bridge paths, or
-     * VDO.Ninja Director with a verified publish-output flag). Until that's designed and tested,
-     * we return null so the hidden iframe never renders and the host-push URL keeps feeding
-     * MediaMTX as it did before.
+     * never published anything and the bridge stayed empty. Superseded by the canvas mixer
+     * ({@see getCanvasUrl()}); kept returning null so any old callers stay inert.
      */
     public function getScenePushUrl(): ?string
     {

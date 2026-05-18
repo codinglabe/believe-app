@@ -807,6 +807,13 @@ Route::get('/livestreams/join/{roomName}', [LivestreamController::class, 'guestJ
     ->where('roomName', '[a-zA-Z0-9_-]+')
     ->name('livestreams.guest-join');
 
+// Hidden participant canvas mixer (MVP). Public, room-name addressed like guest join.
+// Opened in a browser; WHEP-subscribes the 6 seat paths, composites a 3x2 grid,
+// and WHIP-publishes the combined stream to the path the worker already pulls.
+Route::get('/livestreams/canvas/{roomName}', [\App\Http\Controllers\LivestreamCanvasController::class, 'show'])
+    ->where('roomName', '[a-zA-Z0-9_-]+')
+    ->name('livestreams.canvas');
+
 Route::post('/livestreams/recording-decline', [LivestreamRecordingDeclineController::class, 'store'])
     ->middleware('throttle:30,1')
     ->name('livestreams.recording-decline.store');
