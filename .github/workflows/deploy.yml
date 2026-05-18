@@ -184,9 +184,10 @@ jobs:
           php artisan view:clear
           php artisan cache:clear
           php artisan migrate --force
+          php artisan storage:link --force
           php artisan config:cache
-          php artisan route:cache
           php artisan view:cache
+          # Do not route:cache — duplicate route names on production break serialization and break the whole app.
           test -f .env && test -d storage && test -f .htaccess && echo DEPLOY_OK
           REMOTE
 
