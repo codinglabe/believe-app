@@ -1,13 +1,14 @@
-# If your GitHub repository root IS the backend/ folder, this workflow runs deploys.
+# Deploy DEVELOPMENT only → https://501c3ers.com (c3ers@501c3ers.com)
+# PRODUCTION https://believeinunity.org is NOT deployed by this workflow.
 # If the repo root is believe-wallet/ (monorepo), use ../.github/workflows/deploy-backend.yml instead.
 #
 # Preserves on server: storage/, .env, .htaccess. Never uploads local storage/ or .env.
 # Secret: CPANEL_SSH_KEY
-name: Deploy Laravel to cPanel
+name: Deploy development (501c3ers.com)
 
 on:
   push:
-    branches: [production]
+    branches: [development]
   workflow_dispatch:
 
 concurrency:
@@ -44,8 +45,13 @@ jobs:
 
       - name: Deploy target
         run: |
+          echo "Environment: development (501c3ers.com)"
           echo "Target: ${DEPLOY_USER}@${DEPLOY_HOST}:${DEPLOY_PATH}"
           echo "APP_URL (build only): ${APP_URL}"
+          if echo "${DEPLOY_HOST}" | grep -qi 'believeinunity'; then
+            echo "::error::Refusing to deploy to production host. Use 501c3ers.com for development only."
+            exit 1
+          fi
 
       - name: Setup SSH
         env:
@@ -175,7 +181,7 @@ jobs:
           fi
           php artisan config:cache
           php artisan view:cache
-          # Do not route:cache — duplicate route names on production break serialization and break the whole app.
+          # Do not route:cache — duplicate route names can break serialization on the server.
           test -f .env && test -d storage && test -f .htaccess && echo DEPLOY_OK
           REMOTE
 
