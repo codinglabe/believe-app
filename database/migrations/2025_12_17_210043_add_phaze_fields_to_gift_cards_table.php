@@ -1,0 +1,31 @@
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    /**
+     * Run the migrations.
+     */
+    public function up(): void
+    {
+        Schema::table('gift_cards', function (Blueprint $table) {
+            $table->string('card_number', 16)->nullable()->after('voucher');
+            $table->string('phaze_disbursement_id')->nullable()->after('stripe_session_id');
+            $table->index('card_number');
+        });
+    }
+
+    /**
+     * Reverse the migrations.
+     */
+    public function down(): void
+    {
+        Schema::table('gift_cards', function (Blueprint $table) {
+            $table->dropIndex(['card_number']);
+            $table->dropColumn(['card_number', 'phaze_disbursement_id']);
+        });
+    }
+};

@@ -1,0 +1,1474 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Jobs\SendCourseNotification;
+use App\Models\Course;
+use App\Models\Enrollment;
+use App\Models\Organization;
+use App\Models\PrimaryActionCategory;
+use App\Models\EventType;
+use App\Models\Topic;
+use App\Services\CourseTaxClassificationService;
+use App\Services\SeoService;
+use App\Support\ConnectionHubType;
+use App\Support\SessionDurationMinutes;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
+use Inertia\Inertia;
+
+class CourseController extends BaseController
+{
+    /**
+     * Display a listing of courses for the public view.
+     */
+    public function publicIndex(Request $request)
+    {
+        $filters = $request->only([
+            'search',
+            'topic_id',
+            'format',
+            'pricing_type',
+            'organization',
+            'type',
+            'event_type_id',
+            'cause_id',
+            'view',
+        ]);
+
+        if (isset($filters['view'])) {
+            $view = strtolower(trim((string) $filters['view']));
+            if ($view === 'catalog') {
+                $filters['view'] = 'catalog';
+            } else {
+                unset($filters['view']);
+            }
+        }
+
+        if (isset($filters['type']) && is_string($filters['type'])) {
+            $filters['type'] = strtolower(trim($filters['type']));
+            if ($filters['type'] === '') {
+                unset($filters['type']);
+            }
+        }
+
+        // Learning + companion hubs: “Explore by Category” uses EventType + `event_type_id` (not `topics`).
+        $learningExploreUsesEventTypes = (($filters['type'] ?? null) === 'learning');
+        $companionExploreUsesEventTypes = (($filters['type'] ?? null) === 'companion');
+
+        $perPage = (int) $request->query('per_page', 6);
+        if (! in_array($perPage, [6, 9, 12, 18], true)) {
+            $perPage = 6;
+        }
+
+        $courses = Course::query()
+            ->with([
+                'topic',
+                'eventType',
+                'organization.organization',
+                'creator',
+                'primaryActionCategories' => function ($q) {
+                    $q->orderBy('primary_action_categories.name');
+                },
+            ])
+            ->withCount(['enrollmentsCount as enrolled_count'])
+            ->when($filters['search'] ?? null, function ($query, $search) {
+                $query->where(function ($q) use ($search) {
+                    $q->where('name', 'like', '%'.$search.'%')
+                        ->orWhere('target_audience', 'like', '%'.$search.'%')
+                        ->orWhere('description', 'like', '%'.$search.'%');
+                });
+            })
+            ->when($filters['type'] ?? null, function ($query, $type) {
+                if ($type !== 'all') {
+                    $query->where('type', $type);
+                }
+            })
+            // Learning + events hub “Explore by Category” both filter by `event_type_id` (event types).
+            // Ignore `topic_id` on the learning hub so a stale topic from the searchable table does not apply.
+            ->when(
+                ($filters['topic_id'] ?? null)
+                && (($filters['type'] ?? null) !== 'events')
+                && (($filters['type'] ?? null) !== 'learning')
+                && (($filters['type'] ?? null) !== 'companion'),
+                function ($query) use ($filters) {
+                    $topicId = $filters['topic_id'];
+                    if ($topicId !== 'all') {
+                        $query->where('topic_id', $topicId);
+                    }
+                }
+            )
+            ->when(
+                ($filters['event_type_id'] ?? null) && ($filters['event_type_id'] !== 'all'),
+                function ($query) use ($filters) {
+                    $query->where('event_type_id', $filters['event_type_id']);
+                }
+            )
+            ->when($filters['organization'] ?? null, function ($query, $organization) {
+                if ($organization !== 'all') {
+                    $query->whereHas('organization', function ($query) use ($organization) {
+                        $query->where('slug', $organization);
+                    });
+                }
+            })
+            ->when($filters['format'] ?? null, function ($query, $format) {
+                if ($format !== 'all') {
+                    $query->where('format', $format);
+                }
+            })
+            ->when($filters['pricing_type'] ?? null, function ($query, $pricingType) {
+                if ($pricingType !== 'all') {
+                    $query->where('pricing_type', $pricingType);
+                }
+            })
+            ->when($filters['cause_id'] ?? null, function ($query, $causeId) {
+                if ($causeId !== '' && $causeId !== 'all') {
+                    $id = (int) $causeId;
+                    if ($id > 0) {
+                        $query->whereHas('primaryActionCategories', function ($q) use ($id) {
+                            $q->where('primary_action_categories.id', $id);
+                        });
+                    }
+                }
+            })
+            ->orderBy('start_date', 'desc')
+            ->paginate($perPage)
+            ->withQueryString();
+
+        // Add 'organization_name' attribute to each course for frontend
+        // Replace enrolled count with actual count from enrollments table
+        // Expose only this listing’s chosen causes (course_pac), not the global catalog
+        $courses->getCollection()->transform(function ($course) {
+            $course->organization_name = optional($course->organization->organization)->name;
+            $course->enrolled = $course->enrolled_count ?? 0;
+
+            $chosenCauses = $course->relationLoaded('primaryActionCategories')
+                ? $course->primaryActionCategories->map(fn ($c) => [
+                    'id' => $c->id,
+                    'name' => $c->name,
+                    'slug' => $c->slug,
+                ])->values()->all()
+                : [];
+
+            $course->unsetRelation('primaryActionCategories');
+            $course->setAttribute('primary_action_categories', $chosenCauses);
+
+            return $course;
+        });
+
+        $topics = Topic::orderBy('name')->get(['id', 'name']);
+        $eventTypes = EventType::generalCatalogForProps();
+        $companionEventTypes = EventType::companionCatalogForProps();
+
+        $organizations = Organization::with('user:id,slug')
+            ->orderBy('name')
+            ->get()
+            ->map(function ($org) {
+                return [
+                    'id' => $org->id,
+                    'name' => $org->name,
+                    'slug' => $org->user->slug ?? null,
+                ];
+            });
+
+        $causesForFilter = PrimaryActionCategory::query()
+            ->where('is_active', true)
+            ->orderBy('sort_order')
+            ->orderBy('name')
+            ->get(['id', 'name', 'slug']);
+
+        // Dynamic SEO: base from settings, override title when filters applied
+        $baseSeo = SeoService::forPage('courses');
+        $seoTitle = $baseSeo['title'];
+        $seoParts = [];
+        if (! empty($filters['type']) && $filters['type'] !== 'all') {
+            $seoParts[] = ConnectionHubType::label($filters['type']);
+        }
+        if (! empty($filters['pricing_type']) && $filters['pricing_type'] !== 'all') {
+            $seoParts[] = $filters['pricing_type'] === 'free' ? 'Free' : 'Paid';
+        }
+        if (! empty($filters['format']) && $filters['format'] !== 'all') {
+            $formatLabels = ['online' => 'Online', 'in_person' => 'In Person', 'hybrid' => 'Hybrid'];
+            $seoParts[] = $formatLabels[$filters['format']] ?? $filters['format'];
+        }
+        if (! empty($filters['search'])) {
+            $seoParts[] = '“'.Str::limit($filters['search'], 30).'”';
+        }
+        if (! empty($seoParts)) {
+            $seoTitle = implode(' ', $seoParts).' - '.$baseSeo['title'];
+        }
+        $seoDescription = $baseSeo['description'];
+        if (! empty($filters['search'])) {
+            $seoDescription = 'Find courses and events matching your search. '.$seoDescription;
+        }
+
+        $learningTopicCounts = [];
+        $learningSpotlightCourses = collect();
+        $learningFeaturedCourses = collect();
+        $learningStats = null;
+
+        if (($filters['type'] ?? null) === 'learning') {
+            $learningTopicCounts = $this->connectionHubEventTypeCountsFor('learning');
+
+            $today = now()->toDateString();
+
+            // “Live Learning Now”: listings that have started and not ended (same window as public table “Active”).
+            $liveLearning = Course::query()
+                ->where('type', 'learning')
+                ->where('start_date', '<=', $today)
+                ->where(function ($q) use ($today) {
+                    $q->whereNull('end_date')
+                        ->orWhere('end_date', '>=', $today);
+                })
+                ->with(['creator', 'organization.organization'])
+                ->withCount(['enrollmentsCount as enrolled_count'])
+                ->orderBy('start_date', 'desc')
+                ->limit(5)
+                ->get();
+
+            foreach ($liveLearning as $course) {
+                $course->organization_name = optional($course->organization->organization)->name;
+                $course->enrolled = $course->enrolled_count ?? 0;
+            }
+
+            $learningSpotlightCourses = $liveLearning;
+
+            // “Featured” learning: upcoming or in date window (same logic as events hub featured strip).
+            $learningFeatured = Course::query()
+                ->where('type', 'learning')
+                ->where(function ($q) use ($today) {
+                    $q->where('start_date', '>=', $today)
+                        ->orWhere(function ($q2) use ($today) {
+                            $q2->where('start_date', '<=', $today)
+                                ->where(function ($q3) use ($today) {
+                                    $q3->whereNull('end_date')
+                                        ->orWhere('end_date', '>=', $today);
+                                });
+                        });
+                })
+                ->with(['creator', 'topic', 'organization.organization'])
+                ->withCount(['enrollmentsCount as enrolled_count'])
+                ->orderBy('start_date', 'asc')
+                ->limit(4)
+                ->get();
+
+            if ($learningFeatured->isEmpty()) {
+                $learningFeatured = Course::query()
+                    ->where('type', 'learning')
+                    ->with(['creator', 'topic', 'organization.organization'])
+                    ->withCount(['enrollmentsCount as enrolled_count'])
+                    ->orderBy('start_date', 'desc')
+                    ->limit(4)
+                    ->get();
+            }
+
+            foreach ($learningFeatured as $course) {
+                $course->organization_name = optional($course->organization->organization)->name;
+                $course->enrolled = $course->enrolled_count ?? 0;
+            }
+            $learningFeaturedCourses = $learningFeatured;
+
+            $learningCourseIds = Course::where('type', 'learning')->pluck('id');
+
+            if ($learningCourseIds->isEmpty()) {
+                $learningStats = [
+                    'active_learners' => 0,
+                    'courses_available' => 0,
+                    'expert_mentors' => 0,
+                    'lessons_completed' => 0,
+                    'lives_impacted' => 0,
+                ];
+            } else {
+                $activeLearners = (int) DB::table('enrollments')
+                    ->whereIn('course_id', $learningCourseIds)
+                    ->selectRaw('count(distinct user_id) as c')
+                    ->value('c');
+
+                $learningStats = [
+                    'active_learners' => $activeLearners,
+                    'courses_available' => (int) Course::where('type', 'learning')->count(),
+                    'expert_mentors' => (int) DB::table('courses')
+                        ->where('type', 'learning')
+                        ->selectRaw('count(distinct user_id) as c')
+                        ->value('c'),
+                    'lessons_completed' => (int) Enrollment::query()
+                        ->whereIn('course_id', $learningCourseIds)
+                        ->where('status', Enrollment::STATUS_COMPLETED)
+                        ->count(),
+                    'lives_impacted' => (int) Enrollment::query()
+                        ->whereIn('course_id', $learningCourseIds)
+                        ->count(),
+                ];
+            }
+        }
+
+        $companionEventTypeCounts = [];
+        $companionFeaturedCourses = collect();
+        $companionLiveCourses = collect();
+        $companionStats = null;
+
+        if (($filters['type'] ?? null) === 'companion') {
+            $companionEventTypeCounts = $this->connectionHubEventTypeCountsFor('companion');
+
+            $today = now()->toDateString();
+
+            $companionFeatured = Course::query()
+                ->where('type', 'companion')
+                ->where(function ($q) use ($today) {
+                    $q->where('start_date', '>=', $today)
+                        ->orWhere(function ($q2) use ($today) {
+                            $q2->where('start_date', '<=', $today)
+                                ->where(function ($q3) use ($today) {
+                                    $q3->whereNull('end_date')
+                                        ->orWhere('end_date', '>=', $today);
+                                });
+                        });
+                })
+                ->with(['creator', 'eventType', 'organization.organization'])
+                ->withCount(['enrollmentsCount as enrolled_count'])
+                ->orderBy('start_date', 'asc')
+                ->limit(4)
+                ->get();
+
+            if ($companionFeatured->isEmpty()) {
+                $companionFeatured = Course::query()
+                    ->where('type', 'companion')
+                    ->with(['creator', 'eventType', 'organization.organization'])
+                    ->withCount(['enrollmentsCount as enrolled_count'])
+                    ->orderBy('start_date', 'desc')
+                    ->limit(4)
+                    ->get();
+            }
+
+            foreach ($companionFeatured as $course) {
+                $course->organization_name = optional($course->organization->organization)->name;
+                $course->enrolled = $course->enrolled_count ?? 0;
+            }
+            $companionFeaturedCourses = $companionFeatured;
+
+            $companionLive = Course::query()
+                ->where('type', 'companion')
+                ->where('start_date', '<=', $today)
+                ->where(function ($q) use ($today) {
+                    $q->whereNull('end_date')
+                        ->orWhere('end_date', '>=', $today);
+                })
+                ->with(['creator', 'eventType', 'organization.organization'])
+                ->withCount(['enrollmentsCount as enrolled_count'])
+                ->orderBy('start_date', 'desc')
+                ->limit(5)
+                ->get();
+
+            foreach ($companionLive as $course) {
+                $course->organization_name = optional($course->organization->organization)->name;
+                $course->enrolled = $course->enrolled_count ?? 0;
+            }
+            $companionLiveCourses = $companionLive;
+
+            $companionCourseIds = Course::where('type', 'companion')->pluck('id');
+
+            if ($companionCourseIds->isEmpty()) {
+                $companionStats = [
+                    'active_companions' => 0,
+                    'conversations_today' => 0,
+                    'lives_impacted' => 0,
+                    'companion_volunteers' => 0,
+                ];
+            } else {
+                $activeCompanions = (int) DB::table('enrollments')
+                    ->whereIn('course_id', $companionCourseIds)
+                    ->selectRaw('count(distinct user_id) as c')
+                    ->value('c');
+
+                $conversationsToday = (int) Enrollment::query()
+                    ->whereIn('course_id', $companionCourseIds)
+                    ->whereDate('created_at', $today)
+                    ->count();
+
+                $companionStats = [
+                    'active_companions' => $activeCompanions,
+                    'conversations_today' => $conversationsToday,
+                    'lives_impacted' => (int) Enrollment::query()
+                        ->whereIn('course_id', $companionCourseIds)
+                        ->count(),
+                    'companion_volunteers' => (int) DB::table('courses')
+                        ->where('type', 'companion')
+                        ->selectRaw('count(distinct user_id) as c')
+                        ->value('c'),
+                ];
+            }
+        }
+
+        $eventsEventTypeCounts = [];
+        $eventsFeaturedCourses = collect();
+        $eventsLiveCourses = collect();
+        $eventsStats = null;
+
+        if (($filters['type'] ?? null) === 'events') {
+            $eventsEventTypeCounts = $this->connectionHubEventTypeCountsFor('events');
+
+            $today = now()->toDateString();
+
+            // “Featured”: upcoming or still in its date window. If none match (e.g. every event has ended),
+            // fall back to the most recent event listings so the hub isn’t empty when data exists.
+            $featured = Course::query()
+                ->where('type', 'events')
+                ->where(function ($q) use ($today) {
+                    $q->where('start_date', '>=', $today)
+                        ->orWhere(function ($q2) use ($today) {
+                            $q2->where('start_date', '<=', $today)
+                                ->where(function ($q3) use ($today) {
+                                    $q3->whereNull('end_date')
+                                        ->orWhere('end_date', '>=', $today);
+                                });
+                        });
+                })
+                ->with(['creator', 'eventType', 'organization.organization'])
+                ->withCount(['enrollmentsCount as enrolled_count'])
+                ->orderBy('start_date', 'asc')
+                ->limit(4)
+                ->get();
+
+            if ($featured->isEmpty()) {
+                $featured = Course::query()
+                    ->where('type', 'events')
+                    ->with(['creator', 'eventType', 'organization.organization'])
+                    ->withCount(['enrollmentsCount as enrolled_count'])
+                    ->orderBy('start_date', 'desc')
+                    ->limit(4)
+                    ->get();
+            }
+
+            foreach ($featured as $course) {
+                $course->organization_name = optional($course->organization->organization)->name;
+                $course->enrolled = $course->enrolled_count ?? 0;
+            }
+            $eventsFeaturedCourses = $featured;
+
+            $live = Course::query()
+                ->where('type', 'events')
+                ->where('start_date', '<=', $today)
+                ->where(function ($q) use ($today) {
+                    $q->whereNull('end_date')
+                        ->orWhere('end_date', '>=', $today);
+                })
+                ->with(['creator', 'eventType', 'organization.organization'])
+                ->withCount(['enrollmentsCount as enrolled_count'])
+                ->orderBy('start_date', 'desc')
+                ->limit(5)
+                ->get();
+
+            foreach ($live as $course) {
+                $course->organization_name = optional($course->organization->organization)->name;
+                $course->enrolled = $course->enrolled_count ?? 0;
+            }
+            $eventsLiveCourses = $live;
+
+            $eventCourseIds = Course::where('type', 'events')->pluck('id');
+
+            if ($eventCourseIds->isEmpty()) {
+                $eventsStats = [
+                    'events_hosted' => 0,
+                    'total_attendees' => 0,
+                    'upcoming_events' => 0,
+                    'lives_impacted' => 0,
+                ];
+            } else {
+                $upcomingEvents = (int) Course::where('type', 'events')
+                    ->where('start_date', '>', $today)
+                    ->count();
+
+                $eventsStats = [
+                    'events_hosted' => (int) Course::where('type', 'events')->count(),
+                    'total_attendees' => (int) Enrollment::query()
+                        ->whereIn('course_id', $eventCourseIds)
+                        ->count(),
+                    'upcoming_events' => $upcomingEvents,
+                    'lives_impacted' => (int) DB::table('enrollments')
+                        ->whereIn('course_id', $eventCourseIds)
+                        ->selectRaw('count(distinct user_id) as c')
+                        ->value('c'),
+                ];
+            }
+        }
+
+        return Inertia::render('frontend/course/Index', [
+            'seo' => [
+                'title' => $seoTitle,
+                'description' => $seoDescription,
+            ],
+            'courses' => $courses,
+            'topics' => $topics,
+            'eventTypes' => $eventTypes,
+            'companionEventTypes' => $companionEventTypes,
+            'causesForFilter' => $causesForFilter,
+            'organizations' => $organizations,
+            'filters' => $filters,
+            'learningExploreUsesEventTypes' => $learningExploreUsesEventTypes,
+            'companionExploreUsesEventTypes' => $companionExploreUsesEventTypes,
+            'learningTopicCounts' => $learningTopicCounts,
+            'companionEventTypeCounts' => $companionEventTypeCounts,
+            'companionFeaturedCourses' => $companionFeaturedCourses->values()->all(),
+            'companionLiveCourses' => $companionLiveCourses->values()->all(),
+            'companionStats' => $companionStats,
+            'learningSpotlightCourses' => $learningSpotlightCourses->values()->all(),
+            'learningFeaturedCourses' => $learningFeaturedCourses->values()->all(),
+            'learningStats' => $learningStats,
+            'eventsEventTypeCounts' => $eventsEventTypeCounts,
+            'eventsFeaturedCourses' => $eventsFeaturedCourses->values()->all(),
+            'eventsLiveCourses' => $eventsLiveCourses->values()->all(),
+            'eventsStats' => $eventsStats,
+        ]);
+    }
+
+    /**
+     * Display a listing of courses for the admin view.
+     */
+    public function adminIndex(Request $request)
+    {
+        $this->authorizePermission($request, 'course.read');
+        $filters = $request->only([
+            'courses_search',
+            'courses_status',
+            'courses_type',
+            'courses_course_type',
+            'courses_topic',
+        ]);
+
+        $user = Auth::user();
+
+        $query = Course::query()
+            ->with(['topic', 'eventType', 'organization', 'creator'])
+            ->withCount(['enrollmentsCount as enrolled_count']);
+
+        // ✅ If user is not admin → restrict by organization
+        if ($user->role !== 'admin') {
+            $query->where('organization_id', $user->id);
+        }
+
+        // 🔍 Search functionality
+        if (! empty($filters['courses_search'])) {
+            $search = $filters['courses_search'];
+            $query->where(function ($q) use ($search) {
+                $q->where('name', 'like', '%'.$search.'%')
+                    ->orWhere('description', 'like', '%'.$search.'%')
+                    ->orWhere('target_audience', 'like', '%'.$search.'%')
+                    ->orWhere('community_impact', 'like', '%'.$search.'%')
+                    ->orWhereHas('organization', function ($orgQuery) use ($search) {
+                        $orgQuery->where('name', 'like', '%'.$search.'%');
+                    });
+            });
+        }
+
+        // 🔎 Topic/Event Type filter - depends on course_course_type (both use event_types)
+        if (! empty($filters['courses_topic']) && ! empty($filters['courses_course_type'])) {
+            $query->where('event_type_id', $filters['courses_topic']);
+        }
+
+        // 🔎 Pricing type filter
+        if (! empty($filters['courses_type'])) {
+            $query->where('pricing_type', $filters['courses_type']);
+        }
+
+        // 🔎 Course/Event type filter
+        if (! empty($filters['courses_course_type'])) {
+            $query->where('type', $filters['courses_course_type']);
+        }
+
+        // 🔎 Status filter
+        if (! empty($filters['courses_status'])) {
+            $status = $filters['courses_status'];
+            $now = now();
+
+            switch ($status) {
+                case 'available':
+                    $query->where('start_date', '>=', $now->toDateString())
+                        ->whereRaw('enrolled < max_participants')
+                        ->whereRaw('(enrolled / max_participants) < 0.8');
+                    break;
+                case 'almost_full':
+                    $query->where('start_date', '>=', $now->toDateString())
+                        ->whereRaw('enrolled < max_participants')
+                        ->whereRaw('(enrolled / max_participants) >= 0.8');
+                    break;
+                case 'full':
+                    $query->where('start_date', '>=', $now->toDateString())
+                        ->whereRaw('enrolled >= max_participants');
+                    break;
+                case 'started':
+                    $query->where('start_date', '<', $now->toDateString());
+                    break;
+            }
+        }
+
+        $courses = $query->orderBy('start_date', 'desc')
+            ->paginate(15)
+            ->withQueryString();
+
+        // Replace enrolled count with actual count from enrollments table
+        $courses->getCollection()->transform(function ($course) {
+            $course->enrolled = $course->enrolled_count ?? 0;
+
+            return $course;
+        });
+
+        $eventTypes = EventType::generalCatalogForProps();
+        $companionEventTypes = EventType::companionCatalogForProps();
+
+        // ✅ Calculate statistics only for authenticated organization
+        // For organization users, use their user_id as organization_id
+        // For admin users, they should also see their own organization's data if they have one
+        $organizationId = $user->role === 'organization' ? $user->id : ($user->organization_id ?? $user->id);
+        $statistics = $this->calculateCourseStatistics($organizationId);
+
+        return Inertia::render('admin/course/Index', [
+            'courses' => $courses,
+            'eventTypes' => $eventTypes,
+            'companionEventTypes' => $companionEventTypes,
+            'filters' => $filters,
+            'statistics' => $statistics,
+        ]);
+    }
+
+    /**
+     * Calculate course statistics for the admin dashboard
+     */
+    private function calculateCourseStatistics($organizationId)
+    {
+        $baseQuery = Course::query();
+        if ($organizationId) {
+            $baseQuery->where('organization_id', $organizationId);
+        }
+        $now = now();
+
+        $courses = $baseQuery->withCount(['enrollmentsCount as enrolled_count'])->get();
+
+        return [
+            'total_courses' => $courses->count(),
+            'free_courses' => $courses->where('pricing_type', 'free')->count(),
+            'paid_courses' => $courses->where('pricing_type', 'paid')->count(),
+            'active_courses' => $courses->where('start_date', '>=', $now->toDateString())->count(),
+            'total_enrolled' => $courses->sum('enrolled_count'),
+            'total_revenue' => $courses->where('pricing_type', 'paid')
+                ->whereNotNull('course_fee')
+                ->sum(function ($course) {
+                    return ($course->enrolled_count ?? 0) * $course->course_fee;
+                }),
+            'average_rating' => $courses->where('total_reviews', '>', 0)->avg('rating') ?: 0,
+        ];
+    }
+
+    /**
+     * Show the form for creating a new course.
+     */
+    public function create(Request $request)
+    {
+        $this->authorizePermission($request, 'course.create');
+        $eventTypes = EventType::generalCatalogForProps();
+        $companionEventTypes = EventType::companionCatalogForProps();
+
+        $seller = Organization::biuSellerDisplayForUser($request->user());
+
+        $lockedHubListingType = ConnectionHubType::normalizedListingTypeLockFromQuery($request->query('type'));
+
+        return Inertia::render('admin/course/Create', array_merge([
+            'eventTypes' => $eventTypes,
+            'companionEventTypes' => $companionEventTypes,
+            'organizationName' => $seller['name'],
+            'sellerNameLabel' => $seller['label'],
+            'lockedHubListingType' => $lockedHubListingType,
+        ], $this->organizationPrimaryActionCategoriesPageProps($request)));
+    }
+
+    /**
+     * Store a newly created course in storage.
+     */
+    public function store(Request $request)
+    {
+        $this->authorizePermission($request, 'course.create');
+
+        $type = $request->input('type', ConnectionHubType::COMPANION);
+        $typeLabelCapital = ConnectionHubType::label($type);
+        $typeLabel = strtolower($typeLabelCapital);
+        $outcomesNoun = ConnectionHubType::usesEventSemantics($type) ? 'event' : 'learning';
+
+        $validated = $request->validate(array_merge([
+            // Basic Information
+            'name' => 'required|string|max:255|unique:courses,name',
+            'description' => 'required|string',
+            'type' => [
+                'required',
+                Rule::in(ConnectionHubType::VALUES),
+                function (string $attribute, mixed $value, \Closure $fail) use ($request): void {
+                    if (! is_string($value)) {
+                        return;
+                    }
+                    $raw = $request->input('locked_hub_type');
+                    if (! is_string($raw) || trim($raw) === '') {
+                        return;
+                    }
+                    $lock = ConnectionHubType::normalizedListingTypeLockFromQuery($raw);
+                    if ($lock === null) {
+                        $fail(__('Invalid listing type lock.'));
+
+                        return;
+                    }
+                    if ($value !== $lock) {
+                        $fail(__('The listing type cannot be changed for this create flow.'));
+                    }
+                },
+            ],
+            'topic_id' => ['nullable', 'exists:topics,id'],
+            'event_type_id' => EventType::validationRulesForHubType($type),
+            'meeting_link' => 'nullable|url|max:500', // Added meeting_link validation
+
+            // Pricing
+            'pricing_type' => ['required', Rule::in(['free', 'paid'])],
+            'course_fee' => 'nullable|numeric|min:0|required_if:pricing_type,paid',
+
+            // Schedule & Format
+            'start_date' => 'required|date|after_or_equal:today',
+            'start_time' => 'required|date_format:H:i',
+            'end_date' => 'nullable|date|after_or_equal:start_date',
+            'session_duration_minutes' => ['required', 'integer', Rule::in(SessionDurationMinutes::VALUES)],
+            'format' => ['required', Rule::in(['online', 'in_person', 'hybrid'])],
+
+            // Configuration
+            'max_participants' => 'required|integer|min:1|max:100',
+            'language' => ['required', Rule::in(['English', 'Spanish', 'French', 'Other'])],
+
+            // Target Audience & Impact
+            'target_audience' => 'required|string|max:255',
+            'community_impact' => 'nullable|string',
+
+            // Course Content (optional — admin create/edit no longer collects this section)
+            'learning_outcomes' => ['nullable', 'array'],
+            'learning_outcomes.*' => 'string|max:255',
+            'prerequisites' => 'nullable|array',
+            'prerequisites.*' => 'string|max:255',
+            'materials_needed' => 'nullable|array',
+            'materials_needed.*' => 'string|max:255',
+            'accessibility_features' => 'nullable|array',
+            'accessibility_features.*' => 'string|max:255',
+
+            // Settings
+            'certificate_provided' => 'boolean',
+            'volunteer_opportunities' => 'boolean',
+
+            // Media
+            'image' => 'nullable|image|mimes:jpeg,png,jpg,gif,svg|max:2048',
+        ], CourseTaxClassificationService::validationRules(), $this->primaryActionCategoryIdsValidation($request)), [
+            // Custom error messages
+            'name.required' => "The {$typeLabelCapital} name is required.",
+            'name.unique' => "A {$typeLabel} with this name already exists.",
+            'name.max' => "The {$typeLabelCapital} name may not be greater than 255 characters.",
+            'description.required' => "The {$typeLabelCapital} description is required.",
+            'type.required' => 'Please select a Connection Hub type.',
+            'type.in' => 'Type must be Companion, Learning, Events, or Earning.',
+            'topic_id.exists' => 'The selected topic is invalid.',
+            'event_type_id.required' => 'Please select a topic.',
+            'event_type_id.exists' => 'The selected topic is invalid.',
+            'meeting_link.url' => 'The meeting link must be a valid URL.',
+            'meeting_link.max' => 'The meeting link may not be greater than 500 characters.',
+            'pricing_type.required' => 'Please select a pricing type.',
+            'pricing_type.in' => 'Pricing type must be either Free or Paid.',
+            'course_fee.required_if' => 'A fee is required when pricing type is Paid.',
+            'course_fee.numeric' => 'The fee must be a number.',
+            'course_fee.min' => 'The fee must be at least 0.',
+            'start_date.required' => 'Start date is required.',
+            'start_date.date' => 'Start date must be a valid date.',
+            'start_date.after_or_equal' => 'Start date must be today or a future date.',
+            'start_time.required' => 'Start time is required.',
+            'start_time.date_format' => 'Start time must be in HH:MM format.',
+            'end_date.date' => 'End date must be a valid date.',
+            'end_date.after_or_equal' => 'End date must be on or after the start date.',
+            'session_duration_minutes.required' => 'Session duration is required.',
+            'session_duration_minutes.in' => 'Please select a session duration between 30 and 120 minutes.',
+            'format.required' => 'Format is required.',
+            'format.in' => 'Format must be Online, In-Person, or Hybrid.',
+            'max_participants.required' => 'Maximum participants is required.',
+            'max_participants.integer' => 'Maximum participants must be a number.',
+            'max_participants.min' => 'Maximum participants must be at least 1.',
+            'max_participants.max' => 'Maximum participants may not be greater than 100.',
+            'language.required' => 'Language is required.',
+            'language.in' => 'Please select a valid language.',
+            'target_audience.required' => 'Target audience is required.',
+            'target_audience.max' => 'Target audience may not be greater than 255 characters.',
+            'learning_outcomes.required' => $outcomesNoun === 'learning' ? 'Learning outcomes are required.' : 'Event outcomes are required.',
+            'learning_outcomes.array' => $outcomesNoun === 'learning' ? 'Learning outcomes must be an array.' : 'Event outcomes must be an array.',
+            'learning_outcomes.min' => $outcomesNoun === 'learning' ? 'At least one learning outcome is required.' : 'At least one event outcome is required.',
+            'learning_outcomes.*.max' => $outcomesNoun === 'learning' ? 'Each learning outcome may not be greater than 255 characters.' : 'Each event outcome may not be greater than 255 characters.',
+            'prerequisites.*.max' => 'Each prerequisite may not be greater than 255 characters.',
+            'materials_needed.*.max' => 'Each material needed may not be greater than 255 characters.',
+            'accessibility_features.*.max' => 'Each accessibility feature may not be greater than 255 characters.',
+            'image.image' => 'The image must be an image file.',
+            'image.mimes' => 'The image must be a file of type: jpeg, png, jpg, gif, svg.',
+            'image.max' => 'The image may not be greater than 2MB.',
+        ]);
+
+        CourseTaxClassificationService::validateFeeBreakdown($request);
+
+        // Handle image upload
+        $imagePath = null;
+        if ($request->hasFile('image')) {
+            try {
+                $imagePath = $request->file('image')->store('course_images', 'public');
+                // Log for debugging
+                \Illuminate\Support\Facades\Log::info('Course image uploaded', [
+                    'path' => $imagePath,
+                    'exists' => \Illuminate\Support\Facades\Storage::disk('public')->exists($imagePath),
+                ]);
+            } catch (\Exception $e) {
+                \Illuminate\Support\Facades\Log::error('Failed to upload course image: '.$e->getMessage());
+
+                return redirect()->back()
+                    ->withInput()
+                    ->withErrors(['image' => 'Failed to upload image. Please try again.']);
+            }
+        }
+
+        // Generate slug from name
+        $slug = Str::slug($validated['name']);
+        $originalSlug = $slug;
+        $counter = 1;
+
+        // Ensure unique slug
+        while (Course::where('slug', $slug)->exists()) {
+            $slug = $originalSlug.'-'.$counter;
+            $counter++;
+        }
+
+        try {
+            DB::beginTransaction();
+
+            $course = Course::create(array_merge([
+                // Auto-populated fields
+                'organization_id' => Auth::id(),
+                'user_id' => Auth::id(),
+
+                // Form data
+                'type' => $validated['type'],
+                'topic_id' => null,
+                'event_type_id' => $validated['event_type_id'] ?? null,
+                'name' => $validated['name'],
+                'slug' => $slug,
+                'description' => $validated['description'],
+                'meeting_link' => $validated['meeting_link'], // Added meeting_link field
+
+                // Pricing
+                'pricing_type' => $validated['pricing_type'],
+                'course_fee' => $validated['pricing_type'] === 'paid' ? $validated['course_fee'] : null,
+
+                // Schedule & Format
+                'start_date' => $validated['start_date'],
+                'start_time' => $validated['start_time'],
+                'end_date' => $validated['end_date'] ?? null,
+                'session_duration_minutes' => $validated['session_duration_minutes'],
+                'format' => $validated['format'],
+
+                // Configuration
+                'max_participants' => $validated['max_participants'],
+                'language' => $validated['language'],
+
+                // Target Audience & Impact
+                'target_audience' => $validated['target_audience'],
+                'community_impact' => $validated['community_impact'],
+
+                // Course Content
+                'learning_outcomes' => $validated['learning_outcomes'] ?? [],
+                'prerequisites' => $validated['prerequisites'] ?? [],
+                'materials_needed' => $validated['materials_needed'] ?? [],
+                'accessibility_features' => $validated['accessibility_features'] ?? [],
+
+                // Settings
+                'certificate_provided' => $validated['certificate_provided'] ?? false,
+                'volunteer_opportunities' => $validated['volunteer_opportunities'] ?? false,
+
+                // Media
+                'image' => $imagePath,
+
+                // Defaults
+                'enrolled' => 0,
+                'rating' => 0.0,
+                'total_reviews' => 0,
+                'last_updated' => now(),
+            ], CourseTaxClassificationService::persistenceFromRequest($request)));
+
+            $this->syncPrimaryActionCategories($course, $request);
+
+            DB::commit();
+
+            SendCourseNotification::dispatch($course);
+
+            return redirect()->route('admin.courses.index')->with('success', 'Community course created successfully!');
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Failed to create course: '.$e->getMessage());
+
+            return redirect()->back()
+                ->withInput()
+                ->withErrors(['error' => 'Failed to create course. Please try again.']);
+        }
+    }
+
+    /**
+     * Display the specified course.
+     */
+    public function publicShow(Course $course)
+    {
+        $course->load(['topic', 'eventType', 'organization.organization', 'creator']);
+
+        // Official org profile name (nonprofit listing) — same as publicIndex; prefer over individual creator for display
+        $course->organization_name = optional($course->organization?->organization)->name
+            ?? Organization::where('user_id', $course->organization_id)->value('name');
+
+        // Current enrollment for UI: only active / pending / completed (not cancelled or refunded — user can enroll again)
+        $userEnrollment = null;
+        $user = Auth::user();
+        if (Auth::check()) {
+            $userEnrollment = Enrollment::where('user_id', Auth::id())
+                ->where('course_id', $course->id)
+                ->whereIn('status', ['active', 'completed', 'pending'])
+                ->orderByDesc('id')
+                ->first();
+        }
+
+        // Get enrollment count from enrollments table
+        $enrolledCount = Enrollment::where('course_id', $course->id)
+            ->whereIn('status', ['active', 'completed', 'pending'])
+            ->count();
+
+        // Get enrollment statistics
+        $enrollmentStats = [
+            'total_enrolled' => $enrolledCount,
+            'max_participants' => $course->max_participants,
+            'available_spots' => max(0, $course->max_participants - $enrolledCount),
+            'enrollment_percentage' => $course->max_participants > 0
+                ? round(($enrolledCount / $course->max_participants) * 100, 1)
+                : 0,
+        ];
+
+        // Determine course status
+        // Combine start_date and start_time to check if course has actually started
+        // Enrollment should be available until the actual start date/time
+        try {
+            // Extract just the date part from start_date (in case it's a datetime)
+            $datePart = \Carbon\Carbon::parse($course->start_date)->format('Y-m-d');
+            // Extract time part (handle both H:i and H:i:s formats)
+            $timePart = $course->start_time ?? '00:00';
+            // Remove seconds if present
+            if (strlen($timePart) > 5) {
+                $timePart = substr($timePart, 0, 5);
+            }
+            // Combine date and time
+            $startDateTime = \Carbon\Carbon::createFromFormat('Y-m-d H:i', $datePart.' '.$timePart);
+        } catch (\Exception $e) {
+            // Fallback: try to parse start_date as date only
+            try {
+                $dateOnly = \Carbon\Carbon::parse($course->start_date)->format('Y-m-d');
+                $timeOnly = substr($course->start_time ?? '00:00', 0, 5); // Get HH:mm format
+                $startDateTime = \Carbon\Carbon::createFromFormat('Y-m-d H:i', $dateOnly.' '.$timeOnly);
+            } catch (\Exception $e2) {
+                // Final fallback: use current time + 1 hour as default (so it's not started)
+                $startDateTime = \Carbon\Carbon::now()->addHour();
+            }
+        }
+
+        // Get enrollment count from enrollments table
+        $enrolledCount = Enrollment::where('course_id', $course->id)
+            ->whereIn('status', ['active', 'completed', 'pending'])
+            ->count();
+
+        // Check status - enrollment should be available until the course/event actually starts
+        // Only mark as 'started' if the start date/time has actually passed
+        if ($startDateTime->isPast()) {
+            $status = 'started';
+        } elseif ($course->max_participants > 0 && $enrolledCount >= $course->max_participants) {
+            $status = 'full';
+        } elseif ($course->max_participants > 0 && ($enrolledCount / $course->max_participants) >= 0.8) {
+            $status = 'almost_full';
+        } elseif (Auth::check() && Auth::user()->id === $course->user_id) {
+            $status = 'unavailable';
+        } else {
+            $status = 'available';
+        }
+
+        // User is considered enrolled only when we loaded a non-terminal enrollment above
+        $hasActiveEnrollment = $userEnrollment !== null;
+
+        // Allow enrollment/registration if available and not full/started, regardless of paid/free
+        // Button should be visible and active until the actual start date/time
+        // For paid courses, users can still enroll (they'll be redirected to payment)
+        // For free courses, users can enroll directly
+        // Allow enrollment for 'available' and 'almost_full' statuses
+        // Only block if: user is enrolled, course is full, course has started, or user is creator
+        $canEnroll = ! $hasActiveEnrollment
+            && $status !== 'full'
+            && $status !== 'started'
+            && $status !== 'unavailable';
+
+        // Log for debugging (remove in production)
+        \Log::debug('Course Enrollment Check', [
+            'course_id' => $course->id,
+            'course_name' => $course->name,
+            'start_date' => $course->start_date,
+            'start_time' => $course->start_time,
+            'startDateTime' => $startDateTime->toDateTimeString(),
+            'isPast' => $startDateTime->isPast(),
+            'status' => $status,
+            'userEnrollment' => $userEnrollment ? $userEnrollment->status : null,
+            'hasActiveEnrollment' => $hasActiveEnrollment,
+            'canEnroll' => $canEnroll,
+        ]);
+
+        // Add enrolled count to course object for frontend display
+        $course->enrolled = $enrolledCount;
+
+        return Inertia::render('frontend/course/Show', [
+            'course' => $course,
+            'userEnrollment' => $userEnrollment,
+            'enrollmentStats' => $enrollmentStats,
+            'status' => $status,
+            'canEnroll' => $canEnroll,
+            'meetingLink' => $course->meeting_link, // Added meeting_link field
+        ]);
+    }
+
+    /**
+     * Display the specified course in admin view.
+     */
+    public function adminShow(Request $request, Course $course)
+    {
+        $this->authorizePermission($request, 'course.read');
+        // Ensure user can only view their own organization's courses
+        if ($course->organization_id !== Auth::id()) {
+            abort(403, 'Unauthorized access to this course.');
+        }
+
+        $course->load(['topic', 'eventType', 'organization', 'creator']);
+
+        // Get enrollment count from enrollments table
+        $enrolledCount = Enrollment::where('course_id', $course->id)
+            ->whereIn('status', ['active', 'completed', 'pending'])
+            ->count();
+
+        // Get enrollment statistics
+        $enrollmentStats = [
+            'total_enrolled' => $enrolledCount,
+            'max_participants' => $course->max_participants,
+            'enrollment_percentage' => $course->max_participants > 0
+                ? round(($enrolledCount / $course->max_participants) * 100, 1)
+                : 0,
+            'available_spots' => max(0, $course->max_participants - $enrolledCount),
+        ];
+
+        // Get course status
+        $now = now();
+        $courseStart = \Carbon\Carbon::parse($course->start_date);
+
+        if ($courseStart->isPast()) {
+            $status = 'started';
+        } elseif ($enrolledCount >= $course->max_participants) {
+            $status = 'full';
+        } elseif (($enrolledCount / $course->max_participants) >= 0.8) {
+            $status = 'almost_full';
+        } else {
+            $status = 'available';
+        }
+
+        // Get recent enrollments
+        $recentEnrollments = Enrollment::where('course_id', $course->id)
+            ->with('user')
+            ->orderBy('enrolled_at', 'desc')
+            ->limit(10)
+            ->get();
+
+        return Inertia::render('admin/course/Show', [
+            'course' => $course,
+            'enrollmentStats' => $enrollmentStats,
+            'status' => $status,
+            'recentEnrollments' => $recentEnrollments,
+        ]);
+    }
+
+    /**
+     * Display enrollments for a specific course/event
+     */
+    public function adminEnrollments(Request $request, Course $course)
+    {
+        $this->authorizePermission($request, 'course.read');
+        // Ensure user can only view their own organization's courses
+        if ($course->organization_id !== Auth::id()) {
+            abort(403, 'Unauthorized access to this course.');
+        }
+
+        $course->load(['topic', 'eventType', 'organization', 'creator']);
+
+        // Get all enrollments for this course
+        $enrollments = Enrollment::where('course_id', $course->id)
+            ->whereIn('status', ['active', 'completed', 'pending'])
+            ->with('user:id,name,email')
+            ->orderBy('enrolled_at', 'desc')
+            ->get();
+
+        // Get enrollment statistics
+        $enrolledCount = $enrollments->count();
+
+        $enrollmentStats = [
+            'total_enrolled' => $enrolledCount,
+            'max_participants' => $course->max_participants,
+            'enrollment_percentage' => $course->max_participants > 0
+                ? round(($enrolledCount / $course->max_participants) * 100, 1)
+                : 0,
+            'available_spots' => max(0, $course->max_participants - $enrolledCount),
+        ];
+
+        return Inertia::render('admin/course/Enrollments', [
+            'course' => $course,
+            'enrollments' => $enrollments,
+            'enrollmentStats' => $enrollmentStats,
+        ]);
+    }
+
+    /**
+     * Show the form for editing the specified course.
+     */
+    public function edit(Request $request, Course $course)
+    {
+        $this->authorizePermission($request, 'course.edit');
+        // Ensure user can only edit their own organization's courses
+        if ($course->organization_id !== Auth::id()) {
+            abort(403, 'Unauthorized access to this course.');
+        }
+
+        $eventTypes = EventType::generalCatalogForProps();
+        $companionEventTypes = EventType::companionCatalogForProps();
+
+        // Format the course data properly for the form
+        $courseData = $course->load(['topic', 'eventType', 'organization', 'creator', 'primaryActionCategories']);
+
+        // Ensure dates are in proper format
+        $courseData->start_date = $course->start_date instanceof \Carbon\Carbon
+            ? $course->start_date->format('Y-m-d')
+            : $course->start_date;
+
+        $courseData->end_date = $course->end_date
+            ? ($course->end_date instanceof \Carbon\Carbon
+                ? $course->end_date->format('Y-m-d')
+                : $course->end_date)
+            : null;
+
+        $courseData->start_time = $course->start_time instanceof \Carbon\Carbon
+            ? $course->start_time->format('H:i')
+            : (is_string($course->start_time) ? substr($course->start_time, 0, 5) : $course->start_time);
+
+        $courseData->primary_action_category_ids = $course->primaryActionCategories->pluck('id')->map(fn ($id) => (int) $id)->values()->all();
+
+        $seller = Organization::biuSellerDisplayForUser($request->user());
+
+        return Inertia::render('admin/course/Edit', array_merge([
+            'course' => $courseData,
+            'eventTypes' => $eventTypes,
+            'companionEventTypes' => $companionEventTypes,
+            'organizationName' => $seller['name'],
+            'sellerNameLabel' => $seller['label'],
+        ], $this->organizationPrimaryActionCategoriesPageProps($request)));
+    }
+
+    /**
+     * Update the specified course in storage.
+     */
+    public function update(Request $request, Course $course)
+    {
+        $this->authorizePermission($request, 'course.update');
+        // Ensure user can only update their own organization's courses
+        if ($course->organization_id !== Auth::id()) {
+            abort(403, 'Unauthorized access to this course.');
+        }
+
+        $type = $request->input('type', $course->type ?? ConnectionHubType::COMPANION);
+        $typeLabelCapital = ConnectionHubType::label($type);
+        $typeLabel = strtolower($typeLabelCapital);
+        $outcomesNoun = ConnectionHubType::usesEventSemantics($type) ? 'event' : 'learning';
+
+        $validated = $request->validate(array_merge([
+            // Basic Information
+            'name' => [
+                'required',
+                'string',
+                'max:255',
+                Rule::unique('courses')->ignore($course->id),
+            ],
+            'description' => 'required|string',
+            'type' => ['required', Rule::in(ConnectionHubType::VALUES)],
+            'topic_id' => ['nullable', 'exists:topics,id'],
+            'event_type_id' => EventType::validationRulesForHubType($type),
+            'meeting_link' => 'nullable|url|max:500', // Added meeting_link validation
+
+            // Pricing
+            'pricing_type' => ['required', Rule::in(['free', 'paid'])],
+            'course_fee' => 'nullable|numeric|min:0|required_if:pricing_type,paid',
+
+            // Schedule & Format
+            'start_date' => 'required|date',
+            'start_time' => 'required|date_format:H:i',
+            'end_date' => 'nullable|date|after_or_equal:start_date',
+            'session_duration_minutes' => ['required', 'integer', Rule::in(SessionDurationMinutes::VALUES)],
+            'format' => ['required', Rule::in(['online', 'in_person', 'hybrid'])],
+
+            // Configuration
+            'max_participants' => 'required|integer|min:1|max:100',
+            'language' => ['required', Rule::in(['English', 'Spanish', 'French', 'Other'])],
+
+            // Target Audience & Impact
+            'target_audience' => 'required|string|max:255',
+            'community_impact' => 'nullable|string',
+
+            // Course Content (optional — admin create/edit no longer collects this section)
+            'learning_outcomes' => ['nullable', 'array'],
+            'learning_outcomes.*' => 'string|max:255',
+            'prerequisites' => 'nullable|array',
+            'prerequisites.*' => 'string|max:255',
+            'materials_needed' => 'nullable|array',
+            'materials_needed.*' => 'string|max:255',
+            'accessibility_features' => 'nullable|array',
+            'accessibility_features.*' => 'string|max:255',
+
+            // Settings
+            'certificate_provided' => 'boolean',
+            'volunteer_opportunities' => 'boolean',
+
+            // Media
+            'image' => 'nullable|image|mimes:jpeg,png,jpg,gif,svg|max:2048',
+        ], CourseTaxClassificationService::validationRules(), $this->primaryActionCategoryIdsValidation($request)), [
+            // Custom error messages
+            'name.required' => "The {$typeLabelCapital} name is required.",
+            'name.unique' => "A {$typeLabel} with this name already exists.",
+            'name.max' => "The {$typeLabelCapital} name may not be greater than 255 characters.",
+            'description.required' => "The {$typeLabelCapital} description is required.",
+            'type.required' => 'Please select a Connection Hub type.',
+            'type.in' => 'Type must be Companion, Learning, Events, or Earning.',
+            'topic_id.exists' => 'The selected topic is invalid.',
+            'event_type_id.required' => 'Please select a topic.',
+            'event_type_id.exists' => 'The selected topic is invalid.',
+            'meeting_link.url' => 'The meeting link must be a valid URL.',
+            'meeting_link.max' => 'The meeting link may not be greater than 500 characters.',
+            'pricing_type.required' => 'Please select a pricing type.',
+            'pricing_type.in' => 'Pricing type must be either Free or Paid.',
+            'course_fee.required_if' => 'A fee is required when pricing type is Paid.',
+            'course_fee.numeric' => 'The fee must be a number.',
+            'course_fee.min' => 'The fee must be at least 0.',
+            'start_date.required' => 'Start date is required.',
+            'start_date.date' => 'Start date must be a valid date.',
+            'start_time.required' => 'Start time is required.',
+            'start_time.date_format' => 'Start time must be in HH:MM format.',
+            'end_date.date' => 'End date must be a valid date.',
+            'end_date.after_or_equal' => 'End date must be on or after the start date.',
+            'session_duration_minutes.required' => 'Session duration is required.',
+            'session_duration_minutes.in' => 'Please select a session duration between 30 and 120 minutes.',
+            'format.required' => 'Format is required.',
+            'format.in' => 'Format must be Online, In-Person, or Hybrid.',
+            'max_participants.required' => 'Maximum participants is required.',
+            'max_participants.integer' => 'Maximum participants must be a number.',
+            'max_participants.min' => 'Maximum participants must be at least 1.',
+            'max_participants.max' => 'Maximum participants may not be greater than 100.',
+            'language.required' => 'Language is required.',
+            'language.in' => 'Please select a valid language.',
+            'target_audience.required' => 'Target audience is required.',
+            'target_audience.max' => 'Target audience may not be greater than 255 characters.',
+            'learning_outcomes.required' => $outcomesNoun === 'learning' ? 'Learning outcomes are required.' : 'Event outcomes are required.',
+            'learning_outcomes.array' => $outcomesNoun === 'learning' ? 'Learning outcomes must be an array.' : 'Event outcomes must be an array.',
+            'learning_outcomes.min' => $outcomesNoun === 'learning' ? 'At least one learning outcome is required.' : 'At least one event outcome is required.',
+            'learning_outcomes.*.max' => $outcomesNoun === 'learning' ? 'Each learning outcome may not be greater than 255 characters.' : 'Each event outcome may not be greater than 255 characters.',
+            'prerequisites.*.max' => 'Each prerequisite may not be greater than 255 characters.',
+            'materials_needed.*.max' => 'Each material needed may not be greater than 255 characters.',
+            'accessibility_features.*.max' => 'Each accessibility feature may not be greater than 255 characters.',
+            'image.image' => 'The image must be an image file.',
+            'image.mimes' => 'The image must be a file of type: jpeg, png, jpg, gif, svg.',
+            'image.max' => 'The image may not be greater than 2MB.',
+        ]);
+
+        CourseTaxClassificationService::validateFeeBreakdown($request);
+
+        // Handle image upload
+        $imagePath = $course->image;
+        if ($request->hasFile('image')) {
+            try {
+                // Delete old image if exists
+                if ($course->image && Storage::disk('public')->exists($course->image)) {
+                    Storage::disk('public')->delete($course->image);
+                }
+                $imagePath = $request->file('image')->store('course_images', 'public');
+                // Log for debugging
+                Log::info('Course image updated', [
+                    'course_id' => $course->id,
+                    'path' => $imagePath,
+                    'exists' => Storage::disk('public')->exists($imagePath),
+                ]);
+            } catch (\Exception $e) {
+                Log::error('Failed to update course image: '.$e->getMessage());
+
+                return redirect()->back()
+                    ->withInput()
+                    ->withErrors(['image' => 'Failed to upload image. Please try again.']);
+            }
+        }
+
+        // Update slug if name changed
+        $slug = $course->slug;
+        if ($course->name !== $validated['name']) {
+            $slug = Str::slug($validated['name']);
+            $originalSlug = $slug;
+            $counter = 1;
+
+            while (Course::where('slug', $slug)->where('id', '!=', $course->id)->exists()) {
+                $slug = $originalSlug.'-'.$counter;
+                $counter++;
+            }
+        }
+
+        try {
+            DB::beginTransaction();
+
+            $course->update(array_merge([
+                'type' => $validated['type'],
+                'topic_id' => null,
+                'event_type_id' => ! empty($validated['event_type_id']) ? $validated['event_type_id'] : null,
+                'name' => $validated['name'],
+                'slug' => $slug,
+                'description' => $validated['description'],
+                'meeting_link' => $validated['meeting_link'], // Added meeting_link field
+
+                // Pricing
+                'pricing_type' => $validated['pricing_type'],
+                'course_fee' => $validated['pricing_type'] === 'paid' ? $validated['course_fee'] : null,
+
+                // Schedule & Format
+                'start_date' => $validated['start_date'],
+                'start_time' => $validated['start_time'],
+                'end_date' => $validated['end_date'],
+                'session_duration_minutes' => $validated['session_duration_minutes'],
+                'format' => $validated['format'],
+
+                // Configuration
+                'max_participants' => $validated['max_participants'],
+                'language' => $validated['language'],
+
+                // Target Audience & Impact
+                'target_audience' => $validated['target_audience'],
+                'community_impact' => $validated['community_impact'],
+
+                // Course Content
+                'learning_outcomes' => $validated['learning_outcomes'] ?? [],
+                'prerequisites' => $validated['prerequisites'] ?? [],
+                'materials_needed' => $validated['materials_needed'] ?? [],
+                'accessibility_features' => $validated['accessibility_features'] ?? [],
+
+                // Settings
+                'certificate_provided' => $validated['certificate_provided'] ?? false,
+                'volunteer_opportunities' => $validated['volunteer_opportunities'] ?? false,
+
+                // Media
+                'image' => $imagePath,
+
+                // Update timestamp
+                'last_updated' => now(),
+            ], CourseTaxClassificationService::persistenceFromRequest($request)));
+
+            $this->syncPrimaryActionCategories($course, $request);
+
+            DB::commit();
+
+            return redirect()->route('admin.courses.index')->with('success', 'Community course updated successfully!');
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Failed to update course: '.$e->getMessage());
+
+            return redirect()->back()
+                ->withInput()
+                ->withErrors(['error' => 'Failed to update course. Please try again.']);
+        }
+    }
+
+    /**
+     * Remove the specified course from storage.
+     */
+    public function destroy(Request $request, Course $course)
+    {
+        $this->authorizePermission($request, 'course.delete');
+        // Ensure user can only delete their own organization's courses
+        if ($course->organization_id !== Auth::id()) {
+            abort(403, 'Unauthorized access to this course.');
+        }
+
+        try {
+            DB::beginTransaction();
+
+            // Delete image if exists
+            if ($course->image && Storage::disk('public')->exists($course->image)) {
+                Storage::disk('public')->delete($course->image);
+            }
+
+            $course->delete();
+
+            DB::commit();
+
+            return redirect()->route('admin.courses.index')->with('success', 'Course deleted successfully!');
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Error deleting course: '.$e->getMessage());
+
+            return redirect()->back()->with('error', 'Failed to delete course. An unexpected error occurred.');
+        }
+    }
+
+    /**
+     * Shared “Explore by Category” payload for Connection Hub learning + events landings.
+     *
+     * @param  string  $courseType  `companion`, `learning`, or `events` — must match `courses.type`
+     * @return array<int, array{id: int, name: string, count: int}>
+     */
+    protected function connectionHubEventTypeCountsFor(string $courseType): array
+    {
+        $alias = match ($courseType) {
+            'companion' => 'companion_count',
+            'learning' => 'learning_count',
+            'events' => 'events_count',
+            default => 'hub_count',
+        };
+
+        $prefix = EventType::COMPANION_HUB_CATEGORY_PREFIX;
+
+        return EventType::query()
+            ->where('is_active', true)
+            ->when($courseType === 'companion', fn ($q) => $q->where('category', 'like', $prefix.'%'))
+            ->withCount(['courses as '.$alias => function ($q) use ($courseType) {
+                $q->where('type', $courseType);
+            }])
+            ->orderByDesc($alias)
+            ->orderBy('category')
+            ->orderBy('name')
+            ->get(['id', 'name', 'category'])
+            ->map(function ($et) use ($courseType, $prefix, $alias) {
+                $cat = $et->category ?? '';
+                if ($courseType === 'companion' && str_starts_with((string) $cat, $prefix)) {
+                    $cat = substr($cat, strlen($prefix));
+                }
+                $display = $cat !== '' ? $cat.' · '.$et->name : $et->name;
+
+                return [
+                    'id' => $et->id,
+                    'name' => $display,
+                    'count' => (int) ($et->{$alias} ?? 0),
+                ];
+            })
+            ->filter(fn ($row) => $row['count'] > 0)
+            ->values()
+            ->all();
+    }
+}
