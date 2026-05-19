@@ -10,13 +10,13 @@ import { Label } from "@/components/ui/label"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import AppLayout from "@/layouts/app-layout"
+import GoLiveConfirmDialog from "@/components/livestreams/GoLiveConfirmDialog"
 import {
   Video,
   Copy,
   ExternalLink,
   Play,
   Square,
-  Loader2,
   Youtube,
   Users,
   Key,
@@ -29,7 +29,6 @@ import {
 } from "lucide-react"
 import { Link } from "@inertiajs/react"
 import { isStreamRelayInProgress } from "@/lib/streamingDisplayStatus"
-import GoLiveConfirmDialog from "@/components/livestreams/GoLiveConfirmDialog"
 
 interface Livestream {
   id: number
@@ -107,6 +106,11 @@ export default function ShowLivestream({ livestream, organization, recordingCons
 
   const isGoLiveBusy = isGoLivePending || streamRelayInProgress
 
+  const showGoLiveButton =
+    !["live", "meeting_live", "starting"].includes(livestream.status) &&
+    !streamRelayInProgress &&
+    !isGoLivePending
+
   const pollMs =
     (isEndingStreamPending && livestream.status === "live") || streamRelayInProgress ? 4000 : 12000
 
@@ -145,7 +149,7 @@ export default function ShowLivestream({ livestream, organization, recordingCons
     )
   }
 
-  const queueCloudStream = () => {
+  const queueGoLiveCloud = () => {
     if (isGoLiveBusy) {
       return
     }
@@ -155,26 +159,16 @@ export default function ShowLivestream({ livestream, organization, recordingCons
       {},
       {
         preserveScroll: true,
-        onFinish: () => {
-          setIsGoLivePending(false)
-          setGoLiveConfirmOpen(false)
-        },
+        onFinish: () => setIsGoLivePending(false),
       }
     )
   }
 
-  const handleGoLiveClick = () => {
+  const goLiveCloud = () => {
     if (isGoLiveBusy) {
       return
     }
-    if (!livestream.hasStreamKey) {
-      return
-    }
     setGoLiveConfirmOpen(true)
-  }
-
-  const confirmGoLive = () => {
-    queueCloudStream()
   }
 
   const endStreamCloud = () => {
@@ -292,8 +286,7 @@ export default function ShowLivestream({ livestream, organization, recordingCons
             <AlertDescription>
               <p className="font-medium text-foreground">Ending YouTube live</p>
               <p className="text-sm text-muted-foreground mt-1">
-                YouTube was told to stop. This page refreshes until the AWS worker callback reports the relay
-                finished, then you can go live again.
+                YouTube was told to stop. This page refreshes until the stream has fully ended, then you can go live again.
               </p>
             </AlertDescription>
           </Alert>
@@ -312,18 +305,14 @@ export default function ShowLivestream({ livestream, organization, recordingCons
                 <CardTitle>Quick Actions</CardTitle>
               </CardHeader>
               <CardContent className="flex gap-4">
-                {!["live", "meeting_live", "starting"].includes(livestream.status) && (
+                {showGoLiveButton && (
                   <Button
-                    onClick={handleGoLiveClick}
-                    disabled={isGoLiveBusy || isUpdatingStatus || isEndingStreamPending || !livestream.hasStreamKey}
+                    onClick={goLiveCloud}
+                    disabled={isUpdatingStatus || isEndingStreamPending}
                     className="bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 min-w-[10.5rem]"
                   >
-                    {isGoLiveBusy ? (
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden />
-                    ) : (
-                      <Play className="w-4 h-4 mr-2" />
-                    )}
-                    {isGoLiveBusy ? "Going live…" : "Go Live (Cloud)"}
+                    <Play className="w-4 h-4 mr-2" />
+                    Go Live (Cloud)
                   </Button>
                 )}
                 {["live", "meeting_live", "starting"].includes(livestream.status) && (
@@ -558,14 +547,14 @@ export default function ShowLivestream({ livestream, organization, recordingCons
             </Card>
           </TabsContent>
         </Tabs>
-
-        <GoLiveConfirmDialog
-          open={goLiveConfirmOpen}
-          onOpenChange={setGoLiveConfirmOpen}
-          onConfirm={confirmGoLive}
-          isConfirming={isGoLivePending}
-        />
       </div>
+
+      <GoLiveConfirmDialog
+        open={goLiveConfirmOpen}
+        onOpenChange={setGoLiveConfirmOpen}
+        onConfirm={queueGoLiveCloud}
+        isConfirming={isGoLivePending}
+      />
     </AppLayout>
   )
 }

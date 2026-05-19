@@ -40,7 +40,6 @@ import {
   Square,
   Key,
   Info,
-  Loader2,
   CheckCircle2,
   ArrowLeft,
   MoreVertical,
@@ -192,6 +191,13 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
 
   const isGoLiveBusy = isGoLivePending || streamRelayInProgress
 
+  /** After confirm + queue: hide Go Live; progress shows in Meeting info stream status. */
+  const showGoLiveButton =
+    Boolean(livestream.canGoLive) &&
+    livestream.status !== "live" &&
+    !streamRelayInProgress &&
+    !isGoLivePending
+
   const pollMs =
     (isEndingStreamPending && livestream.status === "live") || streamRelayInProgress ? 4000 : 12000
 
@@ -251,14 +257,11 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
     setIsGoLivePending(true)
     router.post(`/livestreams/supporter/${livestream.id}/queue-stream-relay`, {}, {
       preserveScroll: true,
-      onFinish: () => {
-        setIsGoLivePending(false)
-        setGoLiveConfirmOpen(false)
-      },
+      onFinish: () => setIsGoLivePending(false),
     })
   }
 
-  const handleGoLiveClick = () => {
+  const requestGoLive = () => {
     if (isGoLiveBusy) {
       return
     }
@@ -269,7 +272,11 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
     setGoLiveConfirmOpen(true)
   }
 
-  const confirmGoLive = () => {
+  const handleGoLiveClick = () => {
+    requestGoLive()
+  }
+
+  const handleGoLiveConfirm = () => {
     queueCloudStream()
   }
 
@@ -297,13 +304,6 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
       onFinish: () => setIsUpdatingStatus(false),
     })
   }
-
-  const goLiveAttentionClass =
-    livestream.canGoLive && livestream.status !== "live" && !isGoLiveBusy
-      ? "motion-safe:animate-pulse shadow-md shadow-red-500/30"
-      : ""
-
-  const goLiveDisabled = isGoLiveBusy || isUpdatingStatus || isEndingStreamPending
 
   const streamDisplayStatus = useMemo(
     () =>
@@ -370,6 +370,12 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
         {(livestream.youtubeChannelUrl ?? "").trim().length > 0 && (
           <p className="text-[11px] text-muted-foreground truncate">
             Channel: {livestream.youtubeChannelUrl}
+          </p>
+        )}
+        {livestream.streamingQueueStatus?.status === "failed" &&
+          livestream.streamingQueueStatus?.failureReason && (
+          <p className="text-[11px] text-red-600 dark:text-red-400">
+            Last failure: {livestream.streamingQueueStatus.failureReason}
           </p>
         )}
       </div>
@@ -544,7 +550,7 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
         { title: livestream.title || 'Meeting', href: `/livestreams/supporter/${livestream.id}` },
       ]}
     >
-      <PageHead title={livestream.title || "Meeting"} description="Host your meeting with VDO.Ninja" />
+      <PageHead title={livestream.title || "Meeting"} description="Host your Unity Meet" />
       <Head title={livestream.title || "Meeting"} />
       <div className="flex min-h-0 w-full min-w-0 max-w-full flex-col overflow-hidden">
         <div className="flex h-[calc(100dvh-4rem)] sm:h-[calc(100vh-4rem)] flex-col w-full min-w-0 overflow-hidden">
@@ -588,23 +594,17 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
                     </Tabs>
                   </SheetContent>
                 </Sheet>
-                {livestream.canGoLive && livestream.status !== "live" && (
-                  <>
-                    <Button
-                      variant="default"
-                      size="icon"
-                      className={`h-8 w-8 rounded-md bg-red-600 hover:bg-red-700 touch-manipulation ${goLiveAttentionClass}`}
-                      onClick={handleGoLiveClick}
-                      disabled={goLiveDisabled}
-                      aria-label={isGoLiveBusy ? "Going live" : "Queue cloud stream to YouTube"}
-                    >
-                      {isGoLiveBusy ? (
-                        <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-                      ) : (
-                        <Play className="h-4 w-4" />
-                      )}
-                    </Button>
-                  </>
+                {showGoLiveButton && (
+                  <Button
+                    variant="default"
+                    size="icon"
+                    className="h-8 w-8 rounded-md bg-red-600 hover:bg-red-700 touch-manipulation"
+                    onClick={handleGoLiveClick}
+                    disabled={isUpdatingStatus || isEndingStreamPending}
+                    aria-label="Go Live on YouTube"
+                  >
+                    <Play className="h-4 w-4" />
+                  </Button>
                 )}
                 <Button variant="outline" size="sm" className="h-8 px-2.5 rounded-md md:hidden" onClick={() => setGoLiveOpen(true)}>
                   Stream options
@@ -616,17 +616,14 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" side="bottom" className="w-48">
-                    {livestream.canGoLive && livestream.status !== "live" && (
-                      <>
-                        <DropdownMenuItem onClick={handleGoLiveClick} disabled={goLiveDisabled}>
-                          {isGoLiveBusy ? (
-                            <Loader2 className="h-4 w-4 mr-2 animate-spin" aria-hidden />
-                          ) : (
-                            <Play className="h-4 w-4 mr-2" />
-                          )}
-                          {isGoLiveBusy ? "Going live…" : "Go Live (cloud relay)"}
-                        </DropdownMenuItem>
-                      </>
+                    {showGoLiveButton && (
+                      <DropdownMenuItem
+                        onClick={handleGoLiveClick}
+                        disabled={isUpdatingStatus || isEndingStreamPending}
+                      >
+                        <Play className="h-4 w-4 mr-2" />
+                        Go Live
+                      </DropdownMenuItem>
                     )}
                     <DropdownMenuItem onClick={() => setGoLiveOpen(true)}>
                       Stream options
@@ -645,22 +642,16 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
                 </DropdownMenu>
               </div>
               <div className="hidden md:flex items-center gap-1.5">
-                {livestream.canGoLive && livestream.status !== "live" && (
-                  <>
-                    <Button
-                      size="sm"
-                      className={`bg-red-600 hover:bg-red-700 h-8 px-3 min-w-[7.5rem] ${goLiveAttentionClass}`}
-                      onClick={handleGoLiveClick}
-                      disabled={goLiveDisabled}
-                    >
-                      {isGoLiveBusy ? (
-                        <Loader2 className="h-4 w-4 mr-1.5 animate-spin" aria-hidden />
-                      ) : (
-                        <Play className="h-4 w-4 mr-1.5" />
-                      )}
-                      {isGoLiveBusy ? "Going live…" : "Go Live"}
-                    </Button>
-                  </>
+                {showGoLiveButton && (
+                  <Button
+                    size="sm"
+                    className="bg-red-600 hover:bg-red-700 h-8 px-3 min-w-[7.5rem]"
+                    onClick={handleGoLiveClick}
+                    disabled={isUpdatingStatus || isEndingStreamPending}
+                  >
+                    <Play className="h-4 w-4 mr-1.5" />
+                    Go Live
+                  </Button>
                 )}
                 <Button variant="outline" size="sm" className="h-8 px-3" onClick={() => setGoLiveOpen(true)}>
                   Stream options
@@ -689,8 +680,7 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
             <div className="shrink-0 border-b border-blue-500/30 bg-gradient-to-r from-purple-500/10 to-blue-500/10 px-3 py-2 sm:px-4">
               <p className="text-xs font-medium text-foreground">Ending YouTube live</p>
               <p className="text-[11px] text-muted-foreground">
-                YouTube was told to stop. This page refreshes until the AWS worker callback reports the relay
-                finished, then you can go live again.
+                YouTube was told to stop. This page refreshes until the stream has fully ended, then you can go live again.
               </p>
             </div>
           )}
@@ -801,32 +791,33 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
             </TabsList>
             <TabsContent value="streaming" className="space-y-4 mt-4">
               <p className="text-sm text-muted-foreground">
-                Go Live queues our cloud relay (AWS): video from your VDO meeting is sent to your YouTube stream key. Stay in this host view so the relay has video to grab.
+                Go Live sends your meeting video to YouTube using your stream key. Stay on this host page while you are live.
               </p>
               {queueStreamErrorText && (
                 <Alert variant="destructive"><AlertDescription>{queueStreamErrorText}</AlertDescription></Alert>
               )}
-              {livestream.hasStreamKey && livestream.canGoLive && livestream.status !== "live" && (
+              {livestream.hasStreamKey && showGoLiveButton && (
                 <Button
-                  className={`w-full bg-red-600 hover:bg-red-700 ${goLiveAttentionClass}`}
+                  className="w-full bg-red-600 hover:bg-red-700"
                   onClick={handleGoLiveClick}
-                  disabled={goLiveDisabled}
+                  disabled={isUpdatingStatus || isEndingStreamPending}
                 >
-                  {isGoLiveBusy ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" aria-hidden />
-                      Going live…
-                    </>
-                  ) : (
-                    "Start cloud stream to YouTube"
-                  )}
+                  Go Live
                 </Button>
               )}
-              {livestream.hasStreamKey && (!livestream.canGoLive || livestream.status === "live") && (
+              {livestream.hasStreamKey && streamRelayInProgress && (
+                <p className="text-sm text-muted-foreground">
+                  Your stream is starting. Watch <strong className="text-foreground">Stream status</strong> in Meeting info.
+                </p>
+              )}
+              {livestream.hasStreamKey &&
+                !showGoLiveButton &&
+                !streamRelayInProgress &&
+                (!livestream.canGoLive || livestream.status === "live") && (
                 <p className="text-sm text-muted-foreground">
                   {livestream.status === "live"
-                    ? "You are already live. Use End stream to stop, then you can queue again."
-                    : "This meeting can’t start a new cloud relay in its current state. Refresh the page or end/reset the meeting and try again."}
+                    ? "You are already live. Use End stream to stop, then you can go live again."
+                    : "This meeting can’t go live in its current state. Refresh the page or end the meeting and try again."}
                 </p>
               )}
               {!livestream.hasStreamKey && (
@@ -857,10 +848,10 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
             <TabsContent value="help" className="mt-4 space-y-4">
               <div className="flex items-center gap-2 text-foreground font-semibold">
                 <HelpCircle className="h-5 w-5 text-primary" />
-                How cloud streaming works
+                How streaming works
               </div>
               <p className="text-sm text-muted-foreground">
-                Unity Meet relays your meeting picture to YouTube through our AWS worker queue.
+                Unity Meet sends your meeting to YouTube when you click Go Live.
               </p>
               <div className="rounded-lg border border-border bg-muted/30 p-4 space-y-3">
                 <div className="flex items-start gap-3">
@@ -884,8 +875,8 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
                     <h4 className="text-sm font-semibold text-foreground">2. Host here, then Go Live</h4>
                     <ul className="mt-1.5 list-inside list-disc space-y-1 text-sm text-muted-foreground">
                       <li>Open this meeting as host (iframe above).</li>
-                      <li>Click <strong className="text-foreground">Go Live</strong> — that queues an AWS relay to YouTube.</li>
-                      <li>Watch <strong className="text-foreground">Stream status</strong> in Meeting info; it moves through Pending → Live when the worker attaches.</li>
+                      <li>Click <strong className="text-foreground">Go Live</strong> to start streaming to YouTube.</li>
+                      <li>Watch <strong className="text-foreground">Stream status</strong> in Meeting info; it moves from Pending to Live.</li>
                     </ul>
                   </div>
                 </div>
@@ -898,7 +889,7 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
       <GoLiveConfirmDialog
         open={goLiveConfirmOpen}
         onOpenChange={setGoLiveConfirmOpen}
-        onConfirm={confirmGoLive}
+        onConfirm={handleGoLiveConfirm}
         isConfirming={isGoLivePending}
       />
 

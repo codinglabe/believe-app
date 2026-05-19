@@ -12,15 +12,15 @@ const STATUS_COPY: Record<string, { label: string; description: string }> = {
   },
   preparing: {
     label: "Preparing Stream",
-    description: "Worker or container is starting; FFmpeg is initializing.",
+    description: "Your stream setup is starting.",
   },
   connecting: {
     label: "Connecting Sources",
-    description: "Unity Meet / VDO.Ninja feeds are connecting.",
+    description: "Connecting your meeting to YouTube.",
   },
   starting_broadcast: {
     label: "Starting Broadcast",
-    description: "FFmpeg is connected to YouTube RTMP.",
+    description: "Sending video to YouTube.",
   },
   waiting_youtube: {
     label: "Waiting for YouTube",
@@ -127,12 +127,7 @@ export function resolveStreamingDisplayStatus(input: {
   }
 
   if (job === "failed") {
-    // Stale lifecycle failures (e.g. startup timeout) stay on the job row for ops;
-    // don't show a red "Failed" badge once the host is back in the meeting.
-    if (ls === "live" || ls === "starting") {
-      return copy("failed", "error")
-    }
-    return null
+    return copy("failed", "error")
   }
 
   if (ls === "live") {

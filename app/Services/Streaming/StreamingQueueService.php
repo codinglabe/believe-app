@@ -87,6 +87,56 @@ class StreamingQueueService
     }
 
     /**
+     * Any in-flight job for this billing owner (user id or organization id).
+     */
+    public function existingActiveJobForOwner(string $organizationId): ?StreamingJob
+    {
+        if (trim($organizationId) === '') {
+            return null;
+        }
+
+        return StreamingJob::query()
+            ->where('organization_id', $organizationId)
+            ->whereIn('status', ['queued', 'starting', 'live'])
+            ->latest('id')
+            ->first();
+    }
+
+    /**
+     * One active streaming_jobs row per owner at a time; one per livestream until terminal.
+     *
+     * @return null when a new job may be enqueued, otherwise a user-facing error message
+     */
+    public function goLiveBlockedReason(string $ownerId, string $livestreamKind, int $livestreamId): ?string
+    {
+        $onThisMeeting = $this->existingActiveJobFor($livestreamKind, $livestreamId);
+        if ($onThisMeeting) {
+            return 'A stream is already in progress for this meeting. End the stream first, then you can go live again.';
+        }
+
+        $elsewhere = StreamingJob::query()
+            ->where('organization_id', $ownerId)
+            ->whereIn('status', ['queued', 'starting', 'live'])
+            ->where(function ($query) use ($livestreamKind, $livestreamId): void {
+                $query->where('livestream_kind', '!=', $livestreamKind)
+                    ->orWhere('livestream_id', '!=', $livestreamId);
+            })
+            ->latest('id')
+            ->first();
+
+        if ($elsewhere) {
+            return 'You already have a stream in progress on another meeting. End it before starting a new one.';
+        }
+
+        return null;
+    }
+
+    public function canStartNewStreamingJob(string $ownerId, string $livestreamKind, int $livestreamId): bool
+    {
+        return $this->goLiveBlockedReason($ownerId, $livestreamKind, $livestreamId) === null;
+    }
+
+    /**
      * Match what a real worker does: callback "starting" then "live" so the DB and UI update.
      */
     private function simulateWorkerProgress(StreamingJob $job): void
@@ -152,7 +202,12 @@ class StreamingQueueService
                 $updates['duration_minutes'] = max(0, $durationMinutes);
             }
             if ($failureReason !== null && $failureReason !== '') {
-                $updates['failure_reason'] = $failureReason;
+                if (in_array($status, ['completed', 'stopped'], true) && self::isBenignTerminalFailureReason($failureReason)) {
+                    $failureReason = null;
+                }
+                if ($failureReason !== null) {
+                    $updates['failure_reason'] = $failureReason;
+                }
             }
             if (in_array($status, ['starting', 'live'], true)) {
                 $updates['last_heartbeat_at'] = now();
@@ -424,6 +479,46 @@ class StreamingQueueService
      * @param  OrganizationLivestream|UserLivestream  $livestream
      * @return array{status: ?string, livestreamStatus: string, streamStopRequested: bool, updatedAt: ?string, failureReason: ?string}
      */
+    /**
+     * Worker shutdown / host end messages are operational, not user-facing failures.
+     */
+    public static function isBenignTerminalFailureReason(?string $reason): bool
+    {
+        if ($reason === null || trim($reason) === '') {
+            return true;
+        }
+
+        $lower = strtolower(trim($reason));
+
+        foreach ([
+            'shutdown signal',
+            'worker received shutdown',
+            'host ended stream',
+            'host requested stop',
+            'maximum stream duration reached',
+        ] as $needle) {
+            if (str_contains($lower, $needle)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public static function failureReasonForUi(?StreamingJob $job): ?string
+    {
+        if (! $job || $job->status !== 'failed') {
+            return null;
+        }
+
+        $reason = trim((string) ($job->failure_reason ?? ''));
+        if ($reason === '' || self::isBenignTerminalFailureReason($reason)) {
+            return null;
+        }
+
+        return $reason;
+    }
+
     public function queueStatusForUi(?StreamingJob $job, OrganizationLivestream|UserLivestream $livestream): array
     {
         app(StreamingLifecycleService::class)->reconcileForLivestream($livestream);
@@ -441,7 +536,7 @@ class StreamingQueueService
             'livestreamStatus' => (string) $livestream->status,
             'streamStopRequested' => ! empty($settings['stream_stop_requested']),
             'updatedAt' => $job?->updated_at?->toIso8601String(),
-            'failureReason' => $job?->failure_reason,
+            'failureReason' => self::failureReasonForUi($job),
             'ecsTaskArn' => $job?->ecs_task_arn,
             'ecsLastStatus' => $job?->ecs_last_status,
         ];

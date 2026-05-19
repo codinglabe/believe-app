@@ -316,7 +316,8 @@ class LivestreamController extends Controller
                 'streamKeyDisplay' => $streamKeyDisplay,
                 'rtmpUrl' => $rtmpUrl,
                 'canStartMeeting' => $livestream->canStartMeeting(),
-                'canGoLive' => $livestream->canGoLive(),
+                'canGoLive' => $livestream->canGoLive()
+                    && app(StreamingQueueService::class)->canStartNewStreamingJob((string) $organization->id, 'organization', $livestream->id),
                 'latestInviteUrl' => $latestInviteUrl,
                 'youtubeConnected' => ! empty($organization->youtube_refresh_token) || ! empty($organization->youtube_access_token),
                 'streamingQueueStatus' => app(StreamingQueueService::class)->queueStatusForUi($latestStreamingJob, $livestream),
@@ -739,12 +740,9 @@ class LivestreamController extends Controller
             ]);
         }
         try {
-            $existing = $streamingQueue->existingActiveJobFor('organization', $livestream->id);
-            if ($existing) {
-                return redirect()->back()->with(
-                    'success',
-                    'A stream is already '.$existing->status.' for this meeting — reusing it. Click End Stream first to start a new one.'
-                );
+            $blocked = $streamingQueue->goLiveBlockedReason((string) $organization->id, 'organization', $livestream->id);
+            if ($blocked !== null) {
+                return redirect()->back()->withErrors(['go_live' => $blocked]);
             }
             return $this->queueStreamRelayJobImpl($livestream, $user, $organization, $streamingQueue, $preflight, $youtubeService);
         } finally {
@@ -764,6 +762,11 @@ class LivestreamController extends Controller
         $gate = $preflight->check($livestream, $user);
         if (! $gate->allowed) {
             return redirect()->back()->withErrors(['go_live' => $gate->reason]);
+        }
+
+        $blocked = $streamingQueue->goLiveBlockedReason((string) $organization->id, 'organization', $livestream->id);
+        if ($blocked !== null) {
+            return redirect()->back()->withErrors(['go_live' => $blocked]);
         }
 
         // Auto-resolve a current YouTube stream key. Reuses existing broadcast (by id, then by title)
