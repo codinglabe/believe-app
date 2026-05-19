@@ -70,6 +70,23 @@ class StreamingQueueService
     }
 
     /**
+     * The most-recent streaming_jobs row for this livestream that's still
+     * counted as "in flight" — i.e. its worker is queued, starting, or live.
+     * Used by Go Live to refuse spawning a duplicate Fargate task on rapid
+     * repeat clicks: if this returns non-null, the caller must NOT enqueue a
+     * new job; reuse / surface the existing one instead.
+     */
+    public function existingActiveJobFor(string $livestreamKind, int $livestreamId): ?StreamingJob
+    {
+        return StreamingJob::query()
+            ->where('livestream_kind', $livestreamKind)
+            ->where('livestream_id', $livestreamId)
+            ->whereIn('status', ['queued', 'starting', 'live'])
+            ->latest('id')
+            ->first();
+    }
+
+    /**
      * Match what a real worker does: callback "starting" then "live" so the DB and UI update.
      */
     private function simulateWorkerProgress(StreamingJob $job): void

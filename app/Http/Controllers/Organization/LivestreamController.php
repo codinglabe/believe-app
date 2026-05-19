@@ -16,6 +16,7 @@ use App\Support\StreamingWorkerSourceUrl;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -720,6 +721,46 @@ class LivestreamController extends Controller
             ]);
         }
 
+        // Atomic guard against rapid double-clicks / parallel tabs / replayed
+        // requests. Cache::lock serialises Go Live for this livestream across
+        // PHP-FPM workers; inside it, we re-check for an already-in-flight
+        // streaming_jobs row (queued/starting/live) and surface it instead of
+        // queuing a duplicate Fargate worker. 30s TTL auto-releases if the
+        // process dies mid-create. Lock acquisition failure is fail-OPEN
+        // (logged) — better to occasionally double-fire than to break Go Live
+        // entirely on a flaky lock backend.
+        $lock = Cache::lock("livestream-golive-org-{$livestream->id}", 30);
+        $acquired = false;
+        try {
+            $acquired = $lock->block(2);
+        } catch (\Throwable $e) {
+            Log::warning('Go Live lock acquisition failed; proceeding without lock', [
+                'livestream_id' => $livestream->id, 'err' => $e->getMessage(),
+            ]);
+        }
+        try {
+            $existing = $streamingQueue->existingActiveJobFor('organization', $livestream->id);
+            if ($existing) {
+                return redirect()->back()->with(
+                    'success',
+                    'A stream is already '.$existing->status.' for this meeting — reusing it. Click End Stream first to start a new one.'
+                );
+            }
+            return $this->queueStreamRelayJobImpl($livestream, $user, $organization, $streamingQueue, $preflight, $youtubeService);
+        } finally {
+            if ($acquired) {
+                try { $lock->release(); } catch (\Throwable $e) { /* harmless */ }
+            }
+        }
+    }
+
+    /**
+     * Body of queueStreamRelayJob — wrapped by the atomic Cache::lock dupe
+     * guard above. Kept in its own method so the lock + dupe check sits at the
+     * top, separate from the (longer) job-build sequence.
+     */
+    private function queueStreamRelayJobImpl(OrganizationLivestream $livestream, $user, $organization, StreamingQueueService $streamingQueue, StreamingPreflight $preflight, YouTubeService $youtubeService)
+    {
         $gate = $preflight->check($livestream, $user);
         if (! $gate->allowed) {
             return redirect()->back()->withErrors(['go_live' => $gate->reason]);

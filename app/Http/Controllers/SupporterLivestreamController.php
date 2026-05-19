@@ -18,6 +18,7 @@ use App\Services\YouTubeService;
 use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -1049,6 +1050,41 @@ class SupporterLivestreamController extends Controller
             ]);
         }
 
+        // Atomic guard against rapid double-clicks / parallel tabs (see Org
+        // queueStreamRelayJob for full rationale). Serialises Go Live for this
+        // livestream across PHP-FPM workers and re-checks for an in-flight
+        // streaming_jobs row inside the critical section.
+        $lock = Cache::lock("livestream-golive-user-{$livestream->id}", 30);
+        $acquired = false;
+        try {
+            $acquired = $lock->block(2);
+        } catch (\Throwable $e) {
+            Log::warning('Go Live lock acquisition failed; proceeding without lock', [
+                'livestream_id' => $livestream->id, 'err' => $e->getMessage(),
+            ]);
+        }
+        try {
+            $existing = $streamingQueue->existingActiveJobFor('user', $livestream->id);
+            if ($existing) {
+                return redirect()->back()->with(
+                    'success',
+                    'A stream is already '.$existing->status.' for this meeting — reusing it. Click End Stream first to start a new one.'
+                );
+            }
+            return $this->queueStreamRelayJobImpl($request, $livestream, $streamingQueue, $preflight, $youtubeService);
+        } finally {
+            if ($acquired) {
+                try { $lock->release(); } catch (\Throwable $e) { /* harmless */ }
+            }
+        }
+    }
+
+    /**
+     * Body of queueStreamRelayJob — wrapped by the atomic Cache::lock dupe
+     * guard above. Kept separate so the lock + dupe check stays compact.
+     */
+    private function queueStreamRelayJobImpl(Request $request, UserLivestream $livestream, StreamingQueueService $streamingQueue, StreamingPreflight $preflight, YouTubeService $youtubeService): RedirectResponse
+    {
         $gate = $preflight->check($livestream, $request->user());
         if (! $gate->allowed) {
             return redirect()->back()->withErrors(['go_live' => $gate->reason]);
