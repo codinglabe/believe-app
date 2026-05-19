@@ -36,7 +36,7 @@ import { PageHead } from "@/components/frontend/PageHead"
 import {
   Copy,
   ExternalLink,
-  Play,
+  Share2,
   Square,
   Key,
   Info,
@@ -45,6 +45,7 @@ import {
   MoreVertical,
   Maximize2,
   Radio,
+  Globe,
   Youtube,
   HelpCircle,
   Download,
@@ -54,8 +55,12 @@ import {
 import { Link } from "@inertiajs/react"
 import { applyVdoGroupRoomPresentation } from "@/lib/vdoMeeting"
 import {
+  canEndYoutubeLive,
   isStreamRelayInProgress,
+  isUnityLivePublished,
+  isYoutubeStreamSessionActive,
   resolveStreamingDisplayStatus,
+  resolveUnityLiveDisplayStatus,
   streamingDisplayBadgeClass,
 } from "@/lib/streamingDisplayStatus"
 
@@ -87,6 +92,10 @@ interface Livestream {
   canStartMeeting?: boolean
   /** When false, queueing a cloud stream is blocked server-side (e.g. already live or cancelled). */
   canGoLive?: boolean
+  wantsYoutubeLive?: boolean
+  wantsUnityLive?: boolean
+  canSetUnityLive?: boolean
+  canQueueYoutubeLive?: boolean
   latestInviteUrl?: string | null
   dropboxRecordingAvailable?: boolean
   directorUrlDropbox?: string | null
@@ -99,7 +108,9 @@ interface Livestream {
   youtubeConnected?: boolean
   youtubeChannelUrl?: string | null
   streamingQueueStatus?: StreamingQueueStatus | null
+  hasActiveStreamingJob?: boolean
   youtubeBroadcastId?: string | null
+  youtubeWatchUrl?: string | null
 }
 
 interface StreamingQueueStatus {
@@ -143,7 +154,12 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
   const [infoOpen, setInfoOpen] = useState(false)
   const [isUpdatingVisibility, setIsUpdatingVisibility] = useState(false)
   const [isEndingStreamPending, setIsEndingStreamPending] = useState(false)
-  const [sidebarTab, setSidebarTab] = useState<"meeting-info" | "invite-link">("meeting-info")
+  const [sidebarTab, setSidebarTab] = useState<"meeting-info" | "share">("meeting-info")
+
+  const openSharePanel = () => {
+    setSidebarTab("share")
+    setInfoOpen(true)
+  }
   const [goLiveOpen, setGoLiveOpen] = useState(false)
   const [goLivePrecheckOpen, setGoLivePrecheckOpen] = useState(false)
   const [goLiveConfirmOpen, setGoLiveConfirmOpen] = useState(false)
@@ -191,15 +207,19 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
 
   const isGoLiveBusy = isGoLivePending || streamRelayInProgress
 
-  /** After confirm + queue: hide Go Live; progress shows in Meeting info stream status. */
-  const showGoLiveButton =
-    Boolean(livestream.canGoLive) &&
-    livestream.status !== "live" &&
+  const showYoutubeLiveButton =
+    Boolean(livestream.wantsYoutubeLive) &&
+    Boolean(livestream.canQueueYoutubeLive) &&
     !streamRelayInProgress &&
     !isGoLivePending
 
+  const showUnityLiveButton =
+    Boolean(livestream.wantsUnityLive) && Boolean(livestream.canSetUnityLive)
+
+  const liveActionDisabled = isUpdatingStatus || isEndingStreamPending
+
   const pollMs =
-    (isEndingStreamPending && livestream.status === "live") || streamRelayInProgress ? 4000 : 12000
+    (isEndingStreamPending && Boolean(livestream.wantsYoutubeLive)) || streamRelayInProgress ? 4000 : 12000
 
   useEffect(() => {
     const id = window.setInterval(() => {
@@ -212,20 +232,36 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
     return () => window.clearInterval(id)
   }, [pollMs])
 
-  useEffect(() => {
-    if (isEndingStreamPending && livestream.status !== "live") {
-      setIsEndingStreamPending(false)
-    }
-  }, [livestream.status, isEndingStreamPending])
-
   const endStreamError = inertiaProps.errors?.error
   const endStreamErrorText = Array.isArray(endStreamError) ? endStreamError[0] : endStreamError
 
+  const canEndYoutubeLiveNow = useMemo(
+    () =>
+      canEndYoutubeLive({
+        wantsYoutubeLive: livestream.wantsYoutubeLive,
+        livestreamStatus: livestream.status,
+        jobStatus: livestream.streamingQueueStatus?.status,
+        hasActiveStreamingJob: livestream.hasActiveStreamingJob,
+      }),
+    [
+      livestream.wantsYoutubeLive,
+      livestream.status,
+      livestream.streamingQueueStatus?.status,
+      livestream.hasActiveStreamingJob,
+    ],
+  )
+
   useEffect(() => {
-    if (endStreamErrorText && isEndingStreamPending) {
+    if (isEndingStreamPending && !canEndYoutubeLiveNow) {
       setIsEndingStreamPending(false)
     }
-  }, [endStreamErrorText, isEndingStreamPending])
+  }, [isEndingStreamPending, canEndYoutubeLiveNow])
+
+  useEffect(() => {
+    if (endStreamErrorText) {
+      setIsEndingStreamPending(false)
+    }
+  }, [endStreamErrorText])
 
   const copyToClipboard = (text: string, key: string) => {
     navigator.clipboard.writeText(text)
@@ -280,6 +316,53 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
     queueCloudStream()
   }
 
+  const goUnityLive = () => {
+    if (!showUnityLiveButton || liveActionDisabled) {
+      return
+    }
+    setIsUpdatingStatus(true)
+    router.post(`/livestreams/supporter/${livestream.id}/set-live`, {}, {
+      preserveScroll: true,
+      onFinish: () => setIsUpdatingStatus(false),
+    })
+  }
+
+  const youtubeStreamActive = useMemo(
+    () =>
+      isYoutubeStreamSessionActive({
+        wantsYoutubeLive: livestream.wantsYoutubeLive,
+        livestreamStatus: livestream.status,
+        jobStatus: livestream.streamingQueueStatus?.status,
+        hasActiveStreamingJob: livestream.hasActiveStreamingJob,
+      }),
+    [
+      livestream.wantsYoutubeLive,
+      livestream.status,
+      livestream.streamingQueueStatus?.status,
+      livestream.hasActiveStreamingJob,
+    ],
+  )
+
+  const showEndUnityLiveButton =
+    isUnityLivePublished({
+      wantsUnityLive: livestream.wantsUnityLive,
+      livestreamStatus: livestream.status,
+      youtubeStreamActive,
+    }) && !isEndingStreamPending
+
+  const showEndYoutubeLiveButton = canEndYoutubeLiveNow
+
+  const handleEndUnityLive = () => {
+    if (!showEndUnityLiveButton || liveActionDisabled) {
+      return
+    }
+    setIsUpdatingStatus(true)
+    router.post(route("livestreams.supporter.end-unity-live", livestream.id), {}, {
+      preserveScroll: true,
+      onFinish: () => setIsUpdatingStatus(false),
+    })
+  }
+
   const updateStreamKey = (e: React.FormEvent) => {
     e.preventDefault()
     setIsUpdatingStreamKey(true)
@@ -297,6 +380,9 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
   }
 
   const handleEndStream = () => {
+    if (!canEndYoutubeLiveNow || liveActionDisabled) {
+      return
+    }
     setIsUpdatingStatus(true)
     setIsEndingStreamPending(true)
     router.post(`/livestreams/supporter/${livestream.id}/end-stream`, {}, {
@@ -322,6 +408,17 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
     ],
   )
 
+  const unityLiveDisplayStatus = useMemo(
+    () =>
+      resolveUnityLiveDisplayStatus({
+        livestreamStatus: livestream.status,
+        isPublic: livestream.isPublic,
+        wantsUnityLive: livestream.wantsUnityLive,
+        youtubeStreamActive,
+      }),
+    [livestream.status, livestream.isPublic, livestream.wantsUnityLive, youtubeStreamActive],
+  )
+
   const toggleVisibility = (publicVal: boolean) => {
     setIsUpdatingVisibility(true)
     router.patch(
@@ -333,9 +430,42 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
 
   const meetingInfoContent = (
     <div className="w-full min-w-0 space-y-4">
-      <div className="rounded-lg border border-border bg-muted/30 p-3.5 space-y-2">
-        <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-          <Youtube className="h-3.5 w-3.5 text-primary" />
+      {livestream.wantsUnityLive ? (
+        <div className="rounded-lg border border-purple-500/35 bg-gradient-to-br from-purple-500/10 to-blue-500/5 p-3.5 space-y-2">
+          <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-purple-800 dark:text-purple-300">
+            <Globe className="h-3.5 w-3.5 text-purple-600 dark:text-purple-400" />
+            Unity Live readiness
+          </div>
+          {unityLiveDisplayStatus ? (
+            <div className="flex items-center justify-between gap-2 text-xs">
+              <span className="text-muted-foreground">Status</span>
+              <Badge
+                variant="outline"
+                className={`h-6 max-w-[58%] truncate px-2 text-[10px] font-semibold ${streamingDisplayBadgeClass(unityLiveDisplayStatus.tone)}`}
+                title={unityLiveDisplayStatus.description}
+              >
+                {unityLiveDisplayStatus.label}
+              </Badge>
+            </div>
+          ) : null}
+          {showEndUnityLiveButton ? (
+            <Button
+              variant="destructive"
+              size="sm"
+              className="mt-2 h-9 w-full"
+              onClick={handleEndUnityLive}
+              disabled={liveActionDisabled}
+            >
+              <Square className="h-4 w-4 mr-1.5" />
+              {isUpdatingStatus ? "Ending…" : "End Unity Live"}
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
+      {livestream.wantsYoutubeLive ? (
+      <div className="rounded-lg border border-red-500/35 bg-red-500/5 p-3.5 space-y-2">
+        <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-red-800 dark:text-red-300">
+          <Youtube className="h-3.5 w-3.5 text-red-600 dark:text-red-400" />
           YouTube readiness
         </div>
         <div className="space-y-1.5 text-xs">
@@ -378,7 +508,20 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
             Last failure: {livestream.streamingQueueStatus.failureReason}
           </p>
         )}
+        {showEndYoutubeLiveButton ? (
+          <Button
+            variant="destructive"
+            size="sm"
+            className="mt-2 h-9 w-full"
+            onClick={handleEndStream}
+            disabled={liveActionDisabled}
+          >
+            <Square className="h-4 w-4 mr-1.5" />
+            {isEndingStreamPending ? "Ending…" : "End YouTube Live"}
+          </Button>
+        ) : null}
       </div>
+      ) : null}
       {recordingConsentDeclines.length > 0 && (
         <div className="rounded-lg border border-amber-500/35 bg-amber-500/10 p-3.5 space-y-2">
           <p className="text-xs font-semibold uppercase tracking-wider text-amber-800 dark:text-amber-200">
@@ -463,26 +606,9 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
             : "Private — only people with the viewer link can watch."}
         </p>
       </div>
-      {livestream.status === "live" && liveViewerUrl && (
-        <div className="rounded-lg border border-border bg-muted/30 p-3.5 space-y-2">
-          <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-            <ExternalLink className="h-3.5 w-3.5 text-primary" />
-            {livestream.isPublic ? "Watch link (with volume)" : "Viewer link (private)"}
-          </div>
-          <p className="text-xs text-muted-foreground">
-            Share this link so viewers can watch with mute and volume controls.
-          </p>
-          <Button
-            variant="outline"
-            size="sm"
-            className="w-full h-9 gap-2"
-            onClick={() => copyToClipboard(liveViewerUrl, "unity")}
-          >
-            {copied === "unity" ? <CheckCircle2 className="h-4 w-4 text-green-600" /> : <Copy className="h-4 w-4" />}
-            Copy viewer link
-          </Button>
-        </div>
-      )}
+      <p className="text-[11px] text-muted-foreground px-0.5">
+        Guest and viewer links are in the <button type="button" className="font-medium text-primary hover:underline" onClick={openSharePanel}>Share</button> tab.
+      </p>
       <div className="w-full min-w-0 rounded-lg border border-border bg-muted/30 p-3.5 space-y-2">
         <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
           <Key className="h-3.5 w-3.5 text-primary" />
@@ -510,35 +636,89 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
     </div>
   )
 
-  const inviteLinkContent = (
+  const unityWatchUrl =
+    livestream.isPublic && unityLiveUrl
+      ? unityLiveUrl
+      : liveViewerUrl || unityLiveUrl || ""
+
+  const renderShareLinkCard = (
+    copyKey: string,
+    title: string,
+    description: string,
+    url: string,
+    pendingHint?: string,
+  ) => (
+    <div className="rounded-lg border border-border bg-muted/30 p-3.5 space-y-2">
+      <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+        <ExternalLink className="h-3.5 w-3.5 text-primary" />
+        {title}
+      </div>
+      <p className="text-xs text-muted-foreground">{description}</p>
+      {pendingHint ? <p className="text-[11px] text-amber-700 dark:text-amber-300">{pendingHint}</p> : null}
+      <div className="flex gap-2">
+        <Input readOnly value={url} className="font-mono text-xs h-9 bg-muted/50 min-w-0" />
+        <Button
+          variant="outline"
+          size="icon"
+          className="h-9 w-9 shrink-0"
+          onClick={() => copyToClipboard(url, copyKey)}
+          aria-label={`Copy ${title}`}
+        >
+          {copied === copyKey ? <CheckCircle2 className="h-4 w-4 text-green-600" /> : <Copy className="h-4 w-4" />}
+        </Button>
+      </div>
+    </div>
+  )
+
+  const shareContent = (
     <div className="w-full min-w-0 space-y-4">
       <p className="text-xs text-muted-foreground">
-        Share a secure link for guests. They’ll join at <span className="font-mono text-foreground">/livestreams/join/…</span> with no need to enter the meeting ID or passcode.
+        Share links with guests and viewers. Guests join the meeting; viewers watch on Unity Live or YouTube after you go live.
       </p>
-      {joinUrl ? (
-        <div className="space-y-2">
-          <Label className="text-xs text-muted-foreground">Invite link</Label>
-          <div className="flex gap-2">
-            <Input
-              readOnly
-              value={joinUrl}
-              className="font-mono text-xs h-9 bg-muted/50"
-            />
-            <Button
-              variant="outline"
-              size="icon"
-              className="h-9 w-9 shrink-0"
-              onClick={() => {
-                navigator.clipboard.writeText(joinUrl).then(() => setCopied("invite"))
-                setTimeout(() => setCopied(null), 3000)
-              }}
-              aria-label="Copy invite link"
-            >
-              {copied === "invite" ? <CheckCircle2 className="h-4 w-4 text-green-600" /> : <Copy className="h-4 w-4" />}
-            </Button>
-          </div>
-        </div>
-      ) : null}
+
+      {joinUrl
+        ? renderShareLinkCard(
+            "invite",
+            "Invite guests",
+            "Guests join the meeting room — no meeting ID or passcode needed.",
+            joinUrl,
+          )
+        : null}
+
+      {livestream.wantsUnityLive && unityWatchUrl
+        ? renderShareLinkCard(
+            "unity-watch",
+            livestream.isPublic ? "Watch on Unity Live" : "Private viewer link",
+            livestream.isPublic
+              ? "Anyone with this link can watch on the Unity Live page (listed when you go live)."
+              : "Share with people who should watch — not listed publicly.",
+            unityWatchUrl,
+            livestream.status !== "live"
+              ? "Available to viewers after you click Go Unity Live."
+              : undefined,
+          )
+        : null}
+
+      {livestream.wantsYoutubeLive && (livestream.youtubeWatchUrl ?? "").trim()
+        ? renderShareLinkCard(
+            "youtube-watch",
+            "Watch on YouTube",
+            "Share so viewers can watch on your YouTube channel.",
+            (livestream.youtubeWatchUrl ?? "").trim(),
+            livestream.status !== "live" && !streamRelayInProgress
+              ? "The stream appears on YouTube after you click Go YouTube Live."
+              : undefined,
+          )
+        : null}
+
+      {livestream.wantsYoutubeLive && !(livestream.youtubeWatchUrl ?? "").trim() && livestream.youtubeChannelUrl
+        ? renderShareLinkCard(
+            "youtube-channel",
+            "YouTube channel",
+            "Prepare YouTube live first, or share your channel until the watch link is ready.",
+            livestream.youtubeChannelUrl,
+          )
+        : null}
     </div>
   )
 
@@ -574,36 +754,48 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
                     <SheetHeader className="pb-4 border-b border-border">
                       <SheetTitle className="text-lg">Meeting</SheetTitle>
                     </SheetHeader>
-                    <Tabs value={sidebarTab} onValueChange={(v) => setSidebarTab(v as "meeting-info" | "invite-link")} className="w-full mt-4">
+                    <Tabs value={sidebarTab} onValueChange={(v) => setSidebarTab(v as "meeting-info" | "share")} className="w-full mt-4">
                       <TabsList className="grid w-full grid-cols-2 h-9">
                         <TabsTrigger value="meeting-info" className="text-xs gap-1.5">
                           <Info className="h-3.5 w-3.5 shrink-0" />
                           Meeting info
                         </TabsTrigger>
-                        <TabsTrigger value="invite-link" className="text-xs gap-1.5">
-                          <Copy className="h-3.5 w-3.5 shrink-0" />
-                          Invite link
+                        <TabsTrigger value="share" className="text-xs gap-1.5">
+                          <Share2 className="h-3.5 w-3.5 shrink-0" />
+                          Share
                         </TabsTrigger>
                       </TabsList>
                       <TabsContent value="meeting-info" className="mt-4">
                         {meetingInfoContent}
                       </TabsContent>
-                      <TabsContent value="invite-link" className="mt-4">
-                        {inviteLinkContent}
+                      <TabsContent value="share" className="mt-4">
+                        {shareContent}
                       </TabsContent>
                     </Tabs>
                   </SheetContent>
                 </Sheet>
-                {showGoLiveButton && (
+                {showUnityLiveButton && (
+                  <Button
+                    variant="default"
+                    size="icon"
+                    className="h-8 w-8 rounded-md bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 touch-manipulation"
+                    onClick={goUnityLive}
+                    disabled={liveActionDisabled}
+                    aria-label="Go Unity Live"
+                  >
+                    <Globe className="h-4 w-4" />
+                  </Button>
+                )}
+                {showYoutubeLiveButton && (
                   <Button
                     variant="default"
                     size="icon"
                     className="h-8 w-8 rounded-md bg-red-600 hover:bg-red-700 touch-manipulation"
                     onClick={handleGoLiveClick}
-                    disabled={isUpdatingStatus || isEndingStreamPending}
-                    aria-label="Go Live on YouTube"
+                    disabled={liveActionDisabled}
+                    aria-label="Go YouTube Live"
                   >
-                    <Play className="h-4 w-4" />
+                    <Youtube className="h-4 w-4" />
                   </Button>
                 )}
                 <Button variant="outline" size="sm" className="h-8 px-2.5 rounded-md md:hidden" onClick={() => setGoLiveOpen(true)}>
@@ -616,22 +808,31 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" side="bottom" className="w-48">
-                    {showGoLiveButton && (
-                      <DropdownMenuItem
-                        onClick={handleGoLiveClick}
-                        disabled={isUpdatingStatus || isEndingStreamPending}
-                      >
-                        <Play className="h-4 w-4 mr-2" />
-                        Go Live
+                    {showUnityLiveButton && (
+                      <DropdownMenuItem onClick={goUnityLive} disabled={liveActionDisabled}>
+                        <Globe className="h-4 w-4 mr-2" />
+                        Go Unity Live
+                      </DropdownMenuItem>
+                    )}
+                    {showYoutubeLiveButton && (
+                      <DropdownMenuItem onClick={handleGoLiveClick} disabled={liveActionDisabled}>
+                        <Youtube className="h-4 w-4 mr-2" />
+                        Go YouTube Live
                       </DropdownMenuItem>
                     )}
                     <DropdownMenuItem onClick={() => setGoLiveOpen(true)}>
                       Stream options
                     </DropdownMenuItem>
-                    {livestream.status === "live" && (
-                      <DropdownMenuItem variant="destructive" onClick={handleEndStream} disabled={isUpdatingStatus || isEndingStreamPending}>
+                    {showEndYoutubeLiveButton && (
+                      <DropdownMenuItem variant="destructive" onClick={handleEndStream} disabled={liveActionDisabled}>
                         <Square className="h-4 w-4 mr-2" />
-                        {isEndingStreamPending ? "Stopping…" : "End stream"}
+                        {isEndingStreamPending ? "Ending…" : "End YouTube Live"}
+                      </DropdownMenuItem>
+                    )}
+                    {showEndUnityLiveButton && (
+                      <DropdownMenuItem variant="destructive" onClick={handleEndUnityLive} disabled={liveActionDisabled}>
+                        <Square className="h-4 w-4 mr-2" />
+                        {isUpdatingStatus ? "Ending…" : "End Unity Live"}
                       </DropdownMenuItem>
                     )}
                     <DropdownMenuItem onClick={() => window.open(vdoHostIframeSrc, "_blank")}>
@@ -642,24 +843,41 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
                 </DropdownMenu>
               </div>
               <div className="hidden md:flex items-center gap-1.5">
-                {showGoLiveButton && (
+                {showUnityLiveButton && (
                   <Button
                     size="sm"
-                    className="bg-red-600 hover:bg-red-700 h-8 px-3 min-w-[7.5rem]"
-                    onClick={handleGoLiveClick}
-                    disabled={isUpdatingStatus || isEndingStreamPending}
+                    className="h-8 min-w-[8.5rem] bg-gradient-to-r from-purple-600 to-blue-600 px-3 text-white hover:from-purple-700 hover:to-blue-700"
+                    onClick={goUnityLive}
+                    disabled={liveActionDisabled}
                   >
-                    <Play className="h-4 w-4 mr-1.5" />
-                    Go Live
+                    <Globe className="h-4 w-4 mr-1.5" />
+                    Go Unity Live
+                  </Button>
+                )}
+                {showYoutubeLiveButton && (
+                  <Button
+                    size="sm"
+                    className="h-8 min-w-[9.5rem] bg-red-600 px-3 hover:bg-red-700"
+                    onClick={handleGoLiveClick}
+                    disabled={liveActionDisabled}
+                  >
+                    <Youtube className="h-4 w-4 mr-1.5" />
+                    Go YouTube Live
                   </Button>
                 )}
                 <Button variant="outline" size="sm" className="h-8 px-3" onClick={() => setGoLiveOpen(true)}>
                   Stream options
                 </Button>
-                {livestream.status === "live" && (
-                  <Button variant="destructive" size="sm" className="h-8 px-3" onClick={handleEndStream} disabled={isUpdatingStatus || isEndingStreamPending}>
+                {showEndYoutubeLiveButton && (
+                  <Button variant="destructive" size="sm" className="h-8 px-3" onClick={handleEndStream} disabled={liveActionDisabled}>
                     <Square className="h-4 w-4 mr-1.5" />
-                    {isEndingStreamPending ? "Stopping…" : "End stream"}
+                    {isEndingStreamPending ? "Ending…" : "End YouTube Live"}
+                  </Button>
+                )}
+                {showEndUnityLiveButton && (
+                  <Button variant="destructive" size="sm" className="h-8 px-3" onClick={handleEndUnityLive} disabled={liveActionDisabled}>
+                    <Square className="h-4 w-4 mr-1.5" />
+                    {isUpdatingStatus ? "Ending…" : "End Unity Live"}
                   </Button>
                 )}
               </div>
@@ -676,7 +894,7 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
             </div>
           </div>
 
-          {isEndingStreamPending && livestream.status === "live" && (
+          {isEndingStreamPending && canEndYoutubeLiveNow && (
             <div className="shrink-0 border-b border-blue-500/30 bg-gradient-to-r from-purple-500/10 to-blue-500/10 px-3 py-2 sm:px-4">
               <p className="text-xs font-medium text-foreground">Ending YouTube live</p>
               <p className="text-[11px] text-muted-foreground">
@@ -701,7 +919,7 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
 
           <div className="flex flex-1 min-h-0 overflow-hidden">
             <aside className="hidden md:flex w-64 lg:w-72 shrink-0 min-h-0 flex-col overflow-hidden border-r border-border bg-linear-to-b from-muted/30 to-muted/10 p-0">
-              <Tabs value={sidebarTab} onValueChange={(v) => setSidebarTab(v as "meeting-info" | "invite-link")} className="w-full flex flex-col min-h-0">
+              <Tabs value={sidebarTab} onValueChange={(v) => setSidebarTab(v as "meeting-info" | "share")} className="w-full flex flex-col min-h-0">
                 <Card className="flex min-h-0 flex-1 flex-col rounded-none border-0 border-b border-border bg-transparent p-0 shadow-none">
                   <CardHeader className="p-0 py-3 px-3">
                     <TabsList className="grid w-full grid-cols-2 h-9">
@@ -709,9 +927,9 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
                         <Info className="h-3.5 w-3.5 shrink-0" />
                         Meeting info
                       </TabsTrigger>
-                      <TabsTrigger value="invite-link" className="text-xs gap-1.5">
-                        <Copy className="h-3.5 w-3.5 shrink-0" />
-                        Invite link
+                      <TabsTrigger value="share" className="text-xs gap-1.5">
+                        <Share2 className="h-3.5 w-3.5 shrink-0" />
+                        Share
                       </TabsTrigger>
                     </TabsList>
                   </CardHeader>
@@ -719,8 +937,8 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
                     <TabsContent value="meeting-info" className="mt-3 mb-0">
                       {meetingInfoContent}
                     </TabsContent>
-                    <TabsContent value="invite-link" className="mt-3 mb-0">
-                      {inviteLinkContent}
+                    <TabsContent value="share" className="mt-3 mb-0">
+                      {shareContent}
                     </TabsContent>
                   </CardContent>
                 </Card>
@@ -790,42 +1008,57 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
               <TabsTrigger value="help" className="text-xs sm:text-sm">Help</TabsTrigger>
             </TabsList>
             <TabsContent value="streaming" className="space-y-4 mt-4">
-              <p className="text-sm text-muted-foreground">
-                Go Live sends your meeting video to YouTube using your stream key. Stay on this host page while you are live.
-              </p>
+              {(showUnityLiveButton || showYoutubeLiveButton) && (
+                <p className="text-sm text-muted-foreground">
+                  Use the buttons below for the destinations you chose when starting this meeting.
+                </p>
+              )}
               {queueStreamErrorText && (
                 <Alert variant="destructive"><AlertDescription>{queueStreamErrorText}</AlertDescription></Alert>
               )}
-              {livestream.hasStreamKey && showGoLiveButton && (
+              {showUnityLiveButton && (
+                <Button
+                  className="w-full bg-gradient-to-r from-purple-600 to-blue-600 text-white hover:from-purple-700 hover:to-blue-700"
+                  onClick={goUnityLive}
+                  disabled={liveActionDisabled}
+                >
+                  <Globe className="h-4 w-4 mr-2" />
+                  Go Unity Live
+                </Button>
+              )}
+              {showYoutubeLiveButton && livestream.hasStreamKey && (
                 <Button
                   className="w-full bg-red-600 hover:bg-red-700"
                   onClick={handleGoLiveClick}
-                  disabled={isUpdatingStatus || isEndingStreamPending}
+                  disabled={liveActionDisabled}
                 >
-                  Go Live
+                  <Youtube className="h-4 w-4 mr-2" />
+                  Go YouTube Live
                 </Button>
               )}
-              {livestream.hasStreamKey && streamRelayInProgress && (
+              {showYoutubeLiveButton && !livestream.hasStreamKey && (
                 <p className="text-sm text-muted-foreground">
-                  Your stream is starting. Watch <strong className="text-foreground">Stream status</strong> in Meeting info.
+                  Add a YouTube stream key in Settings, or use Create live on YouTube, then try Go YouTube Live.
                 </p>
               )}
-              {livestream.hasStreamKey &&
-                !showGoLiveButton &&
-                !streamRelayInProgress &&
-                (!livestream.canGoLive || livestream.status === "live") && (
+              {streamRelayInProgress && (
                 <p className="text-sm text-muted-foreground">
-                  {livestream.status === "live"
-                    ? "You are already live. Use End stream to stop, then you can go live again."
-                    : "This meeting can’t go live in its current state. Refresh the page or end the meeting and try again."}
+                  Your YouTube stream is starting. Watch <strong className="text-foreground">Stream status</strong> in Meeting info.
                 </p>
               )}
-              {!livestream.hasStreamKey && (
-                <p className="text-sm text-muted-foreground">Use Create live on YouTube or paste a stream key in Settings first.</p>
+              {!showUnityLiveButton && !showYoutubeLiveButton && !streamRelayInProgress && (
+                <p className="text-sm text-muted-foreground">
+                  This meeting was not set up for live streaming. Start a new instant meeting and turn on Show on Unity Live and/or Go live (optional).
+                </p>
               )}
-              {livestream.status === "live" && (
-                <Button variant="destructive" className="w-full" onClick={handleEndStream} disabled={isUpdatingStatus || isEndingStreamPending}>
-                  <Square className="h-4 w-4 mr-2" /> {isEndingStreamPending ? "Stopping…" : "End stream"}
+              {showEndYoutubeLiveButton && (
+                <Button variant="destructive" className="w-full" onClick={handleEndStream} disabled={liveActionDisabled}>
+                  <Square className="h-4 w-4 mr-2" /> {isEndingStreamPending ? "Ending…" : "End YouTube Live"}
+                </Button>
+              )}
+              {showEndUnityLiveButton && (
+                <Button variant="destructive" className="w-full" onClick={handleEndUnityLive} disabled={liveActionDisabled}>
+                  <Square className="h-4 w-4 mr-2" /> {isUpdatingStatus ? "Ending…" : "End Unity Live"}
                 </Button>
               )}
             </TabsContent>

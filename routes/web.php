@@ -420,7 +420,7 @@ Route::get('/unity-videos/engagement/comments', [CommunityVideoEngagementControl
 Route::post('/unity-videos/engagement/comments', [CommunityVideoEngagementController::class, 'comment'])->name('unity-videos.engagement.comment')->middleware('auth');
 
 Route::get('/unity-live', [UnityLiveController::class, 'index'])->name('unity-live.index');
-Route::get('/unity-live/{slug}', [UnityLiveController::class, 'show'])->name('unity-live.show')->where('slug', '[a-zA-Z0-9_]+');
+Route::get('/unity-live/{slug}', [UnityLiveController::class, 'show'])->name('unity-live.show')->where('slug', '[a-zA-Z0-9_-]+');
 
 // Unity Meet (supporter UI): personal meetings — also available to org / care alliance accounts from dashboard Tools
 Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:user|organization|organization_pending|care_alliance'])->group(function () {
@@ -440,21 +440,22 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:user|organization|orga
     Route::get('/livestreams/supporter/{id}/edit', [SupporterLivestreamController::class, 'edit'])->name('livestreams.supporter.edit')->where('id', '[0-9]+');
     Route::put('/livestreams/supporter/{id}', [SupporterLivestreamController::class, 'update'])->name('livestreams.supporter.update')->where('id', '[0-9]+');
     Route::delete('/livestreams/supporter/{id}', [SupporterLivestreamController::class, 'destroy'])->name('livestreams.supporter.destroy')->where('id', '[0-9]+');
-    Route::get('/livestreams/supporter/{id}', [SupporterLivestreamController::class, 'show'])->name('livestreams.supporter.show')->where('id', '[0-9]+');
     Route::post('/livestreams/supporter/{id}/start-meeting', [SupporterLivestreamController::class, 'startMeeting'])->name('livestreams.supporter.start-meeting')->where('id', '[0-9]+');
     Route::post('/livestreams/supporter/{id}/set-live', [SupporterLivestreamController::class, 'setLive'])->name('livestreams.supporter.set-live')->where('id', '[0-9]+');
+    Route::post('/livestreams/supporter/{id}/end-unity-live', [SupporterLivestreamController::class, 'endUnityLive'])->name('livestreams.supporter.end-unity-live')->where('id', '[0-9]+');
     Route::post('/livestreams/supporter/{id}/end-stream', [SupporterLivestreamController::class, 'endStream'])->name('livestreams.supporter.end-stream')->where('id', '[0-9]+');
     Route::patch('/livestreams/supporter/{id}/visibility', [SupporterLivestreamController::class, 'updateVisibility'])->name('livestreams.supporter.update-visibility')->where('id', '[0-9]+');
     Route::patch('/livestreams/supporter/{id}/stream-key', [SupporterLivestreamController::class, 'updateStreamKey'])->name('livestreams.supporter.update-stream-key')->where('id', '[0-9]+');
     Route::post('/livestreams/supporter/{id}/prepare-youtube-live', [SupporterLivestreamController::class, 'prepareYouTubeLive'])->name('livestreams.supporter.prepare-youtube-live')->where('id', '[0-9]+');
     Route::post('/livestreams/supporter/{id}/queue-stream-relay', [SupporterLivestreamController::class, 'queueStreamRelayJob'])->name('livestreams.supporter.queue-stream-relay')->where('id', '[0-9]+');
     Route::post('/livestreams/supporter/{id}/go-live-obs-auto', [SupporterLivestreamController::class, 'queueStreamRelayJob'])->name('livestreams.supporter.go-live-obs-auto')->where('id', '[0-9]+');
+    Route::get('/livestreams/supporter/{id}', [SupporterLivestreamController::class, 'show'])->name('livestreams.supporter.show')->where('id', '[0-9]+');
 });
 
 // VDO.Ninja meeting: guest join by secure token (public)
 Route::get('/join/{token}', [LivestreamController::class, 'guestJoinByToken'])->name('livestreams.guest-join-by-token')->where('token', '[a-zA-Z0-9_-]+');
 // Viewer page: /live/{slug} — view-only with Mute + Volume (public, when stream is live)
-Route::get('/live/{slug}', [LiveViewController::class, 'show'])->name('live.show')->where('slug', '[a-zA-Z0-9_]+');
+Route::get('/live/{slug}', [LiveViewController::class, 'show'])->name('live.show')->where('slug', '[a-zA-Z0-9_-]+');
 
 Route::get('/jobs', [JobsController::class, 'index'])->name('jobs.index');
 Route::get('/volunteer-opportunities', [JobsController::class, 'volunteerOpportunities'])->name('volunteer-opportunities.index');

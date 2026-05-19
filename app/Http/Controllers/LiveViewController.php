@@ -41,11 +41,7 @@ class LiveViewController extends Controller
             ]);
         }
 
-        $userStream = UserLivestream::query()
-            ->where('room_name', $slug)
-            ->where('status', 'live')
-            ->with('user:id,name')
-            ->first();
+        $userStream = $this->resolveUserLivestreamForViewer($slug);
 
         if ($userStream) {
             $viewUrl = $userStream->getPublicViewUrl();
@@ -67,5 +63,31 @@ class LiveViewController extends Controller
         }
 
         abort(404, 'Stream not found.');
+    }
+
+    private function resolveUserLivestreamForViewer(string $slug): ?UserLivestream
+    {
+        $base = UserLivestream::query()
+            ->where('status', 'live')
+            ->with('user:id,name');
+
+        $direct = (clone $base)->where('room_name', $slug)->first();
+        if ($direct) {
+            return $direct;
+        }
+
+        if (preg_match('/^uni-.+-(\d+)$/', $slug, $matches) !== 1) {
+            return null;
+        }
+
+        $userId = (int) ($matches[1] ?? 0);
+        if ($userId < 1) {
+            return null;
+        }
+
+        return (clone $base)
+            ->where('user_id', $userId)
+            ->orderByDesc('started_at')
+            ->first();
     }
 }

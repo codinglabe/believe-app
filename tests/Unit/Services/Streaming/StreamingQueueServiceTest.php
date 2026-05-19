@@ -43,14 +43,11 @@ class StreamingQueueServiceTest extends TestCase
         $this->assertNull($this->queue->goLiveBlockedReason('owner-1', 'user', 10));
     }
 
-    public function test_blocks_job_on_second_livestream_while_first_is_active(): void
+    public function test_allows_job_on_a_different_meeting_while_another_is_active(): void
     {
         $this->makeJob('user', 10, 'owner-1', 'starting');
 
-        $reason = $this->queue->goLiveBlockedReason('owner-1', 'user', 99);
-
-        $this->assertNotNull($reason);
-        $this->assertStringContainsString('another meeting', strtolower($reason));
+        $this->assertNull($this->queue->goLiveBlockedReason('owner-1', 'user', 99));
     }
 
     public function test_different_owners_can_each_have_an_active_job(): void

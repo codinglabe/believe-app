@@ -134,11 +134,7 @@ class UnityLiveController extends Controller
             ]);
         }
 
-        $userStream = UserLivestream::query()
-            ->where('room_name', $slug)
-            ->where('status', 'live')
-            ->with('user:id,name')
-            ->first();
+        $userStream = $this->resolveUserLivestreamForUnityLive($slug);
 
         if ($userStream) {
             $item = $this->toUserLivestreamItem($userStream);
@@ -157,6 +153,37 @@ class UnityLiveController extends Controller
         }
 
         abort(404, 'Stream not found.');
+    }
+
+    /**
+     * Resolve a supporter stream for /unity-live/{slug}: room_name, or legacy profile ID (uni-{slug}-{userId}).
+     */
+    private function resolveUserLivestreamForUnityLive(string $slug): ?UserLivestream
+    {
+        $base = UserLivestream::query()
+            ->where('status', 'live')
+            ->where('is_public', true)
+            ->with('user:id,name');
+
+        $direct = (clone $base)->where('room_name', $slug)->first();
+        if ($direct) {
+            return $direct;
+        }
+
+        if (preg_match('/^uni-.+-(\d+)$/', $slug, $matches) !== 1) {
+            return null;
+        }
+
+        $userId = (int) ($matches[1] ?? 0);
+        if ($userId < 1) {
+            return null;
+        }
+
+        // Legacy profile Unity Meeting ID — resolve to this host's current public live meeting.
+        return (clone $base)
+            ->where('user_id', $userId)
+            ->orderByDesc('started_at')
+            ->first();
     }
 
     /**

@@ -41,8 +41,7 @@ class SupporterLivestreamController extends Controller
     }
 
     /**
-     * Supporter meetings reuse one row per Unity Meeting ID — clear YouTube from the previous session
-     * so "Stream key configured" is not Yes until Prepare YouTube Live (or paste key) for this meeting.
+     * Clear YouTube credentials on a meeting row (e.g. before a fresh broadcast on that meeting).
      */
     private function resetYoutubeForFreshMeetingSession(UserLivestream $livestream): void
     {
@@ -243,7 +242,6 @@ class SupporterLivestreamController extends Controller
         $defaultDisplayName = $organization?->name ?: ($user->name ?? '');
         return Inertia::render('frontend/livestreams/Create', [
             'authUserDisplayName' => $defaultDisplayName,
-            'unityMeetingId' => $this->getUnityMeetingId($request),
         ]);
     }
 
@@ -275,7 +273,6 @@ class SupporterLivestreamController extends Controller
         ]);
 
         $user = $request->user();
-        $roomName = $this->getUnityMeetingId($request);
         $requirePasscode = $request->boolean('require_passcode');
         $password = $requirePasscode
             ? (string) ($request->input('passcode') ?: UserLivestream::generatePassword())
@@ -291,12 +288,9 @@ class SupporterLivestreamController extends Controller
         $settings['require_passcode'] = $requirePasscode;
         $settings['go_live'] = $request->boolean('go_live');
 
-        // Meeting ID is fixed per supporter. Reuse the same draft record instead of creating duplicates.
-        $livestream = UserLivestream::firstOrNew([
+        $livestream = UserLivestream::create([
             'user_id' => $user->id,
-            'room_name' => $roomName,
-        ]);
-        $livestream->fill([
+            'room_name' => UserLivestream::generateRoomName(),
             'room_password' => $encryptedPassword,
             'status' => 'draft',
             'is_public' => $request->boolean('is_public'),
@@ -304,8 +298,6 @@ class SupporterLivestreamController extends Controller
             'settings' => $settings ?: null,
             'scheduled_at' => null,
         ]);
-        $this->resetYoutubeForFreshMeetingSession($livestream);
-        $livestream->save();
 
         return redirect()->route('livestreams.supporter.ready', $livestream->id)
             ->with('success', 'Meeting ready!');
@@ -348,7 +340,6 @@ class SupporterLivestreamController extends Controller
         ]);
 
         $user = $request->user();
-        $roomName = $this->getUnityMeetingId($request);
 
         $scheduledAt = Carbon::createFromFormat(
             'Y-m-d H:i',
@@ -379,11 +370,9 @@ class SupporterLivestreamController extends Controller
         $emails = array_values(array_unique(array_filter(array_map('strval', $emails))));
         $settings['participant_emails'] = $emails;
 
-        $livestream = UserLivestream::firstOrNew([
+        $livestream = UserLivestream::create([
             'user_id' => $user->id,
-            'room_name' => $roomName,
-        ]);
-        $livestream->fill([
+            'room_name' => UserLivestream::generateRoomName(),
             'room_password' => $encryptedPassword,
             'status' => 'scheduled',
             'is_public' => $request->boolean('is_public'),
@@ -391,8 +380,6 @@ class SupporterLivestreamController extends Controller
             'scheduled_at' => $scheduledAt,
             'settings' => $settings ?: null,
         ]);
-        $this->resetYoutubeForFreshMeetingSession($livestream);
-        $livestream->save();
 
         return redirect()->route('livestreams.supporter.ready', $livestream->id)
             ->with('success', 'Meeting scheduled!');
@@ -645,8 +632,14 @@ class SupporterLivestreamController extends Controller
                 'startedAt' => $livestream->started_at?->toIso8601String(),
                 'endedAt' => $livestream->ended_at?->toIso8601String(),
                 'canStartMeeting' => $livestream->canStartMeeting(),
-                'canGoLive' => $livestream->canGoLive()
+                'wantsYoutubeLive' => $livestream->wantsYoutubeLiveAtCreate(),
+                'wantsUnityLive' => (bool) $livestream->is_public,
+                'canSetUnityLive' => $livestream->canSetUnityLive(),
+                'canQueueYoutubeLive' => $livestream->canQueueYoutubeStream()
                     && $streamingQueue->canStartNewStreamingJob((string) $request->user()->id, 'user', $livestream->id),
+                'canGoLive' => ($livestream->wantsYoutubeLiveAtCreate() && $livestream->canQueueYoutubeStream()
+                        && $streamingQueue->canStartNewStreamingJob((string) $request->user()->id, 'user', $livestream->id))
+                    || ($livestream->is_public && $livestream->canSetUnityLive()),
                 'latestInviteUrl' => $joinUrl,
                 'requiresPasscode' => $livestream->requiresPasscode(),
                 'hasStreamKey' => ! empty($livestream->youtube_stream_key),
@@ -656,9 +649,13 @@ class SupporterLivestreamController extends Controller
                 'streamKeyDisplay' => $streamKeyDisplay,
                 'rtmpUrl' => $rtmpUrl,
                 'youtubeBroadcastId' => $livestream->youtube_broadcast_id,
+                'youtubeWatchUrl' => ! empty($livestream->youtube_broadcast_id)
+                    ? 'https://www.youtube.com/watch?v='.$livestream->youtube_broadcast_id
+                    : null,
                 'youtubeConnected' => $youtubeConnected,
                 'youtubeChannelUrl' => $youtubeChannelUrl,
                 'streamingQueueStatus' => $streamingQueue->queueStatusForUi($latestStreamingJob, $livestream),
+                'hasActiveStreamingJob' => $streamingQueue->existingActiveJobFor('user', $livestream->id) !== null,
             ],
         ]);
     }
@@ -680,9 +677,15 @@ class SupporterLivestreamController extends Controller
     {
         $livestream = UserLivestream::where('user_id', $request->user()->id)->findOrFail($id);
 
-        if (! $livestream->canGoLive()) {
+        if (! $livestream->is_public) {
             return redirect()->back()->withErrors([
-                'error' => 'Cannot mark live in this state (status: '.$livestream->status.'). Use End stream if you are already broadcasting, or open a new meeting.',
+                'error' => 'Turn on “Show on Unity Live” for this meeting to publish on Unity Live.',
+            ]);
+        }
+
+        if (! $livestream->canSetUnityLive()) {
+            return redirect()->back()->withErrors([
+                'error' => 'Cannot publish on Unity Live in this state (status: '.$livestream->status.'). End the stream first or open a new meeting.',
             ]);
         }
 
@@ -695,6 +698,35 @@ class SupporterLivestreamController extends Controller
             ? 'Stream is now live. It will appear on the Unity Live page.'
             : 'Stream is now live (private). Share the viewer link so people can watch.';
         return redirect()->back()->with('success', $message);
+    }
+
+    /**
+     * Stop Unity Live listing only; keep the meeting open unless a YouTube relay is active.
+     */
+    public function endUnityLive(Request $request, int $id, StreamingQueueService $streamingQueue): RedirectResponse
+    {
+        $livestream = UserLivestream::where('user_id', $request->user()->id)->findOrFail($id);
+
+        if ($livestream->status !== 'live') {
+            return redirect()->back()->withErrors([
+                'error' => 'This meeting is not live on Unity Live.',
+            ]);
+        }
+
+        if ($streamingQueue->existingActiveJobFor('user', $livestream->id)) {
+            return redirect()->back()->withErrors([
+                'error' => 'YouTube stream is still active. Use End stream to stop the full broadcast.',
+            ]);
+        }
+
+        $livestream->update([
+            'status' => 'meeting_live',
+        ]);
+
+        return redirect()->back()->with(
+            'success',
+            'Removed from Unity Live. Your meeting is still open for guests.'
+        );
     }
 
     public function edit(Request $request, int $id): Response
@@ -774,6 +806,12 @@ class SupporterLivestreamController extends Controller
         // bridge cold) gets reset to 'meeting_live'; the user must still be able
         // to end/reset it. Only reject genuinely-inactive states.
         if (! in_array($livestream->status, ['live', 'meeting_live', 'starting'], true)) {
+            $settings = $livestream->settings ?? [];
+            if (! empty($settings['stream_stop_requested'])) {
+                unset($settings['stream_stop_requested']);
+                $livestream->update(['settings' => $settings ?: null]);
+            }
+
             return redirect()->back()->withErrors(['error' => 'Stream is not active.']);
         }
 
@@ -1045,9 +1083,15 @@ class SupporterLivestreamController extends Controller
     {
         $livestream = UserLivestream::where('user_id', $request->user()->id)->findOrFail($id);
 
-        if (! $livestream->canGoLive()) {
+        if (! $livestream->wantsYoutubeLiveAtCreate()) {
             return redirect()->back()->withErrors([
-                'go_live' => 'Cannot queue the cloud stream in this state (status: '.$livestream->status.'). End any active stream or open a new meeting.',
+                'go_live' => 'YouTube live was not enabled for this meeting. Start a new meeting with “Go live (optional)” turned on.',
+            ]);
+        }
+
+        if (! $livestream->canQueueYoutubeStream()) {
+            return redirect()->back()->withErrors([
+                'go_live' => 'Cannot start YouTube live in this state (status: '.$livestream->status.'). End any active stream or open a new meeting.',
             ]);
         }
 

@@ -412,6 +412,25 @@ class UserLivestream extends Model
 
     public function canGoLive(): bool
     {
+        return $this->canSetUnityLive() || $this->canQueueYoutubeStream();
+    }
+
+    /** Listed on Unity Live (set-live). */
+    public function canSetUnityLive(): bool
+    {
         return in_array($this->status, ['draft', 'scheduled', 'meeting_live', 'ended'], true);
+    }
+
+    /** Cloud relay to YouTube (may run while already live on Unity Live). */
+    public function canQueueYoutubeStream(): bool
+    {
+        return in_array($this->status, ['draft', 'scheduled', 'meeting_live', 'live', 'ended'], true);
+    }
+
+    public function wantsYoutubeLiveAtCreate(): bool
+    {
+        $settings = is_array($this->settings) ? $this->settings : [];
+
+        return ! empty($settings['go_live']);
     }
 }

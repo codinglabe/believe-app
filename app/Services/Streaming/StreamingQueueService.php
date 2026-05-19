@@ -103,7 +103,7 @@ class StreamingQueueService
     }
 
     /**
-     * One active streaming_jobs row per owner at a time; one per livestream until terminal.
+     * One active streaming_jobs row per livestream until terminal (each meeting is independent).
      *
      * @return null when a new job may be enqueued, otherwise a user-facing error message
      */
@@ -112,20 +112,6 @@ class StreamingQueueService
         $onThisMeeting = $this->existingActiveJobFor($livestreamKind, $livestreamId);
         if ($onThisMeeting) {
             return 'A stream is already in progress for this meeting. End the stream first, then you can go live again.';
-        }
-
-        $elsewhere = StreamingJob::query()
-            ->where('organization_id', $ownerId)
-            ->whereIn('status', ['queued', 'starting', 'live'])
-            ->where(function ($query) use ($livestreamKind, $livestreamId): void {
-                $query->where('livestream_kind', '!=', $livestreamKind)
-                    ->orWhere('livestream_id', '!=', $livestreamId);
-            })
-            ->latest('id')
-            ->first();
-
-        if ($elsewhere) {
-            return 'You already have a stream in progress on another meeting. End it before starting a new one.';
         }
 
         return null;
