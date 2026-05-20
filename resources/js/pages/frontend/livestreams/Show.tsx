@@ -215,6 +215,12 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
     !streamRelayInProgress &&
     !isGoLivePending
 
+  /** Top bar, Stream options, sidebar YouTube card — logic kept; toggle true to show again. */
+  const showYoutubeLiveMeetingChrome = false
+  const showYoutubeLiveButtonInTopBar = showYoutubeLiveMeetingChrome
+  const showYoutubeLiveSidebarCard = showYoutubeLiveMeetingChrome
+  const showStreamOptionsButton = showYoutubeLiveMeetingChrome
+
   const showUnityLiveButton =
     Boolean(livestream.wantsUnityLive) && Boolean(livestream.canSetUnityLive)
 
@@ -464,7 +470,7 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
           ) : null}
         </div>
       ) : null}
-      {livestream.wantsYoutubeLive ? (
+      {livestream.wantsYoutubeLive && showYoutubeLiveSidebarCard ? (
       <div className="rounded-lg border border-red-500/35 bg-red-500/5 p-3.5 space-y-2">
         <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-red-800 dark:text-red-300">
           <Youtube className="h-3.5 w-3.5 text-red-600 dark:text-red-400" />
@@ -788,7 +794,7 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
                     <Globe className="h-4 w-4" />
                   </Button>
                 )}
-                {showYoutubeLiveButton && (
+                {showYoutubeLiveButton && showYoutubeLiveButtonInTopBar && (
                   <Button
                     variant="default"
                     size="icon"
@@ -800,9 +806,11 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
                     <Youtube className="h-4 w-4" />
                   </Button>
                 )}
-                <Button variant="outline" size="sm" className="h-8 px-2.5 rounded-md md:hidden" onClick={() => setGoLiveOpen(true)}>
-                  Stream options
-                </Button>
+                {showStreamOptionsButton ? (
+                  <Button variant="outline" size="sm" className="h-8 px-2.5 rounded-md md:hidden" onClick={() => setGoLiveOpen(true)}>
+                    Stream options
+                  </Button>
+                ) : null}
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button variant="ghost" size="icon" className="h-8 w-8 touch-manipulation" aria-label="More actions">
@@ -822,9 +830,11 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
                         Go YouTube Live
                       </DropdownMenuItem>
                     )}
-                    <DropdownMenuItem onClick={() => setGoLiveOpen(true)}>
-                      Stream options
-                    </DropdownMenuItem>
+                    {showStreamOptionsButton ? (
+                      <DropdownMenuItem onClick={() => setGoLiveOpen(true)}>
+                        Stream options
+                      </DropdownMenuItem>
+                    ) : null}
                     {showEndYoutubeLiveButton && (
                       <DropdownMenuItem variant="destructive" onClick={handleEndStream} disabled={liveActionDisabled}>
                         <Square className="h-4 w-4 mr-2" />
@@ -856,7 +866,7 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
                     Go Unity Live
                   </Button>
                 )}
-                {showYoutubeLiveButton && (
+                {showYoutubeLiveButton && showYoutubeLiveButtonInTopBar && (
                   <Button
                     size="sm"
                     className="h-8 min-w-[9.5rem] bg-red-600 px-3 hover:bg-red-700"
@@ -867,9 +877,11 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
                     Go YouTube Live
                   </Button>
                 )}
-                <Button variant="outline" size="sm" className="h-8 px-3" onClick={() => setGoLiveOpen(true)}>
-                  Stream options
-                </Button>
+                {showStreamOptionsButton ? (
+                  <Button variant="outline" size="sm" className="h-8 px-3" onClick={() => setGoLiveOpen(true)}>
+                    Stream options
+                  </Button>
+                ) : null}
                 {showEndYoutubeLiveButton && (
                   <Button variant="destructive" size="sm" className="h-8 px-3" onClick={handleEndStream} disabled={liveActionDisabled}>
                     <Square className="h-4 w-4 mr-1.5" />

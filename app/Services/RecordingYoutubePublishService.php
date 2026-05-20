@@ -22,7 +22,6 @@ final class RecordingYoutubePublishService
         User $user,
         string $dropboxPath,
         string $dropboxName,
-        string $dropboxToken,
         ?string $title = null,
         ?string $description = null,
         string $privacyStatus = 'unlisted',
@@ -62,7 +61,25 @@ final class RecordingYoutubePublishService
             }
 
             if ($existing->status === RecordingYoutubeUpload::STATUS_PENDING) {
-                PublishDropboxRecordingToYouTube::dispatch($existing->id, $dropboxToken);
+                PublishDropboxRecordingToYouTube::dispatch($existing->id);
+
+                return [
+                    'success' => true,
+                    'upload' => $this->serializeUpload($existing->fresh()),
+                ];
+            }
+
+            if ($existing->status === RecordingYoutubeUpload::STATUS_FAILED) {
+                $existing->update([
+                    'status' => RecordingYoutubeUpload::STATUS_PENDING,
+                    'error_message' => null,
+                    'progress_stage' => RecordingYoutubeUpload::STAGE_QUEUED,
+                    'progress_percent' => 0,
+                    'youtube_video_id' => null,
+                    'youtube_watch_url' => null,
+                    'published_at' => null,
+                ]);
+                PublishDropboxRecordingToYouTube::dispatch($existing->id);
 
                 return [
                     'success' => true,
@@ -88,10 +105,12 @@ final class RecordingYoutubePublishService
                     : 'unlisted',
                 'error_message' => null,
                 'attempts' => 0,
+                'progress_stage' => RecordingYoutubeUpload::STAGE_QUEUED,
+                'progress_percent' => 0,
             ],
         );
 
-        PublishDropboxRecordingToYouTube::dispatch($upload->id, $dropboxToken);
+        PublishDropboxRecordingToYouTube::dispatch($upload->id);
 
         return [
             'success' => true,
@@ -130,6 +149,8 @@ final class RecordingYoutubePublishService
             'youtube_video_id' => $upload->youtube_video_id,
             'youtube_watch_url' => $upload->youtube_watch_url,
             'error_message' => $upload->error_message,
+            'progress_stage' => $upload->progress_stage,
+            'progress_percent' => (int) $upload->progress_percent,
             'published_at' => $upload->published_at?->toIso8601String(),
         ];
     }

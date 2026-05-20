@@ -124,11 +124,31 @@ class SupporterLivestreamController extends Controller
     }
 
     /**
-     * Hub for going live: YouTube/OBS, Dropbox recordings, and links into meetings.
+     * Public Unity Live streams that are live right now.
      */
     public function live(Request $request): Response
     {
-        $user = $request->user();
+        return Inertia::render('frontend/livestreams/Live', [
+            'meetingsUrl' => route('livestreams.supporter.index'),
+            'createMeetingUrl' => route('livestreams.supporter.create'),
+            'unityMeetHomeUrl' => route('livestreams.supporter.index'),
+            'publicLivestreams' => $this->buildPublicUnityLivestreamList(),
+        ]);
+    }
+
+    /**
+     * YouTube, Dropbox, and meeting shortcuts (moved from Live page).
+     */
+    public function settings(Request $request): Response
+    {
+        return Inertia::render('frontend/livestreams/Settings', $this->unityMeetSetupProps($request->user()));
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function unityMeetSetupProps(User $user): array
+    {
         $user->loadMissing('organization');
         $organization = $user->organization ?? Organization::where('user_id', $user->id)->first();
 
@@ -144,17 +164,15 @@ class SupporterLivestreamController extends Controller
             $youtubeManageUrl = route('integrations.youtube.connect');
         }
 
-        return Inertia::render('frontend/livestreams/Live', [
+        return [
             'youtubeConnected' => $youtubeConnected,
             'youtubeChannelUrl' => $youtubeChannelUrl ? (string) $youtubeChannelUrl : null,
             'dropboxConnected' => $dropboxConnected,
             'youtubeManageUrl' => $youtubeManageUrl,
-            'dropboxUrl' => route('integrations.dropbox'),
+            'dropboxUrl' => route('livestreams.supporter.recordings'),
             'meetingsUrl' => route('livestreams.supporter.index'),
             'createMeetingUrl' => route('livestreams.supporter.create'),
-            'unityMeetHomeUrl' => route('livestreams.supporter.index'),
-            'publicLivestreams' => $this->buildPublicUnityLivestreamList(),
-        ]);
+        ];
     }
 
     /**
@@ -1232,27 +1250,7 @@ class SupporterLivestreamController extends Controller
         $user->loadMissing('organization');
 
         $ctx = $this->unityMeetRecordingDropboxContext($user);
-
-        $dropboxFiles = [];
-        if (($ctx['linked'] ?? false) && ($ctx['token'] ?? '') !== '') {
-            try {
-                $api = new DropboxOrgApi((string) $ctx['token']);
-                $folderPath = (string) $ctx['folderPath'];
-                $api->createFolder($folderPath);
-                $this->relocateRecentDropboxRecordingsToFolder($api, $folderPath);
-                $entries = $api->listFolder($folderPath);
-                $dropboxFiles = $this->mapUnityFilteredDropboxFiles(
-                    $entries,
-                    (bool) ($ctx['restrictToUserRooms'] ?? false),
-                    $ctx['roomNames'] ?? [],
-                    $user,
-                );
-            } catch (\Throwable $e) {
-                Log::warning('Unity Meet recordings Dropbox list failed', ['error' => $e->getMessage()]);
-            }
-        }
-
-        $dropboxFolderName = trim(str_replace('/', '', (string) ($ctx['folderPath'] ?? ''))) ?: 'BIU Meeting Recordings';
+        $listParams = $this->parseRecordingsListParams($request);
 
         $meetingTitleHints = UserLivestream::where('user_id', $user->id)
             ->select(['room_name', 'title'])
@@ -1264,7 +1262,26 @@ class SupporterLivestreamController extends Controller
             ->values()
             ->all();
 
-        $paths = array_map(static fn (array $f) => (string) ($f['path_display'] ?? ''), $dropboxFiles);
+        $allFiles = [];
+        if (($ctx['linked'] ?? false) && ($ctx['token'] ?? '') !== '') {
+            try {
+                $allFiles = $this->fetchUnityMeetRecordingsListFiles(
+                    $ctx,
+                    $user,
+                    $listParams['q'],
+                    $meetingTitleHints,
+                );
+            } catch (\Throwable $e) {
+                Log::warning('Unity Meet recordings Dropbox list failed', ['error' => $e->getMessage()]);
+            }
+        }
+
+        $allFiles = $this->filterRecordingsByType($allFiles, $listParams['filter']);
+        $paginated = $this->paginateRecordingFiles($allFiles, $listParams['page'], $listParams['perPage']);
+
+        $dropboxFolderName = trim(str_replace('/', '', (string) ($ctx['folderPath'] ?? ''))) ?: 'BIU Meeting Recordings';
+
+        $paths = array_map(static fn (array $f) => (string) ($f['path_display'] ?? ''), $allFiles);
         $publishService = app(RecordingYoutubePublishService::class);
 
         return Inertia::render('frontend/livestreams/Dropbox', [
@@ -1272,7 +1289,17 @@ class SupporterLivestreamController extends Controller
             'dropboxRedirectUri' => config('services.dropbox.redirect_uri'),
             'dropboxFolderName' => $dropboxFolderName,
             'dropboxFolderPath' => (string) ($ctx['folderPath'] ?? ''),
-            'dropboxFiles' => $dropboxFiles,
+            'dropboxFiles' => $paginated['items'],
+            'recordingsList' => [
+                'q' => $listParams['q'],
+                'filter' => $listParams['filter'],
+                'page' => $paginated['page'],
+                'perPage' => $paginated['perPage'],
+                'total' => $paginated['total'],
+                'lastPage' => $paginated['lastPage'],
+                'from' => $paginated['from'],
+                'to' => $paginated['to'],
+            ],
             'backUrl' => route('livestreams.supporter.index'),
             'unityMeetRecordings' => true,
             'recordingsDisconnectAvailable' => ($ctx['source'] ?? null) === 'user',
@@ -1312,7 +1339,7 @@ class SupporterLivestreamController extends Controller
                 $user,
             );
 
-            return response()->json(['files' => $filtered]);
+            return response()->json(['files' => DropboxOrgApi::sortByModifiedDesc($filtered)]);
         } catch (\Throwable $e) {
             Log::warning('Unity Meet recordings Dropbox search failed', ['error' => $e->getMessage()]);
 
@@ -1386,7 +1413,8 @@ class SupporterLivestreamController extends Controller
             return redirect()->route('livestreams.supporter.recordings')->with('error', 'Could not delete file.');
         }
 
-        return redirect()->route('livestreams.supporter.recordings')->with('success', 'File deleted.');
+        return redirect()->route('livestreams.supporter.recordings', $this->recordingsListRedirectParams($request))
+            ->with('success', 'File deleted.');
     }
 
     public function recordingRename(Request $request): RedirectResponse
@@ -1429,7 +1457,8 @@ class SupporterLivestreamController extends Controller
             return redirect()->route('livestreams.supporter.recordings')->with('error', 'Could not rename file.');
         }
 
-        return redirect()->route('livestreams.supporter.recordings')->with('success', 'File renamed.');
+        return redirect()->route('livestreams.supporter.recordings', $this->recordingsListRedirectParams($request))
+            ->with('success', 'File renamed.');
     }
 
     public function recordingPublishToYoutube(
@@ -1470,7 +1499,6 @@ class SupporterLivestreamController extends Controller
             $user,
             $path,
             basename($path),
-            (string) $ctx['token'],
             $validated['title'] ?? null,
             $validated['description'] ?? null,
             (string) ($validated['privacy_status'] ?? 'unlisted'),
@@ -1483,10 +1511,202 @@ class SupporterLivestreamController extends Controller
             );
         }
 
-        return redirect()->route('livestreams.supporter.recordings')->with(
-            'success',
-            'Upload to YouTube started. This may take several minutes for long recordings.',
-        );
+        $redirectParams = $this->recordingsListRedirectParams($request);
+
+        return redirect()
+            ->route('livestreams.supporter.recordings', $redirectParams)
+            ->with('success', 'Upload to YouTube started. Keep this page open to watch progress.')
+            ->with('youtube_upload_path', $path);
+    }
+
+    /**
+     * @return array{q?: string, filter?: string, page?: int}
+     */
+    private function recordingsListRedirectParams(Request $request): array
+    {
+        $params = $this->parseRecordingsListParams($request);
+        $out = [];
+        if ($params['q'] !== '') {
+            $out['q'] = $params['q'];
+        }
+        if ($params['filter'] !== 'all') {
+            $out['filter'] = $params['filter'];
+        }
+        if ($params['page'] > 1) {
+            $out['page'] = $params['page'];
+        }
+
+        return $out;
+    }
+
+    /**
+     * @return array{q: string, filter: string, page: int, perPage: int}
+     */
+    private function parseRecordingsListParams(Request $request): array
+    {
+        $q = $request->input('q', '');
+        $q = is_string($q) ? trim($q) : '';
+
+        $filter = $request->input('filter', 'all');
+        $filter = is_string($filter) ? strtolower(trim($filter)) : 'all';
+        if (! in_array($filter, ['all', 'video', 'other'], true)) {
+            $filter = 'all';
+        }
+
+        $page = max(1, (int) $request->input('page', 1));
+        $perPage = max(1, min(50, (int) $request->input('per_page', 10)));
+
+        return [
+            'q' => $q,
+            'filter' => $filter,
+            'page' => $page,
+            'perPage' => $perPage,
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $ctx
+     * @param  array<int, array{roomName: string, title: string|null}>  $meetingTitleHints
+     * @return array<int, array{name: string, path_display: string, size: int, client_modified: ?string}>
+     */
+    private function fetchUnityMeetRecordingsListFiles(array $ctx, User $user, string $q, array $meetingTitleHints): array
+    {
+        $api = new DropboxOrgApi((string) $ctx['token']);
+        $folderPath = (string) $ctx['folderPath'];
+        $restrict = (bool) ($ctx['restrictToUserRooms'] ?? false);
+        /** @var array<int, string> $roomNames */
+        $roomNames = $ctx['roomNames'] ?? [];
+
+        $api->createFolder($folderPath);
+        $this->relocateRecentDropboxRecordingsToFolder($api, $folderPath);
+
+        if ($q !== '') {
+            $files = $this->mapUnityFilteredSearchFiles(
+                $api->search($folderPath, $q),
+                $restrict,
+                $roomNames,
+                $user,
+            );
+
+            if ($files === []) {
+                $entries = $api->listFolder($folderPath);
+                $listed = $this->mapUnityFilteredDropboxFiles($entries, $restrict, $roomNames, $user);
+
+                return $this->filterRecordingsByTextQuery($listed, $q, $meetingTitleHints);
+            }
+
+            return $files;
+        }
+
+        $entries = $api->listFolder($folderPath);
+
+        return $this->mapUnityFilteredDropboxFiles($entries, $restrict, $roomNames, $user);
+    }
+
+    /**
+     * @param  array<int, array{name: string, path_display: string, size: int, client_modified: ?string}>  $files
+     * @param  array<int, array{roomName: string, title: string|null}>  $meetingTitleHints
+     * @return array<int, array{name: string, path_display: string, size: int, client_modified: ?string}>
+     */
+    private function filterRecordingsByTextQuery(array $files, string $q, array $meetingTitleHints): array
+    {
+        $needle = strtolower(trim($q));
+        if ($needle === '') {
+            return $files;
+        }
+
+        $filtered = array_values(array_filter($files, function (array $file) use ($needle, $meetingTitleHints): bool {
+            $name = strtolower((string) ($file['name'] ?? ''));
+            $path = strtolower((string) ($file['path_display'] ?? ''));
+
+            if (str_contains($name, $needle) || str_contains($path, $needle)) {
+                return true;
+            }
+
+            foreach ($meetingTitleHints as $hint) {
+                $room = strtolower(trim((string) ($hint['roomName'] ?? '')));
+                $title = strtolower(trim((string) ($hint['title'] ?? '')));
+
+                if ($room !== '' && str_contains($name, $room)) {
+                    return true;
+                }
+
+                if ($title !== '' && str_contains($title, $needle)) {
+                    return true;
+                }
+            }
+
+            $modified = $file['client_modified'] ?? null;
+            if (is_string($modified) && $modified !== '') {
+                try {
+                    $formatted = strtolower(Carbon::parse($modified)->format('M j, Y g:i A'));
+                    if (str_contains($formatted, $needle)) {
+                        return true;
+                    }
+                } catch (\Throwable) {
+                    // ignore unparseable dates
+                }
+            }
+
+            return false;
+        }));
+
+        return DropboxOrgApi::sortByModifiedDesc($filtered);
+    }
+
+    /**
+     * @param  array<int, array{name: string, path_display: string, size: int, client_modified: ?string}>  $files
+     * @return array<int, array{name: string, path_display: string, size: int, client_modified: ?string}>
+     */
+    private function filterRecordingsByType(array $files, string $filter): array
+    {
+        if ($filter === 'all') {
+            return $files;
+        }
+
+        return array_values(array_filter($files, function (array $file) use ($filter): bool {
+            $isVideo = $this->isRecordingVideoFile((string) ($file['name'] ?? ''));
+
+            return $filter === 'video' ? $isVideo : ! $isVideo;
+        }));
+    }
+
+    private function isRecordingVideoFile(string $name): bool
+    {
+        $ext = strtolower(pathinfo($name, PATHINFO_EXTENSION));
+
+        return in_array($ext, ['webm', 'mp4', 'mkv', 'mov', 'avi', 'm4v'], true);
+    }
+
+    /**
+     * @param  array<int, array{name: string, path_display: string, size: int, client_modified: ?string}>  $files
+     * @return array{
+     *   items: array<int, array{name: string, path_display: string, size: int, client_modified: ?string}>,
+     *   total: int,
+     *   page: int,
+     *   perPage: int,
+     *   lastPage: int,
+     *   from: int,
+     *   to: int
+     * }
+     */
+    private function paginateRecordingFiles(array $files, int $page, int $perPage): array
+    {
+        $total = count($files);
+        $lastPage = max(1, (int) ceil($total / $perPage) ?: 1);
+        $page = min(max(1, $page), $lastPage);
+        $offset = ($page - 1) * $perPage;
+        $items = array_slice($files, $offset, $perPage);
+
+        return [
+            'items' => $items,
+            'total' => $total,
+            'page' => $page,
+            'perPage' => $perPage,
+            'lastPage' => $lastPage,
+            'from' => $total === 0 ? 0 : $offset + 1,
+            'to' => min($offset + $perPage, $total),
+        ];
     }
 
     /**
@@ -1637,7 +1857,7 @@ class SupporterLivestreamController extends Controller
             }
         }
 
-        return $out;
+        return DropboxOrgApi::sortByModifiedDesc($out);
     }
 
     /**
@@ -1657,7 +1877,9 @@ class SupporterLivestreamController extends Controller
             }
         }
 
-        return $out !== [] ? $out : $files;
+        $result = $out !== [] ? $out : $files;
+
+        return DropboxOrgApi::sortByModifiedDesc($result);
     }
 
     private function recordingFolderPathForUser(User $user): string

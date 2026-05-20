@@ -1,12 +1,10 @@
 "use client"
 
 import { Head, Link } from "@inertiajs/react"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import UnityMeetLayout from "@/layouts/UnityMeetLayout"
 import { PageHead } from "@/components/frontend/PageHead"
-import { ArrowRight, Cloud, Play, Radio, Video, Youtube } from "lucide-react"
+import { ArrowRight, Play, Radio } from "lucide-react"
 
 const BRAND = {
   fromMuted: "rgba(147,51,234,0.15)",
@@ -25,11 +23,6 @@ interface PublicLivestreamItem {
 }
 
 interface Props {
-  youtubeConnected: boolean
-  youtubeChannelUrl: string | null
-  dropboxConnected: boolean
-  youtubeManageUrl: string
-  dropboxUrl: string
   meetingsUrl: string
   createMeetingUrl: string
   unityMeetHomeUrl: string
@@ -37,11 +30,6 @@ interface Props {
 }
 
 export default function UnityMeetLive({
-  youtubeConnected,
-  youtubeChannelUrl,
-  dropboxConnected,
-  youtubeManageUrl,
-  dropboxUrl,
   meetingsUrl,
   createMeetingUrl,
   unityMeetHomeUrl,
@@ -51,7 +39,7 @@ export default function UnityMeetLive({
     <UnityMeetLayout>
       <PageHead
         title="Live"
-        description="Watch every public Unity Meet stream that is live right now, plus YouTube, Dropbox, and your meetings."
+        description="Watch every public Unity Meet stream that is live right now."
       />
       <Head title="Live · Unity Meet" />
 
@@ -72,7 +60,7 @@ export default function UnityMeetLive({
                   <h1 className="text-2xl font-semibold tracking-tight text-foreground sm:text-3xl">Live</h1>
                 </div>
                 <p className="max-w-xl text-sm text-muted-foreground">
-                  See all public Unity Meet streams that are live, set up YouTube and Dropbox, and open a meeting to host.
+                  See all public Unity Meet streams that are live right now.
                 </p>
               </div>
               <Button asChild variant="outline" className="shrink-0 gap-2">
@@ -85,7 +73,7 @@ export default function UnityMeetLive({
           </div>
         </div>
 
-        <div className="w-full px-4 py-8 md:px-6 lg:px-8 space-y-10">
+        <div className="w-full px-4 py-8 md:px-6 lg:px-8">
           <section className="space-y-4">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex flex-wrap items-center gap-2">
@@ -165,99 +153,6 @@ export default function UnityMeetLive({
               </div>
             )}
           </section>
-
-          <div>
-            <h2 className="mb-4 text-lg font-semibold text-foreground">Your setup</h2>
-            <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-            <Card className="border-border bg-card md:col-span-2 xl:col-span-1">
-              <CardHeader>
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <Youtube className="h-5 w-5 text-red-600" aria-hidden />
-                    <CardTitle className="text-lg">YouTube</CardTitle>
-                  </div>
-                  <Badge variant={youtubeConnected ? "default" : "secondary"}>
-                    {youtubeConnected ? "Signed in" : "Not connected"}
-                  </Badge>
-                </div>
-                <CardDescription>
-                  Connect your channel for cloud streaming to YouTube. Per-meeting stream keys are set on the meeting page when you go live.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {youtubeChannelUrl ? (
-                  <p className="text-sm text-muted-foreground break-all">
-                    Channel:{" "}
-                    <a
-                      href={youtubeChannelUrl.startsWith("http") ? youtubeChannelUrl : `https://${youtubeChannelUrl}`}
-                      className="font-medium text-primary hover:underline"
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      {youtubeChannelUrl}
-                    </a>
-                  </p>
-                ) : (
-                  <p className="text-sm text-muted-foreground">No channel linked yet.</p>
-                )}
-                <Button asChild className="w-full gap-2 sm:w-auto">
-                  <Link href={youtubeManageUrl}>
-                    {youtubeConnected || youtubeChannelUrl ? "Manage YouTube" : "Connect YouTube"}
-                    <ArrowRight className="h-4 w-4" />
-                  </Link>
-                </Button>
-              </CardContent>
-            </Card>
-
-            <Card className="border-border bg-card">
-              <CardHeader>
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <Cloud className="h-5 w-5 text-sky-600" aria-hidden />
-                    <CardTitle className="text-lg">Cloud recordings</CardTitle>
-                  </div>
-                  <Badge variant={dropboxConnected ? "default" : "secondary"}>
-                    {dropboxConnected ? "Connected" : "Not connected"}
-                  </Badge>
-                </div>
-                <CardDescription>
-                  Link Dropbox so meeting recordings can upload to your folder instead of only downloading locally.
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <Button asChild variant="secondary" className="w-full gap-2 sm:w-auto">
-                  <Link href={dropboxUrl}>
-                    {dropboxConnected ? "Open Dropbox" : "Connect Dropbox"}
-                    <ArrowRight className="h-4 w-4" />
-                  </Link>
-                </Button>
-              </CardContent>
-            </Card>
-
-            <Card className="border-border bg-card md:col-span-2 xl:col-span-1">
-              <CardHeader>
-                <div className="flex items-center gap-2">
-                  <Video className="h-5 w-5 text-violet-600" aria-hidden />
-                  <CardTitle className="text-lg">Meetings</CardTitle>
-                </div>
-                <CardDescription>
-                  Create or open a meeting, then use <strong className="text-foreground">Go Live</strong> on the host page for stream keys and controls.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="flex flex-wrap gap-2">
-                <Button asChild className="gap-2">
-                  <Link href={createMeetingUrl}>
-                    New meeting
-                    <ArrowRight className="h-4 w-4" />
-                  </Link>
-                </Button>
-                <Button asChild variant="outline" className="gap-2">
-                  <Link href={`${meetingsUrl}?view=meetings`}>My meetings</Link>
-                </Button>
-              </CardContent>
-            </Card>
-            </div>
-          </div>
         </div>
       </div>
     </UnityMeetLayout>

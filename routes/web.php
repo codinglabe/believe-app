@@ -426,6 +426,7 @@ Route::get('/unity-live/{slug}', [UnityLiveController::class, 'show'])->name('un
 Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:user|organization|organization_pending|care_alliance'])->group(function () {
     Route::get('/livestreams/supporter', [SupporterLivestreamController::class, 'index'])->name('livestreams.supporter.index');
     Route::get('/livestreams/supporter/live', [SupporterLivestreamController::class, 'live'])->name('livestreams.supporter.live');
+    Route::get('/livestreams/supporter/settings', [SupporterLivestreamController::class, 'settings'])->name('livestreams.supporter.settings');
     Route::get('/livestreams/supporter/recordings/search', [SupporterLivestreamController::class, 'recordingsSearch'])->name('livestreams.supporter.recordings.search');
     Route::get('/livestreams/supporter/recordings/download', [SupporterLivestreamController::class, 'recordingDownload'])->name('livestreams.supporter.recordings.download');
     Route::delete('/livestreams/supporter/recordings/file', [SupporterLivestreamController::class, 'recordingDelete'])->name('livestreams.supporter.recordings.file.delete');

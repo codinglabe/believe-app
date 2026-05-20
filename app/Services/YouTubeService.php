@@ -1454,6 +1454,7 @@ class YouTubeService
         string $title,
         string $description = '',
         string $privacyStatus = 'unlisted',
+        ?callable $onProgress = null,
     ): array {
         $accessToken = $this->getValidAccessTokenForUser($user);
         if ($accessToken === null || $accessToken === '') {
@@ -1489,7 +1490,8 @@ class YouTubeService
                 $localPath,
                 $title,
                 Str::limit($description, 4900, ''),
-                $privacyStatus
+                $privacyStatus,
+                $onProgress,
             );
         } catch (\Throwable $e) {
             Log::error('YouTube video upload exception', [
@@ -1515,6 +1517,7 @@ class YouTubeService
         string $title,
         string $description,
         string $privacyStatus,
+        ?callable $onProgress = null,
     ): array {
         $fileSize = filesize($localPath);
         $mimeType = $this->mimeTypeForVideoPath($localPath);
@@ -1616,6 +1619,11 @@ class YouTubeService
                 }
 
                 $offset += $chunkLen;
+
+                if ($onProgress !== null && $fileSize > 0) {
+                    $uploadPercent = (int) floor(($offset / $fileSize) * 100);
+                    $onProgress(min(99, max(20, 20 + (int) floor($uploadPercent * 0.75))));
+                }
             }
         } finally {
             fclose($handle);

@@ -3,6 +3,8 @@
 namespace App\Jobs;
 
 use App\Models\RecordingYoutubeUpload;
+use App\Models\User;
+use App\Services\DropboxOAuthService;
 use App\Services\DropboxOrgApi;
 use App\Services\YouTubeService;
 use Illuminate\Bus\Queueable;
@@ -22,13 +24,19 @@ class PublishDropboxRecordingToYouTube implements ShouldQueue
 
     public function __construct(
         public int $uploadId,
-        public string $dropboxAccessToken,
     ) {}
 
     public function handle(YouTubeService $youtubeService): void
     {
-        $upload = RecordingYoutubeUpload::query()->with('user')->find($this->uploadId);
+        $upload = RecordingYoutubeUpload::query()->with(['user.organization'])->find($this->uploadId);
         if ($upload === null || $upload->user === null) {
+            return;
+        }
+
+        $dropboxToken = $this->resolveDropboxAccessToken($upload->user);
+        if ($dropboxToken === null || $dropboxToken === '') {
+            $upload->markFailed('Dropbox is not connected or the access token expired. Reconnect Dropbox under Integrations and try again.');
+
             return;
         }
 
@@ -50,12 +58,21 @@ class PublishDropboxRecordingToYouTube implements ShouldQueue
         $localPath = $tempDir.'/'.$upload->id.'_'.$safeName;
 
         try {
-            $api = new DropboxOrgApi($this->dropboxAccessToken);
+            $upload->updateProgress(RecordingYoutubeUpload::STAGE_DOWNLOADING, 8);
+
+            $api = new DropboxOrgApi($dropboxToken);
             if (! $api->downloadToPath($upload->dropbox_path, $localPath)) {
-                $upload->markFailed('Could not download the recording from Dropbox.');
+                $upload->markFailed(
+                    'Could not download the recording from Dropbox. The file may have been moved or deleted, or Dropbox denied access. Try reconnecting Dropbox, then use Retry upload.',
+                );
 
                 return;
             }
+
+            $upload->updateProgress(RecordingYoutubeUpload::STAGE_UPLOADING, 18);
+
+            $fileSize = is_file($localPath) ? filesize($localPath) : 0;
+            $uploadId = $upload->id;
 
             $result = $youtubeService->uploadVideoFileForUser(
                 $upload->user,
@@ -63,7 +80,20 @@ class PublishDropboxRecordingToYouTube implements ShouldQueue
                 (string) $upload->title,
                 (string) ($upload->description ?? ''),
                 (string) $upload->privacy_status,
+                function (int $percent) use ($uploadId): void {
+                    $row = RecordingYoutubeUpload::query()->find($uploadId);
+                    if ($row !== null) {
+                        $row->updateProgress(
+                            RecordingYoutubeUpload::STAGE_UPLOADING,
+                            min(95, max(18, $percent)),
+                        );
+                    }
+                },
             );
+
+            if (($result['success'] ?? false) && ($result['video_id'] ?? null)) {
+                $upload->updateProgress(RecordingYoutubeUpload::STAGE_PROCESSING, 98);
+            }
 
             if (! ($result['success'] ?? false)) {
                 $upload->markFailed((string) ($result['error'] ?? 'YouTube upload failed.'));
@@ -91,5 +121,21 @@ class PublishDropboxRecordingToYouTube implements ShouldQueue
                 @unlink($localPath);
             }
         }
+    }
+
+    private function resolveDropboxAccessToken(User $user): ?string
+    {
+        $tokens = app(DropboxOAuthService::class);
+
+        if (! empty($user->dropbox_refresh_token)) {
+            return $tokens->getAccessTokenForUser($user);
+        }
+
+        $organization = $user->organization;
+        if ($organization !== null && ! empty($organization->dropbox_refresh_token)) {
+            return $tokens->getAccessTokenForOrganization($organization);
+        }
+
+        return null;
     }
 }

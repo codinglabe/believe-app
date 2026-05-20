@@ -322,6 +322,7 @@ class IntegrationsController extends Controller
                 } catch (\Throwable $e) {
                     Log::warning('Dropbox list folder failed', ['error' => $e->getMessage()]);
                 }
+                $dropboxFiles = \App\Services\DropboxOrgApi::sortByModifiedDesc($dropboxFiles);
             }
         }
 
@@ -752,7 +753,8 @@ class IntegrationsController extends Controller
         try {
             $api = new \App\Services\DropboxOrgApi($token);
             $files = $api->search($folderPath, $query);
-            return response()->json(['files' => $files]);
+
+            return response()->json(['files' => \App\Services\DropboxOrgApi::sortByModifiedDesc($files)]);
         } catch (\Throwable $e) {
             Log::warning('Dropbox search failed', ['error' => $e->getMessage()]);
             return response()->json(['error' => 'Search failed', 'files' => []], 500);
