@@ -1277,7 +1277,7 @@ class SupporterLivestreamController extends Controller
             'recordingsBackedByOrganization' => ($ctx['source'] ?? null) === 'organization',
             'meetingTitleHints' => $meetingTitleHints,
             'youtubeConnected' => $publishService->userHasYoutubeConnected($user),
-            'youtubeIntegrationsUrl' => route('profile.integrations'),
+            'youtubeIntegrationsUrl' => route('user.profile.integrations'),
             'youtubeUploads' => $publishService->uploadsForPaths($user->id, $paths),
         ]);
     }
