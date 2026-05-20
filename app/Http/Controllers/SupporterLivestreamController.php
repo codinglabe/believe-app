@@ -1239,11 +1239,13 @@ class SupporterLivestreamController extends Controller
                 $api = new DropboxOrgApi((string) $ctx['token']);
                 $folderPath = (string) $ctx['folderPath'];
                 $api->createFolder($folderPath);
+                $this->relocateRecentDropboxRecordingsToFolder($api, $folderPath);
                 $entries = $api->listFolder($folderPath);
                 $dropboxFiles = $this->mapUnityFilteredDropboxFiles(
                     $entries,
-                    $ctx['restrictToUserRooms'] ?? false,
-                    $ctx['roomNames'] ?? []
+                    (bool) ($ctx['restrictToUserRooms'] ?? false),
+                    $ctx['roomNames'] ?? [],
+                    $user,
                 );
             } catch (\Throwable $e) {
                 Log::warning('Unity Meet recordings Dropbox list failed', ['error' => $e->getMessage()]);
@@ -1305,8 +1307,9 @@ class SupporterLivestreamController extends Controller
             $files = $api->search($folderPath, $query);
             $filtered = $this->mapUnityFilteredSearchFiles(
                 $files,
-                $ctx['restrictToUserRooms'] ?? false,
-                $ctx['roomNames'] ?? []
+                (bool) ($ctx['restrictToUserRooms'] ?? false),
+                $ctx['roomNames'] ?? [],
+                $user,
             );
 
             return response()->json(['files' => $filtered]);
@@ -1339,7 +1342,7 @@ class SupporterLivestreamController extends Controller
         if ($folderPath === '' || ! str_starts_with($path, $folderPath)) {
             return redirect()->route('livestreams.supporter.recordings')->with('error', 'You can only download files from your recording folder.');
         }
-        if (! $this->unityMeetRecordingFileMatchesContext($path, $ctx)) {
+        if (! $this->unityMeetRecordingFileMatchesContext($path, $ctx, $user)) {
             return redirect()->route('livestreams.supporter.recordings')->with('error', 'Recording not available for your account.');
         }
 
@@ -1374,7 +1377,7 @@ class SupporterLivestreamController extends Controller
         if ($folderPath === '' || ! str_starts_with($path, $folderPath)) {
             return redirect()->route('livestreams.supporter.recordings')->with('error', 'You can only delete files from your recording folder.');
         }
-        if (! $this->unityMeetRecordingFileMatchesContext($path, $ctx)) {
+        if (! $this->unityMeetRecordingFileMatchesContext($path, $ctx, $user)) {
             return redirect()->route('livestreams.supporter.recordings')->with('error', 'Recording not available for your account.');
         }
 
@@ -1416,7 +1419,7 @@ class SupporterLivestreamController extends Controller
         if ($folderPath === '' || ! str_starts_with($path, $folderPath)) {
             return redirect()->route('livestreams.supporter.recordings')->with('error', 'You can only rename files in your recording folder.');
         }
-        if (! $this->unityMeetRecordingFileMatchesContext($path, $ctx)) {
+        if (! $this->unityMeetRecordingFileMatchesContext($path, $ctx, $user)) {
             return redirect()->route('livestreams.supporter.recordings')->with('error', 'Recording not available for your account.');
         }
 
@@ -1459,7 +1462,7 @@ class SupporterLivestreamController extends Controller
             return redirect()->route('livestreams.supporter.recordings')->with('error', 'You can only publish files from your recording folder.');
         }
 
-        if (! $this->unityMeetRecordingFileMatchesContext($path, $ctx)) {
+        if (! $this->unityMeetRecordingFileMatchesContext($path, $ctx, $user)) {
             return redirect()->route('livestreams.supporter.recordings')->with('error', 'Recording not available for your account.');
         }
 
@@ -1532,11 +1535,37 @@ class SupporterLivestreamController extends Controller
         ];
     }
 
-    private function recordingFilenameMatchesRooms(string $filename, array $roomNames): bool
+    /**
+     * VDO.Ninja Dropbox filenames often omit the room slug — also match stream ids and meeting titles.
+     */
+    private function recordingMatchesUserMeetings(string $filename, User $user, array $roomNames): bool
     {
+        $haystack = strtolower($filename);
+
         foreach ($roomNames as $room) {
             $r = strtolower(trim((string) $room));
-            if ($r !== '' && str_contains(strtolower($filename), $r)) {
+            if ($r !== '' && str_contains($haystack, $r)) {
+                return true;
+            }
+        }
+
+        $livestreams = UserLivestream::query()
+            ->where('user_id', $user->id)
+            ->get(['id', 'room_name', 'title']);
+
+        foreach ($livestreams as $livestream) {
+            $streamPath = 'ls_'.$livestream->id;
+            if (str_contains($haystack, strtolower($streamPath))) {
+                return true;
+            }
+
+            $room = strtolower(trim((string) $livestream->room_name));
+            if ($room !== '' && str_contains($haystack, $room)) {
+                return true;
+            }
+
+            $title = strtolower(trim((string) ($livestream->title ?? '')));
+            if ($title !== '' && strlen($title) >= 4 && str_contains($haystack, $title)) {
                 return true;
             }
         }
@@ -1544,28 +1573,37 @@ class SupporterLivestreamController extends Controller
         return false;
     }
 
+    private function relocateRecentDropboxRecordingsToFolder(DropboxOrgApi $api, string $folderPath): void
+    {
+        foreach ($api->listRecentRecordingsAtRoot() as $file) {
+            $from = $file['path_display'] ?? '';
+            $name = $file['name'] ?? '';
+            if ($from === '' || $name === '') {
+                continue;
+            }
+            $api->moveFile($from, rtrim($folderPath, '/').'/'.$name);
+        }
+    }
+
     /**
      * @param  array<string, mixed>  $ctx
      */
-    private function unityMeetRecordingFileMatchesContext(string $path, array $ctx): bool
+    private function unityMeetRecordingFileMatchesContext(string $path, array $ctx, User $user): bool
     {
         if (! ($ctx['restrictToUserRooms'] ?? false)) {
             return true;
         }
         /** @var array<int, string> $rooms */
         $rooms = $ctx['roomNames'] ?? [];
-        if ($rooms === []) {
-            return false;
-        }
 
-        return $this->recordingFilenameMatchesRooms(basename($path), $rooms);
+        return $this->recordingMatchesUserMeetings(basename($path), $user, $rooms);
     }
 
     /**
      * @param  array<int, array<string, mixed>>  $entries
      * @return array<int, array{name: string, path_display: string, size: int, client_modified: ?string}>
      */
-    private function mapUnityFilteredDropboxFiles(array $entries, bool $restrictToUserRooms, array $roomNames): array
+    private function mapUnityFilteredDropboxFiles(array $entries, bool $restrictToUserRooms, array $roomNames, User $user): array
     {
         $out = [];
         foreach ($entries as $entry) {
@@ -1578,12 +1616,25 @@ class SupporterLivestreamController extends Controller
                 'size' => (int) ($entry['size'] ?? 0),
                 'client_modified' => $entry['client_modified'] ?? null,
             ];
-            if ($restrictToUserRooms) {
-                if ($roomNames === [] || ! $this->recordingFilenameMatchesRooms((string) $row['name'], $roomNames)) {
-                    continue;
-                }
+            if ($restrictToUserRooms && ! $this->recordingMatchesUserMeetings((string) $row['name'], $user, $roomNames)) {
+                continue;
             }
             $out[] = $row;
+        }
+
+        // Same folder as /integrations/dropbox: if filename filter hid everything, show all videos in the folder.
+        if ($out === [] && $restrictToUserRooms) {
+            foreach ($entries as $entry) {
+                if (($entry['tag'] ?? '') !== 'file') {
+                    continue;
+                }
+                $out[] = [
+                    'name' => $entry['name'] ?? '',
+                    'path_display' => $entry['path_display'] ?? '',
+                    'size' => (int) ($entry['size'] ?? 0),
+                    'client_modified' => $entry['client_modified'] ?? null,
+                ];
+            }
         }
 
         return $out;
@@ -1593,19 +1644,20 @@ class SupporterLivestreamController extends Controller
      * @param  array<int, array{name: string, path_display: string, size: int, client_modified: ?string}>  $files
      * @return array<int, array{name: string, path_display: string, size: int, client_modified: ?string}>
      */
-    private function mapUnityFilteredSearchFiles(array $files, bool $restrictToUserRooms, array $roomNames): array
+    private function mapUnityFilteredSearchFiles(array $files, bool $restrictToUserRooms, array $roomNames, User $user): array
     {
         if (! $restrictToUserRooms) {
             return $files;
         }
+
         $out = [];
         foreach ($files as $file) {
-            if ($roomNames !== [] && $this->recordingFilenameMatchesRooms((string) ($file['name'] ?? ''), $roomNames)) {
+            if ($this->recordingMatchesUserMeetings((string) ($file['name'] ?? ''), $user, $roomNames)) {
                 $out[] = $file;
             }
         }
 
-        return $out;
+        return $out !== [] ? $out : $files;
     }
 
     private function recordingFolderPathForUser(User $user): string
