@@ -18,7 +18,7 @@ export default function UnityMeetSettings(props: Props) {
     <UnityMeetLayout>
       <PageHead
         title="Settings"
-        description="Connect YouTube and Dropbox for Unity Meet streaming and cloud recordings."
+        description="Connect YouTube and Dropbox for Unity Meet channel and cloud recordings."
       />
       <Head title="Settings · Unity Meet" />
 
@@ -39,7 +39,7 @@ export default function UnityMeetSettings(props: Props) {
                   Settings
                 </h1>
                 <p className="text-sm text-muted-foreground">
-                  Connect YouTube for live streaming, Dropbox for cloud recordings, and manage your meetings.
+                  Connect YouTube and Dropbox for your channel, cloud recordings, and meetings.
                 </p>
               </div>
             </div>

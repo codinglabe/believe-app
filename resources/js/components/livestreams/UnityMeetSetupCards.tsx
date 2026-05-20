@@ -131,7 +131,7 @@ export default function UnityMeetSetupCards({
   return (
     <div className="space-y-6">
       <p className="text-sm text-muted-foreground">
-        Connect the services you use for streaming and recordings. You can change these anytime — stream keys and go-live controls stay on each meeting page.
+        Connect YouTube and Dropbox for your channel and cloud recordings. You can change these anytime.
       </p>
 
       <div className="grid gap-6 lg:grid-cols-3">
@@ -141,7 +141,7 @@ export default function UnityMeetSetupCards({
           iconBgClassName="bg-gradient-to-br from-red-600 to-red-500"
           accentBorderClassName="border-red-500/15 hover:border-red-500/30 dark:border-red-500/20"
           title="YouTube"
-          description="Stream meetings to your channel and upload recordings from the Recordings page."
+          description="Link your channel for Unity Videos and upload meeting recordings from the Recordings page."
           connected={youtubeConnected || Boolean(youtubeChannelUrl)}
           connectedLabel={youtubeNeedsReconnect ? "Reconnect for upload" : "Signed in"}
           disconnectedLabel="Not connected"

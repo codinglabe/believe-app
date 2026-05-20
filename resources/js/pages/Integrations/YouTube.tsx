@@ -202,7 +202,7 @@ export default function IntegrationsYouTube({ youtube_channel_url, youtube_redir
                 Connect your channel
               </CardTitle>
               <CardDescription>
-                Sign in with Google and allow all requested permissions — including uploading videos — so your channel works on Unity Videos, live streams, and Unity Meet recordings.
+                Sign in with Google and allow all requested permissions — including uploading videos — so your channel works on Unity Videos and Unity Meet recordings.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">

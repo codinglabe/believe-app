@@ -26,15 +26,36 @@ class YouTubeService
     private string $baseUrl = 'https://www.googleapis.com/youtube/v3';
 
     /**
+     * Scopes requested on Connect YouTube (live streaming scope omitted while Go YouTube Live is hidden).
+     *
      * @return list<string>
      */
-    public static function requiredOAuthScopes(): array
+    public static function oauthConnectScopes(): array
+    {
+        return [
+            self::OAUTH_SCOPE_READONLY,
+            self::OAUTH_SCOPE_UPLOAD,
+        ];
+    }
+
+    /**
+     * Full scopes when YouTube live streaming is re-enabled (includes force-ssl).
+     *
+     * @return list<string>
+     */
+    public static function oauthConnectScopesIncludingLiveStream(): array
     {
         return [
             self::OAUTH_SCOPE_READONLY,
             self::OAUTH_SCOPE_FORCE_SSL,
             self::OAUTH_SCOPE_UPLOAD,
         ];
+    }
+
+    /** @return list<string> */
+    public static function requiredOAuthScopes(): array
+    {
+        return self::oauthConnectScopes();
     }
 
     public function __construct()

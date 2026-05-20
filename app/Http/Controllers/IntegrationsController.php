@@ -80,8 +80,7 @@ class IntegrationsController extends Controller
     /**
      * Redirect to Google OAuth so user can connect their YouTube channel (organization or supporter).
      *
-     * One connect requests readonly + force-ssl: Unity Video Hub and meeting live streams.
-     * ?mode=live uses the same scopes (for users who connected earlier with fewer permissions and need to re-consent).
+     * Connect requests readonly + upload (Unity Videos + recording uploads). Live stream scope (force-ssl) is off while Go YouTube Live is hidden.
      */
     public function redirectToYouTube(Request $request): RedirectResponse
     {
@@ -105,8 +104,8 @@ class IntegrationsController extends Controller
             'youtube_oauth_for_live' => $forLive,
         ]);
 
-        // Single connect: Unity Videos, live streams, and recording uploads (youtube.upload).
-        $scopes = YouTubeService::requiredOAuthScopes();
+        // readonly + upload only (no youtube.force-ssl until live streaming is re-enabled).
+        $scopes = YouTubeService::oauthConnectScopes();
 
         $params = [
             'client_id' => $clientId,
