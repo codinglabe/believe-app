@@ -353,6 +353,44 @@ class DropboxOrgApi
     }
 
     /**
+     * Download a file from Dropbox to a local path (for server-side processing).
+     */
+    public function downloadToPath(string $path, string $localPath): bool
+    {
+        $path = trim($path);
+        if ($path === '' || $path[0] !== '/') {
+            $path = '/'.$path;
+        }
+
+        $dir = dirname($localPath);
+        if (! is_dir($dir) && ! mkdir($dir, 0755, true) && ! is_dir($dir)) {
+            return false;
+        }
+
+        $response = Http::withHeaders([
+            'Authorization' => 'Bearer '.$this->accessToken,
+            'Dropbox-API-Arg' => json_encode(['path' => $path], JSON_THROW_ON_ERROR),
+        ])->withOptions(['verify' => config('services.dropbox.verify', true)])
+            ->sink($localPath)
+            ->post('https://content.dropboxapi.com/2/files/download');
+
+        if (! $response->successful()) {
+            Log::warning('Dropbox files/download failed', [
+                'path' => $path,
+                'status' => $response->status(),
+            ]);
+
+            if (is_file($localPath)) {
+                @unlink($localPath);
+            }
+
+            return false;
+        }
+
+        return is_file($localPath) && filesize($localPath) > 0;
+    }
+
+    /**
      * Get a temporary download link for a file (valid for a few hours).
      */
     public function getTemporaryLink(string $path): ?string

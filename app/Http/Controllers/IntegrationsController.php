@@ -109,6 +109,7 @@ class IntegrationsController extends Controller
         $scopes = [
             'https://www.googleapis.com/auth/youtube.readonly',
             'https://www.googleapis.com/auth/youtube.force-ssl',
+            'https://www.googleapis.com/auth/youtube.upload',
         ];
 
         $params = [

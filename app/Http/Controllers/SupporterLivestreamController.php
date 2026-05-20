@@ -14,6 +14,7 @@ use App\Support\MeetingRecordingPreference;
 use App\Support\StreamingWorkerSourceUrl;
 use App\Services\DropboxOAuthService;
 use App\Services\DropboxOrgApi;
+use App\Services\RecordingYoutubePublishService;
 use App\Services\YouTubeService;
 use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
@@ -1261,6 +1262,9 @@ class SupporterLivestreamController extends Controller
             ->values()
             ->all();
 
+        $paths = array_map(static fn (array $f) => (string) ($f['path_display'] ?? ''), $dropboxFiles);
+        $publishService = app(RecordingYoutubePublishService::class);
+
         return Inertia::render('frontend/livestreams/Dropbox', [
             'dropboxLinked' => (bool) ($ctx['linked'] ?? false),
             'dropboxRedirectUri' => config('services.dropbox.redirect_uri'),
@@ -1272,6 +1276,9 @@ class SupporterLivestreamController extends Controller
             'recordingsDisconnectAvailable' => ($ctx['source'] ?? null) === 'user',
             'recordingsBackedByOrganization' => ($ctx['source'] ?? null) === 'organization',
             'meetingTitleHints' => $meetingTitleHints,
+            'youtubeConnected' => $publishService->userHasYoutubeConnected($user),
+            'youtubeIntegrationsUrl' => route('profile.integrations'),
+            'youtubeUploads' => $publishService->uploadsForPaths($user->id, $paths),
         ]);
     }
 
@@ -1420,6 +1427,63 @@ class SupporterLivestreamController extends Controller
         }
 
         return redirect()->route('livestreams.supporter.recordings')->with('success', 'File renamed.');
+    }
+
+    public function recordingPublishToYoutube(
+        Request $request,
+        RecordingYoutubePublishService $publishService,
+    ): RedirectResponse {
+        /** @var User $user */
+        $user = $request->user();
+        $user->loadMissing('organization');
+
+        $validated = $request->validate([
+            'path' => 'required|string|max:2048',
+            'title' => 'nullable|string|max:100',
+            'description' => 'nullable|string|max:4900',
+            'privacy_status' => 'nullable|string|in:public,unlisted,private',
+        ]);
+
+        $path = trim((string) $validated['path']);
+        if (str_contains($path, '..')) {
+            return redirect()->route('livestreams.supporter.recordings')->with('error', 'Invalid file path.');
+        }
+
+        $ctx = $this->unityMeetRecordingDropboxContext($user);
+        if (! ($ctx['linked'] ?? false) || ($ctx['token'] ?? '') === '') {
+            return redirect()->route('livestreams.supporter.recordings')->with('error', 'Dropbox not connected.');
+        }
+
+        $folderPath = (string) $ctx['folderPath'];
+        if ($folderPath === '' || ! str_starts_with($path, $folderPath)) {
+            return redirect()->route('livestreams.supporter.recordings')->with('error', 'You can only publish files from your recording folder.');
+        }
+
+        if (! $this->unityMeetRecordingFileMatchesContext($path, $ctx)) {
+            return redirect()->route('livestreams.supporter.recordings')->with('error', 'Recording not available for your account.');
+        }
+
+        $result = $publishService->queuePublish(
+            $user,
+            $path,
+            basename($path),
+            (string) $ctx['token'],
+            $validated['title'] ?? null,
+            $validated['description'] ?? null,
+            (string) ($validated['privacy_status'] ?? 'unlisted'),
+        );
+
+        if (! ($result['success'] ?? false)) {
+            return redirect()->route('livestreams.supporter.recordings')->with(
+                'error',
+                (string) ($result['error'] ?? 'Could not start YouTube upload.'),
+            );
+        }
+
+        return redirect()->route('livestreams.supporter.recordings')->with(
+            'success',
+            'Upload to YouTube started. This may take several minutes for long recordings.',
+        );
     }
 
     /**

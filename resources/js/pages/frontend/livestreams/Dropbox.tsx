@@ -44,7 +44,17 @@ import {
   Play,
   Filter,
   ChevronDown,
+  Youtube,
+  ExternalLink,
+  AlertCircle,
 } from "lucide-react"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { toast } from "react-hot-toast"
 import { PageHead } from "@/components/frontend/PageHead"
 import { cn } from "@/lib/utils"
@@ -68,6 +78,17 @@ interface MeetingTitleHint {
   title: string | null
 }
 
+export interface RecordingYoutubeUpload {
+  dropbox_path: string
+  status: "pending" | "uploading" | "published" | "failed" | string
+  title?: string | null
+  privacy_status?: string
+  youtube_video_id?: string | null
+  youtube_watch_url?: string | null
+  error_message?: string | null
+  published_at?: string | null
+}
+
 interface Props {
   dropboxLinked: boolean
   dropboxRedirectUri?: string | null
@@ -81,6 +102,9 @@ interface Props {
   recordingsDisconnectAvailable?: boolean
   recordingsBackedByOrganization?: boolean
   meetingTitleHints?: MeetingTitleHint[]
+  youtubeConnected?: boolean
+  youtubeIntegrationsUrl: string
+  youtubeUploads?: RecordingYoutubeUpload[]
 }
 
 function isVideoFile(name: string): boolean {
@@ -135,6 +159,9 @@ export default function SupporterDropbox({
   recordingsDisconnectAvailable = true,
   recordingsBackedByOrganization = false,
   meetingTitleHints = [],
+  youtubeConnected = false,
+  youtubeIntegrationsUrl,
+  youtubeUploads = [],
 }: Props) {
   const PER_PAGE = 24
   const [tab, setTab] = useState<"cloud" | "local">("cloud")
@@ -148,6 +175,33 @@ export default function SupporterDropbox({
   const [newName, setNewName] = useState("")
   const [renaming, setRenaming] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  const [publishTarget, setPublishTarget] = useState<DropboxFile | null>(null)
+  const [publishTitle, setPublishTitle] = useState("")
+  const [publishDescription, setPublishDescription] = useState("")
+  const [publishPrivacy, setPublishPrivacy] = useState<"unlisted" | "private" | "public">("unlisted")
+  const [publishing, setPublishing] = useState(false)
+
+  const youtubeUploadByPath = useMemo(() => {
+    const map = new Map<string, RecordingYoutubeUpload>()
+    for (const row of youtubeUploads) {
+      map.set(row.dropbox_path, row)
+    }
+    return map
+  }, [youtubeUploads])
+
+  const hasActiveYoutubeUpload = youtubeUploads.some(
+    (u) => u.status === "pending" || u.status === "uploading",
+  )
+
+  useEffect(() => {
+    if (!unityMeetRecordings || !hasActiveYoutubeUpload) {
+      return
+    }
+    const interval = window.setInterval(() => {
+      router.reload({ only: ["youtubeUploads", "dropboxFiles"] })
+    }, 8000)
+    return () => window.clearInterval(interval)
+  }, [unityMeetRecordings, hasActiveYoutubeUpload])
 
   const filesToShow = searchQuery.trim() !== "" ? (searchResults ?? []) : dropboxFiles
   const totalItems = filesToShow.length
@@ -207,6 +261,36 @@ export default function SupporterDropbox({
       if (lower.includes(roomLower)) return title
     }
     return displayNameWithoutExtension(name)
+  }
+
+  const openPublishDialog = (file: DropboxFile) => {
+    setPublishTarget(file)
+    setPublishTitle(getMeetingTitleFromFilename(file.name))
+    setPublishDescription("")
+    setPublishPrivacy("unlisted")
+  }
+
+  const handlePublishToYoutube = () => {
+    if (!publishTarget) return
+    setPublishing(true)
+    router.post(
+      route("livestreams.supporter.recordings.youtube.publish"),
+      {
+        path: publishTarget.path_display,
+        title: publishTitle.trim() || undefined,
+        description: publishDescription.trim() || undefined,
+        privacy_status: publishPrivacy,
+      },
+      {
+        preserveScroll: true,
+        onFinish: () => setPublishing(false),
+        onSuccess: () => {
+          setPublishTarget(null)
+          toast.success("Upload to YouTube started.")
+        },
+        onError: () => toast.error("Could not start YouTube upload."),
+      },
+    )
   }
 
   const handleRename = () => {
@@ -334,6 +418,9 @@ export default function SupporterDropbox({
                                 const size = formatFileSize(file.size)
                                 const downloadUrl = route("livestreams.supporter.recordings.download", { path: file.path_display })
                                 const playUrl = isVideoFile(file.name) ? downloadUrl : null
+                                const yt = youtubeUploadByPath.get(file.path_display)
+                                const canYoutube =
+                                  unityMeetRecordings && isVideoFile(file.name) && youtubeConnected
                                 return (
                                   <TableRow key={file.path_display}>
                                     <TableCell className="pl-6 font-medium text-foreground">{title}</TableCell>
@@ -341,6 +428,29 @@ export default function SupporterDropbox({
                                     <TableCell className="text-muted-foreground">—</TableCell>
                                     <TableCell className="text-muted-foreground whitespace-nowrap">{size}</TableCell>
                                     <TableCell className="pr-6">
+                                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                                        {yt?.status === "published" && yt.youtube_watch_url ? (
+                                          <a
+                                            href={yt.youtube_watch_url}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="inline-flex items-center gap-1 text-xs font-medium text-green-700 dark:text-green-400 hover:underline"
+                                          >
+                                            <Youtube className="h-3.5 w-3.5" />
+                                            On YouTube
+                                            <ExternalLink className="h-3 w-3" />
+                                          </a>
+                                        ) : yt?.status === "uploading" || yt?.status === "pending" ? (
+                                          <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                            Uploading to YouTube…
+                                          </span>
+                                        ) : yt?.status === "failed" ? (
+                                          <span className="inline-flex items-center gap-1 text-xs text-destructive" title={yt.error_message ?? undefined}>
+                                            <AlertCircle className="h-3.5 w-3.5" />
+                                            Upload failed
+                                          </span>
+                                        ) : null}
                                       <div className="flex items-center gap-2">
                                         <Button asChild variant="outline" size="sm" className="h-9 gap-2">
                                           <a href={playUrl ?? downloadUrl} target="_blank" rel="noopener noreferrer">
@@ -354,6 +464,26 @@ export default function SupporterDropbox({
                                             Download
                                           </a>
                                         </Button>
+                                        {canYoutube && yt?.status !== "published" && yt?.status !== "uploading" && yt?.status !== "pending" ? (
+                                          <Button
+                                            type="button"
+                                            variant="outline"
+                                            size="sm"
+                                            className="h-9 gap-2 border-red-200 text-red-700 hover:bg-red-50 dark:border-red-500/30 dark:text-red-300"
+                                            onClick={() => openPublishDialog(file)}
+                                          >
+                                            <Youtube className="h-4 w-4" />
+                                            {yt?.status === "failed" ? "Retry YouTube" : "YouTube"}
+                                          </Button>
+                                        ) : null}
+                                        {!youtubeConnected && unityMeetRecordings && isVideoFile(file.name) ? (
+                                          <Button asChild variant="outline" size="sm" className="h-9 gap-2">
+                                            <a href={youtubeIntegrationsUrl}>
+                                              <Youtube className="h-4 w-4" />
+                                              Connect YouTube
+                                            </a>
+                                          </Button>
+                                        ) : null}
                                         <DropdownMenu>
                                           <DropdownMenuTrigger asChild>
                                             <Button variant="outline" size="icon" className="h-9 w-9" aria-label="More">
@@ -361,6 +491,12 @@ export default function SupporterDropbox({
                                             </Button>
                                           </DropdownMenuTrigger>
                                           <DropdownMenuContent align="end" className="w-44">
+                                            {canYoutube && yt?.status !== "published" ? (
+                                              <DropdownMenuItem onClick={() => openPublishDialog(file)}>
+                                                <Youtube className="h-4 w-4" />
+                                                Upload to YouTube
+                                              </DropdownMenuItem>
+                                            ) : null}
                                             <DropdownMenuItem onClick={() => window.open(downloadUrl, "_blank")}>Open</DropdownMenuItem>
                                             <DropdownMenuItem
                                               onClick={() => {
@@ -381,6 +517,7 @@ export default function SupporterDropbox({
                                             </DropdownMenuItem>
                                           </DropdownMenuContent>
                                         </DropdownMenu>
+                                      </div>
                                       </div>
                                     </TableCell>
                                   </TableRow>
@@ -464,6 +601,75 @@ export default function SupporterDropbox({
                               <Button variant="destructive" onClick={handleDelete} disabled={deleting} className="gap-2">
                                 <Trash2 className="h-4 w-4 shrink-0" />
                                 {deleting ? "Deleting…" : "Delete"}
+                              </Button>
+                            </DialogFooter>
+                          </DialogContent>
+                        </Dialog>
+
+                        <Dialog open={!!publishTarget} onOpenChange={(open) => !open && setPublishTarget(null)}>
+                          <DialogContent>
+                            <DialogHeader>
+                              <DialogTitle>Upload to YouTube</DialogTitle>
+                              <DialogDescription>
+                                The recording will be downloaded from Dropbox and published to your connected YouTube
+                                channel in the background. Large files may take several minutes.
+                              </DialogDescription>
+                            </DialogHeader>
+                            <div className="grid gap-4 py-2">
+                              <div className="grid gap-2">
+                                <Label htmlFor="yt-title">Title</Label>
+                                <Input
+                                  id="yt-title"
+                                  value={publishTitle}
+                                  onChange={(e) => setPublishTitle(e.target.value)}
+                                  maxLength={100}
+                                />
+                              </div>
+                              <div className="grid gap-2">
+                                <Label htmlFor="yt-description">Description (optional)</Label>
+                                <Input
+                                  id="yt-description"
+                                  value={publishDescription}
+                                  onChange={(e) => setPublishDescription(e.target.value)}
+                                />
+                              </div>
+                              <div className="grid gap-2">
+                                <Label>Visibility</Label>
+                                <Select
+                                  value={publishPrivacy}
+                                  onValueChange={(v) => setPublishPrivacy(v as "unlisted" | "private" | "public")}
+                                >
+                                  <SelectTrigger>
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="unlisted">Unlisted</SelectItem>
+                                    <SelectItem value="private">Private</SelectItem>
+                                    <SelectItem value="public">Public</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                            </div>
+                            <DialogFooter>
+                              <Button variant="outline" onClick={() => setPublishTarget(null)}>
+                                Cancel
+                              </Button>
+                              <Button
+                                onClick={handlePublishToYoutube}
+                                disabled={publishing || !publishTitle.trim()}
+                                className="gap-2 bg-gradient-to-r from-purple-600 to-blue-600 text-white hover:from-purple-700 hover:to-blue-700"
+                              >
+                                {publishing ? (
+                                  <>
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                    Starting…
+                                  </>
+                                ) : (
+                                  <>
+                                    <Youtube className="h-4 w-4" />
+                                    Upload to YouTube
+                                  </>
+                                )}
                               </Button>
                             </DialogFooter>
                           </DialogContent>

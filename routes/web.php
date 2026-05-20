@@ -430,6 +430,7 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:user|organization|orga
     Route::get('/livestreams/supporter/recordings/download', [SupporterLivestreamController::class, 'recordingDownload'])->name('livestreams.supporter.recordings.download');
     Route::delete('/livestreams/supporter/recordings/file', [SupporterLivestreamController::class, 'recordingDelete'])->name('livestreams.supporter.recordings.file.delete');
     Route::put('/livestreams/supporter/recordings/file', [SupporterLivestreamController::class, 'recordingRename'])->name('livestreams.supporter.recordings.file.rename');
+    Route::post('/livestreams/supporter/recordings/youtube', [SupporterLivestreamController::class, 'recordingPublishToYoutube'])->name('livestreams.supporter.recordings.youtube.publish');
     Route::get('/livestreams/supporter/recordings', [SupporterLivestreamController::class, 'recordings'])->name('livestreams.supporter.recordings');
     Route::get('/livestreams/supporter/create', [SupporterLivestreamController::class, 'create'])->name('livestreams.supporter.create');
     Route::post('/livestreams/supporter', [SupporterLivestreamController::class, 'store'])->name('livestreams.supporter.store');
