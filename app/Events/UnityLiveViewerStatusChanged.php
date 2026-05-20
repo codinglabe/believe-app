@@ -4,15 +4,14 @@ namespace App\Events;
 
 use Illuminate\Broadcasting\Channel;
 use Illuminate\Broadcasting\InteractsWithSockets;
-use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
+use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
 
 /**
- * Queued Reverb broadcast (same pattern as MeetingStarted, ParticipantJoined, etc.).
- * Requires a running queue worker: php artisan queue:work
+ * Immediate Reverb broadcast so Unity Live viewers see end/go-live without queue delay.
  */
-class UnityLiveViewerStatusChanged implements ShouldBroadcast
+class UnityLiveViewerStatusChanged implements ShouldBroadcastNow
 {
     use Dispatchable, InteractsWithSockets, SerializesModels;
 

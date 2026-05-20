@@ -7,6 +7,7 @@ import { Button } from "@/components/frontend/ui/button"
 import { ArrowLeft, Clock, Loader2, Radio, RefreshCw, Video } from "lucide-react"
 import { useUnityLiveViewerStatus } from "@/hooks/useUnityLiveViewerStatus"
 import GoingLiveOverlay from "@/components/unity-live/GoingLiveOverlay"
+import StreamEndedOverlay from "@/components/unity-live/StreamEndedOverlay"
 
 interface LivestreamPreview {
   slug: string
@@ -36,10 +37,8 @@ interface Props {
 }
 
 export default function UnityLiveOffline({ seo, preview, message, hint, otherLivestreams, broadcastChannel }: Props) {
-  const { phase, phaseLabel, statusMessage, statusHint, isGoingLive } = useUnityLiveViewerStatus(
-    broadcastChannel,
-    { initialStatus: preview.status },
-  )
+  const { phase, phaseLabel, statusMessage, statusHint, isGoingLive, streamEnded, endedMessage } =
+    useUnityLiveViewerStatus(broadcastChannel, { initialStatus: preview.status })
 
   const displayMessage = isGoingLive
     ? "Going live now — the player will start automatically."
@@ -82,7 +81,9 @@ export default function UnityLiveOffline({ seo, preview, message, hint, otherLiv
             <div className="flex-1 min-w-0">
               <div className="rounded-2xl border border-neutral-200 dark:border-white/10 bg-white dark:bg-neutral-900/60 shadow-lg overflow-hidden">
                 <div className="aspect-video w-full relative flex flex-col items-center justify-center gap-5 px-6 py-12 bg-gradient-to-br from-purple-500/10 via-blue-500/10 to-purple-600/5 dark:from-purple-950/40 dark:via-blue-950/30 dark:to-neutral-950">
-                  {isGoingLive ? (
+                  {streamEnded ? (
+                    <StreamEndedOverlay message={endedMessage} />
+                  ) : isGoingLive ? (
                     <GoingLiveOverlay />
                   ) : (
                     <>

@@ -61,6 +61,10 @@ final class StreamingWorkerSourceUrl
      */
     public static function shouldAttachVdoMediaMtxPush(): bool
     {
+        if (! (bool) config('streaming.bridge.browser_push_enabled', true)) {
+            return false;
+        }
+
         if (! self::hasBridgeConfigured() || ! self::hasWorkerIngestConfigured()) {
             return false;
         }

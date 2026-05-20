@@ -127,7 +127,12 @@ return [
         'whip_port' => (int) env('STREAMING_BRIDGE_WHIP_PORT', 8889),
         'publish_user' => env('STREAMING_BRIDGE_PUBLISH_USER', 'publisher'),
         'publish_pass' => env('STREAMING_BRIDGE_PUBLISH_PASS', ''),
-        // Allow VDO.Ninja &mediamtx WHIP on APP_ENV=local (default off — avoids "WHIP out failed" locally).
+        // Master switch: browser VDO &mediamtx= WHIP to the bridge (all environments).
+        'browser_push_enabled' => filter_var(
+            env('STREAMING_BRIDGE_BROWSER_PUSH_ENABLED', true),
+            FILTER_VALIDATE_BOOLEAN
+        ),
+        // Extra gate for APP_ENV=local|development only (default off — avoids "WHIP out failed" locally).
         'push_on_local' => filter_var(env('STREAMING_BRIDGE_PUSH_ON_LOCAL', false), FILTER_VALIDATE_BOOLEAN),
     ],
 ];

@@ -91,7 +91,16 @@ export function useUnityLiveViewerStatus(
 
   const handlePayload = useCallback(
     (payload: UnityLiveViewerPayload) => {
-      if (isWatchableLive(payload)) {
+      // End reasons first — host "End" can fire while DB status is still "live".
+      if (isEndedPayload(payload)) {
+        setPhase("ended")
+        setEndedMessage(payload.message || "This stream has ended. Thanks for watching.")
+        setStatusMessage(payload.message || "This stream has ended. Thanks for watching.")
+        setStatusHint(null)
+        return
+      }
+
+      if (isWatchableLive(payload) || payload.reason === "live") {
         setPhase("going_live")
         setStatusMessage(payload.message || "Going live now — the player will start automatically.")
         setStatusHint(null)
@@ -114,15 +123,6 @@ export function useUnityLiveViewerStatus(
         setStatusHint(
           "The stream will appear here automatically when the host goes live on Unity Live.",
         )
-        return
-      }
-
-      if (isEndedPayload(payload)) {
-        setPhase("ended")
-        setEndedMessage(payload.message || "This stream has ended. Thanks for watching.")
-        if (options?.watchPage) {
-          setStatusMessage(payload.message || "This stream has ended. Thanks for watching.")
-        }
       }
     },
     [options?.watchPage],
