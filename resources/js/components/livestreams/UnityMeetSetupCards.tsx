@@ -6,6 +6,8 @@ import type { LucideIcon } from "lucide-react"
 
 export interface UnityMeetSetupCardsProps {
   youtubeConnected: boolean
+  youtubeCanUpload?: boolean
+  youtubeReconnectUrl?: string
   youtubeChannelUrl: string | null
   dropboxConnected: boolean
   youtubeManageUrl: string
@@ -110,6 +112,8 @@ const primaryBtn =
 
 export default function UnityMeetSetupCards({
   youtubeConnected,
+  youtubeCanUpload = true,
+  youtubeReconnectUrl,
   youtubeChannelUrl,
   dropboxConnected,
   youtubeManageUrl,
@@ -117,6 +121,7 @@ export default function UnityMeetSetupCards({
   meetingsUrl,
   createMeetingUrl,
 }: UnityMeetSetupCardsProps) {
+  const youtubeNeedsReconnect = youtubeConnected && !youtubeCanUpload
   const youtubeHref = youtubeChannelUrl
     ? youtubeChannelUrl.startsWith("http")
       ? youtubeChannelUrl
@@ -136,21 +141,35 @@ export default function UnityMeetSetupCards({
           iconBgClassName="bg-gradient-to-br from-red-600 to-red-500"
           accentBorderClassName="border-red-500/15 hover:border-red-500/30 dark:border-red-500/20"
           title="YouTube"
-          description="Stream meetings to your channel. Set per-meeting keys when you go live."
+          description="Stream meetings to your channel and upload recordings from the Recordings page."
           connected={youtubeConnected || Boolean(youtubeChannelUrl)}
-          connectedLabel="Signed in"
+          connectedLabel={youtubeNeedsReconnect ? "Reconnect for upload" : "Signed in"}
           disconnectedLabel="Not connected"
           footer={
-            <Button asChild className={primaryBtn}>
-              <Link href={youtubeManageUrl}>
-                {youtubeConnected || youtubeChannelUrl ? "Manage YouTube" : "Connect YouTube"}
-                <ArrowRight className="h-4 w-4" />
-              </Link>
-            </Button>
+            <div className="flex flex-col gap-2">
+              {youtubeNeedsReconnect && youtubeReconnectUrl ? (
+                <Button asChild className={primaryBtn}>
+                  <a href={youtubeReconnectUrl}>
+                    Reconnect YouTube (allow upload)
+                    <ArrowRight className="h-4 w-4" />
+                  </a>
+                </Button>
+              ) : null}
+              <Button asChild variant={youtubeNeedsReconnect ? "outline" : "default"} className={cn("w-full gap-2", !youtubeNeedsReconnect && primaryBtn)}>
+                <Link href={youtubeManageUrl}>
+                  {youtubeConnected || youtubeChannelUrl ? "Manage YouTube" : "Connect YouTube"}
+                  <ArrowRight className="h-4 w-4" />
+                </Link>
+              </Button>
+            </div>
           }
         >
           <div className="rounded-xl border border-border/80 bg-muted/30 px-4 py-3">
-            {youtubeHref ? (
+            {youtubeNeedsReconnect ? (
+              <p className="text-sm text-amber-700 dark:text-amber-300">
+                Your account is connected for viewing, but upload permission is missing. Disconnect YouTube on the manage page, then use Reconnect above and allow all requested access.
+              </p>
+            ) : youtubeHref ? (
               <div className="space-y-1">
                 <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Channel</p>
                 <a

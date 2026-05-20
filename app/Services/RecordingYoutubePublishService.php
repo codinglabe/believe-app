@@ -10,9 +10,22 @@ use Illuminate\Support\Str;
 
 final class RecordingYoutubePublishService
 {
+    public function __construct(
+        private readonly YouTubeService $youtubeService,
+    ) {}
+
     public function userHasYoutubeConnected(User $user): bool
     {
         return ! empty($user->youtube_refresh_token);
+    }
+
+    public function userCanUploadToYoutube(User $user): bool
+    {
+        if (! $this->userHasYoutubeConnected($user)) {
+            return false;
+        }
+
+        return $this->youtubeService->userCanUploadVideos($user);
     }
 
     /**
@@ -29,7 +42,14 @@ final class RecordingYoutubePublishService
         if (! $this->userHasYoutubeConnected($user)) {
             return [
                 'success' => false,
-                'error' => 'Connect YouTube under Integrations before publishing recordings.',
+                'error' => 'Connect YouTube under Unity Meet Settings before publishing recordings.',
+            ];
+        }
+
+        if (! $this->userCanUploadToYoutube($user)) {
+            return [
+                'success' => false,
+                'error' => 'YouTube upload permission is missing. Open Unity Meet Settings, disconnect YouTube, connect again, and allow all requested access (including upload videos).',
             ];
         }
 

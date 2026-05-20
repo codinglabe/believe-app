@@ -152,20 +152,26 @@ class SupporterLivestreamController extends Controller
         $user->loadMissing('organization');
         $organization = $user->organization ?? Organization::where('user_id', $user->id)->first();
 
+        $youtubeService = app(YouTubeService::class);
+
         if ($organization) {
             $youtubeConnected = ! empty($organization->youtube_refresh_token) || ! empty($organization->youtube_access_token);
             $youtubeChannelUrl = $organization->youtube_channel_url;
             $dropboxConnected = ! empty($organization->dropbox_refresh_token);
             $youtubeManageUrl = route('integrations.youtube');
+            $youtubeCanUpload = $youtubeConnected && $youtubeService->organizationCanUploadVideos($organization);
         } else {
             $youtubeConnected = ! empty($user->youtube_refresh_token) || ! empty($user->youtube_access_token);
             $youtubeChannelUrl = $user->youtube_channel_url;
             $dropboxConnected = ! empty($user->dropbox_refresh_token);
             $youtubeManageUrl = route('integrations.youtube.connect');
+            $youtubeCanUpload = $youtubeConnected && $youtubeService->userCanUploadVideos($user);
         }
 
         return [
             'youtubeConnected' => $youtubeConnected,
+            'youtubeCanUpload' => $youtubeCanUpload,
+            'youtubeReconnectUrl' => route('integrations.youtube.redirect'),
             'youtubeChannelUrl' => $youtubeChannelUrl ? (string) $youtubeChannelUrl : null,
             'dropboxConnected' => $dropboxConnected,
             'youtubeManageUrl' => $youtubeManageUrl,
@@ -1306,7 +1312,9 @@ class SupporterLivestreamController extends Controller
             'recordingsBackedByOrganization' => ($ctx['source'] ?? null) === 'organization',
             'meetingTitleHints' => $meetingTitleHints,
             'youtubeConnected' => $publishService->userHasYoutubeConnected($user),
-            'youtubeIntegrationsUrl' => route('user.profile.integrations'),
+            'youtubeCanUpload' => $publishService->userCanUploadToYoutube($user),
+            'youtubeIntegrationsUrl' => route('livestreams.supporter.settings'),
+            'youtubeReconnectUrl' => route('integrations.youtube.redirect'),
             'youtubeUploads' => $publishService->uploadsForPaths($user->id, $paths),
         ]);
     }

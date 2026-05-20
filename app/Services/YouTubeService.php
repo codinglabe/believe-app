@@ -12,9 +12,30 @@ use Illuminate\Support\Str;
 
 class YouTubeService
 {
+    public const OAUTH_SCOPE_READONLY = 'https://www.googleapis.com/auth/youtube.readonly';
+
+    public const OAUTH_SCOPE_FORCE_SSL = 'https://www.googleapis.com/auth/youtube.force-ssl';
+
+    public const OAUTH_SCOPE_UPLOAD = 'https://www.googleapis.com/auth/youtube.upload';
+
+    /** Full manage scope also allows video uploads. */
+    public const OAUTH_SCOPE_YOUTUBE = 'https://www.googleapis.com/auth/youtube';
+
     private string $apiKey;
 
     private string $baseUrl = 'https://www.googleapis.com/youtube/v3';
+
+    /**
+     * @return list<string>
+     */
+    public static function requiredOAuthScopes(): array
+    {
+        return [
+            self::OAUTH_SCOPE_READONLY,
+            self::OAUTH_SCOPE_FORCE_SSL,
+            self::OAUTH_SCOPE_UPLOAD,
+        ];
+    }
 
     public function __construct()
     {
@@ -114,7 +135,7 @@ class YouTubeService
         }
 
         if (str_contains($combined, 'insufficient') || str_contains($combined, 'forbidden') || $reason === 'insufficientPermissions') {
-            return 'YouTube did not grant enough permissions. Disconnect, then connect again and allow all requested access.';
+            return 'YouTube did not grant upload permission. Open Unity Meet Settings, disconnect YouTube, connect again, and allow all requested access (including upload videos).';
         }
 
         if (str_contains($combined, 'quota')) {
@@ -126,6 +147,71 @@ class YouTubeService
         }
 
         return 'Could not load your YouTube channel. Please try again.';
+    }
+
+    public function scopeStringIncludesUpload(?string $scopeString): bool
+    {
+        if ($scopeString === null || trim($scopeString) === '') {
+            return false;
+        }
+
+        foreach (preg_split('/\s+/', trim($scopeString)) as $scope) {
+            if ($scope === self::OAUTH_SCOPE_UPLOAD || $scope === self::OAUTH_SCOPE_YOUTUBE) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public function accessTokenIncludesUploadScope(string $accessToken): bool
+    {
+        if ($accessToken === '') {
+            return false;
+        }
+
+        $response = $this->http()->get('https://oauth2.googleapis.com/tokeninfo', [
+            'access_token' => $accessToken,
+        ]);
+
+        if (! $response->successful()) {
+            Log::warning('YouTube tokeninfo failed', [
+                'status' => $response->status(),
+                'body' => $response->body(),
+            ]);
+
+            return false;
+        }
+
+        return $this->scopeStringIncludesUpload((string) $response->json('scope'));
+    }
+
+    public function userCanUploadVideos(User $user): bool
+    {
+        if (empty($user->youtube_refresh_token)) {
+            return false;
+        }
+
+        $accessToken = $this->getValidAccessTokenForUser($user);
+        if ($accessToken === null || $accessToken === '') {
+            return false;
+        }
+
+        return $this->accessTokenIncludesUploadScope($accessToken);
+    }
+
+    public function organizationCanUploadVideos(Organization $organization): bool
+    {
+        if (empty($organization->youtube_refresh_token)) {
+            return false;
+        }
+
+        $accessToken = $this->getValidAccessToken($organization);
+        if ($accessToken === null || $accessToken === '') {
+            return false;
+        }
+
+        return $this->accessTokenIncludesUploadScope($accessToken);
     }
 
     /**

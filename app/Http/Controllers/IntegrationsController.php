@@ -105,12 +105,8 @@ class IntegrationsController extends Controller
             'youtube_oauth_for_live' => $forLive,
         ]);
 
-        // Single connect: Unity Videos + meeting live streams.
-        $scopes = [
-            'https://www.googleapis.com/auth/youtube.readonly',
-            'https://www.googleapis.com/auth/youtube.force-ssl',
-            'https://www.googleapis.com/auth/youtube.upload',
-        ];
+        // Single connect: Unity Videos, live streams, and recording uploads (youtube.upload).
+        $scopes = YouTubeService::requiredOAuthScopes();
 
         $params = [
             'client_id' => $clientId,
@@ -120,7 +116,6 @@ class IntegrationsController extends Controller
             'state' => $state,
             'access_type' => 'offline',
             'prompt' => 'consent',
-            'include_granted_scopes' => 'true',
         ];
 
         $url = 'https://accounts.google.com/o/oauth2/v2/auth?' . http_build_query($params);
@@ -185,6 +180,22 @@ class IntegrationsController extends Controller
         }
 
         $youtubeService = app(YouTubeService::class);
+        $scopeField = (string) ($tokenData['scope'] ?? '');
+        $hasUploadScope = $youtubeService->scopeStringIncludesUpload($scopeField)
+            || $youtubeService->accessTokenIncludesUploadScope($accessToken);
+
+        if (! $hasUploadScope) {
+            Log::warning('YouTube OAuth missing upload scope', [
+                'user_id' => $user->id,
+                'scope' => $scopeField,
+            ]);
+
+            return redirect()->route($callbackRoute)->with(
+                'error',
+                'YouTube upload permission was not granted. Disconnect YouTube (if connected), connect again, and allow all requested access — especially upload videos to YouTube.',
+            );
+        }
+
         $channelResult = $youtubeService->fetchOAuthUserChannel($accessToken);
         $channelItem = $channelResult['channel'];
 
@@ -240,8 +251,12 @@ class IntegrationsController extends Controller
         ]);
 
         $value = $validated['youtube_channel_url'] ? trim($validated['youtube_channel_url']) : null;
+        $disconnecting = $value === null || $value === '';
 
         if ($organization) {
+            if ($disconnecting) {
+                $this->revokeYoutubeOAuthToken($organization->youtube_refresh_token ?? $organization->youtube_access_token);
+            }
             $organization->update([
                 'youtube_channel_url' => $value,
                 'youtube_access_token' => null,
@@ -249,6 +264,9 @@ class IntegrationsController extends Controller
                 'youtube_token_expires_at' => null,
             ]);
         } else {
+            if ($disconnecting) {
+                $this->revokeYoutubeOAuthToken($user->youtube_refresh_token ?? $user->youtube_access_token);
+            }
             $user->update([
                 'youtube_channel_url' => $value,
                 'youtube_access_token' => null,
@@ -775,6 +793,32 @@ class IntegrationsController extends Controller
         $folderName = trim(preg_replace('/[\\\\\/:*?"<>|]+/', ' ', $folderName));
         $folderName = trim($folderName, " \t\n\r\0\x0B.") ?: 'BIU Meeting Recordings';
         return '/' . $folderName;
+    }
+
+    /**
+     * Revoke refresh/access token at Google so reconnecting requests fresh scopes (e.g. youtube.upload).
+     */
+    private function revokeYoutubeOAuthToken(?string $encryptedToken): void
+    {
+        if ($encryptedToken === null || $encryptedToken === '') {
+            return;
+        }
+
+        try {
+            $token = Crypt::decryptString($encryptedToken);
+        } catch (\Throwable $e) {
+            Log::warning('YouTube token revoke skipped: decrypt failed', ['message' => $e->getMessage()]);
+
+            return;
+        }
+
+        try {
+            self::httpClientWithSsl()->asForm()->post('https://oauth2.googleapis.com/revoke', [
+                'token' => $token,
+            ]);
+        } catch (\Throwable $e) {
+            Log::warning('YouTube token revoke request failed', ['message' => $e->getMessage()]);
+        }
     }
 
     /**

@@ -121,7 +121,9 @@ interface Props {
   recordingsBackedByOrganization?: boolean
   meetingTitleHints?: MeetingTitleHint[]
   youtubeConnected?: boolean
+  youtubeCanUpload?: boolean
   youtubeIntegrationsUrl: string
+  youtubeReconnectUrl?: string
   youtubeUploads?: RecordingYoutubeUpload[]
 }
 
@@ -294,9 +296,12 @@ export default function SupporterDropbox({
   recordingsBackedByOrganization = false,
   meetingTitleHints = [],
   youtubeConnected = false,
+  youtubeCanUpload = true,
   youtubeIntegrationsUrl,
+  youtubeReconnectUrl,
   youtubeUploads = [],
 }: Props) {
+  const youtubeNeedsReconnect = youtubeConnected && !youtubeCanUpload
   const PER_PAGE = recordingsList?.perPage ?? 10
   const serverList = unityMeetRecordings
   const listMeta: RecordingsListMeta = recordingsList ?? {
@@ -673,6 +678,19 @@ export default function SupporterDropbox({
             </div>
 
             <div className="w-full space-y-4 px-4 py-8 md:px-6 lg:px-8">
+              {youtubeNeedsReconnect ? (
+                <div className="rounded-xl border border-amber-300/80 bg-amber-50/90 px-4 py-3 text-sm text-amber-950 dark:border-amber-500/30 dark:bg-amber-950/40 dark:text-amber-100">
+                  YouTube is connected but <strong>upload permission</strong> is missing. Open{" "}
+                  <a href={youtubeIntegrationsUrl} className="font-medium underline">
+                    Unity Meet Settings
+                  </a>
+                  , disconnect YouTube, then{" "}
+                  <a href={youtubeReconnectUrl ?? youtubeIntegrationsUrl} className="font-medium underline">
+                    reconnect
+                  </a>{" "}
+                  and allow all requested Google access (including upload videos).
+                </div>
+              ) : null}
               <Tabs value={tab} onValueChange={(v) => setTab(v as "cloud" | "local")} className="w-full">
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                   <TabsList className="h-auto w-full shrink-0 justify-start gap-1 rounded-lg bg-muted/40 p-1 sm:w-auto">
@@ -774,7 +792,7 @@ export default function SupporterDropbox({
                                 const playUrl = isVideoFile(file.name) ? downloadUrl : null
                                 const yt = youtubeUploadByPath.get(file.path_display)
                                 const canYoutube =
-                                  unityMeetRecordings && isVideoFile(file.name) && youtubeConnected
+                                  unityMeetRecordings && isVideoFile(file.name) && youtubeConnected && youtubeCanUpload
                                 const isVideo = isVideoFile(file.name)
                                 return (
                                   <TableRow
@@ -868,11 +886,11 @@ export default function SupporterDropbox({
                                             {yt?.status === "failed" ? "Retry YouTube" : "YouTube"}
                                           </Button>
                                         ) : null}
-                                        {!youtubeConnected && unityMeetRecordings && isVideoFile(file.name) ? (
+                                        {unityMeetRecordings && isVideoFile(file.name) && (!youtubeConnected || youtubeNeedsReconnect) ? (
                                           <Button asChild variant="outline" size="sm" className="h-9 gap-2">
-                                            <a href={youtubeIntegrationsUrl}>
+                                            <a href={youtubeNeedsReconnect && youtubeReconnectUrl ? youtubeReconnectUrl : youtubeIntegrationsUrl}>
                                               <Youtube className="h-4 w-4" />
-                                              Connect YouTube
+                                              {youtubeNeedsReconnect ? "Reconnect YouTube" : "Connect YouTube"}
                                             </a>
                                           </Button>
                                         ) : null}
