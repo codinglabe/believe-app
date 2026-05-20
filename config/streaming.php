@@ -124,7 +124,10 @@ return [
      */
     'bridge' => [
         'host' => env('STREAMING_BRIDGE_HOST', ''),
+        'whip_port' => (int) env('STREAMING_BRIDGE_WHIP_PORT', 8889),
         'publish_user' => env('STREAMING_BRIDGE_PUBLISH_USER', 'publisher'),
         'publish_pass' => env('STREAMING_BRIDGE_PUBLISH_PASS', ''),
+        // Allow VDO.Ninja &mediamtx WHIP on APP_ENV=local (default off — avoids "WHIP out failed" locally).
+        'push_on_local' => filter_var(env('STREAMING_BRIDGE_PUSH_ON_LOCAL', false), FILTER_VALIDATE_BOOLEAN),
     ],
 ];

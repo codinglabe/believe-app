@@ -262,7 +262,7 @@ class OrganizationLivestream extends Model
         // mixer can WHEP-subscribe and composite. seat is null elsewhere (e.g. UI
         // rendering of the shared URL) — single-host flow stays untouched.
         if ($seat !== null && $this->isCanvasModeEnabled()) {
-            $host = \App\Support\StreamingWorkerSourceUrl::bridgeMediaMtxHost();
+            $host = \App\Support\StreamingWorkerSourceUrl::vdoMediaMtxHost();
             if ($host !== null) {
                 $seatPath = \App\Support\StreamingWorkerSourceUrl::streamPath($this).'_s'.max(2, min(6, $seat));
                 $base .= '&push=' . rawurlencode($seatPath) . '&mediamtx=' . $host . '&codec=vp8';
@@ -322,15 +322,15 @@ class OrganizationLivestream extends Model
      * Room view URL: view-only (no camera/screen prompt). Same content the host sees.
      * - nopush / viewonly: receive only, no publishing (viewers never prompted to share).
      * - showall: show every participant (host + guests) who is pushing screen or webcam.
-     * - activespeaker=1: emphasize active speaker; showlabels=zoom + fontsize for names on tiles.
-     * So: host's feed, any participant's share, and whatever the host is watching is what goes live.
+     * - showall + rows=1: same group grid as the meeting (all host + guest tiles). No activespeaker on
+     *   public view — activespeaker hides non-speaking participants.
      */
     public function getRoomViewUrl(): string
     {
         $room = rawurlencode($this->getVdoRoomName());
         $pw = rawurlencode((string) $this->getDecryptedPassword());
         $passwordParam = $pw !== '' ? '&password=' . $pw : '';
-        return "https://vdo.ninja/?room={$room}{$passwordParam}&nopush&viewonly&activespeaker=1&showall&showlabels=zoom&rows=1&fontsize=82&cleanoutput&noheader&nopreview&nocontrols&nosettings&clock=false&autostart";
+        return "https://vdo.ninja/?room={$room}{$passwordParam}&nopush&viewonly&showall&showlabels=zoom&rows=1&fontsize=82&cleanoutput&noheader&nopreview&nocontrols&nosettings&clock=false&autostart";
     }
 
     /**
@@ -462,7 +462,7 @@ class OrganizationLivestream extends Model
         // Restore the MediaMTX push so the host's webcam reaches the bridge and the AWS worker can
         // pull and forward to YouTube. (Was dropped under the assumption that getScenePushUrl
         // would replace it; that assumption was wrong — VDO.Ninja scene mode is receive-only.)
-        $mediaMtxHost = \App\Support\StreamingWorkerSourceUrl::bridgeMediaMtxHost();
+        $mediaMtxHost = \App\Support\StreamingWorkerSourceUrl::vdoMediaMtxHost();
         if ($mediaMtxHost !== null) {
             // VP8, not H264: every browser can VP8-encode for WebRTC, so the
             // video track is always published. Forcing H264 made browsers that

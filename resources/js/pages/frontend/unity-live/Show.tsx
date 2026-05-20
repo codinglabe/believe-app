@@ -7,6 +7,9 @@ import { Link } from "@inertiajs/react"
 import { Button } from "@/components/frontend/ui/button"
 import { Slider } from "@/components/frontend/ui/slider"
 import { ArrowLeft, Loader2, Radio, Volume2, VolumeX, Maximize2, Minimize2, Play } from "lucide-react"
+import { useUnityLiveViewerStatus } from "@/hooks/useUnityLiveViewerStatus"
+import StreamEndedOverlay from "@/components/unity-live/StreamEndedOverlay"
+import GoingLiveOverlay from "@/components/unity-live/GoingLiveOverlay"
 
 interface LivestreamItem {
   id: number
@@ -23,9 +26,14 @@ interface Props {
   seo?: { title?: string; description?: string }
   livestream: LivestreamItem
   otherLivestreams: LivestreamItem[]
+  broadcastChannel: string
 }
 
-export default function UnityLiveShow({ seo, livestream, otherLivestreams }: Props) {
+export default function UnityLiveShow({ seo, livestream, otherLivestreams, broadcastChannel }: Props) {
+  const { streamEnded, endedMessage, isGoingLive, playerRevision } = useUnityLiveViewerStatus(
+    broadcastChannel,
+    { initialStatus: "live", watchPage: true },
+  )
   const [isLoading, setIsLoading] = useState(true)
   const [muted, setMuted] = useState(false)
   const [volume, setVolume] = useState(100)
@@ -40,7 +48,7 @@ export default function UnityLiveShow({ seo, livestream, otherLivestreams }: Pro
     const base = livestream.viewUrl
     const sep = base.includes("?") ? "&" : "?"
     return `${base}${sep}_=${Date.now()}`
-  }, [livestream.viewUrl, livestream.slug])
+  }, [livestream.viewUrl, livestream.slug, playerRevision])
 
   const sendToIframe = useCallback((payload: Record<string, unknown>) => {
     const iframe = iframeRef.current
@@ -172,25 +180,37 @@ export default function UnityLiveShow({ seo, livestream, otherLivestreams }: Pro
                 <div className="aspect-video w-full relative">
                   <iframe
                     ref={iframeRef}
-                    key={livestream.slug}
+                    key={`${livestream.slug}-${playerRevision}`}
                     src={iframeSrc}
                     title={livestream.title}
                     allow="accelerometer; autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
-                    className={`absolute inset-0 w-full h-full border-0 transition-opacity duration-300 ${isLoading ? "opacity-0 pointer-events-none" : "opacity-100"}`}
+                    className={`absolute inset-0 w-full h-full border-0 transition-opacity duration-300 ${
+                      isLoading || streamEnded ? "opacity-0 pointer-events-none" : "opacity-100"
+                    }`}
                     onLoad={handleIframeLoad}
                   />
-                  {isLoading && (
+                  {isGoingLive && !streamEnded ? <GoingLiveOverlay /> : null}
+                  {streamEnded ? (
+                    <StreamEndedOverlay
+                      title={livestream.title}
+                      hostName={livestream.organizationName}
+                      message={endedMessage}
+                    />
+                  ) : null}
+                  {isLoading && !streamEnded && !isGoingLive && (
                     <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-4 bg-neutral-100 dark:bg-neutral-950 text-neutral-600 dark:text-white">
                       <Loader2 className="h-10 w-10 text-neutral-400 dark:text-neutral-500 animate-spin" aria-hidden />
                       <span className="text-sm text-neutral-500 dark:text-neutral-400">Loading stream…</span>
                     </div>
                   )}
-                  <div className="absolute top-4 left-4 z-10">
-                    <span className="inline-flex items-center gap-1.5 rounded-md bg-black/60 backdrop-blur px-2.5 py-1 text-xs font-semibold text-white">
-                      <span className="w-1.5 h-1.5 rounded-full bg-red-400 animate-pulse" />
-                      LIVE
-                    </span>
-                  </div>
+                  {!streamEnded && !isGoingLive ? (
+                    <div className="absolute top-4 left-4 z-10">
+                      <span className="inline-flex items-center gap-1.5 rounded-md bg-black/60 backdrop-blur px-2.5 py-1 text-xs font-semibold text-white">
+                        <span className="w-1.5 h-1.5 rounded-full bg-red-400 animate-pulse" />
+                        LIVE
+                      </span>
+                    </div>
+                  ) : null}
                   {isFullscreen && (
                     <div
                       className={`absolute inset-0 z-10 flex flex-col justify-end bg-gradient-to-t from-black/80 via-transparent to-transparent pointer-events-none transition-opacity duration-200 ${

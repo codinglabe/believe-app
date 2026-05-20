@@ -21,14 +21,8 @@ class LivestreamCanvasController extends Controller
         $livestream = OrganizationLivestream::where('room_name', $roomName)->first()
             ?: UserLivestream::where('room_name', $roomName)->firstOrFail();
 
-        $host = StreamingWorkerSourceUrl::bridgeMediaMtxHost(); // e.g. stream.501c3ers.com
-        abort_if($host === null, 404, 'Streaming bridge not configured');
-
-        // VDO.Ninja publishes via &mediamtx on :8889; MediaMTX serves WHEP/WHIP
-        // on the same host:port. The combined output goes to the SAME path the
-        // bridge transcodes and the FFmpeg worker pulls (streamPath) — no
-        // downstream pipeline change.
-        $base = 'https://'.$host.':8889';
+        $base = StreamingWorkerSourceUrl::bridgeWhepWhipBaseUrl();
+        abort_if($base === null, 404, 'Streaming bridge not configured');
         $streamPath = StreamingWorkerSourceUrl::streamPath($livestream); // ls_<id>
 
         $seatPaths = [];

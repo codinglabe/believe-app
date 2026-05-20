@@ -1,4 +1,4 @@
-﻿"use client"
+"use client"
 
 import { useState, useEffect, useMemo } from "react"
 import { Head, router } from "@inertiajs/react"
@@ -46,6 +46,7 @@ interface Livestream {
   canvasUrl?: string | null
   /** When true, the meeting runs in multi-participant canvas mode. */
   canvasMode?: boolean
+  browserMediaMtxPush?: boolean
   status: "draft" | "scheduled" | "live" | "meeting_live" | "starting" | "ended" | "cancelled"
   scheduledAt: string | null
   startedAt: string | null
@@ -232,7 +233,7 @@ export default function ShowLivestream({ livestream, organization, recordingCons
           on and the meeting is active — no manual tab. Pre-warms on
           scheduled/starting so the composite is publishing before the worker
           fires. Stays open as long as this Show page is open. */}
-      {livestream.canvasMode && livestream.canvasUrl && ["scheduled", "starting", "meeting_live", "live"].includes(livestream.status) && (
+      {livestream.canvasMode && livestream.browserMediaMtxPush && livestream.canvasUrl && ["scheduled", "starting", "meeting_live", "live"].includes(livestream.status) && (
         <iframe
           src={livestream.canvasUrl}
           title="canvas-mixer"

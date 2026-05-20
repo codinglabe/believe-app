@@ -621,6 +621,7 @@ class SupporterLivestreamController extends Controller
                 'scenePushUrl' => $scenePushUrl,
                 'canvasUrl' => $livestream->getCanvasUrl(),
                 'canvasMode' => $livestream->isCanvasModeEnabled(),
+                'browserMediaMtxPush' => \App\Support\StreamingWorkerSourceUrl::shouldAttachVdoMediaMtxPush(),
                 'dropboxRecordingAvailable' => $dropboxConnected,
                 'watchUrl' => $watchUrl,
                 'unityLiveUrl' => $unityLiveUrl,
@@ -670,6 +671,9 @@ class SupporterLivestreamController extends Controller
 
         $livestream->update(['status' => 'meeting_live']);
 
+        $livestream->refresh();
+        \App\Support\UnityLiveBroadcast::notifyMeetingStarted($livestream);
+
         return redirect()->back()->with('success', 'Meeting started. Share the invite link, then click Go Live when ready.');
     }
 
@@ -693,6 +697,9 @@ class SupporterLivestreamController extends Controller
             'status' => 'live',
             'started_at' => $livestream->started_at ?? now(),
         ]);
+
+        $livestream->refresh();
+        \App\Support\UnityLiveBroadcast::notifyLive($livestream);
 
         $message = $livestream->is_public
             ? 'Stream is now live. It will appear on the Unity Live page.'
@@ -722,6 +729,9 @@ class SupporterLivestreamController extends Controller
         $livestream->update([
             'status' => 'meeting_live',
         ]);
+
+        $livestream->refresh();
+        \App\Support\UnityLiveBroadcast::notifyUnityLiveEnded($livestream);
 
         return redirect()->back()->with(
             'success',
@@ -822,6 +832,12 @@ class SupporterLivestreamController extends Controller
         $settings = $livestream->settings ?? [];
         $settings['stream_stop_requested'] = now()->toIso8601String();
         $livestream->update(['settings' => $settings]);
+        $livestream->refresh();
+        \App\Support\UnityLiveBroadcast::notify(
+            $livestream,
+            'stream_ended',
+            'The host has ended the stream. Playback may stop in a few seconds.',
+        );
 
         $accessToken = $this->resolveYouTubeAccessToken($request, $youtubeService);
 
@@ -860,6 +876,9 @@ class SupporterLivestreamController extends Controller
                 'ended_at' => $livestream->ended_at ?? now(),
             ]);
 
+            $livestream->refresh();
+            \App\Support\UnityLiveBroadcast::notifyStreamEnded($livestream);
+
             return redirect()->back()->with(
                 'success',
                 $settledLocally
@@ -875,6 +894,9 @@ class SupporterLivestreamController extends Controller
             'status' => 'draft',
             'ended_at' => $livestream->ended_at ?? now(),
         ]);
+
+        $livestream->refresh();
+        \App\Support\UnityLiveBroadcast::notifyStreamEnded($livestream);
 
         return redirect()->back()->with(
             'success',

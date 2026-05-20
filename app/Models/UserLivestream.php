@@ -258,7 +258,7 @@ class UserLivestream extends Model
         // ls_<id>_s<seat> so the canvas mixer can WHEP-subscribe. seat is null
         // elsewhere; single-host flow untouched.
         if ($seat !== null && $this->isCanvasModeEnabled()) {
-            $host = \App\Support\StreamingWorkerSourceUrl::bridgeMediaMtxHost();
+            $host = \App\Support\StreamingWorkerSourceUrl::vdoMediaMtxHost();
             if ($host !== null) {
                 $seatPath = \App\Support\StreamingWorkerSourceUrl::streamPath($this).'_s'.max(2, min(6, $seat));
                 $base .= '&push=' . rawurlencode($seatPath) . '&mediamtx=' . $host . '&codec=vp8';
@@ -290,7 +290,8 @@ class UserLivestream extends Model
         $room = rawurlencode($this->getVdoRoomName());
         $pw = rawurlencode((string) $this->getDecryptedPassword());
         $passwordParam = $pw !== '' ? '&password=' . $pw : '';
-        return "https://vdo.ninja/?room={$room}{$passwordParam}&nopush&viewonly&activespeaker=1&showall&showlabels=zoom&rows=1&fontsize=82&cleanoutput&noheader&nopreview&nocontrols&nosettings&clock=false&autostart";
+        // Room gallery for Unity Live /live viewers: showall grid (no activespeaker — that mode hides other tiles).
+        return "https://vdo.ninja/?room={$room}{$passwordParam}&nopush&viewonly&showall&showlabels=zoom&rows=1&fontsize=82&cleanoutput&noheader&nopreview&nocontrols&nosettings&clock=false&autostart";
     }
 
     public function getPublicViewUrl(): ?string
@@ -379,7 +380,7 @@ class UserLivestream extends Model
         // Restore the MediaMTX push so the host's webcam reaches the bridge and the AWS worker can
         // pull and forward to YouTube. (Was dropped under the assumption that getScenePushUrl
         // would replace it; that assumption was wrong — VDO.Ninja scene mode is receive-only.)
-        $mediaMtxHost = \App\Support\StreamingWorkerSourceUrl::bridgeMediaMtxHost();
+        $mediaMtxHost = \App\Support\StreamingWorkerSourceUrl::vdoMediaMtxHost();
         if ($mediaMtxHost !== null) {
             // VP8, not H264: every browser can VP8-encode for WebRTC, so the
             // video track is always published. Forcing H264 made browsers that

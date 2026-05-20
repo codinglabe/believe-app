@@ -80,6 +80,8 @@ interface Livestream {
   canvasUrl?: string | null
   /** When true, the meeting runs in multi-participant canvas mode. */
   canvasMode?: boolean
+  /** When true, host/guest VDO URLs include &mediamtx (WHIP to bridge). Off on local by default. */
+  browserMediaMtxPush?: boolean
   watchUrl: string | null
   unityLiveUrl?: string
   liveViewerUrl?: string
@@ -968,7 +970,7 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
                     mixes audio, WHIP-publishes the combined stream to the worker's
                     pull path. Pre-warms on scheduled/starting so the composite is
                     live before the worker fires. No manual tab needed. */}
-                {livestream.canvasMode && livestream.canvasUrl && ["scheduled", "starting", "meeting_live", "live"].includes(livestream.status) && (
+                {livestream.canvasMode && livestream.browserMediaMtxPush && livestream.canvasUrl && ["scheduled", "starting", "meeting_live", "live"].includes(livestream.status) && (
                   <iframe
                     src={livestream.canvasUrl}
                     title="canvas-mixer"

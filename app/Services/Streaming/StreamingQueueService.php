@@ -243,6 +243,10 @@ class StreamingQueueService
                 'started_at' => $livestream->started_at ?? now(),
             ]);
 
+            $livestream->refresh();
+            $livestream->loadMissing($livestream instanceof OrganizationLivestream ? 'organization' : 'user');
+            \App\Support\UnityLiveBroadcast::notifyLive($livestream);
+
             // Transition the YouTube broadcast to "live" NOW — not on the user's
             // Go Live click. The worker only sends status=live after ffmpeg has
             // pushed its first frame to YouTube, so the RTMP ingest is active and
@@ -273,6 +277,10 @@ class StreamingQueueService
             } elseif ($livestream instanceof UserLivestream) {
                 $this->rotateYoutubeBroadcastAfterStreamEnd($livestream, 'user');
             }
+
+            $livestream->refresh();
+            $livestream->loadMissing($livestream instanceof OrganizationLivestream ? 'organization' : 'user');
+            \App\Support\UnityLiveBroadcast::notifyStreamEnded($livestream);
 
             return;
         }
