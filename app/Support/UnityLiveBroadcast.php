@@ -5,6 +5,8 @@ namespace App\Support;
 use App\Events\UnityLiveViewerStatusChanged;
 use App\Models\OrganizationLivestream;
 use App\Models\UserLivestream;
+use Illuminate\Support\Facades\Log;
+use Throwable;
 
 final class UnityLiveBroadcast
 {
@@ -49,11 +51,20 @@ final class UnityLiveBroadcast
         string $reason,
         ?string $message = null,
     ): void {
-        event(new UnityLiveViewerStatusChanged(
-            channelName: self::channelName($livestream),
-            reason: $reason,
-            payload: self::payloadFor($livestream, $reason, $message),
-        ));
+        try {
+            event(new UnityLiveViewerStatusChanged(
+                channelName: self::channelName($livestream),
+                reason: $reason,
+                payload: self::payloadFor($livestream, $reason, $message),
+            ));
+        } catch (Throwable $e) {
+            // Do not fail go-live / end-stream if Reverb is unreachable (misconfigured nginx, etc.).
+            Log::warning('Unity Live broadcast skipped', [
+                'reason' => $reason,
+                'livestream_id' => $livestream->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     public static function notifyMeetingStarted(OrganizationLivestream|UserLivestream $livestream): void

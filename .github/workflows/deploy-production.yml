@@ -1,18 +1,17 @@
-# Deploy DEVELOPMENT only → https://501c3ers.com (c3ers@501c3ers.com)
-# PRODUCTION https://believeinunity.org is NOT deployed by this workflow.
-# If the repo root is believe-wallet/ (monorepo), use ../.github/workflows/deploy-backend.yml instead.
+# Deploy PRODUCTION only → https://believeinunity.org (separate cPanel from 501c3ers.com)
+# Development uses deploy.yml → 501c3ers.com on branch `development`.
 #
-# Preserves on server: storage/, .env, .htaccess. Never uploads local storage/ or .env.
-# Secret: CPANEL_SSH_KEY
-name: Deploy development (501c3ers.com)
+# Required secret: CPANEL_SSH_KEY_PRODUCTION (private key for PRODUCTION_DEPLOY_USER@host)
+# Required variables: PRODUCTION_DEPLOY_HOST, PRODUCTION_DEPLOY_USER, PRODUCTION_DEPLOY_PATH, PRODUCTION_APP_URL
+name: Deploy production (believeinunity.org)
 
 on:
   push:
-    branches: [development]
+    branches: [production]
   workflow_dispatch:
 
 concurrency:
-  group: deploy-cpanel-${{ github.ref }}
+  group: deploy-production-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -22,11 +21,13 @@ jobs:
     env:
       PHP_VERSION: '8.4'
       NODE_VERSION: '20'
-      DEPLOY_HOST: ${{ vars.DEPLOY_HOST != '' && vars.DEPLOY_HOST || '501c3ers.com' }}
-      DEPLOY_USER: ${{ vars.DEPLOY_USER != '' && vars.DEPLOY_USER || 'c3ers' }}
-      DEPLOY_PATH: ${{ vars.DEPLOY_PATH != '' && vars.DEPLOY_PATH || '/home/c3ers/public_html' }}
-      APP_URL: ${{ vars.APP_URL != '' && vars.APP_URL || 'https://501c3ers.com' }}
-      SSH_PORT: ${{ vars.SSH_PORT != '' && vars.SSH_PORT || '22' }}
+      DEPLOY_HOST: ${{ vars.PRODUCTION_DEPLOY_HOST }}
+      # Use IP for SSH when set — believeinunity.org often times out from GitHub; 501c3ers.com has IPv6.
+      SSH_CONNECT_HOST: ${{ vars.PRODUCTION_SSH_HOST != '' && vars.PRODUCTION_SSH_HOST || vars.PRODUCTION_DEPLOY_HOST }}
+      DEPLOY_USER: ${{ vars.PRODUCTION_DEPLOY_USER }}
+      DEPLOY_PATH: ${{ vars.PRODUCTION_DEPLOY_PATH }}
+      APP_URL: ${{ vars.PRODUCTION_APP_URL }}
+      SSH_PORT: ${{ vars.PRODUCTION_SSH_PORT != '' && vars.PRODUCTION_SSH_PORT || '22' }}
       RSYNC_EXCLUDES: >-
         --exclude=.git/
         --exclude=.github/
@@ -72,32 +73,41 @@ jobs:
 
       - name: Deploy target
         run: |
-          echo "Environment: development (501c3ers.com)"
+          set -euo pipefail
+          for v in DEPLOY_HOST DEPLOY_USER DEPLOY_PATH APP_URL; do
+            if [ -z "${!v}" ]; then
+              echo "::error::Set GitHub variable PRODUCTION_${v#DEPLOY_} (or PRODUCTION_APP_URL for APP_URL)."
+              exit 1
+            fi
+          done
+          echo "Environment: production (believeinunity.org)"
           echo "Target: ${DEPLOY_USER}@${DEPLOY_HOST}:${DEPLOY_PATH}"
+          echo "SSH connect host: ${SSH_CONNECT_HOST}"
           echo "APP_URL (build only): ${APP_URL}"
-          if echo "${DEPLOY_HOST}" | grep -qi 'believeinunity'; then
-            echo "::error::Refusing to deploy to production host. Use 501c3ers.com for development only."
+          if echo "${DEPLOY_HOST}" | grep -qi '501c3ers'; then
+            echo "::error::Production workflow must not target 501c3ers.com (development server)."
             exit 1
           fi
 
       - name: Setup SSH
         env:
-          SSH_PRIVATE_KEY: ${{ secrets.CPANEL_SSH_KEY }}
+          SSH_PRIVATE_KEY: ${{ secrets.CPANEL_SSH_KEY_PRODUCTION }}
         run: |
           set -euo pipefail
           if [ -z "${SSH_PRIVATE_KEY}" ]; then
-            echo "::error::Add repository secret CPANEL_SSH_KEY (private key for ${DEPLOY_USER}@${DEPLOY_HOST})."
+            echo "::error::Add repository secret CPANEL_SSH_KEY_PRODUCTION for ${DEPLOY_USER}@${DEPLOY_HOST}."
             exit 1
           fi
-          SSH_DIR="${GITHUB_WORKSPACE}/.ssh-deploy"
+          SSH_DIR="${GITHUB_WORKSPACE}/.ssh-deploy-prod"
           mkdir -p "${SSH_DIR}"
           chmod 700 "${SSH_DIR}"
           printf '%s\n' "${SSH_PRIVATE_KEY}" > "${SSH_DIR}/cpanel_deploy"
           chmod 600 "${SSH_DIR}/cpanel_deploy"
-          ssh-keyscan -p "${SSH_PORT}" -H "${DEPLOY_HOST}" >> "${SSH_DIR}/known_hosts" 2>/dev/null || true
+          ssh-keyscan -T 15 -p "${SSH_PORT}" -H "${SSH_CONNECT_HOST}" >> "${SSH_DIR}/known_hosts" 2>/dev/null || true
+          ssh-keyscan -T 15 -p "${SSH_PORT}" -H "${DEPLOY_HOST}" >> "${SSH_DIR}/known_hosts" 2>/dev/null || true
           printf '%s\n' \
             'Host cpanel-deploy' \
-            "  HostName ${DEPLOY_HOST}" \
+            "  HostName ${SSH_CONNECT_HOST}" \
             "  User ${DEPLOY_USER}" \
             "  Port ${SSH_PORT}" \
             "  IdentityFile ${SSH_DIR}/cpanel_deploy" \
@@ -110,14 +120,14 @@ jobs:
           echo "SSH_DIR=${SSH_DIR}" >> "${GITHUB_ENV}"
           echo "SSH_CMD=ssh -F ${SSH_DIR}/config -o BatchMode=yes -o ConnectTimeout=20" >> "${GITHUB_ENV}"
           echo "RSYNC_RSH=ssh -F ${SSH_DIR}/config -o BatchMode=yes -o ConnectTimeout=20" >> "${GITHUB_ENV}"
-          SSH_TEST='ssh -F '"${SSH_DIR}"'/config -o BatchMode=yes -o ConnectTimeout=20 cpanel-deploy "echo SSH_OK && whoami && hostname"'
-          for attempt in 1 2 3 4 5; do
+          SSH_TEST='ssh -F '"${SSH_DIR}"'/config -o BatchMode=yes -o ConnectTimeout=20 cpanel-deploy "echo SSH_OK && whoami && hostname && pwd"'
+          for attempt in 1 2 3 4 5 6; do
             if eval "${SSH_TEST}"; then
-              echo "SSH connected on attempt ${attempt}"
+              echo "SSH connected on attempt ${attempt} (${SSH_CONNECT_HOST})"
               break
             fi
-            if [ "${attempt}" -eq 5 ]; then
-              echo "::error::SSH to ${DEPLOY_USER}@${DEPLOY_HOST}:${SSH_PORT} failed after 5 attempts"
+            if [ "${attempt}" -eq 6 ]; then
+              echo "::error::SSH to ${DEPLOY_USER}@${SSH_CONNECT_HOST}:${SSH_PORT} failed after 6 attempts. Set PRODUCTION_SSH_HOST=72.60.226.88 in repo variables."
               exit 1
             fi
             echo "::warning::SSH attempt ${attempt} failed; retrying in 8s..."
@@ -153,7 +163,6 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
 
-      # Vite cannot expand ${REVERB_APP_KEY} — resolve literals from server .env (see deploy/expand-vite-env.sh).
       - name: Load Vite env from server (match local build)
         if: hashFiles('package.json') != ''
         run: |
@@ -163,8 +172,8 @@ jobs:
           grep -c '^REVERB_APP_KEY=' .env.server || echo "::warning::REVERB_APP_KEY not in fetched .env.server"
           chmod +x deploy/expand-vite-env.sh
           {
+            ./deploy/expand-vite-env.sh < .env.server | grep -v '^APP_URL='
             echo "APP_URL=${APP_URL}"
-            ./deploy/expand-vite-env.sh < .env.server
           } > .env
           lines=$(wc -l < .env | tr -d ' ')
           echo "Wrote .env for Vite build (${lines} lines)"
@@ -200,6 +209,14 @@ jobs:
             ./ cpanel-deploy:${DEPLOY_PATH}/
           ${SSH_CMD} cpanel-deploy "test -f ${DEPLOY_PATH}/public/build/manifest.json && ls -la ${DEPLOY_PATH}/public/build/manifest.json | head -1"
 
+      - name: Install Reverb keepalive on server
+        run: |
+          set -euo pipefail
+          ${SSH_CMD} cpanel-deploy "mkdir -p ${DEPLOY_PATH%/public_html}/bin ${DEPLOY_PATH%/public_html}/logs"
+          scp -F "${SSH_DIR}/config" -o BatchMode=yes deploy/reverb-ensure-running-believeinunity.sh \
+            cpanel-deploy:${DEPLOY_PATH%/public_html}/bin/reverb-ensure-running.sh
+          ${SSH_CMD} cpanel-deploy "chmod +x ${DEPLOY_PATH%/public_html}/bin/reverb-ensure-running.sh"
+
       - name: Prune non-runtime files on server
         run: |
           set -euo pipefail
@@ -226,20 +243,35 @@ jobs:
           php artisan route:clear
           php artisan view:clear
           php artisan cache:clear
-          php artisan migrate --force
+          timeout 300 php artisan migrate --force -v || {
+            echo "::warning::migrate exceeded 5m or failed; check migrate:status on server"
+            php artisan migrate:status 2>&1 | tail -20
+            exit 1
+          }
           php artisan storage:link --force
-          if [ -x /home/c3ers/bin/reverb-ensure-running.sh ]; then
-            /home/c3ers/bin/reverb-ensure-running.sh || true
+          REVERB_SCRIPT="${DEPLOY_PATH%/public_html}/bin/reverb-ensure-running.sh"
+          if [ -x "\$REVERB_SCRIPT" ]; then "\$REVERB_SCRIPT" || true; fi
+          if grep -q '^REVERB_HOST=believeinunity.org' .env 2>/dev/null; then
+            echo "::warning::Set REVERB_HOST=127.0.0.1 in server .env for PHP broadcasts (see deploy/PRODUCTION-REVERB-SETUP.md)"
           fi
           php artisan config:cache
           php artisan view:cache
-          # Do not route:cache — duplicate route names can break serialization on the server.
           test -f .env && test -d storage && test -f .htaccess && echo DEPLOY_OK
           REMOTE
 
-      - name: Smoke test
+      - name: Smoke test (production URL only)
+        env:
+          SMOKE_URL: ${{ vars.PRODUCTION_APP_URL }}
         run: |
           set -euo pipefail
-          code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 30 "${APP_URL}/")
-          echo "GET ${APP_URL}/ => HTTP ${code}"
+          if [ -z "${SMOKE_URL}" ]; then
+            echo "::error::Set GitHub variable PRODUCTION_APP_URL=https://believeinunity.org"
+            exit 1
+          fi
+          if echo "${SMOKE_URL}" | grep -qi '501c3ers'; then
+            echo "::error::Production smoke test must not use 501c3ers.com (check PRODUCTION_APP_URL variable)"
+            exit 1
+          fi
+          code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 30 "${SMOKE_URL}/")
+          echo "GET ${SMOKE_URL}/ => HTTP ${code}"
           test "${code}" = "200" || test "${code}" = "302" || { echo "::error::Homepage returned HTTP ${code}"; exit 1; }
