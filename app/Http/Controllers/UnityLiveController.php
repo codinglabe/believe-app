@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\OrganizationLivestream;
 use App\Models\UserLivestream;
+use App\Support\UnityLiveBroadcast;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -58,6 +59,78 @@ class UnityLiveController extends Controller
     }
 
     /**
+     * @return array<string, mixed>
+     */
+    private function toPreviewItem(OrganizationLivestream|UserLivestream $ls): array
+    {
+        $organizationName = $ls instanceof OrganizationLivestream
+            ? ($ls->organization?->name ?? 'Organization')
+            : ($ls->user?->name ?? 'Host');
+
+        return [
+            'slug' => $ls->room_name,
+            'title' => $ls->title ?: 'Live Stream',
+            'organizationName' => $organizationName,
+            'status' => (string) $ls->status,
+            'isPublic' => (bool) $ls->is_public,
+            'scheduledAt' => $ls->scheduled_at?->toIso8601String(),
+        ];
+    }
+
+    /**
+     * @return array{0: string, 1: string|null}
+     */
+    private function offlineCopy(OrganizationLivestream|UserLivestream $ls): array
+    {
+        $status = (string) $ls->status;
+
+        if ($status === 'live' && ! $ls->is_public) {
+            return [
+                'This meeting is not on Unity Live',
+                'The host has not enabled “Show on Unity Live” for this meeting.',
+            ];
+        }
+
+        if ($status === 'meeting_live') {
+            return [
+                'Meeting in progress — not on Unity Live yet',
+                'The host is in the meeting. This page will work once they click Go Unity Live.',
+            ];
+        }
+
+        if ($status === 'scheduled') {
+            return [
+                'Scheduled — not live yet',
+                'Come back when the host starts the meeting and goes live on Unity Live.',
+            ];
+        }
+
+        if ($status === 'ended') {
+            return [
+                'This stream has ended',
+                'Watch for a new live session from this host on Unity Live.',
+            ];
+        }
+
+        if ($status === 'cancelled') {
+            return [
+                'This meeting was cancelled',
+                null,
+            ];
+        }
+
+        return [
+            'Not live yet',
+            'Check back soon. When the host goes live on Unity Live, the stream will appear here automatically.',
+        ];
+    }
+
+    private function isWatchableOnUnityLive(OrganizationLivestream|UserLivestream $ls): bool
+    {
+        return $ls->status === 'live' && (bool) $ls->is_public;
+    }
+
+    /**
      * Public Unity Live index: list org + supporter livestreams that are currently live (and public).
      * Clicking a card goes to the show page (slug-wise) for the big screen.
      * Logged-in users are sent to Unity Meet instead (same live directory there).
@@ -107,56 +180,102 @@ class UnityLiveController extends Controller
     }
 
     /**
-     * Public Unity Live show: one stream in big screen by slug (room_name).
-     * Resolves org livestream first, then supporter livestream. 404 if not found or not live.
+     * Public Unity Live show: live player, or a friendly offline message when not live yet.
      */
     public function show(Request $request, string $slug): Response
     {
-        $livestream = OrganizationLivestream::query()
+        $orgStream = OrganizationLivestream::query()
             ->where('room_name', $slug)
-            ->where('status', 'live')
             ->with('organization:id,name')
+            ->orderByDesc('id')
             ->first();
 
-        if ($livestream) {
-            $item = $this->toLivestreamItem($livestream);
-            if (! $item) {
-                abort(404);
-            }
-            $otherLivestreams = $this->getOtherLivestreams($item['id'], $slug);
-            return Inertia::render('frontend/unity-live/Show', [
-                'seo' => [
-                    'title' => $item['title'] . ' | Unity Live',
-                    'description' => 'Watch ' . $item['title'] . ' live from ' . $item['organizationName'],
-                ],
-                'livestream' => $item,
-                'otherLivestreams' => $otherLivestreams,
-            ]);
+        if ($orgStream) {
+            return $this->renderUnityLiveShowPage($orgStream, 'org_' . $orgStream->id);
         }
 
-        $userStream = UserLivestream::query()
-            ->where('room_name', $slug)
-            ->where('status', 'live')
-            ->with('user:id,name')
-            ->first();
+        $userStream = $this->resolveUserStreamBySlug($slug);
 
         if ($userStream) {
-            $item = $this->toUserLivestreamItem($userStream);
-            if (! $item) {
-                abort(404);
-            }
-            $otherLivestreams = $this->getOtherLivestreams($item['id'], $slug);
-            return Inertia::render('frontend/unity-live/Show', [
-                'seo' => [
-                    'title' => $item['title'] . ' | Unity Live',
-                    'description' => 'Watch ' . $item['title'] . ' live from ' . $item['organizationName'],
-                ],
-                'livestream' => $item,
-                'otherLivestreams' => $otherLivestreams,
-            ]);
+            return $this->renderUnityLiveShowPage($userStream, 'user_' . $userStream->id);
         }
 
         abort(404, 'Stream not found.');
+    }
+
+    /**
+     * @return Response
+     */
+    private function renderUnityLiveShowPage(
+        OrganizationLivestream|UserLivestream $livestream,
+        string $streamId,
+    ): Response {
+        $preview = $this->toPreviewItem($livestream);
+        $otherLivestreams = $this->getOtherLivestreams(
+            $streamId,
+            (string) $livestream->room_name,
+        );
+
+        if ($this->isWatchableOnUnityLive($livestream)) {
+            $item = $livestream instanceof OrganizationLivestream
+                ? $this->toLivestreamItem($livestream)
+                : $this->toUserLivestreamItem($livestream);
+
+            if (! $item) {
+                abort(404);
+            }
+
+            return Inertia::render('frontend/unity-live/Show', [
+                'seo' => [
+                    'title' => $item['title'] . ' | Unity Live',
+                    'description' => 'Watch ' . $item['title'] . ' live from ' . $item['organizationName'],
+                ],
+                'livestream' => $item,
+                'otherLivestreams' => $otherLivestreams,
+                'broadcastChannel' => UnityLiveBroadcast::channelName($livestream),
+            ]);
+        }
+
+        [$message, $hint] = $this->offlineCopy($livestream);
+
+        return Inertia::render('frontend/unity-live/Offline', [
+            'seo' => [
+                'title' => $preview['title'] . ' | Unity Live',
+                'description' => $message,
+            ],
+            'preview' => $preview,
+            'message' => $message,
+            'hint' => $hint,
+            'otherLivestreams' => $otherLivestreams,
+            'broadcastChannel' => UnityLiveBroadcast::channelName($livestream),
+        ]);
+    }
+
+    /**
+     * Resolve supporter meeting by room_name or legacy profile id (uni-{slug}-{userId}).
+     */
+    private function resolveUserStreamBySlug(string $slug): ?UserLivestream
+    {
+        $base = UserLivestream::query()->with('user:id,name');
+
+        $direct = (clone $base)->where('room_name', $slug)->orderByDesc('id')->first();
+        if ($direct) {
+            return $direct;
+        }
+
+        if (preg_match('/^uni-.+-(\d+)$/', $slug, $matches) !== 1) {
+            return null;
+        }
+
+        $userId = (int) ($matches[1] ?? 0);
+        if ($userId < 1) {
+            return null;
+        }
+
+        return (clone $base)
+            ->where('user_id', $userId)
+            ->orderByDesc('updated_at')
+            ->first();
     }
 
     /**

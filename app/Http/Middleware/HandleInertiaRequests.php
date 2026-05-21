@@ -328,6 +328,7 @@ class HandleInertiaRequests extends Middleware
                     'warning' => $warning,
                     'import_errors' => $importErrors,
                     'kiosk_service_request' => $kioskServiceRequest,
+                    'youtube_upload_path' => $request->session()->pull('youtube_upload_path'),
                 ])
             ),
             'browser_publish_url' => fn () => $request->session()->pull('browser_publish_url'),

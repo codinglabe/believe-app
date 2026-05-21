@@ -8,12 +8,55 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 class YouTubeService
 {
+    public const OAUTH_SCOPE_READONLY = 'https://www.googleapis.com/auth/youtube.readonly';
+
+    public const OAUTH_SCOPE_FORCE_SSL = 'https://www.googleapis.com/auth/youtube.force-ssl';
+
+    public const OAUTH_SCOPE_UPLOAD = 'https://www.googleapis.com/auth/youtube.upload';
+
+    /** Full manage scope also allows video uploads. */
+    public const OAUTH_SCOPE_YOUTUBE = 'https://www.googleapis.com/auth/youtube';
+
     private string $apiKey;
 
     private string $baseUrl = 'https://www.googleapis.com/youtube/v3';
+
+    /**
+     * Scopes requested on Connect YouTube (live streaming scope omitted while Go YouTube Live is hidden).
+     *
+     * @return list<string>
+     */
+    public static function oauthConnectScopes(): array
+    {
+        return [
+            self::OAUTH_SCOPE_READONLY,
+            self::OAUTH_SCOPE_UPLOAD,
+        ];
+    }
+
+    /**
+     * Full scopes when YouTube live streaming is re-enabled (includes force-ssl).
+     *
+     * @return list<string>
+     */
+    public static function oauthConnectScopesIncludingLiveStream(): array
+    {
+        return [
+            self::OAUTH_SCOPE_READONLY,
+            self::OAUTH_SCOPE_FORCE_SSL,
+            self::OAUTH_SCOPE_UPLOAD,
+        ];
+    }
+
+    /** @return list<string> */
+    public static function requiredOAuthScopes(): array
+    {
+        return self::oauthConnectScopes();
+    }
 
     public function __construct()
     {
@@ -26,6 +69,170 @@ class YouTubeService
     private function http(): \Illuminate\Http\Client\PendingRequest
     {
         return Http::withOptions(['verify' => false]);
+    }
+
+    /**
+     * OAuth connect: resolve the signed-in Google account's YouTube channel (channels.list?mine=true).
+     *
+     * @return array{channel: array<string, mixed>|null, error_body: string|null}
+     */
+    public function fetchOAuthUserChannel(string $accessToken): array
+    {
+        if ($accessToken === '') {
+            return ['channel' => null, 'error_body' => null];
+        }
+
+        $attempts = [
+            ['use_key' => false],
+        ];
+        if ($this->apiKey !== '') {
+            $attempts[] = ['use_key' => true];
+        }
+
+        $lastBody = null;
+        $lastStatus = null;
+
+        foreach ($attempts as $attempt) {
+            $params = [
+                'part' => 'id,snippet',
+                'mine' => 'true',
+                'maxResults' => 1,
+            ];
+            if ($attempt['use_key']) {
+                $params['key'] = $this->apiKey;
+            }
+
+            $response = $this->http()
+                ->withToken($accessToken)
+                ->get($this->baseUrl . '/channels', $params);
+
+            if ($response->successful()) {
+                $items = $response->json('items') ?? [];
+
+                return [
+                    'channel' => isset($items[0]) ? $items[0] : null,
+                    'error_body' => null,
+                ];
+            }
+
+            $lastBody = $response->body();
+            $lastStatus = $response->status();
+
+            // Browser-restricted API keys often 403 from the server — do not keep retrying with key.
+            if ($attempt['use_key'] && $response->status() === 403) {
+                break;
+            }
+        }
+
+        Log::warning('YouTube OAuth channels.list failed', [
+            'status' => $lastStatus,
+            'body' => $lastBody,
+            'api_key_configured' => $this->apiKey !== '',
+        ]);
+
+        return ['channel' => null, 'error_body' => $lastBody];
+    }
+
+    /**
+     * User-facing message from a YouTube Data API error payload.
+     */
+    public function userMessageFromYoutubeApiError(?string $responseBody): string
+    {
+        if ($responseBody === null || $responseBody === '') {
+            return 'Could not load your YouTube channel. Please try again.';
+        }
+
+        $json = json_decode($responseBody, true);
+        if (! is_array($json)) {
+            return 'Could not load your YouTube channel. Please try again.';
+        }
+
+        $message = (string) ($json['error']['message'] ?? '');
+        $reason = (string) ($json['error']['errors'][0]['reason'] ?? '');
+        $combined = strtolower($message . ' ' . $reason);
+
+        if (str_contains($combined, 'accessnotconfigured') || str_contains($combined, 'has not been used') || str_contains($combined, 'disabled')) {
+            return 'YouTube Data API is not enabled for this app. Enable YouTube Data API v3 in Google Cloud Console (same project as your OAuth client), then try again.';
+        }
+
+        if (str_contains($combined, 'insufficient') || str_contains($combined, 'forbidden') || $reason === 'insufficientPermissions') {
+            return 'YouTube did not grant upload permission. Open Unity Meet Settings, disconnect YouTube, connect again, and allow all requested access (including upload videos).';
+        }
+
+        if (str_contains($combined, 'quota')) {
+            return 'YouTube API quota exceeded. Try again later or contact support.';
+        }
+
+        if ($message !== '') {
+            return 'Could not load your YouTube channel: ' . Str::limit($message, 120);
+        }
+
+        return 'Could not load your YouTube channel. Please try again.';
+    }
+
+    public function scopeStringIncludesUpload(?string $scopeString): bool
+    {
+        if ($scopeString === null || trim($scopeString) === '') {
+            return false;
+        }
+
+        foreach (preg_split('/\s+/', trim($scopeString)) as $scope) {
+            if ($scope === self::OAUTH_SCOPE_UPLOAD || $scope === self::OAUTH_SCOPE_YOUTUBE) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public function accessTokenIncludesUploadScope(string $accessToken): bool
+    {
+        if ($accessToken === '') {
+            return false;
+        }
+
+        $response = $this->http()->get('https://oauth2.googleapis.com/tokeninfo', [
+            'access_token' => $accessToken,
+        ]);
+
+        if (! $response->successful()) {
+            Log::warning('YouTube tokeninfo failed', [
+                'status' => $response->status(),
+                'body' => $response->body(),
+            ]);
+
+            return false;
+        }
+
+        return $this->scopeStringIncludesUpload((string) $response->json('scope'));
+    }
+
+    public function userCanUploadVideos(User $user): bool
+    {
+        if (empty($user->youtube_refresh_token)) {
+            return false;
+        }
+
+        $accessToken = $this->getValidAccessTokenForUser($user);
+        if ($accessToken === null || $accessToken === '') {
+            return false;
+        }
+
+        return $this->accessTokenIncludesUploadScope($accessToken);
+    }
+
+    public function organizationCanUploadVideos(Organization $organization): bool
+    {
+        if (empty($organization->youtube_refresh_token)) {
+            return false;
+        }
+
+        $accessToken = $this->getValidAccessToken($organization);
+        if ($accessToken === null || $accessToken === '') {
+            return false;
+        }
+
+        return $this->accessTokenIncludesUploadScope($accessToken);
     }
 
     /**
@@ -1341,5 +1548,232 @@ class YouTubeService
             ]);
             return false;
         }
+    }
+
+    /**
+     * Upload a local video file to the user's YouTube channel (resumable upload).
+     *
+     * @return array{success: bool, video_id: ?string, watch_url: ?string, error: ?string}
+     */
+    public function uploadVideoFileForUser(
+        User $user,
+        string $localPath,
+        string $title,
+        string $description = '',
+        string $privacyStatus = 'unlisted',
+        ?callable $onProgress = null,
+    ): array {
+        $accessToken = $this->getValidAccessTokenForUser($user);
+        if ($accessToken === null || $accessToken === '') {
+            return [
+                'success' => false,
+                'video_id' => null,
+                'watch_url' => null,
+                'error' => 'YouTube is not connected. Connect your channel under Integrations.',
+            ];
+        }
+
+        if (! is_file($localPath) || filesize($localPath) === 0) {
+            return [
+                'success' => false,
+                'video_id' => null,
+                'watch_url' => null,
+                'error' => 'Recording file is missing or empty.',
+            ];
+        }
+
+        $privacyStatus = in_array($privacyStatus, ['public', 'unlisted', 'private'], true)
+            ? $privacyStatus
+            : 'unlisted';
+
+        $title = Str::limit(trim($title), 100, '');
+        if ($title === '') {
+            $title = 'Meeting recording';
+        }
+
+        try {
+            return $this->resumableUploadVideo(
+                $accessToken,
+                $localPath,
+                $title,
+                Str::limit($description, 4900, ''),
+                $privacyStatus,
+                $onProgress,
+            );
+        } catch (\Throwable $e) {
+            Log::error('YouTube video upload exception', [
+                'user_id' => $user->id,
+                'message' => $e->getMessage(),
+            ]);
+
+            return [
+                'success' => false,
+                'video_id' => null,
+                'watch_url' => null,
+                'error' => 'YouTube upload failed. Please try again.',
+            ];
+        }
+    }
+
+    /**
+     * @return array{success: bool, video_id: ?string, watch_url: ?string, error: ?string}
+     */
+    private function resumableUploadVideo(
+        string $accessToken,
+        string $localPath,
+        string $title,
+        string $description,
+        string $privacyStatus,
+        ?callable $onProgress = null,
+    ): array {
+        $fileSize = filesize($localPath);
+        $mimeType = $this->mimeTypeForVideoPath($localPath);
+
+        $initResponse = $this->http()
+            ->withToken($accessToken)
+            ->withHeaders(['Content-Type' => 'application/json'])
+            ->post('https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status', [
+                'snippet' => [
+                    'title' => $title,
+                    'description' => $description,
+                ],
+                'status' => [
+                    'privacyStatus' => $privacyStatus,
+                    'selfDeclaredMadeForKids' => false,
+                ],
+            ]);
+
+        if (! $initResponse->successful()) {
+            $error = $this->userMessageFromYoutubeApiError($initResponse->body());
+
+            Log::warning('YouTube resumable upload init failed', [
+                'status' => $initResponse->status(),
+                'body' => $initResponse->body(),
+            ]);
+
+            return [
+                'success' => false,
+                'video_id' => null,
+                'watch_url' => null,
+                'error' => $error,
+            ];
+        }
+
+        $uploadUrl = $initResponse->header('Location');
+        if (! is_string($uploadUrl) || $uploadUrl === '') {
+            return [
+                'success' => false,
+                'video_id' => null,
+                'watch_url' => null,
+                'error' => 'YouTube did not return an upload URL.',
+            ];
+        }
+
+        $chunkSize = 5 * 1024 * 1024;
+        $handle = fopen($localPath, 'rb');
+        if ($handle === false) {
+            return [
+                'success' => false,
+                'video_id' => null,
+                'watch_url' => null,
+                'error' => 'Could not read the recording file.',
+            ];
+        }
+
+        $offset = 0;
+        $lastResponse = null;
+
+        try {
+            while (! feof($handle)) {
+                $chunk = fread($handle, $chunkSize);
+                if ($chunk === false) {
+                    break;
+                }
+
+                $chunkLen = strlen($chunk);
+                if ($chunkLen === 0) {
+                    break;
+                }
+
+                $end = $offset + $chunkLen - 1;
+                $contentRange = "bytes {$offset}-{$end}/{$fileSize}";
+
+                $lastResponse = $this->http()
+                    ->withToken($accessToken)
+                    ->withHeaders([
+                        'Content-Type' => $mimeType,
+                        'Content-Length' => (string) $chunkLen,
+                        'Content-Range' => $contentRange,
+                    ])
+                    ->withBody($chunk, $mimeType)
+                    ->put($uploadUrl);
+
+                if ($lastResponse->status() === 308) {
+                    $offset += $chunkLen;
+
+                    continue;
+                }
+
+                if (! $lastResponse->successful()) {
+                    fclose($handle);
+
+                    return [
+                        'success' => false,
+                        'video_id' => null,
+                        'watch_url' => null,
+                        'error' => $this->userMessageFromYoutubeApiError($lastResponse->body()),
+                    ];
+                }
+
+                $offset += $chunkLen;
+
+                if ($onProgress !== null && $fileSize > 0) {
+                    $uploadPercent = (int) floor(($offset / $fileSize) * 100);
+                    $onProgress(min(99, max(20, 20 + (int) floor($uploadPercent * 0.75))));
+                }
+            }
+        } finally {
+            fclose($handle);
+        }
+
+        if ($lastResponse === null || ! $lastResponse->successful()) {
+            return [
+                'success' => false,
+                'video_id' => null,
+                'watch_url' => null,
+                'error' => $this->userMessageFromYoutubeApiError($lastResponse?->body()),
+            ];
+        }
+
+        $videoId = $lastResponse->json('id');
+        if (! is_string($videoId) || $videoId === '') {
+            return [
+                'success' => false,
+                'video_id' => null,
+                'watch_url' => null,
+                'error' => 'YouTube upload completed but no video ID was returned.',
+            ];
+        }
+
+        return [
+            'success' => true,
+            'video_id' => $videoId,
+            'watch_url' => 'https://www.youtube.com/watch?v='.$videoId,
+            'error' => null,
+        ];
+    }
+
+    private function mimeTypeForVideoPath(string $path): string
+    {
+        $ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+
+        return match ($ext) {
+            'mp4', 'm4v' => 'video/mp4',
+            'webm' => 'video/webm',
+            'mov' => 'video/quicktime',
+            'mkv' => 'video/x-matroska',
+            'avi' => 'video/x-msvideo',
+            default => 'application/octet-stream',
+        };
     }
 }

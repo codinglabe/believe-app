@@ -16,6 +16,7 @@ use App\Support\StreamingWorkerSourceUrl;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
@@ -298,6 +299,7 @@ class LivestreamController extends Controller
                 'scenePushUrl' => $scenePushUrl,
                 'canvasUrl' => $livestream->getCanvasUrl(),
                 'canvasMode' => $livestream->isCanvasModeEnabled(),
+                'browserMediaMtxPush' => \App\Support\StreamingWorkerSourceUrl::shouldAttachVdoMediaMtxPush(),
                 'dropboxRecordingAvailable' => $dropboxConnected,
                 'watchUrl' => $watchUrl,
                 'unityLiveUrl' => $unityLiveUrl,
@@ -315,7 +317,8 @@ class LivestreamController extends Controller
                 'streamKeyDisplay' => $streamKeyDisplay,
                 'rtmpUrl' => $rtmpUrl,
                 'canStartMeeting' => $livestream->canStartMeeting(),
-                'canGoLive' => $livestream->canGoLive(),
+                'canGoLive' => $livestream->canGoLive()
+                    && app(StreamingQueueService::class)->canStartNewStreamingJob((string) $organization->id, 'organization', $livestream->id),
                 'latestInviteUrl' => $latestInviteUrl,
                 'youtubeConnected' => ! empty($organization->youtube_refresh_token) || ! empty($organization->youtube_access_token),
                 'streamingQueueStatus' => app(StreamingQueueService::class)->queueStatusForUi($latestStreamingJob, $livestream),
@@ -520,6 +523,9 @@ class LivestreamController extends Controller
 
         $livestream->update(['status' => 'meeting_live']);
 
+        $livestream->refresh();
+        \App\Support\UnityLiveBroadcast::notifyMeetingStarted($livestream);
+
         return redirect()->back()->with('success', 'Meeting started. Invite guests, then click Go Live when ready to stream to viewers.');
     }
 
@@ -643,6 +649,9 @@ class LivestreamController extends Controller
             'started_at' => $livestream->started_at ?? now(),
         ]);
 
+        $livestream->refresh();
+        \App\Support\UnityLiveBroadcast::notifyLive($livestream);
+
         $message = $livestream->is_public
             ? 'Stream is now live. It will appear on the Unity Live page.'
             : 'Stream is now live (private). Share the viewer link so people can watch.';
@@ -720,9 +729,51 @@ class LivestreamController extends Controller
             ]);
         }
 
+        // Atomic guard against rapid double-clicks / parallel tabs / replayed
+        // requests. Cache::lock serialises Go Live for this livestream across
+        // PHP-FPM workers; inside it, we re-check for an already-in-flight
+        // streaming_jobs row (queued/starting/live) and surface it instead of
+        // queuing a duplicate Fargate worker. 30s TTL auto-releases if the
+        // process dies mid-create. Lock acquisition failure is fail-OPEN
+        // (logged) — better to occasionally double-fire than to break Go Live
+        // entirely on a flaky lock backend.
+        $lock = Cache::lock("livestream-golive-org-{$livestream->id}", 30);
+        $acquired = false;
+        try {
+            $acquired = $lock->block(2);
+        } catch (\Throwable $e) {
+            Log::warning('Go Live lock acquisition failed; proceeding without lock', [
+                'livestream_id' => $livestream->id, 'err' => $e->getMessage(),
+            ]);
+        }
+        try {
+            $blocked = $streamingQueue->goLiveBlockedReason((string) $organization->id, 'organization', $livestream->id);
+            if ($blocked !== null) {
+                return redirect()->back()->withErrors(['go_live' => $blocked]);
+            }
+            return $this->queueStreamRelayJobImpl($livestream, $user, $organization, $streamingQueue, $preflight, $youtubeService);
+        } finally {
+            if ($acquired) {
+                try { $lock->release(); } catch (\Throwable $e) { /* harmless */ }
+            }
+        }
+    }
+
+    /**
+     * Body of queueStreamRelayJob — wrapped by the atomic Cache::lock dupe
+     * guard above. Kept in its own method so the lock + dupe check sits at the
+     * top, separate from the (longer) job-build sequence.
+     */
+    private function queueStreamRelayJobImpl(OrganizationLivestream $livestream, $user, $organization, StreamingQueueService $streamingQueue, StreamingPreflight $preflight, YouTubeService $youtubeService)
+    {
         $gate = $preflight->check($livestream, $user);
         if (! $gate->allowed) {
             return redirect()->back()->withErrors(['go_live' => $gate->reason]);
+        }
+
+        $blocked = $streamingQueue->goLiveBlockedReason((string) $organization->id, 'organization', $livestream->id);
+        if ($blocked !== null) {
+            return redirect()->back()->withErrors(['go_live' => $blocked]);
         }
 
         // Auto-resolve a current YouTube stream key. Reuses existing broadcast (by id, then by title)
@@ -816,6 +867,12 @@ class LivestreamController extends Controller
         $settings = $livestream->settings ?? [];
         $settings['stream_stop_requested'] = now()->toIso8601String();
         $livestream->update(['settings' => $settings]);
+        $livestream->refresh();
+        \App\Support\UnityLiveBroadcast::notify(
+            $livestream,
+            'stream_ended',
+            'The host has ended the stream. Playback may stop in a few seconds.',
+        );
 
         $youtubeService = app(YouTubeService::class);
         $accessToken = $youtubeService->getValidAccessToken($organization);
@@ -855,6 +912,9 @@ class LivestreamController extends Controller
                 'ended_at' => $livestream->ended_at ?? now(),
             ]);
 
+            $livestream->refresh();
+            \App\Support\UnityLiveBroadcast::notifyStreamEnded($livestream);
+
             return redirect()->back()->with(
                 'success',
                 $settledLocally
@@ -869,6 +929,9 @@ class LivestreamController extends Controller
             'status' => 'draft',
             'ended_at' => $livestream->ended_at ?? now(),
         ]);
+
+        $livestream->refresh();
+        \App\Support\UnityLiveBroadcast::notifyStreamEnded($livestream);
 
         return redirect()->back()->with('success', 'Stream stopped. You can go live again from the same link when ready.');
     }

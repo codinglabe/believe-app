@@ -108,3 +108,9 @@ Schedule::command('organizations:process-invite-believe-point-schedule')
     ->dailyAt('06:05')
     ->withoutOverlapping()
     ->runInBackground();
+
+// Unity Meet: fail/stop streaming jobs when AWS callbacks or heartbeats are missing
+Schedule::command('streaming:reconcile-lifecycle')
+    ->everyMinute()
+    ->withoutOverlapping()
+    ->runInBackground();

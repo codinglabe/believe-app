@@ -41,13 +41,75 @@ final class StreamingWorkerSourceUrl
     public static function bridgeMediaMtxHost(): ?string
     {
         $host = trim((string) config('streaming.bridge.host', ''));
+        if ($host === '') {
+            return null;
+        }
 
-        return $host !== '' ? $host : null;
+        $host = preg_replace('#^https?://#i', '', $host);
+
+        return rtrim($host, '/');
     }
 
     public static function hasBridgeConfigured(): bool
     {
         return self::bridgeMediaMtxHost() !== null;
+    }
+
+    /**
+     * Whether the browser should WHIP-publish via VDO.Ninja &mediamtx=…
+     * (requires bridge + worker ingest; skipped on local by default).
+     */
+    public static function shouldAttachVdoMediaMtxPush(): bool
+    {
+        if (! (bool) config('streaming.bridge.browser_push_enabled', true)) {
+            return false;
+        }
+
+        if (! self::hasBridgeConfigured() || ! self::hasWorkerIngestConfigured()) {
+            return false;
+        }
+
+        if (app()->environment(['local', 'development']) && ! (bool) config('streaming.bridge.push_on_local', false)) {
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Host:port for VDO.Ninja &mediamtx (WHIP/WHEP port, default 8889 — same as canvas mixer).
+     */
+    public static function vdoMediaMtxHost(): ?string
+    {
+        if (! self::shouldAttachVdoMediaMtxPush()) {
+            return null;
+        }
+
+        $host = self::bridgeMediaMtxHost();
+        if ($host === null) {
+            return null;
+        }
+
+        if (preg_match('/:\d+$/', $host) === 1) {
+            return $host;
+        }
+
+        $port = (int) config('streaming.bridge.whip_port', 8889);
+
+        return $host.':'.$port;
+    }
+
+    /**
+     * HTTPS base for server-side canvas mixer WHEP/WHIP (https://host:port).
+     */
+    public static function bridgeWhepWhipBaseUrl(): ?string
+    {
+        $hostPort = self::vdoMediaMtxHost();
+        if ($hostPort === null) {
+            return null;
+        }
+
+        return 'https://'.$hostPort;
     }
 
     private static function workerRtmpPullBase(): string

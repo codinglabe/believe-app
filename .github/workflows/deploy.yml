@@ -1,13 +1,14 @@
-# If your GitHub repository root IS the backend/ folder, this workflow runs deploys.
+# Deploy DEVELOPMENT only → https://501c3ers.com (c3ers@501c3ers.com)
+# PRODUCTION https://believeinunity.org is NOT deployed by this workflow.
 # If the repo root is believe-wallet/ (monorepo), use ../.github/workflows/deploy-backend.yml instead.
 #
 # Preserves on server: storage/, .env, .htaccess. Never uploads local storage/ or .env.
 # Secret: CPANEL_SSH_KEY
-name: Deploy Laravel to cPanel
+name: Deploy development (501c3ers.com)
 
 on:
   push:
-    branches: [production]
+    branches: [development]
   workflow_dispatch:
 
 concurrency:
@@ -35,53 +36,22 @@ jobs:
         --exclude=.env
         --exclude=.env.*
         --exclude=.htaccess
-        --exclude=public/.htaccess
+        --exclude=docs/
+        --exclude=.deploy/
+        --exclude=*.md
 
     steps:
       - uses: actions/checkout@v4
 
       - name: Deploy target
         run: |
+          echo "Environment: development (501c3ers.com)"
           echo "Target: ${DEPLOY_USER}@${DEPLOY_HOST}:${DEPLOY_PATH}"
           echo "APP_URL (build only): ${APP_URL}"
-
-      - name: Cache Composer
-        uses: actions/cache@v4
-        with:
-          path: |
-            vendor
-            ~/.composer/cache
-          key: ${{ runner.os }}-php${{ env.PHP_VERSION }}-composer-${{ hashFiles('composer.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-php${{ env.PHP_VERSION }}-composer-
-
-      - name: Setup PHP
-        uses: shivammathur/setup-php@v2
-        with:
-          php-version: ${{ env.PHP_VERSION }}
-          tools: composer:v2
-          extensions: mbstring, intl, bcmath, ctype, curl, dom, fileinfo, json, openssl, pdo, pdo_mysql, tokenizer, xml
-
-      - name: Install PHP dependencies
-        run: |
-          composer install --no-dev --prefer-dist --no-interaction --optimize-autoloader --no-ansi
-          mkdir -p resources/views storage/framework/views
-
-      - name: Setup Node
-        if: hashFiles('package.json') != ''
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-
-      - name: Build frontend assets
-        if: hashFiles('package.json') != ''
-        env:
-          APP_URL: ${{ env.APP_URL }}
-        run: |
-          npm ci --legacy-peer-deps --no-audit --no-fund
-          npm run build
-          test -f public/build/manifest.json || (echo "::error::public/build/manifest.json missing" && exit 1)
+          if echo "${DEPLOY_HOST}" | grep -qi 'believeinunity'; then
+            echo "::error::Refusing to deploy to production host. Use 501c3ers.com for development only."
+            exit 1
+          fi
 
       - name: Setup SSH
         env:
@@ -114,6 +84,62 @@ jobs:
           echo "SSH_CMD=ssh -F ${SSH_DIR}/config -o BatchMode=yes -o ConnectTimeout=30" >> "${GITHUB_ENV}"
           echo "RSYNC_RSH=ssh -F ${SSH_DIR}/config -o BatchMode=yes -o ConnectTimeout=30" >> "${GITHUB_ENV}"
           ssh -F "${SSH_DIR}/config" -o BatchMode=yes -o ConnectTimeout=30 cpanel-deploy "echo SSH_OK && whoami && hostname"
+
+      - name: Cache Composer
+        uses: actions/cache@v4
+        with:
+          path: |
+            vendor
+            ~/.composer/cache
+          key: ${{ runner.os }}-php${{ env.PHP_VERSION }}-composer-${{ hashFiles('composer.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-php${{ env.PHP_VERSION }}-composer-
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ env.PHP_VERSION }}
+          tools: composer:v2
+          extensions: mbstring, intl, bcmath, ctype, curl, dom, fileinfo, json, openssl, pdo, pdo_mysql, tokenizer, xml
+
+      - name: Install PHP dependencies
+        run: |
+          composer install --no-dev --prefer-dist --no-interaction --optimize-autoloader --no-ansi
+          mkdir -p resources/views storage/framework/views
+
+      - name: Setup Node
+        if: hashFiles('package.json') != ''
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      # Vite cannot expand ${REVERB_APP_KEY} — resolve literals from server .env (see deploy/expand-vite-env.sh).
+      - name: Load Vite env from server (match local build)
+        if: hashFiles('package.json') != ''
+        run: |
+          set -euo pipefail
+          ${SSH_CMD} cpanel-deploy "grep -E '^(APP_NAME|APP_URL|APP_VERSION)=|^REVERB_|^VITE_' '${DEPLOY_PATH}/.env' | grep -v '^#'" > .env.server
+          echo "Loaded $(wc -l < .env.server | tr -d ' ') lines from server .env"
+          grep -c '^REVERB_APP_KEY=' .env.server || echo "::warning::REVERB_APP_KEY not in fetched .env.server"
+          chmod +x deploy/expand-vite-env.sh
+          {
+            echo "APP_URL=${APP_URL}"
+            ./deploy/expand-vite-env.sh < .env.server
+          } > .env
+          lines=$(wc -l < .env | tr -d ' ')
+          echo "Wrote .env for Vite build (${lines} lines)"
+          grep -E '^VITE_REVERB_|^APP_' .env | sed 's/=.*$/=***/' || true
+          grep -q '^VITE_REVERB_APP_KEY=.\+' .env || { echo "::error::VITE_REVERB_APP_KEY empty after resolve"; exit 1; }
+
+      - name: Build frontend assets
+        if: hashFiles('package.json') != ''
+        env:
+          APP_URL: ${{ env.APP_URL }}
+        run: |
+          npm ci --legacy-peer-deps --no-audit --no-fund
+          npm run build
+          test -f public/build/manifest.json || (echo "::error::public/build/manifest.json missing" && exit 1)
 
       - name: Verify server paths (storage, .env, .htaccess)
         run: |
@@ -149,9 +175,13 @@ jobs:
           php artisan view:clear
           php artisan cache:clear
           php artisan migrate --force
+          php artisan storage:link --force
+          if [ -x /home/c3ers/bin/reverb-ensure-running.sh ]; then
+            /home/c3ers/bin/reverb-ensure-running.sh || true
+          fi
           php artisan config:cache
-          php artisan route:cache
           php artisan view:cache
+          # Do not route:cache — duplicate route names can break serialization on the server.
           test -f .env && test -d storage && test -f .htaccess && echo DEPLOY_OK
           REMOTE
 

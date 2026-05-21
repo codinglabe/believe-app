@@ -424,16 +424,18 @@ Route::get('/unity-videos/engagement/comments', [CommunityVideoEngagementControl
 Route::post('/unity-videos/engagement/comments', [CommunityVideoEngagementController::class, 'comment'])->name('unity-videos.engagement.comment')->middleware('auth');
 
 Route::get('/unity-live', [UnityLiveController::class, 'index'])->name('unity-live.index');
-Route::get('/unity-live/{slug}', [UnityLiveController::class, 'show'])->name('unity-live.show')->where('slug', '[a-zA-Z0-9_]+');
+Route::get('/unity-live/{slug}', [UnityLiveController::class, 'show'])->name('unity-live.show')->where('slug', '[a-zA-Z0-9_-]+');
 
 // Unity Meet (supporter UI): personal meetings — also available to org / care alliance accounts from dashboard Tools
 Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:user|organization|organization_pending|care_alliance'])->group(function () {
     Route::get('/livestreams/supporter', [SupporterLivestreamController::class, 'index'])->name('livestreams.supporter.index');
     Route::get('/livestreams/supporter/live', [SupporterLivestreamController::class, 'live'])->name('livestreams.supporter.live');
+    Route::get('/livestreams/supporter/settings', [SupporterLivestreamController::class, 'settings'])->name('livestreams.supporter.settings');
     Route::get('/livestreams/supporter/recordings/search', [SupporterLivestreamController::class, 'recordingsSearch'])->name('livestreams.supporter.recordings.search');
     Route::get('/livestreams/supporter/recordings/download', [SupporterLivestreamController::class, 'recordingDownload'])->name('livestreams.supporter.recordings.download');
     Route::delete('/livestreams/supporter/recordings/file', [SupporterLivestreamController::class, 'recordingDelete'])->name('livestreams.supporter.recordings.file.delete');
     Route::put('/livestreams/supporter/recordings/file', [SupporterLivestreamController::class, 'recordingRename'])->name('livestreams.supporter.recordings.file.rename');
+    Route::post('/livestreams/supporter/recordings/youtube', [SupporterLivestreamController::class, 'recordingPublishToYoutube'])->name('livestreams.supporter.recordings.youtube.publish');
     Route::get('/livestreams/supporter/recordings', [SupporterLivestreamController::class, 'recordings'])->name('livestreams.supporter.recordings');
     Route::get('/livestreams/supporter/create', [SupporterLivestreamController::class, 'create'])->name('livestreams.supporter.create');
     Route::post('/livestreams/supporter', [SupporterLivestreamController::class, 'store'])->name('livestreams.supporter.store');
@@ -444,21 +446,22 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:user|organization|orga
     Route::get('/livestreams/supporter/{id}/edit', [SupporterLivestreamController::class, 'edit'])->name('livestreams.supporter.edit')->where('id', '[0-9]+');
     Route::put('/livestreams/supporter/{id}', [SupporterLivestreamController::class, 'update'])->name('livestreams.supporter.update')->where('id', '[0-9]+');
     Route::delete('/livestreams/supporter/{id}', [SupporterLivestreamController::class, 'destroy'])->name('livestreams.supporter.destroy')->where('id', '[0-9]+');
-    Route::get('/livestreams/supporter/{id}', [SupporterLivestreamController::class, 'show'])->name('livestreams.supporter.show')->where('id', '[0-9]+');
     Route::post('/livestreams/supporter/{id}/start-meeting', [SupporterLivestreamController::class, 'startMeeting'])->name('livestreams.supporter.start-meeting')->where('id', '[0-9]+');
     Route::post('/livestreams/supporter/{id}/set-live', [SupporterLivestreamController::class, 'setLive'])->name('livestreams.supporter.set-live')->where('id', '[0-9]+');
+    Route::post('/livestreams/supporter/{id}/end-unity-live', [SupporterLivestreamController::class, 'endUnityLive'])->name('livestreams.supporter.end-unity-live')->where('id', '[0-9]+');
     Route::post('/livestreams/supporter/{id}/end-stream', [SupporterLivestreamController::class, 'endStream'])->name('livestreams.supporter.end-stream')->where('id', '[0-9]+');
     Route::patch('/livestreams/supporter/{id}/visibility', [SupporterLivestreamController::class, 'updateVisibility'])->name('livestreams.supporter.update-visibility')->where('id', '[0-9]+');
     Route::patch('/livestreams/supporter/{id}/stream-key', [SupporterLivestreamController::class, 'updateStreamKey'])->name('livestreams.supporter.update-stream-key')->where('id', '[0-9]+');
     Route::post('/livestreams/supporter/{id}/prepare-youtube-live', [SupporterLivestreamController::class, 'prepareYouTubeLive'])->name('livestreams.supporter.prepare-youtube-live')->where('id', '[0-9]+');
     Route::post('/livestreams/supporter/{id}/queue-stream-relay', [SupporterLivestreamController::class, 'queueStreamRelayJob'])->name('livestreams.supporter.queue-stream-relay')->where('id', '[0-9]+');
     Route::post('/livestreams/supporter/{id}/go-live-obs-auto', [SupporterLivestreamController::class, 'queueStreamRelayJob'])->name('livestreams.supporter.go-live-obs-auto')->where('id', '[0-9]+');
+    Route::get('/livestreams/supporter/{id}', [SupporterLivestreamController::class, 'show'])->name('livestreams.supporter.show')->where('id', '[0-9]+');
 });
 
 // VDO.Ninja meeting: guest join by secure token (public)
 Route::get('/join/{token}', [LivestreamController::class, 'guestJoinByToken'])->name('livestreams.guest-join-by-token')->where('token', '[a-zA-Z0-9_-]+');
 // Viewer page: /live/{slug} — view-only with Mute + Volume (public, when stream is live)
-Route::get('/live/{slug}', [LiveViewController::class, 'show'])->name('live.show')->where('slug', '[a-zA-Z0-9_]+');
+Route::get('/live/{slug}', [LiveViewController::class, 'show'])->name('live.show')->where('slug', '[a-zA-Z0-9_-]+');
 
 Route::get('/jobs', [JobsController::class, 'index'])->name('jobs.index');
 Route::get('/volunteer-opportunities', [JobsController::class, 'volunteerOpportunities'])->name('volunteer-opportunities.index');

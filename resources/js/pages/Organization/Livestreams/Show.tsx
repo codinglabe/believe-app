@@ -10,20 +10,19 @@ import { Label } from "@/components/ui/label"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import AppLayout from "@/layouts/app-layout"
+import GoLiveConfirmDialog from "@/components/livestreams/GoLiveConfirmDialog"
 import {
   Video,
   Copy,
   ExternalLink,
   Play,
   Square,
-  Loader2,
   Youtube,
   Users,
   Key,
   Info,
   CheckCircle2,
   AlertCircle,
-  Monitor,
   Code,
   FileText,
   ArrowLeft,
@@ -47,6 +46,7 @@ interface Livestream {
   canvasUrl?: string | null
   /** When true, the meeting runs in multi-participant canvas mode. */
   canvasMode?: boolean
+  browserMediaMtxPush?: boolean
   status: "draft" | "scheduled" | "live" | "meeting_live" | "starting" | "ended" | "cancelled"
   scheduledAt: string | null
   startedAt: string | null
@@ -90,6 +90,7 @@ export default function ShowLivestream({ livestream, organization, recordingCons
   const [copied, setCopied] = useState<string | null>(null)
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false)
   const [isGoLivePending, setIsGoLivePending] = useState(false)
+  const [goLiveConfirmOpen, setGoLiveConfirmOpen] = useState(false)
   const [isEndingStreamPending, setIsEndingStreamPending] = useState(false)
   const [streamKey, setStreamKey] = useState("")
   const [isUpdatingStreamKey, setIsUpdatingStreamKey] = useState(false)
@@ -105,6 +106,11 @@ export default function ShowLivestream({ livestream, organization, recordingCons
   )
 
   const isGoLiveBusy = isGoLivePending || streamRelayInProgress
+
+  const showGoLiveButton =
+    !["live", "meeting_live", "starting"].includes(livestream.status) &&
+    !streamRelayInProgress &&
+    !isGoLivePending
 
   const pollMs =
     (isEndingStreamPending && livestream.status === "live") || streamRelayInProgress ? 4000 : 12000
@@ -144,7 +150,7 @@ export default function ShowLivestream({ livestream, organization, recordingCons
     )
   }
 
-  const goLiveCloud = () => {
+  const queueGoLiveCloud = () => {
     if (isGoLiveBusy) {
       return
     }
@@ -157,6 +163,13 @@ export default function ShowLivestream({ livestream, organization, recordingCons
         onFinish: () => setIsGoLivePending(false),
       }
     )
+  }
+
+  const goLiveCloud = () => {
+    if (isGoLiveBusy) {
+      return
+    }
+    setGoLiveConfirmOpen(true)
   }
 
   const endStreamCloud = () => {
@@ -220,7 +233,7 @@ export default function ShowLivestream({ livestream, organization, recordingCons
           on and the meeting is active — no manual tab. Pre-warms on
           scheduled/starting so the composite is publishing before the worker
           fires. Stays open as long as this Show page is open. */}
-      {livestream.canvasMode && livestream.canvasUrl && ["scheduled", "starting", "meeting_live", "live"].includes(livestream.status) && (
+      {livestream.canvasMode && livestream.browserMediaMtxPush && livestream.canvasUrl && ["scheduled", "starting", "meeting_live", "live"].includes(livestream.status) && (
         <iframe
           src={livestream.canvasUrl}
           title="canvas-mixer"
@@ -274,8 +287,7 @@ export default function ShowLivestream({ livestream, organization, recordingCons
             <AlertDescription>
               <p className="font-medium text-foreground">Ending YouTube live</p>
               <p className="text-sm text-muted-foreground mt-1">
-                YouTube was told to stop. This page refreshes until the AWS worker callback reports the relay
-                finished, then you can go live again.
+                YouTube was told to stop. This page refreshes until the stream has fully ended, then you can go live again.
               </p>
             </AlertDescription>
           </Alert>
@@ -284,7 +296,6 @@ export default function ShowLivestream({ livestream, organization, recordingCons
         <Tabs defaultValue="dashboard" className="space-y-6">
           <TabsList>
             <TabsTrigger value="dashboard">Host Dashboard</TabsTrigger>
-            <TabsTrigger value="obs">OBS Setup</TabsTrigger>
             <TabsTrigger value="settings">Settings</TabsTrigger>
           </TabsList>
 
@@ -295,18 +306,14 @@ export default function ShowLivestream({ livestream, organization, recordingCons
                 <CardTitle>Quick Actions</CardTitle>
               </CardHeader>
               <CardContent className="flex gap-4">
-                {!["live", "meeting_live", "starting"].includes(livestream.status) && (
+                {showGoLiveButton && (
                   <Button
                     onClick={goLiveCloud}
-                    disabled={isGoLiveBusy || isUpdatingStatus || isEndingStreamPending}
+                    disabled={isUpdatingStatus || isEndingStreamPending}
                     className="bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 min-w-[10.5rem]"
                   >
-                    {isGoLiveBusy ? (
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" aria-hidden />
-                    ) : (
-                      <Play className="w-4 h-4 mr-2" />
-                    )}
-                    {isGoLiveBusy ? "Going live…" : "Go Live (Cloud)"}
+                    <Play className="w-4 h-4 mr-2" />
+                    Go Live (Cloud)
                   </Button>
                 )}
                 {["live", "meeting_live", "starting"].includes(livestream.status) && (
@@ -467,7 +474,7 @@ export default function ShowLivestream({ livestream, organization, recordingCons
                     <Alert>
                       <AlertCircle className="w-4 h-4" />
                       <AlertDescription>
-                        No YouTube stream key configured. Add one in the Settings tab to enable OBS → YouTube streaming.
+                        No YouTube stream key configured. Add one in the Settings tab to enable cloud streaming to YouTube.
                       </AlertDescription>
                     </Alert>
                     {organization.youtubeChannelUrl && (
@@ -488,81 +495,6 @@ export default function ShowLivestream({ livestream, organization, recordingCons
             </Card>
           </TabsContent>
 
-          <TabsContent value="obs" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Monitor className="w-5 h-5" />
-                  OBS Studio Setup Guide
-                </CardTitle>
-                <CardDescription>
-                  Connect guest feeds to OBS and stream to YouTube
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <div>
-                  <h3 className="font-semibold mb-2">Step 1: Add Guest Feeds</h3>
-                  <ol className="list-decimal list-inside space-y-2 text-sm text-gray-300">
-                    <li>Open OBS Studio</li>
-                    <li>For each guest, click <strong>Sources → Add → Browser Source</strong></li>
-                    <li>Paste the guest's VDO.Ninja participant URL</li>
-                    <li>Set width: <code className="bg-gray-800 px-1 rounded">1920</code>, height: <code className="bg-gray-800 px-1 rounded">1080</code></li>
-                    <li>Check "Shutdown source when not visible" and "Refresh browser when scene becomes active"</li>
-                    <li>Repeat for each guest</li>
-                  </ol>
-                </div>
-
-                <div>
-                  <h3 className="font-semibold mb-2">Step 2: Configure YouTube Stream</h3>
-                  <ol className="list-decimal list-inside space-y-2 text-sm text-gray-300">
-                    <li>In OBS, go to <strong>Settings → Stream</strong></li>
-                    <li>Service: <strong>YouTube</strong></li>
-                    <li>Paste your YouTube Stream Key (get it from Settings tab if not set)</li>
-                    <li>Click <strong>OK</strong></li>
-                  </ol>
-                </div>
-
-                <div>
-                  <h3 className="font-semibold mb-2">Step 3: Start Streaming</h3>
-                  <ol className="list-decimal list-inside space-y-2 text-sm text-gray-300">
-                    <li>Arrange your guest feeds in OBS (resize, position, add graphics)</li>
-                    <li>Click <strong>Start Streaming</strong> in OBS</li>
-                    <li>Your stream will appear on YouTube Live</li>
-                  </ol>
-                </div>
-
-                <Alert>
-                  <Info className="w-4 h-4" />
-                  <AlertDescription>
-                    <strong>Pro Tip:</strong> Create different OBS scenes for different layouts (2-person, panel, spotlight).
-                    Switch between scenes during your stream for variety.
-                  </AlertDescription>
-                </Alert>
-              </CardContent>
-            </Card>
-
-            {!livestream.hasStreamKey && (
-              <Card className="bg-yellow-500/10 border-yellow-500/30">
-                <CardHeader>
-                  <CardTitle className="text-sm">⚠️ Stream Key Required</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-sm text-gray-300 mb-4">
-                    You need to add your YouTube stream key before you can broadcast. Go to the Settings tab to add it.
-                  </p>
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      const settingsTab = document.querySelector('[value="settings"]') as HTMLElement
-                      settingsTab?.click()
-                    }}
-                  >
-                    Go to Settings
-                  </Button>
-                </CardContent>
-              </Card>
-            )}
-          </TabsContent>
 
           <TabsContent value="settings" className="space-y-6">
             <Card>
@@ -572,7 +504,7 @@ export default function ShowLivestream({ livestream, organization, recordingCons
                   YouTube Stream Key
                 </CardTitle>
                 <CardDescription>
-                  Add or update your YouTube stream key for OBS broadcasting
+                  Add or update your YouTube stream key for cloud broadcasting
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -581,7 +513,7 @@ export default function ShowLivestream({ livestream, organization, recordingCons
                   <AlertDescription>
                     <strong>How to get your Stream Key:</strong>
                     <ol className="list-decimal list-inside mt-2 space-y-1 text-sm">
-                      <li>Go to <a href="https://studio.youtube.com" target="_blank" className="text-[#FF1493] hover:underline">YouTube Studio</a> → Go Live</li>
+                      <li>Go to <a href="https://studio.youtube.com" target="_blank" rel="noopener noreferrer" className="text-[#FF1493] hover:underline">YouTube Studio</a> → Go Live</li>
                       <li>Create a new stream or select an existing one</li>
                       <li>Copy the "Stream Key" (usually starts with characters like "rtmp://" or a long alphanumeric string)</li>
                       <li>Paste it below</li>
@@ -617,6 +549,13 @@ export default function ShowLivestream({ livestream, organization, recordingCons
           </TabsContent>
         </Tabs>
       </div>
+
+      <GoLiveConfirmDialog
+        open={goLiveConfirmOpen}
+        onOpenChange={setGoLiveConfirmOpen}
+        onConfirm={queueGoLiveCloud}
+        isConfirming={isGoLivePending}
+      />
     </AppLayout>
   )
 }

@@ -353,6 +353,139 @@ class DropboxOrgApi
     }
 
     /**
+     * Download a file from Dropbox to a local path (for server-side processing).
+     */
+    public function downloadToPath(string $path, string $localPath): bool
+    {
+        $path = $this->normalizeDropboxPath($path);
+
+        $dir = dirname($localPath);
+        if (! is_dir($dir) && ! mkdir($dir, 0755, true) && ! is_dir($dir)) {
+            return false;
+        }
+
+        if ($this->downloadToPathViaContentApi($path, $localPath)) {
+            return true;
+        }
+
+        $resolvedPath = $this->resolveDownloadPath($path);
+        if ($resolvedPath !== null && $resolvedPath !== $path && $this->downloadToPathViaContentApi($resolvedPath, $localPath)) {
+            return true;
+        }
+
+        return $this->downloadToPathViaTemporaryLink($resolvedPath ?? $path, $localPath);
+    }
+
+    private function normalizeDropboxPath(string $path): string
+    {
+        $path = trim($path);
+        if ($path === '' || $path[0] !== '/') {
+            $path = '/'.$path;
+        }
+
+        return preg_replace('#/+#', '/', $path) ?: $path;
+    }
+
+    private function downloadToPathViaContentApi(string $path, string $localPath): bool
+    {
+        if (is_file($localPath)) {
+            @unlink($localPath);
+        }
+
+        $apiArg = json_encode(['path' => $path], JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR);
+
+        $response = Http::withHeaders([
+            'Authorization' => 'Bearer '.$this->accessToken,
+            'Content-Type' => 'application/octet-stream',
+            'Dropbox-API-Arg' => $apiArg,
+        ])->withOptions(['verify' => config('services.dropbox.verify', true)])
+            ->timeout(7200)
+            ->connectTimeout(60)
+            ->withBody('', 'application/octet-stream')
+            ->sink($localPath)
+            ->post('https://content.dropboxapi.com/2/files/download');
+
+        if ($response->successful() && is_file($localPath) && filesize($localPath) > 0) {
+            return true;
+        }
+
+        if (is_file($localPath)) {
+            @unlink($localPath);
+        }
+
+        Log::warning('Dropbox files/download failed', [
+            'path' => $path,
+            'status' => $response->status(),
+            'body' => $response->body(),
+        ]);
+
+        return false;
+    }
+
+    private function downloadToPathViaTemporaryLink(string $path, string $localPath): bool
+    {
+        $link = $this->getTemporaryLink($path);
+        if ($link === null || $link === '') {
+            Log::warning('Dropbox get_temporary_link failed for download fallback', ['path' => $path]);
+
+            return false;
+        }
+
+        if (is_file($localPath)) {
+            @unlink($localPath);
+        }
+
+        $response = Http::withOptions(['verify' => config('services.dropbox.verify', true)])
+            ->timeout(7200)
+            ->connectTimeout(60)
+            ->sink($localPath)
+            ->get($link);
+
+        if ($response->successful() && is_file($localPath) && filesize($localPath) > 0) {
+            Log::info('Dropbox download succeeded via temporary link', ['path' => $path]);
+
+            return true;
+        }
+
+        if (is_file($localPath)) {
+            @unlink($localPath);
+        }
+
+        Log::warning('Dropbox temporary link download failed', [
+            'path' => $path,
+            'status' => $response->status(),
+        ]);
+
+        return false;
+    }
+
+    /**
+     * Resolve canonical path_display from Dropbox metadata (fixes path casing / encoding mismatches).
+     */
+    private function resolveDownloadPath(string $path): ?string
+    {
+        $path = $this->normalizeDropboxPath($path);
+
+        $response = Http::withHeaders([
+            'Authorization' => 'Bearer '.$this->accessToken,
+            'Content-Type' => 'application/json',
+        ])->withOptions(['verify' => config('services.dropbox.verify', true)])
+            ->post(self::API_URL.'/files/get_metadata', [
+                'path' => $path,
+                'include_media_info' => false,
+            ]);
+
+        if (! $response->successful()) {
+            return null;
+        }
+
+        $data = $response->json();
+        $display = $data['path_display'] ?? null;
+
+        return is_string($display) && $display !== '' ? $this->normalizeDropboxPath($display) : null;
+    }
+
+    /**
      * Get a temporary download link for a file (valid for a few hours).
      */
     public function getTemporaryLink(string $path): ?string
@@ -371,6 +504,12 @@ class DropboxOrgApi
             ]);
 
         if (! $response->successful()) {
+            Log::warning('Dropbox get_temporary_link failed', [
+                'path' => $path,
+                'status' => $response->status(),
+                'body' => $response->body(),
+            ]);
+
             return null;
         }
 
@@ -467,6 +606,22 @@ class DropboxOrgApi
             $cursor = isset($data['has_more']) && $data['has_more'] ? ($data['cursor'] ?? null) : null;
         } while ($cursor);
 
-        return $out;
+        return self::sortByModifiedDesc($out);
+    }
+
+    /**
+     * @param  array<int, array{client_modified?: ?string, ...}>  $files
+     * @return array<int, array{client_modified?: ?string, ...}>
+     */
+    public static function sortByModifiedDesc(array $files): array
+    {
+        usort($files, static function (array $a, array $b): int {
+            $tb = strtotime((string) ($b['client_modified'] ?? '')) ?: 0;
+            $ta = strtotime((string) ($a['client_modified'] ?? '')) ?: 0;
+
+            return $tb <=> $ta;
+        });
+
+        return $files;
     }
 }

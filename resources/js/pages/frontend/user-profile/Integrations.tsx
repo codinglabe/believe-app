@@ -40,7 +40,7 @@ export default function ProfileIntegrations({ youtube_channel_url, myChannel = n
   const [dropboxDisconnecting, setDropboxDisconnecting] = useState(false)
 
   const handleConnect = () => {
-    window.location.href = route("integrations.youtube.redirect")
+    window.location.href = route("integrations.youtube.redirect") + "?upload=1"
   }
 
   const handleDisconnect = () => {

@@ -11,6 +11,7 @@ import {
   Radio,
   Video,
   Play,
+  Settings,
 } from "lucide-react"
 
 type PagePropsLike = {
@@ -35,11 +36,11 @@ function NavItem({
       className={cn(
         "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors",
         active
-          ? "bg-primary text-primary-foreground shadow-sm"
+          ? "bg-gradient-to-r from-purple-600 to-blue-600 text-white shadow-sm"
           : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
       )}
     >
-      <span className={cn(active ? "text-primary-foreground" : "text-muted-foreground")}>{icon}</span>
+      <span className={cn(active ? "text-white" : "text-muted-foreground")}>{icon}</span>
       <span className="font-medium">{label}</span>
     </Link>
   )
@@ -95,6 +96,12 @@ export default function UnityMeetShellLayout({ children }: { children: ReactNode
               icon={<Radio className="h-4 w-4" />}
               label="Live"
               active={pathname === "/livestreams/supporter/live"}
+            />
+            <NavItem
+              href="/livestreams/supporter/settings"
+              icon={<Settings className="h-4 w-4" />}
+              label="Settings"
+              active={pathname === "/livestreams/supporter/settings"}
             />
           </nav>
 

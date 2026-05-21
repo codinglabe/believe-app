@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Crypt;
+use App\Services\YouTubeService;
 use Illuminate\Support\Str;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -78,8 +79,10 @@ class IntegrationsController extends Controller
 
     /**
      * Redirect to Google OAuth so user can connect their YouTube channel (organization or supporter).
+     *
+     * Connect requests readonly + upload (Unity Videos + recording uploads). Live stream scope (force-ssl) is off while Go YouTube Live is hidden.
      */
-    public function redirectToYouTube(): RedirectResponse
+    public function redirectToYouTube(Request $request): RedirectResponse
     {
         $user = Auth::user();
         $organization = $user->organization ?? null;
@@ -91,18 +94,24 @@ class IntegrationsController extends Controller
             return redirect()->route($route)->with('error', 'YouTube integration is not configured. Please set YOUTUBE_CLIENT_ID and redirect URI.');
         }
 
+        $forLive = $request->query('mode') === 'live' || $request->boolean('live');
+
         // CSRF protection: required by Google OAuth "Use secure flows" – do not remove
         $state = Str::random(40);
         session([
             'youtube_oauth_state' => $state,
             'youtube_oauth_for_supporter' => ! $organization,
+            'youtube_oauth_for_live' => $forLive,
         ]);
+
+        // readonly + upload only (no youtube.force-ssl until live streaming is re-enabled).
+        $scopes = YouTubeService::oauthConnectScopes();
 
         $params = [
             'client_id' => $clientId,
             'redirect_uri' => $redirectUri,
             'response_type' => 'code',
-            'scope' => 'https://www.googleapis.com/auth/youtube.force-ssl',
+            'scope' => implode(' ', $scopes),
             'state' => $state,
             'access_type' => 'offline',
             'prompt' => 'consent',
@@ -122,13 +131,14 @@ class IntegrationsController extends Controller
         $state = $request->query('state');
         $sessionState = session('youtube_oauth_state');
         $forSupporter = session('youtube_oauth_for_supporter', false);
+        $forLive = session('youtube_oauth_for_live', false);
 
         if (empty($state) || $state !== $sessionState) {
-            session()->forget(['youtube_oauth_state', 'youtube_oauth_for_supporter']);
+            session()->forget(['youtube_oauth_state', 'youtube_oauth_for_supporter', 'youtube_oauth_for_live']);
             $route = $forSupporter ? 'user.profile.integrations' : 'integrations.youtube';
             return redirect()->route($route)->with('error', 'Invalid state. Please try connecting again.');
         }
-        session()->forget(['youtube_oauth_state', 'youtube_oauth_for_supporter']);
+        session()->forget(['youtube_oauth_state', 'youtube_oauth_for_supporter', 'youtube_oauth_for_live']);
 
         $callbackRoute = $forSupporter ? 'user.profile.integrations' : 'integrations.youtube';
         if (! $forSupporter && (! $user->organization)) {
@@ -168,24 +178,35 @@ class IntegrationsController extends Controller
             return redirect()->route($callbackRoute)->with('error', 'No access token received.');
         }
 
-        $channelsResponse = $http->withToken($accessToken)->get('https://www.googleapis.com/youtube/v3/channels', [
-            'part' => 'id,snippet',
-            'mine' => 'true',
-            'maxResults' => 1,
-        ]);
+        $youtubeService = app(YouTubeService::class);
+        $scopeField = (string) ($tokenData['scope'] ?? '');
+        $hasUploadScope = $youtubeService->scopeStringIncludesUpload($scopeField)
+            || $youtubeService->accessTokenIncludesUploadScope($accessToken);
 
-        if (! $channelsResponse->successful()) {
-            Log::warning('YouTube channels.list failed', ['body' => $channelsResponse->body()]);
-            return redirect()->route($callbackRoute)->with('error', 'Could not load your YouTube channel. Please try again.');
+        if (! $hasUploadScope) {
+            Log::warning('YouTube OAuth missing upload scope', [
+                'user_id' => $user->id,
+                'scope' => $scopeField,
+            ]);
+
+            return redirect()->route($callbackRoute)->with(
+                'error',
+                'YouTube upload permission was not granted. Disconnect YouTube (if connected), connect again, and allow all requested access — especially upload videos to YouTube.',
+            );
         }
 
-        $channelsData = $channelsResponse->json();
-        $items = $channelsData['items'] ?? [];
-        if (empty($items)) {
-            return redirect()->route($callbackRoute)->with('error', 'No YouTube channel found for this account. Create a channel on YouTube first, then connect again.');
+        $channelResult = $youtubeService->fetchOAuthUserChannel($accessToken);
+        $channelItem = $channelResult['channel'];
+
+        if ($channelItem === null) {
+            $errorMessage = $channelResult['error_body'] !== null
+                ? $youtubeService->userMessageFromYoutubeApiError($channelResult['error_body'])
+                : 'No YouTube channel found for this account. Create a channel on YouTube first, then connect again.';
+
+            return redirect()->route($callbackRoute)->with('error', $errorMessage);
         }
 
-        $channelId = $items[0]['id'] ?? null;
+        $channelId = $channelItem['id'] ?? null;
         if (! $channelId) {
             return redirect()->route($callbackRoute)->with('error', 'Could not get channel ID.');
         }
@@ -229,8 +250,12 @@ class IntegrationsController extends Controller
         ]);
 
         $value = $validated['youtube_channel_url'] ? trim($validated['youtube_channel_url']) : null;
+        $disconnecting = $value === null || $value === '';
 
         if ($organization) {
+            if ($disconnecting) {
+                $this->revokeYoutubeOAuthToken($organization->youtube_refresh_token ?? $organization->youtube_access_token);
+            }
             $organization->update([
                 'youtube_channel_url' => $value,
                 'youtube_access_token' => null,
@@ -238,6 +263,9 @@ class IntegrationsController extends Controller
                 'youtube_token_expires_at' => null,
             ]);
         } else {
+            if ($disconnecting) {
+                $this->revokeYoutubeOAuthToken($user->youtube_refresh_token ?? $user->youtube_access_token);
+            }
             $user->update([
                 'youtube_channel_url' => $value,
                 'youtube_access_token' => null,
@@ -311,6 +339,7 @@ class IntegrationsController extends Controller
                 } catch (\Throwable $e) {
                     Log::warning('Dropbox list folder failed', ['error' => $e->getMessage()]);
                 }
+                $dropboxFiles = \App\Services\DropboxOrgApi::sortByModifiedDesc($dropboxFiles);
             }
         }
 
@@ -741,7 +770,8 @@ class IntegrationsController extends Controller
         try {
             $api = new \App\Services\DropboxOrgApi($token);
             $files = $api->search($folderPath, $query);
-            return response()->json(['files' => $files]);
+
+            return response()->json(['files' => \App\Services\DropboxOrgApi::sortByModifiedDesc($files)]);
         } catch (\Throwable $e) {
             Log::warning('Dropbox search failed', ['error' => $e->getMessage()]);
             return response()->json(['error' => 'Search failed', 'files' => []], 500);
@@ -762,6 +792,32 @@ class IntegrationsController extends Controller
         $folderName = trim(preg_replace('/[\\\\\/:*?"<>|]+/', ' ', $folderName));
         $folderName = trim($folderName, " \t\n\r\0\x0B.") ?: 'BIU Meeting Recordings';
         return '/' . $folderName;
+    }
+
+    /**
+     * Revoke refresh/access token at Google so reconnecting requests fresh scopes (e.g. youtube.upload).
+     */
+    private function revokeYoutubeOAuthToken(?string $encryptedToken): void
+    {
+        if ($encryptedToken === null || $encryptedToken === '') {
+            return;
+        }
+
+        try {
+            $token = Crypt::decryptString($encryptedToken);
+        } catch (\Throwable $e) {
+            Log::warning('YouTube token revoke skipped: decrypt failed', ['message' => $e->getMessage()]);
+
+            return;
+        }
+
+        try {
+            self::httpClientWithSsl()->asForm()->post('https://oauth2.googleapis.com/revoke', [
+                'token' => $token,
+            ]);
+        } catch (\Throwable $e) {
+            Log::warning('YouTube token revoke request failed', ['message' => $e->getMessage()]);
+        }
     }
 
     /**

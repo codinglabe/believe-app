@@ -20,7 +20,6 @@ import {
   Clock,
   Mail,
   User,
-  IdCard,
   Lock,
   Globe,
   CircleDot,
@@ -39,7 +38,6 @@ const BRAND = {
 
 interface Props {
   authUserDisplayName?: string
-  unityMeetingId?: string
 }
 
 function SectionLabel({
@@ -61,11 +59,10 @@ function SectionLabel({
   )
 }
 
-export default function SupporterCreateLivestream({ authUserDisplayName = "", unityMeetingId = "" }: Props) {
+export default function SupporterCreateLivestream({ authUserDisplayName = "" }: Props) {
   const [scheduleOpen, setScheduleOpen] = useState(false)
   const [isScheduling, setIsScheduling] = useState(false)
   const [participantEmailInput, setParticipantEmailInput] = useState("")
-  const [meetingIdCopied, setMeetingIdCopied] = useState(false)
 
   const { data, setData, post, processing, errors } = useForm({
     title: "",
@@ -87,13 +84,6 @@ export default function SupporterCreateLivestream({ authUserDisplayName = "", un
       setScheduleOpen(true)
     }
   }, [])
-
-  const copyMeetingId = () => {
-    if (!unityMeetingId.trim()) return
-    void navigator.clipboard.writeText(unityMeetingId)
-    setMeetingIdCopied(true)
-    setTimeout(() => setMeetingIdCopied(false), 2000)
-  }
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -222,34 +212,9 @@ export default function SupporterCreateLivestream({ authUserDisplayName = "", un
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,140px)_1fr] sm:items-center sm:gap-4">
-                  <span className="flex items-center gap-2 pt-3 text-sm text-zinc-400 sm:py-3">
-                    <IdCard className="h-4 w-4 shrink-0 text-zinc-500" aria-hidden />
-                    Meeting ID
-                  </span>
-                  <div className="relative min-w-0">
-                    <Input
-                      readOnly
-                      value={unityMeetingId}
-                      className={cn(fieldShell, "font-mono pr-12 text-sm text-zinc-400 shadow-none")}
-                      title={unityMeetingId}
-                    />
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      className="absolute right-1 top-1 h-9 w-9 rounded-lg text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100"
-                      onClick={copyMeetingId}
-                      aria-label="Copy meeting ID"
-                    >
-                      {meetingIdCopied ? (
-                        <Check className="h-4 w-4 text-emerald-400" />
-                      ) : (
-                        <Copy className="h-4 w-4" />
-                      )}
-                    </Button>
-                  </div>
-                </div>
+                <p className="text-sm text-zinc-500">
+                  Each start creates a new meeting with its own ID. You will see the meeting ID on the next screen.
+                </p>
               </div>
 
               <SectionLabel className="mt-10">Security</SectionLabel>
