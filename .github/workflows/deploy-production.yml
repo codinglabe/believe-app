@@ -179,7 +179,11 @@ jobs:
           php artisan route:clear
           php artisan view:clear
           php artisan cache:clear
-          php artisan migrate --force
+          timeout 300 php artisan migrate --force -v || {
+            echo "::warning::migrate exceeded 5m or failed; check migrate:status on server"
+            php artisan migrate:status 2>&1 | tail -20
+            exit 1
+          }
           php artisan storage:link --force
           REVERB_SCRIPT="${DEPLOY_PATH%/public_html}/bin/reverb-ensure-running.sh"
           if [ -x "\$REVERB_SCRIPT" ]; then "\$REVERB_SCRIPT" || true; fi
