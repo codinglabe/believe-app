@@ -23,7 +23,7 @@ type LoginForm = {
 interface LoginProps {
     seo?: { title: string; description?: string }
     status?: string
-    canResetPassword: boolean
+    canResetPassword?: boolean
 }
 
 export default function LoginPage({ seo, status, canResetPassword }: LoginProps) {
@@ -150,8 +150,8 @@ export default function LoginPage({ seo, status, canResetPassword }: LoginProps)
                       Remember me
                     </Label>
                   </div>
-                  {canResetPassword && (
-                    <Link href="/password/reset" className="text-sm text-blue-600 hover:text-blue-700 hover:underline font-medium transition-colors">
+                  {(canResetPassword ?? true) && (
+                    <Link href={route("password.request")} className="text-sm text-blue-600 hover:text-blue-700 hover:underline font-medium transition-colors">
                       Forgot password?
                     </Link>
                   )}

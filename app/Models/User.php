@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Jobs\ProcessBelievePointsAutoReplenishJob;
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
+use App\Notifications\ResetPasswordNotification;
 use App\Notifications\VerifyEmailNotification;
 use Database\Factories\UserFactory;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
@@ -1112,6 +1113,14 @@ class User extends Authenticatable implements MustVerifyEmail
      * @param  string|null  $domain  The domain from the request context (where user is accessing from)
      * @return void
      */
+    /**
+     * Send the password reset notification (queued, branded template).
+     */
+    public function sendPasswordResetNotification($token): void
+    {
+        $this->notify(new ResetPasswordNotification($token));
+    }
+
     public function sendEmailVerificationNotification(?string $domain = null)
     {
         // Get domain from request if not provided
