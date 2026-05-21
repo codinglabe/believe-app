@@ -201,9 +201,9 @@
         <div class="footer">
             <p><strong>{{ $appName }}</strong></p>
             <p>
-                <a href="{{ config('app.url') }}">Visit website</a>
+                <a href="{{ $appUrl }}">Visit website</a>
                 &nbsp;·&nbsp;
-                <a href="{{ config('app.url') }}/login">Sign in</a>
+                <a href="{{ $appUrl }}/login">Sign in</a>
             </p>
             <p style="margin-top: 16px; font-size: 12px; color: #9ca3af;">
                 © {{ date('Y') }} {{ $appName }}. All rights reserved.

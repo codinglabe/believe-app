@@ -1118,7 +1118,15 @@ class User extends Authenticatable implements MustVerifyEmail
      */
     public function sendPasswordResetNotification($token): void
     {
-        $this->notify(new ResetPasswordNotification($token));
+        $domain = null;
+        if (request()) {
+            $scheme = request()->getScheme();
+            $host = request()->getHost();
+            $port = request()->getPort();
+            $domain = $scheme.'://'.$host.($port && $port != 80 && $port != 443 ? ':'.$port : '');
+        }
+
+        $this->notify(new ResetPasswordNotification($token, $domain));
     }
 
     public function sendEmailVerificationNotification(?string $domain = null)
