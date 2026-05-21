@@ -172,8 +172,8 @@ jobs:
           grep -c '^REVERB_APP_KEY=' .env.server || echo "::warning::REVERB_APP_KEY not in fetched .env.server"
           chmod +x deploy/expand-vite-env.sh
           {
+            ./deploy/expand-vite-env.sh < .env.server | grep -v '^APP_URL='
             echo "APP_URL=${APP_URL}"
-            ./deploy/expand-vite-env.sh < .env.server
           } > .env
           lines=$(wc -l < .env | tr -d ' ')
           echo "Wrote .env for Vite build (${lines} lines)"
@@ -248,9 +248,19 @@ jobs:
           test -f .env && test -d storage && test -f .htaccess && echo DEPLOY_OK
           REMOTE
 
-      - name: Smoke test
+      - name: Smoke test (production URL only)
+        env:
+          SMOKE_URL: ${{ vars.PRODUCTION_APP_URL }}
         run: |
           set -euo pipefail
-          code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 30 "${APP_URL}/")
-          echo "GET ${APP_URL}/ => HTTP ${code}"
+          if [ -z "${SMOKE_URL}" ]; then
+            echo "::error::Set GitHub variable PRODUCTION_APP_URL=https://believeinunity.org"
+            exit 1
+          fi
+          if echo "${SMOKE_URL}" | grep -qi '501c3ers'; then
+            echo "::error::Production smoke test must not use 501c3ers.com (check PRODUCTION_APP_URL variable)"
+            exit 1
+          fi
+          code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 30 "${SMOKE_URL}/")
+          echo "GET ${SMOKE_URL}/ => HTTP ${code}"
           test "${code}" = "200" || test "${code}" = "302" || { echo "::error::Homepage returned HTTP ${code}"; exit 1; }
