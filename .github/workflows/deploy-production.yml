@@ -87,9 +87,21 @@ jobs:
             > "${SSH_DIR}/config"
           chmod 600 "${SSH_DIR}/config"
           echo "SSH_DIR=${SSH_DIR}" >> "${GITHUB_ENV}"
-          echo "SSH_CMD=ssh -F ${SSH_DIR}/config -o BatchMode=yes -o ConnectTimeout=30" >> "${GITHUB_ENV}"
-          echo "RSYNC_RSH=ssh -F ${SSH_DIR}/config -o BatchMode=yes -o ConnectTimeout=30" >> "${GITHUB_ENV}"
-          ssh -F "${SSH_DIR}/config" -o BatchMode=yes -o ConnectTimeout=30 cpanel-deploy "echo SSH_OK && whoami && hostname && pwd"
+          echo "SSH_CMD=ssh -F ${SSH_DIR}/config -o BatchMode=yes -o ConnectTimeout=60" >> "${GITHUB_ENV}"
+          echo "RSYNC_RSH=ssh -F ${SSH_DIR}/config -o BatchMode=yes -o ConnectTimeout=60" >> "${GITHUB_ENV}"
+          SSH_TEST='ssh -F '"${SSH_DIR}"'/config -o BatchMode=yes -o ConnectTimeout=60 cpanel-deploy "echo SSH_OK && whoami && hostname && pwd"'
+          for attempt in 1 2 3 4 5; do
+            if eval "${SSH_TEST}"; then
+              echo "SSH connected on attempt ${attempt}"
+              break
+            fi
+            if [ "${attempt}" -eq 5 ]; then
+              echo "::error::SSH to ${DEPLOY_USER}@${DEPLOY_HOST}:${SSH_PORT} failed after 5 attempts (timeouts are often transient — re-run workflow)"
+              exit 1
+            fi
+            echo "::warning::SSH attempt ${attempt} failed; retrying in 20s..."
+            sleep 20
+          done
 
       - name: Cache Composer
         uses: actions/cache@v4
