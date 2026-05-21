@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Jobs\ProcessBelievePointsAutoReplenishJob;
+use App\Jobs\SendPasswordResetEmailJob;
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
 use App\Notifications\VerifyEmailNotification;
 use Database\Factories\UserFactory;
@@ -1112,6 +1113,22 @@ class User extends Authenticatable implements MustVerifyEmail
      * @param  string|null  $domain  The domain from the request context (where user is accessing from)
      * @return void
      */
+    /**
+     * Queue the branded password-reset email on the mail queue (fast worker, not default).
+     */
+    public function sendPasswordResetNotification($token): void
+    {
+        $domain = null;
+        if (request()) {
+            $scheme = request()->getScheme();
+            $host = request()->getHost();
+            $port = request()->getPort();
+            $domain = $scheme.'://'.$host.($port && $port != 80 && $port != 443 ? ':'.$port : '');
+        }
+
+        SendPasswordResetEmailJob::dispatch($this->id, $token, $domain);
+    }
+
     public function sendEmailVerificationNotification(?string $domain = null)
     {
         // Get domain from request if not provided

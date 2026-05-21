@@ -209,13 +209,15 @@ jobs:
             ./ cpanel-deploy:${DEPLOY_PATH}/
           ${SSH_CMD} cpanel-deploy "test -f ${DEPLOY_PATH}/public/build/manifest.json && ls -la ${DEPLOY_PATH}/public/build/manifest.json | head -1"
 
-      - name: Install Reverb keepalive on server
+      - name: Install Reverb and mail-queue keepalive on server
         run: |
           set -euo pipefail
           ${SSH_CMD} cpanel-deploy "mkdir -p ${DEPLOY_PATH%/public_html}/bin ${DEPLOY_PATH%/public_html}/logs"
           scp -F "${SSH_DIR}/config" -o BatchMode=yes deploy/reverb-ensure-running-believeinunity.sh \
             cpanel-deploy:${DEPLOY_PATH%/public_html}/bin/reverb-ensure-running.sh
-          ${SSH_CMD} cpanel-deploy "chmod +x ${DEPLOY_PATH%/public_html}/bin/reverb-ensure-running.sh"
+          scp -F "${SSH_DIR}/config" -o BatchMode=yes deploy/queue-mail-ensure-running.sh \
+            cpanel-deploy:${DEPLOY_PATH%/public_html}/bin/queue-mail-ensure-running.sh
+          ${SSH_CMD} cpanel-deploy "chmod +x ${DEPLOY_PATH%/public_html}/bin/reverb-ensure-running.sh ${DEPLOY_PATH%/public_html}/bin/queue-mail-ensure-running.sh"
 
       - name: Prune non-runtime files on server
         run: |
@@ -250,7 +252,9 @@ jobs:
           }
           php artisan storage:link --force
           REVERB_SCRIPT="${DEPLOY_PATH%/public_html}/bin/reverb-ensure-running.sh"
+          MAIL_SCRIPT="${DEPLOY_PATH%/public_html}/bin/queue-mail-ensure-running.sh"
           if [ -x "\$REVERB_SCRIPT" ]; then "\$REVERB_SCRIPT" || true; fi
+          if [ -x "\$MAIL_SCRIPT" ]; then APP_DIR="${DEPLOY_PATH}" LOG_DIR="${DEPLOY_PATH%/public_html}/logs" MAIL_QUEUE_WORKERS=5 "\$MAIL_SCRIPT" || true; fi
           if grep -q '^REVERB_HOST=believeinunity.org' .env 2>/dev/null; then
             echo "::warning::Set REVERB_HOST=127.0.0.1 in server .env for PHP broadcasts (see deploy/PRODUCTION-REVERB-SETUP.md)"
           fi

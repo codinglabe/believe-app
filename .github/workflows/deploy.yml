@@ -200,6 +200,14 @@ jobs:
             ./ cpanel-deploy:${DEPLOY_PATH}/
           ${SSH_CMD} cpanel-deploy "test -f ${DEPLOY_PATH}/public/build/manifest.json && ls -la ${DEPLOY_PATH}/public/build/manifest.json | head -1"
 
+      - name: Install mail-queue keepalive on server
+        run: |
+          set -euo pipefail
+          ${SSH_CMD} cpanel-deploy "mkdir -p /home/c3ers/bin /home/c3ers/logs"
+          scp -F "${SSH_DIR}/config" -o BatchMode=yes deploy/queue-mail-ensure-running.sh \
+            cpanel-deploy:/home/c3ers/bin/queue-mail-ensure-running.sh
+          ${SSH_CMD} cpanel-deploy "chmod +x /home/c3ers/bin/queue-mail-ensure-running.sh"
+
       - name: Prune non-runtime files on server
         run: |
           set -euo pipefail
@@ -230,6 +238,9 @@ jobs:
           php artisan storage:link --force
           if [ -x /home/c3ers/bin/reverb-ensure-running.sh ]; then
             /home/c3ers/bin/reverb-ensure-running.sh || true
+          fi
+          if [ -x /home/c3ers/bin/queue-mail-ensure-running.sh ]; then
+            APP_DIR="${DEPLOY_PATH}" LOG_DIR="/home/c3ers/logs" MAIL_QUEUE_WORKERS=5 /home/c3ers/bin/queue-mail-ensure-running.sh || true
           fi
           php artisan config:cache
           php artisan view:cache

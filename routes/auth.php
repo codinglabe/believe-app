@@ -72,9 +72,11 @@ Route::middleware('guest')->group(function () {
     // Route::get('login-old', [AuthenticatedSessionController::class, 'create'])
     //     ->name('login-old');
 
-    Route::get('/login', function () {
+    Route::get('/login', function (Request $request) {
         return Inertia::render('frontend/login', [
             'seo' => SeoService::forPage('login'),
+            'status' => $request->session()->get('status'),
+            'canResetPassword' => Route::has('password.request'),
         ]);
     })->name('login');
 
