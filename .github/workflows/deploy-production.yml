@@ -1,0 +1,196 @@
+# Deploy PRODUCTION only → https://believeinunity.org (separate cPanel from 501c3ers.com)
+# Development uses deploy.yml → 501c3ers.com on branch `development`.
+#
+# Required secret: CPANEL_SSH_KEY_PRODUCTION (private key for PRODUCTION_DEPLOY_USER@host)
+# Required variables: PRODUCTION_DEPLOY_HOST, PRODUCTION_DEPLOY_USER, PRODUCTION_DEPLOY_PATH, PRODUCTION_APP_URL
+name: Deploy production (believeinunity.org)
+
+on:
+  push:
+    branches: [production]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-production-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    env:
+      PHP_VERSION: '8.4'
+      NODE_VERSION: '20'
+      DEPLOY_HOST: ${{ vars.PRODUCTION_DEPLOY_HOST }}
+      DEPLOY_USER: ${{ vars.PRODUCTION_DEPLOY_USER }}
+      DEPLOY_PATH: ${{ vars.PRODUCTION_DEPLOY_PATH }}
+      APP_URL: ${{ vars.PRODUCTION_APP_URL }}
+      SSH_PORT: ${{ vars.PRODUCTION_SSH_PORT != '' && vars.PRODUCTION_SSH_PORT || '22' }}
+      RSYNC_EXCLUDES: >-
+        --exclude=.git/
+        --exclude=.github/
+        --exclude=node_modules/
+        --exclude=tests/
+        --exclude=storage/
+        --exclude=.env
+        --exclude=.env.*
+        --exclude=.htaccess
+        --exclude=docs/
+        --exclude=.deploy/
+        --exclude=*.md
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy target
+        run: |
+          set -euo pipefail
+          for v in DEPLOY_HOST DEPLOY_USER DEPLOY_PATH APP_URL; do
+            if [ -z "${!v}" ]; then
+              echo "::error::Set GitHub variable PRODUCTION_${v#DEPLOY_} (or PRODUCTION_APP_URL for APP_URL)."
+              exit 1
+            fi
+          done
+          echo "Environment: production (believeinunity.org)"
+          echo "Target: ${DEPLOY_USER}@${DEPLOY_HOST}:${DEPLOY_PATH}"
+          echo "APP_URL (build only): ${APP_URL}"
+          if echo "${DEPLOY_HOST}" | grep -qi '501c3ers'; then
+            echo "::error::Production workflow must not target 501c3ers.com (development server)."
+            exit 1
+          fi
+
+      - name: Setup SSH
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.CPANEL_SSH_KEY_PRODUCTION }}
+        run: |
+          set -euo pipefail
+          if [ -z "${SSH_PRIVATE_KEY}" ]; then
+            echo "::error::Add repository secret CPANEL_SSH_KEY_PRODUCTION for ${DEPLOY_USER}@${DEPLOY_HOST}."
+            exit 1
+          fi
+          SSH_DIR="${GITHUB_WORKSPACE}/.ssh-deploy-prod"
+          mkdir -p "${SSH_DIR}"
+          chmod 700 "${SSH_DIR}"
+          printf '%s\n' "${SSH_PRIVATE_KEY}" > "${SSH_DIR}/cpanel_deploy"
+          chmod 600 "${SSH_DIR}/cpanel_deploy"
+          ssh-keyscan -p "${SSH_PORT}" -H "${DEPLOY_HOST}" >> "${SSH_DIR}/known_hosts" 2>/dev/null || true
+          printf '%s\n' \
+            'Host cpanel-deploy' \
+            "  HostName ${DEPLOY_HOST}" \
+            "  User ${DEPLOY_USER}" \
+            "  Port ${SSH_PORT}" \
+            "  IdentityFile ${SSH_DIR}/cpanel_deploy" \
+            '  IdentitiesOnly yes' \
+            '  StrictHostKeyChecking accept-new' \
+            '  ServerAliveInterval 60' \
+            '  ServerAliveCountMax 3' \
+            > "${SSH_DIR}/config"
+          chmod 600 "${SSH_DIR}/config"
+          echo "SSH_DIR=${SSH_DIR}" >> "${GITHUB_ENV}"
+          echo "SSH_CMD=ssh -F ${SSH_DIR}/config -o BatchMode=yes -o ConnectTimeout=30" >> "${GITHUB_ENV}"
+          echo "RSYNC_RSH=ssh -F ${SSH_DIR}/config -o BatchMode=yes -o ConnectTimeout=30" >> "${GITHUB_ENV}"
+          ssh -F "${SSH_DIR}/config" -o BatchMode=yes -o ConnectTimeout=30 cpanel-deploy "echo SSH_OK && whoami && hostname && pwd"
+
+      - name: Cache Composer
+        uses: actions/cache@v4
+        with:
+          path: |
+            vendor
+            ~/.composer/cache
+          key: ${{ runner.os }}-php${{ env.PHP_VERSION }}-composer-${{ hashFiles('composer.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-php${{ env.PHP_VERSION }}-composer-
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ env.PHP_VERSION }}
+          tools: composer:v2
+          extensions: mbstring, intl, bcmath, ctype, curl, dom, fileinfo, json, openssl, pdo, pdo_mysql, tokenizer, xml
+
+      - name: Install PHP dependencies
+        run: |
+          composer install --no-dev --prefer-dist --no-interaction --optimize-autoloader --no-ansi
+          mkdir -p resources/views storage/framework/views
+
+      - name: Setup Node
+        if: hashFiles('package.json') != ''
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      - name: Load Vite env from server (match local build)
+        if: hashFiles('package.json') != ''
+        run: |
+          set -euo pipefail
+          ${SSH_CMD} cpanel-deploy "grep -E '^(APP_NAME|APP_URL|APP_VERSION)=|^REVERB_|^VITE_' '${DEPLOY_PATH}/.env' | grep -v '^#'" > .env.server
+          echo "Loaded $(wc -l < .env.server | tr -d ' ') lines from server .env"
+          grep -c '^REVERB_APP_KEY=' .env.server || echo "::warning::REVERB_APP_KEY not in fetched .env.server"
+          chmod +x deploy/expand-vite-env.sh
+          {
+            echo "APP_URL=${APP_URL}"
+            ./deploy/expand-vite-env.sh < .env.server
+          } > .env
+          lines=$(wc -l < .env | tr -d ' ')
+          echo "Wrote .env for Vite build (${lines} lines)"
+          grep -E '^VITE_REVERB_|^APP_' .env | sed 's/=.*$/=***/' || true
+          grep -q '^VITE_REVERB_APP_KEY=.\+' .env || { echo "::error::VITE_REVERB_APP_KEY empty after resolve"; exit 1; }
+
+      - name: Build frontend assets
+        if: hashFiles('package.json') != ''
+        env:
+          APP_URL: ${{ env.APP_URL }}
+        run: |
+          npm ci --legacy-peer-deps --no-audit --no-fund
+          npm run build
+          test -f public/build/manifest.json || (echo "::error::public/build/manifest.json missing" && exit 1)
+
+      - name: Verify server paths (storage, .env, .htaccess)
+        run: |
+          set -euo pipefail
+          ${SSH_CMD} cpanel-deploy bash -s <<REMOTE
+          set -e
+          for f in storage .env .htaccess public/.htaccess; do
+            test -e "${DEPLOY_PATH}/\$f" || { echo "::error::Missing ${DEPLOY_PATH}/\$f on server"; exit 1; }
+          done
+          echo "Server storage, .env, and .htaccess files present — will not be overwritten."
+          REMOTE
+
+      - name: Deploy with rsync
+        run: |
+          set -euo pipefail
+          rsync -avz --delete \
+            -e "${RSYNC_RSH}" \
+            ${RSYNC_EXCLUDES} \
+            ./ cpanel-deploy:${DEPLOY_PATH}/
+          ${SSH_CMD} cpanel-deploy "test -f ${DEPLOY_PATH}/public/build/manifest.json && ls -la ${DEPLOY_PATH}/public/build/manifest.json | head -1"
+
+      - name: Post-deploy (artisan on server only)
+        run: |
+          set -euo pipefail
+          ${SSH_CMD} cpanel-deploy bash -s <<REMOTE
+          set -euo pipefail
+          cd "${DEPLOY_PATH}"
+          mkdir -p storage/app/public storage/framework/{sessions,views,cache/data} storage/logs
+          chmod -R 775 storage bootstrap/cache 2>/dev/null || true
+          chmod -R 755 public/build 2>/dev/null || true
+          php artisan config:clear
+          php artisan route:clear
+          php artisan view:clear
+          php artisan cache:clear
+          php artisan migrate --force
+          php artisan storage:link --force
+          REVERB_SCRIPT="${DEPLOY_PATH%/public_html}/bin/reverb-ensure-running.sh"
+          if [ -x "\$REVERB_SCRIPT" ]; then "\$REVERB_SCRIPT" || true; fi
+          php artisan config:cache
+          php artisan view:cache
+          test -f .env && test -d storage && test -f .htaccess && echo DEPLOY_OK
+          REMOTE
+
+      - name: Smoke test
+        run: |
+          set -euo pipefail
+          code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 30 "${APP_URL}/")
+          echo "GET ${APP_URL}/ => HTTP ${code}"
+          test "${code}" = "200" || test "${code}" = "302" || { echo "::error::Homepage returned HTTP ${code}"; exit 1; }
