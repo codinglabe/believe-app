@@ -37,7 +37,34 @@ jobs:
         --exclude=.htaccess
         --exclude=docs/
         --exclude=.deploy/
+        --exclude=deploy/
         --exclude=*.md
+        --exclude=CLAUDE.md
+        --exclude=COMMAND_IN_PRODUCTION.md
+        --exclude=phpunit.xml
+        --exclude=.phpunit.cache/
+        --exclude=.editorconfig
+        --exclude=.prettierrc
+        --exclude=.prettierignore
+        --exclude=eslint.config.js
+        --exclude=.gitattributes
+        --exclude=.gitignore
+        --exclude=Homestead.yaml
+        --exclude=Homestead.json
+        --exclude=tsconfig.json
+        --exclude=components.json
+        --exclude=package.json
+        --exclude=package-lock.json
+        --exclude=vite.config.ts
+        --exclude=.ssh-deploy/
+        --exclude=.ssh-deploy-prod/
+        --exclude=.fleet/
+        --exclude=.idea/
+        --exclude=.vscode/
+        --exclude=.nova/
+        --exclude=.zed/
+        --exclude=*.zip
+        --exclude=auth.json
 
     steps:
       - uses: actions/checkout@v4
@@ -177,6 +204,19 @@ jobs:
             ${RSYNC_EXCLUDES} \
             ./ cpanel-deploy:${DEPLOY_PATH}/
           ${SSH_CMD} cpanel-deploy "test -f ${DEPLOY_PATH}/public/build/manifest.json && ls -la ${DEPLOY_PATH}/public/build/manifest.json | head -1"
+
+      - name: Prune non-runtime files on server
+        run: |
+          set -euo pipefail
+          ${SSH_CMD} cpanel-deploy bash -s <<REMOTE
+          set -euo pipefail
+          cd "${DEPLOY_PATH}"
+          rm -rf docs tests node_modules .deploy deploy .ssh-deploy .ssh-deploy-prod .phpunit.cache bootstrap/ssr 2>/dev/null || true
+          rm -f CLAUDE.md README.md COMMAND_IN_PRODUCTION.md phpunit.xml .editorconfig eslint.config.js .prettierignore .prettierrc .gitattributes .gitignore Homestead.yaml Homestead.json tsconfig.json components.json package.json package-lock.json vite.config.ts 2>/dev/null || true
+          rm -f .env.backup .env.before-sync .env.production .env.backup- 2>/dev/null || true
+          rm -f resources/js/components/wallet/*.md resources/js/components/merchant/README.md 2>/dev/null || true
+          echo PRUNE_OK
+          REMOTE
 
       - name: Post-deploy (artisan on server only)
         run: |
