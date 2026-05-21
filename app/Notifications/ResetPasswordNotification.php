@@ -3,16 +3,16 @@
 namespace App\Notifications;
 
 use Illuminate\Auth\Notifications\ResetPassword;
-use Illuminate\Bus\Queueable;
-use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\URL;
 
-class ResetPasswordNotification extends ResetPassword implements ShouldQueue
+/**
+ * Mail body for password reset. Queued via {@see \App\Jobs\SendPasswordResetEmailJob}
+ * on the mail queue — do not add ShouldQueue here (would double-queue).
+ */
+class ResetPasswordNotification extends ResetPassword
 {
-    use Queueable;
-
     /**
      * Request origin (scheme + host [+ port]) captured when the reset was requested.
      */

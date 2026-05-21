@@ -1,0 +1,26 @@
+﻿MAILTO=""
+SHELL="/bin/bash"
+
+# Mail queue (password reset, etc.) — processed before heavy default jobs
+* * * * * /usr/local/bin/php /home/believeinunity/public_html/artisan queue:work --queue=mail --stop-when-empty --max-time=55 >> /dev/null 2>&1
+
+# Main queue worker (default queue, up to 15 min per run)
+* * * * * /usr/local/bin/php /home/believeinunity/public_html/artisan queue:work --queue=default --max-time=900 >> /dev/null 2>&1
+
+# IRS import queue
+* * * * * /usr/local/bin/php /home/believeinunity/public_html/artisan queue:work --queue=irs-import --memory=512 --tries=2 --stop-when-empty --max-time=55 >> /dev/null 2>&1
+
+# Laravel scheduler (console.php ΓÇö newsletters, streaming reconcile, unity-videos, SMS, etc.)
+* * * * * cd /home/believeinunity/public_html && /usr/local/bin/php artisan schedule:run >> /home/believeinunity/logs/schedule.log 2>&1
+
+# Explicit jobs (historical prod entries; many also run via schedule:run)
+0 0 1 * * /usr/local/bin/php /home/believeinunity/public_html/artisan irs:bmf:import --update-only --chunk=1000 >> /dev/null 2>&1
+*/5 * * * * /usr/local/bin/php /home/believeinunity/public_html/artisan rss:warm-nonprofit >> /dev/null 2>&1
+* * * * * /usr/local/bin/php /home/believeinunity/public_html/artisan drops:dispatch-due >> /dev/null 2>&1
+* * * * * /usr/local/bin/php /home/believeinunity/public_html/artisan facebook:process-scheduled >> /dev/null 2>&1
+* * * * * /usr/local/bin/php /home/believeinunity/public_html/artisan newsletter:process-scheduled >> /dev/null 2>&1
+0 9 * * * /usr/local/bin/php /home/believeinunity/public_html/artisan form1023:send-payment-reminders >> /dev/null 2>&1
+0 3 1 * * /usr/local/bin/php /home/believeinunity/public_html/artisan irs:check-form990-filings --notify >> /dev/null 2>&1
+0 * * * * /usr/local/bin/php /home/believeinunity/public_html/artisan log:clean --size=10 >> /dev/null 2>&1
+0 * * * * /usr/local/bin/php /home/believeinunity/public_html/artisan service-orders:auto-complete >> /dev/null 2>&1
+*/5 * * * * /usr/local/bin/php /home/believeinunity/public_html/artisan sendJobs:cleanup >> /dev/null 2>&1

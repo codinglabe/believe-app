@@ -3,8 +3,8 @@
 namespace App\Models;
 
 use App\Jobs\ProcessBelievePointsAutoReplenishJob;
+use App\Jobs\SendPasswordResetEmailJob;
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
-use App\Notifications\ResetPasswordNotification;
 use App\Notifications\VerifyEmailNotification;
 use Database\Factories\UserFactory;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
@@ -1114,7 +1114,7 @@ class User extends Authenticatable implements MustVerifyEmail
      * @return void
      */
     /**
-     * Send the password reset notification (queued, branded template).
+     * Queue the branded password-reset email on the mail queue (fast worker, not default).
      */
     public function sendPasswordResetNotification($token): void
     {
@@ -1126,7 +1126,7 @@ class User extends Authenticatable implements MustVerifyEmail
             $domain = $scheme.'://'.$host.($port && $port != 80 && $port != 443 ? ':'.$port : '');
         }
 
-        $this->notify(new ResetPasswordNotification($token, $domain));
+        SendPasswordResetEmailJob::dispatch($this->id, $token, $domain);
     }
 
     public function sendEmailVerificationNotification(?string $domain = null)
