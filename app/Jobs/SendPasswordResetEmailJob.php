@@ -21,7 +21,10 @@ class SendPasswordResetEmailJob implements ShouldQueue
 
     public int $tries = 3;
 
-    public int $timeout = 60;
+    public int $timeout = 90;
+
+    /** @var array<int, int> */
+    public array $backoff = [5, 15, 45];
 
     public function __construct(
         public int $userId,

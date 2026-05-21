@@ -1,8 +1,8 @@
 ﻿MAILTO=""
 SHELL="/bin/bash"
 
-# Mail queue (password reset, etc.) — processed before heavy default jobs
-* * * * * /usr/local/bin/php /home/believeinunity/public_html/artisan queue:work --queue=mail --stop-when-empty --max-time=55 >> /dev/null 2>&1
+# Mail queue workers (password reset) — always-on via keepalive script
+* * * * * /home/believeinunity/bin/queue-mail-ensure-running.sh >> /home/believeinunity/logs/queue-mail-cron.log 2>&1
 
 # Main queue worker (default queue, up to 15 min per run)
 * * * * * /usr/local/bin/php /home/believeinunity/public_html/artisan queue:work --queue=default --max-time=900 >> /dev/null 2>&1
