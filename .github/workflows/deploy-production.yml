@@ -22,6 +22,8 @@ jobs:
       PHP_VERSION: '8.4'
       NODE_VERSION: '20'
       DEPLOY_HOST: ${{ vars.PRODUCTION_DEPLOY_HOST }}
+      # Use IP for SSH when set — believeinunity.org often times out from GitHub; 501c3ers.com has IPv6.
+      SSH_CONNECT_HOST: ${{ vars.PRODUCTION_SSH_HOST != '' && vars.PRODUCTION_SSH_HOST || vars.PRODUCTION_DEPLOY_HOST }}
       DEPLOY_USER: ${{ vars.PRODUCTION_DEPLOY_USER }}
       DEPLOY_PATH: ${{ vars.PRODUCTION_DEPLOY_PATH }}
       APP_URL: ${{ vars.PRODUCTION_APP_URL }}
@@ -80,6 +82,7 @@ jobs:
           done
           echo "Environment: production (believeinunity.org)"
           echo "Target: ${DEPLOY_USER}@${DEPLOY_HOST}:${DEPLOY_PATH}"
+          echo "SSH connect host: ${SSH_CONNECT_HOST}"
           echo "APP_URL (build only): ${APP_URL}"
           if echo "${DEPLOY_HOST}" | grep -qi '501c3ers'; then
             echo "::error::Production workflow must not target 501c3ers.com (development server)."
@@ -100,10 +103,11 @@ jobs:
           chmod 700 "${SSH_DIR}"
           printf '%s\n' "${SSH_PRIVATE_KEY}" > "${SSH_DIR}/cpanel_deploy"
           chmod 600 "${SSH_DIR}/cpanel_deploy"
-          ssh-keyscan -p "${SSH_PORT}" -H "${DEPLOY_HOST}" >> "${SSH_DIR}/known_hosts" 2>/dev/null || true
+          ssh-keyscan -T 15 -p "${SSH_PORT}" -H "${SSH_CONNECT_HOST}" >> "${SSH_DIR}/known_hosts" 2>/dev/null || true
+          ssh-keyscan -T 15 -p "${SSH_PORT}" -H "${DEPLOY_HOST}" >> "${SSH_DIR}/known_hosts" 2>/dev/null || true
           printf '%s\n' \
             'Host cpanel-deploy' \
-            "  HostName ${DEPLOY_HOST}" \
+            "  HostName ${SSH_CONNECT_HOST}" \
             "  User ${DEPLOY_USER}" \
             "  Port ${SSH_PORT}" \
             "  IdentityFile ${SSH_DIR}/cpanel_deploy" \
@@ -114,20 +118,20 @@ jobs:
             > "${SSH_DIR}/config"
           chmod 600 "${SSH_DIR}/config"
           echo "SSH_DIR=${SSH_DIR}" >> "${GITHUB_ENV}"
-          echo "SSH_CMD=ssh -F ${SSH_DIR}/config -o BatchMode=yes -o ConnectTimeout=60" >> "${GITHUB_ENV}"
-          echo "RSYNC_RSH=ssh -F ${SSH_DIR}/config -o BatchMode=yes -o ConnectTimeout=60" >> "${GITHUB_ENV}"
-          SSH_TEST='ssh -F '"${SSH_DIR}"'/config -o BatchMode=yes -o ConnectTimeout=60 cpanel-deploy "echo SSH_OK && whoami && hostname && pwd"'
-          for attempt in 1 2 3 4 5; do
+          echo "SSH_CMD=ssh -F ${SSH_DIR}/config -o BatchMode=yes -o ConnectTimeout=20" >> "${GITHUB_ENV}"
+          echo "RSYNC_RSH=ssh -F ${SSH_DIR}/config -o BatchMode=yes -o ConnectTimeout=20" >> "${GITHUB_ENV}"
+          SSH_TEST='ssh -F '"${SSH_DIR}"'/config -o BatchMode=yes -o ConnectTimeout=20 cpanel-deploy "echo SSH_OK && whoami && hostname && pwd"'
+          for attempt in 1 2 3 4 5 6; do
             if eval "${SSH_TEST}"; then
-              echo "SSH connected on attempt ${attempt}"
+              echo "SSH connected on attempt ${attempt} (${SSH_CONNECT_HOST})"
               break
             fi
-            if [ "${attempt}" -eq 5 ]; then
-              echo "::error::SSH to ${DEPLOY_USER}@${DEPLOY_HOST}:${SSH_PORT} failed after 5 attempts (timeouts are often transient — re-run workflow)"
+            if [ "${attempt}" -eq 6 ]; then
+              echo "::error::SSH to ${DEPLOY_USER}@${SSH_CONNECT_HOST}:${SSH_PORT} failed after 6 attempts. Set PRODUCTION_SSH_HOST=72.60.226.88 in repo variables."
               exit 1
             fi
-            echo "::warning::SSH attempt ${attempt} failed; retrying in 20s..."
-            sleep 20
+            echo "::warning::SSH attempt ${attempt} failed; retrying in 8s..."
+            sleep 8
           done
 
       - name: Cache Composer
