@@ -31,28 +31,7 @@ interface FacebookPermissionModalProps {
   onAccept: () => void;
 }
 
-export default function FacebookPermissionModal({
-  isOpen,
-  onClose,
-  onAccept,
-}: FacebookPermissionModalProps) {
-  const [acceptedPermissions, setAcceptedPermissions] = useState<string[]>([]);
-  const [allChecked, setAllChecked] = useState(false);
-  const [expandedPermission, setExpandedPermission] = useState<string | null>(null);
-  const [isMobile, setIsMobile] = useState(false);
-
-  // Check if mobile device
-  useEffect(() => {
-    const checkMobile = () => {
-      setIsMobile(window.innerWidth < 768);
-    };
-
-    checkMobile();
-    window.addEventListener('resize', checkMobile);
-    return () => window.removeEventListener('resize', checkMobile);
-  }, []);
-
-  const permissions = [
+const PERMISSIONS = [
     {
       id: 'pages_manage_posts',
       title: 'Manage Page Posts',
@@ -97,7 +76,35 @@ export default function FacebookPermissionModal({
       bgColor: 'bg-orange-100 dark:bg-orange-900/30',
       borderColor: 'border-orange-200 dark:border-orange-800',
     },
-  ];
+];
+
+export default function FacebookPermissionModal({
+  isOpen,
+  onClose,
+  onAccept,
+}: FacebookPermissionModalProps) {
+  const [acceptedPermissions, setAcceptedPermissions] = useState<string[]>(
+    () => PERMISSIONS.map((p) => p.id)
+  );
+  const [allChecked, setAllChecked] = useState(true);
+  const [expandedPermission, setExpandedPermission] = useState<string | null>(null);
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      setAcceptedPermissions(PERMISSIONS.map((p) => p.id));
+      setAllChecked(true);
+    }
+  }, [isOpen]);
+
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth < 768);
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
+  const permissions = PERMISSIONS;
 
   const handlePermissionToggle = (permissionId: string) => {
     setAcceptedPermissions((prev) =>
@@ -275,7 +282,6 @@ export default function FacebookPermissionModal({
                         id={permission.id}
                         checked={isAccepted}
                         onCheckedChange={() => handlePermissionToggle(permission.id)}
-                        disabled={permission.required}
                         className="h-5 w-5"
                       />
                     </div>

@@ -21,6 +21,7 @@ import {
 import { toast } from 'sonner';
 import axios from 'axios';
 import FacebookPermissionModal from '@/components/facebook/FacebookPermissionModal';
+import FacebookEngagementPanel from '@/components/facebook/FacebookEngagementPanel';
 
 interface FacebookAccount {
     id: number;
@@ -41,12 +42,16 @@ interface Props {
         id: number;
         name: string;
     };
+    requestedScopes?: string[];
+    privacyPolicyUrl?: string;
 }
 
 export default function Connect({
     accounts = [],
     hasConnectedAccounts = false,
-    organization = { id: 0, name: 'Your Organization' }
+    organization = { id: 0, name: 'Your Organization' },
+    requestedScopes = ['pages_show_list', 'pages_read_engagement', 'pages_manage_posts'],
+    privacyPolicyUrl = '/privacy-policy',
 }: Props) {
     const [disconnecting, setDisconnecting] = useState<Record<number, boolean>>({});
     const [refreshing, setRefreshing] = useState<Record<number, boolean>>({});
@@ -59,13 +64,7 @@ export default function Connect({
 
     const handleAcceptPermissions = () => {
         setShowPermissionModal(false);
-
-        // Redirect to Facebook OAuth with accepted permissions
-        const params = new URLSearchParams({
-            'accepted_permissions': JSON.stringify(['pages_manage_posts', 'pages_read_engagement', 'pages_show_list', 'public_profile'])
-        });
-
-        window.location.href = `/facebook/oauth/redirect?${params.toString()}`;
+        window.location.href = '/facebook/oauth/redirect';
     };
 
     // সরাসরি Facebook OAuth এ redirect
@@ -138,7 +137,7 @@ export default function Connect({
                                 How to Connect
                             </CardTitle>
                             <CardDescription>
-                                Connect your Facebook pages in 3 simple steps
+                                Connect your Facebook Pages in four steps (required for Meta App Review)
                             </CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
@@ -148,9 +147,9 @@ export default function Connect({
                                         <span className="font-bold text-primary">1</span>
                                     </div>
                                     <div>
-                                        <h4 className="font-medium">Click Connect Facebook</h4>
+                                        <h4 className="font-medium">Review permissions in our app</h4>
                                         <p className="text-sm text-muted-foreground">
-                                            You'll be redirected to Facebook to authorize access
+                                            We explain {requestedScopes.join(', ')} before sending you to Facebook Login
                                         </p>
                                     </div>
                                 </div>
@@ -160,9 +159,9 @@ export default function Connect({
                                         <span className="font-bold text-primary">2</span>
                                     </div>
                                     <div>
-                                        <h4 className="font-medium">Login to Facebook</h4>
+                                        <h4 className="font-medium">Authorize on Facebook</h4>
                                         <p className="text-sm text-muted-foreground">
-                                            Login with your Facebook account that has page admin access
+                                            Log in with an account that is an admin of the Page you want to connect
                                         </p>
                                     </div>
                                 </div>
@@ -172,9 +171,21 @@ export default function Connect({
                                         <span className="font-bold text-primary">3</span>
                                     </div>
                                     <div>
-                                        <h4 className="font-medium">Select Pages</h4>
+                                        <h4 className="font-medium">Select Pages (pages_show_list)</h4>
                                         <p className="text-sm text-muted-foreground">
-                                            Choose which Facebook pages you want to connect
+                                            Pick which Pages to connect — we only save the ones you select
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <div className="flex items-start gap-3">
+                                    <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center">
+                                        <span className="font-bold text-primary">4</span>
+                                    </div>
+                                    <div>
+                                        <h4 className="font-medium">Post & view engagement</h4>
+                                        <p className="text-sm text-muted-foreground">
+                                            Create posts (pages_manage_posts) and view metrics (pages_read_engagement)
                                         </p>
                                     </div>
                                 </div>
@@ -182,10 +193,22 @@ export default function Connect({
 
                             <Alert className="bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800">
                                 <Shield className="h-4 w-4 text-blue-600" />
-                                <AlertTitle>Permissions Required</AlertTitle>
-                                <AlertDescription className="text-sm">
-                                    We only request permissions to post content and view basic page info.
-                                    We never post without your permission.
+                                <AlertTitle>Permissions we request</AlertTitle>
+                                <AlertDescription className="text-sm space-y-2">
+                                    <p>
+                                        <strong>pages_show_list</strong> — list Pages you manage so you can choose which to connect.
+                                    </p>
+                                    <p>
+                                        <strong>pages_manage_posts</strong> — publish or schedule posts only when you click Publish in our app.
+                                    </p>
+                                    <p>
+                                        <strong>pages_read_engagement</strong> — show likes, comments, shares, and impressions in your dashboard.
+                                    </p>
+                                    <p>
+                                        <a href={privacyPolicyUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline font-medium">
+                                            Privacy Policy
+                                        </a>
+                                    </p>
                                 </AlertDescription>
                             </Alert>
                         </CardContent>
@@ -327,6 +350,14 @@ export default function Connect({
                                                             <> • Last synced: {new Date(account.last_synced_at).toLocaleDateString()}</>
                                                         )}
                                                     </p>
+
+                                                    <div className="mt-3">
+                                                        <FacebookEngagementPanel
+                                                            accountId={account.id}
+                                                            pageName={account.facebook_page_name}
+                                                            compact
+                                                        />
+                                                    </div>
                                                 </div>
                                             </div>
 

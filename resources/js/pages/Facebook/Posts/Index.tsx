@@ -26,6 +26,8 @@ import {
     AlertTriangle
 } from 'lucide-react';
 import { toast } from 'sonner';
+import axios from 'axios';
+import FacebookEngagementPanel from '@/components/facebook/FacebookEngagementPanel';
 
 interface FacebookAccount {
     id: number;
@@ -540,6 +542,18 @@ export default function Index({ posts, accounts, hasConnectedAccounts, filters }
                                                         <p className="text-sm mt-1">{post.error_message}</p>
                                                     </div>
                                                 )}
+
+                                                {post.status === 'published' && post.facebook_account && (
+                                                    <div className="mt-3">
+                                                        <FacebookEngagementPanel
+                                                            accountId={post.facebook_account.id}
+                                                            pageName={post.facebook_account.facebook_page_name}
+                                                            type="post"
+                                                            postId={post.id}
+                                                            compact
+                                                        />
+                                                    </div>
+                                                )}
                                             </div>
 
                                             {/* Actions */}
@@ -620,17 +634,6 @@ export default function Index({ posts, accounts, hasConnectedAccounts, filters }
                                                     Delete
                                                 </Button>
 
-                                                {/* {post.status === 'published' && (
-                                                    <Button
-                                                        variant="outline"
-                                                        size="sm"
-                                                        className="gap-2"
-                                                        onClick={() => router.get(`/facebook/posts/${post.id}/analytics`)}
-                                                    >
-                                                        <BarChart3 className="h-4 w-4" />
-                                                        Analytics
-                                                    </Button>
-                                                )} */}
                                             </div>
                                         </div>
                                     </div>

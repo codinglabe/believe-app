@@ -7,6 +7,7 @@ use App\Models\FacebookAccount;
 use App\Models\FacebookPost;
 use App\Models\Organization;
 use App\Services\Facebook\ConnectionService;
+use App\Services\Facebook\EngagementService;
 use App\Services\Facebook\PostService;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -457,29 +458,26 @@ class PostController extends Controller
     /**
      * Get post analytics
      */
-    public function analytics($id)
+    public function analytics($id, EngagementService $engagementService)
     {
         $post = FacebookPost::with('facebookAccount')->findOrFail($id);
 
-        // Verify post belongs to user's organization
         $user = auth()->user();
-        if ($post->organization_id !== $user->organization->id) {
+        if ($post->organization_id !== $user->organization?->id || $post->user_id !== $user->id) {
             abort(403, 'Unauthorized');
         }
 
-        if (!$post->facebook_post_id || !$post->facebookAccount) {
+        if (! $post->facebook_post_id || ! $post->facebookAccount) {
             return response()->json([
                 'success' => false,
                 'message' => 'Post not published or Facebook account not connected',
-            ]);
+            ], 422);
         }
 
         try {
-            $insights = $this->postService->getPageInsights($post->facebookAccount);
-
             return response()->json([
                 'success' => true,
-                'data' => $insights,
+                'data' => $engagementService->getPostEngagement($post->facebookAccount, $post),
             ]);
         } catch (\Exception $e) {
             return response()->json([

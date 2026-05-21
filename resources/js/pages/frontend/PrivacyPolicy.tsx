@@ -208,7 +208,16 @@ const PrivacyPolicy = () => {
                                 </ul>
                                 <div className="mt-4 p-4 bg-white dark:bg-gray-700 rounded-lg">
                                     <p className="text-gray-600 dark:text-gray-300">
-                                        To exercise any of these rights, please contact us at:
+                                        To delete your data, follow our step-by-step instructions:
+                                    </p>
+                                    <a
+                                        href="/data-deletion"
+                                        className="mt-2 inline-block text-lg font-semibold text-blue-600 hover:underline dark:text-blue-400"
+                                    >
+                                        Data deletion instructions →
+                                    </a>
+                                    <p className="text-gray-600 dark:text-gray-300 mt-4">
+                                        Or contact us at:
                                     </p>
                                     <p className="text-lg font-semibold text-gray-900 dark:text-white mt-2">
                                         wendhi@stuttiegroup.com
@@ -273,6 +282,12 @@ const PrivacyPolicy = () => {
                                 className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 transition-colors"
                             >
                                 Terms of Service
+                            </a>
+                            <a
+                                href="/data-deletion"
+                                className="text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 transition-colors"
+                            >
+                                Data Deletion
                             </a>
                             <a
                                 href="/privacy-policy"

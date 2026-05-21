@@ -304,7 +304,8 @@ return [
         'app_id' => env('FACEBOOK_APP_ID'),
         'app_secret' => env('FACEBOOK_APP_SECRET'),
         'redirect_uri' => env('FACEBOOK_REDIRECT_URI', env('APP_URL').'/facebook/callback'),
-        'default_graph_version' => 'v21.0',
+        /** @see config/facebook.php scopes and api_version for App Review */
+        'default_graph_version' => env('FACEBOOK_API_VERSION', 'v21.0'),
     ],
 
     'bridge' => [
