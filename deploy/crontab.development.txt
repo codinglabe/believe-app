@@ -1,0 +1,28 @@
+MAILTO=""
+SHELL="/bin/bash"
+
+# Mail queue (password reset) — max 2 workers via keepalive script
+* * * * * /home/c3ers/bin/queue-mail-ensure-running.sh >> /home/c3ers/logs/queue-mail-cron.log 2>&1
+
+# Default queue (one short run per minute)
+* * * * * /usr/local/bin/php /home/c3ers/public_html/artisan queue:work --queue=default --stop-when-empty --max-time=55 >> /dev/null 2>&1
+
+# IRS import queue
+* * * * * /usr/local/bin/php /home/c3ers/public_html/artisan queue:work --queue=irs-import --memory=512 --tries=2 --stop-when-empty --max-time=55 >> /dev/null 2>&1
+
+# Laravel scheduler
+* * * * * cd /home/c3ers/public_html && /usr/local/bin/php artisan schedule:run >> /home/c3ers/logs/schedule.log 2>&1
+
+# Reverb keepalive
+* * * * * /home/c3ers/bin/reverb-ensure-running.sh >> /home/c3ers/logs/reverb-cron.log 2>&1
+
+# Explicit jobs
+* * * * * /usr/local/bin/php /home/c3ers/public_html/artisan drops:dispatch-due >> /dev/null 2>&1
+*/5 * * * * /usr/local/bin/php /home/c3ers/public_html/artisan sendJobs:cleanup >> /dev/null 2>&1
+* * * * * /usr/local/bin/php /home/c3ers/public_html/artisan form1023:send-payment-reminders >> /dev/null 2>&1
+* * * * * /usr/local/bin/php /home/c3ers/public_html/artisan irs:check-form990-filings --notify >> /dev/null 2>&1
+* * * * * /usr/local/bin/php /home/c3ers/public_html/artisan facebook:process-scheduled >> /dev/null 2>&1
+* * * * * /usr/local/bin/php /home/c3ers/public_html/artisan log:clean >> /dev/null 2>&1
+0 * * * * /usr/local/bin/php /home/c3ers/public_html/artisan service-orders:auto-complete >> /dev/null 2>&1
+0,30 * * * * /usr/local/bin/php /home/c3ers/public_html/artisan rss:warm-nonprofit >> /dev/null 2>&1
+0 0 * * * /usr/local/bin/php /home/c3ers/public_html/artisan supporters:notify-birthdays >> /dev/null 2>&1
