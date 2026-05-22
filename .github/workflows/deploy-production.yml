@@ -254,7 +254,7 @@ jobs:
           REVERB_SCRIPT="${DEPLOY_PATH%/public_html}/bin/reverb-ensure-running.sh"
           MAIL_SCRIPT="${DEPLOY_PATH%/public_html}/bin/queue-mail-ensure-running.sh"
           if [ -x "\$REVERB_SCRIPT" ]; then "\$REVERB_SCRIPT" || true; fi
-          if [ -x "\$MAIL_SCRIPT" ]; then APP_DIR="${DEPLOY_PATH}" LOG_DIR="${DEPLOY_PATH%/public_html}/logs" MAIL_QUEUE_WORKERS=5 "\$MAIL_SCRIPT" || true; fi
+          if [ -x "\$MAIL_SCRIPT" ]; then APP_DIR="${DEPLOY_PATH}" LOG_DIR="${DEPLOY_PATH%/public_html}/logs" MAIL_QUEUE_WORKERS=2 "\$MAIL_SCRIPT" || true; fi
           if grep -q '^REVERB_HOST=believeinunity.org' .env 2>/dev/null; then
             echo "::warning::Set REVERB_HOST=127.0.0.1 in server .env for PHP broadcasts (see deploy/PRODUCTION-REVERB-SETUP.md)"
           fi
