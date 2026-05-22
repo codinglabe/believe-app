@@ -235,7 +235,6 @@ jobs:
           php artisan cache:clear
           php artisan migrate --force
           php artisan storage:link --force
-          php artisan reverb:restart || true
           php artisan config:cache
           php artisan view:cache
           # Do not route:cache — duplicate route names can break serialization on the server.

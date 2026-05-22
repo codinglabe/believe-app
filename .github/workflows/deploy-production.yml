@@ -247,10 +247,6 @@ jobs:
             exit 1
           }
           php artisan storage:link --force
-          php artisan reverb:restart || true
-          if grep -q '^REVERB_HOST=believeinunity.org' .env 2>/dev/null; then
-            echo "::warning::Set REVERB_HOST=127.0.0.1 in server .env for PHP broadcasts (use supervisor/laravel-reverb-believeinunity.conf)"
-          fi
           php artisan config:cache
           php artisan view:cache
           test -f .env && test -d storage && test -f .htaccess && echo DEPLOY_OK
