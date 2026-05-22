@@ -71,6 +71,7 @@ import {
     MessageCircle,
     Sparkles,
     Trophy,
+    Radio,
 } from 'lucide-react';
 
 /**
@@ -994,6 +995,12 @@ export const dashboardSidebarNavItems: (NavItem | NavGroup)[] = [
                 title: 'Livestream',
                 href: '/livestreams',
                 icon: Video,
+                role: ['organization', 'organization_pending', 'care_alliance'],
+            },
+            {
+                title: 'Unity Live',
+                href: route('livestreams.supporter.live'),
+                icon: Radio,
                 role: ['organization', 'organization_pending', 'care_alliance'],
             },
             {
