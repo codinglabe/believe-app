@@ -583,7 +583,7 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
           {recordingDestination === "local"
             ? "Recording will download to this device when you stop."
             : livestream.dropboxRecordingAvailable
-              ? "Recording will save to your Dropbox folder automatically."
+              ? "Start recording in the meeting — the file is saved to your Dropbox folder (VDO may also keep a copy in your browser downloads)."
               : "Connect Dropbox in settings to save recordings to the cloud."}
         </p>
         {!livestream.dropboxRecordingAvailable && (

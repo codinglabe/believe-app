@@ -230,7 +230,7 @@ class LivestreamController extends Controller
         $directorUrlLocal = $livestream->getDirectorUrl(false);
         $directorUrlDropbox = $dropboxConnected ? $livestream->getDirectorUrl(true) : null;
         $participantUrl = $livestream->getParticipantUrl();
-        $hostPushUrl = $livestream->getHostPushUrl(true);
+        $hostPushUrl = $livestream->getHostPushUrl(false);
         $hostPushUrlLocal = $livestream->getHostPushUrl(false);
         $hostPushUrlDropbox = $dropboxConnected ? $livestream->getHostPushUrl(true) : null;
         // Scene-mixer URL: composite of ALL room participants → MediaMTX → worker → YouTube.
