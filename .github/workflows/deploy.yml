@@ -240,7 +240,7 @@ jobs:
             /home/c3ers/bin/reverb-ensure-running.sh || true
           fi
           if [ -x /home/c3ers/bin/queue-mail-ensure-running.sh ]; then
-            APP_DIR="${DEPLOY_PATH}" LOG_DIR="/home/c3ers/logs" MAIL_QUEUE_WORKERS=5 /home/c3ers/bin/queue-mail-ensure-running.sh || true
+            APP_DIR="${DEPLOY_PATH}" LOG_DIR="/home/c3ers/logs" MAIL_QUEUE_WORKERS=2 /home/c3ers/bin/queue-mail-ensure-running.sh || true
           fi
           php artisan config:cache
           php artisan view:cache
