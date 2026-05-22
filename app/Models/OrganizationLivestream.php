@@ -448,8 +448,6 @@ class OrganizationLivestream extends Model
             $avatarImage = 'https://ui-avatars.com/api/?name=' . rawurlencode($hn) . '&size=256&length=2';
             $avatarParam = '&avatar=' . rawurlencode($avatarImage);
         }
-        // No width/height/framerate — fixed 1920x1080@30 caused "Camera failed to load" on some webcams. quality=0 + bitrate let the camera use supported resolution.
-        $recordParam = $recordEnabled ? '&record' : '';
         // In canvas mode, the host publishes to seat 1 path so the canvas mixer
         // can WHEP-subscribe it alongside the guest seats. The canvas page then
         // publishes the combined output to streamPath (where the worker pulls).
@@ -457,6 +455,17 @@ class OrganizationLivestream extends Model
         $effectivePush = $this->isCanvasModeEnabled()
             ? rawurlencode($streamKey.'_s1')
             : $push;
+
+        $dropboxToken = null;
+        if ($recordEnabled && $recordToDropbox && $this->organization) {
+            $oauthService = app(\App\Services\DropboxOAuthService::class);
+            $dropboxToken = $oauthService->getAccessTokenForOrganization($this->organization);
+            $dropboxToken = ! empty($dropboxToken) ? $dropboxToken : null;
+        }
+
+        // &record enables recording controls. With Dropbox params, VDO uploads to Dropbox while recording (may also save locally — VDO limitation).
+        $recordParam = $recordEnabled ? '&record' : '';
+
         $base = "https://vdo.ninja/?room={$room}&push={$effectivePush}&label={$label}{$recordParam}&quality=0&bitrate=6000&webcam&ssb&vdo=1&audiodevice=1&proaudio&stereo=2&showlabels=zoom&showall&rows=1&fontsize=82&nocontrols&clock=false{$avatarParam}" . \App\Support\VdoMeetingVirtualBackground::querySegment() . "&autostart&noheader{$passwordParam}";
 
         // Restore the MediaMTX push so the host's webcam reaches the bridge and the AWS worker can
@@ -471,24 +480,19 @@ class OrganizationLivestream extends Model
             $base .= '&mediamtx=' . $mediaMtxHost . '&codec=vp8';
         }
 
-        if ($recordEnabled && $recordToDropbox && $this->organization) {
+        if ($dropboxToken !== null) {
             $oauthService = app(\App\Services\DropboxOAuthService::class);
-            $dropboxToken = $oauthService->getAccessTokenForOrganization($this->organization);
-            if (! empty($dropboxToken)) {
-                $folderName = $this->getDropboxFolderName();
-                $folderPath = '/' . trim($folderName, '/');
+            $folderName = $this->getDropboxFolderName();
+            $folderPath = '/' . trim($folderName, '/');
 
-                // VDO.Ninja only uploads to dropboxpath when the folder exists; otherwise it uploads to root.
-                $oauthService->ensureFolderExists($dropboxToken, $folderPath);
+            // VDO.Ninja only uploads to dropboxpath when the folder exists; otherwise it uploads to root.
+            $oauthService->ensureFolderExists($dropboxToken, $folderPath);
 
-                // VDO.Ninja requires the leading slash raw (not encoded); encode only the folder name.
-                $base .= '&dropbox=' . rawurlencode($dropboxToken);
-                $base .= '&dropboxpath=/' . rawurlencode($folderName);
-                // Use autorecordlocal so only the host's stream auto-starts. &autorecord=1 records LOCAL + REMOTE on load — that starts a new recording every time a participant joins.
-                $base .= '&autorecordlocal=6000';
-                $base .= '&cloud=1';
-            }
+            $base .= '&dropbox=' . rawurlencode($dropboxToken);
+            $base .= '&dropboxpath=/' . rawurlencode($folderName);
+            $base .= '&cloud=1';
         }
+
         return $base;
     }
 
