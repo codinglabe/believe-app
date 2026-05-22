@@ -200,13 +200,22 @@ jobs:
             ./ cpanel-deploy:${DEPLOY_PATH}/
           ${SSH_CMD} cpanel-deploy "test -f ${DEPLOY_PATH}/public/build/manifest.json && ls -la ${DEPLOY_PATH}/public/build/manifest.json | head -1"
 
-      - name: Install mail-queue keepalive on server
+      - name: Install keepalive scripts and lean crontab (development)
         run: |
           set -euo pipefail
           ${SSH_CMD} cpanel-deploy "mkdir -p /home/c3ers/bin /home/c3ers/logs"
-          scp -F "${SSH_DIR}/config" -o BatchMode=yes deploy/queue-mail-ensure-running.sh \
-            cpanel-deploy:/home/c3ers/bin/queue-mail-ensure-running.sh
-          ${SSH_CMD} cpanel-deploy "chmod +x /home/c3ers/bin/queue-mail-ensure-running.sh"
+          scp -F "${SSH_DIR}/config" -o BatchMode=yes \
+            deploy/reverb-ensure-running.sh \
+            deploy/queue-mail-ensure-running.sh \
+            deploy/crontab.development.txt \
+            cpanel-deploy:/home/c3ers/tmp/
+          ${SSH_CMD} cpanel-deploy bash -s <<'REMOTE'
+          set -euo pipefail
+          cp /home/c3ers/tmp/reverb-ensure-running.sh /home/c3ers/bin/reverb-ensure-running.sh
+          cp /home/c3ers/tmp/queue-mail-ensure-running.sh /home/c3ers/bin/queue-mail-ensure-running.sh
+          chmod +x /home/c3ers/bin/reverb-ensure-running.sh /home/c3ers/bin/queue-mail-ensure-running.sh
+          crontab /home/c3ers/tmp/crontab.development.txt
+          REMOTE
 
       - name: Prune non-runtime files on server
         run: |
