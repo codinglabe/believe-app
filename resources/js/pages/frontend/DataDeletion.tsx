@@ -1,4 +1,4 @@
-import React from 'react';
+﻿import React from 'react';
 import FrontendLayout from '@/layouts/frontend/frontend-layout';
 import { PageHead } from '@/components/frontend/PageHead';
 import { Link } from '@inertiajs/react';
