@@ -292,7 +292,10 @@ export default function Navbar() {
   const mediaNavItems: LandingNavItem[] = [
     { name: "News", href: "/nonprofit-news", icon: Newspaper },
     { name: "Unity Videos", href: "/unity-videos", icon: Video },
-    { name: "Unity Live & Meet", href: "/unity-live", icon: Radio },
+    { name: "Unity Live", href: route("unity-live.index"), icon: Radio },
+    ...(showOrgOnlyNav
+      ? [{ name: "Unity Meet", href: route("livestreams.supporter.live"), icon: Radio }]
+      : []),
   ]
 
   const toolsNavItems: LandingNavItem[] = [

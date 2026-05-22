@@ -23,10 +23,11 @@ class EngagementService
      */
     public function getPageEngagementSummary(FacebookAccount $account): array
     {
+        // Meta deprecated page_impressions, page_engaged_users, page_post_engagements (see platforminsights/page/deprecated-metrics).
         $metrics = [
-            'page_post_engagements' => 'Post engagements (28 days)',
-            'page_impressions' => 'Page impressions (28 days)',
-            'page_engaged_users' => 'Engaged users (28 days)',
+            'page_media_view' => 'Content views (28 days)',
+            'page_total_media_view_unique' => 'Unique viewers (28 days)',
+            'page_follows' => 'Page follows',
         ];
 
         $results = [];
@@ -73,44 +74,52 @@ class EngagementService
         }
 
         $postId = $post->facebook_post_id;
+        $results = [];
+
+        // post_impressions / post_engaged_users were deprecated; use post_media_view (Meta Pages API, Nov 2025+).
         $insightMetrics = [
-            'post_impressions' => 'Impressions',
-            'post_engaged_users' => 'Engaged users',
+            'post_media_view' => 'Views',
             'post_reactions_by_type_total' => 'Reactions',
         ];
 
-        $url = "https://graph.facebook.com/{$this->apiVersion}/{$postId}/insights";
-        $response = Http::get($url, [
-            'access_token' => $account->page_access_token,
-            'metric' => implode(',', array_keys($insightMetrics)),
-        ]);
-
-        if (! $response->successful()) {
-            throw new \Exception('Failed to load post engagement: '.$response->body());
+        foreach ($insightMetrics as $metric => $label) {
+            try {
+                $value = $this->fetchPostInsightValue($account, $postId, $metric);
+                $results[] = [
+                    'key' => $metric,
+                    'label' => $label,
+                    'value' => $value ?? '—',
+                ];
+            } catch (\Throwable $e) {
+                Log::warning('Facebook post insight failed', [
+                    'metric' => $metric,
+                    'post_id' => $postId,
+                    'error' => $e->getMessage(),
+                ]);
+                $results[] = [
+                    'key' => $metric,
+                    'label' => $label,
+                    'value' => '—',
+                ];
+            }
         }
 
-        $data = $response->json('data', []);
-        $byName = collect($data)->keyBy('name');
-
-        $results = [];
-        foreach ($insightMetrics as $key => $label) {
-            $entry = $byName->get($key);
-            $value = $this->formatInsightEntry($entry);
-            $results[] = [
-                'key' => $key,
-                'label' => $label,
-                'value' => $value,
-            ];
-        }
-
-        // Comments / shares counts from post object (also requires pages_read_engagement)
+        // Comments / shares / reaction totals from the post object (pages_read_engagement).
         $postFields = Http::get("https://graph.facebook.com/{$this->apiVersion}/{$postId}", [
             'access_token' => $account->page_access_token,
-            'fields' => 'comments.summary(true),shares',
+            'fields' => 'comments.summary(true),shares,reactions.summary(true)',
         ]);
 
         if ($postFields->successful()) {
             $body = $postFields->json();
+            $reactionTotal = (int) ($body['reactions']['summary']['total_count'] ?? 0);
+            if ($reactionTotal > 0) {
+                $results[] = [
+                    'key' => 'reactions_total',
+                    'label' => 'Reactions (total)',
+                    'value' => (string) $reactionTotal,
+                ];
+            }
             $results[] = [
                 'key' => 'comments',
                 'label' => 'Comments',
@@ -123,10 +132,30 @@ class EngagementService
             ];
         }
 
+        if ($results === []) {
+            throw new \Exception('Failed to load post engagement: no metrics returned from Facebook.');
+        }
+
         return [
             'metrics' => $results,
             'fetched_at' => now()->toIso8601String(),
         ];
+    }
+
+    private function fetchPostInsightValue(FacebookAccount $account, string $postId, string $metric): ?string
+    {
+        $url = "https://graph.facebook.com/{$this->apiVersion}/{$postId}/insights";
+        $response = Http::get($url, [
+            'access_token' => $account->page_access_token,
+            'metric' => $metric,
+            'period' => 'lifetime',
+        ]);
+
+        if (! $response->successful()) {
+            throw new \Exception($response->body());
+        }
+
+        return $this->formatInsightEntry($response->json('data.0'));
     }
 
     private function fetchInsightValue(FacebookAccount $account, string $metric, string $period): ?string

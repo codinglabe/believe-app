@@ -76,7 +76,7 @@ export default function FacebookEngagementPanel({
             </div>
             {!compact && (
                 <p className="text-xs text-muted-foreground">
-                    Uses <code>pages_read_engagement</code> to show impressions, reactions, and comments from
+                    Uses <code>pages_read_engagement</code> to show views, reactions, comments, and shares from
                     Facebook. Data is only shown to you inside this app.
                 </p>
             )}
