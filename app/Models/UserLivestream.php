@@ -367,7 +367,6 @@ class UserLivestream extends Model
         $hn = trim($hostName) !== '' ? trim($hostName) : 'Host';
         $avatarImage = 'https://ui-avatars.com/api/?name=' . rawurlencode($hn) . '&size=256&length=2';
         $avatarParam = '&avatar=' . rawurlencode($avatarImage);
-        $recordParam = $recordEnabled ? '&record' : '';
         // Canvas mode: host publishes to seat 1 path so the canvas mixer can WHEP-
         // subscribe alongside guests; the mixer publishes the combined stream to
         // streamPath. Single-host (default) mode publishes directly to streamPath
@@ -375,6 +374,12 @@ class UserLivestream extends Model
         $effectivePush = $this->isCanvasModeEnabled()
             ? rawurlencode($streamKey.'_s1')
             : $push;
+
+        $dropboxCtx = ($recordEnabled && $recordToDropbox) ? $this->resolveDropboxUploadContext() : null;
+
+        // &record enables recording controls. With Dropbox params, VDO uploads to Dropbox while recording (may also save locally — VDO limitation).
+        $recordParam = $recordEnabled ? '&record' : '';
+
         $base = "https://vdo.ninja/?room={$room}&push={$effectivePush}&label={$label}{$recordParam}&quality=0&bitrate=6000&webcam&ssb&vdo=1&audiodevice=1&proaudio&stereo=2&showlabels=zoom&showall&rows=1&fontsize=82&nocontrols&clock=false{$avatarParam}" . \App\Support\VdoMeetingVirtualBackground::querySegment() . "&autostart&noheader{$passwordParam}";
 
         // Restore the MediaMTX push so the host's webcam reaches the bridge and the AWS worker can
@@ -389,18 +394,14 @@ class UserLivestream extends Model
             $base .= '&mediamtx=' . $mediaMtxHost . '&codec=vp8';
         }
 
-        if ($recordEnabled && $recordToDropbox) {
-            $ctx = $this->resolveDropboxUploadContext();
-            if ($ctx !== null) {
-                $oauthService = app(\App\Services\DropboxOAuthService::class);
-                $folderName = $ctx['folderName'];
-                $folderPath = '/' . trim($folderName, '/');
-                $oauthService->ensureFolderExists($ctx['token'], $folderPath);
-                $base .= '&dropbox=' . rawurlencode($ctx['token']);
-                $base .= '&dropboxpath=/' . rawurlencode($folderName);
-                $base .= '&autorecordlocal=6000';
-                $base .= '&cloud=1';
-            }
+        if ($dropboxCtx !== null) {
+            $oauthService = app(\App\Services\DropboxOAuthService::class);
+            $folderName = $dropboxCtx['folderName'];
+            $folderPath = '/' . trim($folderName, '/');
+            $oauthService->ensureFolderExists($dropboxCtx['token'], $folderPath);
+            $base .= '&dropbox=' . rawurlencode($dropboxCtx['token']);
+            $base .= '&dropboxpath=/' . rawurlencode($folderName);
+            $base .= '&cloud=1';
         }
 
         return $base;

@@ -13,6 +13,8 @@ use App\Http\Middleware\CheckRoleSimple;
 use App\Http\Middleware\CheckTopicsSelected;
 use App\Http\Middleware\DenyCareAllianceHubUser;
 use App\Http\Middleware\DetectTimezone;
+use App\Http\Middleware\ForceHttps;
+use App\Http\Middleware\GrantMeetingEmbedPermissions;
 use App\Http\Middleware\EnsureApiEmailVerified;
 use App\Http\Middleware\EnsureCanCreateEvents;
 use App\Http\Middleware\EnsureCanReadEventTypes;
@@ -43,6 +45,8 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware) {
+        $middleware->trustProxies(at: '*');
+
         // Default Laravel sends unauthenticated users to route('login') (main app). On the
         // merchant host, auth:merchant must redirect to merchant.login; guest routes must send
         // authenticated merchants to merchant.dashboard to avoid login↔dashboard loops.
@@ -68,7 +72,12 @@ return Application::configure(basePath: dirname(__DIR__))
 
         // DetectTimezone must run before HandleInertiaRequests so config('app.timezone') and
         // Carbon are correct for shared props and any date formatting in that middleware.
+        $middleware->web(prepend: [
+            ForceHttps::class,
+        ]);
+
         $middleware->web(append: [
+            GrantMeetingEmbedPermissions::class,
             HandleAppearance::class,
             DetectTimezone::class, // Sets timezone for entire application (reads X-Timezone header)
             HandleInertiaRequests::class,

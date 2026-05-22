@@ -24,8 +24,6 @@ import {
   Globe,
   CircleDot,
   Radio,
-  Copy,
-  Check,
 } from "lucide-react"
 import UnityMeetLayout from "@/layouts/UnityMeetLayout"
 import { PageHead } from "@/components/frontend/PageHead"
@@ -34,6 +32,8 @@ import { cn } from "@/lib/utils"
 const BRAND = {
   from: "#9333ea",
   to: "#2563eb",
+  fromMuted: "rgba(147,51,234,0.15)",
+  toMuted: "rgba(37,99,235,0.1)",
 }
 
 interface Props {
@@ -50,7 +50,7 @@ function SectionLabel({
   return (
     <p
       className={cn(
-        "mb-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-purple-400/90",
+        "mb-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-purple-600 dark:text-purple-400",
         className
       )}
     >
@@ -134,10 +134,10 @@ export default function SupporterCreateLivestream({ authUserDisplayName = "" }: 
   }
 
   const fieldShell =
-    "h-11 rounded-xl border-zinc-800 bg-zinc-900/80 text-zinc-100 placeholder:text-zinc-600 focus-visible:border-purple-500/50 focus-visible:ring-purple-500/20"
+    "h-11 rounded-xl border-input bg-background text-foreground shadow-none placeholder:text-muted-foreground focus-visible:border-purple-500/50 focus-visible:ring-purple-500/20"
 
   const toggleClass =
-    "shrink-0 data-[state=unchecked]:bg-zinc-700 data-[state=checked]:bg-purple-600 data-[state=unchecked]:border-zinc-600"
+    "shrink-0 data-[state=unchecked]:bg-muted data-[state=checked]:bg-purple-600 data-[state=unchecked]:border-border"
 
   return (
     <UnityMeetLayout>
@@ -147,36 +147,51 @@ export default function SupporterCreateLivestream({ authUserDisplayName = "" }: 
       />
       <Head title="Start Instant Meeting" />
 
-      <div className="min-h-screen bg-zinc-950 text-zinc-100">
-        <div className="mx-auto flex min-h-screen max-w-xl flex-col px-4 pb-14 pt-6 md:px-6 md:pt-10">
-          <Link
-            href="/livestreams/supporter"
-            className="mb-6 inline-flex w-fit items-center gap-2 text-sm text-zinc-500 hover:text-zinc-300"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Unity Meet
-          </Link>
+      <div className="min-h-screen bg-background text-foreground">
+        <div
+          className="border-b border-purple-200 dark:border-purple-500/20"
+          style={{
+            background: `linear-gradient(135deg, ${BRAND.fromMuted} 0%, rgba(147,51,234,0.12) 50%, ${BRAND.toMuted} 100%)`,
+          }}
+        >
+          <div className="mx-auto max-w-xl px-4 py-6 md:px-6">
+            <Link
+              href="/livestreams/supporter"
+              className="mb-4 inline-flex w-fit items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Unity Meet
+            </Link>
+            <div className="flex items-center gap-3">
+              <div
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-white shadow-sm"
+                style={{ background: `linear-gradient(135deg, ${BRAND.from}, ${BRAND.to})` }}
+              >
+                <Video className="h-5 w-5" />
+              </div>
+              <div>
+                <h1 className="bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-xl font-semibold tracking-tight text-transparent md:text-2xl">
+                  Start Instant Meeting
+                </h1>
+                <p className="text-sm text-muted-foreground">Name your meeting and set privacy options.</p>
+              </div>
+            </div>
+          </div>
+        </div>
 
+        <div className="mx-auto flex max-w-xl flex-col px-4 pb-14 pt-6 md:px-6 md:pt-8">
           <form onSubmit={handleSubmit} className="flex flex-1 flex-col">
-            <div className="rounded-3xl border border-zinc-800/90 bg-[#0a0a0f] p-6 shadow-2xl shadow-black/40 md:p-8">
-              <div className="flex items-start gap-3 pb-8">
-                <div
-                  className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl text-white shadow-lg"
-                  style={{ background: `linear-gradient(135deg, ${BRAND.from}, ${BRAND.to})` }}
-                >
-                  <Video className="h-6 w-6" />
-                </div>
-                <div>
-                  <h1 className="text-xl font-bold tracking-tight text-white md:text-2xl">Start Instant Meeting</h1>
-                </div>
+            <div className="rounded-2xl border border-border bg-card p-6 shadow-sm md:p-8">
+              <div className="sr-only">
+                <h2>Meeting form</h2>
               </div>
 
               <SectionLabel className="mt-2">Meeting info</SectionLabel>
 
               <div className="space-y-1">
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,140px)_1fr] sm:items-center sm:gap-4">
-                  <span className="flex items-center gap-2 pt-3 text-sm text-zinc-400 sm:py-3">
-                    <User className="h-4 w-4 shrink-0 text-zinc-500" aria-hidden />
+                  <span className="flex items-center gap-2 pt-3 text-sm text-muted-foreground sm:py-3">
+                    <User className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
                     Meeting name
                   </span>
                   <div className="min-w-0">
@@ -188,13 +203,13 @@ export default function SupporterCreateLivestream({ authUserDisplayName = "" }: 
                       className={cn(fieldShell, "shadow-none")}
                       autoComplete="off"
                     />
-                    {errors.title && <p className="mt-1.5 text-xs text-red-400">{errors.title}</p>}
+                    {errors.title && <p className="mt-1.5 text-xs text-destructive">{errors.title}</p>}
                   </div>
                 </div>
 
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,140px)_1fr] sm:items-center sm:gap-4">
-                  <span className="flex items-center gap-2 pt-3 text-sm text-zinc-400 sm:py-3">
-                    <User className="h-4 w-4 shrink-0 text-zinc-500" aria-hidden />
+                  <span className="flex items-center gap-2 pt-3 text-sm text-muted-foreground sm:py-3">
+                    <User className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
                     Your display name
                   </span>
                   <div className="min-w-0">
@@ -207,12 +222,12 @@ export default function SupporterCreateLivestream({ authUserDisplayName = "" }: 
                       autoComplete="name"
                     />
                     {errors.display_name && (
-                      <p className="mt-1.5 text-xs text-red-400">{errors.display_name}</p>
+                      <p className="mt-1.5 text-xs text-destructive">{errors.display_name}</p>
                     )}
                   </div>
                 </div>
 
-                <p className="text-sm text-zinc-500">
+                <p className="text-sm text-muted-foreground">
                   Each start creates a new meeting with its own ID. You will see the meeting ID on the next screen.
                 </p>
               </div>
@@ -221,8 +236,8 @@ export default function SupporterCreateLivestream({ authUserDisplayName = "" }: 
 
               <div className="space-y-3">
                 <div className="flex items-center justify-between gap-4 py-1">
-                  <span className="flex min-w-0 flex-1 items-center gap-2 text-sm text-zinc-400">
-                    <Lock className="h-4 w-4 shrink-0 text-zinc-500" aria-hidden />
+                  <span className="flex min-w-0 flex-1 items-center gap-2 text-sm text-muted-foreground">
+                    <Lock className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
                     Passcode
                   </span>
                   <Switch
@@ -242,15 +257,15 @@ export default function SupporterCreateLivestream({ authUserDisplayName = "" }: 
                     autoComplete="new-password"
                   />
                 )}
-                {errors.passcode && <p className="text-xs text-red-400">{errors.passcode}</p>}
+                {errors.passcode && <p className="text-xs text-destructive">{errors.passcode}</p>}
               </div>
 
               <SectionLabel className="mt-10">Options</SectionLabel>
 
-              <div className="divide-y divide-zinc-800/90 rounded-2xl border border-zinc-800/70 bg-zinc-900/30 px-1">
+              <div className="divide-y divide-border rounded-2xl border border-border bg-muted/30 px-1">
                 <div className="flex items-center justify-between gap-4 px-3 py-3">
-                  <span className="flex min-w-0 flex-1 items-center gap-2 text-sm text-zinc-400">
-                    <Globe className="h-4 w-4 shrink-0 text-zinc-500" aria-hidden />
+                  <span className="flex min-w-0 flex-1 items-center gap-2 text-sm text-muted-foreground">
+                    <Globe className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
                     Show on Unity Live
                   </span>
                   <Switch
@@ -261,8 +276,8 @@ export default function SupporterCreateLivestream({ authUserDisplayName = "" }: 
                   />
                 </div>
                 <div className="flex items-center justify-between gap-4 px-3 py-3">
-                  <span className="flex min-w-0 flex-1 items-center gap-2 text-sm text-zinc-400">
-                    <CircleDot className="h-4 w-4 shrink-0 text-zinc-500" aria-hidden />
+                  <span className="flex min-w-0 flex-1 items-center gap-2 text-sm text-muted-foreground">
+                    <CircleDot className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
                     Record meeting
                   </span>
                   <Switch
@@ -273,8 +288,8 @@ export default function SupporterCreateLivestream({ authUserDisplayName = "" }: 
                   />
                 </div>
                 <div className="flex items-center justify-between gap-4 px-3 py-3">
-                  <span className="flex min-w-0 flex-1 items-center gap-2 text-sm text-zinc-400">
-                    <Radio className="h-4 w-4 shrink-0 text-zinc-500" aria-hidden />
+                  <span className="flex min-w-0 flex-1 items-center gap-2 text-sm text-muted-foreground">
+                    <Radio className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
                     Go live (optional)
                   </span>
                   <Switch
@@ -299,11 +314,11 @@ export default function SupporterCreateLivestream({ authUserDisplayName = "" }: 
             </div>
           </form>
 
-          <p className="mt-8 text-center text-sm text-zinc-500">
+          <p className="mt-8 text-center text-sm text-muted-foreground">
             Need a future time?{" "}
             <button
               type="button"
-              className="font-medium text-purple-400 underline-offset-4 hover:text-purple-300 hover:underline"
+              className="font-medium text-purple-600 underline-offset-4 hover:text-purple-700 hover:underline dark:text-purple-400 dark:hover:text-purple-300"
               onClick={() => setScheduleOpen(true)}
             >
               Schedule a meeting
@@ -313,13 +328,13 @@ export default function SupporterCreateLivestream({ authUserDisplayName = "" }: 
       </div>
 
       <Dialog open={scheduleOpen} onOpenChange={setScheduleOpen}>
-        <DialogContent className="border-zinc-800 bg-[#12121a] text-zinc-100 sm:max-w-md">
+        <DialogContent className="border-border bg-card text-foreground sm:max-w-md">
           <DialogHeader>
-            <DialogTitle className="text-white">Schedule a meeting</DialogTitle>
+            <DialogTitle>Schedule a meeting</DialogTitle>
           </DialogHeader>
           <form onSubmit={handleScheduleSubmit} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="schedule_date" className="text-zinc-400">
+              <Label htmlFor="schedule_date" className="text-muted-foreground">
                 Date
               </Label>
               <div className="relative">
@@ -328,14 +343,14 @@ export default function SupporterCreateLivestream({ authUserDisplayName = "" }: 
                   type="date"
                   value={data.schedule_date}
                   onChange={(e) => setData("schedule_date", e.target.value)}
-                  className="h-11 border-zinc-700 bg-zinc-900 text-zinc-100"
+                  className={cn(fieldShell, "pr-10")}
                 />
-                <Calendar className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
+                <Calendar className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               </div>
-              {errors.schedule_date && <p className="text-sm text-red-400">{errors.schedule_date}</p>}
+              {errors.schedule_date && <p className="text-sm text-destructive">{errors.schedule_date}</p>}
             </div>
             <div className="space-y-2">
-              <Label htmlFor="schedule_time" className="text-zinc-400">
+              <Label htmlFor="schedule_time" className="text-muted-foreground">
                 Time
               </Label>
               <div className="relative">
@@ -344,14 +359,14 @@ export default function SupporterCreateLivestream({ authUserDisplayName = "" }: 
                   type="time"
                   value={data.schedule_time}
                   onChange={(e) => setData("schedule_time", e.target.value)}
-                  className="h-11 border-zinc-700 bg-zinc-900 text-zinc-100"
+                  className={cn(fieldShell, "pr-10")}
                 />
-                <Clock className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
+                <Clock className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               </div>
-              {errors.schedule_time && <p className="text-sm text-red-400">{errors.schedule_time}</p>}
+              {errors.schedule_time && <p className="text-sm text-destructive">{errors.schedule_time}</p>}
             </div>
             <div className="space-y-2">
-              <Label htmlFor="participant_emails" className="text-zinc-400">
+              <Label htmlFor="participant_emails" className="text-muted-foreground">
                 Participant emails
               </Label>
               <div className="flex gap-2">
@@ -368,22 +383,17 @@ export default function SupporterCreateLivestream({ authUserDisplayName = "" }: 
                       }
                     }}
                     placeholder="Email, then Enter"
-                    className="h-11 border-zinc-700 bg-zinc-900 pr-10 text-zinc-100"
+                    className={cn(fieldShell, "pr-10")}
                     autoComplete="off"
                   />
-                  <Mail className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" />
+                  <Mail className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 </div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="h-11 border-zinc-600 bg-transparent text-zinc-200 hover:bg-zinc-800"
-                  onClick={addParticipantEmail}
-                >
+                <Button type="button" variant="outline" className="h-11 shrink-0" onClick={addParticipantEmail}>
                   Add
                 </Button>
               </div>
               {(errors.participant_emails || (errors as Record<string, string>)["participant_emails.0"]) && (
-                <p className="text-sm text-red-400">
+                <p className="text-sm text-destructive">
                   {errors.participant_emails ?? (errors as Record<string, string>)["participant_emails.0"]}
                 </p>
               )}
@@ -394,11 +404,11 @@ export default function SupporterCreateLivestream({ authUserDisplayName = "" }: 
                       key={email}
                       type="button"
                       onClick={() => removeParticipantEmail(email)}
-                      className="inline-flex items-center gap-2 rounded-full border border-zinc-700 bg-zinc-900 px-3 py-1 text-xs text-zinc-200 hover:bg-zinc-800"
+                      className="inline-flex items-center gap-2 rounded-full border border-border bg-muted px-3 py-1 text-xs text-foreground hover:bg-muted/80"
                       title="Remove"
                     >
                       <span className="font-mono">{email}</span>
-                      <span className="text-zinc-500">×</span>
+                      <span className="text-muted-foreground">×</span>
                     </button>
                   ))}
                 </div>
@@ -406,12 +416,7 @@ export default function SupporterCreateLivestream({ authUserDisplayName = "" }: 
             </div>
 
             <div className="grid grid-cols-2 gap-3 pt-2">
-              <Button
-                type="button"
-                variant="outline"
-                className="border-zinc-600 text-zinc-200 hover:bg-zinc-800"
-                onClick={() => setScheduleOpen(false)}
-              >
+              <Button type="button" variant="outline" onClick={() => setScheduleOpen(false)}>
                 Cancel
               </Button>
               <Button

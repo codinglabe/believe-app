@@ -32,5 +32,4 @@ yarn-error.log
 *.zip
 
 # Local deploy SSH keys (never commit)
-/.deploy/
 /composer

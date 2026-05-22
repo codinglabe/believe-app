@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 
 /**
  * Facebook Page integration (App Review + runtime).

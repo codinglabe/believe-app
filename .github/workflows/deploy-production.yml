@@ -38,7 +38,6 @@ jobs:
         --exclude=.env.*
         --exclude=.htaccess
         --exclude=docs/
-        --exclude=.deploy/
         --exclude=deploy/
         --exclude=*.md
         --exclude=CLAUDE.md
@@ -170,9 +169,9 @@ jobs:
           ${SSH_CMD} cpanel-deploy "grep -E '^(APP_NAME|APP_URL|APP_VERSION)=|^REVERB_|^VITE_' '${DEPLOY_PATH}/.env' | grep -v '^#'" > .env.server
           echo "Loaded $(wc -l < .env.server | tr -d ' ') lines from server .env"
           grep -c '^REVERB_APP_KEY=' .env.server || echo "::warning::REVERB_APP_KEY not in fetched .env.server"
-          chmod +x deploy/expand-vite-env.sh
+          chmod +x .github/scripts/expand-vite-env.sh
           {
-            ./deploy/expand-vite-env.sh < .env.server | grep -v '^APP_URL='
+            ./.github/scripts/expand-vite-env.sh < .env.server | grep -v '^APP_URL='
             echo "APP_URL=${APP_URL}"
           } > .env
           lines=$(wc -l < .env | tr -d ' ')
@@ -206,18 +205,12 @@ jobs:
           rsync -avz --delete \
             -e "${RSYNC_RSH}" \
             ${RSYNC_EXCLUDES} \
+            --exclude=vendor/ \
             ./ cpanel-deploy:${DEPLOY_PATH}/
+          rsync -avz \
+            -e "${RSYNC_RSH}" \
+            ./vendor/ cpanel-deploy:${DEPLOY_PATH}/vendor/
           ${SSH_CMD} cpanel-deploy "test -f ${DEPLOY_PATH}/public/build/manifest.json && ls -la ${DEPLOY_PATH}/public/build/manifest.json | head -1"
-
-      - name: Install Reverb and mail-queue keepalive on server
-        run: |
-          set -euo pipefail
-          ${SSH_CMD} cpanel-deploy "mkdir -p ${DEPLOY_PATH%/public_html}/bin ${DEPLOY_PATH%/public_html}/logs"
-          scp -F "${SSH_DIR}/config" -o BatchMode=yes deploy/reverb-ensure-running-believeinunity.sh \
-            cpanel-deploy:${DEPLOY_PATH%/public_html}/bin/reverb-ensure-running.sh
-          scp -F "${SSH_DIR}/config" -o BatchMode=yes deploy/queue-mail-ensure-running.sh \
-            cpanel-deploy:${DEPLOY_PATH%/public_html}/bin/queue-mail-ensure-running.sh
-          ${SSH_CMD} cpanel-deploy "chmod +x ${DEPLOY_PATH%/public_html}/bin/reverb-ensure-running.sh ${DEPLOY_PATH%/public_html}/bin/queue-mail-ensure-running.sh"
 
       - name: Prune non-runtime files on server
         run: |
@@ -225,7 +218,7 @@ jobs:
           ${SSH_CMD} cpanel-deploy bash -s <<REMOTE
           set -euo pipefail
           cd "${DEPLOY_PATH}"
-          rm -rf docs tests node_modules .deploy deploy .ssh-deploy .ssh-deploy-prod .phpunit.cache bootstrap/ssr 2>/dev/null || true
+          rm -rf docs tests node_modules deploy .ssh-deploy .ssh-deploy-prod .phpunit.cache bootstrap/ssr 2>/dev/null || true
           rm -f CLAUDE.md README.md COMMAND_IN_PRODUCTION.md phpunit.xml .editorconfig eslint.config.js .prettierignore .prettierrc .gitattributes .gitignore Homestead.yaml Homestead.json tsconfig.json components.json package.json package-lock.json vite.config.ts 2>/dev/null || true
           rm -f .env.backup .env.before-sync .env.production .env.backup- 2>/dev/null || true
           rm -f resources/js/components/wallet/*.md resources/js/components/merchant/README.md 2>/dev/null || true
@@ -241,6 +234,7 @@ jobs:
           mkdir -p storage/app/public storage/framework/{sessions,views,cache/data} storage/logs
           chmod -R 775 storage bootstrap/cache 2>/dev/null || true
           chmod -R 755 public/build 2>/dev/null || true
+          rm -rf vendor/laravel/sail vendor/laravel/pint vendor/laravel/pail vendor/nunomaduro/collision vendor/symfony/yaml 2>/dev/null || true
           php artisan config:clear
           php artisan route:clear
           php artisan view:clear
@@ -251,13 +245,6 @@ jobs:
             exit 1
           }
           php artisan storage:link --force
-          REVERB_SCRIPT="${DEPLOY_PATH%/public_html}/bin/reverb-ensure-running.sh"
-          MAIL_SCRIPT="${DEPLOY_PATH%/public_html}/bin/queue-mail-ensure-running.sh"
-          if [ -x "\$REVERB_SCRIPT" ]; then "\$REVERB_SCRIPT" || true; fi
-          if [ -x "\$MAIL_SCRIPT" ]; then APP_DIR="${DEPLOY_PATH}" LOG_DIR="${DEPLOY_PATH%/public_html}/logs" MAIL_QUEUE_WORKERS=5 "\$MAIL_SCRIPT" || true; fi
-          if grep -q '^REVERB_HOST=believeinunity.org' .env 2>/dev/null; then
-            echo "::warning::Set REVERB_HOST=127.0.0.1 in server .env for PHP broadcasts (see deploy/PRODUCTION-REVERB-SETUP.md)"
-          fi
           php artisan config:cache
           php artisan view:cache
           test -f .env && test -d storage && test -f .htaccess && echo DEPLOY_OK

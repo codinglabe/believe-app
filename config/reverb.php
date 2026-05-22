@@ -84,7 +84,7 @@ return [
                 ],
                 'allowed_origins' => array_values(array_filter(array_map(
                     trim(...),
-                    explode(',', (string) env('REVERB_ALLOWED_ORIGINS', 'https://501c3ers.com,https://www.501c3ers.com'))
+                    explode(',', (string) env('REVERB_ALLOWED_ORIGINS', 'https://501c3ers.com,https://www.501c3ers.com,https://merchant.501c3ers.com,https://believeinunity.org,https://www.believeinunity.org,https://merchant.believeinunity.org'))
                 ))),
                 'ping_interval' => env('REVERB_APP_PING_INTERVAL', 60),
                 'activity_timeout' => env('REVERB_APP_ACTIVITY_TIMEOUT', 30),
