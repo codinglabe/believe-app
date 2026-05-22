@@ -20,9 +20,20 @@ import { getBrowserTimezone } from './lib/timezone-detection';
 import axios from 'axios';
 
 
-const reverbHost =
-    import.meta.env.VITE_REVERB_HOST ||
-    (typeof window !== 'undefined' ? window.location.hostname : 'localhost');
+const isLoopbackHost = (host?: string) =>
+    Boolean(host && ['127.0.0.1', '0.0.0.0', 'localhost'].includes(host));
+
+const reverbHost = (() => {
+    const configured = import.meta.env.VITE_REVERB_HOST;
+    const runtime =
+        typeof window !== 'undefined' ? window.location.hostname : 'localhost';
+
+    if (isLoopbackHost(configured) && !isLoopbackHost(runtime)) {
+        return runtime;
+    }
+
+    return configured || runtime;
+})();
 
 configureEcho({
     broadcaster: 'reverb',
@@ -32,6 +43,14 @@ configureEcho({
     wssPort: Number(import.meta.env.VITE_REVERB_PORT) || 443,
     forceTLS: (import.meta.env.VITE_REVERB_SCHEME ?? 'https') === 'https',
     enabledTransports: ['ws', 'wss'],
+    authEndpoint: '/broadcasting/auth',
+    auth: {
+        headers: {
+            'X-CSRF-TOKEN':
+                document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content ?? '',
+            'X-Requested-With': 'XMLHttpRequest',
+        },
+    },
 });
 
 const appName = import.meta.env.VITE_APP_NAME || 'Laravel';
