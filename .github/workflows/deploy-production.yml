@@ -209,15 +209,24 @@ jobs:
             ./ cpanel-deploy:${DEPLOY_PATH}/
           ${SSH_CMD} cpanel-deploy "test -f ${DEPLOY_PATH}/public/build/manifest.json && ls -la ${DEPLOY_PATH}/public/build/manifest.json | head -1"
 
-      - name: Install Reverb and mail-queue keepalive on server
+      - name: Install keepalive scripts and lean crontab (production)
         run: |
           set -euo pipefail
-          ${SSH_CMD} cpanel-deploy "mkdir -p ${DEPLOY_PATH%/public_html}/bin ${DEPLOY_PATH%/public_html}/logs"
-          scp -F "${SSH_DIR}/config" -o BatchMode=yes deploy/reverb-ensure-running-believeinunity.sh \
-            cpanel-deploy:${DEPLOY_PATH%/public_html}/bin/reverb-ensure-running.sh
-          scp -F "${SSH_DIR}/config" -o BatchMode=yes deploy/queue-mail-ensure-running.sh \
-            cpanel-deploy:${DEPLOY_PATH%/public_html}/bin/queue-mail-ensure-running.sh
-          ${SSH_CMD} cpanel-deploy "chmod +x ${DEPLOY_PATH%/public_html}/bin/reverb-ensure-running.sh ${DEPLOY_PATH%/public_html}/bin/queue-mail-ensure-running.sh"
+          HOME_DIR="${DEPLOY_PATH%/public_html}"
+          ${SSH_CMD} cpanel-deploy "mkdir -p ${HOME_DIR}/bin ${HOME_DIR}/logs ${HOME_DIR}/tmp"
+          scp -F "${SSH_DIR}/config" -o BatchMode=yes \
+            deploy/reverb-ensure-running-believeinunity.sh \
+            deploy/queue-mail-ensure-running.sh \
+            deploy/crontab.production.txt \
+            cpanel-deploy:${HOME_DIR}/tmp/
+          ${SSH_CMD} cpanel-deploy bash -s <<REMOTE
+          set -euo pipefail
+          HOME_DIR="${DEPLOY_PATH%/public_html}"
+          cp "${HOME_DIR}/tmp/reverb-ensure-running-believeinunity.sh" "${HOME_DIR}/bin/reverb-ensure-running.sh"
+          cp "${HOME_DIR}/tmp/queue-mail-ensure-running.sh" "${HOME_DIR}/bin/queue-mail-ensure-running.sh"
+          chmod +x "${HOME_DIR}/bin/reverb-ensure-running.sh" "${HOME_DIR}/bin/queue-mail-ensure-running.sh"
+          crontab "${HOME_DIR}/tmp/crontab.production.txt"
+          REMOTE
 
       - name: Prune non-runtime files on server
         run: |
