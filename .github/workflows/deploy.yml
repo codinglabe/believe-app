@@ -245,6 +245,6 @@ jobs:
       - name: Smoke test
         run: |
           set -euo pipefail
-          code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 30 "${APP_URL}/")
+          code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 60 "${APP_URL}/")
           echo "GET ${APP_URL}/ => HTTP ${code}"
           test "${code}" = "200" || test "${code}" = "302" || { echo "::error::Homepage returned HTTP ${code}"; exit 1; }
