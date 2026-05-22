@@ -288,6 +288,10 @@ Route::get('/privacy-policy', function () {
     return Inertia::render('frontend/PrivacyPolicy');
 })->name('privacy.policy');
 
+Route::get('/data-deletion', function () {
+    return Inertia::render('frontend/DataDeletion');
+})->name('data.deletion');
+
 Route::get('/terms-of-service', function () {
     return Inertia::render('frontend/TermsOfService');
 })->name('terms.service');
