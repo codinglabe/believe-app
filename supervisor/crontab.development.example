@@ -23,3 +23,5 @@ SHELL="/bin/bash"
 0 * * * * /usr/local/bin/php /home/c3ers/public_html/artisan service-orders:auto-complete >> /dev/null 2>&1
 0,30 * * * * /usr/local/bin/php /home/c3ers/public_html/artisan rss:warm-nonprofit >> /dev/null 2>&1
 0 0 * * * /usr/local/bin/php /home/c3ers/public_html/artisan supporters:notify-birthdays >> /dev/null 2>&1
+
+# Reverb: Supervisor (supervisor/laravel-reverb-c3ers.conf), not cron
