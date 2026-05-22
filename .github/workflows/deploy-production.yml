@@ -200,6 +200,11 @@ jobs:
           echo "Server storage, .env, and .htaccess files present — will not be overwritten."
           REMOTE
 
+      - name: Reset vendor on server (avoid rsync delete stale dev packages)
+        run: |
+          set -euo pipefail
+          ${SSH_CMD} cpanel-deploy "rm -rf ${DEPLOY_PATH}/vendor"
+
       - name: Deploy with rsync
         run: |
           set -euo pipefail
