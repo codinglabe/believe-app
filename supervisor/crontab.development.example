@@ -1,0 +1,25 @@
+MAILTO=""
+SHELL="/bin/bash"
+
+# Main queue worker
+* * * * * /usr/local/bin/php /home/c3ers/public_html/artisan queue:work --max-time=900 >> /dev/null 2>&1
+
+# Mail queue (password reset)
+* * * * * /usr/local/bin/php /home/c3ers/public_html/artisan queue:work --queue=mail --stop-when-empty --max-time=55 --tries=3 >> /dev/null 2>&1
+
+# IRS import queue
+* * * * * /usr/local/bin/php /home/c3ers/public_html/artisan queue:work --queue=irs-import --memory=512 --tries=2 --stop-when-empty --max-time=55 >> /dev/null 2>&1
+
+# Laravel scheduler (routes/console.php)
+* * * * * cd /home/c3ers/public_html && /usr/local/bin/php artisan schedule:run >> /home/c3ers/logs/schedule.log 2>&1
+
+# Application jobs
+* * * * * /usr/local/bin/php /home/c3ers/public_html/artisan drops:dispatch-due >> /dev/null 2>&1
+*/5 * * * * /usr/local/bin/php /home/c3ers/public_html/artisan sendJobs:cleanup >> /dev/null 2>&1
+* * * * * /usr/local/bin/php /home/c3ers/public_html/artisan form1023:send-payment-reminders >> /dev/null 2>&1
+* * * * * /usr/local/bin/php /home/c3ers/public_html/artisan irs:check-form990-filings --notify >> /dev/null 2>&1
+* * * * * /usr/local/bin/php /home/c3ers/public_html/artisan facebook:process-scheduled >> /dev/null 2>&1
+* * * * * /usr/local/bin/php /home/c3ers/public_html/artisan log:clean >> /dev/null 2>&1
+0 * * * * /usr/local/bin/php /home/c3ers/public_html/artisan service-orders:auto-complete >> /dev/null 2>&1
+0,30 * * * * /usr/local/bin/php /home/c3ers/public_html/artisan rss:warm-nonprofit >> /dev/null 2>&1
+0 0 * * * /usr/local/bin/php /home/c3ers/public_html/artisan supporters:notify-birthdays >> /dev/null 2>&1

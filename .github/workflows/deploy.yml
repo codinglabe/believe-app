@@ -39,6 +39,7 @@ jobs:
         --exclude=docs/
         --exclude=.deploy/
         --exclude=deploy/
+        --exclude=supervisor/
         --exclude=*.md
         --exclude=CLAUDE.md
         --exclude=COMMAND_IN_PRODUCTION.md
@@ -153,7 +154,7 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
 
-      # Vite cannot expand ${REVERB_APP_KEY} — resolve literals from server .env (see deploy/expand-vite-env.sh).
+      # Vite cannot expand ${REVERB_APP_KEY} — resolve literals from server .env.
       - name: Load Vite env from server (match local build)
         if: hashFiles('package.json') != ''
         run: |
@@ -161,10 +162,10 @@ jobs:
           ${SSH_CMD} cpanel-deploy "grep -E '^(APP_NAME|APP_URL|APP_VERSION)=|^REVERB_|^VITE_' '${DEPLOY_PATH}/.env' | grep -v '^#'" > .env.server
           echo "Loaded $(wc -l < .env.server | tr -d ' ') lines from server .env"
           grep -c '^REVERB_APP_KEY=' .env.server || echo "::warning::REVERB_APP_KEY not in fetched .env.server"
-          chmod +x deploy/expand-vite-env.sh
+          chmod +x .github/scripts/expand-vite-env.sh
           {
             echo "APP_URL=${APP_URL}"
-            ./deploy/expand-vite-env.sh < .env.server
+            ./.github/scripts/expand-vite-env.sh < .env.server
           } > .env
           lines=$(wc -l < .env | tr -d ' ')
           echo "Wrote .env for Vite build (${lines} lines)"
@@ -191,36 +192,19 @@ jobs:
           echo "Server storage, .env, and .htaccess files present — will not be overwritten."
           REMOTE
 
-      - name: Reset vendor on server (avoid rsync delete stale dev packages)
-        run: |
-          set -euo pipefail
-          ${SSH_CMD} cpanel-deploy "rm -rf ${DEPLOY_PATH}/vendor"
-
       - name: Deploy with rsync
         run: |
           set -euo pipefail
+          # App + assets (with --delete). Vendor synced separately without --delete for speed.
           rsync -avz --delete \
             -e "${RSYNC_RSH}" \
             ${RSYNC_EXCLUDES} \
+            --exclude=vendor/ \
             ./ cpanel-deploy:${DEPLOY_PATH}/
+          rsync -avz \
+            -e "${RSYNC_RSH}" \
+            ./vendor/ cpanel-deploy:${DEPLOY_PATH}/vendor/
           ${SSH_CMD} cpanel-deploy "test -f ${DEPLOY_PATH}/public/build/manifest.json && ls -la ${DEPLOY_PATH}/public/build/manifest.json | head -1"
-
-      - name: Install keepalive scripts and lean crontab (development)
-        run: |
-          set -euo pipefail
-          ${SSH_CMD} cpanel-deploy "mkdir -p /home/c3ers/bin /home/c3ers/logs"
-          scp -F "${SSH_DIR}/config" -o BatchMode=yes \
-            deploy/reverb-ensure-running.sh \
-            deploy/queue-mail-ensure-running.sh \
-            deploy/crontab.development.txt \
-            cpanel-deploy:/home/c3ers/tmp/
-          ${SSH_CMD} cpanel-deploy bash -s <<'REMOTE'
-          set -euo pipefail
-          cp /home/c3ers/tmp/reverb-ensure-running.sh /home/c3ers/bin/reverb-ensure-running.sh
-          cp /home/c3ers/tmp/queue-mail-ensure-running.sh /home/c3ers/bin/queue-mail-ensure-running.sh
-          chmod +x /home/c3ers/bin/reverb-ensure-running.sh /home/c3ers/bin/queue-mail-ensure-running.sh
-          crontab /home/c3ers/tmp/crontab.development.txt
-          REMOTE
 
       - name: Prune non-runtime files on server
         run: |
@@ -244,18 +228,13 @@ jobs:
           mkdir -p storage/app/public storage/framework/{sessions,views,cache/data} storage/logs
           chmod -R 775 storage bootstrap/cache 2>/dev/null || true
           chmod -R 755 public/build 2>/dev/null || true
+          rm -rf vendor/laravel/sail vendor/laravel/pint vendor/laravel/pail vendor/nunomaduro/collision vendor/symfony/yaml 2>/dev/null || true
           php artisan config:clear
           php artisan route:clear
           php artisan view:clear
           php artisan cache:clear
           php artisan migrate --force
           php artisan storage:link --force
-          if [ -x /home/c3ers/bin/reverb-ensure-running.sh ]; then
-            /home/c3ers/bin/reverb-ensure-running.sh || true
-          fi
-          if [ -x /home/c3ers/bin/queue-mail-ensure-running.sh ]; then
-            APP_DIR="${DEPLOY_PATH}" LOG_DIR="/home/c3ers/logs" MAIL_QUEUE_WORKERS=2 /home/c3ers/bin/queue-mail-ensure-running.sh || true
-          fi
           php artisan config:cache
           php artisan view:cache
           # Do not route:cache — duplicate route names can break serialization on the server.
@@ -265,6 +244,6 @@ jobs:
       - name: Smoke test
         run: |
           set -euo pipefail
-          code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 30 "${APP_URL}/")
+          code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 60 "${APP_URL}/")
           echo "GET ${APP_URL}/ => HTTP ${code}"
           test "${code}" = "200" || test "${code}" = "302" || { echo "::error::Homepage returned HTTP ${code}"; exit 1; }

@@ -40,6 +40,7 @@ jobs:
         --exclude=docs/
         --exclude=.deploy/
         --exclude=deploy/
+        --exclude=supervisor/
         --exclude=*.md
         --exclude=CLAUDE.md
         --exclude=COMMAND_IN_PRODUCTION.md
@@ -170,9 +171,9 @@ jobs:
           ${SSH_CMD} cpanel-deploy "grep -E '^(APP_NAME|APP_URL|APP_VERSION)=|^REVERB_|^VITE_' '${DEPLOY_PATH}/.env' | grep -v '^#'" > .env.server
           echo "Loaded $(wc -l < .env.server | tr -d ' ') lines from server .env"
           grep -c '^REVERB_APP_KEY=' .env.server || echo "::warning::REVERB_APP_KEY not in fetched .env.server"
-          chmod +x deploy/expand-vite-env.sh
+          chmod +x .github/scripts/expand-vite-env.sh
           {
-            ./deploy/expand-vite-env.sh < .env.server | grep -v '^APP_URL='
+            ./.github/scripts/expand-vite-env.sh < .env.server | grep -v '^APP_URL='
             echo "APP_URL=${APP_URL}"
           } > .env
           lines=$(wc -l < .env | tr -d ' ')
@@ -200,38 +201,18 @@ jobs:
           echo "Server storage, .env, and .htaccess files present — will not be overwritten."
           REMOTE
 
-      - name: Reset vendor on server (avoid rsync delete stale dev packages)
-        run: |
-          set -euo pipefail
-          ${SSH_CMD} cpanel-deploy "rm -rf ${DEPLOY_PATH}/vendor"
-
       - name: Deploy with rsync
         run: |
           set -euo pipefail
           rsync -avz --delete \
             -e "${RSYNC_RSH}" \
             ${RSYNC_EXCLUDES} \
+            --exclude=vendor/ \
             ./ cpanel-deploy:${DEPLOY_PATH}/
+          rsync -avz \
+            -e "${RSYNC_RSH}" \
+            ./vendor/ cpanel-deploy:${DEPLOY_PATH}/vendor/
           ${SSH_CMD} cpanel-deploy "test -f ${DEPLOY_PATH}/public/build/manifest.json && ls -la ${DEPLOY_PATH}/public/build/manifest.json | head -1"
-
-      - name: Install keepalive scripts and lean crontab (production)
-        run: |
-          set -euo pipefail
-          HOME_DIR="${DEPLOY_PATH%/public_html}"
-          ${SSH_CMD} cpanel-deploy "mkdir -p ${HOME_DIR}/bin ${HOME_DIR}/logs ${HOME_DIR}/tmp"
-          scp -F "${SSH_DIR}/config" -o BatchMode=yes \
-            deploy/reverb-ensure-running-believeinunity.sh \
-            deploy/queue-mail-ensure-running.sh \
-            deploy/crontab.production.txt \
-            cpanel-deploy:${HOME_DIR}/tmp/
-          ${SSH_CMD} cpanel-deploy bash -s <<REMOTE
-          set -euo pipefail
-          HOME_DIR="${DEPLOY_PATH%/public_html}"
-          cp "${HOME_DIR}/tmp/reverb-ensure-running-believeinunity.sh" "${HOME_DIR}/bin/reverb-ensure-running.sh"
-          cp "${HOME_DIR}/tmp/queue-mail-ensure-running.sh" "${HOME_DIR}/bin/queue-mail-ensure-running.sh"
-          chmod +x "${HOME_DIR}/bin/reverb-ensure-running.sh" "${HOME_DIR}/bin/queue-mail-ensure-running.sh"
-          crontab "${HOME_DIR}/tmp/crontab.production.txt"
-          REMOTE
 
       - name: Prune non-runtime files on server
         run: |
@@ -255,6 +236,7 @@ jobs:
           mkdir -p storage/app/public storage/framework/{sessions,views,cache/data} storage/logs
           chmod -R 775 storage bootstrap/cache 2>/dev/null || true
           chmod -R 755 public/build 2>/dev/null || true
+          rm -rf vendor/laravel/sail vendor/laravel/pint vendor/laravel/pail vendor/nunomaduro/collision vendor/symfony/yaml 2>/dev/null || true
           php artisan config:clear
           php artisan route:clear
           php artisan view:clear
@@ -265,13 +247,6 @@ jobs:
             exit 1
           }
           php artisan storage:link --force
-          REVERB_SCRIPT="${DEPLOY_PATH%/public_html}/bin/reverb-ensure-running.sh"
-          MAIL_SCRIPT="${DEPLOY_PATH%/public_html}/bin/queue-mail-ensure-running.sh"
-          if [ -x "\$REVERB_SCRIPT" ]; then "\$REVERB_SCRIPT" || true; fi
-          if [ -x "\$MAIL_SCRIPT" ]; then APP_DIR="${DEPLOY_PATH}" LOG_DIR="${DEPLOY_PATH%/public_html}/logs" MAIL_QUEUE_WORKERS=2 "\$MAIL_SCRIPT" || true; fi
-          if grep -q '^REVERB_HOST=believeinunity.org' .env 2>/dev/null; then
-            echo "::warning::Set REVERB_HOST=127.0.0.1 in server .env for PHP broadcasts (see deploy/PRODUCTION-REVERB-SETUP.md)"
-          fi
           php artisan config:cache
           php artisan view:cache
           test -f .env && test -d storage && test -f .htaccess && echo DEPLOY_OK
