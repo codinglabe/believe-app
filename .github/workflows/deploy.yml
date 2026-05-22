@@ -192,18 +192,18 @@ jobs:
           echo "Server storage, .env, and .htaccess files present — will not be overwritten."
           REMOTE
 
-      - name: Reset vendor on server (avoid rsync delete stale dev packages)
-        run: |
-          set -euo pipefail
-          ${SSH_CMD} cpanel-deploy "rm -rf ${DEPLOY_PATH}/vendor"
-
       - name: Deploy with rsync
         run: |
           set -euo pipefail
+          # App + assets (with --delete). Vendor synced separately without --delete for speed.
           rsync -avz --delete \
             -e "${RSYNC_RSH}" \
             ${RSYNC_EXCLUDES} \
+            --exclude=vendor/ \
             ./ cpanel-deploy:${DEPLOY_PATH}/
+          rsync -avz \
+            -e "${RSYNC_RSH}" \
+            ./vendor/ cpanel-deploy:${DEPLOY_PATH}/vendor/
           ${SSH_CMD} cpanel-deploy "test -f ${DEPLOY_PATH}/public/build/manifest.json && ls -la ${DEPLOY_PATH}/public/build/manifest.json | head -1"
 
       - name: Prune non-runtime files on server
@@ -228,6 +228,7 @@ jobs:
           mkdir -p storage/app/public storage/framework/{sessions,views,cache/data} storage/logs
           chmod -R 775 storage bootstrap/cache 2>/dev/null || true
           chmod -R 755 public/build 2>/dev/null || true
+          rm -rf vendor/laravel/sail vendor/laravel/pint vendor/laravel/pail vendor/nunomaduro/collision vendor/symfony/yaml 2>/dev/null || true
           php artisan config:clear
           php artisan route:clear
           php artisan view:clear
