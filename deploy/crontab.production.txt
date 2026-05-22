@@ -1,29 +1,15 @@
 MAILTO=""
 SHELL="/bin/bash"
 
-# Mail queue workers (password reset) — always-on, one email per job; scale via MAIL_QUEUE_WORKERS
+# Mail queue (password reset) — max 2 workers via keepalive script
 * * * * * /home/believeinunity/bin/queue-mail-ensure-running.sh >> /home/believeinunity/logs/queue-mail-cron.log 2>&1
 
-# Default queue (one short run per minute — avoids stacking hundreds of workers)
+# Default + IRS import queues (one short run per minute each)
 * * * * * /usr/local/bin/php /home/believeinunity/public_html/artisan queue:work --queue=default --stop-when-empty --max-time=55 >> /dev/null 2>&1
-
-# IRS import queue
 * * * * * /usr/local/bin/php /home/believeinunity/public_html/artisan queue:work --queue=irs-import --memory=512 --tries=2 --stop-when-empty --max-time=55 >> /dev/null 2>&1
 
-# Laravel scheduler
+# Laravel scheduler ONLY (do not duplicate these commands below — they are in routes/console.php)
 * * * * * cd /home/believeinunity/public_html && /usr/local/bin/php artisan schedule:run >> /home/believeinunity/logs/schedule.log 2>&1
 
-# Reverb WebSocket server keepalive
+# Reverb WebSocket keepalive
 * * * * * /home/believeinunity/bin/reverb-ensure-running.sh >> /home/believeinunity/logs/reverb-cron.log 2>&1
-
-# Explicit jobs
-0 0 1 * * /usr/local/bin/php /home/believeinunity/public_html/artisan irs:bmf:import --update-only --chunk=1000 >> /dev/null 2>&1
-*/5 * * * * /usr/local/bin/php /home/believeinunity/public_html/artisan rss:warm-nonprofit >> /dev/null 2>&1
-* * * * * /usr/local/bin/php /home/believeinunity/public_html/artisan drops:dispatch-due >> /dev/null 2>&1
-* * * * * /usr/local/bin/php /home/believeinunity/public_html/artisan facebook:process-scheduled >> /dev/null 2>&1
-* * * * * /usr/local/bin/php /home/believeinunity/public_html/artisan newsletter:process-scheduled >> /dev/null 2>&1
-0 9 * * * /usr/local/bin/php /home/believeinunity/public_html/artisan form1023:send-payment-reminders >> /dev/null 2>&1
-0 3 1 * * /usr/local/bin/php /home/believeinunity/public_html/artisan irs:check-form990-filings --notify >> /dev/null 2>&1
-0 * * * * /usr/local/bin/php /home/believeinunity/public_html/artisan log:clean --size=10 >> /dev/null 2>&1
-0 * * * * /usr/local/bin/php /home/believeinunity/public_html/artisan service-orders:auto-complete >> /dev/null 2>&1
-*/5 * * * * /usr/local/bin/php /home/believeinunity/public_html/artisan sendJobs:cleanup >> /dev/null 2>&1
