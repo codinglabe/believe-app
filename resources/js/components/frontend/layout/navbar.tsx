@@ -198,6 +198,14 @@ export default function Navbar() {
   /** Organizations + Care Alliance: show * (org-only) nav entries; admins see them too. */
   const showOrgOnlyNav = isOrgUser || hasCareAllianceRole || isAdmin
 
+  /** Unity Meet routes: user, organization, organization_pending, care_alliance (see web.php). */
+  const canAccessUnityMeet =
+    isLoggedIn &&
+    (role === "user" ||
+      role === "organization" ||
+      role === "organization_pending" ||
+      hasCareAllianceRole)
+
   const dashboardHref =
     !isLoggedIn
       ? "/"
@@ -293,8 +301,8 @@ export default function Navbar() {
     { name: "News", href: "/nonprofit-news", icon: Newspaper },
     { name: "Unity Videos", href: "/unity-videos", icon: Video },
     { name: "Unity Live", href: route("unity-live.index"), icon: Radio },
-    ...(showOrgOnlyNav
-      ? [{ name: "Unity Meet", href: route("livestreams.supporter.live"), icon: Radio }]
+    ...(canAccessUnityMeet
+      ? [{ name: "Unity Meet", href: route("livestreams.supporter.index"), icon: Radio }]
       : []),
   ]
 
