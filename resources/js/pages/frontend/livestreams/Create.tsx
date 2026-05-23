@@ -2,7 +2,7 @@
 
 import type React from "react"
 import { useEffect, useState } from "react"
-import { Head, useForm, Link, router } from "@inertiajs/react"
+import { Head, useForm, Link, router, usePage } from "@inertiajs/react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -28,6 +28,9 @@ import {
 import UnityMeetLayout from "@/layouts/UnityMeetLayout"
 import { PageHead } from "@/components/frontend/PageHead"
 import { cn } from "@/lib/utils"
+import { useEmailCreditsState } from "@/hooks/use-email-credits-state"
+import BuyEmailCreditsDialog, { type EmailPackageOption } from "@/components/meeting/BuyEmailCreditsDialog"
+import EmailCreditsMeetingActions from "@/components/meeting/EmailCreditsMeetingActions"
 
 const BRAND = {
   from: "#9333ea",
@@ -38,6 +41,13 @@ const BRAND = {
 
 interface Props {
   authUserDisplayName?: string
+  emailCredits?: {
+    emails_included: number
+    emails_used: number
+    emails_left: number
+  }
+  emailPackages?: EmailPackageOption[]
+  stripeMinCheckoutUsd?: number
 }
 
 function SectionLabel({
@@ -59,10 +69,24 @@ function SectionLabel({
   )
 }
 
-export default function SupporterCreateLivestream({ authUserDisplayName = "" }: Props) {
+export default function SupporterCreateLivestream({
+  authUserDisplayName = "",
+  emailCredits,
+  emailPackages = [],
+  stripeMinCheckoutUsd = 0.5,
+}: Props) {
   const [scheduleOpen, setScheduleOpen] = useState(false)
   const [isScheduling, setIsScheduling] = useState(false)
+  const [buyCreditsOpen, setBuyCreditsOpen] = useState(false)
   const [participantEmailInput, setParticipantEmailInput] = useState("")
+  const { success } = usePage<{ success?: string }>().props
+  const { emailsLeft, syncFromServer } = useEmailCreditsState(emailCredits)
+
+  useEffect(() => {
+    if (success && emailCredits) {
+      syncFromServer(emailCredits)
+    }
+  }, [success, emailCredits, syncFromServer])
 
   const { data, setData, post, processing, errors } = useForm({
     title: "",
@@ -138,6 +162,11 @@ export default function SupporterCreateLivestream({ authUserDisplayName = "" }: 
 
   const toggleClass =
     "shrink-0 data-[state=unchecked]:bg-muted data-[state=checked]:bg-purple-600 data-[state=unchecked]:border-border"
+
+  const pendingInviteCount =
+    (data.participant_emails?.length ?? 0) + (participantEmailInput.trim() !== "" ? 1 : 0)
+  const scheduleNeedsCredits = pendingInviteCount > 0
+  const hasEnoughCreditsForSchedule = !scheduleNeedsCredits || pendingInviteCount <= emailsLeft
 
   return (
     <UnityMeetLayout>
@@ -369,6 +398,24 @@ export default function SupporterCreateLivestream({ authUserDisplayName = "" }: 
               <Label htmlFor="participant_emails" className="text-muted-foreground">
                 Participant emails
               </Label>
+              {emailCredits ? (
+                <EmailCreditsMeetingActions
+                  emailsLeft={emailsLeft}
+                  onBuy={() => setBuyCreditsOpen(true)}
+                />
+              ) : null}
+              {scheduleNeedsCredits && !hasEnoughCreditsForSchedule ? (
+                <p className="text-sm text-amber-700 dark:text-amber-300">
+                  You need {pendingInviteCount} credit{pendingInviteCount === 1 ? "" : "s"} to invite these guests, but only {emailsLeft} remain.{" "}
+                  <button
+                    type="button"
+                    className="font-medium underline hover:no-underline"
+                    onClick={() => setBuyCreditsOpen(true)}
+                  >
+                    Buy email credits
+                  </button>
+                </p>
+              ) : null}
               <div className="flex gap-2">
                 <div className="relative flex-1">
                   <Input
@@ -421,7 +468,7 @@ export default function SupporterCreateLivestream({ authUserDisplayName = "" }: 
               </Button>
               <Button
                 type="submit"
-                disabled={isScheduling}
+                disabled={isScheduling || !hasEnoughCreditsForSchedule}
                 className="text-white"
                 style={{ background: `linear-gradient(135deg, ${BRAND.from}, ${BRAND.to})` }}
               >
@@ -431,6 +478,14 @@ export default function SupporterCreateLivestream({ authUserDisplayName = "" }: 
           </form>
         </DialogContent>
       </Dialog>
+
+      <BuyEmailCreditsDialog
+        open={buyCreditsOpen}
+        onOpenChange={setBuyCreditsOpen}
+        emailPackages={emailPackages}
+        stripeMinCheckoutUsd={stripeMinCheckoutUsd}
+        returnRoute="livestreams.supporter.create"
+      />
     </UnityMeetLayout>
   )
 }
