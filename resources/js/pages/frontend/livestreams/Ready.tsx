@@ -1,11 +1,11 @@
 "use client"
 
 import { useState } from "react"
-import { Head, Link } from "@inertiajs/react"
+import { Head, Link, router } from "@inertiajs/react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
-import { Copy, Check, Play, ArrowLeft } from "lucide-react"
+import { Copy, Check, Play, ArrowLeft, Calendar, Mail, Users, X } from "lucide-react"
 import UnityMeetLayout from "@/layouts/UnityMeetLayout"
 import { PageHead } from "@/components/frontend/PageHead"
 
@@ -21,6 +21,9 @@ interface Livestream {
   roomPassword: string
   requiresPasscode?: boolean
   joinUrl: string
+  status?: string
+  scheduledAt?: string | null
+  participantEmails?: string[]
 }
 
 interface Props {
@@ -29,11 +32,23 @@ interface Props {
 
 export default function SupporterReady({ livestream }: Props) {
   const [copied, setCopied] = useState<string | null>(null)
+  const [removingParticipantEmail, setRemovingParticipantEmail] = useState<string | null>(null)
+  const isScheduled = livestream.status === "scheduled"
+  const invitedCount = livestream.participantEmails?.length ?? 0
 
   const copy = (text: string, key: string) => {
     navigator.clipboard.writeText(text)
     setCopied(key)
     setTimeout(() => setCopied(null), 2000)
+  }
+
+  const removeParticipant = (email: string) => {
+    setRemovingParticipantEmail(email)
+    router.delete(route("livestreams.supporter.participants.remove", livestream.id), {
+      data: { email },
+      preserveScroll: true,
+      onFinish: () => setRemovingParticipantEmail(null),
+    })
   }
 
   return (
@@ -44,8 +59,11 @@ export default function SupporterReady({ livestream }: Props) {
         { title: 'Ready', href: `/livestreams/supporter/ready/${livestream.id}` },
       ]}
     >
-      <PageHead title="Meeting ready" description="Invite others and start the meeting when ready." />
-      <Head title="Meeting ready" />
+      <PageHead
+        title={isScheduled ? "Meeting scheduled" : "Meeting ready"}
+        description={isScheduled ? "Invitations sent. Start the meeting when it's time." : "Invite others and start the meeting when ready."}
+      />
+      <Head title={isScheduled ? "Meeting scheduled" : "Meeting ready"} />
       <div className="min-h-screen bg-background">
         <div
           className="relative overflow-hidden border-b border-purple-200 dark:border-purple-500/20"
@@ -62,15 +80,82 @@ export default function SupporterReady({ livestream }: Props) {
               <Check className="h-7 w-7" />
             </div>
             <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
-              Meeting ready
+              {isScheduled ? "Meeting scheduled" : "Meeting ready"}
             </h1>
             <p className="mt-2 text-muted-foreground">
-              Invite others with the link below. When you're ready, start the meeting.
+              {isScheduled
+                ? invitedCount > 0
+                  ? `Invitation emails were sent to ${invitedCount} participant${invitedCount === 1 ? "" : "s"}.`
+                  : "Your meeting is on the calendar."
+                : "Invite others with the link below. When you're ready, start the meeting."}
             </p>
           </div>
         </div>
 
         <div className="w-full max-w-lg mx-auto px-4 py-8 space-y-6">
+          {isScheduled && livestream.scheduledAt ? (
+            <Card className="border-blue-500/30 bg-blue-500/5">
+              <CardHeader>
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Calendar className="h-4 w-4 text-blue-600" />
+                  Scheduled for
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-foreground">
+                  {new Date(livestream.scheduledAt).toLocaleString(undefined, {
+                    weekday: "long",
+                    month: "long",
+                    day: "numeric",
+                    year: "numeric",
+                    hour: "numeric",
+                    minute: "2-digit",
+                  })}
+                </p>
+              </CardContent>
+            </Card>
+          ) : null}
+
+          {invitedCount > 0 ? (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Users className="h-4 w-4" />
+                  Invited ({invitedCount})
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ul className="space-y-2">
+                  {livestream.participantEmails!.map((email) => (
+                    <li
+                      key={email}
+                      className="flex items-center gap-2 rounded-md border border-border/60 bg-muted/30 px-2.5 py-2 text-sm text-foreground"
+                    >
+                      <Mail className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                      <span className="min-w-0 flex-1 truncate">{email}</span>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 shrink-0 text-muted-foreground hover:text-destructive"
+                        onClick={() => removeParticipant(email)}
+                        disabled={removingParticipantEmail === email}
+                        aria-label={`Remove ${email}`}
+                        title="Remove participant"
+                      >
+                        {removingParticipantEmail === email ? (
+                          <span className="text-[10px] font-medium">…</span>
+                        ) : (
+                          <X className="h-3.5 w-3.5" />
+                        )}
+                      </Button>
+                    </li>
+                  ))}
+                </ul>
+              </CardContent>
+            </Card>
+          ) : null}
+
           <Card>
             <CardHeader>
               <CardTitle className="text-base">Meeting ID</CardTitle>

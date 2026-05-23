@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Jobs\SendUnityMeetInvitationEmail;
 use App\Models\LivestreamRecordingDecline;
 use App\Models\Organization;
 use App\Models\OrganizationLivestream;
@@ -10,6 +11,7 @@ use App\Models\User;
 use App\Models\UserLivestream;
 use App\Services\Streaming\StreamingPreflight;
 use App\Services\Streaming\StreamingQueueService;
+use App\Support\LivestreamParticipantEmails;
 use App\Support\MeetingRecordingPreference;
 use App\Support\StreamingWorkerSourceUrl;
 use App\Services\DropboxOAuthService;
@@ -406,8 +408,12 @@ class SupporterLivestreamController extends Controller
             'settings' => $settings ?: null,
         ]);
 
+        $this->sendScheduledMeetingInvitations($livestream);
+
         return redirect()->route('livestreams.supporter.ready', $livestream->id)
-            ->with('success', 'Meeting scheduled!');
+            ->with('success', count($emails) > 0
+                ? 'Meeting scheduled! Invitation emails are on their way.'
+                : 'Meeting scheduled!');
     }
 
     /**
@@ -558,6 +564,7 @@ class SupporterLivestreamController extends Controller
         $livestream = UserLivestream::where('user_id', $request->user()->id)->findOrFail($id);
         $password = $livestream->getDecryptedPassword();
         $joinUrl = url('/livestreams/join/' . $livestream->room_name);
+        $settings = is_array($livestream->settings) ? $livestream->settings : [];
 
         return Inertia::render('frontend/livestreams/Ready', [
             'livestream' => [
@@ -567,6 +574,9 @@ class SupporterLivestreamController extends Controller
                 'roomPassword' => $password,
                 'requiresPasscode' => $livestream->requiresPasscode(),
                 'joinUrl' => $joinUrl,
+                'status' => $livestream->status,
+                'scheduledAt' => $livestream->scheduled_at?->toIso8601String(),
+                'participantEmails' => LivestreamParticipantEmails::fromSettings($settings),
             ],
         ]);
     }
@@ -599,6 +609,7 @@ class SupporterLivestreamController extends Controller
         $passwordParam = $password !== '' ? '&password=' . rawurlencode($password) : '';
         $settings = $livestream->settings ?? [];
         $displayName = $settings['display_name'] ?? $request->user()->name ?? 'Host';
+        $participantEmails = LivestreamParticipantEmails::fromSettings(is_array($settings) ? $settings : null);
         $directorLabel = '&label=' . rawurlencode($displayName);
         $rtmpUrl = $settings['rtmp_url'] ?? 'rtmp://a.rtmp.youtube.com/live2';
         $youtubeGoLiveEnabled = ! empty($livestream->youtube_stream_key);
@@ -655,6 +666,7 @@ class SupporterLivestreamController extends Controller
                 'isPublic' => (bool) $livestream->is_public,
                 'status' => $livestream->status,
                 'scheduledAt' => $livestream->scheduled_at?->toIso8601String(),
+                'participantEmails' => $participantEmails,
                 'startedAt' => $livestream->started_at?->toIso8601String(),
                 'endedAt' => $livestream->ended_at?->toIso8601String(),
                 'canStartMeeting' => $livestream->canStartMeeting(),
@@ -814,6 +826,34 @@ class SupporterLivestreamController extends Controller
         ]);
 
         return redirect()->route('livestreams.supporter.show', $id)->with('success', 'Meeting updated.');
+    }
+
+    public function removeParticipant(Request $request, int $id): RedirectResponse
+    {
+        $validated = $request->validate([
+            'email' => 'required|email|max:255',
+        ]);
+
+        $livestream = UserLivestream::where('user_id', $request->user()->id)->findOrFail($id);
+
+        $email = strtolower(trim((string) $validated['email']));
+        $settings = is_array($livestream->settings) ? $livestream->settings : [];
+        $emails = LivestreamParticipantEmails::fromSettings($settings);
+
+        if (! in_array($email, $emails, true)) {
+            return redirect()->back()->withErrors(['email' => 'Participant not found on this meeting.']);
+        }
+
+        $settings['participant_emails'] = array_values(array_filter(
+            $emails,
+            static fn (string $participantEmail) => $participantEmail !== $email
+        ));
+
+        $livestream->update([
+            'settings' => $settings !== [] ? $settings : null,
+        ]);
+
+        return redirect()->back()->with('success', 'Participant removed.');
     }
 
     public function destroy(Request $request, int $id): RedirectResponse
@@ -1906,5 +1946,18 @@ class SupporterLivestreamController extends Controller
         $folderName = trim($folderName, " \t\n\r\0\x0B.") ?: 'BIU Meeting Recordings';
 
         return '/' . $folderName;
+    }
+
+    /**
+     * Dispatch invitation email jobs for each participant on a scheduled meeting.
+     */
+    private function sendScheduledMeetingInvitations(UserLivestream $livestream): void
+    {
+        $settings = is_array($livestream->settings) ? $livestream->settings : [];
+        $emails = LivestreamParticipantEmails::fromSettings($settings);
+
+        foreach ($emails as $email) {
+            SendUnityMeetInvitationEmail::dispatch($livestream->id, $email);
+        }
     }
 }

@@ -455,6 +455,7 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:user|organization|orga
     Route::post('/livestreams/supporter/{id}/prepare-youtube-live', [SupporterLivestreamController::class, 'prepareYouTubeLive'])->name('livestreams.supporter.prepare-youtube-live')->where('id', '[0-9]+');
     Route::post('/livestreams/supporter/{id}/queue-stream-relay', [SupporterLivestreamController::class, 'queueStreamRelayJob'])->name('livestreams.supporter.queue-stream-relay')->where('id', '[0-9]+');
     Route::post('/livestreams/supporter/{id}/go-live-obs-auto', [SupporterLivestreamController::class, 'queueStreamRelayJob'])->name('livestreams.supporter.go-live-obs-auto')->where('id', '[0-9]+');
+    Route::delete('/livestreams/supporter/{id}/participants', [SupporterLivestreamController::class, 'removeParticipant'])->name('livestreams.supporter.participants.remove')->where('id', '[0-9]+');
     Route::get('/livestreams/supporter/{id}', [SupporterLivestreamController::class, 'show'])->name('livestreams.supporter.show')->where('id', '[0-9]+');
 });
 

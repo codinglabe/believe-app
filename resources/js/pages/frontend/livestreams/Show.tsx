@@ -51,6 +51,10 @@ import {
   Download,
   HardDrive,
   Cloud,
+  Calendar,
+  Mail,
+  Users,
+  X,
 } from "lucide-react"
 import { Link } from "@inertiajs/react"
 import { applyVdoGroupRoomPresentation } from "@/lib/vdoMeeting"
@@ -88,6 +92,7 @@ interface Livestream {
   joinUrl?: string
   status: "draft" | "scheduled" | "meeting_live" | "live" | "ended" | "cancelled"
   scheduledAt: string | null
+  participantEmails?: string[]
   startedAt: string | null
   endedAt: string | null
   isPublic?: boolean
@@ -134,6 +139,8 @@ interface Props {
   recordingConsentDeclines: RecordingConsentDecline[]
 }
 
+type SidebarTab = "meeting-info" | "participants" | "share"
+
 function formatDeclineTime(iso: string | null): string {
   if (!iso) return "—"
   const d = new Date(iso)
@@ -156,7 +163,7 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
   const [infoOpen, setInfoOpen] = useState(false)
   const [isUpdatingVisibility, setIsUpdatingVisibility] = useState(false)
   const [isEndingStreamPending, setIsEndingStreamPending] = useState(false)
-  const [sidebarTab, setSidebarTab] = useState<"meeting-info" | "share">("meeting-info")
+  const [sidebarTab, setSidebarTab] = useState<SidebarTab>("meeting-info")
 
   const openSharePanel = () => {
     setSidebarTab("share")
@@ -172,6 +179,7 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
   const [recordingDestination, setRecordingDestination] = useState<"local" | "dropbox">(
     () => (livestream.dropboxRecordingAvailable ? "dropbox" : "local")
   )
+  const [removingParticipantEmail, setRemovingParticipantEmail] = useState<string | null>(null)
 
   const effectiveHostUrl =
     recordingDestination === "dropbox" && livestream.hostPushUrlDropbox
@@ -438,6 +446,33 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
 
   const meetingInfoContent = (
     <div className="w-full min-w-0 space-y-4">
+      {livestream.scheduledAt ? (
+        <div className="rounded-lg border border-blue-500/35 bg-gradient-to-br from-blue-500/10 to-purple-500/5 p-3.5 space-y-1">
+          <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-blue-800 dark:text-blue-300">
+            <Calendar className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
+            Scheduled
+          </div>
+          <p className="text-sm text-foreground">
+            {new Date(livestream.scheduledAt).toLocaleString(undefined, {
+              weekday: "long",
+              month: "long",
+              day: "numeric",
+              year: "numeric",
+              hour: "numeric",
+              minute: "2-digit",
+            })}
+          </p>
+          {(livestream.participantEmails?.length ?? 0) > 0 ? (
+            <p className="text-[11px] text-muted-foreground">
+              See the{" "}
+              <button type="button" className="font-medium text-primary hover:underline" onClick={() => setSidebarTab("participants")}>
+                Participants
+              </button>{" "}
+              tab for invited guests.
+            </p>
+          ) : null}
+        </div>
+      ) : null}
       {livestream.wantsUnityLive ? (
         <div className="rounded-lg border border-purple-500/35 bg-gradient-to-br from-purple-500/10 to-blue-500/5 p-3.5 space-y-2">
           <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-purple-800 dark:text-purple-300">
@@ -678,6 +713,93 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
     </div>
   )
 
+  const invitedCount = livestream.participantEmails?.length ?? 0
+
+  const removeParticipant = (email: string) => {
+    setRemovingParticipantEmail(email)
+    router.delete(route("livestreams.supporter.participants.remove", livestream.id), {
+      data: { email },
+      preserveScroll: true,
+      onFinish: () => setRemovingParticipantEmail(null),
+    })
+  }
+
+  const participantsContent = (
+    <div className="w-full min-w-0 space-y-4">
+      <p className="text-xs text-muted-foreground">
+        Each invited guest is listed below. Remove anyone who should no longer be on this meeting.
+      </p>
+
+      {livestream.scheduledAt ? (
+        <div className="rounded-lg border border-border bg-muted/30 p-3.5 space-y-1">
+          <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+            <Calendar className="h-3.5 w-3.5 text-primary" />
+            Scheduled for
+          </div>
+          <p className="text-sm text-foreground">
+            {new Date(livestream.scheduledAt).toLocaleString(undefined, {
+              weekday: "long",
+              month: "long",
+              day: "numeric",
+              year: "numeric",
+              hour: "numeric",
+              minute: "2-digit",
+            })}
+          </p>
+        </div>
+      ) : null}
+
+      {invitedCount > 0 ? (
+        <div className="rounded-lg border border-border bg-muted/30 p-3.5 space-y-2">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+              <Users className="h-3.5 w-3.5 text-primary" />
+              Invited ({invitedCount})
+            </div>
+          </div>
+          <ul className="space-y-2 max-h-64 overflow-y-auto">
+            {livestream.participantEmails!.map((email) => (
+              <li
+                key={email}
+                className="flex items-center gap-2 rounded-md border border-border/60 bg-background/80 px-2 py-1.5 text-foreground"
+              >
+                <Mail className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                <span className="min-w-0 flex-1 truncate text-sm">{email}</span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 shrink-0 text-muted-foreground hover:text-destructive"
+                  onClick={() => removeParticipant(email)}
+                  disabled={removingParticipantEmail === email}
+                  aria-label={`Remove ${email}`}
+                  title="Remove participant"
+                >
+                  {removingParticipantEmail === email ? (
+                    <span className="text-[10px] font-medium">…</span>
+                  ) : (
+                    <X className="h-3.5 w-3.5" />
+                  )}
+                </Button>
+              </li>
+            ))}
+          </ul>
+          <p className="text-[10px] text-muted-foreground">
+            Removing a guest takes them off the invite list. They can still join with the meeting link if they have it.
+          </p>
+        </div>
+      ) : (
+        <div className="rounded-lg border border-dashed border-border bg-muted/20 p-6 text-center space-y-2">
+          <Users className="h-8 w-8 mx-auto text-muted-foreground/60" />
+          <p className="text-sm font-medium text-foreground">No invited participants</p>
+          <p className="text-xs text-muted-foreground">
+            Add participant emails when scheduling a meeting, or share the invite link from the Share tab.
+          </p>
+        </div>
+      )}
+    </div>
+  )
+
   const shareContent = (
     <div className="w-full min-w-0 space-y-4">
       <p className="text-xs text-muted-foreground">
@@ -762,19 +884,23 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
                     <SheetHeader className="pb-4 border-b border-border">
                       <SheetTitle className="text-lg">Meeting</SheetTitle>
                     </SheetHeader>
-                    <Tabs value={sidebarTab} onValueChange={(v) => setSidebarTab(v as "meeting-info" | "share")} className="w-full mt-4">
-                      <TabsList className="grid w-full grid-cols-2 h-9">
-                        <TabsTrigger value="meeting-info" className="text-xs gap-1.5">
+                    <Tabs value={sidebarTab} onValueChange={(v) => setSidebarTab(v as SidebarTab)} className="w-full mt-4">
+                      <TabsList className="grid w-full grid-cols-3 h-8 p-0.5 gap-0.5">
+                        <TabsTrigger value="meeting-info" className="h-7 px-1 py-0" aria-label="Meeting info" title="Meeting info">
                           <Info className="h-3.5 w-3.5 shrink-0" />
-                          Meeting info
                         </TabsTrigger>
-                        <TabsTrigger value="share" className="text-xs gap-1.5">
+                        <TabsTrigger value="participants" className="h-7 px-1 py-0" aria-label="Participants" title="Participants">
+                          <Users className="h-3.5 w-3.5 shrink-0" />
+                        </TabsTrigger>
+                        <TabsTrigger value="share" className="h-7 px-1 py-0" aria-label="Share" title="Share">
                           <Share2 className="h-3.5 w-3.5 shrink-0" />
-                          Share
                         </TabsTrigger>
                       </TabsList>
                       <TabsContent value="meeting-info" className="mt-4">
                         {meetingInfoContent}
+                      </TabsContent>
+                      <TabsContent value="participants" className="mt-4">
+                        {participantsContent}
                       </TabsContent>
                       <TabsContent value="share" className="mt-4">
                         {shareContent}
@@ -933,23 +1059,27 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
 
           <div className="flex flex-1 min-h-0 overflow-hidden">
             <aside className="hidden md:flex w-64 lg:w-72 shrink-0 min-h-0 flex-col overflow-hidden border-r border-border bg-linear-to-b from-muted/30 to-muted/10 p-0">
-              <Tabs value={sidebarTab} onValueChange={(v) => setSidebarTab(v as "meeting-info" | "share")} className="w-full flex flex-col min-h-0">
+              <Tabs value={sidebarTab} onValueChange={(v) => setSidebarTab(v as SidebarTab)} className="w-full flex flex-col min-h-0">
                 <Card className="flex min-h-0 flex-1 flex-col rounded-none border-0 border-b border-border bg-transparent p-0 shadow-none">
-                  <CardHeader className="p-0 py-3 px-3">
-                    <TabsList className="grid w-full grid-cols-2 h-9">
-                      <TabsTrigger value="meeting-info" className="text-xs gap-1.5">
+                  <CardHeader className="p-0 py-2 px-3">
+                    <TabsList className="grid w-full grid-cols-3 h-8 p-0.5 gap-0.5">
+                      <TabsTrigger value="meeting-info" className="h-7 px-1 py-0" aria-label="Meeting info" title="Meeting info">
                         <Info className="h-3.5 w-3.5 shrink-0" />
-                        Meeting info
                       </TabsTrigger>
-                      <TabsTrigger value="share" className="text-xs gap-1.5">
+                      <TabsTrigger value="participants" className="h-7 px-1 py-0" aria-label="Participants" title="Participants">
+                        <Users className="h-3.5 w-3.5 shrink-0" />
+                      </TabsTrigger>
+                      <TabsTrigger value="share" className="h-7 px-1 py-0" aria-label="Share" title="Share">
                         <Share2 className="h-3.5 w-3.5 shrink-0" />
-                        Share
                       </TabsTrigger>
                     </TabsList>
                   </CardHeader>
                   <CardContent className="min-h-0 flex-1 overflow-y-auto p-0 px-3 pb-3 [scrollbar-width:thin] [scrollbar-color:rgb(147_51_234_/_0.45)_transparent] [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-gradient-to-b [&::-webkit-scrollbar-thumb]:from-purple-400/70 [&::-webkit-scrollbar-thumb]:to-blue-500/70 dark:[&::-webkit-scrollbar-thumb]:from-purple-500/70 dark:[&::-webkit-scrollbar-thumb]:to-blue-600/70 [&::-webkit-scrollbar-thumb:hover]:from-purple-500/90 [&::-webkit-scrollbar-thumb:hover]:to-blue-600/90">
                     <TabsContent value="meeting-info" className="mt-3 mb-0">
                       {meetingInfoContent}
+                    </TabsContent>
+                    <TabsContent value="participants" className="mt-3 mb-0">
+                      {participantsContent}
                     </TabsContent>
                     <TabsContent value="share" className="mt-3 mb-0">
                       {shareContent}
