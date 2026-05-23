@@ -235,10 +235,6 @@ jobs:
           chmod -R 775 storage bootstrap/cache 2>/dev/null || true
           chmod -R 755 public/build 2>/dev/null || true
           rm -rf vendor/laravel/sail vendor/laravel/pint vendor/laravel/pail vendor/nunomaduro/collision vendor/symfony/yaml 2>/dev/null || true
-          php artisan config:clear
-          php artisan route:clear
-          php artisan view:clear
-          php artisan cache:clear
           timeout 300 php artisan migrate --force -v || {
             echo "::warning::migrate exceeded 5m or failed; check migrate:status on server"
             php artisan migrate:status 2>&1 | tail -20
@@ -246,7 +242,9 @@ jobs:
           }
           php artisan storage:link --force
           php artisan config:cache
+          php artisan event:cache
           php artisan view:cache
+          php artisan route:cache
           test -f .env && test -d storage && test -f .htaccess && echo DEPLOY_OK
           REMOTE
 
