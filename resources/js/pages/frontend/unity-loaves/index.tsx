@@ -135,6 +135,9 @@ const QuickActionCard = ({ icon, title, desc }: { icon: React.ReactNode, title: 
   </div>
 )
 
+/** Set to true when the monthly impact stats block should be visible again. */
+const SHOW_IMPACT_SECTION = false
+
 const ImpactStat = ({ value, label, icon }: { value: string, label: string, icon: React.ReactNode }) => (
   <div className="flex flex-col items-center justify-center p-4 text-center">
     <div className="flex items-center gap-3 mb-2">
@@ -324,26 +327,27 @@ export default function UnityLoavesDirectory() {
           </div>
         </div>
 
-        {/* Impact Section */}
-        <div className="container mx-auto px-4 mt-10 mb-8">
-          <div className="bg-card text-card-foreground rounded-2xl shadow-sm border border-border p-6 md:p-8">
-            <div className="flex justify-between items-center mb-6 border-b border-border pb-4">
-              <h2 className="text-xl font-bold text-foreground">Our Impact This Month</h2>
-              <Link href="#" className="text-sm font-bold text-purple-600 hover:text-purple-800 dark:text-purple-400 dark:hover:text-purple-300 flex items-center">
-                View Full Impact &rarr;
-              </Link>
-            </div>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-6 md:divide-x divide-border">
-              <ImpactStat value="24,580" label="Meals Served" icon={<UtensilsCrossed className="w-7 h-7 text-purple-600 dark:text-purple-400" />} />
-              <ImpactStat value="412" label="Active Organizations" icon={<Users className="w-7 h-7 text-blue-600 dark:text-blue-400" />} />
-              <ImpactStat value="188" label="Food Drop-Off Locations" icon={<PackageOpen className="w-7 h-7 text-amber-500 dark:text-amber-400" />} />
-              <ImpactStat value="8,920" label="Families Helped" icon={<Users className="w-7 h-7 text-purple-600 dark:text-purple-400" />} />
+        {SHOW_IMPACT_SECTION && (
+          <div className="container mx-auto px-4 mt-10 mb-8">
+            <div className="bg-card text-card-foreground rounded-2xl shadow-sm border border-border p-6 md:p-8">
+              <div className="flex justify-between items-center mb-6 border-b border-border pb-4">
+                <h2 className="text-xl font-bold text-foreground">Our Impact This Month</h2>
+                <Link href="#" className="text-sm font-bold text-purple-600 hover:text-purple-800 dark:text-purple-400 dark:hover:text-purple-300 flex items-center">
+                  View Full Impact &rarr;
+                </Link>
+              </div>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-6 md:divide-x divide-border">
+                <ImpactStat value="24,580" label="Meals Served" icon={<UtensilsCrossed className="w-7 h-7 text-purple-600 dark:text-purple-400" />} />
+                <ImpactStat value="412" label="Active Organizations" icon={<Users className="w-7 h-7 text-blue-600 dark:text-blue-400" />} />
+                <ImpactStat value="188" label="Food Drop-Off Locations" icon={<PackageOpen className="w-7 h-7 text-amber-500 dark:text-amber-400" />} />
+                <ImpactStat value="8,920" label="Families Helped" icon={<Users className="w-7 h-7 text-purple-600 dark:text-purple-400" />} />
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
         {/* Main Directory Layout */}
-        <div className="container mx-auto px-4 grid grid-cols-1 lg:grid-cols-12 gap-8">
+        <div className={`container mx-auto px-4 grid grid-cols-1 lg:grid-cols-12 gap-8${SHOW_IMPACT_SECTION ? "" : " mt-10"}`}>
           
           {/* Sidebar Filters */}
           <div className="lg:col-span-3">
