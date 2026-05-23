@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Mail\UnityMeetInvitationMail;
+use App\Models\User;
 use App\Models\UserLivestream;
 use App\Support\LivestreamParticipantEmails;
 use Illuminate\Bus\Queueable;
@@ -24,6 +25,7 @@ class SendUnityMeetInvitationEmail implements ShouldQueue
     public function __construct(
         public int $livestreamId,
         public string $recipientEmail,
+        public int $billingUserId,
     ) {}
 
     public function handle(): void
@@ -73,6 +75,17 @@ class SendUnityMeetInvitationEmail implements ShouldQueue
             return;
         }
 
+        $billingUser = User::query()->find($this->billingUserId);
+        if (! $billingUser) {
+            Log::warning('Unity Meet invitation job skipped: billing user not found', [
+                'livestream_id' => $livestream->id,
+                'billing_user_id' => $this->billingUserId,
+                'email' => $email,
+            ]);
+
+            return;
+        }
+
         $hostName = trim((string) ($settings['display_name'] ?? $livestream->user?->name ?? 'Your host'));
         $joinUrl = url('/livestreams/join/'.$livestream->room_name);
         $scheduledAtFormatted = $livestream->scheduled_at
@@ -96,6 +109,7 @@ class SendUnityMeetInvitationEmail implements ShouldQueue
             Log::info('Unity Meet invitation email sent', [
                 'livestream_id' => $livestream->id,
                 'email' => $email,
+                'billing_user_id' => $billingUser->id,
             ]);
         } catch (\Throwable $e) {
             Log::error('Failed to send Unity Meet invitation email', [

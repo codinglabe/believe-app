@@ -77,6 +77,7 @@ use App\Http\Controllers\CreditPurchaseController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DeductibilityCodeController;
 use App\Http\Controllers\DonationController;
+use App\Http\Controllers\EmailCreditsController;
 use App\Http\Controllers\EmailInviteController;
 use App\Http\Controllers\EnrollmentController;
 use App\Http\Controllers\EventController;
@@ -459,6 +460,16 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:user|organization|orga
     Route::post('/livestreams/supporter/{id}/participants', [SupporterLivestreamController::class, 'inviteParticipant'])->name('livestreams.supporter.participants.invite')->where('id', '[0-9]+');
     Route::get('/livestreams/supporter/{id}', [SupporterLivestreamController::class, 'show'])->name('livestreams.supporter.show')->where('id', '[0-9]+');
 });
+
+// Email credits — supporters + org accounts (Unity Meet invitations, etc.)
+Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:user|organization|organization_pending|care_alliance'])
+    ->prefix('email-credits')
+    ->name('email-credits.')
+    ->group(function () {
+        Route::get('/', [EmailCreditsController::class, 'index'])->name('index');
+        Route::post('/purchase', [EmailCreditsController::class, 'purchase'])->name('purchase');
+        Route::get('/purchase/success', [EmailCreditsController::class, 'purchaseSuccess'])->name('purchase.success');
+    });
 
 // VDO.Ninja meeting: guest join by secure token (public)
 Route::get('/join/{token}', [LivestreamController::class, 'guestJoinByToken'])->name('livestreams.guest-join-by-token')->where('token', '[a-zA-Z0-9_-]+');

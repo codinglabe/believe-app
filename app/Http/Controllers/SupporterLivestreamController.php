@@ -11,8 +11,10 @@ use App\Models\User;
 use App\Models\UserLivestream;
 use App\Services\Streaming\StreamingPreflight;
 use App\Services\Streaming\StreamingQueueService;
+use App\Support\EmailPackageCatalog;
 use App\Support\LivestreamParticipantEmails;
 use App\Support\MeetingRecordingPreference;
+use App\Support\UserEmailCredits;
 use App\Support\StreamingWorkerSourceUrl;
 use App\Services\DropboxOAuthService;
 use App\Services\DropboxOrgApi;
@@ -269,6 +271,8 @@ class SupporterLivestreamController extends Controller
         $defaultDisplayName = $organization?->name ?: ($user->name ?? '');
         return Inertia::render('frontend/livestreams/Create', [
             'authUserDisplayName' => $defaultDisplayName,
+            'emailCredits' => UserEmailCredits::stats($user),
+            ...$this->emailPurchaseProps(),
         ]);
     }
 
@@ -396,6 +400,12 @@ class SupporterLivestreamController extends Controller
         }
         $emails = array_values(array_unique(array_filter(array_map('strval', $emails))));
         $settings['participant_emails'] = $emails;
+
+        if ($emails !== [] && ! UserEmailCredits::canSend($user, count($emails))) {
+            return back()
+                ->withErrors(['participant_emails' => UserEmailCredits::insufficientMessage($user, count($emails))])
+                ->withInput();
+        }
 
         $livestream = UserLivestream::create([
             'user_id' => $user->id,
@@ -578,6 +588,8 @@ class SupporterLivestreamController extends Controller
                 'scheduledAt' => $livestream->scheduled_at?->toIso8601String(),
                 'participantEmails' => LivestreamParticipantEmails::fromSettings($settings),
             ],
+            'emailCredits' => UserEmailCredits::stats($request->user()),
+            ...$this->emailPurchaseProps(),
         ]);
     }
 
@@ -643,6 +655,8 @@ class SupporterLivestreamController extends Controller
 
         return Inertia::render('frontend/livestreams/Show', [
             'recordingConsentDeclines' => $recordingConsentDeclines,
+            'emailCredits' => UserEmailCredits::stats($request->user()),
+            ...$this->emailPurchaseProps(),
             'livestream' => [
                 'id' => $livestream->id,
                 'title' => $livestream->title,
@@ -867,6 +881,13 @@ class SupporterLivestreamController extends Controller
 
         if (in_array($livestream->status, ['cancelled', 'ended'], true)) {
             return redirect()->back()->withErrors(['email' => 'Cannot invite participants to this meeting.']);
+        }
+
+        $user = $request->user();
+        if (! UserEmailCredits::canSend($user)) {
+            return redirect()->back()->withErrors([
+                'email' => UserEmailCredits::insufficientMessage($user),
+            ]);
         }
 
         $email = strtolower(trim((string) $validated['email']));
@@ -2010,6 +2031,22 @@ class SupporterLivestreamController extends Controller
 
     private function dispatchParticipantInvitation(UserLivestream $livestream, string $email): void
     {
-        SendUnityMeetInvitationEmail::dispatch($livestream->id, $email);
+        $billingUser = User::query()->find($livestream->user_id);
+        if ($billingUser) {
+            UserEmailCredits::consume($billingUser);
+        }
+
+        SendUnityMeetInvitationEmail::dispatch($livestream->id, $email, (int) $livestream->user_id);
+    }
+
+    /**
+     * @return array{emailPackages: array<int, array<string, mixed>>, stripeMinCheckoutUsd: float}
+     */
+    private function emailPurchaseProps(): array
+    {
+        return [
+            'emailPackages' => EmailPackageCatalog::activeForCheckout(),
+            'stripeMinCheckoutUsd' => EmailPackageCatalog::stripeMinCheckoutUsd(),
+        ];
     }
 }

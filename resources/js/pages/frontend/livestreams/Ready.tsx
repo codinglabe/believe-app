@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { Head, Link, router, usePage } from "@inertiajs/react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -9,6 +9,9 @@ import { Label } from "@/components/ui/label"
 import { Copy, Check, Play, ArrowLeft, Calendar, Mail, Users, X, Send } from "lucide-react"
 import UnityMeetLayout from "@/layouts/UnityMeetLayout"
 import { PageHead } from "@/components/frontend/PageHead"
+import { useEmailCreditsState } from "@/hooks/use-email-credits-state"
+import BuyEmailCreditsDialog, { type EmailPackageOption } from "@/components/meeting/BuyEmailCreditsDialog"
+import EmailCreditsMeetingActions from "@/components/meeting/EmailCreditsMeetingActions"
 
 const BRAND = {
   from: "#9333ea",
@@ -29,10 +32,22 @@ interface Livestream {
 
 interface Props {
   livestream: Livestream
+  emailCredits?: {
+    emails_included: number
+    emails_used: number
+    emails_left: number
+  }
+  emailPackages?: EmailPackageOption[]
+  stripeMinCheckoutUsd?: number
 }
 
-export default function SupporterReady({ livestream }: Props) {
-  const { props: inertiaProps } = usePage<{ errors?: Record<string, string | string[]> }>()
+export default function SupporterReady({
+  livestream,
+  emailCredits,
+  emailPackages = [],
+  stripeMinCheckoutUsd = 0.5,
+}: Props) {
+  const { props: inertiaProps } = usePage<{ errors?: Record<string, string | string[]>; success?: string }>()
   const participantInviteError = inertiaProps.errors?.email
   const participantInviteErrorText = Array.isArray(participantInviteError)
     ? participantInviteError[0]
@@ -43,9 +58,18 @@ export default function SupporterReady({ livestream }: Props) {
   const [inviteEmailInput, setInviteEmailInput] = useState("")
   const [invitingParticipant, setInvitingParticipant] = useState(false)
   const [resendingEmail, setResendingEmail] = useState<string | null>(null)
+  const [buyCreditsOpen, setBuyCreditsOpen] = useState(false)
   const isScheduled = livestream.status === "scheduled"
   const invitedCount = livestream.participantEmails?.length ?? 0
   const canInviteParticipants = !["ended", "cancelled"].includes(livestream.status ?? "")
+  const { credits: emailCreditsLive, canSend: canSendEmailInvites, syncFromServer, applyDelta } =
+    useEmailCreditsState(emailCredits)
+
+  useEffect(() => {
+    if (inertiaProps.success && emailCredits) {
+      syncFromServer(emailCredits)
+    }
+  }, [inertiaProps.success, emailCredits, syncFromServer])
 
   const copy = (text: string, key: string) => {
     navigator.clipboard.writeText(text)
@@ -74,6 +98,16 @@ export default function SupporterReady({ livestream }: Props) {
       { email, resend: resend || undefined },
       {
         preserveScroll: true,
+        onStart: () => applyDelta(1),
+        onSuccess: (page) => {
+          const inviteError = (page.props as { errors?: { email?: string | string[] } }).errors?.email
+          if (inviteError) {
+            applyDelta(-1)
+            return
+          }
+          syncFromServer((page.props as Props).emailCredits)
+        },
+        onError: () => applyDelta(-1),
         onFinish: () => {
           setInvitingParticipant(false)
           setResendingEmail(null)
@@ -164,10 +198,30 @@ export default function SupporterReady({ livestream }: Props) {
 
           {canInviteParticipants ? (
             <Card>
-              <CardHeader>
+              <CardHeader className="space-y-3">
                 <CardTitle className="text-base">Send invitation</CardTitle>
+                {emailCreditsLive ? (
+                  <EmailCreditsMeetingActions
+                    emailsLeft={emailCreditsLive.emails_left}
+                    onBuy={() => setBuyCreditsOpen(true)}
+                  />
+                ) : null}
               </CardHeader>
-              <CardContent className="space-y-2">
+              <CardContent className="space-y-3">
+                {!canSendEmailInvites ? (
+                  <p className="text-sm text-amber-700 dark:text-amber-300">
+                    No email credits remaining.{" "}
+                    <button
+                      type="button"
+                      className="font-medium underline hover:no-underline"
+                      onClick={() => setBuyCreditsOpen(true)}
+                    >
+                      Buy email credits
+                    </button>{" "}
+                    to send invitations.
+                  </p>
+                ) : (
+                  <>
                 <Label htmlFor="ready-participant-invite-email" className="sr-only">
                   Guest email
                 </Label>
@@ -204,6 +258,8 @@ export default function SupporterReady({ livestream }: Props) {
                 {participantInviteErrorText ? (
                   <p className="text-sm text-destructive">{participantInviteErrorText}</p>
                 ) : null}
+                  </>
+                )}
               </CardContent>
             </Card>
           ) : null}
@@ -226,7 +282,7 @@ export default function SupporterReady({ livestream }: Props) {
                       <Mail className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                       <span className="min-w-0 flex-1 truncate">{email}</span>
                       <div className="flex shrink-0 items-center gap-0.5">
-                        {canInviteParticipants ? (
+                        {canInviteParticipants && canSendEmailInvites ? (
                           <Button
                             type="button"
                             variant="ghost"
@@ -338,6 +394,15 @@ export default function SupporterReady({ livestream }: Props) {
           </Card>
         </div>
       </div>
+
+      <BuyEmailCreditsDialog
+        open={buyCreditsOpen}
+        onOpenChange={setBuyCreditsOpen}
+        emailPackages={emailPackages}
+        stripeMinCheckoutUsd={stripeMinCheckoutUsd}
+        returnRoute="livestreams.supporter.ready"
+        returnId={livestream.id}
+      />
     </UnityMeetLayout>
   )
 }

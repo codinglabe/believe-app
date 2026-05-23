@@ -58,6 +58,9 @@ import {
   Send,
 } from "lucide-react"
 import { Link } from "@inertiajs/react"
+import { useEmailCreditsState } from "@/hooks/use-email-credits-state"
+import BuyEmailCreditsDialog, { type EmailPackageOption } from "@/components/meeting/BuyEmailCreditsDialog"
+import EmailCreditsMeetingActions from "@/components/meeting/EmailCreditsMeetingActions"
 import { applyVdoGroupRoomPresentation } from "@/lib/vdoMeeting"
 import {
   canEndYoutubeLive,
@@ -135,9 +138,18 @@ interface RecordingConsentDecline {
   createdAt: string | null
 }
 
+interface EmailCredits {
+  emails_included: number
+  emails_used: number
+  emails_left: number
+}
+
 interface Props {
   livestream: Livestream
   recordingConsentDeclines: RecordingConsentDecline[]
+  emailCredits?: EmailCredits
+  emailPackages?: EmailPackageOption[]
+  stripeMinCheckoutUsd?: number
 }
 
 type SidebarTab = "meeting-info" | "participants" | "share"
@@ -148,8 +160,14 @@ function formatDeclineTime(iso: string | null): string {
   return Number.isNaN(d.getTime()) ? iso : d.toLocaleString()
 }
 
-export default function SupporterShowLivestream({ livestream, recordingConsentDeclines }: Props) {
-  const { props: inertiaProps } = usePage<{ errors?: Record<string, string | string[]> }>()
+export default function SupporterShowLivestream({
+  livestream,
+  recordingConsentDeclines,
+  emailCredits,
+  emailPackages = [],
+  stripeMinCheckoutUsd = 0.5,
+}: Props) {
+  const { props: inertiaProps } = usePage<{ errors?: Record<string, string | string[]>; success?: string }>()
   const prepareYoutubeError = inertiaProps.errors?.youtube
   const prepareYoutubeErrorText = Array.isArray(prepareYoutubeError)
     ? prepareYoutubeError[0]
@@ -189,8 +207,17 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
   const [inviteEmailInput, setInviteEmailInput] = useState("")
   const [invitingParticipant, setInvitingParticipant] = useState(false)
   const [resendingEmail, setResendingEmail] = useState<string | null>(null)
+  const [buyCreditsOpen, setBuyCreditsOpen] = useState(false)
 
   const canInviteParticipants = !["ended", "cancelled"].includes(livestream.status)
+  const { credits: emailCreditsLive, canSend: canSendEmailInvites, syncFromServer, applyDelta } =
+    useEmailCreditsState(emailCredits)
+
+  useEffect(() => {
+    if (inertiaProps.success && emailCredits) {
+      syncFromServer(emailCredits)
+    }
+  }, [inertiaProps.success, emailCredits, syncFromServer])
 
   const effectiveHostUrl =
     recordingDestination === "dropbox" && livestream.hostPushUrlDropbox
@@ -747,6 +774,16 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
       { email, resend: resend || undefined },
       {
         preserveScroll: true,
+        onStart: () => applyDelta(1),
+        onSuccess: (page) => {
+          const inviteError = (page.props as { errors?: { email?: string | string[] } }).errors?.email
+          if (inviteError) {
+            applyDelta(-1)
+            return
+          }
+          syncFromServer((page.props as Props).emailCredits)
+        },
+        onError: () => applyDelta(-1),
         onFinish: () => {
           setInvitingParticipant(false)
           setResendingEmail(null)
@@ -777,11 +814,33 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
       </p>
 
       {canInviteParticipants ? (
-        <div className="rounded-lg border border-border bg-muted/30 p-3.5 space-y-2">
-          <Label htmlFor="participant-invite-email" className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-            Send invitation
-          </Label>
-          <div className="flex gap-2">
+        <div className="rounded-lg border border-border bg-muted/30 p-3.5 space-y-3">
+          <div className="space-y-2">
+            <Label htmlFor="participant-invite-email" className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+              Send invitation
+            </Label>
+            {emailCreditsLive ? (
+              <EmailCreditsMeetingActions
+                emailsLeft={emailCreditsLive.emails_left}
+                onBuy={() => setBuyCreditsOpen(true)}
+              />
+            ) : null}
+          </div>
+          {!canSendEmailInvites ? (
+            <p className="text-xs text-amber-700 dark:text-amber-300">
+              No email credits remaining.{" "}
+              <button
+                type="button"
+                className="font-medium underline hover:no-underline"
+                onClick={() => setBuyCreditsOpen(true)}
+              >
+                Buy email credits
+              </button>{" "}
+              to send invitations.
+            </p>
+          ) : (
+            <>
+          <div className="flex flex-col gap-2">
             <Input
               id="participant-invite-email"
               type="email"
@@ -794,13 +853,13 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
                   addAndSendInvitation()
                 }
               }}
-              className="h-9 min-w-0 flex-1 text-sm"
+              className="h-9 w-full min-w-0 text-sm"
               disabled={invitingParticipant}
             />
             <Button
               type="button"
               size="sm"
-              className="h-9 shrink-0 gap-1.5 bg-gradient-to-r from-purple-600 to-blue-600 text-white hover:from-purple-700 hover:to-blue-700"
+              className="h-9 w-full shrink-0 gap-1.5 bg-gradient-to-r from-purple-600 to-blue-600 text-white hover:from-purple-700 hover:to-blue-700"
               onClick={addAndSendInvitation}
               disabled={invitingParticipant || inviteEmailInput.trim() === ""}
             >
@@ -817,6 +876,8 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
           {participantInviteErrorText ? (
             <p className="text-xs text-destructive">{participantInviteErrorText}</p>
           ) : null}
+            </>
+          )}
         </div>
       ) : null}
 
@@ -856,7 +917,7 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
                 <Mail className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                 <span className="min-w-0 flex-1 truncate text-sm">{email}</span>
                 <div className="flex shrink-0 items-center gap-0.5">
-                  {canInviteParticipants ? (
+                  {canInviteParticipants && canSendEmailInvites ? (
                     <Button
                       type="button"
                       variant="ghost"
@@ -1459,6 +1520,15 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
           </div>
         </DialogContent>
       </Dialog>
+
+      <BuyEmailCreditsDialog
+        open={buyCreditsOpen}
+        onOpenChange={setBuyCreditsOpen}
+        emailPackages={emailPackages}
+        stripeMinCheckoutUsd={stripeMinCheckoutUsd}
+        returnRoute="livestreams.supporter.show"
+        returnId={livestream.id}
+      />
     </UnityMeetLayout>
   )
 }
