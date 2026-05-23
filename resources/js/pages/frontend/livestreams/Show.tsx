@@ -55,6 +55,7 @@ import {
   Mail,
   Users,
   X,
+  Send,
 } from "lucide-react"
 import { Link } from "@inertiajs/react"
 import { applyVdoGroupRoomPresentation } from "@/lib/vdoMeeting"
@@ -157,6 +158,11 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
   const queueStreamError = inertiaProps.errors?.go_live
   const queueStreamErrorText = Array.isArray(queueStreamError) ? queueStreamError[0] : queueStreamError
 
+  const participantInviteError = inertiaProps.errors?.email
+  const participantInviteErrorText = Array.isArray(participantInviteError)
+    ? participantInviteError[0]
+    : participantInviteError
+
   const [copied, setCopied] = useState<string | null>(null)
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false)
   const [isGoLivePending, setIsGoLivePending] = useState(false)
@@ -180,6 +186,11 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
     () => (livestream.dropboxRecordingAvailable ? "dropbox" : "local")
   )
   const [removingParticipantEmail, setRemovingParticipantEmail] = useState<string | null>(null)
+  const [inviteEmailInput, setInviteEmailInput] = useState("")
+  const [invitingParticipant, setInvitingParticipant] = useState(false)
+  const [resendingEmail, setResendingEmail] = useState<string | null>(null)
+
+  const canInviteParticipants = !["ended", "cancelled"].includes(livestream.status)
 
   const effectiveHostUrl =
     recordingDestination === "dropbox" && livestream.hostPushUrlDropbox
@@ -724,11 +735,90 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
     })
   }
 
+  const sendInvitation = (email: string, resend = false) => {
+    if (resend) {
+      setResendingEmail(email)
+    } else {
+      setInvitingParticipant(true)
+    }
+
+    router.post(
+      route("livestreams.supporter.participants.invite", livestream.id),
+      { email, resend: resend || undefined },
+      {
+        preserveScroll: true,
+        onFinish: () => {
+          setInvitingParticipant(false)
+          setResendingEmail(null)
+          if (!resend) {
+            setInviteEmailInput("")
+          }
+        },
+      }
+    )
+  }
+
+  const addAndSendInvitation = () => {
+    const raw = inviteEmailInput.trim()
+    if (!raw) {
+      return
+    }
+    const email = raw.split(/[,\s]+/).map((part) => part.trim()).find(Boolean)
+    if (!email) {
+      return
+    }
+    sendInvitation(email)
+  }
+
   const participantsContent = (
     <div className="w-full min-w-0 space-y-4">
       <p className="text-xs text-muted-foreground">
-        Each invited guest is listed below. Remove anyone who should no longer be on this meeting.
+        Invite guests by email. They receive meeting details and a join link in their inbox.
       </p>
+
+      {canInviteParticipants ? (
+        <div className="rounded-lg border border-border bg-muted/30 p-3.5 space-y-2">
+          <Label htmlFor="participant-invite-email" className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
+            Send invitation
+          </Label>
+          <div className="flex gap-2">
+            <Input
+              id="participant-invite-email"
+              type="email"
+              placeholder="guest@example.com"
+              value={inviteEmailInput}
+              onChange={(e) => setInviteEmailInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault()
+                  addAndSendInvitation()
+                }
+              }}
+              className="h-9 min-w-0 flex-1 text-sm"
+              disabled={invitingParticipant}
+            />
+            <Button
+              type="button"
+              size="sm"
+              className="h-9 shrink-0 gap-1.5 bg-gradient-to-r from-purple-600 to-blue-600 text-white hover:from-purple-700 hover:to-blue-700"
+              onClick={addAndSendInvitation}
+              disabled={invitingParticipant || inviteEmailInput.trim() === ""}
+            >
+              {invitingParticipant ? (
+                <span className="text-xs">Sending…</span>
+              ) : (
+                <>
+                  <Send className="h-3.5 w-3.5" />
+                  Send
+                </>
+              )}
+            </Button>
+          </div>
+          {participantInviteErrorText ? (
+            <p className="text-xs text-destructive">{participantInviteErrorText}</p>
+          ) : null}
+        </div>
+      ) : null}
 
       {livestream.scheduledAt ? (
         <div className="rounded-lg border border-border bg-muted/30 p-3.5 space-y-1">
@@ -765,22 +855,42 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
               >
                 <Mail className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                 <span className="min-w-0 flex-1 truncate text-sm">{email}</span>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  className="h-7 w-7 shrink-0 text-muted-foreground hover:text-destructive"
-                  onClick={() => removeParticipant(email)}
-                  disabled={removingParticipantEmail === email}
-                  aria-label={`Remove ${email}`}
-                  title="Remove participant"
-                >
-                  {removingParticipantEmail === email ? (
-                    <span className="text-[10px] font-medium">…</span>
-                  ) : (
-                    <X className="h-3.5 w-3.5" />
-                  )}
-                </Button>
+                <div className="flex shrink-0 items-center gap-0.5">
+                  {canInviteParticipants ? (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7 text-muted-foreground hover:text-primary"
+                      onClick={() => sendInvitation(email, true)}
+                      disabled={resendingEmail === email}
+                      aria-label={`Resend invitation to ${email}`}
+                      title="Resend invitation"
+                    >
+                      {resendingEmail === email ? (
+                        <span className="text-[10px] font-medium">…</span>
+                      ) : (
+                        <Send className="h-3.5 w-3.5" />
+                      )}
+                    </Button>
+                  ) : null}
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                    onClick={() => removeParticipant(email)}
+                    disabled={removingParticipantEmail === email}
+                    aria-label={`Remove ${email}`}
+                    title="Remove participant"
+                  >
+                    {removingParticipantEmail === email ? (
+                      <span className="text-[10px] font-medium">…</span>
+                    ) : (
+                      <X className="h-3.5 w-3.5" />
+                    )}
+                  </Button>
+                </div>
               </li>
             ))}
           </ul>
@@ -793,7 +903,7 @@ export default function SupporterShowLivestream({ livestream, recordingConsentDe
           <Users className="h-8 w-8 mx-auto text-muted-foreground/60" />
           <p className="text-sm font-medium text-foreground">No invited participants</p>
           <p className="text-xs text-muted-foreground">
-            Add participant emails when scheduling a meeting, or share the invite link from the Share tab.
+            Use the form above to send an email invitation, or share the invite link from the Share tab.
           </p>
         </div>
       )}

@@ -77,7 +77,7 @@ class SendUnityMeetInvitationEmail implements ShouldQueue
         $joinUrl = url('/livestreams/join/'.$livestream->room_name);
         $scheduledAtFormatted = $livestream->scheduled_at
             ? $livestream->scheduled_at->timezone(config('app.timezone'))->format('l, F j, Y \a\t g:i A T')
-            : 'TBD';
+            : 'Join when ready';
         $requiresPasscode = $livestream->requiresPasscode();
         $passcode = $requiresPasscode ? $livestream->getDecryptedPassword() : null;
 

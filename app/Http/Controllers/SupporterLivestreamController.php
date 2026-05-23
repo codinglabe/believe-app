@@ -856,6 +856,53 @@ class SupporterLivestreamController extends Controller
         return redirect()->back()->with('success', 'Participant removed.');
     }
 
+    public function inviteParticipant(Request $request, int $id): RedirectResponse
+    {
+        $validated = $request->validate([
+            'email' => 'required|email|max:255',
+            'resend' => 'nullable|boolean',
+        ]);
+
+        $livestream = UserLivestream::where('user_id', $request->user()->id)->findOrFail($id);
+
+        if (in_array($livestream->status, ['cancelled', 'ended'], true)) {
+            return redirect()->back()->withErrors(['email' => 'Cannot invite participants to this meeting.']);
+        }
+
+        $email = strtolower(trim((string) $validated['email']));
+        $settings = is_array($livestream->settings) ? $livestream->settings : [];
+        $emails = LivestreamParticipantEmails::fromSettings($settings);
+        $resend = $request->boolean('resend');
+
+        if ($resend) {
+            if (! in_array($email, $emails, true)) {
+                return redirect()->back()->withErrors(['email' => 'Participant not found on this meeting.']);
+            }
+
+            $this->dispatchParticipantInvitation($livestream, $email);
+
+            return redirect()->back()->with('success', 'Invitation resent.');
+        }
+
+        if (in_array($email, $emails, true)) {
+            return redirect()->back()->withErrors(['email' => 'This email is already invited. Use resend to send the invitation again.']);
+        }
+
+        if (count($emails) >= 50) {
+            return redirect()->back()->withErrors(['email' => 'Maximum of 50 invited participants reached.']);
+        }
+
+        $emails[] = $email;
+        $settings['participant_emails'] = LivestreamParticipantEmails::fromSettings(['participant_emails' => $emails]);
+        $livestream->update([
+            'settings' => $settings !== [] ? $settings : null,
+        ]);
+
+        $this->dispatchParticipantInvitation($livestream, $email);
+
+        return redirect()->back()->with('success', 'Invitation sent.');
+    }
+
     public function destroy(Request $request, int $id): RedirectResponse
     {
         $livestream = UserLivestream::where('user_id', $request->user()->id)->findOrFail($id);
@@ -1957,7 +2004,12 @@ class SupporterLivestreamController extends Controller
         $emails = LivestreamParticipantEmails::fromSettings($settings);
 
         foreach ($emails as $email) {
-            SendUnityMeetInvitationEmail::dispatch($livestream->id, $email);
+            $this->dispatchParticipantInvitation($livestream, $email);
         }
+    }
+
+    private function dispatchParticipantInvitation(UserLivestream $livestream, string $email): void
+    {
+        SendUnityMeetInvitationEmail::dispatch($livestream->id, $email);
     }
 }
