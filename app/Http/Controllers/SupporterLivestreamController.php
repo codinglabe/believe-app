@@ -154,7 +154,7 @@ class SupporterLivestreamController extends Controller
     private function unityMeetSetupProps(User $user): array
     {
         $user->loadMissing('organization');
-        $organization = $user->organization ?? Organization::where('user_id', $user->id)->first();
+        $organization = Organization::forAuthUser($user);
 
         $youtubeService = app(YouTubeService::class);
 
@@ -597,18 +597,25 @@ class SupporterLivestreamController extends Controller
     {
         $livestream = UserLivestream::where('user_id', $request->user()->id)->with(['user.organization'])->findOrFail($id);
 
-        $authUser = $request->user()->loadMissing('organization');
+        $authUser = $request->user();
+        $organization = Organization::forAuthUser($authUser);
         $dropboxConnected = ! empty($authUser->dropbox_refresh_token)
-            || ($authUser->organization && ! empty($authUser->organization->dropbox_refresh_token));
-        $youtubeConnected = ($authUser->organization && (! empty($authUser->organization->youtube_refresh_token) || ! empty($authUser->organization->youtube_access_token)))
+            || ($organization && ! empty($organization->dropbox_refresh_token));
+        $youtubeConnected = ($organization && (! empty($organization->youtube_refresh_token) || ! empty($organization->youtube_access_token)))
             || (! empty($authUser->youtube_refresh_token) || ! empty($authUser->youtube_access_token));
-        $youtubeChannelUrl = $authUser->organization?->youtube_channel_url ?: $authUser->youtube_channel_url;
+        $youtubeChannelUrl = $organization?->youtube_channel_url ?: $authUser->youtube_channel_url;
         $password = $livestream->getDecryptedPassword();
         $directorUrl = $livestream->getDirectorUrl(false);
         $directorUrlDropbox = $dropboxConnected ? $livestream->getDirectorUrl(true) : null;
         $participantUrl = $livestream->getParticipantUrl();
         $hostPushUrl = $livestream->getHostPushUrl(false);
-        $hostPushUrlDropbox = $dropboxConnected ? $livestream->getHostPushUrl(true) : null;
+        $hostPushUrlDropbox = null;
+        if ($dropboxConnected) {
+            $dropboxHostUrl = $livestream->getHostPushUrl(true);
+            if (str_contains($dropboxHostUrl, '&dropbox=')) {
+                $hostPushUrlDropbox = $dropboxHostUrl;
+            }
+        }
         // Scene-mixer URL: composite of ALL room participants → MediaMTX → worker → YouTube.
         // Frontend loads this in a hidden iframe so guests reach YouTube too.
         $scenePushUrl = $livestream->getScenePushUrl();
@@ -672,7 +679,7 @@ class SupporterLivestreamController extends Controller
                 'canvasUrl' => $livestream->getCanvasUrl(),
                 'canvasMode' => $livestream->isCanvasModeEnabled(),
                 'browserMediaMtxPush' => \App\Support\StreamingWorkerSourceUrl::shouldAttachVdoMediaMtxPush(),
-                'dropboxRecordingAvailable' => $dropboxConnected,
+                'dropboxRecordingAvailable' => $hostPushUrlDropbox !== null,
                 'watchUrl' => $watchUrl,
                 'unityLiveUrl' => $unityLiveUrl,
                 'liveViewerUrl' => $liveViewerUrl,
@@ -1847,7 +1854,7 @@ class SupporterLivestreamController extends Controller
             ];
         }
 
-        $org = $user->organization;
+        $org = Organization::forAuthUser($user);
         if ($org && ! empty($org->dropbox_refresh_token)) {
             $token = $tokens->getAccessTokenForOrganization($org);
 
