@@ -1274,7 +1274,7 @@ export default function SupporterShowLivestream({
                   </div>
                 )}
                 {livestream.status === "live" && (
-                  <div className="pointer-events-none absolute top-2 right-2 z-[2] sm:top-3 sm:right-3 rounded bg-red-600 px-2 py-0.5 text-xs font-semibold text-white animate-pulse sm:px-3 sm:py-1 sm:text-sm">
+                  <div className="pointer-events-none absolute top-2 left-2 z-[2] sm:top-3 sm:left-3 rounded bg-red-600 px-2 py-0.5 text-xs font-semibold text-white animate-pulse sm:px-3 sm:py-1 sm:text-sm">
                     ● LIVE
                   </div>
                 )}
