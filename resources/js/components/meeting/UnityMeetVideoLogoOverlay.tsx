@@ -6,6 +6,7 @@ import { BelieveInUnityBrandMark } from "@/components/site-title"
 /** Non-interactive Believe In Unity mark over the VDO iframe (top-right; light + dark logo like {@link SiteTitle}). */
 export default function UnityMeetVideoLogoOverlay({ className }: { className?: string }) {
   return (
+
     <div
       className={cn(
         "pointer-events-none absolute top-2 right-2 z-[2] sm:top-3 sm:right-3",
