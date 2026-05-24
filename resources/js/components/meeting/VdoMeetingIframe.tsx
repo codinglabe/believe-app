@@ -305,7 +305,7 @@ export default function VdoMeetingIframe({
               <Loader2 className="h-10 w-10 animate-spin text-purple-400" aria-hidden />
               <p className="text-sm font-medium text-white/90">Connecting to meeting…</p>
               <p className="text-xs text-white/60 max-w-xs">
-                If your browser asks for camera or microphone access for VDO.Ninja, choose Allow.
+                If your browser asks to use your camera or microphone for this meeting, choose Allow.
               </p>
             </>
           )}

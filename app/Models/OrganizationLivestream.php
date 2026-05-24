@@ -463,8 +463,8 @@ class OrganizationLivestream extends Model
             $dropboxToken = ! empty($dropboxToken) ? $dropboxToken : null;
         }
 
-        // &record enables recording controls. With Dropbox params, VDO uploads to Dropbox while recording (may also save locally — VDO limitation).
-        $recordParam = $recordEnabled ? '&record' : '';
+        // &record enables recording controls; &autorecordlocal starts recording on load when enabled in meeting settings.
+        $recordParam = $recordEnabled ? '&record&autorecordlocal=6000' : '';
 
         $base = "https://vdo.ninja/?room={$room}&push={$effectivePush}&label={$label}{$recordParam}&quality=0&bitrate=6000&webcam&ssb&vdo=1&audiodevice=1&proaudio&stereo=2&showlabels=zoom&showall&rows=1&fontsize=82&nocontrols&clock=false{$avatarParam}" . \App\Support\VdoMeetingVirtualBackground::querySegment() . "&autostart&noheader{$passwordParam}";
 
