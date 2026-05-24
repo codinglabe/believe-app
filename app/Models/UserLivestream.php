@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\MeetingRecordingPreference;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -141,7 +142,7 @@ class UserLivestream extends Model
         $this->loadMissing('user');
         $settings = $this->settings ?? [];
         $displayName = $settings['display_name'] ?? null;
-        $recordEnabled = (bool) ($settings['record_meeting'] ?? true);
+        $recordEnabled = MeetingRecordingPreference::isEnabled($settings, false);
         $hostName = $displayName ?: ($this->user?->name ?? 'Host');
         $label = rawurlencode($hostName);
         $password = $this->getDecryptedPassword();
@@ -356,7 +357,7 @@ class UserLivestream extends Model
         $this->loadMissing('user');
         $settings = $this->settings ?? [];
         $displayName = $settings['display_name'] ?? null;
-        $recordEnabled = (bool) ($settings['record_meeting'] ?? true);
+        $recordEnabled = MeetingRecordingPreference::isEnabled($settings, false);
         $hostName = $displayName ?: ($this->user?->name ?? 'Host');
         $streamKey = \App\Support\StreamingWorkerSourceUrl::streamPath($this);
         $room = rawurlencode($this->getVdoRoomName());
@@ -377,8 +378,8 @@ class UserLivestream extends Model
 
         $dropboxCtx = ($recordEnabled && $recordToDropbox) ? $this->resolveDropboxUploadContext() : null;
 
-        // &record enables recording controls. With Dropbox params, VDO uploads to Dropbox while recording (may also save locally — VDO limitation).
-        $recordParam = $recordEnabled ? '&record' : '';
+        // &autorecord auto-starts disk recording when record_meeting is on (host push tab only).
+        $recordParam = MeetingRecordingPreference::hostPushRecordQuery($settings, false);
 
         $base = "https://vdo.ninja/?room={$room}&push={$effectivePush}&label={$label}{$recordParam}&quality=0&bitrate=6000&webcam&ssb&vdo=1&audiodevice=1&proaudio&stereo=2&showlabels=zoom&showall&rows=1&fontsize=82&nocontrols&clock=false{$avatarParam}" . \App\Support\VdoMeetingVirtualBackground::querySegment() . "&autostart&noheader{$passwordParam}";
 

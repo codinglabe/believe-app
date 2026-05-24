@@ -19,4 +19,20 @@ final class MeetingRecordingPreference
 
         return $organizationLivestream;
     }
+
+    /**
+     * VDO.Ninja host-push query segment: auto-start disk recording when the meeting is configured to record.
+     * Use only on {@see UserLivestream::getHostPushUrl()} / {@see OrganizationLivestream::getHostPushUrl()} —
+     * not on director URLs (avoids extra recordings when guests join).
+     */
+    public static function hostPushRecordQuery(?array $settings, bool $organizationLivestream, int $bitrateKbps = 6000): string
+    {
+        if (! self::isEnabled($settings, $organizationLivestream)) {
+            return '';
+        }
+
+        $bitrateKbps = max(500, min(12000, $bitrateKbps));
+
+        return '&autorecord='.$bitrateKbps;
+    }
 }

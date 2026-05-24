@@ -628,7 +628,7 @@ export default function SupporterShowLivestream({
           Recording saved to
         </div>
         <p className="text-xs text-muted-foreground">
-          Choose where recordings are stored when you start recording in the meeting.
+          Choose where recordings are stored. When &quot;Record meeting&quot; is enabled, recording starts automatically in the room.
         </p>
         <div className="flex gap-2">
           <Button
@@ -654,9 +654,9 @@ export default function SupporterShowLivestream({
         </div>
         <p className="text-[10px] text-muted-foreground">
           {recordingDestination === "local"
-            ? "Recording will download to this device when you stop."
+            ? "Recording starts automatically and downloads to this device when you stop."
             : livestream.dropboxRecordingAvailable
-              ? "Start recording in the meeting — the file is saved to your Dropbox folder (VDO may also keep a copy in your browser downloads)."
+              ? "Recording starts automatically — the file is saved to your Dropbox folder (VDO may also keep a copy in browser downloads)."
               : "Connect Dropbox in settings to save recordings to the cloud."}
         </p>
         {!livestream.dropboxRecordingAvailable && (
@@ -1274,7 +1274,7 @@ export default function SupporterShowLivestream({
                   </div>
                 )}
                 {livestream.status === "live" && (
-                  <div className="pointer-events-none absolute top-2 right-2 z-[2] sm:top-3 sm:right-3 rounded bg-red-600 px-2 py-0.5 text-xs font-semibold text-white animate-pulse sm:px-3 sm:py-1 sm:text-sm">
+                  <div className="pointer-events-none absolute top-2 left-2 z-[2] sm:top-3 sm:left-3 rounded bg-red-600 px-2 py-0.5 text-xs font-semibold text-white animate-pulse sm:px-3 sm:py-1 sm:text-sm">
                     ● LIVE
                   </div>
                 )}
