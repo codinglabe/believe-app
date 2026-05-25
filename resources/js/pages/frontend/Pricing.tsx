@@ -1,9 +1,15 @@
 "use client";
 
-import { Head, Link } from "@inertiajs/react";
+import { useMemo, useState, useEffect } from "react";
+import { Head, Link, usePage } from "@inertiajs/react";
 import FrontendLayout from "@/layouts/frontend/frontend-layout";
+import SupporterPricingTab, {
+  type SupporterPlanOption,
+  type SupporterSubscriptionState,
+} from "@/components/pricing/supporter-pricing-tab";
 import { Button } from "@/components/frontend/ui/button";
 import { Badge } from "@/components/frontend/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/frontend/ui/tabs";
 import { cn } from "@/lib/utils";
 import {
   Check,
@@ -79,6 +85,8 @@ interface Props {
   plans: Plan[];
   addOns: AddOn[];
   currentPlan?: CurrentPlan | null;
+  supporterPlans?: SupporterPlanOption[];
+  supporterSubscription?: SupporterSubscriptionState | null;
 }
 
 /** Brand tokens aligned with marketing comparison artwork */
@@ -469,7 +477,44 @@ function competitorRowsFromPlan(plan: Plan | undefined): CompetitorRow[] {
   }
 }
 
-export default function PricingPage({ plans, addOns, currentPlan }: Props) {
+type PricingAudience = "organizations" | "supporters";
+
+function resolveInitialAudience(url: string, userRole?: string | null): PricingAudience {
+  try {
+    const tab = new URL(url, "https://believeinunity.org").searchParams.get("tab");
+    if (tab === "supporters" || tab === "supporter") return "supporters";
+    if (tab === "organizations" || tab === "organization") return "organizations";
+  } catch {
+    /* ignore */
+  }
+
+  if (userRole === "user") {
+    return "supporters";
+  }
+
+  return "organizations";
+}
+
+export default function PricingPage({
+  plans,
+  addOns,
+  currentPlan,
+  supporterPlans = [],
+  supporterSubscription = null,
+}: Props) {
+  const { url, auth } = usePage<{ auth?: { user?: { role?: string } | null } }>();
+  const initialAudience = useMemo(
+    () => resolveInitialAudience(url, auth?.user?.role ?? null),
+    [url, auth?.user?.role],
+  );
+  const [audience, setAudience] = useState<PricingAudience>(initialAudience);
+  const organizationCurrentPlan =
+    auth?.user?.role === "user" || supporterSubscription ? null : (currentPlan ?? null);
+
+  useEffect(() => {
+    setAudience(resolveInitialAudience(url, auth?.user?.role ?? null));
+  }, [url, auth?.user?.role]);
+
   const featuredPlan = plans.find((p) => p.is_popular) ?? plans[0];
   const verificationCurrencyFields = planCurrencyCustomFields(featuredPlan);
   const includedGridColumns = everythingIncludedColumnsFromPlan(featuredPlan);
@@ -481,32 +526,69 @@ export default function PricingPage({ plans, addOns, currentPlan }: Props) {
 
   return (
     <FrontendLayout>
-      <Head title="Pricing – Nonprofit Plans | Believe In Unity" />
+      <Head title="Pricing | Believe In Unity" />
       <div className="min-h-screen overflow-x-hidden bg-slate-50 text-slate-900 antialiased dark:bg-[#0A0A1A] dark:text-white">
-        <div className="container mx-auto px-3 sm:px-4 md:px-6 py-8 sm:py-12 md:py-14">
-          {/* Header */}
-          <header className="mx-auto mb-10 max-w-4xl text-center sm:mb-14 md:mb-16">
+        <div className="container mx-auto px-4 py-8 sm:py-12 md:py-14">
+          <header className="mx-auto mb-8 text-center sm:mb-10">
             <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.2em] text-violet-700 sm:text-xs dark:text-violet-300">
               Believe In Unity · 501(c)(3) Not For Profit
             </p>
             <h1 className="mb-3 text-balance text-2xl font-bold tracking-tight text-slate-900 sm:mb-4 sm:text-4xl md:text-5xl dark:text-white">
-              The True Cost of Doing More With Less
+              Plans for every mission
             </h1>
             <p className="text-pretty text-sm leading-relaxed text-slate-600 sm:text-base md:text-lg dark:text-white/70">
-              Most organizations pay for 10+ different tools.{" "}
-              <span className="font-semibold text-[#582BE8] dark:text-[#582BE8]">Believe In Unity</span>{" "}
-              gives you everything in one place.
+              Choose the experience that fits you — support causes as a member, or run your organization on one
+              platform.
             </p>
           </header>
 
-          {currentPlan && (
+          <Tabs
+            value={audience}
+            onValueChange={(value) => setAudience(value as PricingAudience)}
+            className="w-full"
+          >
+            <TabsList className="mx-auto mb-8 grid h-auto w-full max-w-md grid-cols-2 gap-1 rounded-xl border border-violet-200/80 bg-white p-1 shadow-sm dark:border-purple-500/25 dark:bg-[#12122a] sm:mb-10">
+              <TabsTrigger
+                value="supporters"
+                className="rounded-lg px-4 py-2.5 text-sm font-semibold data-[state=active]:bg-gradient-to-r data-[state=active]:from-purple-600 data-[state=active]:to-blue-600 data-[state=active]:text-white"
+              >
+                Supporters
+              </TabsTrigger>
+              <TabsTrigger
+                value="organizations"
+                className="rounded-lg px-4 py-2.5 text-sm font-semibold data-[state=active]:bg-gradient-to-r data-[state=active]:from-purple-600 data-[state=active]:to-blue-600 data-[state=active]:text-white"
+              >
+                Organizations
+              </TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="supporters" className="mt-0 focus-visible:outline-none">
+              <SupporterPricingTab
+                supporterPlans={supporterPlans}
+                supporterSubscription={supporterSubscription}
+              />
+            </TabsContent>
+
+            <TabsContent value="organizations" className="mt-0 focus-visible:outline-none">
+              <header className="mx-auto mb-10 text-center sm:mb-12">
+                <h2 className="mb-3 text-balance text-xl font-bold tracking-tight text-slate-900 sm:text-3xl dark:text-white">
+                  The True Cost of Doing More With Less
+                </h2>
+                <p className="text-pretty text-sm leading-relaxed text-slate-600 sm:text-base dark:text-white/70">
+                  Most organizations pay for 10+ different tools.{" "}
+                  <span className="font-semibold text-[#582BE8] dark:text-[#582BE8]">Believe In Unity</span>{" "}
+                  gives you everything in one place.
+                </p>
+              </header>
+
+          {organizationCurrentPlan && (
             <div className="mx-auto mb-10 flex max-w-2xl flex-col items-center justify-between gap-4 rounded-xl border border-violet-200 bg-violet-50 px-4 py-4 dark:border-[#582BE855] dark:bg-[#582BE818] sm:flex-row">
               <div className="flex items-center gap-3 text-center sm:text-left">
                 <Check className="h-6 w-6 shrink-0 text-emerald-600 dark:text-emerald-400" />
                 <div>
                   <p className="font-semibold text-slate-900 dark:text-white">You&apos;re subscribed</p>
                   <p className="text-sm text-slate-600 dark:text-white/70">
-                    {currentPlan.name} · ${currentPlan.price}/{currentPlan.frequency}
+                    {organizationCurrentPlan.name} · ${organizationCurrentPlan.price}/{organizationCurrentPlan.frequency}
                   </p>
                 </div>
               </div>
@@ -776,7 +858,7 @@ export default function PricingPage({ plans, addOns, currentPlan }: Props) {
                           </span>
                         </Button>
                       </Link>
-                    ) : currentPlan && currentPlan.id === featuredPlan.id ? (
+                    ) : organizationCurrentPlan && organizationCurrentPlan.id === featuredPlan.id ? (
                       <Button
                         className="h-12 w-full border border-slate-300 bg-slate-100 font-semibold text-slate-700 hover:bg-slate-100 dark:border-white/15 dark:bg-white/10 dark:text-white dark:hover:bg-white/15"
                         disabled
@@ -784,7 +866,7 @@ export default function PricingPage({ plans, addOns, currentPlan }: Props) {
                         <Check className="mr-2 h-4 w-4" />
                         Current plan
                       </Button>
-                    ) : currentPlan ? (
+                    ) : organizationCurrentPlan ? (
                       <Link href={route("plans.index")} className="block">
                         <Button className="group relative w-full h-12 overflow-hidden border-0 font-semibold text-white shadow-lg transition hover:brightness-110">
                           <span className={cn("absolute inset-0 opacity-95", logoGradientCTA)} aria-hidden />
@@ -980,7 +1062,7 @@ export default function PricingPage({ plans, addOns, currentPlan }: Props) {
             </div>
           </section>
 
-          {!currentPlan && (
+          {!organizationCurrentPlan && (
             <p className="mt-8 text-center text-sm text-slate-600 dark:text-white/60">
               Already have an account?{" "}
               <Link href={route("login")} className="font-medium text-[#582BE8] hover:underline dark:text-[#582BE8]">
@@ -989,6 +1071,8 @@ export default function PricingPage({ plans, addOns, currentPlan }: Props) {
               to manage your plan.
             </p>
           )}
+            </TabsContent>
+          </Tabs>
         </div>
       </div>
     </FrontendLayout>

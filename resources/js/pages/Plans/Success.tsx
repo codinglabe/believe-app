@@ -13,6 +13,8 @@ interface PlansSuccessProps {
   planName?: string
   trialDays?: number
   isWalletSubscription?: boolean
+  isSupporterSubscription?: boolean
+  supporterTier?: string | null
   welcomeBonus?: {
     aiTokens: number
     emails: number
@@ -107,13 +109,27 @@ export default function PlansSuccess({
   successMessage,
   planName,
   trialDays = 0,
+  isWalletSubscription: isWalletSubscriptionProp = false,
+  isSupporterSubscription: isSupporterSubscriptionProp = false,
   welcomeBonus = null,
 }: PlansSuccessProps) {
   const { url } = usePage()
+  const isSupporterSubscription =
+    isSupporterSubscriptionProp ||
+    Boolean(
+      successMessage &&
+        !successMessage.toLowerCase().includes("wallet") &&
+        (successMessage.toLowerCase().includes("supporter") ||
+          successMessage.toLowerCase().includes("believe in unity")),
+    )
   const isWalletSubscription =
-    url?.includes("/wallet/subscription/success") || successMessage?.toLowerCase().includes("wallet")
+    isWalletSubscriptionProp ||
+    (!isSupporterSubscription &&
+      (url?.includes("/wallet/subscription/success") ||
+        successMessage?.toLowerCase().includes("wallet") === true))
 
-  const Layout = isWalletSubscription ? FrontendLayout : AppSidebarLayout
+  const Layout = isSupporterSubscription || isWalletSubscription ? FrontendLayout : AppSidebarLayout
+  const profileHref = route("user.profile.index")
   const hasTrial = !isWalletSubscription && trialDays > 0
   const displayPlan = planName ?? "Unity Membership"
 
@@ -121,9 +137,11 @@ export default function PlansSuccess({
     <Layout>
       <Head
         title={
-          isWalletSubscription
-            ? "Wallet Subscription Successful - BelieveInUnity.org"
-            : "Subscription Successful - BelieveInUnity.org"
+          isSupporterSubscription
+            ? "Supporter Plan Active - BelieveInUnity.org"
+            : isWalletSubscription
+              ? "Wallet Subscription Successful - BelieveInUnity.org"
+              : "Subscription Successful - BelieveInUnity.org"
         }
       />
 
@@ -173,7 +191,11 @@ export default function PlansSuccess({
                 variants={itemVariants}
                 className="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl dark:text-white"
               >
-                {isWalletSubscription ? "Wallet Activated!" : "You're all set!"}
+                {isSupporterSubscription
+                  ? "Supporter plan active!"
+                  : isWalletSubscription
+                    ? "Wallet Activated!"
+                    : "You're all set!"}
               </motion.h1>
 
               {successMessage && (
@@ -250,7 +272,16 @@ export default function PlansSuccess({
                 </motion.div>
               )}
 
-              {isWalletSubscription && (
+              {isSupporterSubscription && (
+                <motion.p
+                  variants={itemVariants}
+                  className="mt-5 text-sm leading-relaxed text-slate-600 sm:text-base dark:text-white/75"
+                >
+                  Your supporter account is ready. Manage donations, follows, rewards, and more from your profile.
+                </motion.p>
+              )}
+
+              {isWalletSubscription && !isSupporterSubscription && (
                 <motion.p
                   variants={itemVariants}
                   className="mt-5 text-sm leading-relaxed text-slate-600 sm:text-base dark:text-white/75"
@@ -260,7 +291,24 @@ export default function PlansSuccess({
               )}
 
               <motion.div variants={itemVariants} className="mt-8 flex flex-col gap-3 sm:flex-row">
-                {isWalletSubscription ? (
+                {isSupporterSubscription ? (
+                  <>
+                    <Link href={profileHref} className="flex-1">
+                      <Button className="group relative h-11 w-full overflow-hidden border-0 font-semibold text-white shadow-md">
+                        <span className={cn("absolute inset-0", logoGradientCTA)} aria-hidden />
+                        <span className="relative flex items-center justify-center gap-2">
+                          Go to Profile
+                          <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+                        </span>
+                      </Button>
+                    </Link>
+                    <Link href="/pricing?tab=supporters" className="flex-1">
+                      <Button variant="outline" className="h-11 w-full border-violet-200 dark:border-purple-500/30">
+                        View Supporter Plans
+                      </Button>
+                    </Link>
+                  </>
+                ) : isWalletSubscription ? (
                   <>
                     <Link href="/" className="flex-1">
                       <Button variant="outline" className="h-11 w-full">

@@ -2,12 +2,14 @@
 
 namespace App\Models;
 
+use App\Support\SupporterSubscriptionService;
 use Illuminate\Database\Eloquent\Model;
 
 class WalletPlan extends Model
 {
     protected $fillable = [
         'name',
+        'slug',
         'frequency',
         'price',
         'one_time_fee',
@@ -41,6 +43,16 @@ class WalletPlan extends Model
     public function scopeOrdered($query)
     {
         return $query->orderBy('sort_order')->orderBy('price');
+    }
+
+    public function scopeSupporterTiers($query)
+    {
+        return $query->whereIn('slug', SupporterSubscriptionService::supporterSlugs());
+    }
+
+    public function isFree(): bool
+    {
+        return (float) $this->price <= 0;
     }
 
     /**
