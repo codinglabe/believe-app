@@ -211,6 +211,15 @@ return [
     ],
 
     /*
+    | One-time welcome allowance when an organization first subscribes to a pricing plan.
+    | Defaults: $5 AI pack (25,000 tokens) + $1 email (1,000 emails). Not granted on renewals.
+    */
+    'plan_subscription' => [
+        'first_month_ai_tokens' => max(0, (int) env('PLAN_FIRST_MONTH_AI_TOKENS', 25_000)),
+        'first_month_emails' => max(0, (int) env('PLAN_FIRST_MONTH_EMAILS', 1_000)),
+    ],
+
+    /*
     | Newsletter / template AI HTML generation (OpenAI JSON mode).
     | Default model is gpt-4o-mini (good layout quality vs cost). Override with NEWSLETTER_AI_MODEL in .env.
     | Keep max_output_tokens <= 4096 unless your model supports higher (otherwise OpenAI returns HTTP 400).

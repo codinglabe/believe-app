@@ -81,7 +81,7 @@ final class PlanPricingPageDefaults
             ],
             [
                 'name' => 'AI Packs',
-                'price' => '$5 per 50,000 tokens',
+                'price' => '$5 per 25,000 tokens',
                 'description' => 'High margin; encourages use',
             ],
             [
