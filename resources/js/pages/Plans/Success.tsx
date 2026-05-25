@@ -2,7 +2,7 @@
 
 import { Head, Link, usePage } from "@inertiajs/react"
 import { motion, type Variants } from "framer-motion"
-import { ArrowRight, Check, Sparkles, Wallet } from "lucide-react"
+import { ArrowRight, Check, Mail, Sparkles, Wallet, Zap } from "lucide-react"
 import AppSidebarLayout from "@/layouts/app/app-sidebar-layout"
 import FrontendLayout from "@/layouts/frontend/frontend-layout"
 import { Button } from "@/components/ui/button"
@@ -13,6 +13,10 @@ interface PlansSuccessProps {
   planName?: string
   trialDays?: number
   isWalletSubscription?: boolean
+  welcomeBonus?: {
+    aiTokens: number
+    emails: number
+  } | null
 }
 
 const logoGradientFrame = "bg-gradient-to-r from-purple-600 to-blue-600"
@@ -99,7 +103,12 @@ function FloatingOrb({ className, delay = 0 }: { className?: string; delay?: num
   )
 }
 
-export default function PlansSuccess({ successMessage, planName, trialDays = 0 }: PlansSuccessProps) {
+export default function PlansSuccess({
+  successMessage,
+  planName,
+  trialDays = 0,
+  welcomeBonus = null,
+}: PlansSuccessProps) {
   const { url } = usePage()
   const isWalletSubscription =
     url?.includes("/wallet/subscription/success") || successMessage?.toLowerCase().includes("wallet")
@@ -202,6 +211,40 @@ export default function PlansSuccess({ successMessage, planName, trialDays = 0 }
                         After your trial, your membership continues automatically unless you cancel from your plan
                         settings.
                       </p>
+                    </motion.div>
+                  )}
+
+                  {welcomeBonus && (welcomeBonus.aiTokens > 0 || welcomeBonus.emails > 0) && (
+                    <motion.div
+                      variants={itemVariants}
+                      className="rounded-xl border border-purple-200/80 bg-gradient-to-br from-purple-50/80 to-blue-50/60 px-4 py-4 text-left dark:border-purple-500/25 dark:from-purple-950/30 dark:to-blue-950/20"
+                    >
+                      <p className="text-sm font-semibold text-slate-900 dark:text-white">
+                        Your first-month starter credits
+                      </p>
+                      <p className="mt-1 text-xs leading-relaxed text-slate-600 dark:text-white/70">
+                        Use these to try AI and email. After that, add more anytime with pay-as-you-go packs.
+                      </p>
+                      <ul className="mt-3 space-y-2">
+                        {welcomeBonus.aiTokens > 0 && (
+                          <li className="flex items-center gap-2 text-sm text-slate-700 dark:text-white/85">
+                            <Zap className="h-4 w-4 shrink-0 text-purple-600 dark:text-purple-400" />
+                            <span>
+                              <span className="font-semibold">{welcomeBonus.aiTokens.toLocaleString()}</span> AI tokens
+                              <span className="text-slate-500 dark:text-white/55"> ($5 pack)</span>
+                            </span>
+                          </li>
+                        )}
+                        {welcomeBonus.emails > 0 && (
+                          <li className="flex items-center gap-2 text-sm text-slate-700 dark:text-white/85">
+                            <Mail className="h-4 w-4 shrink-0 text-blue-600 dark:text-blue-400" />
+                            <span>
+                              <span className="font-semibold">{welcomeBonus.emails.toLocaleString()}</span> emails
+                              <span className="text-slate-500 dark:text-white/55"> ($1 credit)</span>
+                            </span>
+                          </li>
+                        )}
+                      </ul>
                     </motion.div>
                   )}
                 </motion.div>

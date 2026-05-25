@@ -7,6 +7,7 @@ use App\Models\Transaction;
 use App\Models\User;
 use App\Models\WalletPlan;
 use App\Support\PlanAiMediaStudioSubscriptionCredits;
+use App\Support\PlanFirstMonthWelcomeCredits;
 use App\Support\PlanStripeAmount;
 use App\Support\StripeCustomerChargeAmount;
 use Illuminate\Http\Request;
@@ -67,7 +68,7 @@ class PlansController extends Controller
             ],
             [
                 'name' => 'AI Packs',
-                'price' => '$5 per 50,000 tokens',
+                'price' => '$5 per 25,000 tokens',
                 'description' => 'High margin; encourages use',
             ],
             [
@@ -789,7 +790,7 @@ class PlansController extends Controller
             // Retrieve the checkout session from Stripe
             $session = Cashier::stripe()->checkout->sessions->retrieve($sessionId);
 
-            if ($session->payment_status !== 'paid') {
+            if (! in_array($session->payment_status, ['paid', 'no_payment_required'], true)) {
                 return redirect()->route('plans.index')->with('error', 'Payment was not completed.');
             }
 
@@ -884,12 +885,17 @@ class PlansController extends Controller
             }
 
             // Prepare current_plan_details as JSON
+            $welcomeBonus = PlanFirstMonthWelcomeCredits::grantIfEligible($user, (int) $plan->id, $sessionId);
+
             $planDetails = [
                 'name' => $plan->name,
                 'price' => (float) $plan->price,
                 'frequency' => $plan->frequency,
                 'subscribed_at' => now()->toIso8601String(),
                 'ai_media_studio_credits_granted' => 0,
+                'first_month_welcome_granted' => $welcomeBonus['granted'],
+                'first_month_welcome_ai_tokens' => $welcomeBonus['ai_tokens'],
+                'first_month_welcome_emails' => $welcomeBonus['emails'],
                 'custom_fields' => $plan->custom_fields ?? [],
             ];
 
@@ -919,6 +925,9 @@ class PlansController extends Controller
                     'plan_frequency' => $plan->frequency,
                     'currency_fields' => $currencyFields,
                     'ai_media_studio_credits_granted' => $mediaStudioGrant,
+                    'first_month_welcome_granted' => $welcomeBonus['granted'],
+                    'first_month_welcome_ai_tokens' => $welcomeBonus['ai_tokens'],
+                    'first_month_welcome_emails' => $welcomeBonus['emails'],
                     'description' => "Plan Subscription: {$plan->name}".(! empty($currencyFields) ? ' + Add-ons' : ''),
                     'stripe_session_id' => $sessionId,
                     'stripe_payment_intent' => $session->payment_intent ?? null,
@@ -931,6 +940,9 @@ class PlansController extends Controller
                 'user_id' => $user->id,
                 'plan_id' => $plan->id,
                 'ai_media_studio_credits_granted' => $mediaStudioGrant,
+                'first_month_welcome_granted' => $welcomeBonus['granted'],
+                'first_month_welcome_ai_tokens' => $welcomeBonus['ai_tokens'],
+                'first_month_welcome_emails' => $welcomeBonus['emails'],
                 'total_amount' => $totalAmount,
                 'session_id' => $sessionId,
             ]);
@@ -939,6 +951,12 @@ class PlansController extends Controller
                 'planName' => $plan->name,
                 'trialDays' => (int) $plan->trial_days,
                 'successMessage' => "You're subscribed to {$plan->name}.",
+                'welcomeBonus' => $welcomeBonus['granted']
+                    ? [
+                        'aiTokens' => $welcomeBonus['ai_tokens'],
+                        'emails' => $welcomeBonus['emails'],
+                    ]
+                    : null,
             ]);
         } catch (\Exception $e) {
             Log::error('Plan subscription success handler error', [
