@@ -10,6 +10,7 @@ use App\Support\PlanAiMediaStudioSubscriptionCredits;
 use App\Support\PlanFirstMonthWelcomeCredits;
 use App\Support\PlanStripeAmount;
 use App\Support\StripeCustomerChargeAmount;
+use App\Support\SupporterSubscriptionService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
@@ -163,10 +164,7 @@ class PlansController extends Controller
     public function pricing(Request $request)
     {
         $user = $request->user();
-        $currentPlan = null;
-        if ($user && $user->current_plan_id) {
-            $currentPlan = Plan::with('features')->find($user->current_plan_id);
-        }
+        $currentPlan = SupporterSubscriptionService::organizationPricingCurrentPlan($user);
 
         $walletPlanPriceIds = WalletPlan::whereNotNull('stripe_price_id')
             ->pluck('stripe_price_id')
@@ -193,10 +191,21 @@ class PlansController extends Controller
             ];
         }
 
+        $supporterPlans = WalletPlan::query()
+            ->active()
+            ->supporterTiers()
+            ->ordered()
+            ->get()
+            ->map(fn (WalletPlan $plan) => SupporterSubscriptionService::walletPlanToFrontend($plan))
+            ->values()
+            ->all();
+
         return Inertia::render('frontend/Pricing', [
             'plans' => $plans,
             'addOns' => $addOns,
             'currentPlan' => $currentPlanData,
+            'supporterPlans' => $supporterPlans,
+            'supporterSubscription' => SupporterSubscriptionService::subscriptionStateForUser($user),
         ]);
     }
 
@@ -338,10 +347,13 @@ class PlansController extends Controller
     public function getWalletPlans(Request $request)
     {
         try {
-            // Always fetch fresh data from database (no cache)
-            $plansCollection = WalletPlan::active()
-                ->ordered()
-                ->get();
+            $query = WalletPlan::active()->ordered();
+
+            if ($request->boolean('supporter')) {
+                $query->supporterTiers();
+            }
+
+            $plansCollection = $query->get();
 
             // Get monthly plan for savings calculation
             $monthlyPlan = $plansCollection->firstWhere('frequency', 'monthly');
@@ -359,6 +371,7 @@ class PlansController extends Controller
 
                 return [
                     'id' => $plan->id,
+                    'slug' => $plan->slug,
                     'name' => $plan->name,
                     'price' => (float) $plan->price,
                     'one_time_fee' => $plan->one_time_fee ? (float) $plan->one_time_fee : null,
@@ -414,12 +427,36 @@ class PlansController extends Controller
         try {
             $user->refresh();
 
-            // Check if user already has an active subscription
-            if ($user->current_plan_id && $user->subscribed()) {
+            $eligibility = SupporterSubscriptionService::canSubscribe($user, $walletPlan);
+            if (! $eligibility['allowed']) {
+                $message = $eligibility['message'] ?? 'Unable to subscribe to this plan.';
+                if ($request->header('X-Inertia')) {
+                    return redirect()->back()->withErrors(['message' => $message]);
+                }
+
                 return response()->json([
                     'success' => false,
-                    'message' => 'You already have an active subscription.',
+                    'message' => $message,
                 ], 400);
+            }
+
+            if ((float) $walletPlan->price <= 0) {
+                SupporterSubscriptionService::activate($user, $walletPlan);
+
+                $successMessage = "You're now a {$walletPlan->name}. Welcome to Believe In Unity!";
+
+                if (SupporterSubscriptionService::isSupporterPlan($walletPlan)) {
+                    return redirect()->route('user.profile.index')->with('success', $successMessage);
+                }
+
+                return Inertia::render('Plans/Success', [
+                    'successMessage' => $successMessage,
+                    'isWalletSubscription' => true,
+                ]);
+            }
+
+            if ($user->subscribed(SupporterSubscriptionService::SUBSCRIPTION_TYPE)) {
+                SupporterSubscriptionService::endLocalSubscriptions($user);
             }
 
             // Create Stripe product and price if they don't exist
@@ -578,8 +615,14 @@ class PlansController extends Controller
                 } else {
                     $userFriendlyMessage = 'Payment service error. Please try again or contact support.';
                 }
+            } elseif (str_contains($errorMessage, 'SQLSTATE') || str_contains($errorMessage, 'Integrity constraint')) {
+                $userFriendlyMessage = 'Unable to activate your supporter plan. Please try again or contact support.';
             } elseif (str_contains($errorMessage, 'Connection') || str_contains($errorMessage, 'timeout')) {
                 $userFriendlyMessage = 'Connection error. Please check your internet connection and try again.';
+            }
+
+            if ($request->header('X-Inertia')) {
+                return redirect()->back()->withErrors(['message' => $userFriendlyMessage]);
             }
 
             return response()->json([
@@ -707,25 +750,18 @@ class PlansController extends Controller
                 }
 
                 // Find or create a corresponding Plan record for the user's current_plan_id
-                // This maintains compatibility with existing plan system
-                $plan = Plan::where('stripe_price_id', $walletPlan->stripe_price_id)->first();
-
-                if (! $plan) {
-                    // Create a temporary plan record for compatibility
-                    $plan = Plan::create([
-                        'name' => $walletPlan->name,
-                        'frequency' => $walletPlan->frequency,
-                        'price' => $walletPlan->price,
-                        'stripe_price_id' => $walletPlan->stripe_price_id,
-                        'stripe_product_id' => $walletPlan->stripe_product_id,
-                        'description' => $walletPlan->description,
-                        'trial_days' => $walletPlan->trial_days,
-                        'is_active' => true,
-                    ]);
-                }
+                $plan = SupporterSubscriptionService::resolveMirrorPlan($walletPlan);
 
                 // Update user's current plan
                 $user->current_plan_id = $plan->id;
+                $user->current_plan_details = [
+                    'name' => $walletPlan->name,
+                    'price' => (float) $walletPlan->price,
+                    'frequency' => $walletPlan->frequency,
+                    'wallet_plan_id' => $walletPlan->id,
+                    'wallet_plan_slug' => $walletPlan->slug,
+                    'subscribed_at' => now()->toIso8601String(),
+                ];
                 $user->save();
 
                 Log::info('Wallet subscription successful', [
@@ -738,8 +774,14 @@ class PlansController extends Controller
                     'kyc_fee_amount' => $kycFeeAmountFromSession,
                 ]);
 
-                // Render success page instead of redirecting
-                $successMessage = 'Wallet subscription activated successfully! You can now access your digital wallet.';
+                $isSupporterPlan = SupporterSubscriptionService::isSupporterPlan($walletPlan);
+                $successMessage = $isSupporterPlan
+                    ? "You're now a {$walletPlan->name}. Welcome to Believe In Unity!"
+                    : 'Wallet subscription activated successfully! You can now access your digital wallet.';
+
+                if ($isSupporterPlan) {
+                    return redirect()->route('user.profile.index')->with('success', $successMessage);
+                }
 
                 return Inertia::render('Plans/Success', [
                     'successMessage' => $successMessage,
