@@ -199,7 +199,7 @@ jobs:
             ${RSYNC_EXCLUDES} \
             --exclude=vendor/ \
             ./ cpanel-deploy:${DEPLOY_PATH}/
-          rsync -avz \
+          rsync -avz --delete \
             -e "${RSYNC_RSH}" \
             ./vendor/ cpanel-deploy:${DEPLOY_PATH}/vendor/
           ${SSH_CMD} cpanel-deploy "test -f ${DEPLOY_PATH}/public/build/manifest.json && ls -la ${DEPLOY_PATH}/public/build/manifest.json | head -1"

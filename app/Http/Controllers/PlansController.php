@@ -7,6 +7,7 @@ use App\Models\Transaction;
 use App\Models\User;
 use App\Models\WalletPlan;
 use App\Support\PlanAiMediaStudioSubscriptionCredits;
+use App\Support\PlanStripeAmount;
 use App\Support\StripeCustomerChargeAmount;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -41,13 +42,44 @@ class PlansController extends Controller
         return [
             'id' => $plan->id,
             'name' => $plan->name,
-            'price' => (float) $plan->price,
+            'price' => round((float) $plan->price, 2),
             'frequency' => $plan->frequency,
             'is_popular' => (bool) $plan->is_popular,
             'description' => $plan->description,
             'trial_days' => (int) ($plan->trial_days ?? 0),
             'custom_fields' => $plan->custom_fields ?? [],
             'features' => $features,
+        ];
+    }
+
+    /**
+     * Usage-based add-ons shown on public pricing and plans index.
+     *
+     * @return array<int, array{name: string, price: string, description: string}>
+     */
+    private function pricingPageAddOns(): array
+    {
+        return [
+            [
+                'name' => 'Email Re-Ups',
+                'price' => '$1 per 1,000 emails',
+                'description' => 'Perfect for growth and newsletters',
+            ],
+            [
+                'name' => 'AI Packs',
+                'price' => '$5 per 50,000 tokens',
+                'description' => 'High margin; encourages use',
+            ],
+            [
+                'name' => 'SMS Messaging',
+                'price' => '$0.015 per text',
+                'description' => 'Opt-in only',
+            ],
+            [
+                'name' => 'Sweepstakes Platform Fee',
+                'price' => '4% of raised funds',
+                'description' => 'Direct revenue',
+            ],
         ];
     }
 
@@ -88,34 +120,8 @@ class PlansController extends Controller
             ]);
         }
 
-        // Static add-ons (can be moved to database later)
-        $addOns = [
-            [
-                'name' => 'Email Re-Ups',
-                'price' => '$1 per 1,000 emails',
-                'description' => 'Perfect for growth and newsletters',
-            ],
-            [
-                'name' => 'AI Packs',
-                'price' => '$5 per 50,000 tokens',
-                'description' => 'High margin; encourages use',
-            ],
-            [
-                'name' => 'SMS',
-                'price' => '$0.015 per text',
-                'description' => 'Opt-in only',
-            ],
-            [
-                'name' => 'Raffles Platform Fee',
-                'price' => '4% of raised funds',
-                'description' => 'Direct revenue',
-            ],
-            [
-                'name' => 'Volunteer Background Checks',
-                'price' => '$6 each',
-                'description' => 'Optional',
-            ],
-        ];
+        // Static usage-based add-ons (marketing artwork defaults)
+        $addOns = $this->pricingPageAddOns();
 
         $currentPlanData = null;
         if ($currentPlan) {
@@ -174,13 +180,7 @@ class PlansController extends Controller
             ->get()
             ->map(fn (Plan $plan) => $this->planToFrontendArray($plan));
 
-        $addOns = [
-            ['name' => 'Email Re-Ups', 'price' => '$1 per 1,000 emails', 'description' => 'Perfect for growth and newsletters'],
-            ['name' => 'AI Packs', 'price' => '$5 per 50,000 tokens', 'description' => 'High margin; encourages use'],
-            ['name' => 'SMS', 'price' => '$0.015 per text', 'description' => 'Opt-in only'],
-            ['name' => 'Raffles Platform Fee', 'price' => '4% of raised funds', 'description' => 'Direct revenue'],
-            ['name' => 'Volunteer Background Checks', 'price' => '$6 each', 'description' => 'Optional'],
-        ];
+        $addOns = $this->pricingPageAddOns();
 
         $currentPlanData = null;
         if ($currentPlan) {
@@ -255,13 +255,15 @@ class PlansController extends Controller
             ];
 
             // If plan is recurring (not one-time), create subscription with one-time items
-            if ($plan->frequency !== 'one-time' && $plan->stripe_price_id) {
+            if ($plan->frequency !== 'one-time') {
                 // For subscriptions with one-time charges, we need to use Stripe Checkout directly
                 $stripe = Cashier::stripe();
 
+                $stripePriceId = PlanStripeAmount::resolveCheckoutPriceId($plan->fresh());
+
                 $lineItems = [
                     [
-                        'price' => $plan->stripe_price_id,
+                        'price' => $stripePriceId,
                         'quantity' => 1,
                     ],
                 ];
@@ -859,56 +861,24 @@ class PlansController extends Controller
             // Calculate total amount including Currency custom fields
             $totalAmount = (float) $plan->price;
             $currencyFields = [];
-            $emailsIncluded = 0;
-            $aiTokensIncluded = 0;
-            $creditsToAdd = 0;
             $aiMediaStudioCreditsFromPlan = null;
 
-            // Process custom fields
+            // Process custom fields (currency + optional AI Media Studio only — emails/tokens are pay-as-you-go)
             if ($plan->custom_fields && is_array($plan->custom_fields)) {
                 foreach ($plan->custom_fields as $field) {
                     $fieldKey = strtolower($field['key'] ?? '');
                     $fieldType = $field['type'] ?? '';
                     $fieldValue = $field['value'] ?? '';
-                    $fieldLabel = strtolower($field['label'] ?? '');
 
-                    // Handle emails_included - check by key or label
-                    if (($fieldKey === 'emails_included' || str_contains($fieldLabel, 'email')) && $fieldType === 'number') {
-                        // Remove commas and convert to integer
-                        $emailsIncluded = (int) str_replace(',', '', $fieldValue);
-                    }
-                    // Handle ai_tokens_included - check by key or label containing 'token' or 'ai'
-                    elseif (
-                        ($fieldKey === 'ai_tokens_included' ||
-                            $fieldKey === 'ai_tokens' ||
-                            str_contains($fieldKey, 'token') ||
-                            (str_contains($fieldLabel, 'token') || str_contains($fieldLabel, 'ai assistant'))) &&
-                        $fieldType === 'number'
-                    ) {
-                        // Remove commas and convert to integer
-                        $aiTokensIncluded = (int) str_replace(',', '', $fieldValue);
-                    }
-                    // AI Media Studio (short-form video) credits — separate from wallet `credits`
-                    elseif ($fieldKey === 'ai_media_studio_credits' && $fieldType === 'number') {
+                    if ($fieldKey === 'ai_media_studio_credits' && $fieldType === 'number') {
                         $aiMediaStudioCreditsFromPlan = (int) str_replace(',', '', $fieldValue);
-                    }
-                    // Handle currency fields
-                    elseif ($fieldType === 'currency') {
+                    } elseif ($fieldType === 'currency') {
                         $currencyAmount = (float) $fieldValue;
                         $totalAmount += $currencyAmount;
                         $currencyFields[] = [
                             'label' => $field['label'],
                             'amount' => $currencyAmount,
                         ];
-                    }
-                    // Handle credits - only if explicitly marked as credits (not tokens, not emails)
-                    elseif (
-                        ($fieldKey === 'credits' || str_contains($fieldLabel, 'credit')) &&
-                        $fieldType === 'number' &&
-                        ! str_contains($fieldKey, 'token') &&
-                        ! str_contains($fieldLabel, 'token')
-                    ) {
-                        $creditsToAdd += (int) str_replace(',', '', $fieldValue);
                     }
                 }
             }
@@ -919,8 +889,6 @@ class PlansController extends Controller
                 'price' => (float) $plan->price,
                 'frequency' => $plan->frequency,
                 'subscribed_at' => now()->toIso8601String(),
-                'emails_included' => $emailsIncluded,
-                'ai_tokens_included' => $aiTokensIncluded,
                 'ai_media_studio_credits_granted' => 0,
                 'custom_fields' => $plan->custom_fields ?? [],
             ];
@@ -928,19 +896,10 @@ class PlansController extends Controller
             $mediaStudioGrant = PlanAiMediaStudioSubscriptionCredits::grantAmountForSubscribe($aiMediaStudioCreditsFromPlan);
             $planDetails['ai_media_studio_credits_granted'] = $mediaStudioGrant;
 
-            // Update user with plan, emails, tokens, and credits
             $user->update([
                 'current_plan_id' => $plan->id,
                 'current_plan_details' => $planDetails,
-                'emails_included' => $emailsIncluded,
-                'ai_tokens_included' => $aiTokensIncluded,
             ]);
-
-            // Add credits: ai_tokens_included + any explicit credits
-            $totalCreditsToAdd = $aiTokensIncluded + $creditsToAdd;
-            if ($totalCreditsToAdd > 0) {
-                $user->increment('credits', $totalCreditsToAdd);
-            }
 
             if ($mediaStudioGrant > 0) {
                 $user->increment('ai_media_studio_credits', $mediaStudioGrant);
@@ -959,9 +918,6 @@ class PlansController extends Controller
                     'plan_price' => (float) $plan->price,
                     'plan_frequency' => $plan->frequency,
                     'currency_fields' => $currencyFields,
-                    'emails_included' => $emailsIncluded,
-                    'ai_tokens_included' => $aiTokensIncluded,
-                    'credits_added' => $totalCreditsToAdd,
                     'ai_media_studio_credits_granted' => $mediaStudioGrant,
                     'description' => "Plan Subscription: {$plan->name}".(! empty($currencyFields) ? ' + Add-ons' : ''),
                     'stripe_session_id' => $sessionId,
@@ -974,28 +930,15 @@ class PlansController extends Controller
             Log::info('Plan subscription successful', [
                 'user_id' => $user->id,
                 'plan_id' => $plan->id,
-                'emails_included' => $emailsIncluded,
-                'ai_tokens_included' => $aiTokensIncluded,
-                'credits_added' => $totalCreditsToAdd,
                 'ai_media_studio_credits_granted' => $mediaStudioGrant,
                 'total_amount' => $totalAmount,
                 'session_id' => $sessionId,
             ]);
 
-            $successMessage = "Successfully subscribed to {$plan->name}!";
-            if ($totalCreditsToAdd > 0) {
-                $successMessage .= " {$totalCreditsToAdd} credits added.";
-            }
-            if ($emailsIncluded > 0) {
-                $successMessage .= " {$emailsIncluded} emails included.";
-            }
-            if ($mediaStudioGrant > 0) {
-                $successMessage .= " {$mediaStudioGrant} AI Media Studio credits added (US\$1 = 1 credit).";
-            }
-
-            // Render success page instead of redirecting
             return Inertia::render('Plans/Success', [
-                'successMessage' => $successMessage,
+                'planName' => $plan->name,
+                'trialDays' => (int) $plan->trial_days,
+                'successMessage' => "You're subscribed to {$plan->name}.",
             ]);
         } catch (\Exception $e) {
             Log::error('Plan subscription success handler error', [

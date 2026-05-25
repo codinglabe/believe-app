@@ -68,7 +68,7 @@ export default function AdminPlansEdit({ plan }: EditPlanProps) {
     const form = useForm({
         name: plan.name,
         frequency: plan.frequency,
-        price: plan.price.toString(),
+        price: Number(plan.price).toFixed(2),
         stripe_price_id: plan.stripe_price_id || '',
         stripe_product_id: plan.stripe_product_id || '',
         description: plan.description || '',

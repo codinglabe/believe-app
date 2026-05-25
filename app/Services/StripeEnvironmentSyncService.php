@@ -10,6 +10,7 @@ use App\Models\PaymentMethod;
 use App\Models\Plan;
 use App\Models\User;
 use App\Models\WalletPlan;
+use App\Support\PlanStripeAmount;
 use App\Services\StripeConfigService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -484,7 +485,7 @@ class StripeEnvironmentSyncService
     {
         try {
             $stripe = Cashier::stripe();
-            $planAmount = (int) ($plan->price * 100);
+            $planAmount = PlanStripeAmount::usdToStripeCents($plan->price);
             $isOneTime = $plan->frequency === 'one-time';
             $interval = $isOneTime ? null : self::getStripeInterval($plan->frequency);
 
@@ -839,7 +840,7 @@ class StripeEnvironmentSyncService
     {
         try {
             $stripe = Cashier::stripe();
-            $planAmount = (int) round((float) $plan->price * 100);
+            $planAmount = PlanStripeAmount::usdToStripeCents($plan->price);
             $interval = self::getStripeInterval($plan->frequency ?? 'monthly');
 
             if ($plan->stripe_price_id) {
@@ -969,7 +970,7 @@ class StripeEnvironmentSyncService
     {
         try {
             $stripe = Cashier::stripe();
-            $planAmount = (int) ($plan->price * 100);
+            $planAmount = PlanStripeAmount::usdToStripeCents($plan->price);
             $interval = self::getStripeInterval($plan->frequency);
 
             if ($plan->stripe_price_id) {
