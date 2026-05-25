@@ -16,23 +16,18 @@ import {
   GraduationCap,
   ShoppingCart,
   Heart,
-  FileText,
-  CreditCard,
   Video,
   BarChart3,
   ShieldCheck,
   MessageSquare,
-  Infinity,
   Brain,
-  Headphones,
-  Shield,
   DollarSign,
   ArrowBigRight,
   Sparkles,
   Store,
   Globe,
-  LayoutGrid,
   Layers,
+  Plus,
   Trophy,
   type LucideIcon,
 } from "lucide-react";
@@ -107,43 +102,183 @@ const COMPETITOR_ROWS: { service: string; platforms: string; cost: string; Icon:
   { service: "Events", platforms: "Eventbrite / Splash", cost: "$50 – $200", Icon: Calendar },
   { service: "Courses / Learning", platforms: "Teachable / Kajabi", cost: "$39 – $199", Icon: GraduationCap },
   { service: "Marketplace / Store", platforms: "Shopify", cost: "$39 – $105", Icon: Store },
-  { service: "Payment Processing Tools", platforms: "Stripe Tools / Add-ons", cost: "$20 – $100", Icon: CreditCard },
   { service: "Community / Groups", platforms: "Circle / Mighty Networks", cost: "$39 – $150", Icon: Globe },
   { service: "Video / Meetings", platforms: "Zoom / StreamYard", cost: "$15 – $50", Icon: Video },
-  { service: "Content / Media Hosting", platforms: "Vimeo / YouTube Tools", cost: "$20 – $75", Icon: LayoutGrid },
   { service: "AI Tools", platforms: "OpenAI / Jasper", cost: "$20 – $100", Icon: Bot },
   { service: "Analytics / Reporting", platforms: "Mixpanel / Tableau", cost: "$25 – $100", Icon: BarChart3 },
-  { service: "Background Checks", platforms: "Checkr", cost: "Pay per use", Icon: ShieldCheck },
-  { service: "Push / Engagement", platforms: "OneSignal / Braze", cost: "$15 – $100", Icon: Bell },
+  { service: "And Much More", platforms: "", cost: "", Icon: Sparkles },
 ];
 
-const INCLUDED_ITEMS = [
-  "Donations",
-  "Fundraising",
-  "Email",
-  "SMS",
-  "CRM",
-  "Volunteers",
-  "Events",
-  "Courses",
-  "Marketplace",
-  "Payments",
-  "Community",
-  "Video",
-  "Media",
-  "AI Assistant",
-  "Analytics",
-  "Background checks",
-  "Kiosk mode",
-  "Campaign pages",
+/** Marketing artwork — “Everything included” in three columns (8 + 8 + 7). */
+const EVERYTHING_INCLUDED_COLUMNS: string[][] = [
+  [
+    "Donations",
+    "FundMe (Peer-to-Peer)",
+    "Campaigns (Email, Social, Push)",
+    "Sweepstakes",
+    "Marketplace & Sell Products",
+    "Merchant Deals Service Hub",
+    "Volunteer Management",
+    "Groups & Community",
+  ],
+  [
+    "Supporter Management (CRM)",
+    "Care Alliances",
+    "Companion Hub",
+    "Learning / Courses",
+    "Events (Unlimited)",
+    "Earning / Jobs",
+    "News & Articles",
+    "Unity Videos",
+  ],
+  [
+    "Unity Live & Meet",
+    "AI Assistant",
+    "Kiosk Mode",
+    "Push Notifications",
+    "Analytics & Reporting",
+    "Chat & Messaging",
+    "And Much More",
+  ],
 ];
+
+const EVERYTHING_INCLUDED = EVERYTHING_INCLUDED_COLUMNS.flat();
+
+/** Unity Membership pricing from marketing artwork (overridable via plan custom fields). */
+const UNITY_MEMBERSHIP = {
+  introPrice: 19.9,
+  standardPrice: 34,
+  verificationFee: 10,
+  verificationLabel: "Organization Verification",
+  frequency: "month",
+  cancellation: "Cancel anytime. No contracts. No hassle.",
+} as const;
+
+function formatMembershipPrice(value: number): string {
+  const n = Math.round(Number(value) * 100) / 100;
+  return n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function parseOptionalPrice(raw: string | undefined): number | undefined {
+  if (!raw?.trim()) return undefined;
+  const n = Number(String(raw).replace(/[^0-9.]/g, ""));
+  return Number.isNaN(n) ? undefined : Math.round(n * 100) / 100;
+}
+
+/** Intro price: admin plan Price ($) first, then optional custom field, then marketing default. */
+function resolveIntroPrice(plan: Plan | undefined): number {
+  if (plan?.price != null && Number(plan.price) > 0) {
+    return Math.round(Number(plan.price) * 100) / 100;
+  }
+  return (
+    parseOptionalPrice(planCustomFieldByKey(plan, "pricing_intro_price")) ??
+    UNITY_MEMBERSHIP.introPrice
+  );
+}
+
+function resolveStandardPrice(plan: Plan | undefined): number {
+  return (
+    parseOptionalPrice(planCustomFieldByKey(plan, "pricing_standard_price")) ??
+    UNITY_MEMBERSHIP.standardPrice
+  );
+}
+
+function marketingIncludedColumns(): { key: string; label: string }[][] {
+  return EVERYTHING_INCLUDED_COLUMNS.map((column, colIdx) =>
+    column.map((label, rowIdx) => ({
+      key: `included-${colIdx}-${rowIdx}`,
+      label,
+    })),
+  );
+}
+
+function marketingIncludedItems(): { key: string; label: string }[] {
+  return marketingIncludedColumns()
+    .flat()
+    .map((item, i) => ({ ...item, key: `included-${i}` }));
+}
+
+function parseIncludedLabel(item: unknown): string {
+  if (typeof item === "string" && item.trim()) {
+    return item.trim();
+  }
+  if (item && typeof item === "object") {
+    return String((item as Record<string, unknown>).label ?? "").trim();
+  }
+  return "";
+}
+
+function splitFlatIncludedIntoColumns(items: { key: string; label: string }[]): { key: string; label: string }[][] {
+  const sizes = [8, 8, 7];
+  const columns: { key: string; label: string }[][] = [[], [], []];
+  let at = 0;
+  for (let col = 0; col < sizes.length; col++) {
+    columns[col] = items.slice(at, at + sizes[col]);
+    at += sizes[col];
+  }
+  if (at < items.length) {
+    columns[2] = [...columns[2], ...items.slice(at)];
+  }
+  return columns.filter((column) => column.length > 0);
+}
+
+function everythingIncludedColumnsFromPlan(plan: Plan | undefined): { key: string; label: string }[][] {
+  const raw = planCustomFieldByKey(plan, "pricing_everything_included_json");
+  if (!raw) {
+    return marketingIncludedColumns();
+  }
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      const columnsRaw = (parsed as Record<string, unknown>).columns;
+      if (Array.isArray(columnsRaw) && columnsRaw.length > 0) {
+        const columns: { key: string; label: string }[][] = [];
+        for (let colIdx = 0; colIdx < columnsRaw.length; colIdx++) {
+          const column = columnsRaw[colIdx];
+          if (!Array.isArray(column)) continue;
+          const items: { key: string; label: string }[] = [];
+          for (let rowIdx = 0; rowIdx < column.length; rowIdx++) {
+            const label = parseIncludedLabel(column[rowIdx]);
+            if (label) {
+              items.push({ key: `included-${colIdx}-${rowIdx}`, label });
+            }
+          }
+          if (items.length > 0) {
+            columns.push(items);
+          }
+        }
+        if (columns.length > 0) {
+          return columns;
+        }
+      }
+    }
+
+    if (Array.isArray(parsed)) {
+      const flat: { key: string; label: string }[] = [];
+      for (let i = 0; i < parsed.length; i++) {
+        const label = parseIncludedLabel(parsed[i]);
+        if (label) {
+          flat.push({ key: `included-${i}`, label });
+        }
+      }
+      if (flat.length > 0) {
+        return splitFlatIncludedIntoColumns(flat);
+      }
+    }
+  } catch {
+    /* fall through */
+  }
+
+  return marketingIncludedColumns();
+}
 
 function addOnIcon(name: string): LucideIcon {
   const n = name.toLowerCase();
   if (n.includes("email")) return Mail;
   if (n.includes("ai")) return Brain;
   if (n.includes("sms")) return MessageSquare;
-  if (n.includes("raffle")) return Trophy;
+  if (n.includes("raffle") || n.includes("sweepstakes")) return Trophy;
   if (n.includes("background")) return ShieldCheck;
   return Sparkles;
 }
@@ -155,104 +290,11 @@ function addOnCircleClass(name: string): string {
   if (n.includes("ai")) return "bg-purple-600";
   if (n.includes("sms")) return "bg-emerald-600";
   if (n.includes("raffle")) return "bg-red-600";
+  if (n.includes("sweepstakes")) return "bg-red-600";
   if (n.includes("background")) return "bg-slate-700 ring-2 ring-slate-600 dark:bg-blue-950 dark:ring-blue-800/80";
   return "bg-purple-600";
 }
 
-/** Backend may send 0/1; normalize so filtering matches PHP admin intent. */
-function featureIsUnlimited(f: PlanFeature): boolean {
-  const v = f.is_unlimited as unknown;
-  return v === true || v === 1 || v === "1";
-}
-
-/**
- * Full feature list from the featured plan (same order as admin sort_order).
- * Previously only non-unlimited rows were shown when any finite row existed — that hid most DB features.
- */
-function includedItemsFromPlan(plan: Plan | undefined): { key: string; label: string }[] {
-  const raw = plan?.features;
-  if (!Array.isArray(raw) || raw.length === 0) {
-    return INCLUDED_ITEMS.map((label) => ({ key: label, label }));
-  }
-  const sorted = [...raw].sort((a, b) => {
-    const ao = Number(a.sort_order ?? 0);
-    const bo = Number(b.sort_order ?? 0);
-    if (ao !== bo) return ao - bo;
-    return a.id - b.id;
-  });
-  return sorted.map((f) => {
-    const name = (f.name ?? "").trim() || "—";
-    const label =
-      featureIsUnlimited(f) && /^Unlimited\s+/i.test(name)
-        ? name.replace(/^Unlimited\s+/i, "").trim() || name
-        : name;
-    return { key: `feature-${f.id}`, label };
-  });
-}
-
-/** Email / AI / support copy from plan custom fields (same keys as admin Plans edit). */
-function planHighlightLines(plan: Plan | undefined): {
-  emailsLine: string;
-  aiLine: string;
-  supportLine: string;
-} {
-  const fallbacks = {
-    emailsLine: "5,000 emails included every month",
-    aiLine: "50,000 AI tokens every month",
-    supportLine: "Priority email support",
-  };
-  if (!plan?.custom_fields?.length) {
-    return fallbacks;
-  }
-
-  const fields = plan.custom_fields;
-
-  const emailField = fields.find(
-    (f) =>
-      f.type === "number" &&
-      (String(f.key).toLowerCase() === "emails_included" || /email/i.test(String(f.label ?? ""))),
-  );
-  let emailsLine = fallbacks.emailsLine;
-  if (emailField?.value !== undefined && String(emailField.value).trim() !== "") {
-    const n = Number(String(emailField.value).replace(/,/g, ""));
-    if (!Number.isNaN(n) && n >= 0) {
-      emailsLine = `${n.toLocaleString()} emails included every month`;
-    }
-  }
-
-  const aiTokenNumber = fields.find((f) => {
-    if (f.type !== "number") {
-      return false;
-    }
-    const k = String(f.key).toLowerCase();
-    return k === "ai_tokens_included" || k === "ai_tokens";
-  });
-  const aiTokenText = fields.find((f) => {
-    if (f.type !== "text") {
-      return false;
-    }
-    const k = String(f.key).toLowerCase();
-    return k === "ai_tokens" || /ai|token/i.test(String(f.label ?? ""));
-  });
-
-  let aiLine = fallbacks.aiLine;
-  if (aiTokenNumber?.value !== undefined && String(aiTokenNumber.value).trim() !== "") {
-    const n = Number(String(aiTokenNumber.value).replace(/,/g, ""));
-    if (!Number.isNaN(n) && n > 0) {
-      aiLine = `${n.toLocaleString()} AI tokens every month`;
-    }
-  } else if (aiTokenText?.value?.trim()) {
-    aiLine = aiTokenText.value.trim();
-  }
-
-  const supportField = fields.find(
-    (f) => String(f.key).toLowerCase() === "support_level" && f.type === "text",
-  );
-  const supportLine =
-    supportField?.value?.trim() ? supportField.value.trim() : fallbacks.supportLine;
-
-  return { emailsLine, aiLine, supportLine };
-}
 
 /** All currency-type custom fields from admin (type must match “currency”, any casing). */
 function planCurrencyCustomFields(plan: Plan | undefined): CustomField[] {
@@ -286,6 +328,8 @@ function planCustomFieldByKey(plan: Plan | undefined, key: string): string | und
  * "Pricing Competitor Period", "Pricing Competitor Footer Label", "Pricing Difference Blurb",
  * "Pricing Vs Fragmented Label", "Pricing Sms Headline", "Pricing Sms Subtitle", "Pricing Sms Note",
  * "Pricing Card Footer Tagline"; "Pricing Usage Addons Json" (text: JSON array of {name,price,description}).
+ * "Pricing Everything Included Json" (text: JSON `{columns:[[...],[...],[...]]}` or flat string array).
+ * "Pricing Competitor Rows Json" (text: JSON array of {service, platforms, cost, icon}).
  * Benefit row: "Pricing Unlimited Access Summary", "Pricing Trial Card Copy" (overrides trial tile entirely).
  */
 function pricingPageMarketingFromPlan(plan: Plan | undefined) {
@@ -316,24 +360,15 @@ function pricingPageMarketingFromPlan(plan: Plan | undefined) {
       "We show you the full cost upfront before you launch any campaign.",
     cardFooterTagline:
       planCustomFieldByKey(plan, "pricing_card_footer_tagline") ??
-      "One plan. One price. Unlimited impact.",
+      "ONE PLAN. ONE PRICE. ONE MISSION.",
     unlimitedAccessSummary:
       planCustomFieldByKey(plan, "pricing_unlimited_access_summary") ??
       "Donations, FundMe (Peer-to-Peer), Campaigns (Email, Social, Push)",
+    cancellationPolicy:
+      planCustomFieldByKey(plan, "pricing_cancellation_policy") ?? UNITY_MEMBERSHIP.cancellation,
   };
 }
 
-function trialBenefitCardCopy(plan: Plan | undefined): string {
-  const override = planCustomFieldByKey(plan, "pricing_trial_card_copy");
-  if (override) {
-    return override;
-  }
-  const days = plan?.trial_days ?? 0;
-  if (days > 0) {
-    return `${days}-day free trial`;
-  }
-  return "No free trial — real value, transparent pricing.";
-}
 
 function usageAddOnsFromPlan(plan: Plan | undefined, fallback: AddOn[]): AddOn[] {
   const raw = planCustomFieldByKey(plan, "pricing_usage_addons_json");
@@ -356,13 +391,93 @@ function usageAddOnsFromPlan(plan: Plan | undefined, fallback: AddOn[]): AddOn[]
   }
 }
 
+type CompetitorRow = { service: string; platforms: string; cost: string; Icon: LucideIcon };
+
+const COMPETITOR_ICON_BY_NAME: Record<string, LucideIcon> = {
+  Heart,
+  Sparkles,
+  Mail,
+  MessageSquare,
+  Users,
+  Calendar,
+  GraduationCap,
+  Store,
+  Globe,
+  Video,
+  Bot,
+  BarChart3,
+};
+
+function competitorRowIcon(iconName?: string, service?: string): LucideIcon {
+  const named = String(iconName ?? "").trim();
+  if (named && COMPETITOR_ICON_BY_NAME[named]) {
+    return COMPETITOR_ICON_BY_NAME[named];
+  }
+  const s = String(service ?? "").toLowerCase();
+  if (s.includes("donation")) return Heart;
+  if (s.includes("fund")) return Sparkles;
+  if (s.includes("email")) return Mail;
+  if (s.includes("sms")) return MessageSquare;
+  if (s.includes("crm") || s.includes("volunteer")) return Users;
+  if (s.includes("event")) return Calendar;
+  if (s.includes("course") || s.includes("learning")) return GraduationCap;
+  if (s.includes("market") || s.includes("store")) return Store;
+  if (s.includes("community") || s.includes("group")) return Globe;
+  if (s.includes("video") || s.includes("meet")) return Video;
+  if (s.includes("ai")) return Bot;
+  if (s.includes("analytic")) return BarChart3;
+  return Sparkles;
+}
+
+function competitorRowsFromPlan(plan: Plan | undefined): CompetitorRow[] {
+  const raw = planCustomFieldByKey(plan, "pricing_competitor_rows_json");
+  if (!raw) {
+    return COMPETITOR_ROWS;
+  }
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) {
+      return COMPETITOR_ROWS;
+    }
+    const rows: CompetitorRow[] = [];
+    for (const item of parsed) {
+      if (!item || typeof item !== "object") continue;
+      const o = item as Record<string, unknown>;
+      const service = String(o.service ?? "").trim();
+      const platforms = String(o.platforms ?? "").trim();
+      const cost = String(o.cost ?? "").trim();
+      if (!service) continue;
+      rows.push({
+        service,
+        platforms,
+        cost,
+        Icon: competitorRowIcon(String(o.icon ?? ""), service),
+      });
+    }
+    const hasMuchMore = rows.some((r) => r.service.toLowerCase() === "and much more");
+    if (!hasMuchMore) {
+      rows.push({
+        service: "And Much More",
+        platforms: "",
+        cost: "",
+        Icon: Sparkles,
+      });
+    }
+    return rows.length > 0 ? rows : COMPETITOR_ROWS;
+  } catch {
+    return COMPETITOR_ROWS;
+  }
+}
+
 export default function PricingPage({ plans, addOns, currentPlan }: Props) {
   const featuredPlan = plans.find((p) => p.is_popular) ?? plans[0];
   const verificationCurrencyFields = planCurrencyCustomFields(featuredPlan);
-  const includedGridItems = includedItemsFromPlan(featuredPlan);
-  const highlightLines = planHighlightLines(featuredPlan);
+  const includedGridColumns = everythingIncludedColumnsFromPlan(featuredPlan);
+  const introPrice = resolveIntroPrice(featuredPlan);
+  const standardPrice = resolveStandardPrice(featuredPlan);
   const pricingMarketing = pricingPageMarketingFromPlan(featuredPlan);
   const displayAddOns = usageAddOnsFromPlan(featuredPlan, addOns);
+  const competitorRows = competitorRowsFromPlan(featuredPlan);
 
   return (
     <FrontendLayout>
@@ -371,6 +486,9 @@ export default function PricingPage({ plans, addOns, currentPlan }: Props) {
         <div className="container mx-auto px-3 sm:px-4 md:px-6 py-8 sm:py-12 md:py-14">
           {/* Header */}
           <header className="mx-auto mb-10 max-w-4xl text-center sm:mb-14 md:mb-16">
+            <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.2em] text-violet-700 sm:text-xs dark:text-violet-300">
+              Believe In Unity · 501(c)(3) Not For Profit
+            </p>
             <h1 className="mb-3 text-balance text-2xl font-bold tracking-tight text-slate-900 sm:mb-4 sm:text-4xl md:text-5xl dark:text-white">
               The True Cost of Doing More With Less
             </h1>
@@ -445,24 +563,28 @@ export default function PricingPage({ plans, addOns, currentPlan }: Props) {
                 </div>
 
                 <div className="flex-1 overflow-x-auto overscroll-x-contain bg-gradient-to-b from-slate-50/80 to-rose-50/40 [-webkit-overflow-scrolling:touch] dark:from-transparent dark:to-red-950/[0.12]">
-                  <table className="w-full min-w-[580px] text-xs">
+                  <table className="w-full min-w-[320px] text-xs">
                     <thead>
                       <tr className="border-b border-red-200/80 bg-red-50/90 text-left text-[9px] uppercase tracking-wider text-red-800/70 dark:border-red-500/25 dark:bg-red-950/25 dark:text-red-100/55 sm:text-[10px]">
-                        <th className="px-2.5 py-2 font-semibold w-[36%] min-w-[200px] sm:px-3">Service</th>
-                        <th className="px-2.5 py-2 font-semibold w-[38%] sm:px-3">Popular platforms</th>
-                        <th className="px-2.5 py-2 text-right font-semibold whitespace-nowrap sm:px-3 w-[26%]">
+                        <th className="px-2.5 py-2 font-semibold sm:px-3">Service</th>
+                        <th className="px-2.5 py-2 text-right font-semibold whitespace-nowrap sm:px-3">
                           Typical monthly cost
                         </th>
                       </tr>
                     </thead>
                     <tbody>
-                      {COMPETITOR_ROWS.map((row) => (
+                      {competitorRows.map((row) => (
                         <tr
                           key={row.service}
                           className="border-b border-slate-200/90 transition-colors hover:bg-red-50/60 dark:border-white/[0.06] dark:hover:bg-red-500/[0.06]"
                         >
                           <td className="px-2.5 py-1.5 sm:px-3 sm:py-2">
-                            <span className="flex items-center gap-2 text-slate-800 dark:text-white/90">
+                            <span
+                              className={cn(
+                                "flex items-center gap-2 text-slate-800 dark:text-white/90",
+                                row.service.toLowerCase() === "and much more" && "font-semibold italic",
+                              )}
+                            >
                               <span
                                 className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-red-300/70 bg-red-50 shadow-inner shadow-red-200/50 dark:border-red-500/30 dark:bg-red-500/10 dark:shadow-red-950/40 sm:h-8 sm:w-8 sm:rounded-lg"
                                 aria-hidden
@@ -472,13 +594,20 @@ export default function PricingPage({ plans, addOns, currentPlan }: Props) {
                               {row.service}
                             </span>
                           </td>
-                          <td className="px-2.5 py-1.5 text-slate-600 sm:px-3 sm:py-2 dark:text-white/65">
-                            {row.platforms}
-                          </td>
                           <td className="px-2.5 py-1.5 text-right font-semibold whitespace-nowrap tabular-nums sm:px-3 sm:py-2">
-                            <span className="bg-gradient-to-br from-red-600 to-red-700 bg-clip-text text-transparent dark:from-red-300 dark:to-red-500 dark:drop-shadow-[0_0_12px_rgba(248,113,113,0.25)]">
-                              {row.cost}
-                            </span>
+                            {row.cost ? (
+                              <span className="bg-gradient-to-br from-red-600 to-red-700 bg-clip-text text-transparent dark:from-red-300 dark:to-red-500 dark:drop-shadow-[0_0_12px_rgba(248,113,113,0.25)]">
+                                {row.cost}
+                              </span>
+                            ) : row.service.toLowerCase() === "and much more" ? (
+                              <span className="inline-flex items-center justify-end">
+                                <Plus
+                                  className="h-4 w-4 text-red-600 dark:text-red-300"
+                                  strokeWidth={2.5}
+                                  aria-hidden
+                                />
+                              </span>
+                            ) : null}
                           </td>
                         </tr>
                       ))}
@@ -533,7 +662,7 @@ export default function PricingPage({ plans, addOns, currentPlan }: Props) {
                       </span>
                     </div>
                     <Badge className="border-0 bg-blue-600/90 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white shadow-sm backdrop-blur-sm">
-                      All-in-one
+                      Unity Membership
                     </Badge>
                   </div>
                 </div>
@@ -559,42 +688,42 @@ export default function PricingPage({ plans, addOns, currentPlan }: Props) {
                         <span className="text-slate-600 dark:text-white/60">{pricingMarketing.fragmentedLabel}</span>
                       </p>
 
-                      {featuredPlan ? (
-                        <>
-                          <p className="text-3xl font-bold tabular-nums tracking-tight sm:text-4xl md:text-5xl">
-                            <span className="bg-gradient-to-r from-violet-600 to-blue-600 bg-clip-text text-transparent dark:from-purple-400 dark:to-blue-400">
-                              ${featuredPlan.price}
-                            </span>
-                            <span className="text-base font-semibold text-slate-500 sm:text-lg md:text-xl dark:text-white/55">
-                              {" "}
-                              / {featuredPlan.frequency}
-                            </span>
-                          </p>
-                          {verificationCurrencyFields.length > 0 ? (
-                            verificationCurrencyFields.map((f, i) => {
-                              const label = (f.label ?? "").trim() || "One-time fee";
-                              const amount = formatCurrencyCustomFieldDisplay(String(f.value ?? ""));
-                              return (
-                                <p
-                                  key={`verify-spot-${String(f.key ?? "")}-${i}`}
-                                  className="text-sm font-medium text-slate-600 dark:text-white/75"
-                                >
-                                  + {label}
-                                  {amount ? ` ${amount}` : " (see plan details at signup)"}
-                                </p>
-                              );
-                            })
-                          ) : (
-                            <p className="text-sm font-medium text-slate-600 dark:text-white/75">
-                              + organization verification (see plan details at signup)
-                            </p>
-                          )}
-                        </>
-                      ) : (
-                        <p className="text-lg font-semibold text-slate-600 dark:text-white/80">
-                          Plans loading… check back shortly.
+                      <>
+                        <p className="text-3xl font-bold tabular-nums tracking-tight sm:text-4xl md:text-5xl">
+                          <span className="bg-gradient-to-r from-violet-600 to-blue-600 bg-clip-text text-transparent dark:from-purple-400 dark:to-blue-400">
+                            ${formatMembershipPrice(introPrice)}
+                          </span>
+                          <span className="text-base font-semibold text-slate-500 sm:text-lg md:text-xl dark:text-white/55">
+                            {" "}
+                            / {UNITY_MEMBERSHIP.frequency}
+                          </span>
                         </p>
-                      )}
+                        <p className="text-sm font-medium text-slate-600 dark:text-white/75">
+                          Then ${formatMembershipPrice(standardPrice)}/{UNITY_MEMBERSHIP.frequency} after introductory
+                          period
+                        </p>
+                        <p className="text-xs text-slate-500 dark:text-white/60">{pricingMarketing.cancellationPolicy}</p>
+                        {verificationCurrencyFields.length > 0 ? (
+                          verificationCurrencyFields.map((f, i) => {
+                            const label = (f.label ?? "").trim() || "One-time fee";
+                            const amount = formatCurrencyCustomFieldDisplay(String(f.value ?? ""));
+                            return (
+                              <p
+                                key={`verify-spot-${String(f.key ?? "")}-${i}`}
+                                className="text-sm font-medium text-slate-600 dark:text-white/75"
+                              >
+                                + {label}
+                                {amount ? ` ${amount}` : " (one-time)"}
+                              </p>
+                            );
+                          })
+                        ) : (
+                          <p className="text-sm font-medium text-slate-600 dark:text-white/75">
+                            + {UNITY_MEMBERSHIP.verificationLabel}{" "}
+                            {formatCurrencyCustomFieldDisplay(String(UNITY_MEMBERSHIP.verificationFee))} one-time
+                          </p>
+                        )}
+                      </>
                       <p className="mx-auto max-w-md text-sm leading-relaxed text-slate-600 dark:text-white/60">
                         Everything your organization needs. All in one platform.
                       </p>
@@ -611,73 +740,29 @@ export default function PricingPage({ plans, addOns, currentPlan }: Props) {
                       <span className="h-px max-w-[4rem] flex-1 bg-gradient-to-l from-transparent via-violet-400/50 to-sky-400/50 dark:via-purple-500/40 dark:to-blue-500/40" />
                     </div>
                     <div className="rounded-xl border border-violet-200/80 bg-white/90 p-3 ring-1 ring-inset ring-sky-200/50 backdrop-blur-sm dark:border-purple-500/20 dark:bg-[#12122c]/80 dark:ring-blue-500/10 sm:p-4">
-                      <div className="grid grid-cols-1 gap-x-3 gap-y-2 min-[420px]:grid-cols-2 sm:grid-cols-3 sm:gap-y-2.5 sm:text-sm">
-                        {includedGridItems.map((item) => (
-                          <div
-                            key={item.key}
-                            className="flex min-w-0 items-center gap-2 text-xs text-slate-700 sm:text-sm dark:text-white/85"
-                          >
-                            <span
-                              className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md border border-violet-300/70 bg-gradient-to-br from-violet-100 to-sky-100 dark:border-purple-400/30 dark:from-purple-600/20 dark:to-blue-600/15"
-                              aria-hidden
-                            >
-                              <Check className="h-3 w-3 text-violet-700 dark:text-blue-200" strokeWidth={3} />
-                            </span>
-                            <span className="break-words">{item.label}</span>
+                      <div className="grid grid-cols-1 gap-x-4 gap-y-4 sm:grid-cols-3 sm:gap-x-3 sm:gap-y-0">
+                        {includedGridColumns.map((column, colIdx) => (
+                          <div key={`included-column-${colIdx}`} className="flex flex-col gap-2 sm:gap-2.5">
+                            {column.map((item) => (
+                              <div
+                                key={item.key}
+                                className="flex min-w-0 items-center gap-2 text-xs text-slate-700 sm:text-sm dark:text-white/85"
+                              >
+                                <span
+                                  className="flex h-5 w-5 shrink-0 items-center justify-center rounded-md border border-violet-300/70 bg-gradient-to-br from-violet-100 to-sky-100 dark:border-purple-400/30 dark:from-purple-600/20 dark:to-blue-600/15"
+                                  aria-hidden
+                                >
+                                  <Check className="h-3 w-3 text-violet-700 dark:text-blue-200" strokeWidth={3} />
+                                </span>
+                                <span className="break-words">{item.label}</span>
+                              </div>
+                            ))}
                           </div>
                         ))}
                       </div>
                     </div>
                   </div>
 
-                  {/* Benefit tiles */}
-                  <div className="grid grid-cols-2 gap-2 px-2 pb-3 sm:grid-cols-5 sm:px-3 sm:pb-4">
-                    <div className="rounded-xl border border-violet-200/80 bg-gradient-to-br from-violet-50/90 to-sky-50/60 p-2.5 text-center shadow-inner shadow-violet-200/30 dark:border-purple-500/25 dark:from-purple-600/15 dark:to-blue-600/10 dark:shadow-purple-900/20 sm:p-3">
-                      <Infinity className="mx-auto mb-2 h-5 w-5 text-violet-600 dark:text-blue-200" />
-                      <p className="mb-1 bg-gradient-to-r from-violet-700 to-blue-700 bg-clip-text text-[10px] font-bold uppercase text-transparent dark:from-purple-300 dark:to-blue-300">
-                        Unlimited access
-                      </p>
-                      <p className="break-words text-[10px] leading-snug text-slate-600 sm:text-[11px] dark:text-white/70">
-                        {pricingMarketing.unlimitedAccessSummary}
-                      </p>
-                    </div>
-                    <div className="rounded-xl border border-violet-200/80 bg-gradient-to-br from-violet-50/90 to-sky-50/60 p-2.5 text-center dark:border-purple-500/25 dark:from-purple-600/15 dark:to-blue-600/10 sm:p-3">
-                      <Mail className="mx-auto mb-2 h-5 w-5 text-violet-600 dark:text-blue-200" />
-                      <p className="mb-1 bg-gradient-to-r from-violet-700 to-blue-700 bg-clip-text text-[10px] font-bold uppercase text-transparent dark:from-purple-300 dark:to-blue-300">
-                        Emails
-                      </p>
-                      <p className="text-[11px] leading-snug text-slate-600 dark:text-white/70">
-                        {highlightLines.emailsLine}
-                      </p>
-                    </div>
-                    <div className="rounded-xl border border-violet-200/80 bg-gradient-to-br from-violet-50/90 to-sky-50/60 p-2.5 text-center dark:border-purple-500/25 dark:from-purple-600/15 dark:to-blue-600/10 sm:p-3">
-                      <Brain className="mx-auto mb-2 h-5 w-5 text-violet-600 dark:text-blue-200" />
-                      <p className="mb-1 bg-gradient-to-r from-violet-700 to-blue-700 bg-clip-text text-[10px] font-bold uppercase text-transparent dark:from-purple-300 dark:to-blue-300">
-                        AI tokens
-                      </p>
-                      <p className="text-[11px] leading-snug text-slate-600 dark:text-white/70">
-                        {highlightLines.aiLine}
-                      </p>
-                    </div>
-                    <div className="rounded-xl border border-violet-200/80 bg-gradient-to-br from-violet-50/90 to-sky-50/60 p-2.5 text-center dark:border-purple-500/25 dark:from-purple-600/15 dark:to-blue-600/10 sm:p-3">
-                      <Headphones className="mx-auto mb-2 h-5 w-5 text-violet-600 dark:text-blue-200" />
-                      <p className="mb-1 bg-gradient-to-r from-violet-700 to-blue-700 bg-clip-text text-[10px] font-bold uppercase text-transparent dark:from-purple-300 dark:to-blue-300">
-                        Support
-                      </p>
-                      <p className="text-[11px] leading-snug text-slate-600 dark:text-white/70">
-                        {highlightLines.supportLine}
-                      </p>
-                    </div>
-                    <div className="col-span-2 rounded-xl border border-sky-300/80 bg-gradient-to-br from-sky-50/90 to-violet-50/70 p-2.5 text-center ring-1 ring-inset ring-sky-200/60 dark:border-blue-500/35 dark:from-blue-600/15 dark:to-purple-600/10 dark:ring-blue-400/15 sm:col-span-1 sm:p-3">
-                      <Shield className="mx-auto mb-2 h-5 w-5 text-sky-600 dark:text-blue-300" />
-                      <p className="mb-1 bg-gradient-to-r from-violet-700 to-blue-700 bg-clip-text text-[10px] font-bold uppercase text-transparent dark:from-purple-300 dark:to-blue-300">
-                        Trial
-                      </p>
-                      <p className="text-[11px] leading-snug text-slate-600 dark:text-white/70">
-                        {trialBenefitCardCopy(featuredPlan)}
-                      </p>
-                    </div>
-                  </div>
 
                   <div className="mt-auto px-3 pb-4 sm:px-4 sm:pb-5">
                     {!featuredPlan ? (
@@ -686,7 +771,7 @@ export default function PricingPage({ plans, addOns, currentPlan }: Props) {
                           <span className={cn("absolute inset-0 opacity-95", logoGradientCTA)} aria-hidden />
                           <span className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent opacity-0 transition group-hover:opacity-100" />
                           <span className="relative flex items-center justify-center gap-2">
-                            Get started
+                            Get started today
                             <ArrowRight className="h-4 w-4" />
                           </span>
                         </Button>
@@ -714,7 +799,7 @@ export default function PricingPage({ plans, addOns, currentPlan }: Props) {
                         <Button className="group relative w-full h-12 overflow-hidden border-0 font-semibold text-white shadow-lg transition hover:brightness-110">
                           <span className={cn("absolute inset-0 opacity-95", logoGradientCTA)} aria-hidden />
                           <span className="relative flex items-center justify-center gap-2">
-                            Get started
+                            Get started today
                             <ArrowRight className="h-4 w-4" />
                           </span>
                         </Button>
@@ -783,41 +868,36 @@ export default function PricingPage({ plans, addOns, currentPlan }: Props) {
                   <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-violet-700 dark:text-purple-400">
                     Believe In Unity
                   </span>
-                  {featuredPlan ? (
-                    <>
-                      <div className="mt-1 flex flex-wrap items-baseline justify-center gap-x-1.5 gap-y-0 md:justify-start">
-                        <span className="text-2xl font-bold tabular-nums text-violet-700 sm:text-[1.65rem] dark:text-purple-400">
-                          ${featuredPlan.price}
-                        </span>
-                        <span className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-white/55">
-                          / {featuredPlan.frequency}
-                        </span>
-                      </div>
-                      {verificationCurrencyFields.length > 0 ? (
-                        verificationCurrencyFields.map((f, i) => {
-                          const label = (f.label ?? "").trim() || "Verification";
-                          const amount = formatCurrencyCustomFieldDisplay(String(f.value ?? ""));
-                          return (
-                            <p
-                              key={`verify-sum-${String(f.key ?? "")}-${i}`}
-                              className="mt-1 text-[10px] leading-snug text-slate-500 dark:text-white/45"
-                            >
-                              + {label}
-                              {amount ? ` ${amount} one-time` : " (see plan at signup)"}
-                            </p>
-                          );
-                        })
-                      ) : (
-                        <p className="mt-1 text-[10px] leading-snug text-slate-500 dark:text-white/45">
-                          + organization verification at signup
-                        </p>
-                      )}
-                    </>
-                  ) : (
-                    <p className="mt-2 text-sm font-medium text-slate-500 dark:text-white/45">
-                      See plans for current pricing
-                    </p>
-                  )}
+                  <>
+                    <div className="mt-1 flex flex-wrap items-baseline justify-center gap-x-1.5 gap-y-0 md:justify-start">
+                      <span className="text-2xl font-bold tabular-nums text-violet-700 sm:text-[1.65rem] dark:text-purple-400">
+                        ${formatMembershipPrice(introPrice)}
+                      </span>
+                      <span className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-white/55">
+                        / {UNITY_MEMBERSHIP.frequency}
+                      </span>
+                    </div>
+                    {verificationCurrencyFields.length > 0 ? (
+                      verificationCurrencyFields.map((f, i) => {
+                        const label = (f.label ?? "").trim() || "Verification";
+                        const amount = formatCurrencyCustomFieldDisplay(String(f.value ?? ""));
+                        return (
+                          <p
+                            key={`verify-sum-${String(f.key ?? "")}-${i}`}
+                            className="mt-1 text-[10px] leading-snug text-slate-500 dark:text-white/45"
+                          >
+                            + {label}
+                            {amount ? ` ${amount} one-time` : " (one-time)"}
+                          </p>
+                        );
+                      })
+                    ) : (
+                      <p className="mt-1 text-[10px] leading-snug text-slate-500 dark:text-white/45">
+                        + {UNITY_MEMBERSHIP.verificationLabel}{" "}
+                        {formatCurrencyCustomFieldDisplay(String(UNITY_MEMBERSHIP.verificationFee))} one-time
+                      </p>
+                    )}
+                  </>
                 </div>
               </div>
             </div>
