@@ -34,6 +34,7 @@ jobs:
         --exclude=node_modules/
         --exclude=tests/
         --exclude=storage/
+        --exclude=storage_old/
         --exclude=.env
         --exclude=.env.*
         --exclude=.htaccess
@@ -245,6 +246,9 @@ jobs:
           php artisan event:cache
           php artisan view:cache
           php artisan route:cache
+          # EA-Nginx proxy cache breaks Inertia (JSON without X-Inertia header). Keep disabled on prod.
+          uapi NginxCaching disable_cache 2>/dev/null || true
+          uapi NginxCaching clear_cache 2>/dev/null || true
           test -f .env && test -d storage && test -f .htaccess && echo DEPLOY_OK
           REMOTE
 
