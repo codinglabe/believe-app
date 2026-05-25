@@ -16,9 +16,25 @@ import {
   Feather,
   Building2,
   X,
+  Mail,
+  Brain,
+  Headphones,
 } from "lucide-react"
 import { ConfirmationModal } from "@/components/confirmation-modal"
+import { UnityMembershipCard, UnityMembershipUsageAddOns } from "@/components/unity-membership-card"
 import { motion } from "framer-motion"
+import { cn } from "@/lib/utils"
+import {
+  everythingIncludedColumnsFromPlan,
+  formatPlanPrice,
+  planFrequencyLabel,
+  planGridClassName,
+  planHighlightLines,
+  resolveIntroPrice,
+  resolveStandardPrice,
+  usageAddOnsFromPlan,
+  UNITY_MEMBERSHIP_DEFAULTS,
+} from "@/lib/plan-pricing-display"
 
 interface PlanFeature {
   id: number
@@ -85,6 +101,11 @@ export default function PlansIndex({ plans, addOns, currentPlan, oneTimeFee }: P
   const [showCancelModal, setShowCancelModal] = useState(false)
   const [isCancelling, setIsCancelling] = useState(false)
 
+  const isSinglePlan = plans.length === 1
+  const featuredPlan = isSinglePlan ? plans[0] : plans.find((p) => p.is_popular) ?? plans[0]
+  const includedColumns = featuredPlan ? everythingIncludedColumnsFromPlan(featuredPlan) : []
+  const displayAddOns = featuredPlan ? usageAddOnsFromPlan(featuredPlan, addOns) : addOns
+
   const handleSubscribe = (planId: number) => {
     router.post(`/plans/${planId}/subscribe`)
   }
@@ -99,57 +120,66 @@ export default function PlansIndex({ plans, addOns, currentPlan, oneTimeFee }: P
     })
   }
 
-  // Unlimited features (shared across plans) for "Included Across All Plans"
-  const unlimitedFeatures = plans.length > 0
+  // Multi-plan: shared unlimited features split across 3 legacy category cards
+  const unlimitedFeatures = plans.length > 1
     ? plans
         .flatMap((p) => p.features.filter((f) => f.is_unlimited))
         .filter((f, i, arr) => arr.findIndex((x) => x.name === f.name) === i)
         .map((f) => f.name)
     : []
 
-  // Split into 3 columns for "Included Across All Plans"
   const colSize = Math.ceil(unlimitedFeatures.length / 3) || 1
   const includedCol1 = unlimitedFeatures.slice(0, colSize)
   const includedCol2 = unlimitedFeatures.slice(colSize, colSize * 2)
   const includedCol3 = unlimitedFeatures.slice(colSize * 2)
-
-  const whyChoose = [
-    "All-in-one nonprofit operating system",
-    "Fundraising + engagement + commerce in one platform",
-    "Built-in video conferencing & livestreaming",
-    "Designed for modern mission-driven organizations",
-  ]
 
   return (
     <AppSidebarLayout>
       <Head title="Pricing Plans for Organizations - Believe In Unity" />
 
       <div className="min-h-screen bg-background">
-        {/* Title section — gradient header strip only, matches dashboard feel */}
         <div className="bg-gradient-to-r from-purple-600 to-blue-600 text-white">
           <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-10 text-center">
             <h1 className="text-4xl md:text-5xl font-bold mb-3">
-              Pricing Plans for Organizations
+              {isSinglePlan ? "Unity Membership" : "Pricing Plans for Organizations"}
             </h1>
             <p className="text-xl text-white/90">
-              Simple. Transparent. Built for Impact.
+              {isSinglePlan
+                ? "Everything your organization needs in one membership."
+                : "Simple. Transparent. Built for Impact."}
             </p>
           </div>
         </div>
 
-        {/* Subsidized Cost for Nonprofits + pricing cards */}
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
-          <h2 className="text-xl font-semibold text-center text-foreground mb-8">
-            Subsidized Cost for Nonprofits
-          </h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        {isSinglePlan && featuredPlan ? (
+          <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+            <UnityMembershipCard
+              plan={featuredPlan}
+              includedColumns={includedColumns}
+              introPrice={resolveIntroPrice(featuredPlan)}
+              standardPrice={resolveStandardPrice(featuredPlan) ?? UNITY_MEMBERSHIP_DEFAULTS.standardPrice}
+              isCurrent={currentPlan?.id === featuredPlan.id}
+              onSubscribe={() => handleSubscribe(featuredPlan.id)}
+              onCancel={() => setShowCancelModal(true)}
+            />
+            <UnityMembershipUsageAddOns addOns={displayAddOns} />
+          </div>
+        ) : (
+          <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+            <h2 className="text-xl font-semibold text-center text-foreground mb-8">
+              Subsidized Cost for Nonprofits
+            </h2>
+            <div className={planGridClassName(plans.length)}>
             {plans.map((plan, index) => {
               const IconComponent = getPlanIcon(plan.name)
               const isPopular = plan.is_popular
               const isCurrent = currentPlan?.id === plan.id
+              const standardPrice = resolveStandardPrice(plan)
+              const highlights = planHighlightLines(plan)
               const annualField = plan.custom_fields?.find(
-                (f) => f.type === "text" && /annual|prepay|year/i.test(String(f.label + f.value))
+                (f) => f.type === "text" && /annual|prepay|year/i.test(String(f.label + f.value)),
               ) || plan.custom_fields?.find((f) => f.type === "currency" && f.key !== "ein_setup_fee")
+
               return (
                 <motion.div
                   key={plan.id}
@@ -159,29 +189,44 @@ export default function PlansIndex({ plans, addOns, currentPlan, oneTimeFee }: P
                   className="h-full"
                 >
                   <Card
-                    className={`h-full flex flex-col rounded-xl border-2 overflow-hidden ${
-                      isPopular
-                        ? "border-primary bg-card shadow-lg ring-2 ring-primary/20 scale-[1.02]"
-                        : "border-border bg-card hover:border-primary/50"
-                    }`}
+                    className={cn(
+                      "h-full flex flex-col rounded-xl border-2 overflow-hidden",
+                      isPopular || isSinglePlan
+                        ? "border-primary bg-card shadow-lg ring-2 ring-primary/20"
+                        : "border-border bg-card hover:border-primary/50",
+                      isSinglePlan && "scale-100",
+                      isPopular && !isSinglePlan && "md:scale-[1.02]",
+                    )}
                   >
                     <CardHeader className="pb-4">
                       <div className="flex justify-center mb-3">
                         <div
-                          className={`flex h-12 w-12 items-center justify-center rounded-xl ${
-                            isPopular ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
-                          }`}
+                          className={cn(
+                            "flex h-12 w-12 items-center justify-center rounded-xl",
+                            isPopular || isSinglePlan
+                              ? "bg-primary text-primary-foreground"
+                              : "bg-muted text-muted-foreground",
+                          )}
                         >
                           <IconComponent className="h-6 w-6" />
                         </div>
                       </div>
                       <CardTitle className="text-2xl text-center text-foreground">
-                        {plan.name}
+                        {isSinglePlan ? "Unity Membership" : plan.name}
                       </CardTitle>
+                      {isSinglePlan && plan.description && (
+                        <p className="text-center text-sm text-muted-foreground mt-1">{plan.description}</p>
+                      )}
                       <div className="flex flex-col items-center gap-1 mt-2">
-                        <span className="text-3xl font-bold text-foreground">
-                          ${Number(plan.price).toFixed(0)}/{plan.frequency === "monthly" ? "month" : plan.frequency}
+                        <span className="text-3xl font-bold tabular-nums text-foreground">
+                          ${formatPlanPrice(plan.price)}/{planFrequencyLabel(plan.frequency)}
                         </span>
+                        {standardPrice != null && standardPrice > Number(plan.price) && (
+                          <span className="text-sm text-muted-foreground text-center">
+                            Then ${formatPlanPrice(standardPrice)}/{planFrequencyLabel(plan.frequency)} after
+                            introductory period
+                          </span>
+                        )}
                         {annualField && (
                           <span className="text-sm text-muted-foreground text-center">
                             {annualField.label}: {annualField.value}
@@ -195,16 +240,42 @@ export default function PlansIndex({ plans, addOns, currentPlan, oneTimeFee }: P
                       </div>
                     </CardHeader>
                     <CardContent className="flex-1 flex flex-col pt-0">
-                      <ul className="space-y-2.5 mb-6 flex-1">
-                        {plan.features.map((feature) => (
-                          <li key={feature.id} className="flex items-start gap-2 text-sm text-muted-foreground">
-                            <Check className="h-5 w-5 shrink-0 text-emerald-500 mt-0.5" />
-                            <span className="text-foreground">{feature.name}</span>
-                          </li>
-                        ))}
-                      </ul>
+                      {isSinglePlan ? (
+                        <div className="mb-6 grid grid-cols-1 gap-2 sm:grid-cols-3">
+                          <div className="rounded-lg border border-border bg-muted/30 p-3 text-center">
+                            <Mail className="mx-auto mb-1.5 h-4 w-4 text-primary" />
+                            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                              Emails
+                            </p>
+                            <p className="mt-1 text-xs text-foreground">{highlights.emailsLine}</p>
+                          </div>
+                          <div className="rounded-lg border border-border bg-muted/30 p-3 text-center">
+                            <Brain className="mx-auto mb-1.5 h-4 w-4 text-primary" />
+                            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                              AI tokens
+                            </p>
+                            <p className="mt-1 text-xs text-foreground">{highlights.aiLine}</p>
+                          </div>
+                          <div className="rounded-lg border border-border bg-muted/30 p-3 text-center sm:col-span-1">
+                            <Headphones className="mx-auto mb-1.5 h-4 w-4 text-primary" />
+                            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                              Support
+                            </p>
+                            <p className="mt-1 text-xs text-foreground">{highlights.supportLine}</p>
+                          </div>
+                        </div>
+                      ) : (
+                        <ul className="space-y-2.5 mb-6 flex-1">
+                          {plan.features.map((feature) => (
+                            <li key={feature.id} className="flex items-start gap-2 text-sm text-muted-foreground">
+                              <Check className="h-5 w-5 shrink-0 text-emerald-500 mt-0.5" />
+                              <span className="text-foreground">{feature.name}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
                       {isCurrent ? (
-                        <div className="space-y-2">
+                        <div className="space-y-2 mt-auto">
                           <Button
                             className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
                             size="lg"
@@ -224,12 +295,8 @@ export default function PlansIndex({ plans, addOns, currentPlan, oneTimeFee }: P
                           </Button>
                         </div>
                       ) : (
-                        <Button
-                          className="w-full"
-                          size="lg"
-                          onClick={() => handleSubscribe(plan.id)}
-                        >
-                          Get started
+                        <Button className="w-full mt-auto" size="lg" onClick={() => handleSubscribe(plan.id)}>
+                          Get started today
                           <ArrowRight className="h-4 w-4 ml-2" />
                         </Button>
                       )}
@@ -238,11 +305,11 @@ export default function PlansIndex({ plans, addOns, currentPlan, oneTimeFee }: P
                 </motion.div>
               )
             })}
+            </div>
           </div>
-        </div>
+        )}
 
-        {/* One-time fee bar */}
-        {oneTimeFee && (
+        {!isSinglePlan && oneTimeFee && (
           <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pb-8">
             <div className="rounded-xl bg-muted/50 border border-border px-6 py-4 flex items-center justify-center gap-3">
               <Lock className="h-5 w-5 text-muted-foreground shrink-0" />
@@ -253,99 +320,72 @@ export default function PlansIndex({ plans, addOns, currentPlan, oneTimeFee }: P
           </div>
         )}
 
-        {/* Included Across All Plans — 3 columns */}
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-          <h2 className="text-2xl font-bold text-center text-foreground mb-8">
-            Included Across All Plans
-          </h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            <Card className="rounded-xl border border-border bg-card p-6">
-              <div className="flex items-center gap-2 mb-4">
-                <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                  <Video className="h-5 w-5 text-primary" />
+        {!isSinglePlan && unlimitedFeatures.length > 0 && (
+          <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+            <h2 className="text-2xl font-bold text-center text-foreground mb-8">
+              Included Across All Plans
+            </h2>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+              <Card className="rounded-xl border border-border bg-card p-6">
+                <div className="flex items-center gap-2 mb-4">
+                  <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                    <Video className="h-5 w-5 text-primary" />
+                  </div>
+                  <h3 className="text-lg font-semibold text-foreground">Unity Video Hub</h3>
                 </div>
-                <h3 className="text-lg font-semibold text-foreground">Unity Video Hub</h3>
-              </div>
-              <p className="text-sm text-muted-foreground mb-3">
-                Built-in Video Conferencing & Livestreaming
-              </p>
-              <ul className="space-y-1.5 text-sm text-muted-foreground">
-                {includedCol1.map((name) => (
-                  <li key={name} className="flex items-center gap-2">
-                    <Check className="h-4 w-4 text-emerald-500 shrink-0" />
-                    <span className="text-foreground">{name}</span>
-                  </li>
-                ))}
-              </ul>
-            </Card>
-            <Card className="rounded-xl border border-border bg-card p-6">
-              <div className="flex items-center gap-2 mb-4">
-                <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                  <MessageCircle className="h-5 w-5 text-primary" />
+                <p className="text-sm text-muted-foreground mb-3">
+                  Built-in Video Conferencing & Livestreaming
+                </p>
+                <ul className="space-y-1.5 text-sm text-muted-foreground">
+                  {includedCol1.map((name) => (
+                    <li key={name} className="flex items-center gap-2">
+                      <Check className="h-4 w-4 text-emerald-500 shrink-0" />
+                      <span className="text-foreground">{name}</span>
+                    </li>
+                  ))}
+                </ul>
+              </Card>
+              <Card className="rounded-xl border border-border bg-card p-6">
+                <div className="flex items-center gap-2 mb-4">
+                  <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                    <MessageCircle className="h-5 w-5 text-primary" />
+                  </div>
+                  <h3 className="text-lg font-semibold text-foreground">Communication</h3>
                 </div>
-                <h3 className="text-lg font-semibold text-foreground">Communication</h3>
-              </div>
-              <p className="text-sm text-muted-foreground mb-3">
-                Push alerts, newsletters, and engagement
-              </p>
-              <ul className="space-y-1.5 text-sm text-muted-foreground">
-                {includedCol2.map((name) => (
-                  <li key={name} className="flex items-center gap-2">
-                    <Check className="h-4 w-4 text-emerald-500 shrink-0" />
-                    <span className="text-foreground">{name}</span>
-                  </li>
-                ))}
-              </ul>
-            </Card>
-            <Card className="rounded-xl border border-border bg-card p-6">
-              <div className="flex items-center gap-2 mb-4">
-                <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                  <ShoppingBag className="h-5 w-5 text-primary" />
+                <p className="text-sm text-muted-foreground mb-3">
+                  Push alerts, newsletters, and engagement
+                </p>
+                <ul className="space-y-1.5 text-sm text-muted-foreground">
+                  {includedCol2.map((name) => (
+                    <li key={name} className="flex items-center gap-2">
+                      <Check className="h-4 w-4 text-emerald-500 shrink-0" />
+                      <span className="text-foreground">{name}</span>
+                    </li>
+                  ))}
+                </ul>
+              </Card>
+              <Card className="rounded-xl border border-border bg-card p-6">
+                <div className="flex items-center gap-2 mb-4">
+                  <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                    <ShoppingBag className="h-5 w-5 text-primary" />
+                  </div>
+                  <h3 className="text-lg font-semibold text-foreground">Commerce & Events</h3>
                 </div>
-                <h3 className="text-lg font-semibold text-foreground">Commerce & Events</h3>
-              </div>
-              <p className="text-sm text-muted-foreground mb-3">
-                Marketplace, donations, events, and campaigns
-              </p>
-              <ul className="space-y-1.5 text-sm text-muted-foreground">
-                {includedCol3.map((name) => (
-                  <li key={name} className="flex items-center gap-2">
-                    <Check className="h-4 w-4 text-emerald-500 shrink-0" />
-                    <span className="text-foreground">{name}</span>
-                  </li>
-                ))}
-              </ul>
-            </Card>
+                <p className="text-sm text-muted-foreground mb-3">
+                  Marketplace, donations, events, and campaigns
+                </p>
+                <ul className="space-y-1.5 text-sm text-muted-foreground">
+                  {includedCol3.map((name) => (
+                    <li key={name} className="flex items-center gap-2">
+                      <Check className="h-4 w-4 text-emerald-500 shrink-0" />
+                      <span className="text-foreground">{name}</span>
+                    </li>
+                  ))}
+                </ul>
+              </Card>
+            </div>
           </div>
-        </div>
-
-        {/* Why Organizations Choose */}
-        <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-          <h2 className="text-2xl font-bold text-center text-foreground mb-8">
-            Why Organizations Choose Believe In Unity
-          </h2>
-          <ul className="space-y-4">
-            {whyChoose.map((item) => (
-              <li key={item} className="flex items-center gap-3 text-muted-foreground">
-                <Check className="h-5 w-5 text-emerald-500 shrink-0" />
-                <span className="text-foreground">{item}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-
-        {/* Footer CTA */}
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-10 text-center border-t border-border">
-          <p className="text-lg text-muted-foreground">
-            Start Today:{" "}
-            <a
-              href="/"
-              className="font-semibold text-foreground underline hover:text-primary"
-            >
-              www.BelieveInUnity.org
-            </a>
-          </p>
-        </div>
+        )}
       </div>
 
       <ConfirmationModal
