@@ -57,7 +57,7 @@ class MessageSent implements ShouldBroadcast
                 'id' => $this->message->id,
                 'message' => $this->message->message,
                 'attachments' => $this->message->attachments ?? [],
-                'created_at' => $this->message->created_at->toISOString(),
+                'created_at' => $this->message->created_at->utc()->toIso8601String(),
                 'is_edited' => $this->message->is_edited,
                 'user' => $this->formatUser($this->message->user),
                 'reply_to_message' => $this->message->replyToMessage ? [
@@ -73,7 +73,7 @@ class MessageSent implements ShouldBroadcast
                 'room_id' => $this->message->chat_room_id,
                 'last_message' => [
                     'message' => $this->message->message,
-                    'created_at' => $this->message->created_at->toISOString(),
+                    'created_at' => $this->message->created_at->utc()->toIso8601String(),
                     'user_name' => $this->message->user->name
                 ]
             ]

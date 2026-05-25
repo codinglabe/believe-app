@@ -6,14 +6,21 @@ import { usePage } from "@inertiajs/react"
 import { useDebounce } from "@/hooks/useDebounce"
 import toast from "react-hot-toast"
 import echo from "@/lib/echo"
+import { getBrowserTimezone } from "@/lib/timezone-detection"
 
-// Configure Axios instance
+// Configure Axios instance (include X-Timezone so server-side date helpers stay aligned with the viewer)
 const api = axios.create({
   baseURL: "/",
   headers: {
     Accept: "application/json",
     "Content-Type": "application/json",
+    "X-Timezone": getBrowserTimezone(),
   },
+})
+
+api.interceptors.request.use((config) => {
+  config.headers.set("X-Timezone", getBrowserTimezone())
+  return config
 })
 
 // Add response interceptor for error handling
@@ -106,6 +113,9 @@ export interface ChatRoom {
   created_at: string
   topics?: ChatTopic[]
 }
+
+const sortMessagesByTime = (messages: ChatMessage[]): ChatMessage[] =>
+  [...messages].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
 
 interface ChatContextType {
   chatRooms: ChatRoom[]
@@ -264,7 +274,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       setMessages((prev) => {
         const newMessages = data.messages.filter((msg) => !prev.some((pMsg) => pMsg.id === msg.id))
-        return append ? [...newMessages.reverse(), ...prev] : newMessages.reverse()
+        return sortMessagesByTime(append ? [...newMessages.reverse(), ...prev] : newMessages.reverse())
       })
 
       setHasMoreMessages(data.has_more)
@@ -277,11 +287,12 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const deduplicateMessages = useCallback((messages: ChatMessage[]) => {
     const seen = new Set()
-    return messages.filter((msg) => {
+    const unique = messages.filter((msg) => {
       const duplicate = seen.has(msg.id)
       seen.add(msg.id)
       return !duplicate
     })
+    return sortMessagesByTime(unique)
   }, [])
 
   /** Load thread over HTTP whenever the selected room changes — works with Reverb off. */
