@@ -18,7 +18,7 @@ import {
 import { router } from "@inertiajs/react"
 import axios from "axios"
 import toast from "react-hot-toast"
-import { showFirebasePushToast } from "@/lib/firebase-push-toast"
+import { showNativePushNotification } from "@/lib/firebase-push-toast"
 
 interface NotificationBellProps {
   userId: number
@@ -177,17 +177,32 @@ export function NotificationBell({ userId, emailVerified = true, onNotificationC
           setUnreadCount((prev) => prev + 1)
 
           playNotificationSound()
-          if (newNotification.type !== UNITY_MEET_INVITATION_TYPE) {
-            showFirebasePushToast({
-              title: newNotification.title,
-              body: newNotification.body,
-              data: {
-                click_action: newNotification.content_item_id
-                  ? `/notifications/content/${newNotification.content_item_id}`
-                  : undefined,
-              },
-            })
-          }
+          void showNativePushNotification({
+            title: newNotification.title,
+            body: newNotification.body,
+            data:
+              newNotification.type === UNITY_MEET_INVITATION_TYPE
+                ? {
+                    type: UNITY_MEET_INVITATION_TYPE,
+                    join_url:
+                      typeof newNotification.meta?.join_url === "string"
+                        ? newNotification.meta.join_url
+                        : undefined,
+                    click_action:
+                      typeof newNotification.meta?.join_url === "string"
+                        ? newNotification.meta.join_url
+                        : undefined,
+                    livestream_id:
+                      newNotification.meta?.livestream_id != null
+                        ? String(newNotification.meta.livestream_id)
+                        : undefined,
+                  }
+                : {
+                    click_action: newNotification.content_item_id
+                      ? `/notifications/content/${newNotification.content_item_id}`
+                      : undefined,
+                  },
+          })
         })
         .listen(".Illuminate\\Notifications\\Events\\BroadcastNotificationCreated", (data: any) => {
           console.log("[v0] Received Laravel notification:", data)
@@ -215,17 +230,36 @@ export function NotificationBell({ userId, emailVerified = true, onNotificationC
 
           playNotificationSound()
           const toastType = notificationData.type || data.type || ""
-          if (toastType !== UNITY_MEET_INVITATION_TYPE) {
-            showFirebasePushToast({
-              title: newNotification.title,
-              body: newNotification.body,
-              data: {
-                click_action: newNotification.content_item_id
-                  ? `/notifications/content/${newNotification.content_item_id}`
-                  : undefined,
-              },
-            })
-          }
+          void showNativePushNotification({
+            title: newNotification.title,
+            body: newNotification.body,
+            data:
+              toastType === UNITY_MEET_INVITATION_TYPE
+                ? {
+                    type: UNITY_MEET_INVITATION_TYPE,
+                    join_url:
+                      typeof newNotification.meta?.join_url === "string"
+                        ? newNotification.meta.join_url
+                        : typeof notificationData.join_url === "string"
+                          ? notificationData.join_url
+                          : undefined,
+                    click_action:
+                      typeof newNotification.meta?.join_url === "string"
+                        ? newNotification.meta.join_url
+                        : typeof notificationData.url === "string"
+                          ? notificationData.url
+                          : undefined,
+                    livestream_id:
+                      notificationData.livestream_id != null
+                        ? String(notificationData.livestream_id)
+                        : undefined,
+                  }
+                : {
+                    click_action: newNotification.content_item_id
+                      ? `/notifications/content/${newNotification.content_item_id}`
+                      : undefined,
+                  },
+          })
         })
 
       // Do NOT auto-request notification permission here — it runs on every mount and causes

@@ -63,9 +63,16 @@ export function mapDatabaseNotification(dbNotif: DatabaseNotification): Notifica
     (type === CARE_ALLIANCE_INVITATION_TYPE ? "Care Alliance invitation" : "Notification")
   const body = notificationData.body || notificationData.message || ""
   const invitationId = notificationData.invitation_id ?? notificationData.meta?.invitation_id
+  const joinUrl =
+    notificationData.meta?.join_url ??
+    notificationData.url ??
+    notificationData.click_action ??
+    null
+
   const meta: Record<string, any> = {
     ...(notificationData.meta || {}),
     ...(invitationId != null ? { invitation_id: invitationId } : {}),
+    ...(joinUrl ? { join_url: joinUrl } : {}),
   }
 
   return {

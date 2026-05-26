@@ -2,7 +2,6 @@
 import { initializeApp, type FirebaseApp } from "firebase/app";
 import { getMessaging, getToken, onMessage, isSupported, type Messaging } from "firebase/messaging";
 import { registerServiceWorker } from "@/pwa/register-service-worker";
-import { attachFirebasePushToastListener } from "@/lib/firebase-push-toast";
 import { isPushCapableBrowser } from "@/lib/push-environment";
 
 type FirebaseWebConfig = {
@@ -139,21 +138,16 @@ function attachForegroundMessageListener(instance: Messaging) {
     }
     messagingListenersAttached = true;
 
-    attachFirebasePushToastListener();
-
     onMessage(instance, (payload) => {
         const data = (payload.data ?? {}) as Record<string, string | undefined>;
         const title = payload.notification?.title ?? data.title;
         const body = payload.notification?.body ?? data.body ?? data.message;
         const detail = { title, body, data };
 
-        // Foreground: in-app toast only (firebase-push-toast). Do not call new Notification() —
-        // that duplicates the bottom-right toast with a native OS banner at the top.
-        window.dispatchEvent(
-            new CustomEvent("firebase-notification", {
-                detail,
-            }),
-        );
+        // Foreground: native OS notification (same as background / device tray).
+        void import("@/lib/firebase-push-toast").then(({ showNativePushNotification }) => {
+            void showNativePushNotification(detail);
+        });
     });
 }
 

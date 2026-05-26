@@ -61,6 +61,9 @@ import { Link } from "@inertiajs/react"
 import { useEmailCreditsState } from "@/hooks/use-email-credits-state"
 import BuyEmailCreditsDialog, { type EmailPackageOption } from "@/components/meeting/BuyEmailCreditsDialog"
 import EmailCreditsMeetingActions from "@/components/meeting/EmailCreditsMeetingActions"
+import UnityMeetInviteChannelPicker, {
+  type UnityMeetInviteChannel,
+} from "@/components/meeting/UnityMeetInviteChannelPicker"
 import { applyVdoGroupRoomPresentation } from "@/lib/vdoMeeting"
 import {
   canEndYoutubeLive,
@@ -208,6 +211,7 @@ export default function SupporterShowLivestream({
   const [invitingParticipant, setInvitingParticipant] = useState(false)
   const [resendingEmail, setResendingEmail] = useState<string | null>(null)
   const [buyCreditsOpen, setBuyCreditsOpen] = useState(false)
+  const [inviteNotifyVia, setInviteNotifyVia] = useState<UnityMeetInviteChannel>("both")
 
   const canInviteParticipants = !["ended", "cancelled"].includes(livestream.status)
   const invitedCount = livestream.participantEmails?.length ?? 0
@@ -769,6 +773,9 @@ export default function SupporterShowLivestream({
     })
   }
 
+  const inviteUsesEmailCredits = inviteNotifyVia === "email" || inviteNotifyVia === "both"
+  const canSendInvite = inviteNotifyVia === "biu" || canSendEmailInvites
+
   const sendInvitation = (email: string, resend = false) => {
     if (resend) {
       setResendingEmail(email)
@@ -778,10 +785,14 @@ export default function SupporterShowLivestream({
 
     router.post(
       route("livestreams.supporter.participants.invite", livestream.id),
-      { email, resend: resend || undefined },
+      { email, resend: resend || undefined, notify_via: inviteNotifyVia },
       {
         preserveScroll: true,
-        onStart: () => applyDelta(1),
+        onStart: () => {
+          if (inviteUsesEmailCredits) {
+            applyDelta(1)
+          }
+        },
         onSuccess: (page) => {
           const inviteError = (page.props as { errors?: { email?: string | string[] } }).errors?.email
           if (inviteError) {
@@ -790,7 +801,11 @@ export default function SupporterShowLivestream({
           }
           syncFromServer((page.props as Props).emailCredits)
         },
-        onError: () => applyDelta(-1),
+        onError: () => {
+          if (inviteUsesEmailCredits) {
+            applyDelta(-1)
+          }
+        },
         onFinish: () => {
           setInvitingParticipant(false)
           setResendingEmail(null)
@@ -818,8 +833,8 @@ export default function SupporterShowLivestream({
     <div className="w-full min-w-0 space-y-4">
       <p className="text-xs text-muted-foreground">
         {showScheduledEmailInvites
-          ? "Invite guests by email. They receive meeting details and a join link in their inbox."
-          : "Share the join link from the Share tab. To email invitations, schedule the meeting with guest emails first."}
+          ? "Invite guests by email, BIU notification (app + push), or both."
+          : "Share the join link from the Share tab. To send invitations, schedule the meeting with guest emails first."}
       </p>
 
       {canInviteParticipants && showScheduledEmailInvites ? (
@@ -828,14 +843,15 @@ export default function SupporterShowLivestream({
             <Label htmlFor="participant-invite-email" className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
               Send invitation
             </Label>
-            {emailCreditsLive ? (
+            {emailCreditsLive && inviteUsesEmailCredits ? (
               <EmailCreditsMeetingActions
                 emailsLeft={emailCreditsLive.emails_left}
                 onBuy={() => setBuyCreditsOpen(true)}
               />
             ) : null}
           </div>
-          {!canSendEmailInvites ? (
+          <UnityMeetInviteChannelPicker value={inviteNotifyVia} onChange={setInviteNotifyVia} />
+          {inviteUsesEmailCredits && !canSendEmailInvites ? (
             <p className="text-xs text-amber-700 dark:text-amber-300">
               No email credits remaining.{" "}
               <button
@@ -845,9 +861,10 @@ export default function SupporterShowLivestream({
               >
                 Buy email credits
               </button>{" "}
-              to send invitations.
+              or choose BIU notification only.
             </p>
-          ) : (
+          ) : null}
+          {canSendInvite ? (
             <>
           <div className="flex flex-col gap-2">
             <Input
@@ -886,7 +903,7 @@ export default function SupporterShowLivestream({
             <p className="text-xs text-destructive">{participantInviteErrorText}</p>
           ) : null}
             </>
-          )}
+          ) : null}
         </div>
       ) : null}
 
@@ -926,7 +943,7 @@ export default function SupporterShowLivestream({
                 <Mail className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                 <span className="min-w-0 flex-1 truncate text-sm">{email}</span>
                 <div className="flex shrink-0 items-center gap-0.5">
-                  {canInviteParticipants && canSendEmailInvites ? (
+                  {canInviteParticipants && canSendInvite ? (
                     <Button
                       type="button"
                       variant="ghost"

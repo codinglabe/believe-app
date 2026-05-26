@@ -181,12 +181,14 @@ class FirebaseService
             ],
         ];
 
-        // Web: data-only so the browser does not show a native OS banner while the tab is open.
-        // Foreground uses onMessage → in-app toast; background uses SW onBackgroundMessage.
+        // Web: data payload + webpush link; SW / foreground client calls showNotification for OS banner.
         if ($deviceType === 'web') {
             $message['message']['webpush'] = [
                 'fcm_options' => [
                     'link' => $notificationUrl,
+                ],
+                'headers' => [
+                    'TTL' => '86400',
                 ],
             ];
         } else {

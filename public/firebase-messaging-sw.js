@@ -15,34 +15,55 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const messaging = firebase.messaging();
 
-// Never call showNotification — the app uses in-app toasts only (bottom-right).
-// Forward to open tabs so the same UI handles foreground and background FCM.
+const UNITY_MEET_INVITATION_TYPE = "unity_meet_invitation";
+
+function notificationIconUrl() {
+    return new URL("/favicon-96x96.png", self.location.origin).href;
+}
+
+function resolveClickUrl(data) {
+    return data.join_url || data.click_action || data.url || "/";
+}
+
+function buildNotificationOptions(title, body, data) {
+    const clickUrl = resolveClickUrl(data);
+    const tag = (data.type || "push") + ":" + (data.livestream_id || data.source_id || title);
+    const icon = notificationIconUrl();
+    const options = {
+        body: body || undefined,
+        icon: icon,
+        badge: icon,
+        tag: tag,
+        data: Object.assign({}, data, {
+            click_action: clickUrl,
+            url: clickUrl,
+            join_url: data.join_url || clickUrl,
+        }),
+    };
+
+    if (data.type === UNITY_MEET_INVITATION_TYPE) {
+        options.actions = [{ action: "join", title: "Join" }];
+    }
+
+    return options;
+}
+
+/** Native OS notification (Windows/macOS/Android) when the app is in the background. */
 messaging.onBackgroundMessage((payload) => {
     const data = payload.data || {};
     const title =
         payload.notification?.title || data.title || "Believe In Unity";
     const body =
         payload.notification?.body || data.body || data.message || "";
-    const clickUrl = data.click_action || data.url || "/";
 
-    const detail = {
+    return self.registration.showNotification(
         title,
-        body,
-        data: Object.assign({}, data, {
-            click_action: clickUrl,
-            url: clickUrl,
-        }),
-    };
-
-    return self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clients) => {
-        clients.forEach((client) => {
-            client.postMessage({ type: "firebase-push", detail });
-        });
-    });
+        buildNotificationOptions(title, body, data),
+    );
 });
 
 // Cache version bump for post-deploy cleanup (invalidates old caches)
-const CACHE_NAME = "pwa-cache-v7";
+const CACHE_NAME = "pwa-cache-v9";
 // Only cache static assets; do NOT cache "/" or HTML/auth routes
 const urlsToCache = ["/offline.html", "/manifest.json"];
 
@@ -120,19 +141,34 @@ self.addEventListener("fetch", (event) => {
     event.respondWith(fetch(event.request));
 });
 
+function openNotificationUrl(clientList, absoluteUrl) {
+    for (const client of clientList) {
+        if ("focus" in client) {
+            if ("navigate" in client) {
+                return client.focus().then(() => client.navigate(absoluteUrl));
+            }
+            return client.focus();
+        }
+    }
+    if (self.clients.openWindow) {
+        return self.clients.openWindow(absoluteUrl);
+    }
+}
+
 self.addEventListener("notificationclick", (event) => {
     event.notification.close();
-    const urlToOpen = event.notification.data?.click_action || event.notification.data?.url || "/";
+    const data = event.notification.data || {};
+    let urlToOpen = resolveClickUrl(data);
+
+    if (event.action === "join") {
+        urlToOpen = data.join_url || data.click_action || data.url || "/";
+    }
+
+    const absoluteUrl = new URL(urlToOpen, self.location.origin).href;
+
     event.waitUntil(
-        self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clientList) => {
-            for (const client of clientList) {
-                if (client.url === urlToOpen && "focus" in client) {
-                    return client.focus();
-                }
-            }
-            if (self.clients.openWindow) {
-                return self.clients.openWindow(urlToOpen);
-            }
-        })
+        self.clients
+            .matchAll({ type: "window", includeUncontrolled: true })
+            .then((clientList) => openNotificationUrl(clientList, absoluteUrl)),
     );
 });
