@@ -265,6 +265,15 @@ jobs:
             echo "::error::Production smoke test must not use 501c3ers.com (check PRODUCTION_APP_URL variable)"
             exit 1
           fi
-          code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 30 "${SMOKE_URL}/")
-          echo "GET ${SMOKE_URL}/ => HTTP ${code}"
-          test "${code}" = "200" || test "${code}" = "302" || { echo "::error::Homepage returned HTTP ${code}"; exit 1; }
+          # Allow retries: homepage can be slow right after config:cache (GitHub runners also hit believeinunity.org slowly).
+          ok=0
+          for attempt in 1 2 3; do
+            code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 60 "${SMOKE_URL}/" || echo "000")
+            echo "GET ${SMOKE_URL}/ => HTTP ${code} (attempt ${attempt}/3)"
+            if [ "${code}" = "200" ] || [ "${code}" = "302" ]; then
+              ok=1
+              break
+            fi
+            sleep 15
+          done
+          test "${ok}" = "1" || { echo "::error::Homepage smoke test failed after 3 attempts"; exit 1; }
