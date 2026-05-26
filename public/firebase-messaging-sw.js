@@ -18,23 +18,36 @@ const messaging = firebase.messaging();
 messaging.onBackgroundMessage((payload) => {
     const title =
         payload.notification?.title || payload.data?.title || "Believe In Unity";
-    const body = payload.notification?.body || payload.data?.body || "";
+    const body =
+        payload.notification?.body || payload.data?.body || payload.data?.message || "";
     const clickUrl =
         payload.data?.click_action || payload.data?.url || "/";
 
-    return self.registration.showNotification(title, {
-        body,
-        icon: payload.notification?.icon || "/favicon-96x96.png",
-        badge: payload.notification?.badge || "/badge.png",
-        data: {
-            click_action: clickUrl,
-            url: clickUrl,
-        },
-    });
+    // Tab open: page handles FCM via onMessage + in-app toast — skip native OS banner.
+    return self.clients
+        .matchAll({ type: "window", includeUncontrolled: true })
+        .then((windowClients) => {
+            const appVisible = windowClients.some(
+                (client) => client.visibilityState === "visible",
+            );
+            if (appVisible) {
+                return;
+            }
+
+            return self.registration.showNotification(title, {
+                body,
+                icon: payload.notification?.icon || "/favicon-96x96.png",
+                badge: payload.notification?.badge || "/badge.png",
+                data: {
+                    click_action: clickUrl,
+                    url: clickUrl,
+                },
+            });
+        });
 });
 
 // Cache version bump for post-deploy cleanup (invalidates old caches)
-const CACHE_NAME = "pwa-cache-v5";
+const CACHE_NAME = "pwa-cache-v6";
 // Only cache static assets; do NOT cache "/" or HTML/auth routes
 const urlsToCache = ["/offline.html", "/manifest.json"];
 

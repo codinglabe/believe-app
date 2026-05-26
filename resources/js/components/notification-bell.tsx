@@ -177,15 +177,17 @@ export function NotificationBell({ userId, emailVerified = true, onNotificationC
           setUnreadCount((prev) => prev + 1)
 
           playNotificationSound()
-          showFirebasePushToast({
-            title: newNotification.title,
-            body: newNotification.body,
-            data: {
-              click_action: newNotification.content_item_id
-                ? `/notifications/content/${newNotification.content_item_id}`
-                : undefined,
-            },
-          })
+          if (newNotification.type !== UNITY_MEET_INVITATION_TYPE) {
+            showFirebasePushToast({
+              title: newNotification.title,
+              body: newNotification.body,
+              data: {
+                click_action: newNotification.content_item_id
+                  ? `/notifications/content/${newNotification.content_item_id}`
+                  : undefined,
+              },
+            })
+          }
         })
         .listen(".Illuminate\\Notifications\\Events\\BroadcastNotificationCreated", (data: any) => {
           console.log("[v0] Received Laravel notification:", data)
@@ -212,15 +214,18 @@ export function NotificationBell({ userId, emailVerified = true, onNotificationC
           setUnreadCount((prev) => prev + 1)
 
           playNotificationSound()
-          showFirebasePushToast({
-            title: newNotification.title,
-            body: newNotification.body,
-            data: {
-              click_action: newNotification.content_item_id
-                ? `/notifications/content/${newNotification.content_item_id}`
-                : undefined,
-            },
-          })
+          const toastType = notificationData.type || data.type || ""
+          if (toastType !== UNITY_MEET_INVITATION_TYPE) {
+            showFirebasePushToast({
+              title: newNotification.title,
+              body: newNotification.body,
+              data: {
+                click_action: newNotification.content_item_id
+                  ? `/notifications/content/${newNotification.content_item_id}`
+                  : undefined,
+              },
+            })
+          }
         })
 
       // Do NOT auto-request notification permission here — it runs on every mount and causes

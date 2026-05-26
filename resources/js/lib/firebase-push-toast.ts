@@ -21,16 +21,26 @@ export function resolvePushTitleBody(detail: FirebaseNotificationDetail): { titl
     return { title, body };
 }
 
+const recentToastKeys = new Map<string, number>();
+const TOAST_DEDUPE_MS = 5000;
+
 /** In-app toast when a push arrives while the tab is open (foreground FCM). */
 export function showFirebasePushToast(detail: FirebaseNotificationDetail): void {
     const { title, body } = resolvePushTitleBody(detail);
     const clickUrl = detail.data?.click_action || detail.data?.url;
     const message = body ? `${title}\n${body}` : title;
 
+    const dedupeKey = `${detail.data?.type ?? "push"}:${detail.data?.livestream_id ?? detail.data?.source_id ?? title}`;
+    const now = Date.now();
+    const lastShown = recentToastKeys.get(dedupeKey);
+    if (lastShown !== undefined && now - lastShown < TOAST_DEDUPE_MS) {
+        return;
+    }
+    recentToastKeys.set(dedupeKey, now);
+
     toast(message, {
         duration: 6000,
-        position: "top-right",
-        icon: "🔔",
+        position: "bottom-right",
         style: {
             maxWidth: "22rem",
             whiteSpace: "pre-line",

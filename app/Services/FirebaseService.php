@@ -150,7 +150,7 @@ class FirebaseService
     /**
      * Send push notification to a single device
      */
-    public function sendToDevice($deviceToken, $title, $body, $data = [])
+    public function sendToDevice($deviceToken, $title, $body, $data = [], $deviceType = 'web')
     {
         $accessToken = $this->getAccessToken();
 
@@ -168,6 +168,8 @@ class FirebaseService
             ?? url('/');
 
         $fcmData = $this->stringifyFcmData(array_merge($data, [
+            'title' => $title,
+            'body' => $body,
             'click_action' => $notificationUrl,
             'url' => $notificationUrl,
         ]));
@@ -175,48 +177,42 @@ class FirebaseService
         $message = [
             'message' => [
                 'token' => $deviceToken,
-                'notification' => [
-                    'title' => $title,
-                    'body' => $body,
-                ],
                 'data' => $fcmData,
-                'webpush' => [
-                    'fcm_options' => [
-                        'link' => $notificationUrl,
-                    ],
-                    'notification' => [
-                        'title' => $title,
-                        'body' => $body,
-                        'icon' => url('/favicon-96x96.png'),
-                        'badge' => url('/badge.png'),
-                        'actions' => [
-                            [
-                                'action' => 'open',
-                                'title' => 'View Content'
-                            ]
-                        ]
-                    ],
-                ],
-                'apns' => [
-                    'payload' => [
-                        'aps' => [
-                            'alert' => [
-                                'title' => $title,
-                                'body' => $body,
-                            ],
-                            'sound' => 'default',
-                        ],
-                        'click_action' => $notificationUrl,
-                    ],
-                ],
-                'android' => [
-                    'notification' => [
-                        'click_action' => $notificationUrl,
-                        'sound' => 'default',
-                    ],
-                ],
             ],
         ];
+
+        // Web: data-only so the browser does not show a native OS banner while the tab is open.
+        // Foreground uses onMessage → in-app toast; background uses SW onBackgroundMessage.
+        if ($deviceType === 'web') {
+            $message['message']['webpush'] = [
+                'fcm_options' => [
+                    'link' => $notificationUrl,
+                ],
+            ];
+        } else {
+            $message['message']['notification'] = [
+                'title' => $title,
+                'body' => $body,
+            ];
+            $message['message']['apns'] = [
+                'payload' => [
+                    'aps' => [
+                        'alert' => [
+                            'title' => $title,
+                            'body' => $body,
+                        ],
+                        'sound' => 'default',
+                    ],
+                    'click_action' => $notificationUrl,
+                ],
+            ];
+            $message['message']['android'] = [
+                'notification' => [
+                    'click_action' => $notificationUrl,
+                    'sound' => 'default',
+                ],
+            ];
+        }
 
         try {
             $response = $this->httpForFirebase()
@@ -277,7 +273,13 @@ class FirebaseService
 
         $results = [];
         foreach ($records as $record) {
-            $out = $this->sendToDevice($record->push_token, $title, $body, $data);
+            $out = $this->sendToDevice(
+                $record->push_token,
+                $title,
+                $body,
+                $data,
+                $record->device_type ?? 'web',
+            );
             $results[$record->push_token] = $out;
 
             PushNotificationLog::create([
