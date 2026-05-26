@@ -7,7 +7,10 @@ use App\Models\Transaction;
 use App\Models\User;
 use App\Models\WalletPlan;
 use App\Support\PlanAiMediaStudioSubscriptionCredits;
+use App\Support\PlanFirstMonthWelcomeCredits;
+use App\Support\PlanStripeAmount;
 use App\Support\StripeCustomerChargeAmount;
+use App\Support\SupporterSubscriptionService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
@@ -41,13 +44,44 @@ class PlansController extends Controller
         return [
             'id' => $plan->id,
             'name' => $plan->name,
-            'price' => (float) $plan->price,
+            'price' => round((float) $plan->price, 2),
             'frequency' => $plan->frequency,
             'is_popular' => (bool) $plan->is_popular,
             'description' => $plan->description,
             'trial_days' => (int) ($plan->trial_days ?? 0),
             'custom_fields' => $plan->custom_fields ?? [],
             'features' => $features,
+        ];
+    }
+
+    /**
+     * Usage-based add-ons shown on public pricing and plans index.
+     *
+     * @return array<int, array{name: string, price: string, description: string}>
+     */
+    private function pricingPageAddOns(): array
+    {
+        return [
+            [
+                'name' => 'Email Re-Ups',
+                'price' => '$1 per 1,000 emails',
+                'description' => 'Perfect for growth and newsletters',
+            ],
+            [
+                'name' => 'AI Packs',
+                'price' => '$5 per 25,000 tokens',
+                'description' => 'High margin; encourages use',
+            ],
+            [
+                'name' => 'SMS Messaging',
+                'price' => '$0.015 per text',
+                'description' => 'Opt-in only',
+            ],
+            [
+                'name' => 'Sweepstakes Platform Fee',
+                'price' => '4% of raised funds',
+                'description' => 'Direct revenue',
+            ],
         ];
     }
 
@@ -88,34 +122,8 @@ class PlansController extends Controller
             ]);
         }
 
-        // Static add-ons (can be moved to database later)
-        $addOns = [
-            [
-                'name' => 'Email Re-Ups',
-                'price' => '$1 per 1,000 emails',
-                'description' => 'Perfect for growth and newsletters',
-            ],
-            [
-                'name' => 'AI Packs',
-                'price' => '$5 per 50,000 tokens',
-                'description' => 'High margin; encourages use',
-            ],
-            [
-                'name' => 'SMS',
-                'price' => '$0.015 per text',
-                'description' => 'Opt-in only',
-            ],
-            [
-                'name' => 'Raffles Platform Fee',
-                'price' => '4% of raised funds',
-                'description' => 'Direct revenue',
-            ],
-            [
-                'name' => 'Volunteer Background Checks',
-                'price' => '$6 each',
-                'description' => 'Optional',
-            ],
-        ];
+        // Static usage-based add-ons (marketing artwork defaults)
+        $addOns = $this->pricingPageAddOns();
 
         $currentPlanData = null;
         if ($currentPlan) {
@@ -156,10 +164,7 @@ class PlansController extends Controller
     public function pricing(Request $request)
     {
         $user = $request->user();
-        $currentPlan = null;
-        if ($user && $user->current_plan_id) {
-            $currentPlan = Plan::with('features')->find($user->current_plan_id);
-        }
+        $currentPlan = SupporterSubscriptionService::organizationPricingCurrentPlan($user);
 
         $walletPlanPriceIds = WalletPlan::whereNotNull('stripe_price_id')
             ->pluck('stripe_price_id')
@@ -174,13 +179,7 @@ class PlansController extends Controller
             ->get()
             ->map(fn (Plan $plan) => $this->planToFrontendArray($plan));
 
-        $addOns = [
-            ['name' => 'Email Re-Ups', 'price' => '$1 per 1,000 emails', 'description' => 'Perfect for growth and newsletters'],
-            ['name' => 'AI Packs', 'price' => '$5 per 50,000 tokens', 'description' => 'High margin; encourages use'],
-            ['name' => 'SMS', 'price' => '$0.015 per text', 'description' => 'Opt-in only'],
-            ['name' => 'Raffles Platform Fee', 'price' => '4% of raised funds', 'description' => 'Direct revenue'],
-            ['name' => 'Volunteer Background Checks', 'price' => '$6 each', 'description' => 'Optional'],
-        ];
+        $addOns = $this->pricingPageAddOns();
 
         $currentPlanData = null;
         if ($currentPlan) {
@@ -192,10 +191,21 @@ class PlansController extends Controller
             ];
         }
 
+        $supporterPlans = WalletPlan::query()
+            ->active()
+            ->supporterTiers()
+            ->ordered()
+            ->get()
+            ->map(fn (WalletPlan $plan) => SupporterSubscriptionService::walletPlanToFrontend($plan))
+            ->values()
+            ->all();
+
         return Inertia::render('frontend/Pricing', [
             'plans' => $plans,
             'addOns' => $addOns,
             'currentPlan' => $currentPlanData,
+            'supporterPlans' => $supporterPlans,
+            'supporterSubscription' => SupporterSubscriptionService::subscriptionStateForUser($user),
         ]);
     }
 
@@ -255,13 +265,15 @@ class PlansController extends Controller
             ];
 
             // If plan is recurring (not one-time), create subscription with one-time items
-            if ($plan->frequency !== 'one-time' && $plan->stripe_price_id) {
+            if ($plan->frequency !== 'one-time') {
                 // For subscriptions with one-time charges, we need to use Stripe Checkout directly
                 $stripe = Cashier::stripe();
 
+                $stripePriceId = PlanStripeAmount::resolveCheckoutPriceId($plan->fresh());
+
                 $lineItems = [
                     [
-                        'price' => $plan->stripe_price_id,
+                        'price' => $stripePriceId,
                         'quantity' => 1,
                     ],
                 ];
@@ -335,10 +347,13 @@ class PlansController extends Controller
     public function getWalletPlans(Request $request)
     {
         try {
-            // Always fetch fresh data from database (no cache)
-            $plansCollection = WalletPlan::active()
-                ->ordered()
-                ->get();
+            $query = WalletPlan::active()->ordered();
+
+            if ($request->boolean('supporter')) {
+                $query->supporterTiers();
+            }
+
+            $plansCollection = $query->get();
 
             // Get monthly plan for savings calculation
             $monthlyPlan = $plansCollection->firstWhere('frequency', 'monthly');
@@ -356,6 +371,7 @@ class PlansController extends Controller
 
                 return [
                     'id' => $plan->id,
+                    'slug' => $plan->slug,
                     'name' => $plan->name,
                     'price' => (float) $plan->price,
                     'one_time_fee' => $plan->one_time_fee ? (float) $plan->one_time_fee : null,
@@ -411,12 +427,36 @@ class PlansController extends Controller
         try {
             $user->refresh();
 
-            // Check if user already has an active subscription
-            if ($user->current_plan_id && $user->subscribed()) {
+            $eligibility = SupporterSubscriptionService::canSubscribe($user, $walletPlan);
+            if (! $eligibility['allowed']) {
+                $message = $eligibility['message'] ?? 'Unable to subscribe to this plan.';
+                if ($request->header('X-Inertia')) {
+                    return redirect()->back()->withErrors(['message' => $message]);
+                }
+
                 return response()->json([
                     'success' => false,
-                    'message' => 'You already have an active subscription.',
+                    'message' => $message,
                 ], 400);
+            }
+
+            if ((float) $walletPlan->price <= 0) {
+                SupporterSubscriptionService::activate($user, $walletPlan);
+
+                $successMessage = "You're now a {$walletPlan->name}. Welcome to Believe In Unity!";
+
+                if (SupporterSubscriptionService::isSupporterPlan($walletPlan)) {
+                    return redirect()->route('user.profile.index')->with('success', $successMessage);
+                }
+
+                return Inertia::render('Plans/Success', [
+                    'successMessage' => $successMessage,
+                    'isWalletSubscription' => true,
+                ]);
+            }
+
+            if ($user->subscribed(SupporterSubscriptionService::SUBSCRIPTION_TYPE)) {
+                SupporterSubscriptionService::endLocalSubscriptions($user);
             }
 
             // Create Stripe product and price if they don't exist
@@ -575,8 +615,14 @@ class PlansController extends Controller
                 } else {
                     $userFriendlyMessage = 'Payment service error. Please try again or contact support.';
                 }
+            } elseif (str_contains($errorMessage, 'SQLSTATE') || str_contains($errorMessage, 'Integrity constraint')) {
+                $userFriendlyMessage = 'Unable to activate your supporter plan. Please try again or contact support.';
             } elseif (str_contains($errorMessage, 'Connection') || str_contains($errorMessage, 'timeout')) {
                 $userFriendlyMessage = 'Connection error. Please check your internet connection and try again.';
+            }
+
+            if ($request->header('X-Inertia')) {
+                return redirect()->back()->withErrors(['message' => $userFriendlyMessage]);
             }
 
             return response()->json([
@@ -704,25 +750,18 @@ class PlansController extends Controller
                 }
 
                 // Find or create a corresponding Plan record for the user's current_plan_id
-                // This maintains compatibility with existing plan system
-                $plan = Plan::where('stripe_price_id', $walletPlan->stripe_price_id)->first();
-
-                if (! $plan) {
-                    // Create a temporary plan record for compatibility
-                    $plan = Plan::create([
-                        'name' => $walletPlan->name,
-                        'frequency' => $walletPlan->frequency,
-                        'price' => $walletPlan->price,
-                        'stripe_price_id' => $walletPlan->stripe_price_id,
-                        'stripe_product_id' => $walletPlan->stripe_product_id,
-                        'description' => $walletPlan->description,
-                        'trial_days' => $walletPlan->trial_days,
-                        'is_active' => true,
-                    ]);
-                }
+                $plan = SupporterSubscriptionService::resolveMirrorPlan($walletPlan);
 
                 // Update user's current plan
                 $user->current_plan_id = $plan->id;
+                $user->current_plan_details = [
+                    'name' => $walletPlan->name,
+                    'price' => (float) $walletPlan->price,
+                    'frequency' => $walletPlan->frequency,
+                    'wallet_plan_id' => $walletPlan->id,
+                    'wallet_plan_slug' => $walletPlan->slug,
+                    'subscribed_at' => now()->toIso8601String(),
+                ];
                 $user->save();
 
                 Log::info('Wallet subscription successful', [
@@ -735,8 +774,14 @@ class PlansController extends Controller
                     'kyc_fee_amount' => $kycFeeAmountFromSession,
                 ]);
 
-                // Render success page instead of redirecting
-                $successMessage = 'Wallet subscription activated successfully! You can now access your digital wallet.';
+                $isSupporterPlan = SupporterSubscriptionService::isSupporterPlan($walletPlan);
+                $successMessage = $isSupporterPlan
+                    ? "You're now a {$walletPlan->name}. Welcome to Believe In Unity!"
+                    : 'Wallet subscription activated successfully! You can now access your digital wallet.';
+
+                if ($isSupporterPlan) {
+                    return redirect()->route('user.profile.index')->with('success', $successMessage);
+                }
 
                 return Inertia::render('Plans/Success', [
                     'successMessage' => $successMessage,
@@ -787,7 +832,7 @@ class PlansController extends Controller
             // Retrieve the checkout session from Stripe
             $session = Cashier::stripe()->checkout->sessions->retrieve($sessionId);
 
-            if ($session->payment_status !== 'paid') {
+            if (! in_array($session->payment_status, ['paid', 'no_payment_required'], true)) {
                 return redirect()->route('plans.index')->with('error', 'Payment was not completed.');
             }
 
@@ -859,41 +904,18 @@ class PlansController extends Controller
             // Calculate total amount including Currency custom fields
             $totalAmount = (float) $plan->price;
             $currencyFields = [];
-            $emailsIncluded = 0;
-            $aiTokensIncluded = 0;
-            $creditsToAdd = 0;
             $aiMediaStudioCreditsFromPlan = null;
 
-            // Process custom fields
+            // Process custom fields (currency + optional AI Media Studio only — emails/tokens are pay-as-you-go)
             if ($plan->custom_fields && is_array($plan->custom_fields)) {
                 foreach ($plan->custom_fields as $field) {
                     $fieldKey = strtolower($field['key'] ?? '');
                     $fieldType = $field['type'] ?? '';
                     $fieldValue = $field['value'] ?? '';
-                    $fieldLabel = strtolower($field['label'] ?? '');
 
-                    // Handle emails_included - check by key or label
-                    if (($fieldKey === 'emails_included' || str_contains($fieldLabel, 'email')) && $fieldType === 'number') {
-                        // Remove commas and convert to integer
-                        $emailsIncluded = (int) str_replace(',', '', $fieldValue);
-                    }
-                    // Handle ai_tokens_included - check by key or label containing 'token' or 'ai'
-                    elseif (
-                        ($fieldKey === 'ai_tokens_included' ||
-                            $fieldKey === 'ai_tokens' ||
-                            str_contains($fieldKey, 'token') ||
-                            (str_contains($fieldLabel, 'token') || str_contains($fieldLabel, 'ai assistant'))) &&
-                        $fieldType === 'number'
-                    ) {
-                        // Remove commas and convert to integer
-                        $aiTokensIncluded = (int) str_replace(',', '', $fieldValue);
-                    }
-                    // AI Media Studio (short-form video) credits — separate from wallet `credits`
-                    elseif ($fieldKey === 'ai_media_studio_credits' && $fieldType === 'number') {
+                    if ($fieldKey === 'ai_media_studio_credits' && $fieldType === 'number') {
                         $aiMediaStudioCreditsFromPlan = (int) str_replace(',', '', $fieldValue);
-                    }
-                    // Handle currency fields
-                    elseif ($fieldType === 'currency') {
+                    } elseif ($fieldType === 'currency') {
                         $currencyAmount = (float) $fieldValue;
                         $totalAmount += $currencyAmount;
                         $currencyFields[] = [
@@ -901,46 +923,31 @@ class PlansController extends Controller
                             'amount' => $currencyAmount,
                         ];
                     }
-                    // Handle credits - only if explicitly marked as credits (not tokens, not emails)
-                    elseif (
-                        ($fieldKey === 'credits' || str_contains($fieldLabel, 'credit')) &&
-                        $fieldType === 'number' &&
-                        ! str_contains($fieldKey, 'token') &&
-                        ! str_contains($fieldLabel, 'token')
-                    ) {
-                        $creditsToAdd += (int) str_replace(',', '', $fieldValue);
-                    }
                 }
             }
 
             // Prepare current_plan_details as JSON
+            $welcomeBonus = PlanFirstMonthWelcomeCredits::grantIfEligible($user, (int) $plan->id, $sessionId);
+
             $planDetails = [
                 'name' => $plan->name,
                 'price' => (float) $plan->price,
                 'frequency' => $plan->frequency,
                 'subscribed_at' => now()->toIso8601String(),
-                'emails_included' => $emailsIncluded,
-                'ai_tokens_included' => $aiTokensIncluded,
                 'ai_media_studio_credits_granted' => 0,
+                'first_month_welcome_granted' => $welcomeBonus['granted'],
+                'first_month_welcome_ai_tokens' => $welcomeBonus['ai_tokens'],
+                'first_month_welcome_emails' => $welcomeBonus['emails'],
                 'custom_fields' => $plan->custom_fields ?? [],
             ];
 
             $mediaStudioGrant = PlanAiMediaStudioSubscriptionCredits::grantAmountForSubscribe($aiMediaStudioCreditsFromPlan);
             $planDetails['ai_media_studio_credits_granted'] = $mediaStudioGrant;
 
-            // Update user with plan, emails, tokens, and credits
             $user->update([
                 'current_plan_id' => $plan->id,
                 'current_plan_details' => $planDetails,
-                'emails_included' => $emailsIncluded,
-                'ai_tokens_included' => $aiTokensIncluded,
             ]);
-
-            // Add credits: ai_tokens_included + any explicit credits
-            $totalCreditsToAdd = $aiTokensIncluded + $creditsToAdd;
-            if ($totalCreditsToAdd > 0) {
-                $user->increment('credits', $totalCreditsToAdd);
-            }
 
             if ($mediaStudioGrant > 0) {
                 $user->increment('ai_media_studio_credits', $mediaStudioGrant);
@@ -959,10 +966,10 @@ class PlansController extends Controller
                     'plan_price' => (float) $plan->price,
                     'plan_frequency' => $plan->frequency,
                     'currency_fields' => $currencyFields,
-                    'emails_included' => $emailsIncluded,
-                    'ai_tokens_included' => $aiTokensIncluded,
-                    'credits_added' => $totalCreditsToAdd,
                     'ai_media_studio_credits_granted' => $mediaStudioGrant,
+                    'first_month_welcome_granted' => $welcomeBonus['granted'],
+                    'first_month_welcome_ai_tokens' => $welcomeBonus['ai_tokens'],
+                    'first_month_welcome_emails' => $welcomeBonus['emails'],
                     'description' => "Plan Subscription: {$plan->name}".(! empty($currencyFields) ? ' + Add-ons' : ''),
                     'stripe_session_id' => $sessionId,
                     'stripe_payment_intent' => $session->payment_intent ?? null,
@@ -974,28 +981,24 @@ class PlansController extends Controller
             Log::info('Plan subscription successful', [
                 'user_id' => $user->id,
                 'plan_id' => $plan->id,
-                'emails_included' => $emailsIncluded,
-                'ai_tokens_included' => $aiTokensIncluded,
-                'credits_added' => $totalCreditsToAdd,
                 'ai_media_studio_credits_granted' => $mediaStudioGrant,
+                'first_month_welcome_granted' => $welcomeBonus['granted'],
+                'first_month_welcome_ai_tokens' => $welcomeBonus['ai_tokens'],
+                'first_month_welcome_emails' => $welcomeBonus['emails'],
                 'total_amount' => $totalAmount,
                 'session_id' => $sessionId,
             ]);
 
-            $successMessage = "Successfully subscribed to {$plan->name}!";
-            if ($totalCreditsToAdd > 0) {
-                $successMessage .= " {$totalCreditsToAdd} credits added.";
-            }
-            if ($emailsIncluded > 0) {
-                $successMessage .= " {$emailsIncluded} emails included.";
-            }
-            if ($mediaStudioGrant > 0) {
-                $successMessage .= " {$mediaStudioGrant} AI Media Studio credits added (US\$1 = 1 credit).";
-            }
-
-            // Render success page instead of redirecting
             return Inertia::render('Plans/Success', [
-                'successMessage' => $successMessage,
+                'planName' => $plan->name,
+                'trialDays' => (int) $plan->trial_days,
+                'successMessage' => "You're subscribed to {$plan->name}.",
+                'welcomeBonus' => $welcomeBonus['granted']
+                    ? [
+                        'aiTokens' => $welcomeBonus['ai_tokens'],
+                        'emails' => $welcomeBonus['emails'],
+                    ]
+                    : null,
             ]);
         } catch (\Exception $e) {
             Log::error('Plan subscription success handler error', [

@@ -104,9 +104,14 @@ return [
     ],
 
     'firebase' => [
-        'project_id' => env('FIREBASE_PROJECT_ID'),
-        'credentials' => env('FIREBASE_CREDENTIALS', 'app/firebase/firebase-credentials.json'),
-        'vapid_key' => env('FIREBASE_VAPID_KEY'),
+        'project_id' => env('FIREBASE_PROJECT_ID', env('FCM_PROJECT_ID', 'c3ers-c6fbe')),
+        'credentials' => env('FIREBASE_CREDENTIALS', env('FCM_CREDENTIALS', 'app/firebase/firebase-credentials.json')),
+        'vapid_key' => env('FIREBASE_VAPID_KEY', env('FCM_VAPID_KEY')),
+        'api_key' => env('FIREBASE_API_KEY', 'AIzaSyBRd7Jf0kxrlCRFa9zYtwtubiPbPDohVmA'),
+        'auth_domain' => env('FIREBASE_AUTH_DOMAIN', 'c3ers-c6fbe.firebaseapp.com'),
+        'storage_bucket' => env('FIREBASE_STORAGE_BUCKET', 'c3ers-c6fbe.firebasestorage.app'),
+        'messaging_sender_id' => env('FIREBASE_MESSAGING_SENDER_ID', '554135699251'),
+        'app_id' => env('FIREBASE_APP_ID', '1:554135699251:web:5a34568d2f0cde065ac846'),
         /**
          * OAuth + FCM use Guzzle/cURL. On Windows, "SSL certificate problem: unable to get local issuer certificate"
          * is common until php.ini curl.cainfo is set — or set FIREBASE_CAFILE to https://curl.se/ca/cacert.pem path.
@@ -208,6 +213,15 @@ return [
             'media_studio_5' => ['usd' => (float) env('AI_MEDIA_PACK_5_USD', 5), 'credits' => (int) env('AI_MEDIA_PACK_5_CREDITS', 5)],
             'media_studio_10' => ['usd' => (float) env('AI_MEDIA_PACK_10_USD', 10), 'credits' => (int) env('AI_MEDIA_PACK_10_CREDITS', 10)],
         ],
+    ],
+
+    /*
+    | One-time welcome allowance when an organization first subscribes to a pricing plan.
+    | Defaults: $5 AI pack (25,000 tokens) + $1 email (1,000 emails). Not granted on renewals.
+    */
+    'plan_subscription' => [
+        'first_month_ai_tokens' => max(0, (int) env('PLAN_FIRST_MONTH_AI_TOKENS', 25_000)),
+        'first_month_emails' => max(0, (int) env('PLAN_FIRST_MONTH_EMAILS', 1_000)),
     ],
 
     /*
@@ -356,6 +370,10 @@ return [
     */
     'marketplace' => [
         'pool_listing_organization_id' => env('MARKETPLACE_POOL_LISTING_ORGANIZATION_ID'),
+    ],
+
+    'digital_products' => [
+        'max_upload_kb' => (int) env('DIGITAL_PRODUCT_MAX_UPLOAD_KB', 51200),
     ],
 
     'shippo' => [

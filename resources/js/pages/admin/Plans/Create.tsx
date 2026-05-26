@@ -339,7 +339,7 @@ export default function AdminPlansCreate() {
                                                 {field.type === 'number' && (
                                                     <div className="space-y-2">
                                                         <Label>
-                                                            Description (e.g., Token Re-ups ($1 per 50K tokens))
+                                                            Description (e.g., Token Re-ups ($5 per 25K tokens))
                                                         </Label>
                                                         <Input
                                                             value={field.description || ''}
@@ -348,7 +348,7 @@ export default function AdminPlansCreate() {
                                                                 updated[index].description = e.target.value
                                                                 setData('custom_fields', updated)
                                                             }}
-                                                            placeholder="e.g., Token Re-ups ($1 per 50K tokens)"
+                                                            placeholder="e.g., Token Re-ups ($5 per 25K tokens)"
                                                         />
                                                     </div>
                                                 )}

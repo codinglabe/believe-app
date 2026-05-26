@@ -24,7 +24,7 @@ export function useNotifications(userId: number) {
 
   useEffect(() => {
     // Listen for new notifications via Laravel Reverb
-    const channel = echo.private(`users.${userId}`)
+    const channel = echo().private(`user.${userId}`)
 
     channel.notification((notification: Notification) => {
       console.log("[v0] New notification received:", notification)
