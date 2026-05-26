@@ -8,8 +8,8 @@ import { showSuccessToast, showErrorToast } from '@/lib/toast';
 import { NotificationProvider } from '@/pages/Contexts/NotificationContext';
 // import { PWAInstallPrompt } from '@/components/PWAInstallPrompt';
 // import { PWAUpdatePrompt } from '@/components/PWAUpdatePrompt';
-import { ensureMessagingReady } from '@/lib/firebase';
 import { syncPushTokenWithServer } from '@/lib/push-token-sync';
+import { registerServiceWorker } from '@/pwa/register-service-worker';
 import { PushNotificationManager } from '@/components/PushNotificationManager';
 import { shouldAutoPromptForPushPermission } from '@/lib/push-environment';
 
@@ -23,24 +23,7 @@ export default ({ children, breadcrumbs, ...props }: AppLayoutProps) => {
     const { auth } = usePage<PageProps>().props;
 
      useEffect(() => {
-        const initializePushNotifications = async () => {
-          try {
-            await ensureMessagingReady()
-
-            window.addEventListener("firebase-notification", (event: Event) => {
-              const detail = (event as CustomEvent).detail
-              console.log("[AppLayout] Received notification:", detail)
-            })
-          } catch (err) {
-            console.error("[AppLayout] Push initialization error:", err)
-          }
-        }
-
-        initializePushNotifications()
-
-        return () => {
-          window.removeEventListener("firebase-notification", () => {})
-        }
+        void registerServiceWorker();
       }, [])
 
     const authUserId = auth?.user?.id;

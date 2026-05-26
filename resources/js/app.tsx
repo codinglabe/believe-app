@@ -236,8 +236,8 @@ if (typeof window !== 'undefined' && !isLivestockDomain() && 'serviceWorker' in 
             await new Promise((r) => setTimeout(r, 1000));
             resetMessagingRegistration();
             const userId = document.querySelector('meta[name="user-id"]')?.getAttribute('content');
-            if (userId) {
-                await syncPushTokenWithServer({ prompt: Notification.permission === 'default' });
+            if (userId && Notification.permission === 'granted') {
+                await syncPushTokenWithServer();
             }
         } catch (e) {
             console.error('[App] Push re-init after controller change:', e);
