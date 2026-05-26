@@ -1,11 +1,33 @@
 // resources/js/pages/chat/index.tsx
 import { ChatLayout } from "@/components/chat/chat-layout"
+import { syncPushTokenWithServer } from "@/lib/push-token-sync";
+import { registerServiceWorker } from "@/pwa/register-service-worker";
 import { ChatProvider } from "@/providers/chat-provider"
 import { usePage } from "@inertiajs/react";
 import { useEffect } from "react";
 import toast, { Toaster } from 'react-hot-toast';
 
 export default function ChatPage() {
+    const { auth } = usePage().props;
+
+    // Chat does not use AppLayout — register push here so FCM works on /chat
+    useEffect(() => {
+        void registerServiceWorker();
+    }, [])
+
+    useEffect(() => {
+        const saveFCMTokenAfterLogin = async () => {
+            if (!auth?.user?.id) return
+            try {
+                await syncPushTokenWithServer()
+            } catch (err) {
+                console.error("[ChatPage] FCM token sync error:", err)
+            }
+        }
+
+        saveFCMTokenAfterLogin()
+    }, [auth?.user?.id]);
+
     const props = usePage();
     useEffect(() => {
         const success = props.props?.success;

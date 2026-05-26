@@ -2,7 +2,7 @@
 
 import { Head, Link, usePage } from "@inertiajs/react"
 import { motion, type Variants } from "framer-motion"
-import { ArrowRight, Check, Sparkles, Wallet } from "lucide-react"
+import { ArrowRight, Check, Mail, Sparkles, Wallet, Zap } from "lucide-react"
 import AppSidebarLayout from "@/layouts/app/app-sidebar-layout"
 import FrontendLayout from "@/layouts/frontend/frontend-layout"
 import { Button } from "@/components/ui/button"
@@ -13,6 +13,12 @@ interface PlansSuccessProps {
   planName?: string
   trialDays?: number
   isWalletSubscription?: boolean
+  isSupporterSubscription?: boolean
+  supporterTier?: string | null
+  welcomeBonus?: {
+    aiTokens: number
+    emails: number
+  } | null
 }
 
 const logoGradientFrame = "bg-gradient-to-r from-purple-600 to-blue-600"
@@ -99,12 +105,31 @@ function FloatingOrb({ className, delay = 0 }: { className?: string; delay?: num
   )
 }
 
-export default function PlansSuccess({ successMessage, planName, trialDays = 0 }: PlansSuccessProps) {
+export default function PlansSuccess({
+  successMessage,
+  planName,
+  trialDays = 0,
+  isWalletSubscription: isWalletSubscriptionProp = false,
+  isSupporterSubscription: isSupporterSubscriptionProp = false,
+  welcomeBonus = null,
+}: PlansSuccessProps) {
   const { url } = usePage()
+  const isSupporterSubscription =
+    isSupporterSubscriptionProp ||
+    Boolean(
+      successMessage &&
+        !successMessage.toLowerCase().includes("wallet") &&
+        (successMessage.toLowerCase().includes("supporter") ||
+          successMessage.toLowerCase().includes("believe in unity")),
+    )
   const isWalletSubscription =
-    url?.includes("/wallet/subscription/success") || successMessage?.toLowerCase().includes("wallet")
+    isWalletSubscriptionProp ||
+    (!isSupporterSubscription &&
+      (url?.includes("/wallet/subscription/success") ||
+        successMessage?.toLowerCase().includes("wallet") === true))
 
-  const Layout = isWalletSubscription ? FrontendLayout : AppSidebarLayout
+  const Layout = isSupporterSubscription || isWalletSubscription ? FrontendLayout : AppSidebarLayout
+  const profileHref = route("user.profile.index")
   const hasTrial = !isWalletSubscription && trialDays > 0
   const displayPlan = planName ?? "Unity Membership"
 
@@ -112,9 +137,11 @@ export default function PlansSuccess({ successMessage, planName, trialDays = 0 }
     <Layout>
       <Head
         title={
-          isWalletSubscription
-            ? "Wallet Subscription Successful - BelieveInUnity.org"
-            : "Subscription Successful - BelieveInUnity.org"
+          isSupporterSubscription
+            ? "Supporter Plan Active - BelieveInUnity.org"
+            : isWalletSubscription
+              ? "Wallet Subscription Successful - BelieveInUnity.org"
+              : "Subscription Successful - BelieveInUnity.org"
         }
       />
 
@@ -164,7 +191,11 @@ export default function PlansSuccess({ successMessage, planName, trialDays = 0 }
                 variants={itemVariants}
                 className="text-2xl font-bold tracking-tight text-slate-900 sm:text-3xl dark:text-white"
               >
-                {isWalletSubscription ? "Wallet Activated!" : "You're all set!"}
+                {isSupporterSubscription
+                  ? "Supporter plan active!"
+                  : isWalletSubscription
+                    ? "Wallet Activated!"
+                    : "You're all set!"}
               </motion.h1>
 
               {successMessage && (
@@ -204,10 +235,53 @@ export default function PlansSuccess({ successMessage, planName, trialDays = 0 }
                       </p>
                     </motion.div>
                   )}
+
+                  {welcomeBonus && (welcomeBonus.aiTokens > 0 || welcomeBonus.emails > 0) && (
+                    <motion.div
+                      variants={itemVariants}
+                      className="rounded-xl border border-purple-200/80 bg-gradient-to-br from-purple-50/80 to-blue-50/60 px-4 py-4 text-left dark:border-purple-500/25 dark:from-purple-950/30 dark:to-blue-950/20"
+                    >
+                      <p className="text-sm font-semibold text-slate-900 dark:text-white">
+                        Your first-month starter credits
+                      </p>
+                      <p className="mt-1 text-xs leading-relaxed text-slate-600 dark:text-white/70">
+                        Use these to try AI and email. After that, add more anytime with pay-as-you-go packs.
+                      </p>
+                      <ul className="mt-3 space-y-2">
+                        {welcomeBonus.aiTokens > 0 && (
+                          <li className="flex items-center gap-2 text-sm text-slate-700 dark:text-white/85">
+                            <Zap className="h-4 w-4 shrink-0 text-purple-600 dark:text-purple-400" />
+                            <span>
+                              <span className="font-semibold">{welcomeBonus.aiTokens.toLocaleString()}</span> AI tokens
+                              <span className="text-slate-500 dark:text-white/55"> ($5 pack)</span>
+                            </span>
+                          </li>
+                        )}
+                        {welcomeBonus.emails > 0 && (
+                          <li className="flex items-center gap-2 text-sm text-slate-700 dark:text-white/85">
+                            <Mail className="h-4 w-4 shrink-0 text-blue-600 dark:text-blue-400" />
+                            <span>
+                              <span className="font-semibold">{welcomeBonus.emails.toLocaleString()}</span> emails
+                              <span className="text-slate-500 dark:text-white/55"> ($1 credit)</span>
+                            </span>
+                          </li>
+                        )}
+                      </ul>
+                    </motion.div>
+                  )}
                 </motion.div>
               )}
 
-              {isWalletSubscription && (
+              {isSupporterSubscription && (
+                <motion.p
+                  variants={itemVariants}
+                  className="mt-5 text-sm leading-relaxed text-slate-600 sm:text-base dark:text-white/75"
+                >
+                  Your supporter account is ready. Manage donations, follows, rewards, and more from your profile.
+                </motion.p>
+              )}
+
+              {isWalletSubscription && !isSupporterSubscription && (
                 <motion.p
                   variants={itemVariants}
                   className="mt-5 text-sm leading-relaxed text-slate-600 sm:text-base dark:text-white/75"
@@ -217,7 +291,24 @@ export default function PlansSuccess({ successMessage, planName, trialDays = 0 }
               )}
 
               <motion.div variants={itemVariants} className="mt-8 flex flex-col gap-3 sm:flex-row">
-                {isWalletSubscription ? (
+                {isSupporterSubscription ? (
+                  <>
+                    <Link href={profileHref} className="flex-1">
+                      <Button className="group relative h-11 w-full overflow-hidden border-0 font-semibold text-white shadow-md">
+                        <span className={cn("absolute inset-0", logoGradientCTA)} aria-hidden />
+                        <span className="relative flex items-center justify-center gap-2">
+                          Go to Profile
+                          <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+                        </span>
+                      </Button>
+                    </Link>
+                    <Link href="/pricing?tab=supporters" className="flex-1">
+                      <Button variant="outline" className="h-11 w-full border-violet-200 dark:border-purple-500/30">
+                        View Supporter Plans
+                      </Button>
+                    </Link>
+                  </>
+                ) : isWalletSubscription ? (
                   <>
                     <Link href="/" className="flex-1">
                       <Button variant="outline" className="h-11 w-full">

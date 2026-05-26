@@ -40,7 +40,7 @@ class PlanSeeder extends Seeder
                     [
                         'key' => 'ai_tokens',
                         'label' => 'AI Assistant',
-                        'value' => 'Token Re-ups ($5 per 50K tokens)',
+                        'value' => 'Token Re-ups ($5 per 25K tokens)',
                         'type' => 'text',
                         'icon' => 'Bot',
                     ],
@@ -88,7 +88,7 @@ class PlanSeeder extends Seeder
                     [
                         'key' => 'ai_tokens',
                         'label' => 'AI Assistant',
-                        'value' => 'Token Re-ups ($5 per 50K tokens)',
+                        'value' => 'Token Re-ups ($5 per 25K tokens)',
                         'type' => 'text',
                         'icon' => 'Bot',
                     ],
@@ -136,7 +136,7 @@ class PlanSeeder extends Seeder
                     [
                         'key' => 'ai_tokens',
                         'label' => 'AI Assistant',
-                        'value' => 'Token Re-ups ($5 per 50K tokens) + Auto Re-Up',
+                        'value' => 'Token Re-ups ($5 per 25K tokens) + Auto Re-Up',
                         'type' => 'text',
                         'icon' => 'Bot',
                     ],

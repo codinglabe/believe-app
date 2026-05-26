@@ -8,6 +8,10 @@ import { showSuccessToast, showErrorToast } from '@/lib/toast';
 import { NotificationProvider } from '@/pages/Contexts/NotificationContext';
 // import { PWAInstallPrompt } from '@/components/PWAInstallPrompt';
 // import { PWAUpdatePrompt } from '@/components/PWAUpdatePrompt';
+import { syncPushTokenWithServer } from '@/lib/push-token-sync';
+import { registerServiceWorker } from '@/pwa/register-service-worker';
+import { PushNotificationManager } from '@/components/PushNotificationManager';
+import { shouldAutoPromptForPushPermission } from '@/lib/push-environment';
 
 interface AppLayoutProps {
     children: ReactNode;
@@ -17,6 +21,29 @@ interface AppLayoutProps {
 export default ({ children, breadcrumbs, ...props }: AppLayoutProps) => {
 
     const { auth } = usePage<PageProps>().props;
+
+     useEffect(() => {
+        void registerServiceWorker();
+      }, [])
+
+    const authUserId = auth?.user?.id;
+    const fcmTokenSavedForUser = useRef<number | null>(null);
+
+    useEffect(() => {
+        const saveFCMTokenAfterLogin = async () => {
+            if (!authUserId) return;
+            if (fcmTokenSavedForUser.current === authUserId) return;
+            fcmTokenSavedForUser.current = authUserId;
+
+            try {
+                await syncPushTokenWithServer({ prompt: shouldAutoPromptForPushPermission() });
+            } catch (err) {
+                console.error("[AppLayout] FCM token sync error:", err);
+            }
+        };
+
+        saveFCMTokenAfterLogin();
+    }, [authUserId]);
 
     // Single place for Laravel session flash toasts – use primitives + ref so deps don't churn every render
     const { props: pageProps } = usePage();
@@ -51,6 +78,14 @@ export default ({ children, breadcrumbs, ...props }: AppLayoutProps) => {
             <AppLayoutTemplate breadcrumbs={breadcrumbs} {...props}>
                  {/* <PWAInstallPrompt /> */}
         {/* <PWAUpdatePrompt /> */}
+            {auth?.user?.id && !auth.user.push_token && (
+                <div className="border-b border-amber-500/30 bg-amber-500/10 px-4 py-2 flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-sm text-amber-900 dark:text-amber-100">
+                        Enable browser notifications to get alerts in real time.
+                    </p>
+                    <PushNotificationManager userId={auth.user.id} />
+                </div>
+            )}
             {children}
 
             {/* Toast Container */}

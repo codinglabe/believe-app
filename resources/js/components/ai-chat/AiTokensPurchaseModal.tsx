@@ -22,8 +22,8 @@ const TOKEN_ADDONS: Array<{
   featured?: boolean
 }> = [
   { package: "addon_10k", tokens: 10_000, priceLabel: "$2.00" },
-  { package: "addon_25k", tokens: 25_000, priceLabel: "$4.50", featured: true },
-  { package: "addon_50k", tokens: 50_000, priceLabel: "$8.00" },
+  { package: "addon_25k", tokens: 25_000, priceLabel: "$5.00", featured: true },
+  { package: "addon_50k", tokens: 50_000, priceLabel: "$10.00" },
 ]
 
 interface AiTokensPurchaseModalProps {
