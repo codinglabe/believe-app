@@ -29,7 +29,6 @@
         "league/csv": "^9.24",
         "maatwebsite/excel": "^3.1.68",
         "phpoffice/phpspreadsheet": "^1.30",
-        "predis/predis": "^3.0",
         "simplepie/simplepie": "^1.8",
         "simplesoftwareio/simple-qrcode": "^4.2",
         "spatie/laravel-activitylog": "^4.10",

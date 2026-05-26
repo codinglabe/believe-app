@@ -7,7 +7,6 @@ import type { GlobalEvent } from '@inertiajs/core';
 import { createInertiaApp, router } from '@inertiajs/react';
 import { resolvePageComponent } from 'laravel-vite-plugin/inertia-helpers';
 import { configureEcho } from '@laravel/echo-react';
-import { buildReverbEchoConfig, syncEchoCsrfToken } from './lib/reverb-config';
 import { createRoot } from 'react-dom/client';
 import { NotificationProvider } from './components/frontend/notification-provider';
 import { PwaInstallPrompt } from './components/pwa/pwa-install-prompt';
@@ -16,15 +15,43 @@ import { registerServiceWorker } from './pwa/register-service-worker';
 import { PWAUpdatePrompt } from './components/PWAUpdatePrompt';
 import { isLivestockDomain } from './lib/livestock-domain';
 import { isMerchantDomain } from './lib/merchant-domain';
-import { applyFirebaseWebConfig, ensureMessagingReady, resetMessagingRegistration } from './lib/firebase';
-import { showNativePushNotification } from './lib/firebase-push-toast';
-import { syncPushTokenWithServer } from './lib/push-token-sync';
-import { logPushDiagnostics, shouldAutoPromptForPushPermission } from './lib/push-environment';
-import { Toaster } from 'react-hot-toast';
+import { initializeMessaging, requestNotificationPermission } from './lib/firebase';
 import { getBrowserTimezone } from './lib/timezone-detection';
 import axios from 'axios';
 
-configureEcho(buildReverbEchoConfig());
+
+const isLoopbackHost = (host?: string) =>
+    Boolean(host && ['127.0.0.1', '0.0.0.0', 'localhost'].includes(host));
+
+const reverbHost = (() => {
+    const configured = import.meta.env.VITE_REVERB_HOST;
+    const runtime =
+        typeof window !== 'undefined' ? window.location.hostname : 'localhost';
+
+    if (isLoopbackHost(configured) && !isLoopbackHost(runtime)) {
+        return runtime;
+    }
+
+    return configured || runtime;
+})();
+
+configureEcho({
+    broadcaster: 'reverb',
+    key: import.meta.env.VITE_REVERB_APP_KEY,
+    wsHost: reverbHost,
+    wsPort: Number(import.meta.env.VITE_REVERB_PORT) || 80,
+    wssPort: Number(import.meta.env.VITE_REVERB_PORT) || 443,
+    forceTLS: (import.meta.env.VITE_REVERB_SCHEME ?? 'https') === 'https',
+    enabledTransports: ['ws', 'wss'],
+    authEndpoint: '/broadcasting/auth',
+    auth: {
+        headers: {
+            'X-CSRF-TOKEN':
+                document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content ?? '',
+            'X-Requested-With': 'XMLHttpRequest',
+        },
+    },
+});
 
 const appName = import.meta.env.VITE_APP_NAME || 'Laravel';
 
@@ -58,20 +85,7 @@ createInertiaApp({
                 newMeta.content = initialToken;
                 document.head.appendChild(newMeta);
             }
-            syncEchoCsrfToken(initialToken);
         }
-
-        type InitialProps = {
-            initialPage?: {
-                props?: {
-                    csrf_token?: string;
-                    auth?: { user?: { id?: number } };
-                    firebaseWeb?: Parameters<typeof applyFirebaseWebConfig>[0];
-                };
-            };
-        };
-        const initial = props as InitialProps;
-        applyFirebaseWebConfig(initial.initialPage?.props?.firebaseWeb);
 
         // After every Inertia navigation (including post-login redirect), sync meta so next POST doesn't get 419.
         router.on('success', (event: GlobalEvent<'success'>) => {
@@ -86,37 +100,16 @@ createInertiaApp({
                     newMeta.content = token;
                     document.head.appendChild(newMeta);
                 }
-                syncEchoCsrfToken(token);
-            }
-
-            const pageProps = event.detail.page?.props as {
-                auth?: { user?: { id?: number } };
-            };
-            const userId = pageProps?.auth?.user?.id;
-            if (userId && !isLivestockDomain()) {
-                void registerServiceWorker()?.then(async () => {
-                    await logPushDiagnostics();
-                    await syncPushTokenWithServer({ prompt: shouldAutoPromptForPushPermission() });
-                });
             }
         });
 
         root.render(
           <NotificationProvider>
             <App {...props} />
-            <Toaster position="top-right" gutter={8} />
-            <PwaInstallPrompt />
-            <PWAUpdatePrompt />
+                <PwaInstallPrompt />
+                <PWAUpdatePrompt />
           </NotificationProvider>
         );
-
-        const initialUserId = initial.initialPage?.props?.auth?.user?.id;
-        if (initialUserId && !isLivestockDomain()) {
-            void registerServiceWorker()?.then(async () => {
-                await logPushDiagnostics();
-                await syncPushTokenWithServer({ prompt: shouldAutoPromptForPushPermission() });
-            });
-        }
     },
     progress: {
         color: getProgressColor(),
@@ -183,51 +176,43 @@ if (typeof window !== 'undefined' && isMerchantDomain()) {
 // This will set light / dark mode on load...
 initializeTheme();
 
-// Push → native OS notifications (service worker + Notification API). Requires permission granted.
+// Single service worker registration (firebase-messaging-sw.js). Do not register elsewhere.
 if (typeof window !== 'undefined' && !isLivestockDomain()) {
-    if (import.meta.env.DEV) {
-        (window as Window & { enableBelievePush?: () => Promise<string | null> }).enableBelievePush = () =>
-            syncPushTokenWithServer({ prompt: true });
-        (window as Window & { testBelievePushToast?: () => void }).testBelievePushToast = () =>
-            void showNativePushNotification({
-                title: 'Unity Meet invitation',
-                body: 'Test host invited you to a Unity Meet.',
-                data: {
-                    type: 'unity_meet_invitation',
-                    join_url: '/livestreams/join/test-room',
-                    click_action: '/livestreams/join/test-room',
-                },
-            });
-        console.info('[Push] Dev helpers: enableBelievePush(), testBelievePushToast()');
-    }
+    registerServiceWorker();
 
-    if ('permissions' in navigator) {
-        void navigator.permissions.query({ name: 'notifications' as PermissionName }).then((status) => {
-            status.addEventListener('change', () => {
-                if (Notification.permission === 'granted') {
-                    resetMessagingRegistration();
-                    void ensureMessagingReady();
+    // Re-initialize push only once per controller change to avoid loops
+    if ('serviceWorker' in navigator) {
+        let controllerChangeHandled = false;
+        navigator.serviceWorker.addEventListener('controllerchange', async () => {
+            if (controllerChangeHandled) return;
+            controllerChangeHandled = true;
+            try {
+                await new Promise((r) => setTimeout(r, 1000));
+                await initializeMessaging();
+                const windowWithLaravel = window as typeof window & { Laravel?: { user?: { id?: string | number } } };
+                const userId = windowWithLaravel.Laravel?.user?.id ||
+                    (document.querySelector('meta[name="user-id"]') as HTMLMetaElement)?.content ||
+                    (document.querySelector('[data-user-id]') as HTMLElement)?.dataset?.userId;
+                if (userId) {
+                    const fcmToken = await requestNotificationPermission();
+                    if (fcmToken) {
+                        const nav = navigator as typeof navigator & { userAgentData?: { brands?: Array<{ brand?: string }> } };
+                        await axios.post("/push-token", {
+                            token: fcmToken,
+                            device_info: {
+                                device_id: localStorage.getItem('device_id') || `device_${Math.random().toString(36).substr(2, 9)}`,
+                                device_type: 'web',
+                                device_name: navigator.userAgent,
+                                browser: nav.userAgentData?.brands?.[0]?.brand || 'Unknown',
+                                platform: navigator.platform,
+                                user_agent: navigator.userAgent,
+                            },
+                        });
+                    }
                 }
-            });
+            } catch (e) {
+                console.error('[App] Push re-init after controller change:', e);
+            }
         });
     }
-}
-
-// Re-register FCM after SW updates (new firebase-messaging-sw.js deploy)
-if (typeof window !== 'undefined' && !isLivestockDomain() && 'serviceWorker' in navigator) {
-    let controllerChangeHandled = false;
-    navigator.serviceWorker.addEventListener('controllerchange', async () => {
-        if (controllerChangeHandled) return;
-        controllerChangeHandled = true;
-        try {
-            await new Promise((r) => setTimeout(r, 1000));
-            resetMessagingRegistration();
-            const userId = document.querySelector('meta[name="user-id"]')?.getAttribute('content');
-            if (userId && Notification.permission === 'granted') {
-                await syncPushTokenWithServer();
-            }
-        } catch (e) {
-            console.error('[App] Push re-init after controller change:', e);
-        }
-    });
 }

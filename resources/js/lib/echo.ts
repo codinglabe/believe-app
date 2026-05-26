@@ -1,8 +1,10 @@
 /**
- * Shared Laravel Echo accessor (configured in app.tsx via configureEcho()).
- * Always call echo() — do not cache the instance at module load.
+ * Shared Laravel Echo instance (configured in app.tsx via configureEcho).
+ * Do not create a second `new Echo()` here — private channels need /broadcasting/auth.
  */
-import { echo as echoFn } from "@laravel/echo-react"
+import { echo as getEcho } from "@laravel/echo-react"
 
-export { echoFn as echo }
-export default echoFn
+const echo = getEcho()
+
+export { echo }
+export default echo

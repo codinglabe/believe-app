@@ -51,25 +51,6 @@ export function setTimezoneHeader() {
         (window as unknown as { __tzFetchPatched?: boolean }).__tzFetchPatched = true;
         const originalFetch = window.fetch.bind(window);
         window.fetch = function (input: RequestInfo | URL, init?: RequestInit) {
-            const rawUrl =
-                typeof input === 'string'
-                    ? input
-                    : input instanceof URL
-                      ? input.href
-                      : input.url;
-            let requestOrigin: string;
-            try {
-                requestOrigin = new URL(rawUrl, window.location.origin).origin;
-            } catch {
-                return originalFetch(input, init);
-            }
-
-            // Cross-origin requests (Firebase, Google APIs, etc.) must not get custom headers —
-            // that triggers a CORS preflight that those endpoints do not allow.
-            if (requestOrigin !== window.location.origin) {
-                return originalFetch(input, init);
-            }
-
             const tz = getBrowserTimezone();
             const headers = new Headers(init?.headers);
             headers.set('X-Timezone', tz);

@@ -14,7 +14,6 @@ interface OrderItem {
   quantity: number
   unit_price: number
   total_price: number
-  is_digital?: boolean
 }
 
 interface Order {
@@ -37,8 +36,6 @@ interface Order {
   carrier?: string | null
   shipping_status?: string | null
   items: OrderItem[]
-  is_digital_only?: boolean
-  has_digital_downloads?: boolean
 }
 
 interface PageProps {
@@ -93,9 +90,6 @@ export default function ProfileOrders() {
   }
 
   const deliverySummary = (o: Order) => {
-    if (o.is_digital_only) {
-      return o.has_digital_downloads ? 'Downloads ready' : 'Digital — awaiting files'
-    }
     if (o.shipping_status === 'completed') return 'Delivered'
     if (o.shipping_status === 'shipped') return 'In transit'
     if (o.shipping_status === 'label_created') return 'Label created'

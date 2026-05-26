@@ -2,7 +2,6 @@
 
 namespace App\Models;
 
-use App\Support\DigitalProductDelivery;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -18,12 +17,8 @@ class Order extends Model
         'delivery_status_label',
         'is_printify_order',
         'has_manual_product',
-        'has_digital_items',
-        'is_digital_only',
         'product_type',
-        'fulfillment_label',
         'can_create_shippo_label',
-        'digital_fulfillment_items',
     ];
 
     /**
@@ -131,135 +126,20 @@ class Order extends Model
         });
     }
 
-    public function getHasDigitalItemsAttribute(): bool
-    {
-        if (! $this->relationLoaded('items')) {
-            return false;
-        }
-
-        return $this->items->contains(fn (OrderItem $item) => DigitalProductDelivery::orderItemIsDigital($item));
-    }
-
-    public function getIsDigitalOnlyAttribute(): bool
-    {
-        return DigitalProductDelivery::orderIsDigitalOnly($this);
-    }
-
     public function getProductTypeAttribute(): string
     {
         if ($this->is_printify_order) {
             return 'Printify';
         }
-
-        if (! $this->relationLoaded('items')) {
-            return 'Unknown';
-        }
-
-        $hasDigital = false;
-        $hasPhysicalManual = false;
-
-        foreach ($this->items as $item) {
-            if (DigitalProductDelivery::orderItemIsDigital($item)) {
-                $hasDigital = true;
-
-                continue;
-            }
-
-            if ($item->marketplace_product_id || $item->organization_product_id) {
-                $hasPhysicalManual = true;
-
-                continue;
-            }
-
-            $product = $item->product;
-            if ($product && empty($product->printify_product_id)) {
-                $hasPhysicalManual = true;
-            }
-        }
-
-        if ($hasDigital && ! $hasPhysicalManual) {
-            return 'Digital';
-        }
-
-        if ($hasDigital && $hasPhysicalManual) {
-            return 'Mixed';
-        }
-
-        if ($hasPhysicalManual) {
+        if ($this->has_manual_product) {
             return 'Manual';
         }
 
         return 'Mixed';
     }
 
-    public function getFulfillmentLabelAttribute(): ?string
-    {
-        if ($this->is_digital_only) {
-            $totalFiles = 0;
-            $digitalLines = 0;
-            foreach ($this->items as $item) {
-                if (! DigitalProductDelivery::orderItemIsDigital($item)) {
-                    continue;
-                }
-                $digitalLines++;
-                if ($item->relationLoaded('digitalDeliveries')) {
-                    $totalFiles += $item->digitalDeliveries->filter(fn ($d) => $d->isReleased())->count();
-                }
-            }
-
-            if ($digitalLines === 0) {
-                return 'Digital';
-            }
-
-            return $totalFiles > 0
-                ? "{$totalFiles} file(s) ready for buyer"
-                : 'Awaiting file upload';
-        }
-
-        return $this->delivery_status_label;
-    }
-
-    /**
-     * @return array<int, array{id: int, name: string, is_digital: bool, digital_deliveries: array<int, array<string, mixed>>}>
-     */
-    public function getDigitalFulfillmentItemsAttribute(): array
-    {
-        if (! $this->relationLoaded('items')) {
-            return [];
-        }
-
-        return $this->items
-            ->filter(fn (OrderItem $item) => DigitalProductDelivery::orderItemIsDigital($item))
-            ->map(function (OrderItem $item) {
-                $name = $item->product?->name
-                    ?? ($item->product_details['name'] ?? null)
-                    ?? $item->marketplaceProduct?->name
-                    ?? $item->organizationProduct?->marketplaceProduct?->name
-                    ?? 'Product';
-
-                return [
-                    'id' => $item->id,
-                    'name' => $name,
-                    'is_digital' => true,
-                    'digital_deliveries' => $item->relationLoaded('digitalDeliveries')
-                        ? $item->digitalDeliveries->map(fn ($d) => [
-                            'id' => $d->id,
-                            'original_filename' => $d->original_filename,
-                            'file_size' => $d->file_size,
-                        ])->values()->all()
-                        : [],
-                ];
-            })
-            ->values()
-            ->all();
-    }
-
     public function getCanCreateShippoLabelAttribute(): bool
     {
-        if ($this->is_digital_only) {
-            return false;
-        }
-
         if (! $this->relationLoaded('items') || ! $this->relationLoaded('shippingInfo')) {
             return false;
         }

@@ -5,7 +5,6 @@ namespace App\Http\Controllers;
 use App\Models\User;
 use App\Models\Organization;
 use App\Models\BoardMember;
-use App\Support\SupporterSubscriptionService;
 use App\Models\Transaction;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -206,7 +205,17 @@ class WalletController extends Controller
                 // Organization users: check if they have any active plan subscription
                 $hasSubscription = $entityUser->current_plan_id !== null;
             } else {
-                $hasSubscription = SupporterSubscriptionService::hasActiveWalletAccess($entityUser);
+                // Regular users: check if they have a WALLET subscription plan
+                if ($entityUser->current_plan_id !== null) {
+                    // Check if the plan is a wallet subscription plan
+                    // Wallet plans are created from WalletPlan and have matching stripe_price_id
+                    $plan = \App\Models\Plan::find($entityUser->current_plan_id);
+                    if ($plan) {
+                        // Check if this plan corresponds to a WalletPlan
+                        $walletPlan = \App\Models\WalletPlan::where('stripe_price_id', $plan->stripe_price_id)->first();
+                        $hasSubscription = $walletPlan !== null;
+                    }
+                }
             }
             
             $response = [
@@ -218,7 +227,6 @@ class WalletController extends Controller
                 'connected' => true,
                 'source' => $bridgeBalance !== null ? 'bridge' : ($isOrgUser ? 'organization' : 'user'),
                 'has_subscription' => $hasSubscription,
-                'supporter_tier' => SupporterSubscriptionService::currentTierSlug($entityUser),
             ];
 
             if ($isOrgUser) {

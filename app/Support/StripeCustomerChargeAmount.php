@@ -9,9 +9,6 @@ use App\Services\StripeProcessingFeeEstimator;
  */
 final class StripeCustomerChargeAmount
 {
-    /** Stripe Checkout minimum charge (USD). */
-    public const MIN_CHECKOUT_CENTS = 50;
-
     /**
      * Whole charge amount in cents (Stripe integer amount).
      */
@@ -20,11 +17,6 @@ final class StripeCustomerChargeAmount
         $p = StripeProcessingFeeEstimator::applyPassThroughIfEnabled($netUsd, $rail);
 
         return (int) round($p['gross_usd'] * 100);
-    }
-
-    public static function meetsCheckoutMinimum(float $netUsd, string $rail = 'card'): bool
-    {
-        return self::chargeCentsFromNetUsd($netUsd, $rail) >= self::MIN_CHECKOUT_CENTS;
     }
 
     /**

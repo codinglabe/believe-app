@@ -5,8 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import axios from 'axios';
-import { Plus, Edit, Trash2, LayoutGrid, Search, X, Eye, CreditCard, Package, Truck, FileDown, ExternalLink, FileText } from 'lucide-react';
-import DigitalOrderFulfillment, { type DigitalOrderLine } from '@/components/digital/DigitalOrderFulfillment';
+import { Plus, Edit, Trash2, LayoutGrid, Search, X, Eye, CreditCard, Package, Truck, FileDown, ExternalLink } from 'lucide-react';
 import { showErrorToast, showSuccessToast } from '@/lib/toast';
 import AppLayout from "@/layouts/app-layout"
 import type { BreadcrumbItem } from "@/types"
@@ -30,19 +29,16 @@ interface ShippoRate {
     duration_terms?: string;
 }
 
-interface OrderRow {
+interface Category {
     id: number;
     reference_number: string;
     total_amount: string;
     status: string;
-    payment_status?: string;
     payment_method?: string | null;
     created_at: string;
     updated_at: string;
     product_type?: string;
     has_manual_product?: boolean;
-    has_digital_items?: boolean;
-    is_digital_only?: boolean;
     is_printify_order?: boolean;
     can_create_shippo_label?: boolean;
     tracking_number?: string | null;
@@ -51,13 +47,11 @@ interface OrderRow {
     shipping_status?: string | null;
     carrier?: string | null;
     delivery_status_label?: string | null;
-    fulfillment_label?: string | null;
-    digital_fulfillment_items?: DigitalOrderLine[];
 }
 
 interface Props {
     orders: {
-        data: OrderRow[];
+        data: Category[];
         current_page: number;
         last_page: number;
         per_page: number;
@@ -77,16 +71,14 @@ interface Props {
 
 export default function Index({ orders, filters, allowedPerPage }: Props) {
     const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-    const [itemToDelete, setItemToDelete] = useState<OrderRow | null>(null);
+    const [itemToDelete, setItemToDelete] = useState<Category | null>(null);
     const [loading, setLoading] = useState(false);
     const [searchTerm, setSearchTerm] = useState(filters.search);
     const [searchTimeout, setSearchTimeout] = useState<NodeJS.Timeout | null>(null);
     const [updatingStatus, setUpdatingStatus] = useState<number | null>(null);
 
     const [shippoModalOpen, setShippoModalOpen] = useState(false);
-    const [shippoOrder, setShippoOrder] = useState<OrderRow | null>(null);
-    const [digitalModalOpen, setDigitalModalOpen] = useState(false);
-    const [digitalOrder, setDigitalOrder] = useState<OrderRow | null>(null);
+    const [shippoOrder, setShippoOrder] = useState<Category | null>(null);
     const [shippoRates, setShippoRates] = useState<ShippoRate[]>([]);
     const [shippoRatesLoading, setShippoRatesLoading] = useState(false);
     const [shippoPurchaseLoading, setShippoPurchaseLoading] = useState(false);
@@ -94,31 +86,7 @@ export default function Index({ orders, filters, allowedPerPage }: Props) {
     const [shippoError, setShippoError] = useState<string | null>(null);
     const [purchaseResult, setPurchaseResult] = useState<{ label_url: string; tracking_number: string; tracking_url: string | null; carrier: string | null } | null>(null);
 
-    const openDigitalModal = (order: OrderRow) => {
-        setDigitalOrder(order);
-        setDigitalModalOpen(true);
-    };
-
-    const closeDigitalModal = () => {
-        setDigitalModalOpen(false);
-        setDigitalOrder(null);
-        router.reload({ only: ['orders'] });
-    };
-
-    const productTypeBadgeClass = (type?: string) => {
-        switch (type) {
-            case 'Printify':
-                return 'bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-200 border-blue-300 dark:border-blue-700';
-            case 'Digital':
-                return 'bg-violet-100 text-violet-800 dark:bg-violet-900/50 dark:text-violet-200 border-violet-300 dark:border-violet-700';
-            case 'Manual':
-                return 'bg-green-100 text-green-800 dark:bg-green-900/50 dark:text-green-200 border-green-300 dark:border-green-700';
-            default:
-                return 'bg-purple-100 text-purple-800 dark:bg-purple-900/50 dark:text-purple-200 border-purple-300 dark:border-purple-700';
-        }
-    };
-
-    const handleDelete = (item: OrderRow) => {
+    const handleDelete = (item: Category) => {
         setItemToDelete(item);
         setDeleteDialogOpen(true);
     };
@@ -228,7 +196,7 @@ export default function Index({ orders, filters, allowedPerPage }: Props) {
         );
     };
 
-    const openShippoModal = async (order: OrderRow) => {
+    const openShippoModal = async (order: Category) => {
         setShippoOrder(order);
         setShippoModalOpen(true);
         setShippoRates([]);
@@ -351,10 +319,9 @@ export default function Index({ orders, filters, allowedPerPage }: Props) {
                                         <th className="px-4 py-3 font-medium min-w-32">Amount</th>
                                         <th className="px-4 py-3 font-medium min-w-32">Product Type</th>
                                         <th className="px-4 py-3 font-medium min-w-32">Status</th>
-                                        <th className="px-4 py-3 font-medium min-w-36">Payment</th>
-                                        <th className="px-4 py-3 font-medium min-w-40">Fulfillment</th>
-                                        <th className="px-4 py-3 font-medium min-w-28">Date</th>
-                                        <th className="px-4 py-3 font-medium min-w-36 text-right">Actions</th>
+                                        <th className="px-4 py-3 font-medium min-w-32">Payment Method</th>
+                                        <th className="px-4 py-3 font-medium min-w-32">Date</th>
+                                        <th className="px-4 py-3 font-medium min-w-28 text-right">Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -372,14 +339,16 @@ export default function Index({ orders, filters, allowedPerPage }: Props) {
                                             </td>
                                             <td className="px-4 py-3 min-w-32">
                                                 <Badge
-                                                    variant="outline"
-                                                    className={`font-medium ${productTypeBadgeClass(item.product_type)}`}
+                                                    variant={item.product_type === 'Printify' ? 'default' : 'outline'}
+                                                    className={`font-medium ${
+                                                        item.product_type === 'Printify'
+                                                            ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-200 border-blue-300 dark:border-blue-700'
+                                                            : item.product_type === 'Manual'
+                                                            ? 'bg-green-100 text-green-800 dark:bg-green-900/50 dark:text-green-200 border-green-300 dark:border-green-700'
+                                                            : 'bg-purple-100 text-purple-800 dark:bg-purple-900/50 dark:text-purple-200 border-purple-300 dark:border-purple-700'
+                                                    }`}
                                                 >
-                                                    {item.product_type === 'Digital' ? (
-                                                        <FileText className="h-3 w-3 mr-1 inline" />
-                                                    ) : (
-                                                        <Package className="h-3 w-3 mr-1 inline" />
-                                                    )}
+                                                    <Package className="h-3 w-3 mr-1 inline" />
                                                     {item.product_type || 'N/A'}
                                                 </Badge>
                                             </td>
@@ -395,9 +364,7 @@ export default function Index({ orders, filters, allowedPerPage }: Props) {
                                                         </SelectTrigger>
                                                         <SelectContent>
                                                             <SelectItem value="processing">Processing</SelectItem>
-                                                            {!item.is_digital_only && (
-                                                                <SelectItem value="shipped">Shipped</SelectItem>
-                                                            )}
+                                                            <SelectItem value="shipped">Shipped</SelectItem>
                                                             <SelectItem value="delivered">Delivered</SelectItem>
                                                             <SelectItem value="cancelled">Cancelled</SelectItem>
                                                             <SelectItem value="refunded">Refunded</SelectItem>
@@ -406,7 +373,7 @@ export default function Index({ orders, filters, allowedPerPage }: Props) {
                                                 ) : (
                                                     <Badge
                                                         variant="secondary"
-                                                        className={`font-medium capitalize ${
+                                                        className={`font-medium ${
                                                             item.status === 'cancelled' || item.status === 'refunded'
                                                                 ? 'bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-200 border-red-300 dark:border-red-700'
                                                                 : ''
@@ -416,7 +383,18 @@ export default function Index({ orders, filters, allowedPerPage }: Props) {
                                                     </Badge>
                                                 )}
                                             </td>
-                                            <td className="px-4 py-3 min-w-36">
+                                            <td className="px-4 py-3 min-w-36 text-sm">
+                                                {item.delivery_status_label ? (
+                                                    <span className="text-foreground" title={item.shipping_status || ''}>
+                                                        {item.delivery_status_label}
+                                                    </span>
+                                                ) : item.tracking_number ? (
+                                                    <span className="text-muted-foreground">Tracking active</span>
+                                                ) : (
+                                                    <span className="text-muted-foreground">—</span>
+                                                )}
+                                            </td>
+                                            <td className="px-4 py-3 min-w-32">
                                                 {item.payment_method ? (
                                                     <Badge
                                                         variant="outline"
@@ -428,49 +406,22 @@ export default function Index({ orders, filters, allowedPerPage }: Props) {
                                                                 : 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'
                                                         }
                                                     >
-                                                        <CreditCard className="h-3 w-3 mr-1 inline" />
+                                                        <CreditCard className="h-3 w-3 mr-1" />
                                                         {item.payment_method === 'stripe' ? 'Card/Stripe' : item.payment_method === 'believe_points' ? 'Believe Points' : item.payment_method}
                                                     </Badge>
                                                 ) : (
-                                                    <span className="text-sm text-muted-foreground">—</span>
+                                                    <span className="text-sm text-muted-foreground">N/A</span>
                                                 )}
                                             </td>
-                                            <td className="px-4 py-3 min-w-40 text-sm">
-                                                {item.is_digital_only || item.has_digital_items ? (
-                                                    <span
-                                                        className={
-                                                            item.fulfillment_label?.includes('ready')
-                                                                ? 'text-emerald-600 dark:text-emerald-400 font-medium'
-                                                                : 'text-violet-700 dark:text-violet-300'
-                                                        }
-                                                    >
-                                                        {item.fulfillment_label || 'Digital delivery'}
-                                                    </span>
-                                                ) : item.fulfillment_label || item.delivery_status_label ? (
-                                                    <span className="text-foreground" title={item.shipping_status || ''}>
-                                                        {item.fulfillment_label || item.delivery_status_label}
-                                                    </span>
-                                                ) : item.tracking_number ? (
-                                                    <span className="text-muted-foreground">Tracking active</span>
-                                                ) : (
-                                                    <span className="text-muted-foreground">—</span>
-                                                )}
-                                            </td>
-                                            <td className="px-4 py-3 min-w-28 whitespace-nowrap text-sm text-muted-foreground">
-                                                {new Date(item.created_at).toLocaleDateString()}
+                                            <td className="px-4 py-3 min-w-64">
+                                                <span className="truncate block max-w-md" title={item.created_at}>
+                                                    {new Date(item.created_at).toLocaleDateString()}
+                                                </span>
                                             </td>
 
-                                            <td className="px-4 py-3 min-w-36 text-right whitespace-nowrap">
+                                            <td className="px-4 py-3 min-w-28 text-right w-[1%] whitespace-nowrap">
                                                 <div className="flex justify-end gap-2 flex-wrap">
-                                                    {(item.is_digital_only || item.has_digital_items) && item.payment_status === 'paid' && (
-                                                        <PermissionButton permission="ecommerce.update">
-                                                            <Button variant="secondary" size="sm" onClick={() => openDigitalModal(item)}>
-                                                                <FileText className="mr-1.5 h-4 w-4" />
-                                                                Deliver files
-                                                            </Button>
-                                                        </PermissionButton>
-                                                    )}
-                                                    {item.tracking_number && !item.is_digital_only && (
+                                                    {item.tracking_number && (
                                                         <a
                                                             href={item.tracking_url || '#'}
                                                             target="_blank"
@@ -484,7 +435,7 @@ export default function Index({ orders, filters, allowedPerPage }: Props) {
                                                     {item.can_create_shippo_label && (
                                                         <PermissionButton permission="ecommerce.update">
                                                             <Button variant="secondary" size="sm" onClick={() => openShippoModal(item)}>
-                                                                <FileDown className="mr-1.5 h-4 w-4" />
+                                                                <FileDown className="mr-2 h-4 w-4" />
                                                                 Create label
                                                             </Button>
                                                         </PermissionButton>
@@ -710,36 +661,6 @@ export default function Index({ orders, filters, allowedPerPage }: Props) {
                                 <Button onClick={closeShippoModal}>Done</Button>
                             </DialogFooter>
                         )}
-                    </DialogContent>
-                </Dialog>
-
-                <Dialog open={digitalModalOpen} onOpenChange={(open) => !open && closeDigitalModal()}>
-                    <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
-                        <DialogHeader>
-                            <DialogTitle>Digital delivery</DialogTitle>
-                            <DialogDescription>
-                                {digitalOrder && (
-                                    <>Upload files for order <strong>{digitalOrder.reference_number}</strong>. The buyer can download them from their account.</>
-                                )}
-                            </DialogDescription>
-                        </DialogHeader>
-                        {digitalOrder && (digitalOrder.digital_fulfillment_items?.length ?? 0) > 0 ? (
-                            <DigitalOrderFulfillment
-                                orderId={digitalOrder.id}
-                                items={digitalOrder.digital_fulfillment_items ?? []}
-                                uploadPath={(oid, iid) => `/orders/${oid}/items/${iid}/digital-deliveries`}
-                                deletePath={(oid, iid, did) => `/orders/${oid}/items/${iid}/digital-deliveries/${did}`}
-                            />
-                        ) : (
-                            <p className="text-sm text-muted-foreground py-4">
-                                No digital line items found on this order.
-                            </p>
-                        )}
-                        <DialogFooter>
-                            <Button variant="outline" onClick={closeDigitalModal}>
-                                Done
-                            </Button>
-                        </DialogFooter>
                     </DialogContent>
                 </Dialog>
             </div>

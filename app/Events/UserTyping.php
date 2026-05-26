@@ -2,11 +2,9 @@
 
 namespace App\Events;
 
-use App\Models\ChatRoom;
 use App\Models\User;
 use Illuminate\Broadcasting\Channel;
 use Illuminate\Broadcasting\InteractsWithSockets;
-use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
@@ -18,28 +16,22 @@ class UserTyping implements ShouldBroadcast
     public $user;
     public $roomId;
     public $isTyping;
-    public string $roomType;
 
-    public function __construct(User $user, int $roomId, bool $isTyping, ?string $roomType = null)
+    public function __construct(User $user, int $roomId, bool $isTyping)
     {
         $this->user = $user;
         $this->roomId = $roomId;
         $this->isTyping = $isTyping;
-        $this->roomType = $roomType ?? ChatRoom::query()->whereKey($roomId)->value('type') ?? 'direct';
     }
 
     public function broadcastOn()
     {
-        return match ($this->roomType) {
-            'public' => new Channel("public-chat.{$this->roomId}"),
-            'private' => new PrivateChannel("private-chat.{$this->roomId}"),
-            default => new PrivateChannel("direct-chat.{$this->roomId}"),
-        };
+        return new Channel("typing.{$this->roomId}");
     }
 
     public function broadcastAs()
     {
-        return 'user.typing';
+        return 'UserTyping';
     }
 
     public function broadcastWith()

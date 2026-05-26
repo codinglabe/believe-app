@@ -9,7 +9,6 @@ use App\Models\User;
 use App\Services\MarketplacePoolRevenueSplit;
 use App\Services\PrintifyService;
 use App\Services\ShippoService;
-use App\Support\DigitalProductDelivery;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -74,14 +73,7 @@ class OrderController extends Controller
             });
         }
 
-        $orders = $query->with([
-            'user',
-            'shippingInfo',
-            'items.product',
-            'items.marketplaceProduct',
-            'items.organizationProduct.marketplaceProduct',
-            'items.digitalDeliveries',
-        ])
+        $orders = $query->with(['user', 'shippingInfo', 'items.product'])
             ->orderBy('created_at', 'desc')
             ->paginate($perPage, ['*'], 'page', $page);
 
@@ -200,12 +192,8 @@ class OrderController extends Controller
             'user',
             'shippingInfo',
             'items.product.sourceMarketplaceProduct.merchant',
-            'items.product.digitalFiles',
             'items.marketplaceProduct.merchant',
-            'items.marketplaceProduct.digitalFiles',
             'items.organizationProduct.marketplaceProduct.merchant',
-            'items.organizationProduct.marketplaceProduct.digitalFiles',
-            'items.digitalDeliveries',
         ]);
 
         // Calculate order subtotal (products only)
@@ -334,13 +322,6 @@ class OrderController extends Controller
                     'printify_variant_id' => $item->printify_variant_id,
                     'variant_data' => $this->getVariantData($item->variant_data),
                     'is_manual_product' => $line['is_manual_product'],
-                    'is_digital' => DigitalProductDelivery::orderItemIsDigital($item),
-                    'digital_deliveries' => $item->digitalDeliveries->map(fn ($d) => [
-                        'id' => $d->id,
-                        'original_filename' => $d->original_filename,
-                        'file_size' => $d->file_size,
-                        'released_at' => $d->released_at?->toIso8601String(),
-                    ])->values(),
                     'merchant_hub_revenue' => $this->merchantHubRevenueSplitForItem($item),
                 ];
             }),
@@ -371,9 +352,7 @@ class OrderController extends Controller
         $orderData['carrier'] = $order->carrier;
         $hasManualProduct = $this->orderHasManualOrPoolItem($order);
         $orderData['has_manual_product'] = $hasManualProduct;
-        $orderData['is_digital_only'] = DigitalProductDelivery::orderIsDigitalOnly($order);
         $orderData['can_create_shippo_label'] = $hasManualProduct
-            && ! $orderData['is_digital_only']
             && $order->payment_status === 'paid'
             && $order->shippingInfo
             && empty($order->tracking_number);

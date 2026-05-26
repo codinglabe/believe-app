@@ -8,7 +8,6 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Crypt;
-use App\Models\Organization;
 use App\Services\YouTubeService;
 use Illuminate\Support\Str;
 use Inertia\Inertia;
@@ -287,14 +286,13 @@ class IntegrationsController extends Controller
     {
         $user = Auth::user();
         $isSupporter = $user->role === 'user';
-        $organization = $isSupporter ? null : Organization::forAuthUser($user);
         if ($isSupporter) {
             $dropboxLinked = ! empty($user->dropbox_refresh_token);
         } else {
-            if (! $organization) {
+            if (! $user->organization) {
                 return redirect()->route('dashboard')->with('error', 'Organization not found.');
             }
-            $dropboxLinked = ! empty($organization->dropbox_refresh_token);
+            $dropboxLinked = ! empty($user->organization->dropbox_refresh_token);
         }
 
         $dropboxFiles = [];
@@ -304,14 +302,14 @@ class IntegrationsController extends Controller
         if ($dropboxLinked) {
             $token = $isSupporter
                 ? app(\App\Services\DropboxOAuthService::class)->getAccessTokenForUser($user)
-                : app(\App\Services\DropboxOAuthService::class)->getAccessTokenForOrganization($organization);
+                : app(\App\Services\DropboxOAuthService::class)->getAccessTokenForOrganization($user->organization);
             $folderPath = $isSupporter
                 ? $this->getDropboxRecordingFolderPathForUser($user)
-                : $this->getDropboxRecordingFolderPath($organization);
+                : $this->getDropboxRecordingFolderPath($user->organization);
             $dropboxFolderPath = $folderPath;
             $dropboxFolderName = $isSupporter
                 ? ($user->dropbox_folder_name ? trim($user->dropbox_folder_name) : 'BIU Meeting Recordings')
-                : ($organization->dropbox_folder_name ?? '');
+                : ($user->organization->dropbox_folder_name ?? '');
             if ($dropboxFolderName === '') {
                 $dropboxFolderName = 'BIU Meeting Recordings';
             }
@@ -408,8 +406,7 @@ class IntegrationsController extends Controller
     {
         $user = Auth::user();
         $isSupporter = $user->role === 'user';
-        $organization = $isSupporter ? null : Organization::forAuthUser($user);
-        if (! $isSupporter && ! $organization) {
+        if (! $isSupporter && ! $user->organization) {
             return redirect()->route('integrations.dropbox')->with('error', 'Organization not found.');
         }
 
@@ -466,12 +463,12 @@ class IntegrationsController extends Controller
                 'dropbox_folder_name' => $defaultFolder,
             ])->save();
         } else {
-            $organization->forceFill([
+            $user->organization->forceFill([
                 'dropbox_refresh_token' => $encryptedRefresh,
                 'dropbox_access_token' => $encryptedAccess,
                 'dropbox_token_expires_at' => $expiresAt,
             ])->save();
-            $organization->update(['dropbox_folder_name' => $defaultFolder]);
+            $user->organization->update(['dropbox_folder_name' => $defaultFolder]);
         }
 
         if ($accessToken) {

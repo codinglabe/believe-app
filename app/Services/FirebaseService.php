@@ -24,37 +24,6 @@ class FirebaseService
     }
 
     /**
-     * Resolve CA bundle path (relative .env paths break under Herd/php-fpm when cwd is not project root).
-     */
-    private function resolveTlsCafile(): ?string
-    {
-        $configured = config('services.firebase.cafile');
-        $candidates = array_filter([
-            is_string($configured) && $configured !== '' ? $configured : null,
-            storage_path('app/cacert.pem'),
-        ]);
-
-        foreach ($candidates as $path) {
-            $normalized = str_replace('\\', '/', $path);
-            if (is_file($path)) {
-                return $path;
-            }
-            if (str_starts_with($normalized, 'storage/')) {
-                $fromStorage = storage_path(substr($normalized, strlen('storage/')));
-                if (is_file($fromStorage)) {
-                    return $fromStorage;
-                }
-            }
-            $fromBase = base_path($path);
-            if (is_file($fromBase)) {
-                return $fromBase;
-            }
-        }
-
-        return null;
-    }
-
-    /**
      * Guzzle TLS options for Google OAuth + FCM (fixes Windows cURL error 60 when CA bundle is missing).
      *
      * @return array<string, mixed>
@@ -62,13 +31,13 @@ class FirebaseService
     private function firebaseTlsRequestOptions(): array
     {
         $verifySsl = filter_var(config('services.firebase.verify_ssl', true), FILTER_VALIDATE_BOOL);
+        $cafile = config('services.firebase.cafile');
 
         if (! $verifySsl) {
             return ['verify' => false];
         }
 
-        $cafile = $this->resolveTlsCafile();
-        if ($cafile !== null) {
+        if (is_string($cafile) && $cafile !== '' && is_file($cafile)) {
             return ['verify' => $cafile];
         }
 
@@ -129,28 +98,9 @@ class FirebaseService
     }
 
     /**
-     * FCM requires every data payload value to be a string.
-     *
-     * @param  array<string, mixed>  $data
-     * @return array<string, string>
-     */
-    public function stringifyFcmData(array $data): array
-    {
-        $out = [];
-        foreach ($data as $key => $value) {
-            if ($value === null || $value === '') {
-                continue;
-            }
-            $out[(string) $key] = is_scalar($value) ? (string) $value : json_encode($value);
-        }
-
-        return $out;
-    }
-
-    /**
      * Send push notification to a single device
      */
-    public function sendToDevice($deviceToken, $title, $body, $data = [], $deviceType = 'web')
+    public function sendToDevice($deviceToken, $title, $body, $data = [])
     {
         $accessToken = $this->getAccessToken();
 
@@ -167,54 +117,54 @@ class FirebaseService
         $notificationUrl = $clickAction
             ?? url('/');
 
-        $fcmData = $this->stringifyFcmData(array_merge($data, [
-            'title' => $title,
-            'body' => $body,
-            'click_action' => $notificationUrl,
-            'url' => $notificationUrl,
-        ]));
-
         $message = [
             'message' => [
                 'token' => $deviceToken,
-                'data' => $fcmData,
-            ],
-        ];
-
-        // Web: data payload + webpush link; SW / foreground client calls showNotification for OS banner.
-        if ($deviceType === 'web') {
-            $message['message']['webpush'] = [
-                'fcm_options' => [
-                    'link' => $notificationUrl,
+                'notification' => [
+                    'title' => $title,
+                    'body' => $body,
                 ],
-                'headers' => [
-                    'TTL' => '86400',
+                'data' => array_merge($data, [
+                    'click_action' => $notificationUrl,
+                    'url' => $notificationUrl,
+                ]),
+                'webpush' => [
+                    'fcm_options' => [
+                        'link' => $notificationUrl,
+                    ],
+                    'notification' => [
+                        'title' => $title,
+                        'body' => $body,
+                        'icon' => url('/favicon-96x96.png'),
+                        'badge' => url('/badge.png'),
+                        'actions' => [
+                            [
+                                'action' => 'open',
+                                'title' => 'View Content'
+                            ]
+                        ]
+                    ],
                 ],
-            ];
-        } else {
-            $message['message']['notification'] = [
-                'title' => $title,
-                'body' => $body,
-            ];
-            $message['message']['apns'] = [
-                'payload' => [
-                    'aps' => [
-                        'alert' => [
-                            'title' => $title,
-                            'body' => $body,
+                'apns' => [
+                    'payload' => [
+                        'aps' => [
+                            'alert' => [
+                                'title' => $title,
+                                'body' => $body,
+                            ],
+                            'sound' => 'default',
                         ],
+                        'click_action' => $notificationUrl,
+                    ],
+                ],
+                'android' => [
+                    'notification' => [
+                        'click_action' => $notificationUrl,
                         'sound' => 'default',
                     ],
-                    'click_action' => $notificationUrl,
                 ],
-            ];
-            $message['message']['android'] = [
-                'notification' => [
-                    'click_action' => $notificationUrl,
-                    'sound' => 'default',
-                ],
-            ];
-        }
+            ],
+        ];
 
         try {
             $response = $this->httpForFirebase()
@@ -275,13 +225,7 @@ class FirebaseService
 
         $results = [];
         foreach ($records as $record) {
-            $out = $this->sendToDevice(
-                $record->push_token,
-                $title,
-                $body,
-                $data,
-                $record->device_type ?? 'web',
-            );
+            $out = $this->sendToDevice($record->push_token, $title, $body, $data);
             $results[$record->push_token] = $out;
 
             PushNotificationLog::create([
@@ -361,10 +305,10 @@ class FirebaseService
                     'title' => $title,
                     'body' => $body,
                 ],
-                'data' => $this->stringifyFcmData(array_merge($data, [
+                'data' => array_merge($data, [
                     'click_action' => $notificationUrl,
                     'url' => $notificationUrl,
-                ])),
+                ]),
                 'webpush' => [
                     'fcm_options' => [
                         'link' => $notificationUrl,

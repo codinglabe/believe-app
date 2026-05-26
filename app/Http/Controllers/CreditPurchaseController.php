@@ -62,8 +62,8 @@ class CreditPurchaseController extends Controller
         $packages = [
             'legacy_50k' => ['amount' => 1.0, 'credits' => 50000, 'wallet' => 'credits'],
             'addon_10k' => ['amount' => 2.0, 'credits' => 10000, 'wallet' => 'credits'],
-            'addon_25k' => ['amount' => 5.0, 'credits' => 25000, 'wallet' => 'credits'],
-            'addon_50k' => ['amount' => 10.0, 'credits' => 50000, 'wallet' => 'credits'],
+            'addon_25k' => ['amount' => 4.5, 'credits' => 25000, 'wallet' => 'credits'],
+            'addon_50k' => ['amount' => 8.0, 'credits' => 50000, 'wallet' => 'credits'],
         ];
 
         $studio = config('services.ai_media_studio.supporter_packs', []);

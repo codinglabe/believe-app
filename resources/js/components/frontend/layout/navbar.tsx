@@ -57,7 +57,6 @@ import {
   HelpCircle,
   Link2,
   Tag,
-  Crown,
 } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 import { ThemeToggle } from "@/components/frontend/theme-toggle"
@@ -73,10 +72,6 @@ import {
   shouldPollWalletBalance,
   WALLET_BALANCE_POLL_MS,
 } from "@/lib/wallet-balance-fetch"
-import {
-  supporterPricingHref,
-  type SupporterSubscriptionState,
-} from "@/lib/supporter-pricing-display"
 // Extending SharedData interface to include wallet_balance
 interface SharedData extends Record<string, unknown> {
   auth: {
@@ -169,13 +164,9 @@ function LandingNavDropdown({ label, items }: { label: string; items: LandingNav
 }
 
 export default function Navbar() {
-  const { auth, supporterSubscription } = usePage<SharedData & { supporterSubscription?: SupporterSubscriptionState | null }>().props
+  const { auth } = usePage<SharedData>().props
   const [isOpen, setIsOpen] = useState(false)
   const [isLoggedIn, setIsLoggedIn] = useState(!!auth?.user)
-
-  const isSupporterUser = auth?.user?.role === "user"
-  const supporterPlanHref = supporterPricingHref()
-  const hasSupporterPlan = Boolean(supporterSubscription?.tier)
 
   const authRoles = (auth?.roles ?? []) as string[]
   const hasCareAllianceRole = authRoles.some((r) => String(r).toLowerCase() === "care_alliance")
@@ -206,14 +197,6 @@ export default function Navbar() {
   const isOrgUser = role === "organization" || role === "organization_pending"
   /** Organizations + Care Alliance: show * (org-only) nav entries; admins see them too. */
   const showOrgOnlyNav = isOrgUser || hasCareAllianceRole || isAdmin
-
-  /** Unity Meet routes: user, organization, organization_pending, care_alliance (see web.php). */
-  const canAccessUnityMeet =
-    isLoggedIn &&
-    (role === "user" ||
-      role === "organization" ||
-      role === "organization_pending" ||
-      hasCareAllianceRole)
 
   const dashboardHref =
     !isLoggedIn
@@ -310,8 +293,8 @@ export default function Navbar() {
     { name: "News", href: "/nonprofit-news", icon: Newspaper },
     { name: "Unity Videos", href: "/unity-videos", icon: Video },
     { name: "Unity Live", href: route("unity-live.index"), icon: Radio },
-    ...(canAccessUnityMeet
-      ? [{ name: "Unity Meet", href: route("livestreams.supporter.index"), icon: Radio }]
+    ...(showOrgOnlyNav
+      ? [{ name: "Unity Meet", href: route("livestreams.supporter.live"), icon: Radio }]
       : []),
   ]
 
@@ -322,7 +305,7 @@ export default function Navbar() {
 
   const moreNavItems: LandingNavItem[] = [
     { name: "About", href: route("about"), icon: Globe },
-    { name: "Pricing", href: isSupporterUser ? supporterPlanHref : route("pricing"), icon: Tag },
+    { name: "Pricing", href: route("pricing"), icon: Tag },
     ...(isLoggedIn
       ? [{ name: "Settings / Account", href: route("profile.edit"), icon: Settings }]
       : []),
@@ -655,14 +638,6 @@ export default function Navbar() {
                                               <span>Profile</span>
                                           </Link>
                                       </DropdownMenuItem>
-                                      {isSupporterUser && (
-                                          <DropdownMenuItem asChild>
-                                              <Link href={supporterPlanHref}>
-                                                  <Crown className="mr-2 h-4 w-4" />
-                                                  <span>{hasSupporterPlan ? "Manage Plan" : "View Plans"}</span>
-                                              </Link>
-                                          </DropdownMenuItem>
-                                      )}
                                       <DropdownMenuItem asChild>
                                           <Link
                                               href={publicViewHref}
@@ -1163,14 +1138,6 @@ export default function Navbar() {
                                                   Profile
                                               </Button>
                                           </Link>
-                                          {isSupporterUser && (
-                                              <Link href={supporterPlanHref}>
-                                                  <Button variant="ghost" className="w-full justify-start">
-                                                      <Crown className="mr-2 h-4 w-4" />
-                                                      {hasSupporterPlan ? "Manage Plan" : "View Plans"}
-                                                  </Button>
-                                              </Link>
-                                          )}
                                           <Link href={publicViewHref}>
                                               <Button variant="ghost" className="w-full justify-start">
                                                   <Globe className="mr-2 h-4 w-4" />

@@ -56,9 +56,4 @@ class OrderItem extends Model
     {
         return $this->belongsTo(Organization::class);
     }
-
-    public function digitalDeliveries(): \Illuminate\Database\Eloquent\Relations\HasMany
-    {
-        return $this->hasMany(OrderItemDigitalDelivery::class);
-    }
 }

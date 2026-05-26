@@ -77,7 +77,6 @@ use App\Http\Controllers\CreditPurchaseController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DeductibilityCodeController;
 use App\Http\Controllers\DonationController;
-use App\Http\Controllers\EmailCreditsController;
 use App\Http\Controllers\EmailInviteController;
 use App\Http\Controllers\EnrollmentController;
 use App\Http\Controllers\EventController;
@@ -456,20 +455,8 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:user|organization|orga
     Route::post('/livestreams/supporter/{id}/prepare-youtube-live', [SupporterLivestreamController::class, 'prepareYouTubeLive'])->name('livestreams.supporter.prepare-youtube-live')->where('id', '[0-9]+');
     Route::post('/livestreams/supporter/{id}/queue-stream-relay', [SupporterLivestreamController::class, 'queueStreamRelayJob'])->name('livestreams.supporter.queue-stream-relay')->where('id', '[0-9]+');
     Route::post('/livestreams/supporter/{id}/go-live-obs-auto', [SupporterLivestreamController::class, 'queueStreamRelayJob'])->name('livestreams.supporter.go-live-obs-auto')->where('id', '[0-9]+');
-    Route::delete('/livestreams/supporter/{id}/participants', [SupporterLivestreamController::class, 'removeParticipant'])->name('livestreams.supporter.participants.remove')->where('id', '[0-9]+');
-    Route::post('/livestreams/supporter/{id}/participants', [SupporterLivestreamController::class, 'inviteParticipant'])->name('livestreams.supporter.participants.invite')->where('id', '[0-9]+');
     Route::get('/livestreams/supporter/{id}', [SupporterLivestreamController::class, 'show'])->name('livestreams.supporter.show')->where('id', '[0-9]+');
 });
-
-// Email credits — supporters + org accounts (Unity Meet invitations, etc.)
-Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:user|organization|organization_pending|care_alliance'])
-    ->prefix('email-credits')
-    ->name('email-credits.')
-    ->group(function () {
-        Route::get('/', [EmailCreditsController::class, 'index'])->name('index');
-        Route::post('/purchase', [EmailCreditsController::class, 'purchase'])->name('purchase');
-        Route::get('/purchase/success', [EmailCreditsController::class, 'purchaseSuccess'])->name('purchase.success');
-    });
 
 // VDO.Ninja meeting: guest join by secure token (public)
 Route::get('/join/{token}', [LivestreamController::class, 'guestJoinByToken'])->name('livestreams.guest-join-by-token')->where('token', '[a-zA-Z0-9_-]+');
@@ -1703,23 +1690,6 @@ Route::get('/orders/{order}/shippo/rates', [OrderController::class, 'getShippoRa
 Route::post('/orders/{order}/shippo/purchase-label', [OrderController::class, 'purchaseShippoLabel'])
     ->name('orders.shippo.purchase-label')
     ->middleware('permission:ecommerce.update');
-
-Route::post('/orders/{order}/items/{orderItem}/digital-deliveries', [App\Http\Controllers\DigitalDeliveryController::class, 'uploadOrderItemFiles'])
-    ->name('orders.digital-deliveries.upload')
-    ->middleware('permission:ecommerce.update');
-Route::delete('/orders/{order}/items/{orderItem}/digital-deliveries/{delivery}', [App\Http\Controllers\DigitalDeliveryController::class, 'deleteOrderItemDelivery'])
-    ->name('orders.digital-deliveries.delete')
-    ->middleware('permission:ecommerce.update');
-Route::post('/products/{product}/digital-files', [App\Http\Controllers\DigitalDeliveryController::class, 'uploadCatalogForProduct'])
-    ->name('products.digital-files.upload')
-    ->middleware('permission:ecommerce.update');
-Route::delete('/digital-product-files/{digitalProductFile}', [App\Http\Controllers\DigitalDeliveryController::class, 'deleteCatalogFile'])
-    ->name('digital-product-files.delete')
-    ->middleware('permission:ecommerce.update');
-
-Route::get('/digital-deliveries/{delivery}/download', [App\Http\Controllers\DigitalDeliveryController::class, 'download'])
-    ->name('digital-deliveries.download')
-    ->middleware('auth');
 
 /* Order Items Routes */
 // Route::resource('order-items', OrderItemController::class)->middleware([

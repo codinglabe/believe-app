@@ -14,7 +14,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import UnityMeetVideoLogoOverlay from "@/components/meeting/UnityMeetVideoLogoOverlay"
 
 interface LivestreamItem {
   id: number
@@ -192,7 +191,6 @@ export default function UnityLiveIndex({ seo, livestreams, upcomingMeetings = []
                               LIVE
                             </span>
                           </div>
-                          <UnityMeetVideoLogoOverlay className="z-20 scale-[0.85] origin-top-right" />
                           <div className="absolute bottom-2 right-2 z-10 opacity-0 group-hover:opacity-100 transition-opacity">
                             <span className="bg-black/70 text-white text-xs font-medium px-2 py-1 rounded-md">
                               Watch

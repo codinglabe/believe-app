@@ -212,13 +212,8 @@ class MerchantMarketplaceProductController extends Controller
 
     private function transformForFrontend(MarketplaceProduct $p): array
     {
-        $p->loadMissing(['productCategory:id,name', 'digitalFiles']);
+        $p->loadMissing('productCategory:id,name');
         $data = $p->toArray();
-        $data['digital_files'] = $p->digitalFiles->map(fn ($f) => [
-            'id' => $f->id,
-            'original_filename' => $f->original_filename,
-            'file_size' => $f->file_size,
-        ])->values();
         $data['category'] = $p->productCategory?->name
             ?? (isset($data['category']) && is_string($data['category']) ? $data['category'] : null);
         if (! empty($data['images']) && is_array($data['images'])) {

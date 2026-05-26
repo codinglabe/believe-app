@@ -47,12 +47,7 @@ import { Input } from "@/components/ui/input"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Link, router, usePage } from "@inertiajs/react"
 import { LogOut } from "lucide-react"
-import { showErrorToast, showSuccessToast } from "@/lib/toast"
-import {
-  getSupporterPlanBadge,
-  type SupporterSubscriptionState,
-} from "@/lib/supporter-pricing-display"
-import { cn } from "@/lib/utils"
+import { showSuccessToast } from "@/lib/toast"
 
 interface ProfileLayoutProps {
   children: React.ReactNode
@@ -259,30 +254,9 @@ const navigationItems = [
 ]
 
 export default function ProfileLayout({ children, title, description }: ProfileLayoutProps) {
-  const { auth, isImpersonating, impact_score, impact_breakdown, success, error, supporterSubscription } =
-    usePage<
-      PageProps & {
-        isImpersonating?: boolean
-        impact_score?: any
-        impact_breakdown?: any
-        success?: string
-        error?: string
-        supporterSubscription?: SupporterSubscriptionState | null
-      }
-    >().props
+  const { auth, isImpersonating, impact_score, impact_breakdown } = usePage<PageProps & { isImpersonating?: boolean; impact_score?: any; impact_breakdown?: any }>().props
   const user = auth.user
-  const planBadge = getSupporterPlanBadge(supporterSubscription)
-  const PlanBadgeIcon = planBadge.Icon
   const [copied, setCopied] = useState(false)
-
-  useEffect(() => {
-    if (typeof success === "string" && success.trim() !== "") {
-      showSuccessToast(success)
-    }
-    if (typeof error === "string" && error.trim() !== "") {
-      showErrorToast(error)
-    }
-  }, [success, error])
     const [showBalance, setShowBalance] = useState(false)
     const [topics, setTopics] = useState<Topic[]>([]);
   const [addFundsAmount, setAddFundsAmount] = useState("")
@@ -423,9 +397,9 @@ export default function ProfileLayout({ children, title, description }: ProfileL
                 <div className="text-center sm:text-left">
                   <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-3">
                     <h1 className="text-3xl sm:text-4xl font-bold text-white">{user.name}</h1>
-                    <Badge className={cn("w-fit mx-auto sm:mx-0", planBadge.className)}>
-                      <PlanBadgeIcon className="w-3 h-3 mr-1" />
-                      {planBadge.label}
+                    <Badge className="bg-white/20 text-white border-white/30 backdrop-blur-sm w-fit mx-auto sm:mx-0">
+                      <Star className="w-3 h-3 mr-1" />
+                      Premium Member
                     </Badge>
                   </div>
                   <p className="text-white/90 text-lg mb-4">{user.email}</p>

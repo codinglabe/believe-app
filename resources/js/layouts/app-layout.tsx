@@ -8,10 +8,8 @@ import { showSuccessToast, showErrorToast } from '@/lib/toast';
 import { NotificationProvider } from '@/pages/Contexts/NotificationContext';
 // import { PWAInstallPrompt } from '@/components/PWAInstallPrompt';
 // import { PWAUpdatePrompt } from '@/components/PWAUpdatePrompt';
-import { syncPushTokenWithServer } from '@/lib/push-token-sync';
-import { registerServiceWorker } from '@/pwa/register-service-worker';
-import { PushNotificationManager } from '@/components/PushNotificationManager';
-import { shouldAutoPromptForPushPermission } from '@/lib/push-environment';
+import { initializeMessaging, requestNotificationPermission } from '@/lib/firebase';
+import axios from 'axios';
 
 interface AppLayoutProps {
     children: ReactNode;
@@ -22,8 +20,44 @@ export default ({ children, breadcrumbs, ...props }: AppLayoutProps) => {
 
     const { auth } = usePage<PageProps>().props;
 
+    function getDeviceInfo() {
+        return {
+            device_id: localStorage.getItem('device_id') || generateDeviceId(),
+            device_type: 'web',
+            device_name: navigator.userAgent,
+            browser: navigator.userAgentData?.brands?.[0]?.brand || 'Unknown',
+            platform: navigator.platform,
+            user_agent: navigator.userAgent
+        };
+    }
+
+    function generateDeviceId() {
+        const deviceId = 'device_' + Math.random().toString(36).substr(2, 9);
+        localStorage.setItem('device_id', deviceId);
+        return deviceId;
+    }
+
      useEffect(() => {
-        void registerServiceWorker();
+        const initializePushNotifications = async () => {
+          try {
+            await initializeMessaging()
+            // setIsInitialized(true)
+
+            // Listen for firebase notifications in foreground
+            window.addEventListener("firebase-notification", (event: any) => {
+              console.log("[PushNotificationManager] Received notification:", event.detail)
+            })
+          } catch (err) {
+            console.error("[PushNotificationManager] Initialization error:", err)
+            // setError("Failed to initialize push notifications")
+          }
+        }
+
+        initializePushNotifications()
+
+        return () => {
+          window.removeEventListener("firebase-notification", () => {})
+        }
       }, [])
 
     const authUserId = auth?.user?.id;
@@ -35,10 +69,15 @@ export default ({ children, breadcrumbs, ...props }: AppLayoutProps) => {
             if (fcmTokenSavedForUser.current === authUserId) return;
             fcmTokenSavedForUser.current = authUserId;
 
-            try {
-                await syncPushTokenWithServer({ prompt: shouldAutoPromptForPushPermission() });
-            } catch (err) {
-                console.error("[AppLayout] FCM token sync error:", err);
+            const fcmToken = await requestNotificationPermission();
+            const deviceInfo = getDeviceInfo();
+
+            if (fcmToken) {
+                await axios.post("/push-token", {
+                    token: fcmToken,
+                    device_info: deviceInfo
+                });
+                console.log("Token saved after login");
             }
         };
 
@@ -78,14 +117,6 @@ export default ({ children, breadcrumbs, ...props }: AppLayoutProps) => {
             <AppLayoutTemplate breadcrumbs={breadcrumbs} {...props}>
                  {/* <PWAInstallPrompt /> */}
         {/* <PWAUpdatePrompt /> */}
-            {auth?.user?.id && !auth.user.push_token && (
-                <div className="border-b border-amber-500/30 bg-amber-500/10 px-4 py-2 flex flex-wrap items-center justify-between gap-2">
-                    <p className="text-sm text-amber-900 dark:text-amber-100">
-                        Enable browser notifications to get alerts in real time.
-                    </p>
-                    <PushNotificationManager userId={auth.user.id} />
-                </div>
-            )}
             {children}
 
             {/* Toast Container */}

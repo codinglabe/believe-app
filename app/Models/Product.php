@@ -173,16 +173,6 @@ class Product extends Model
         return $this->hasMany(OrderItem::class);
     }
 
-    public function digitalFiles(): HasMany
-    {
-        return $this->hasMany(DigitalProductFile::class)->orderBy('sort_order');
-    }
-
-    public function isDigitalProduct(): bool
-    {
-        return \App\Support\DigitalProductDelivery::productIsDigital($this);
-    }
-
     public function bids(): HasMany
     {
         return $this->hasMany(Bid::class)->orderByDesc('bid_amount')->orderBy('submitted_at');

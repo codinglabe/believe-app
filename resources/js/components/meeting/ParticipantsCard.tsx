@@ -29,7 +29,7 @@ export default function ParticipantsCard({
     if (!participants.length) return
 
     const meetingId = participants[0].meeting_id
-    const participantsChannel = echo().channel(`meeting.${meetingId}.participants`)
+    const participantsChannel = echo.channel(`meeting.${meetingId}.participants`)
 
     const handleParticipantJoined = (e: any) => {
       setAnimatingParticipants((prev) => new Set([...prev, e.participant.id]))

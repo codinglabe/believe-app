@@ -65,16 +65,6 @@ class MarketplaceProduct extends Model
         return $this->hasMany(OrganizationProduct::class);
     }
 
-    public function digitalFiles(): HasMany
-    {
-        return $this->hasMany(DigitalProductFile::class)->orderBy('sort_order');
-    }
-
-    public function isDigitalProduct(): bool
-    {
-        return \App\Support\DigitalProductDelivery::marketplaceProductIsDigital($this);
-    }
-
     /**
      * Nonprofit pool tab / org adoption: active, nonprofit enabled, in stock.
      */

@@ -83,7 +83,7 @@ class ChatController extends Controller
                 'created_at' => $room->created_at->toISOString(),
                 'last_message' => $latestMessage ? [
                     'message' => $latestMessage->message ?? '',
-                    'created_at' => $latestMessage->created_at->utc()->toIso8601String() ?? "",
+                    'created_at' => $latestMessage->created_at->toISOString() ?? "",
                     'user_name' => $latestMessage->user->name ?? "",
                 ] : null,
                 'unread_count' => $isMember ? $room->messages()->where('user_id', '!=', $user->id)->whereDoesntHave('reads', function ($query) use ($user) {
@@ -214,7 +214,29 @@ class ChatController extends Controller
             ->orderBy('created_at', 'desc')
             ->paginate($perPage, ['*'], 'page', $page);
 
-        $transformedMessages = collect($messages->items())->map(fn ($message) => $this->transformMessage($message));
+        $transformedMessages = collect($messages->items())->map(function ($message) {
+            return [
+                'id' => $message->id,
+                'message' => $message->message,
+                'attachments' => $message->attachments,
+                'created_at' => $message->created_at->toISOString(),
+                'is_edited' => $message->is_edited,
+                'user' => [
+                    'id' => $message->user->id,
+                    'name' => $message->user->name,
+                    'avatar' => $message->user->avatar_url ?? '/placeholder.svg?height=32&width=32',
+                    'role' => $message->user->role,
+                    'organization' => $message->user->organization ? ['id' => $message->user->organization->id, 'name' => $message->user->organization->name] : null,
+                ],
+                'reply_to_message' => $message->replyToMessage ? [
+                    'id' => $message->replyToMessage->id,
+                    'message' => $message->replyToMessage->message,
+                    'user' => [
+                        'name' => $message->replyToMessage->user->name,
+                    ],
+                ] : null,
+            ];
+        });
 
         return response()->json([
             'messages' => $transformedMessages,
@@ -269,9 +291,7 @@ class ChatController extends Controller
 
         SendChatMessageNotification::dispatch($message);
 
-        return response()->json([
-            'message' => $this->transformMessage($message->load('user.organization', 'replyToMessage.user.organization')),
-        ]);
+        return response()->json(['message' => $message->load('user.organization', 'replyToMessage.user.organization')]);
     }
 
     public function deleteMessage(ChatMessage $message)
@@ -428,7 +448,7 @@ class ChatController extends Controller
             'created_at' => $room->created_at->toISOString(),
             'last_message' => $latestMessage ? [
                 'message' => $latestMessage->message ?? '',
-                'created_at' => $latestMessage->created_at->utc()->toIso8601String() ?? '',
+                'created_at' => $latestMessage->created_at->toISOString() ?? '',
                 'user_name' => $latestMessage->user->name ?? '',
             ] : null,
             'unread_count' => $isMember ? $room->messages()->where('user_id', '!=', $currentUser->id)->whereDoesntHave('reads', function ($query) use ($currentUser) {
@@ -551,7 +571,7 @@ class ChatController extends Controller
             abort(403, 'You are not a member of this chat room');
         }
 
-        broadcast(new UserTyping(auth()->user(), $chatRoom->id, $request->input('is_typing'), $chatRoom->type));
+        broadcast(new UserTyping(auth()->user(), $chatRoom->id, $request->input('is_typing')));
 
         return response()->json(['status' => 'Typing status updated.']);
     }
@@ -578,41 +598,5 @@ class ChatController extends Controller
         broadcast(new RoomCreated($chatRoom))->toOthers();
 
         return response()->json(['message' => 'Members added successfully.']);
-    }
-
-    /**
-     * Serialize a chat message with UTC ISO timestamps for the frontend.
-     */
-    private function transformMessage(ChatMessage $message): array
-    {
-        $message->loadMissing(['user.organization', 'replyToMessage.user.organization']);
-
-        return [
-            'id' => $message->id,
-            'message' => $message->message,
-            'attachments' => $message->attachments ?? [],
-            'created_at' => $message->created_at->utc()->toIso8601String(),
-            'is_edited' => $message->is_edited,
-            'chat_room_id' => $message->chat_room_id,
-            'user' => [
-                'id' => $message->user->id,
-                'name' => $message->user->name,
-                'avatar' => $message->user->avatar_url ?? '/placeholder.svg?height=32&width=32',
-                'avatar_url' => $message->user->avatar_url ?? '/placeholder.svg?height=32&width=32',
-                'role' => $message->user->role,
-                'is_online' => $message->user->is_online ?? false,
-                'organization' => $message->user->organization ? [
-                    'id' => $message->user->organization->id,
-                    'name' => $message->user->organization->name,
-                ] : null,
-            ],
-            'reply_to_message' => $message->replyToMessage ? [
-                'id' => $message->replyToMessage->id,
-                'message' => $message->replyToMessage->message,
-                'user' => [
-                    'name' => $message->replyToMessage->user->name,
-                ],
-            ] : null,
-        ];
     }
 }
