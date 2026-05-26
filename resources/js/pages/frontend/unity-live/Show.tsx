@@ -10,7 +10,6 @@ import { ArrowLeft, Loader2, Radio, Volume2, VolumeX, Maximize2, Minimize2, Play
 import { useUnityLiveViewerStatus } from "@/hooks/useUnityLiveViewerStatus"
 import StreamEndedOverlay from "@/components/unity-live/StreamEndedOverlay"
 import GoingLiveOverlay from "@/components/unity-live/GoingLiveOverlay"
-import UnityMeetVideoLogoOverlay from "@/components/meeting/UnityMeetVideoLogoOverlay"
 
 interface LivestreamItem {
   id: number
@@ -211,9 +210,6 @@ export default function UnityLiveShow({ seo, livestream, otherLivestreams, broad
                         LIVE
                       </span>
                     </div>
-                  ) : null}
-                  {!isLoading && !streamEnded && !isGoingLive ? (
-                    <UnityMeetVideoLogoOverlay className="z-20" />
                   ) : null}
                   {isFullscreen && (
                     <div

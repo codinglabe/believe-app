@@ -183,8 +183,8 @@ class OrganizationLivestream extends Model
         // No &record = no recording from director tab. Do NOT add &autorecordremote (value is bitrate; 0 would enable with 0 kbps and start extra recordings when guests join).
         $base = "https://vdo.ninja/?director={$room}{$passwordParam}&clearstorage&label={$label}&showlabels=zoom&fontsize=82&activespeaker=1&cleandirector&openscene{$layoutsParam}";
 
-        // Dropbox: same as host push — ensure folder exists, then add params when host chose cloud recording.
-        if ($recordToDropbox && $this->organization) {
+        // Dropbox: same as host push — ensure folder exists, then add params so Director recordings save in folder (only when $recordToDropbox)
+        if ($recordEnabled && $recordToDropbox && $this->organization) {
             $oauthService = app(\App\Services\DropboxOAuthService::class);
             $dropboxToken = $oauthService->getAccessTokenForOrganization($this->organization);
             if (! empty($dropboxToken)) {
@@ -457,20 +457,14 @@ class OrganizationLivestream extends Model
             : $push;
 
         $dropboxToken = null;
-        if ($recordToDropbox && $this->organization) {
+        if ($recordEnabled && $recordToDropbox && $this->organization) {
             $oauthService = app(\App\Services\DropboxOAuthService::class);
             $dropboxToken = $oauthService->getAccessTokenForOrganization($this->organization);
             $dropboxToken = ! empty($dropboxToken) ? $dropboxToken : null;
         }
 
-        // Dropbox: cloud upload via &autorecord. Local-only: &autorecordlocal (browser download).
-        if ($dropboxToken !== null) {
-            $recordParam = '&record&autorecord=6000';
-        } elseif ($recordEnabled) {
-            $recordParam = '&record&autorecordlocal=6000';
-        } else {
-            $recordParam = '';
-        }
+        // &record enables recording controls. With Dropbox params, VDO uploads to Dropbox while recording (may also save locally — VDO limitation).
+        $recordParam = $recordEnabled ? '&record' : '';
 
         $base = "https://vdo.ninja/?room={$room}&push={$effectivePush}&label={$label}{$recordParam}&quality=0&bitrate=6000&webcam&ssb&vdo=1&audiodevice=1&proaudio&stereo=2&showlabels=zoom&showall&rows=1&fontsize=82&nocontrols&clock=false{$avatarParam}" . \App\Support\VdoMeetingVirtualBackground::querySegment() . "&autostart&noheader{$passwordParam}";
 

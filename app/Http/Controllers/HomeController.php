@@ -3,9 +3,10 @@
 namespace App\Http\Controllers;
 
 use App\Models\ExcelData;
+use App\Models\NteeCode;
+use App\Services\ExcelDataTransformer;
 use App\Services\SeoService;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 
@@ -21,41 +22,36 @@ class HomeController extends Controller
         //     ->prepend('All Categories')
         //     ->toArray(); // Convert to array
 
-        $categories = Cache::remember('home:ntee_categories', 3600, function () {
-            return DB::table('ntee_codes')
-                ->distinct()
-                ->orderBy('category')
-                ->pluck('category')
-                ->prepend('All Categories')
-                ->values()
-                ->all();
-        });
+        $categories = DB::table('ntee_codes')
+            ->distinct()
+            ->orderBy('category')
+            ->pluck('category')
+            ->prepend('All Categories');
 
-        $transformedOrganizations = Cache::remember('home:featured_organizations', 300, function () {
-            return ExcelData::query()
-                ->where('status', 'complete')
-                ->where('ein', '!=', 'EIN')
-                ->whereNotNull('ein')
-                ->orderByDesc('id')
-                ->limit(6)
-                ->get()
-                ->map(function ($item) {
-                    $rowData = $item->row_data;
+        // Get featured organizations (latest 6 verified organizations)
+        // Optimized: Use simple filter instead of expensive subquery
+        $featuredOrganizations = ExcelData::where('status', 'complete')
+            ->where('ein', '!=', 'EIN')
+            ->whereNotNull('ein')
+            ->orderBy('id', 'desc')
+            ->take(6) // Limit to 6 featured organizations
+            ->get();
 
-                    return [
-                        'id' => $item->id,
-                        'ein' => $item->ein,
-                        'name' => $item->name_virtual ?? $rowData[1] ?? '',
-                        'city' => $item->city_virtual ?? $rowData[4] ?? '',
-                        'state' => $item->state_virtual ?? $rowData[5] ?? '',
-                        'zip' => $item->zip_virtual ?? $rowData[6] ?? '',
-                        'classification' => $rowData[10] ?? '',
-                        'ntee_code' => $item->ntee_code_virtual ?? $rowData[26] ?? '',
-                        'created_at' => $item->created_at,
-                    ];
-                })
-                ->values()
-                ->all();
+        // Optimized: Use virtual columns directly instead of expensive transformer
+        $transformedOrganizations = $featuredOrganizations->map(function ($item) {
+            $rowData = $item->row_data;
+
+            return [
+                'id' => $item->id,
+                'ein' => $item->ein,
+                'name' => $item->name_virtual ?? $rowData[1] ?? '',
+                'city' => $item->city_virtual ?? $rowData[4] ?? '',
+                'state' => $item->state_virtual ?? $rowData[5] ?? '',
+                'zip' => $item->zip_virtual ?? $rowData[6] ?? '',
+                'classification' => $rowData[10] ?? '',
+                'ntee_code' => $item->ntee_code_virtual ?? $rowData[26] ?? '',
+                'created_at' => $item->created_at,
+            ];
         });
 
         return Inertia::render('frontend/home', [

@@ -8,12 +8,6 @@
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="csrf-token" content="{{ csrf_token() }}">
-        @auth
-        <meta name="user-id" content="{{ auth()->id() }}">
-        @endauth
-        @unless($isLivestock || $isMerchant)
-        <meta name="firebase-vapid-key" content="{{ config('services.firebase.vapid_key', '') }}">
-        @endunless
         @unless($isLivestock || $isMerchant)
         <meta name="description" content="{{ config('app.name') }} - Connect with nonprofits and supporters. Donate, volunteer, and make an impact.">
         <meta property="og:type" content="website">

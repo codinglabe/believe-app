@@ -12,7 +12,6 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
-use App\Support\PlanStripeAmount;
 use Laravel\Cashier\Cashier;
 
 class PlanController extends BaseController
@@ -98,7 +97,7 @@ class PlanController extends BaseController
                 if (empty($validated['stripe_price_id'])) {
                     $priceData = [
                         'product' => $validated['stripe_product_id'],
-                        'unit_amount' => PlanStripeAmount::usdToStripeCents($validated['price']),
+                        'unit_amount' => (int)($validated['price'] * 100), // Convert to cents
                         'currency' => 'usd',
                     ];
 
@@ -258,7 +257,7 @@ class PlanController extends BaseController
                 if ($needsNewPrice) {
                     $priceData = [
                         'product' => $validated['stripe_product_id'],
-                        'unit_amount' => PlanStripeAmount::usdToStripeCents($validated['price']),
+                        'unit_amount' => (int)($validated['price'] * 100), // Convert to cents
                         'currency' => 'usd',
                     ];
 

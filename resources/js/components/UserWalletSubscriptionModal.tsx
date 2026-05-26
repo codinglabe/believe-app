@@ -50,7 +50,7 @@ export function UserWalletSubscriptionModal({ isOpen, onClose }: UserWalletSubsc
         setIsLoading(true)
         try {
             const timestamp = Date.now()
-            const response = await walletFetch(`/wallet/plans?supporter=1&t=${timestamp}`, {
+            const response = await walletFetch(`/wallet/plans?t=${timestamp}`, {
                 method: 'GET',
             })
 

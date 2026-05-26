@@ -9,7 +9,6 @@ use App\Models\EmailPackage;
 use App\Models\Organization;
 use App\Services\GmailService;
 use App\Services\OutlookService;
-use App\Support\EmailPackagePurchaseFulfillment;
 use App\Support\StripeCustomerChargeAmount;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -510,12 +509,6 @@ class EmailInviteController extends BaseController
         // Get the email package
         $package = EmailPackage::active()->findOrFail($request->input('package_id'));
 
-        if (! StripeCustomerChargeAmount::meetsCheckoutMinimum((float) $package->price)) {
-            return back()->withErrors([
-                'message' => 'This pack is below Stripe\'s $'.number_format(StripeCustomerChargeAmount::MIN_CHECKOUT_CENTS / 100, 2).' minimum charge. Choose a larger pack.',
-            ]);
-        }
-
         try {
             // Record pending transaction
             $transaction = $user->recordTransaction([
@@ -548,16 +541,15 @@ class EmailInviteController extends BaseController
                 [
                     'success_url' => route('email-invite.purchase.success').'?'.$successQs,
                     'cancel_url' => $cancelUrl,
-                    'metadata' => EmailPackagePurchaseFulfillment::checkoutMetadata(
-                        $user,
-                        $transaction,
-                        (int) $package->emails_count,
-                        (int) $package->id,
-                        (float) $package->price,
-                        [
-                            'return_to' => $returnToNewsletter ? 'newsletter' : '',
-                        ]
-                    ),
+                    'metadata' => [
+                        'user_id' => $user->id,
+                        'transaction_id' => $transaction->id,
+                        'type' => 'email_purchase',
+                        'emails_to_add' => $package->emails_count,
+                        'package_id' => $package->id,
+                        'amount' => $package->price,
+                        'return_to' => $returnToNewsletter ? 'newsletter' : '',
+                    ],
                     'payment_method_types' => ['card'],
                 ]
             );
@@ -615,20 +607,42 @@ class EmailInviteController extends BaseController
                     : redirect()->route('email-invite.index')->with('error', 'Payment was not completed.');
             }
 
-            $result = EmailPackagePurchaseFulfillment::fulfill($user, $session, (string) $sessionId);
-            $emailsToAdd = $result['emails_added'];
+            // Get metadata from session
+            $emailsToAdd = (int) ($metadata['emails_to_add'] ?? 0);
+            $transactionId = $metadata['transaction_id'] ?? null;
 
-            if ($emailsToAdd <= 0) {
-                $errorMsg = 'Payment received but email credits could not be applied. Please contact support with your receipt.';
-
-                return $toNewsletter
-                    ? redirect()->route('newsletter.index', ['error' => $errorMsg, 'open_buy' => 'email'])
-                    : redirect()->route('email-invite.index')->with('error', $errorMsg);
+            if ($emailsToAdd > 0) {
+                // Add emails to user's included count
+                $user->increment('emails_included', $emailsToAdd);
             }
 
-            $successMsg = $result['already_fulfilled']
-                ? "Your {$emailsToAdd} email credit(s) were already added to your balance."
-                : "Successfully purchased {$emailsToAdd} emails!";
+            // Update transaction status
+            if ($transactionId) {
+                $transaction = \App\Models\Transaction::find($transactionId);
+                if ($transaction) {
+                    $transaction->update([
+                        'status' => 'completed',
+                        'meta' => array_merge(
+                            $transaction->meta ?? [],
+                            [
+                                'type' => 'email_purchase',
+                                'stripe_session_id' => $sessionId,
+                                'stripe_payment_intent' => $session->payment_intent,
+                                'payment_status' => $session->payment_status,
+                                'emails_added' => $emailsToAdd,
+                            ]
+                        ),
+                    ]);
+                }
+            }
+
+            Log::info('Emails purchased successfully', [
+                'user_id' => $user->id,
+                'emails_added' => $emailsToAdd,
+                'session_id' => $sessionId,
+            ]);
+
+            $successMsg = "Successfully purchased {$emailsToAdd} emails!";
 
             return $toNewsletter
                 ? redirect()->route('newsletter.index', [

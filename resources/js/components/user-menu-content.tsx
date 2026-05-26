@@ -4,43 +4,22 @@ import { useMobileNavigation } from '@/hooks/use-mobile-navigation';
 import { type SharedData, type User } from '@/types';
 import { Link, router, usePage } from '@inertiajs/react';
 import { HeartHandshake, LinkIcon, LogOut, Settings, CreditCard, Crown, Globe, Users } from 'lucide-react';
-import { organizationPricingHref, supporterPricingHref, type SupporterSubscriptionState } from '@/lib/supporter-pricing-display';
-
+import { route } from 'ziggy-js';
 interface UserMenuContentProps {
     user: User;
 }
 
 export function UserMenuContent({ user }: UserMenuContentProps) {
     const cleanup = useMobileNavigation();
-    const { auth, supporterSubscription } = usePage<SharedData & { supporterSubscription?: SupporterSubscriptionState | null }>().props;
+    const { auth } = usePage<SharedData>().props;
     const authRoles = auth?.roles ?? [];
     const hasCareAllianceRole = authRoles.some((r) => String(r).toLowerCase() === 'care_alliance');
     const careAllianceHub = (user as { care_alliance?: { slug: string; name: string } | null }).care_alliance;
 
     const isAdmin = user.role === 'admin';
-    const isSupporter = user.role === 'user';
     const isOrganization = user.role === 'organization' || user.role === 'organization_pending';
     const organizationPublicViewSlug = (user as any).organization?.public_view_slug;
     const showOrgAllianceMembership = isOrganization && !hasCareAllianceRole;
-    const planDetails = (user as any).current_plan_details as
-        | { name?: string; price?: number; frequency?: string }
-        | null
-        | undefined;
-    const activeSupporterPlan = isSupporter ? supporterSubscription : null;
-    const activePlanName = isSupporter ? activeSupporterPlan?.name ?? planDetails?.name : planDetails?.name;
-    const activePlanPrice = isSupporter
-        ? (activeSupporterPlan?.price ?? planDetails?.price ?? 0)
-        : (planDetails?.price ?? 0);
-    const activePlanFrequency = isSupporter
-        ? 'month'
-        : ((planDetails?.frequency || 'month') === 'one-time' ? 'One-time' : (planDetails?.frequency || 'month'));
-    const hasActivePlan = Boolean(isSupporter ? activeSupporterPlan || planDetails?.name : planDetails?.name);
-    const planManageHref = isSupporter
-        ? supporterPricingHref()
-        : isOrganization
-            ? organizationPricingHref()
-            : '/plans';
-    const showViewPlans = !isAdmin && !hasActivePlan && (isSupporter || !(user as any).current_plan_id);
 
     const handleLogout = () => {
         cleanup();
@@ -55,7 +34,8 @@ export function UserMenuContent({ user }: UserMenuContentProps) {
                 </div>
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
-            {!isAdmin && hasActivePlan && (
+            {/* Plan Information */}
+            {!isAdmin && (user as any).current_plan_details && (
                 <>
                     <DropdownMenuLabel className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">
                         Current Plan
@@ -65,16 +45,20 @@ export function UserMenuContent({ user }: UserMenuContentProps) {
                             <Crown className="h-4 w-4 text-primary" />
                             <div className="flex-1 min-w-0">
                                 <p className="text-sm font-medium text-foreground">
-                                    {activePlanName || 'Plan'}
+                                    {(user as any).current_plan_details?.name || 'Plan'}
                                 </p>
                                 <p className="text-xs text-muted-foreground">
-                                    ${Number(activePlanPrice).toFixed(2)} / {activePlanFrequency}
+                                    ${((user as any).current_plan_details?.price || 0).toFixed(2)} / {
+                                        ((user as any).current_plan_details?.frequency || 'month') === 'one-time' 
+                                            ? 'One-time' 
+                                            : ((user as any).current_plan_details?.frequency || 'month')
+                                    }
                                 </p>
                             </div>
                         </div>
                     </div>
                     <DropdownMenuItem asChild>
-                        <Link className="block w-full" href={planManageHref} as="button" prefetch onClick={cleanup}>
+                        <Link className="block w-full" href="/plans" as="button" prefetch onClick={cleanup}>
                             <Crown className="mr-2" />
                             Manage Plan
                         </Link>
@@ -105,11 +89,11 @@ export function UserMenuContent({ user }: UserMenuContentProps) {
                 )}
                 {isOrganization && organizationPublicViewSlug && (
                     <DropdownMenuItem asChild>
-                        <Link
-                            className="block w-full"
-                            href={route('organizations.show', organizationPublicViewSlug)}
-                            as="button"
-                            prefetch
+                        <Link 
+                            className="block w-full" 
+                            href={route('organizations.show', organizationPublicViewSlug)} 
+                            as="button" 
+                            prefetch 
                             onClick={cleanup}
                         >
                             <Globe className="mr-2" />
@@ -146,12 +130,12 @@ export function UserMenuContent({ user }: UserMenuContentProps) {
                     </DropdownMenuItem>
                 )}
                 {!isAdmin && (
-                    <DropdownMenuItem asChild>
+                <DropdownMenuItem asChild>
                         <Link className="block w-full" href="/settings/billing" as="button" prefetch onClick={cleanup}>
-                            <CreditCard className="mr-2" />
-                            Billings
-                        </Link>
-                    </DropdownMenuItem>
+                        <CreditCard className="mr-2" />
+                        Billings
+                    </Link>
+                </DropdownMenuItem>
                 )}
                 <DropdownMenuItem asChild>
                     <Link className="block w-full" href="/settings/profile" as="button" prefetch onClick={cleanup}>
@@ -160,11 +144,12 @@ export function UserMenuContent({ user }: UserMenuContentProps) {
                     </Link>
                 </DropdownMenuItem>
             </DropdownMenuGroup>
-            {showViewPlans && (
+            {/* Show Plans link if no current plan - Hidden for admin */}
+            {!isAdmin && !(user as any).current_plan_id && (
                 <>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem asChild>
-                        <Link className="block w-full" href={planManageHref} as="button" prefetch onClick={cleanup}>
+                        <Link className="block w-full" href="/plans" as="button" prefetch onClick={cleanup}>
                             <Crown className="mr-2" />
                             View Plans
                         </Link>

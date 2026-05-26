@@ -10,7 +10,6 @@ use App\Models\Organization;
 use App\Models\OrganizationProduct;
 use App\Services\SeoService;
 use App\Services\StripeProcessingFeeEstimator;
-use App\Support\SupporterSubscriptionService;
 use Carbon\Carbon;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Http\Request;
@@ -344,18 +343,6 @@ class HandleInertiaRequests extends Middleware
             'merchantDomain' => config('merchant.domain'),
             'footerSettings' => $footerSettings,
             'processingFeeRates' => StripeProcessingFeeEstimator::ratesForFrontend(),
-            'supporterSubscription' => fn () => ($user instanceof \App\Models\User && ($user->role ?? null) === 'user')
-                ? SupporterSubscriptionService::subscriptionStateForUser($user)
-                : null,
-            'firebaseWeb' => [
-                'apiKey' => config('services.firebase.api_key'),
-                'authDomain' => config('services.firebase.auth_domain'),
-                'projectId' => config('services.firebase.project_id'),
-                'storageBucket' => config('services.firebase.storage_bucket'),
-                'messagingSenderId' => config('services.firebase.messaging_sender_id'),
-                'appId' => config('services.firebase.app_id'),
-                'vapidKey' => config('services.firebase.vapid_key'),
-            ],
         ];
     }
 }
