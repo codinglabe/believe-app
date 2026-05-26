@@ -29,13 +29,13 @@ class MessageSent implements ShouldBroadcast
     {
         $channels = [];
 
-        // Room-specific channel
-        $channelType = match ($this->message->chatRoom->type) {
-            'public' => 'public-chat',
-            'private' => 'private-chat',
-            default => 'direct-chat'
+        // Room channel must match the frontend: echo.channel() for public, echo.private() for direct/group.
+        $roomId = $this->message->chat_room_id;
+        $channels[] = match ($this->message->chatRoom->type) {
+            'public' => new Channel("public-chat.{$roomId}"),
+            'private' => new PrivateChannel("private-chat.{$roomId}"),
+            default => new PrivateChannel("direct-chat.{$roomId}"),
         };
-        $channels[] = new Channel("{$channelType}.{$this->message->chat_room_id}");
 
         // Private channels for all members (for sidebar updates)
         foreach ($this->message->chatRoom->members as $member) {

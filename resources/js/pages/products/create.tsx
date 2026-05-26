@@ -244,6 +244,12 @@ export default function Create({
         );
     }, [auth?.user?.role, data.is_printify_product, data.type, data.owned_by, data.organization_id, isOrgUser]);
 
+    useEffect(() => {
+        if (data.is_printify_product && data.type !== 'physical') {
+            setData('type', 'physical');
+        }
+    }, [data.is_printify_product, data.type]);
+
      const [processing, setProcessing] = useState(false);
     const [errors, setErrors] = useState<any>({});
 
@@ -846,7 +852,7 @@ const handleCategoryChange = (categoryId: number) => {
         );
         formData.append('status', data.status);
         formData.append('sku', data.sku);
-        formData.append('type', data.type);
+        formData.append('type', data.is_printify_product ? 'physical' : data.type);
 
         if (!data.is_printify_product && data.type === 'physical') {
             const hasMerchants = merchants_for_ship_from.length > 0;
@@ -1200,7 +1206,8 @@ const handleCategoryChange = (categoryId: number) => {
                                                     setPrintifyPreviewCosts({});
                                                     setPrintifyPreviewProviderId(null);
                                                 } else {
-                                                    // Reset manual product fields when enabling Printify
+                                                    // Printify listings are print-on-demand physical only
+                                                    setData('type', 'physical');
                                                     setData('unit_price', '');
                                                     // Initialize printify_images array with one empty slot
                                                     if (data.printify_images.length === 0) {
@@ -2519,40 +2526,51 @@ const handleCategoryChange = (categoryId: number) => {
                                         )}
                                     </div>
 
-                                    <div className="space-y-2">
-                                        <Label htmlFor="type" className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-                                            Type *
-                                        </Label>
-                                        <Select
-                                            value={data.type}
-                                            onValueChange={(value) => handleChange('type', value)}
-                                        >
-                                            <SelectTrigger
-                                                className={`h-11 text-base ${errors.type ? 'border-red-500 dark:border-red-500' : 'border-gray-300 dark:border-gray-600'} bg-white text-gray-900 dark:bg-gray-800 dark:text-gray-100`}
-                                            >
-                                                <SelectValue placeholder="Select type" />
-                                            </SelectTrigger>
-                                            <SelectContent className="border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
-                                                <SelectItem
-                                                    value="physical"
-                                                    className="text-gray-900 hover:bg-gray-100 dark:text-gray-100 dark:hover:bg-gray-700"
-                                                >
-                                                    Physical
-                                                </SelectItem>
-                                                <SelectItem
-                                                    value="digital"
-                                                    className="text-gray-900 hover:bg-gray-100 dark:text-gray-100 dark:hover:bg-gray-700"
-                                                >
-                                                    Digital
-                                                </SelectItem>
-                                            </SelectContent>
-                                        </Select>
-                                        {errors.type && (
-                                            <p className="flex items-center gap-1 text-sm text-red-500 dark:text-red-400">
-                                                <span>⚠</span> {errors.type}
+                                    {data.is_printify_product ? (
+                                        <div className="space-y-2">
+                                            <Label className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                                                Type
+                                            </Label>
+                                            <p className="rounded-lg border border-indigo-200 bg-indigo-50/60 px-3 py-2.5 text-sm text-indigo-900 dark:border-indigo-800 dark:bg-indigo-950/30 dark:text-indigo-200">
+                                                Physical (print-on-demand via Printify). Digital delivery is not available for Printify products.
                                             </p>
-                                        )}
-                                    </div>
+                                        </div>
+                                    ) : (
+                                        <div className="space-y-2">
+                                            <Label htmlFor="type" className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                                                Type *
+                                            </Label>
+                                            <Select
+                                                value={data.type}
+                                                onValueChange={(value) => handleChange('type', value)}
+                                            >
+                                                <SelectTrigger
+                                                    className={`h-11 text-base ${errors.type ? 'border-red-500 dark:border-red-500' : 'border-gray-300 dark:border-gray-600'} bg-white text-gray-900 dark:bg-gray-800 dark:text-gray-100`}
+                                                >
+                                                    <SelectValue placeholder="Select type" />
+                                                </SelectTrigger>
+                                                <SelectContent className="border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
+                                                    <SelectItem
+                                                        value="physical"
+                                                        className="text-gray-900 hover:bg-gray-100 dark:text-gray-100 dark:hover:bg-gray-700"
+                                                    >
+                                                        Physical
+                                                    </SelectItem>
+                                                    <SelectItem
+                                                        value="digital"
+                                                        className="text-gray-900 hover:bg-gray-100 dark:text-gray-100 dark:hover:bg-gray-700"
+                                                    >
+                                                        Digital
+                                                    </SelectItem>
+                                                </SelectContent>
+                                            </Select>
+                                            {errors.type && (
+                                                <p className="flex items-center gap-1 text-sm text-red-500 dark:text-red-400">
+                                                    <span>⚠</span> {errors.type}
+                                                </p>
+                                            )}
+                                        </div>
+                                    )}
                                 </CardContent>
                             </Card>
 

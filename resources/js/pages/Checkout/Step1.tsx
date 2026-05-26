@@ -42,6 +42,7 @@ interface Step1Props {
   platform_fee_lines?: PlatformFeeLine[]
   donation_percentage: number
   pickupAvailableAtCheckout?: boolean
+  digitalOnlyCheckout?: boolean
   onComplete: (data: Step1CompleteData) => void
 }
 
@@ -55,6 +56,7 @@ export default function Step1({
   platform_fee_lines = [],
   donation_percentage,
   pickupAvailableAtCheckout = false,
+  digitalOnlyCheckout = false,
   onComplete,
 }: Step1Props) {
   const [formData, setFormData] = useState({
@@ -91,7 +93,9 @@ export default function Step1({
   const countryNeedsState = ['US', 'CA', 'AU'].includes(formData.country)
 
   const validateForm = (): boolean => {
-    const requiredFields = ['name', 'email', 'phone', 'address', 'city', 'zip'] as const
+    const requiredFields = digitalOnlyCheckout
+      ? (['name', 'email', 'phone'] as const)
+      : (['name', 'email', 'phone', 'address', 'city', 'zip'] as const)
     const newErrors: Record<string, string> = {}
 
     requiredFields.forEach(field => {
@@ -100,7 +104,7 @@ export default function Step1({
       }
     })
 
-    if (countryNeedsState && !formData.state.trim()) {
+    if (!digitalOnlyCheckout && countryNeedsState && !formData.state.trim()) {
       newErrors.state = 'State / province is required for this country'
     }
 
@@ -174,9 +178,17 @@ export default function Step1({
           <form onSubmit={handleSubmit} className="space-y-6">
             {/* Shipping Information */}
             <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
-              <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-6">Shipping Information</h2>
+              <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-6">
+                {digitalOnlyCheckout ? "Contact information" : "Shipping Information"}
+              </h2>
 
-              {pickupAvailableAtCheckout && (
+              {digitalOnlyCheckout && (
+                <div className="mb-6 rounded-lg border border-violet-200 bg-violet-50 px-4 py-3 text-sm text-violet-900 dark:border-violet-800 dark:bg-violet-950/40 dark:text-violet-100">
+                  Digital products only — no shipping address required. Files will be available in your order after the seller uploads them.
+                </div>
+              )}
+
+              {pickupAvailableAtCheckout && !digitalOnlyCheckout && (
                 <div className="mb-6 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-100">
                   <strong className="font-semibold">Local pickup</strong> is available for this order. After you continue,
                   step 2 will list <strong>Pick up at seller location</strong> with $0 shipping. Choose that option if you
@@ -233,6 +245,8 @@ export default function Step1({
                   {errors.phone && <p className="text-red-500 text-sm mt-1">{errors.phone}</p>}
                 </div>
 
+                {!digitalOnlyCheckout && (
+                <>
                 <div className="md:col-span-2">
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                     Street Address *
@@ -318,6 +332,8 @@ export default function Step1({
                     <option value="AU">Australia</option>
                   </select>
                 </div>
+                </>
+                )}
               </div>
             </div>
 

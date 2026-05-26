@@ -551,7 +551,7 @@ class ChatController extends Controller
             abort(403, 'You are not a member of this chat room');
         }
 
-        broadcast(new UserTyping(auth()->user(), $chatRoom->id, $request->input('is_typing')));
+        broadcast(new UserTyping(auth()->user(), $chatRoom->id, $request->input('is_typing'), $chatRoom->type));
 
         return response()->json(['status' => 'Typing status updated.']);
     }

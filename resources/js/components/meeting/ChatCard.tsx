@@ -114,7 +114,7 @@ export default function ChatCard({
     if (!meetingId) return
 
     // Public chat channel
-    const chatChannel = echo.channel(`meeting.${meetingId}.chat`)
+    const chatChannel = echo().channel(`meeting.${meetingId}.chat`)
 
     const handleMessage = (e: any) => {
       setMessages((prev) => [...prev, e])
@@ -123,7 +123,7 @@ export default function ChatCard({
     chatChannel.listen(".message.sent", handleMessage)
 
     // Private messages for this user
-    const privateChannel = echo.channel(`meeting.${meetingId}.user.${user.id}`)
+    const privateChannel = echo().channel(`meeting.${meetingId}.user.${user.id}`)
     privateChannel.listen(".message.sent", handleMessage)
 
     return () => {

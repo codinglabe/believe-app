@@ -82,10 +82,27 @@ return [
                     'scheme' => env('REVERB_SCHEME', 'https'),
                     'useTLS' => env('REVERB_SCHEME', 'https') === 'https',
                 ],
-                'allowed_origins' => array_values(array_filter(array_map(
-                    trim(...),
-                    explode(',', (string) env('REVERB_ALLOWED_ORIGINS', 'https://501c3ers.com,https://www.501c3ers.com,https://merchant.501c3ers.com,https://believeinunity.org,https://www.believeinunity.org,https://merchant.believeinunity.org'))
-                ))),
+                'allowed_origins' => (function () {
+                    $configured = array_values(array_filter(array_map(
+                        trim(...),
+                        explode(',', (string) env('REVERB_ALLOWED_ORIGINS', 'https://501c3ers.com,https://www.501c3ers.com,https://merchant.501c3ers.com,https://believeinunity.org,https://www.believeinunity.org,https://merchant.believeinunity.org'))
+                    )));
+
+                    if (env('APP_ENV', 'production') !== 'local') {
+                        return $configured;
+                    }
+
+                    $localOrigins = [
+                        'http://localhost',
+                        'http://127.0.0.1',
+                        'http://localhost:8000',
+                        'http://localhost:8001',
+                        'http://127.0.0.1:8000',
+                        'http://127.0.0.1:8001',
+                    ];
+
+                    return array_values(array_unique([...$configured, ...$localOrigins]));
+                })(),
                 'ping_interval' => env('REVERB_APP_PING_INTERVAL', 60),
                 'activity_timeout' => env('REVERB_APP_ACTIVITY_TIMEOUT', 30),
                 'max_message_size' => env('REVERB_APP_MAX_MESSAGE_SIZE', 10_000),

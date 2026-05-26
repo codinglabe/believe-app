@@ -15,8 +15,17 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const messaging = firebase.messaging();
 
-// Background message handler - commented out until SW is stable
-// messaging.onBackgroundMessage((payload) => { ... });
+messaging.onBackgroundMessage((payload) => {
+    const title = payload.notification?.title || payload.data?.title || "Notification";
+    const options = {
+        body: payload.notification?.body || payload.data?.body || "",
+        icon: payload.notification?.icon || "/favicon-96x96.png",
+        badge: payload.notification?.badge || "/favicon-96x96.png",
+        tag: payload.data?.content_item_id || "notification",
+        data: payload.data || {},
+    };
+    return self.registration.showNotification(title, options);
+});
 
 // Cache version bump for post-deploy cleanup (invalidates old caches)
 const CACHE_NAME = "pwa-cache-v3";

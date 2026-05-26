@@ -28,6 +28,7 @@ class RecordingYoutubeUpload extends Model
     protected $fillable = [
         'user_id',
         'dropbox_path',
+        'dropbox_path_hash',
         'dropbox_name',
         'status',
         'title',
@@ -54,6 +55,20 @@ class RecordingYoutubeUpload extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    public static function hashDropboxPath(string $dropboxPath): string
+    {
+        return hash('sha256', $dropboxPath);
+    }
+
+    protected static function booted(): void
+    {
+        static::saving(function (RecordingYoutubeUpload $upload): void {
+            if ($upload->dropbox_path !== null && $upload->dropbox_path !== '') {
+                $upload->dropbox_path_hash = self::hashDropboxPath($upload->dropbox_path);
+            }
+        });
     }
 
     public function markUploading(): void

@@ -7,6 +7,7 @@ import type { GlobalEvent } from '@inertiajs/core';
 import { createInertiaApp, router } from '@inertiajs/react';
 import { resolvePageComponent } from 'laravel-vite-plugin/inertia-helpers';
 import { configureEcho } from '@laravel/echo-react';
+import { buildReverbEchoConfig, syncEchoCsrfToken } from './lib/reverb-config';
 import { createRoot } from 'react-dom/client';
 import { NotificationProvider } from './components/frontend/notification-provider';
 import { PwaInstallPrompt } from './components/pwa/pwa-install-prompt';
@@ -15,43 +16,12 @@ import { registerServiceWorker } from './pwa/register-service-worker';
 import { PWAUpdatePrompt } from './components/PWAUpdatePrompt';
 import { isLivestockDomain } from './lib/livestock-domain';
 import { isMerchantDomain } from './lib/merchant-domain';
-import { initializeMessaging, requestNotificationPermission } from './lib/firebase';
+import { initializeMessaging, requestNotificationPermission, savePushTokenToBackend } from './lib/firebase';
 import { getBrowserTimezone } from './lib/timezone-detection';
 import axios from 'axios';
 
 
-const isLoopbackHost = (host?: string) =>
-    Boolean(host && ['127.0.0.1', '0.0.0.0', 'localhost'].includes(host));
-
-const reverbHost = (() => {
-    const configured = import.meta.env.VITE_REVERB_HOST;
-    const runtime =
-        typeof window !== 'undefined' ? window.location.hostname : 'localhost';
-
-    if (isLoopbackHost(configured) && !isLoopbackHost(runtime)) {
-        return runtime;
-    }
-
-    return configured || runtime;
-})();
-
-configureEcho({
-    broadcaster: 'reverb',
-    key: import.meta.env.VITE_REVERB_APP_KEY,
-    wsHost: reverbHost,
-    wsPort: Number(import.meta.env.VITE_REVERB_PORT) || 80,
-    wssPort: Number(import.meta.env.VITE_REVERB_PORT) || 443,
-    forceTLS: (import.meta.env.VITE_REVERB_SCHEME ?? 'https') === 'https',
-    enabledTransports: ['ws', 'wss'],
-    authEndpoint: '/broadcasting/auth',
-    auth: {
-        headers: {
-            'X-CSRF-TOKEN':
-                document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content ?? '',
-            'X-Requested-With': 'XMLHttpRequest',
-        },
-    },
-});
+configureEcho(buildReverbEchoConfig());
 
 const appName = import.meta.env.VITE_APP_NAME || 'Laravel';
 
@@ -85,6 +55,7 @@ createInertiaApp({
                 newMeta.content = initialToken;
                 document.head.appendChild(newMeta);
             }
+            syncEchoCsrfToken(initialToken);
         }
 
         // After every Inertia navigation (including post-login redirect), sync meta so next POST doesn't get 419.
@@ -100,6 +71,7 @@ createInertiaApp({
                     newMeta.content = token;
                     document.head.appendChild(newMeta);
                 }
+                syncEchoCsrfToken(token);
             }
         });
 
@@ -121,6 +93,34 @@ createInertiaApp({
 if (typeof window !== 'undefined') {
     router.on('before', (event: GlobalEvent<'before'>) => {
         event.detail.visit.headers['X-Timezone'] = getBrowserTimezone();
+    });
+
+    // Register FCM token on any authenticated page (including /chat, which does not use AppLayout).
+    let pushTokenSaveInFlight: Promise<boolean> | null = null;
+    const pushTokenSavedForUser = new Set<number>();
+
+    router.on('success', (event: GlobalEvent<'success'>) => {
+        const auth = event.detail.page?.props?.auth as { user?: { id?: number } } | undefined;
+        const userId = auth?.user?.id;
+        if (!userId || pushTokenSavedForUser.has(userId) || pushTokenSaveInFlight) {
+            return;
+        }
+
+        pushTokenSaveInFlight = savePushTokenToBackend()
+            .then((ok) => {
+                if (ok) {
+                    pushTokenSavedForUser.add(userId);
+                    console.info('[Push] FCM token saved for user', userId);
+                }
+                return ok;
+            })
+            .catch((err) => {
+                console.error('[Push] Failed to save FCM token:', err);
+                return false;
+            })
+            .finally(() => {
+                pushTokenSaveInFlight = null;
+            });
     });
 }
 

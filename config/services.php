@@ -358,6 +358,10 @@ return [
         'pool_listing_organization_id' => env('MARKETPLACE_POOL_LISTING_ORGANIZATION_ID'),
     ],
 
+    'digital_products' => [
+        'max_upload_kb' => (int) env('DIGITAL_PRODUCT_MAX_UPLOAD_KB', 51200),
+    ],
+
     'shippo' => [
         'api_key' => env('SHIPPO_API_KEY'),
         'api_base' => env('SHIPPO_API_BASE', 'https://api.goshippo.com'),

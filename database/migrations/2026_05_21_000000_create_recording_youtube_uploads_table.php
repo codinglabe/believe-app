@@ -12,6 +12,7 @@ return new class extends Migration
             $table->id();
             $table->foreignId('user_id')->constrained()->cascadeOnDelete();
             $table->string('dropbox_path', 2048);
+            $table->char('dropbox_path_hash', 64);
             $table->string('dropbox_name', 512);
             $table->string('status', 32)->default('pending');
             $table->string('title', 255)->nullable();
@@ -25,7 +26,7 @@ return new class extends Migration
             $table->timestamp('published_at')->nullable();
             $table->timestamps();
 
-            $table->unique(['user_id', 'dropbox_path'], 'recording_youtube_uploads_user_path_unique');
+            $table->unique(['user_id', 'dropbox_path_hash'], 'recording_youtube_uploads_user_path_unique');
             $table->index(['user_id', 'status']);
         });
     }
