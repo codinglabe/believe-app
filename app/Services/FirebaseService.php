@@ -24,6 +24,37 @@ class FirebaseService
     }
 
     /**
+     * Resolve CA bundle path (relative .env paths break under Herd/php-fpm when cwd is not project root).
+     */
+    private function resolveTlsCafile(): ?string
+    {
+        $configured = config('services.firebase.cafile');
+        $candidates = array_filter([
+            is_string($configured) && $configured !== '' ? $configured : null,
+            storage_path('app/cacert.pem'),
+        ]);
+
+        foreach ($candidates as $path) {
+            $normalized = str_replace('\\', '/', $path);
+            if (is_file($path)) {
+                return $path;
+            }
+            if (str_starts_with($normalized, 'storage/')) {
+                $fromStorage = storage_path(substr($normalized, strlen('storage/')));
+                if (is_file($fromStorage)) {
+                    return $fromStorage;
+                }
+            }
+            $fromBase = base_path($path);
+            if (is_file($fromBase)) {
+                return $fromBase;
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * Guzzle TLS options for Google OAuth + FCM (fixes Windows cURL error 60 when CA bundle is missing).
      *
      * @return array<string, mixed>
@@ -31,13 +62,13 @@ class FirebaseService
     private function firebaseTlsRequestOptions(): array
     {
         $verifySsl = filter_var(config('services.firebase.verify_ssl', true), FILTER_VALIDATE_BOOL);
-        $cafile = config('services.firebase.cafile');
 
         if (! $verifySsl) {
             return ['verify' => false];
         }
 
-        if (is_string($cafile) && $cafile !== '' && is_file($cafile)) {
+        $cafile = $this->resolveTlsCafile();
+        if ($cafile !== null) {
             return ['verify' => $cafile];
         }
 

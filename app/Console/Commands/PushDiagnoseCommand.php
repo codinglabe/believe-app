@@ -24,6 +24,17 @@ class PushDiagnoseCommand extends Command
         $this->line('  Credentials exist: '.(is_file($credentialsPath) ? 'yes' : 'NO — add firebase-credentials.json'));
         $this->line('  VAPID key set: '.($vapid ? 'yes' : 'NO'));
 
+        $cafile = config('services.firebase.cafile');
+        $caResolved = storage_path('app/cacert.pem');
+        if (is_string($cafile) && $cafile !== '' && is_file($cafile)) {
+            $caResolved = $cafile;
+        } elseif (is_file(storage_path('app/cacert.pem'))) {
+            $caResolved = storage_path('app/cacert.pem');
+        } elseif (is_string($cafile) && $cafile !== '' && is_file(base_path($cafile))) {
+            $caResolved = base_path($cafile);
+        }
+        $this->line('  TLS CA file: '.(is_file($caResolved) ? $caResolved : '(not found — Windows may need storage/app/cacert.pem)'));
+
         if (! is_file($credentialsPath)) {
             $this->newLine();
             $this->error('Server cannot SEND pushes without storage/app/firebase/firebase-credentials.json');
