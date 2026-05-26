@@ -1,4 +1,5 @@
 import {
+    activateForegroundMessaging,
     ensureMessagingReady,
     requestFcmToken,
     resetMessagingRegistration,
@@ -104,7 +105,8 @@ export async function syncPushTokenWithServer(options?: { prompt?: boolean }): P
         }
 
         await postPushTokenToServer(fcmToken);
-        console.info("[Push] Token saved to server");
+        await activateForegroundMessaging();
+        console.info("[Push] Token saved to server — foreground listener ready");
 
         return fcmToken;
     })();

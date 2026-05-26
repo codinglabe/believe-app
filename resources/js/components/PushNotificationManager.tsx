@@ -5,7 +5,7 @@ import { syncPushTokenWithServer } from "@/lib/push-token-sync"
 import { registerServiceWorker } from "@/pwa/register-service-worker"
 import { router, usePage } from "@inertiajs/react"
 import { Button } from "./ui/button"
-import { showFirebasePushToast } from "@/lib/firebase-push-toast"
+import { showNativePushNotification } from "@/lib/firebase-push-toast"
 
 interface PushNotificationManagerProps {
   userId?: number
@@ -33,20 +33,7 @@ export function PushNotificationManager({ userId }: PushNotificationManagerProps
   }, [auth])
 
   useEffect(() => {
-    void registerServiceWorker().then(() => setIsInitialized(true));
-
-    const onFirebaseNotification = (event: Event) => {
-      const detail = (event as CustomEvent).detail
-      if (detail) {
-        showFirebasePushToast(detail)
-      }
-    }
-
-    window.addEventListener("firebase-notification", onFirebaseNotification)
-
-    return () => {
-      window.removeEventListener("firebase-notification", onFirebaseNotification)
-    }
+    void registerServiceWorker().then(() => setIsInitialized(true))
   }, [])
 
   const handleEnablePushNotifications = async () => {
@@ -58,7 +45,7 @@ export function PushNotificationManager({ userId }: PushNotificationManagerProps
 
       if (fcmToken && auth?.user?.id) {
         setHasToken(true)
-        showFirebasePushToast({
+        void showNativePushNotification({
           title: "Notifications enabled",
           body: "You will receive alerts on this device.",
         })

@@ -2,7 +2,6 @@
 import { initializeApp, type FirebaseApp } from "firebase/app";
 import { getMessaging, getToken, onMessage, isSupported, type Messaging } from "firebase/messaging";
 import { registerServiceWorker } from "@/pwa/register-service-worker";
-import { attachFirebasePushToastListener } from "@/lib/firebase-push-toast";
 import { isPushCapableBrowser } from "@/lib/push-environment";
 
 type FirebaseWebConfig = {
@@ -139,45 +138,48 @@ function attachForegroundMessageListener(instance: Messaging) {
     }
     messagingListenersAttached = true;
 
-    attachFirebasePushToastListener();
-
     onMessage(instance, (payload) => {
         const data = (payload.data ?? {}) as Record<string, string | undefined>;
         const title = payload.notification?.title ?? data.title;
         const body = payload.notification?.body ?? data.body ?? data.message;
         const detail = { title, body, data };
 
-        window.dispatchEvent(
-            new CustomEvent("firebase-notification", {
-                detail,
-            }),
-        );
-
-        if (Notification.permission !== "granted") {
-            return;
-        }
-
-        const clickUrl = data.click_action || data.url;
-        try {
-            const notification = new Notification(title || "Believe In Unity", {
-                body: body || "",
-                icon: payload.notification?.icon || "/favicon-96x96.png",
-                badge: payload.notification?.badge || "/favicon-96x96.png",
-                tag: data.content_item_id || data.type || "notification",
-                data: clickUrl ? { url: clickUrl } : undefined,
-            });
-
-            if (clickUrl) {
-                notification.onclick = () => {
-                    window.focus();
-                    window.location.href = clickUrl;
-                    notification.close();
-                };
-            }
-        } catch {
-            // ignore — toast already shown via custom event
-        }
+        // Foreground: native OS notification (same as background / device tray).
+        void import("@/lib/firebase-push-toast").then(({ showNativePushNotification }) => {
+            void showNativePushNotification(detail);
+        });
     });
+}
+
+async function prepareServiceWorkerOnly(): Promise<ServiceWorkerRegistration | null> {
+    const supported = await isSupported();
+    if (!supported) {
+        console.warn("[Firebase] Messaging not supported in this browser");
+        return null;
+    }
+
+    const registration = await resolveServiceWorkerRegistration();
+    if (!registrationSupportsPush(registration)) {
+        console.warn("[Firebase] No push-capable service worker for messaging");
+        return null;
+    }
+
+    activeRegistration = registration;
+
+    return registration;
+}
+
+function attachMessagingInstance(registration: ServiceWorkerRegistration): void {
+    const needsNewMessaging = !messaging || activeRegistration !== registration;
+    if (!needsNewMessaging) {
+        return;
+    }
+
+    messagingListenersAttached = false;
+    messaging = getMessaging(firebaseApp(), {
+        serviceWorkerRegistration: registration,
+    });
+    attachForegroundMessageListener(messaging);
 }
 
 /**
@@ -195,40 +197,36 @@ export async function ensureMessagingReady(): Promise<ServiceWorkerRegistration 
         return null;
     }
 
+    // Permission not granted yet: register SW only (do not cache — avoids stale init without onMessage).
+    if (Notification.permission !== "granted") {
+        try {
+            return await prepareServiceWorkerOnly();
+        } catch (error) {
+            console.error("[Firebase] Service worker prep failed:", error);
+            return null;
+        }
+    }
+
+    // Permission granted but foreground listener missing (e.g. cached partial init) — re-init.
+    if (messagingInitPromise && !messaging) {
+        messagingInitPromise = null;
+    }
+
     if (messagingInitPromise) {
         return messagingInitPromise;
     }
 
     messagingInitPromise = (async () => {
         try {
-            const supported = await isSupported();
-            if (!supported) {
-                console.warn("[Firebase] Messaging not supported in this browser");
+            const registration = await prepareServiceWorkerOnly();
+            if (!registration) {
                 return null;
             }
 
-            const registration = await resolveServiceWorkerRegistration();
-            if (!registrationSupportsPush(registration)) {
-                console.warn("[Firebase] No push-capable service worker for messaging");
-                return null;
-            }
+            attachMessagingInstance(registration);
 
-            activeRegistration = registration;
-
-            // Do not call getMessaging() until permission is granted — Firebase registers SW
-            // listeners that call deleteTokenInternal; without granted permission that throws
-            // "Cannot read properties of undefined (reading 'pushManager')".
-            if (Notification.permission !== "granted") {
-                return registration;
-            }
-
-            const needsNewMessaging = !messaging || activeRegistration !== registration;
-            if (needsNewMessaging) {
-                messagingListenersAttached = false;
-                messaging = getMessaging(firebaseApp(), {
-                    serviceWorkerRegistration: registration,
-                });
-                attachForegroundMessageListener(messaging);
+            if (import.meta.env.DEV) {
+                console.info("[Firebase] Foreground messaging listener active");
             }
 
             return registration;
@@ -239,6 +237,15 @@ export async function ensureMessagingReady(): Promise<ServiceWorkerRegistration 
     })();
 
     return messagingInitPromise;
+}
+
+/** Call after permission is granted and FCM token is saved so foreground toasts work. */
+export async function activateForegroundMessaging(): Promise<void> {
+    if (Notification.permission !== "granted") {
+        return;
+    }
+    resetMessagingRegistration();
+    await ensureMessagingReady();
 }
 
 /** @deprecated Use ensureMessagingReady() */

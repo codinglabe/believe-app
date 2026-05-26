@@ -12,6 +12,9 @@ import { PageHead } from "@/components/frontend/PageHead"
 import { useEmailCreditsState } from "@/hooks/use-email-credits-state"
 import BuyEmailCreditsDialog, { type EmailPackageOption } from "@/components/meeting/BuyEmailCreditsDialog"
 import EmailCreditsMeetingActions from "@/components/meeting/EmailCreditsMeetingActions"
+import UnityMeetInviteChannelPicker, {
+  type UnityMeetInviteChannel,
+} from "@/components/meeting/UnityMeetInviteChannelPicker"
 
 const BRAND = {
   from: "#9333ea",
@@ -59,6 +62,7 @@ export default function SupporterReady({
   const [invitingParticipant, setInvitingParticipant] = useState(false)
   const [resendingEmail, setResendingEmail] = useState<string | null>(null)
   const [buyCreditsOpen, setBuyCreditsOpen] = useState(false)
+  const [inviteNotifyVia, setInviteNotifyVia] = useState<UnityMeetInviteChannel>("both")
   const isScheduled = livestream.status === "scheduled"
   const invitedCount = livestream.participantEmails?.length ?? 0
   const showScheduledEmailInvites = Boolean(livestream.scheduledAt) || invitedCount > 0
@@ -87,6 +91,9 @@ export default function SupporterReady({
     })
   }
 
+  const inviteUsesEmailCredits = inviteNotifyVia === "email" || inviteNotifyVia === "both"
+  const canSendInvite = inviteNotifyVia === "biu" || canSendEmailInvites
+
   const sendInvitation = (email: string, resend = false) => {
     if (resend) {
       setResendingEmail(email)
@@ -96,10 +103,14 @@ export default function SupporterReady({
 
     router.post(
       route("livestreams.supporter.participants.invite", livestream.id),
-      { email, resend: resend || undefined },
+      { email, resend: resend || undefined, notify_via: inviteNotifyVia },
       {
         preserveScroll: true,
-        onStart: () => applyDelta(1),
+        onStart: () => {
+          if (inviteUsesEmailCredits) {
+            applyDelta(1)
+          }
+        },
         onSuccess: (page) => {
           const inviteError = (page.props as { errors?: { email?: string | string[] } }).errors?.email
           if (inviteError) {
@@ -108,7 +119,11 @@ export default function SupporterReady({
           }
           syncFromServer((page.props as Props).emailCredits)
         },
-        onError: () => applyDelta(-1),
+        onError: () => {
+          if (inviteUsesEmailCredits) {
+            applyDelta(-1)
+          }
+        },
         onFinish: () => {
           setInvitingParticipant(false)
           setResendingEmail(null)
@@ -201,7 +216,7 @@ export default function SupporterReady({
             <Card>
               <CardHeader className="space-y-3">
                 <CardTitle className="text-base">Send invitation</CardTitle>
-                {emailCreditsLive ? (
+                {emailCreditsLive && inviteUsesEmailCredits ? (
                   <EmailCreditsMeetingActions
                     emailsLeft={emailCreditsLive.emails_left}
                     onBuy={() => setBuyCreditsOpen(true)}
@@ -209,7 +224,8 @@ export default function SupporterReady({
                 ) : null}
               </CardHeader>
               <CardContent className="space-y-3">
-                {!canSendEmailInvites ? (
+                <UnityMeetInviteChannelPicker value={inviteNotifyVia} onChange={setInviteNotifyVia} />
+                {inviteUsesEmailCredits && !canSendEmailInvites ? (
                   <p className="text-sm text-amber-700 dark:text-amber-300">
                     No email credits remaining.{" "}
                     <button
@@ -219,9 +235,10 @@ export default function SupporterReady({
                     >
                       Buy email credits
                     </button>{" "}
-                    to send invitations.
+                    or choose BIU notification only.
                   </p>
-                ) : (
+                ) : null}
+                {canSendInvite ? (
                   <>
                 <Label htmlFor="ready-participant-invite-email" className="sr-only">
                   Guest email
@@ -260,7 +277,7 @@ export default function SupporterReady({
                   <p className="text-sm text-destructive">{participantInviteErrorText}</p>
                 ) : null}
                   </>
-                )}
+                ) : null}
               </CardContent>
             </Card>
           ) : null}
@@ -283,7 +300,7 @@ export default function SupporterReady({
                       <Mail className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                       <span className="min-w-0 flex-1 truncate">{email}</span>
                       <div className="flex shrink-0 items-center gap-0.5">
-                        {canInviteParticipants && canSendEmailInvites ? (
+                        {canInviteParticipants && canSendInvite ? (
                           <Button
                             type="button"
                             variant="ghost"

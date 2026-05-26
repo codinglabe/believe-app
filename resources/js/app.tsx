@@ -15,11 +15,10 @@ import { registerServiceWorker } from './pwa/register-service-worker';
 import { PWAUpdatePrompt } from './components/PWAUpdatePrompt';
 import { isLivestockDomain } from './lib/livestock-domain';
 import { isMerchantDomain } from './lib/merchant-domain';
-import { applyFirebaseWebConfig, resetMessagingRegistration } from './lib/firebase';
-import { attachFirebasePushToastListener } from './lib/firebase-push-toast';
+import { applyFirebaseWebConfig, ensureMessagingReady, resetMessagingRegistration } from './lib/firebase';
+import { showNativePushNotification } from './lib/firebase-push-toast';
 import { syncPushTokenWithServer } from './lib/push-token-sync';
 import { logPushDiagnostics, shouldAutoPromptForPushPermission } from './lib/push-environment';
-import { showFirebasePushToast } from './lib/firebase-push-toast';
 import { Toaster } from 'react-hot-toast';
 import { getBrowserTimezone } from './lib/timezone-detection';
 import axios from 'axios';
@@ -213,16 +212,33 @@ if (typeof window !== 'undefined' && isMerchantDomain()) {
 // This will set light / dark mode on load...
 initializeTheme();
 
-// Foreground push → react-hot-toast (global listener; requires root <Toaster /> above).
+// Push → native OS notifications (service worker + Notification API). Requires permission granted.
 if (typeof window !== 'undefined' && !isLivestockDomain()) {
-    attachFirebasePushToastListener();
-
     if (import.meta.env.DEV) {
         (window as Window & { enableBelievePush?: () => Promise<string | null> }).enableBelievePush = () =>
             syncPushTokenWithServer({ prompt: true });
         (window as Window & { testBelievePushToast?: () => void }).testBelievePushToast = () =>
-            showFirebasePushToast({ title: 'Test notification', body: 'If you see this toast, foreground UI works.' });
+            void showNativePushNotification({
+                title: 'Unity Meet invitation',
+                body: 'Test host invited you to a Unity Meet.',
+                data: {
+                    type: 'unity_meet_invitation',
+                    join_url: '/livestreams/join/test-room',
+                    click_action: '/livestreams/join/test-room',
+                },
+            });
         console.info('[Push] Dev helpers: enableBelievePush(), testBelievePushToast()');
+    }
+
+    if ('permissions' in navigator) {
+        void navigator.permissions.query({ name: 'notifications' as PermissionName }).then((status) => {
+            status.addEventListener('change', () => {
+                if (Notification.permission === 'granted') {
+                    resetMessagingRegistration();
+                    void ensureMessagingReady();
+                }
+            });
+        });
     }
 }
 
