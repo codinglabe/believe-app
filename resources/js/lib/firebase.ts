@@ -147,36 +147,13 @@ function attachForegroundMessageListener(instance: Messaging) {
         const body = payload.notification?.body ?? data.body ?? data.message;
         const detail = { title, body, data };
 
+        // Foreground: in-app toast only (firebase-push-toast). Do not call new Notification() —
+        // that duplicates the bottom-right toast with a native OS banner at the top.
         window.dispatchEvent(
             new CustomEvent("firebase-notification", {
                 detail,
             }),
         );
-
-        if (Notification.permission !== "granted") {
-            return;
-        }
-
-        const clickUrl = data.click_action || data.url;
-        try {
-            const notification = new Notification(title || "Believe In Unity", {
-                body: body || "",
-                icon: payload.notification?.icon || "/favicon-96x96.png",
-                badge: payload.notification?.badge || "/favicon-96x96.png",
-                tag: data.content_item_id || data.type || "notification",
-                data: clickUrl ? { url: clickUrl } : undefined,
-            });
-
-            if (clickUrl) {
-                notification.onclick = () => {
-                    window.focus();
-                    window.location.href = clickUrl;
-                    notification.close();
-                };
-            }
-        } catch {
-            // ignore — toast already shown via custom event
-        }
     });
 }
 
