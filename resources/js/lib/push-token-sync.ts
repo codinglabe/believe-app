@@ -1,7 +1,12 @@
-import { ensureMessagingReady, requestFcmToken } from "@/lib/firebase";
+import {
+    ensureMessagingReady,
+    requestFcmToken,
+    resetMessagingRegistration,
+} from "@/lib/firebase";
 import { isPushCapableBrowser } from "@/lib/push-environment";
 
 const DEVICE_ID_KEY = "device_id";
+let syncInFlight: Promise<string | null> | null = null;
 
 export function getWebPushDeviceInfo() {
     const nav = navigator as Navigator & {
@@ -51,33 +56,62 @@ async function postPushTokenToServer(token: string): Promise<void> {
  * Register FCM with Firebase (after SW is ready) and persist the token for the logged-in user.
  */
 export async function syncPushTokenWithServer(options?: { prompt?: boolean }): Promise<string | null> {
-    if (typeof window === "undefined" || !("serviceWorker" in navigator)) {
-        console.warn("[Push] Service workers not supported");
-        return null;
+    if (syncInFlight) {
+        return syncInFlight;
     }
 
-    if (!isPushCapableBrowser()) {
-        console.warn("[Push] Use http://127.0.0.1:8000 or http://localhost:8000 for local testing");
-        return null;
-    }
-
-    const ready = await ensureMessagingReady();
-    if (!ready) {
-        console.warn("[Push] Messaging not ready — check service worker and HTTPS");
-        return null;
-    }
-
-    const shouldPrompt = options?.prompt ?? Notification.permission === "default";
-    const fcmToken = await requestFcmToken({ prompt: shouldPrompt });
-    if (!fcmToken) {
-        if (Notification.permission === "default" && !shouldPrompt) {
-            console.info("[Push] Allow notifications in browser settings, or call syncPushTokenWithServer({ prompt: true })");
+    syncInFlight = (async () => {
+        if (typeof window === "undefined" || !("serviceWorker" in navigator)) {
+            console.warn("[Push] Service workers not supported");
+            return null;
         }
-        return null;
+
+        if (!isPushCapableBrowser()) {
+            console.warn("[Push] Use http://127.0.0.1:8000 or http://localhost:8000 for local testing");
+            return null;
+        }
+
+        if (Notification.permission === "denied") {
+            return null;
+        }
+
+        const shouldPrompt = options?.prompt ?? false;
+
+        if (Notification.permission === "default" && !shouldPrompt) {
+            console.info(
+                "[Push] Notifications not enabled yet — allow in the browser or call enableBelievePush()",
+            );
+            return null;
+        }
+
+        if (Notification.permission === "default" && shouldPrompt) {
+            const permission = await Notification.requestPermission();
+            if (permission !== "granted") {
+                return null;
+            }
+            resetMessagingRegistration();
+        }
+
+        const ready = await ensureMessagingReady();
+        if (!ready) {
+            console.warn("[Push] Messaging not ready — check service worker and HTTPS");
+            return null;
+        }
+
+        const fcmToken = await requestFcmToken({ prompt: false });
+        if (!fcmToken) {
+            return null;
+        }
+
+        await postPushTokenToServer(fcmToken);
+        console.info("[Push] Token saved to server");
+
+        return fcmToken;
+    })();
+
+    try {
+        return await syncInFlight;
+    } finally {
+        syncInFlight = null;
     }
-
-    await postPushTokenToServer(fcmToken);
-    console.info("[Push] Token saved to server");
-
-    return fcmToken;
 }

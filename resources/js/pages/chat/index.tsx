@@ -1,8 +1,8 @@
 // resources/js/pages/chat/index.tsx
 import { ChatLayout } from "@/components/chat/chat-layout"
 import AppLayout from "@/layouts/app-layout";
-import { ensureMessagingReady } from "@/lib/firebase";
 import { syncPushTokenWithServer } from "@/lib/push-token-sync";
+import { registerServiceWorker } from "@/pwa/register-service-worker";
 import { ChatProvider } from "@/providers/chat-provider"
 import { usePage } from "@inertiajs/react";
 import { useEffect } from "react";
@@ -12,24 +12,7 @@ export default function ChatPage() {
     const { auth } = usePage().props;
 
     useEffect(() => {
-        const initializePushNotifications = async () => {
-            try {
-            await ensureMessagingReady()
-
-            window.addEventListener("firebase-notification", (event: Event) => {
-                const detail = (event as CustomEvent).detail
-                console.log("[ChatPage] Received notification:", detail)
-            })
-            } catch (err) {
-            console.error("[ChatPage] Push initialization error:", err)
-            }
-        }
-
-        initializePushNotifications()
-
-        return () => {
-            window.removeEventListener("firebase-notification", () => {})
-        }
+        void registerServiceWorker();
     }, [])
 
     useEffect(() => {

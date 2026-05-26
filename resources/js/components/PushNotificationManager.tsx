@@ -1,8 +1,8 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { ensureMessagingReady } from "@/lib/firebase"
 import { syncPushTokenWithServer } from "@/lib/push-token-sync"
+import { registerServiceWorker } from "@/pwa/register-service-worker"
 import { router, usePage } from "@inertiajs/react"
 import { Button } from "./ui/button"
 import { showFirebasePushToast } from "@/lib/firebase-push-toast"
@@ -33,27 +33,19 @@ export function PushNotificationManager({ userId }: PushNotificationManagerProps
   }, [auth])
 
   useEffect(() => {
-    const initializePushNotifications = async () => {
-      try {
-        await ensureMessagingReady()
-        setIsInitialized(true)
+    void registerServiceWorker().then(() => setIsInitialized(true));
 
-        window.addEventListener("firebase-notification", (event: Event) => {
-          const detail = (event as CustomEvent).detail
-          if (detail) {
-            showFirebasePushToast(detail)
-          }
-        })
-      } catch (err) {
-        console.error("[PushNotificationManager] Initialization error:", err)
-        setError("Failed to initialize push notifications")
+    const onFirebaseNotification = (event: Event) => {
+      const detail = (event as CustomEvent).detail
+      if (detail) {
+        showFirebasePushToast(detail)
       }
     }
 
-    initializePushNotifications()
+    window.addEventListener("firebase-notification", onFirebaseNotification)
 
     return () => {
-      window.removeEventListener("firebase-notification", () => {})
+      window.removeEventListener("firebase-notification", onFirebaseNotification)
     }
   }, [])
 

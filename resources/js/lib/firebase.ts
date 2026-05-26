@@ -213,9 +213,16 @@ export async function ensureMessagingReady(): Promise<ServiceWorkerRegistration 
                 return null;
             }
 
-            const needsNewMessaging = !messaging || activeRegistration !== registration;
             activeRegistration = registration;
 
+            // Do not call getMessaging() until permission is granted — Firebase registers SW
+            // listeners that call deleteTokenInternal; without granted permission that throws
+            // "Cannot read properties of undefined (reading 'pushManager')".
+            if (Notification.permission !== "granted") {
+                return registration;
+            }
+
+            const needsNewMessaging = !messaging || activeRegistration !== registration;
             if (needsNewMessaging) {
                 messagingListenersAttached = false;
                 messaging = getMessaging(firebaseApp(), {
@@ -241,6 +248,22 @@ export const initializeMessaging = ensureMessagingReady;
  * Obtain an FCM device token. Does not POST to the server — use syncPushTokenWithServer().
  */
 export async function requestFcmToken(options?: { prompt?: boolean }): Promise<string | null> {
+    if (Notification.permission === "denied") {
+        console.warn("[Firebase] Notification permission denied");
+        return null;
+    }
+
+    if (Notification.permission === "default") {
+        if (!options?.prompt) {
+            return null;
+        }
+        const permission = await Notification.requestPermission();
+        if (permission !== "granted") {
+            return null;
+        }
+        resetMessagingRegistration();
+    }
+
     const registration = (await ensureMessagingReady()) ?? activeRegistration;
     if (!registration || !messaging || !registrationSupportsPush(registration)) {
         return null;
@@ -253,21 +276,6 @@ export async function requestFcmToken(options?: { prompt?: boolean }): Promise<s
     }
 
     try {
-        if (Notification.permission === "denied") {
-            console.warn("[Firebase] Notification permission denied");
-            return null;
-        }
-
-        if (Notification.permission === "default") {
-            if (!options?.prompt) {
-                return null;
-            }
-            const permission = await Notification.requestPermission();
-            if (permission !== "granted") {
-                return null;
-            }
-        }
-
         const token = await getToken(messaging, {
             vapidKey: key,
             serviceWorkerRegistration: registration,
