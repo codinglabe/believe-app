@@ -347,6 +347,15 @@ class HandleInertiaRequests extends Middleware
             'supporterSubscription' => fn () => ($user instanceof \App\Models\User && ($user->role ?? null) === 'user')
                 ? SupporterSubscriptionService::subscriptionStateForUser($user)
                 : null,
+            'firebaseWeb' => [
+                'apiKey' => config('services.firebase.api_key'),
+                'authDomain' => config('services.firebase.auth_domain'),
+                'projectId' => config('services.firebase.project_id'),
+                'storageBucket' => config('services.firebase.storage_bucket'),
+                'messagingSenderId' => config('services.firebase.messaging_sender_id'),
+                'appId' => config('services.firebase.app_id'),
+                'vapidKey' => config('services.firebase.vapid_key'),
+            ],
         ];
     }
 }

@@ -39,6 +39,9 @@ class PushTokenController extends Controller
                 $deviceInfo
             );
 
+            // Keep legacy users.push_token in sync for UI that checks auth.user.push_token
+            $user->forceFill(['push_token' => $request->token])->save();
+
             Log::info('Push token updated', [
                 'user_id' => $user->id,
                 'token' => substr($request->token, 0, 20) . '...',

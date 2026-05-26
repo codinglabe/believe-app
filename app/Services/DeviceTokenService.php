@@ -19,6 +19,11 @@ class DeviceTokenService
                 'device_name' => $deviceInfo['device_name'] ?? 'Unknown',
                 'browser' => $deviceInfo['browser'] ?? null,
                 'platform' => $deviceInfo['platform'] ?? null,
+                'is_active' => true,
+                'status' => UserPushToken::STATUS_ACTIVE,
+                'last_error' => null,
+                'last_error_at' => null,
+                'needs_reregister' => false,
                 'last_used_at' => now(),
             ]
         );

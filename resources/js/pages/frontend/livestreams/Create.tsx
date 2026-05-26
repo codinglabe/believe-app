@@ -31,6 +31,9 @@ import { cn } from "@/lib/utils"
 import { useEmailCreditsState } from "@/hooks/use-email-credits-state"
 import BuyEmailCreditsDialog, { type EmailPackageOption } from "@/components/meeting/BuyEmailCreditsDialog"
 import EmailCreditsMeetingActions from "@/components/meeting/EmailCreditsMeetingActions"
+import UnityMeetInviteChannelPicker, {
+  type UnityMeetInviteChannel,
+} from "@/components/meeting/UnityMeetInviteChannelPicker"
 
 const BRAND = {
   from: "#9333ea",
@@ -79,6 +82,7 @@ export default function SupporterCreateLivestream({
   const [isScheduling, setIsScheduling] = useState(false)
   const [buyCreditsOpen, setBuyCreditsOpen] = useState(false)
   const [participantEmailInput, setParticipantEmailInput] = useState("")
+  const [inviteNotifyVia, setInviteNotifyVia] = useState<UnityMeetInviteChannel>("both")
   const { success } = usePage<{ success?: string }>().props
   const { emailsLeft, syncFromServer } = useEmailCreditsState(emailCredits)
 
@@ -132,6 +136,7 @@ export default function SupporterCreateLivestream({
         schedule_date: data.schedule_date,
         schedule_time: data.schedule_time,
         participant_emails: emails,
+        invite_notify_via: inviteNotifyVia,
       },
       {
         preserveScroll: true,
@@ -165,7 +170,8 @@ export default function SupporterCreateLivestream({
 
   const pendingInviteCount =
     (data.participant_emails?.length ?? 0) + (participantEmailInput.trim() !== "" ? 1 : 0)
-  const scheduleNeedsCredits = pendingInviteCount > 0
+  const scheduleUsesEmailCredits = inviteNotifyVia === "email" || inviteNotifyVia === "both"
+  const scheduleNeedsCredits = pendingInviteCount > 0 && scheduleUsesEmailCredits
   const hasEnoughCreditsForSchedule = !scheduleNeedsCredits || pendingInviteCount <= emailsLeft
 
   return (
@@ -398,7 +404,8 @@ export default function SupporterCreateLivestream({
               <Label htmlFor="participant_emails" className="text-muted-foreground">
                 Participant emails
               </Label>
-              {emailCredits ? (
+              <UnityMeetInviteChannelPicker value={inviteNotifyVia} onChange={setInviteNotifyVia} />
+              {scheduleUsesEmailCredits && emailCredits ? (
                 <EmailCreditsMeetingActions
                   emailsLeft={emailsLeft}
                   onBuy={() => setBuyCreditsOpen(true)}

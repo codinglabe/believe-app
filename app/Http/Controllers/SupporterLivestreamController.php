@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Jobs\SendUnityMeetBiuNotification;
 use App\Jobs\SendUnityMeetInvitationEmail;
 use App\Models\LivestreamRecordingDecline;
 use App\Models\Organization;
@@ -14,9 +15,11 @@ use App\Services\Streaming\StreamingQueueService;
 use App\Support\EmailPackageCatalog;
 use App\Support\LivestreamParticipantEmails;
 use App\Support\MeetingRecordingPreference;
+use App\Support\UnityMeetInviteNotifyVia;
 use App\Support\UserEmailCredits;
 use App\Support\StreamingWorkerSourceUrl;
 use App\Services\DropboxOAuthService;
+use App\Services\UnityMeetBiuNotifier;
 use App\Services\DropboxOrgApi;
 use App\Services\RecordingYoutubePublishService;
 use App\Services\YouTubeService;
@@ -368,9 +371,11 @@ class SupporterLivestreamController extends Controller
             'participant_emails.*' => 'required|email|max:255',
             // Backward compatibility for older clients sending a single email string.
             'participant_email' => 'nullable|email|max:255',
+            'invite_notify_via' => 'nullable|string|in:email,biu,both',
         ]);
 
         $user = $request->user();
+        $notifyVia = UnityMeetInviteNotifyVia::normalize($request->input('invite_notify_via'));
 
         $scheduledAt = Carbon::createFromFormat(
             'Y-m-d H:i',
@@ -401,10 +406,21 @@ class SupporterLivestreamController extends Controller
         $emails = array_values(array_unique(array_filter(array_map('strval', $emails))));
         $settings['participant_emails'] = $emails;
 
-        if ($emails !== [] && ! UserEmailCredits::canSend($user, count($emails))) {
+        if ($emails !== [] && UnityMeetInviteNotifyVia::usesEmailCredits($notifyVia) && ! UserEmailCredits::canSend($user, count($emails))) {
             return back()
                 ->withErrors(['participant_emails' => UserEmailCredits::insufficientMessage($user, count($emails))])
                 ->withInput();
+        }
+
+        if ($emails !== [] && $notifyVia === UnityMeetInviteNotifyVia::BIU) {
+            $missingBiu = array_values(array_filter($emails, fn (string $addr) => $this->userForInviteEmail($addr) === null));
+            if ($missingBiu !== []) {
+                return back()
+                    ->withErrors([
+                        'participant_emails' => 'BIU notifications require a registered Believe In Unity account: '.implode(', ', array_slice($missingBiu, 0, 3)).(count($missingBiu) > 3 ? '…' : ''),
+                    ])
+                    ->withInput();
+            }
         }
 
         $livestream = UserLivestream::create([
@@ -418,11 +434,11 @@ class SupporterLivestreamController extends Controller
             'settings' => $settings ?: null,
         ]);
 
-        $this->sendScheduledMeetingInvitations($livestream);
+        $this->sendScheduledMeetingInvitations($livestream, $notifyVia);
 
         return redirect()->route('livestreams.supporter.ready', $livestream->id)
             ->with('success', count($emails) > 0
-                ? 'Meeting scheduled! Invitation emails are on their way.'
+                ? $this->scheduledInviteSuccessMessage($notifyVia, count($emails))
                 : 'Meeting scheduled!');
     }
 
@@ -882,6 +898,7 @@ class SupporterLivestreamController extends Controller
         $validated = $request->validate([
             'email' => 'required|email|max:255',
             'resend' => 'nullable|boolean',
+            'notify_via' => 'nullable|string|in:email,biu,both',
         ]);
 
         $livestream = UserLivestream::where('user_id', $request->user()->id)->findOrFail($id);
@@ -891,25 +908,32 @@ class SupporterLivestreamController extends Controller
         }
 
         $user = $request->user();
-        if (! UserEmailCredits::canSend($user)) {
+        $notifyVia = UnityMeetInviteNotifyVia::normalize($request->input('notify_via'));
+        $email = strtolower(trim((string) $validated['email']));
+        $settings = is_array($livestream->settings) ? $livestream->settings : [];
+        $emails = LivestreamParticipantEmails::fromSettings($settings);
+        $resend = $request->boolean('resend');
+
+        if (UnityMeetInviteNotifyVia::usesEmailCredits($notifyVia) && ! UserEmailCredits::canSend($user)) {
             return redirect()->back()->withErrors([
                 'email' => UserEmailCredits::insufficientMessage($user),
             ]);
         }
 
-        $email = strtolower(trim((string) $validated['email']));
-        $settings = is_array($livestream->settings) ? $livestream->settings : [];
-        $emails = LivestreamParticipantEmails::fromSettings($settings);
-        $resend = $request->boolean('resend');
+        if ($notifyVia === UnityMeetInviteNotifyVia::BIU && $this->userForInviteEmail($email) === null) {
+            return redirect()->back()->withErrors([
+                'email' => 'No Believe In Unity account found for this email. Use email invitation or ask them to sign up first.',
+            ]);
+        }
 
         if ($resend) {
             if (! in_array($email, $emails, true)) {
                 return redirect()->back()->withErrors(['email' => 'Participant not found on this meeting.']);
             }
 
-            $this->dispatchParticipantInvitation($livestream, $email);
+            $this->dispatchParticipantInvitation($livestream, $email, $notifyVia);
 
-            return redirect()->back()->with('success', 'Invitation resent.');
+            return redirect()->back()->with('success', $this->inviteSentSuccessMessage($notifyVia));
         }
 
         if (in_array($email, $emails, true)) {
@@ -926,9 +950,9 @@ class SupporterLivestreamController extends Controller
             'settings' => $settings !== [] ? $settings : null,
         ]);
 
-        $this->dispatchParticipantInvitation($livestream, $email);
+        $this->dispatchParticipantInvitation($livestream, $email, $notifyVia);
 
-        return redirect()->back()->with('success', 'Invitation sent.');
+        return redirect()->back()->with('success', $this->inviteSentSuccessMessage($notifyVia));
     }
 
     public function destroy(Request $request, int $id): RedirectResponse
@@ -2026,24 +2050,64 @@ class SupporterLivestreamController extends Controller
     /**
      * Dispatch invitation email jobs for each participant on a scheduled meeting.
      */
-    private function sendScheduledMeetingInvitations(UserLivestream $livestream): void
+    private function sendScheduledMeetingInvitations(UserLivestream $livestream, string $notifyVia = UnityMeetInviteNotifyVia::BOTH): void
     {
         $settings = is_array($livestream->settings) ? $livestream->settings : [];
         $emails = LivestreamParticipantEmails::fromSettings($settings);
+        $channel = UnityMeetInviteNotifyVia::normalize($notifyVia);
 
         foreach ($emails as $email) {
-            $this->dispatchParticipantInvitation($livestream, $email);
+            $this->dispatchParticipantInvitation($livestream, $email, $channel);
         }
     }
 
-    private function dispatchParticipantInvitation(UserLivestream $livestream, string $email): void
-    {
+    private function dispatchParticipantInvitation(
+        UserLivestream $livestream,
+        string $email,
+        string $notifyVia = UnityMeetInviteNotifyVia::EMAIL,
+    ): void {
+        $channel = UnityMeetInviteNotifyVia::normalize($notifyVia);
         $billingUser = User::query()->find($livestream->user_id);
-        if ($billingUser) {
+
+        if (UnityMeetInviteNotifyVia::usesEmailCredits($channel) && $billingUser) {
             UserEmailCredits::consume($billingUser);
+            SendUnityMeetInvitationEmail::dispatch($livestream->id, $email, (int) $livestream->user_id);
         }
 
-        SendUnityMeetInvitationEmail::dispatch($livestream->id, $email, (int) $livestream->user_id);
+        if (UnityMeetInviteNotifyVia::usesBiuNotification($channel)) {
+            // Synchronous: inbox + push must not depend on a queue worker for host invites.
+            app(UnityMeetBiuNotifier::class)->notifyByEmail($livestream, $email);
+        }
+    }
+
+    private function userForInviteEmail(string $email): ?User
+    {
+        $normalized = strtolower(trim($email));
+        if ($normalized === '') {
+            return null;
+        }
+
+        return User::query()->whereRaw('LOWER(email) = ?', [$normalized])->first();
+    }
+
+    private function inviteSentSuccessMessage(string $notifyVia): string
+    {
+        return match (UnityMeetInviteNotifyVia::normalize($notifyVia)) {
+            UnityMeetInviteNotifyVia::BIU => 'BIU notification sent.',
+            UnityMeetInviteNotifyVia::BOTH => 'Email and BIU notification sent.',
+            default => 'Invitation email sent.',
+        };
+    }
+
+    private function scheduledInviteSuccessMessage(string $notifyVia, int $count): string
+    {
+        $suffix = $count === 1 ? '' : 's';
+
+        return match (UnityMeetInviteNotifyVia::normalize($notifyVia)) {
+            UnityMeetInviteNotifyVia::BIU => "Meeting scheduled! {$count} BIU notification{$suffix} sent.",
+            UnityMeetInviteNotifyVia::BOTH => "Meeting scheduled! {$count} email and BIU notification{$suffix} sent.",
+            default => "Meeting scheduled! {$count} invitation email{$suffix} on the way.",
+        };
     }
 
     /**
