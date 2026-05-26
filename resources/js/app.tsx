@@ -16,7 +16,11 @@ import { PWAUpdatePrompt } from './components/PWAUpdatePrompt';
 import { isLivestockDomain } from './lib/livestock-domain';
 import { isMerchantDomain } from './lib/merchant-domain';
 import { applyFirebaseWebConfig, ensureMessagingReady, resetMessagingRegistration } from './lib/firebase';
-import { attachFirebasePushToastListener, showFirebasePushToast } from './lib/firebase-push-toast';
+import {
+    attachFirebasePushToastListener,
+    attachServiceWorkerPushBridge,
+    showFirebasePushToast,
+} from './lib/firebase-push-toast';
 import { syncPushTokenWithServer } from './lib/push-token-sync';
 import { logPushDiagnostics, shouldAutoPromptForPushPermission } from './lib/push-environment';
 import { Toaster } from 'react-hot-toast';
@@ -214,6 +218,7 @@ initializeTheme();
 
 // Foreground push → react-hot-toast (global listener; requires root <Toaster /> above).
 if (typeof window !== 'undefined' && !isLivestockDomain()) {
+    attachServiceWorkerPushBridge();
     attachFirebasePushToastListener();
 
     if (import.meta.env.DEV) {

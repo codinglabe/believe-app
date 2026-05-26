@@ -15,39 +15,34 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const messaging = firebase.messaging();
 
+// Never call showNotification — the app uses in-app toasts only (bottom-right).
+// Forward to open tabs so the same UI handles foreground and background FCM.
 messaging.onBackgroundMessage((payload) => {
+    const data = payload.data || {};
     const title =
-        payload.notification?.title || payload.data?.title || "Believe In Unity";
+        payload.notification?.title || data.title || "Believe In Unity";
     const body =
-        payload.notification?.body || payload.data?.body || payload.data?.message || "";
-    const clickUrl =
-        payload.data?.click_action || payload.data?.url || "/";
+        payload.notification?.body || data.body || data.message || "";
+    const clickUrl = data.click_action || data.url || "/";
 
-    // Tab open: page handles FCM via onMessage + in-app toast — skip native OS banner.
-    return self.clients
-        .matchAll({ type: "window", includeUncontrolled: true })
-        .then((windowClients) => {
-            const appVisible = windowClients.some(
-                (client) => client.visibilityState === "visible",
-            );
-            if (appVisible) {
-                return;
-            }
+    const detail = {
+        title,
+        body,
+        data: Object.assign({}, data, {
+            click_action: clickUrl,
+            url: clickUrl,
+        }),
+    };
 
-            return self.registration.showNotification(title, {
-                body,
-                icon: payload.notification?.icon || "/favicon-96x96.png",
-                badge: payload.notification?.badge || "/badge.png",
-                data: {
-                    click_action: clickUrl,
-                    url: clickUrl,
-                },
-            });
+    return self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clients) => {
+        clients.forEach((client) => {
+            client.postMessage({ type: "firebase-push", detail });
         });
+    });
 });
 
 // Cache version bump for post-deploy cleanup (invalidates old caches)
-const CACHE_NAME = "pwa-cache-v6";
+const CACHE_NAME = "pwa-cache-v7";
 // Only cache static assets; do NOT cache "/" or HTML/auth routes
 const urlsToCache = ["/offline.html", "/manifest.json"];
 

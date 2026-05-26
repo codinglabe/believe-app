@@ -57,12 +57,37 @@ export function showFirebasePushToast(detail: FirebaseNotificationDetail): void 
 
 let listenerAttached = false;
 
+function dispatchPushDetail(detail: FirebaseNotificationDetail): void {
+    window.dispatchEvent(
+        new CustomEvent("firebase-notification", {
+            detail,
+        }),
+    );
+}
+
+/** SW → page bridge (background FCM never uses native OS notifications). */
+export function attachServiceWorkerPushBridge(): void {
+    if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) {
+        return;
+    }
+
+    navigator.serviceWorker.addEventListener("message", (event: MessageEvent) => {
+        const data = event.data as { type?: string; detail?: FirebaseNotificationDetail } | null;
+        if (data?.type !== "firebase-push" || !data.detail) {
+            return;
+        }
+        dispatchPushDetail(data.detail);
+    });
+}
+
 /** Single global listener — safe to call multiple times. */
 export function attachFirebasePushToastListener(): void {
     if (listenerAttached || typeof window === "undefined") {
         return;
     }
     listenerAttached = true;
+
+    attachServiceWorkerPushBridge();
 
     window.addEventListener("firebase-notification", (event: Event) => {
         const detail = (event as CustomEvent<FirebaseNotificationDetail>).detail;
