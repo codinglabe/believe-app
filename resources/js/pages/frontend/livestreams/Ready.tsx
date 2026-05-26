@@ -61,6 +61,7 @@ export default function SupporterReady({
   const [buyCreditsOpen, setBuyCreditsOpen] = useState(false)
   const isScheduled = livestream.status === "scheduled"
   const invitedCount = livestream.participantEmails?.length ?? 0
+  const showScheduledEmailInvites = Boolean(livestream.scheduledAt) || invitedCount > 0
   const canInviteParticipants = !["ended", "cancelled"].includes(livestream.status ?? "")
   const { credits: emailCreditsLive, canSend: canSendEmailInvites, syncFromServer, applyDelta } =
     useEmailCreditsState(emailCredits)
@@ -196,7 +197,7 @@ export default function SupporterReady({
             </Card>
           ) : null}
 
-          {canInviteParticipants ? (
+          {canInviteParticipants && showScheduledEmailInvites ? (
             <Card>
               <CardHeader className="space-y-3">
                 <CardTitle className="text-base">Send invitation</CardTitle>
