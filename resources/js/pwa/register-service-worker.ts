@@ -3,12 +3,8 @@
 const FIREBASE_MESSAGING_SW_URL = "/firebase-messaging-sw.js";
 const SW_SCOPE = "/";
 
-function isSecureContext() {
-    if (typeof window === "undefined") return false;
-    return window.isSecureContext || window.location.hostname === "localhost";
-}
-
 import { isLivestockDomain } from "../lib/livestock-domain";
+import { isPushCapableBrowser } from "../lib/push-environment";
 
 let registrationPromise: Promise<ServiceWorkerRegistration | null> | null = null;
 
@@ -17,9 +13,10 @@ export function registerServiceWorker(): Promise<ServiceWorkerRegistration | nul
     if (isLivestockDomain()) return;
     if (!("serviceWorker" in navigator)) return;
 
-    const isLocalhost = ["localhost", "127.0.0.1", "[::1]"].includes(window.location.hostname);
-    const shouldRegister = import.meta.env.PROD || isLocalhost;
-    if (!shouldRegister || !isSecureContext()) return;
+    if (!isPushCapableBrowser()) {
+        console.warn("[PWA] Push skipped: use https://, localhost, 127.0.0.1, or a .test domain");
+        return;
+    }
 
     if (registrationPromise) return registrationPromise;
 
