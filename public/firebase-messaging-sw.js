@@ -34,7 +34,7 @@ messaging.onBackgroundMessage((payload) => {
 });
 
 // Cache version bump for post-deploy cleanup (invalidates old caches)
-const CACHE_NAME = "pwa-cache-v4";
+const CACHE_NAME = "pwa-cache-v5";
 // Only cache static assets; do NOT cache "/" or HTML/auth routes
 const urlsToCache = ["/offline.html", "/manifest.json"];
 
@@ -42,6 +42,15 @@ const noCachePaths = ["/", "/login", "/register", "/wallet", "/api/", "/sanctum/
 function shouldBypassCache(url) {
     const path = new URL(url).pathname;
     return noCachePaths.some((p) => path === p || path.startsWith(p));
+}
+
+function isFirebaseOrGoogleUrl(url) {
+    return (
+        url.includes("googleapis.com") ||
+        url.includes("gstatic.com") ||
+        url.includes("google.com") ||
+        url.includes("firebaseio.com")
+    );
 }
 
 self.addEventListener("install", (event) => {
@@ -73,13 +82,7 @@ self.addEventListener("fetch", (event) => {
     const url = event.request.url;
 
     // Never intercept Firebase / Google push infrastructure (breaks FCM token + delivery)
-    if (
-        url.includes("googleapis.com") ||
-        url.includes("gstatic.com") ||
-        url.includes("firebaseinstallations.googleapis.com") ||
-        url.includes("fcmregistrations.googleapis.com") ||
-        url.includes("fcmtoken.googleapis.com")
-    ) {
+    if (isFirebaseOrGoogleUrl(url)) {
         return;
     }
 
