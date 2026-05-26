@@ -15,11 +15,26 @@ const firebaseConfig = {
 firebase.initializeApp(firebaseConfig);
 const messaging = firebase.messaging();
 
-// Background message handler - commented out until SW is stable
-// messaging.onBackgroundMessage((payload) => { ... });
+messaging.onBackgroundMessage((payload) => {
+    const title =
+        payload.notification?.title || payload.data?.title || "Believe In Unity";
+    const body = payload.notification?.body || payload.data?.body || "";
+    const clickUrl =
+        payload.data?.click_action || payload.data?.url || "/";
+
+    return self.registration.showNotification(title, {
+        body,
+        icon: payload.notification?.icon || "/favicon-96x96.png",
+        badge: payload.notification?.badge || "/badge.png",
+        data: {
+            click_action: clickUrl,
+            url: clickUrl,
+        },
+    });
+});
 
 // Cache version bump for post-deploy cleanup (invalidates old caches)
-const CACHE_NAME = "pwa-cache-v3";
+const CACHE_NAME = "pwa-cache-v4";
 // Only cache static assets; do NOT cache "/" or HTML/auth routes
 const urlsToCache = ["/offline.html", "/manifest.json"];
 
@@ -56,6 +71,18 @@ self.addEventListener("activate", (event) => {
 // "Failed to fetch" / net::ERR_FAILED (e.g. /wallet/balance, Inertia XHR, unity-videos).
 self.addEventListener("fetch", (event) => {
     const url = event.request.url;
+
+    // Never intercept Firebase / Google push infrastructure (breaks FCM token + delivery)
+    if (
+        url.includes("googleapis.com") ||
+        url.includes("gstatic.com") ||
+        url.includes("firebaseinstallations.googleapis.com") ||
+        url.includes("fcmregistrations.googleapis.com") ||
+        url.includes("fcmtoken.googleapis.com")
+    ) {
+        return;
+    }
+
     const path = new URL(url).pathname;
     const isNavigate = event.request.mode === "navigate";
 

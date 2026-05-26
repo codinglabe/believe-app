@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils"
 import {
   CARE_ALLIANCE_INVITATION_TYPE,
   SUPPORTER_BIRTHDAY_TYPE,
+  UNITY_MEET_INVITATION_TYPE,
   mapDatabaseNotification,
   parseNotificationPayload,
   type DatabaseNotification,
@@ -17,6 +18,7 @@ import {
 import { router } from "@inertiajs/react"
 import axios from "axios"
 import toast from "react-hot-toast"
+import { showFirebasePushToast } from "@/lib/firebase-push-toast"
 
 interface NotificationBellProps {
   userId: number
@@ -101,6 +103,12 @@ export function NotificationBell({ userId, emailVerified = true, onNotificationC
         router.visit("/organization/alliance-membership?tab=invitations#care-alliance-invitations")
       } else if (notification.type === SUPPORTER_BIRTHDAY_TYPE && notification.meta?.celebrant_id != null) {
         router.visit(`/supporters/gift/${notification.meta.celebrant_id}`)
+      } else if (notification.type === UNITY_MEET_INVITATION_TYPE) {
+        const joinUrl =
+          typeof notification.meta?.join_url === "string" ? notification.meta.join_url : null
+        if (joinUrl) {
+          router.visit(joinUrl)
+        }
       }
 
       return true
@@ -169,14 +177,15 @@ export function NotificationBell({ userId, emailVerified = true, onNotificationC
           setUnreadCount((prev) => prev + 1)
 
           playNotificationSound()
-
-        //   if ("Notification" in window && Notification.permission === "granted") {
-        //     new Notification(newNotification.title, {
-        //       body: newNotification.body,
-        //       icon: "/icon.png",
-        //       tag: newNotification.id,
-        //     })
-        //   }
+          showFirebasePushToast({
+            title: newNotification.title,
+            body: newNotification.body,
+            data: {
+              click_action: newNotification.content_item_id
+                ? `/notifications/content/${newNotification.content_item_id}`
+                : undefined,
+            },
+          })
         })
         .listen(".Illuminate\\Notifications\\Events\\BroadcastNotificationCreated", (data: any) => {
           console.log("[v0] Received Laravel notification:", data)
@@ -203,14 +212,15 @@ export function NotificationBell({ userId, emailVerified = true, onNotificationC
           setUnreadCount((prev) => prev + 1)
 
           playNotificationSound()
-
-        //   if ("Notification" in window && Notification.permission === "granted") {
-        //     new Notification(newNotification.title, {
-        //       body: newNotification.body,
-        //       icon: "/icon.png",
-        //       tag: newNotification.id,
-        //     })
-        //   }
+          showFirebasePushToast({
+            title: newNotification.title,
+            body: newNotification.body,
+            data: {
+              click_action: newNotification.content_item_id
+                ? `/notifications/content/${newNotification.content_item_id}`
+                : undefined,
+            },
+          })
         })
 
       // Do NOT auto-request notification permission here — it runs on every mount and causes

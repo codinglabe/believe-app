@@ -104,9 +104,14 @@ return [
     ],
 
     'firebase' => [
-        'project_id' => env('FIREBASE_PROJECT_ID'),
-        'credentials' => env('FIREBASE_CREDENTIALS', 'app/firebase/firebase-credentials.json'),
-        'vapid_key' => env('FIREBASE_VAPID_KEY'),
+        'project_id' => env('FIREBASE_PROJECT_ID', env('FCM_PROJECT_ID', 'c3ers-c6fbe')),
+        'credentials' => env('FIREBASE_CREDENTIALS', env('FCM_CREDENTIALS', 'app/firebase/firebase-credentials.json')),
+        'vapid_key' => env('FIREBASE_VAPID_KEY', env('FCM_VAPID_KEY')),
+        'api_key' => env('FIREBASE_API_KEY', 'AIzaSyBRd7Jf0kxrlCRFa9zYtwtubiPbPDohVmA'),
+        'auth_domain' => env('FIREBASE_AUTH_DOMAIN', 'c3ers-c6fbe.firebaseapp.com'),
+        'storage_bucket' => env('FIREBASE_STORAGE_BUCKET', 'c3ers-c6fbe.firebasestorage.app'),
+        'messaging_sender_id' => env('FIREBASE_MESSAGING_SENDER_ID', '554135699251'),
+        'app_id' => env('FIREBASE_APP_ID', '1:554135699251:web:5a34568d2f0cde065ac846'),
         /**
          * OAuth + FCM use Guzzle/cURL. On Windows, "SSL certificate problem: unable to get local issuer certificate"
          * is common until php.ini curl.cainfo is set — or set FIREBASE_CAFILE to https://curl.se/ca/cacert.pem path.

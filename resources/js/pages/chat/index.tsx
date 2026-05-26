@@ -1,7 +1,8 @@
 // resources/js/pages/chat/index.tsx
 import { ChatLayout } from "@/components/chat/chat-layout"
 import AppLayout from "@/layouts/app-layout";
-import { initializeMessaging, requestNotificationPermission } from "@/lib/firebase";
+import { ensureMessagingReady } from "@/lib/firebase";
+import { syncPushTokenWithServer } from "@/lib/push-token-sync";
 import { ChatProvider } from "@/providers/chat-provider"
 import { usePage } from "@inertiajs/react";
 import { useEffect } from "react";
@@ -10,36 +11,17 @@ import toast, { Toaster } from 'react-hot-toast';
 export default function ChatPage() {
     const { auth } = usePage().props;
 
-    function getDeviceInfo() {
-        return {
-            device_id: localStorage.getItem('device_id') || generateDeviceId(),
-            device_type: 'web',
-            device_name: navigator.userAgent,
-            browser: navigator.userAgentData?.brands?.[0]?.brand || 'Unknown',
-            platform: navigator.platform,
-            user_agent: navigator.userAgent
-        };
-    }
-
-    function generateDeviceId() {
-        const deviceId = 'device_' + Math.random().toString(36).substr(2, 9);
-        localStorage.setItem('device_id', deviceId);
-        return deviceId;
-    }
-
     useEffect(() => {
         const initializePushNotifications = async () => {
             try {
-            await initializeMessaging()
-            // setIsInitialized(true)
+            await ensureMessagingReady()
 
-            // Listen for firebase notifications in foreground
-            window.addEventListener("firebase-notification", (event: any) => {
-                console.log("[PushNotificationManager] Received notification:", event.detail)
+            window.addEventListener("firebase-notification", (event: Event) => {
+                const detail = (event as CustomEvent).detail
+                console.log("[ChatPage] Received notification:", detail)
             })
             } catch (err) {
-            console.error("[PushNotificationManager] Initialization error:", err)
-            // setError("Failed to initialize push notifications")
+            console.error("[ChatPage] Push initialization error:", err)
             }
         }
 
@@ -52,21 +34,15 @@ export default function ChatPage() {
 
     useEffect(() => {
         const saveFCMTokenAfterLogin = async () => {
-            if (auth?.user?.id) {
-                const fcmToken = await requestNotificationPermission();
-                const deviceInfo = getDeviceInfo();
-
-                if (fcmToken) {
-                await axios.post("/push-token", {
-                    token: fcmToken,
-                    device_info: deviceInfo
-                });
-                console.log("Token saved after login");
+            if (!auth?.user?.id) return
+            try {
+                await syncPushTokenWithServer()
+            } catch (err) {
+                console.error("[ChatPage] FCM token sync error:", err)
             }
         }
-    };
 
-    saveFCMTokenAfterLogin();
+        saveFCMTokenAfterLogin()
     }, [auth?.user?.id]);
 
 

@@ -98,6 +98,25 @@ class FirebaseService
     }
 
     /**
+     * FCM requires every data payload value to be a string.
+     *
+     * @param  array<string, mixed>  $data
+     * @return array<string, string>
+     */
+    public function stringifyFcmData(array $data): array
+    {
+        $out = [];
+        foreach ($data as $key => $value) {
+            if ($value === null || $value === '') {
+                continue;
+            }
+            $out[(string) $key] = is_scalar($value) ? (string) $value : json_encode($value);
+        }
+
+        return $out;
+    }
+
+    /**
      * Send push notification to a single device
      */
     public function sendToDevice($deviceToken, $title, $body, $data = [])
@@ -117,6 +136,11 @@ class FirebaseService
         $notificationUrl = $clickAction
             ?? url('/');
 
+        $fcmData = $this->stringifyFcmData(array_merge($data, [
+            'click_action' => $notificationUrl,
+            'url' => $notificationUrl,
+        ]));
+
         $message = [
             'message' => [
                 'token' => $deviceToken,
@@ -124,10 +148,7 @@ class FirebaseService
                     'title' => $title,
                     'body' => $body,
                 ],
-                'data' => array_merge($data, [
-                    'click_action' => $notificationUrl,
-                    'url' => $notificationUrl,
-                ]),
+                'data' => $fcmData,
                 'webpush' => [
                     'fcm_options' => [
                         'link' => $notificationUrl,
@@ -305,10 +326,10 @@ class FirebaseService
                     'title' => $title,
                     'body' => $body,
                 ],
-                'data' => array_merge($data, [
+                'data' => $this->stringifyFcmData(array_merge($data, [
                     'click_action' => $notificationUrl,
                     'url' => $notificationUrl,
-                ]),
+                ])),
                 'webpush' => [
                     'fcm_options' => [
                         'link' => $notificationUrl,
