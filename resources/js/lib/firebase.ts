@@ -70,6 +70,7 @@ export function applyFirebaseWebConfig(cfg: FirebaseWebConfig | null | undefined
     messaging = null;
     messagingListenersAttached = false;
     messagingInitPromise = null;
+    activeRegistration = null;
 }
 
 function vapidKey(): string {
@@ -84,6 +85,11 @@ function vapidKey(): string {
 let messaging: Messaging | null = null;
 let messagingListenersAttached = false;
 let messagingInitPromise: Promise<ServiceWorkerRegistration | null> | null = null;
+let activeRegistration: ServiceWorkerRegistration | null = null;
+
+function registrationSupportsPush(registration: ServiceWorkerRegistration | null): boolean {
+    return Boolean(registration?.active && registration.pushManager);
+}
 
 async function waitForServiceWorkerActive(
     registration: ServiceWorkerRegistration,
@@ -112,17 +118,19 @@ async function waitForServiceWorkerActive(
 }
 
 async function resolveServiceWorkerRegistration(): Promise<ServiceWorkerRegistration | null> {
-    const registered = await registerServiceWorker();
-    if (registered) {
-        return waitForServiceWorkerActive(registered);
+    await registerServiceWorker();
+
+    const ready = await waitForServiceWorkerActive(await navigator.serviceWorker.ready);
+
+    if (!registrationSupportsPush(ready)) {
+        console.warn(
+            "[Firebase] Service worker is active but pushManager is missing — unregister old workers and reload",
+            ready.active?.scriptURL,
+        );
+        return null;
     }
 
-    const existing = await navigator.serviceWorker.getRegistration("/");
-    if (existing) {
-        return waitForServiceWorkerActive(existing);
-    }
-
-    return null;
+    return ready;
 }
 
 function attachForegroundMessageListener(instance: Messaging) {
@@ -200,13 +208,21 @@ export async function ensureMessagingReady(): Promise<ServiceWorkerRegistration 
             }
 
             const registration = await resolveServiceWorkerRegistration();
-            if (!registration?.active) {
-                console.warn("[Firebase] No active service worker for messaging");
+            if (!registrationSupportsPush(registration)) {
+                console.warn("[Firebase] No push-capable service worker for messaging");
                 return null;
             }
 
-            messaging = getMessaging(firebaseApp());
-            attachForegroundMessageListener(messaging);
+            const needsNewMessaging = !messaging || activeRegistration !== registration;
+            activeRegistration = registration;
+
+            if (needsNewMessaging) {
+                messagingListenersAttached = false;
+                messaging = getMessaging(firebaseApp(), {
+                    serviceWorkerRegistration: registration,
+                });
+                attachForegroundMessageListener(messaging);
+            }
 
             return registration;
         } catch (error) {
@@ -225,8 +241,8 @@ export const initializeMessaging = ensureMessagingReady;
  * Obtain an FCM device token. Does not POST to the server — use syncPushTokenWithServer().
  */
 export async function requestFcmToken(options?: { prompt?: boolean }): Promise<string | null> {
-    const registration = await ensureMessagingReady();
-    if (!registration || !messaging) {
+    const registration = (await ensureMessagingReady()) ?? activeRegistration;
+    if (!registration || !messaging || !registrationSupportsPush(registration)) {
         return null;
     }
 
@@ -276,6 +292,7 @@ export function resetMessagingRegistration(): void {
     messagingInitPromise = null;
     messaging = null;
     messagingListenersAttached = false;
+    activeRegistration = null;
 }
 
 export const getMessagingInstance = () => messaging;
