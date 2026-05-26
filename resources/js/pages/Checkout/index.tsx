@@ -40,6 +40,7 @@ interface CheckoutProps {
   stripePublishableKey: string
   /** Merchant / pool lines allow unified local pickup at step 2 */
   pickup_available_at_checkout?: boolean
+  digital_only_checkout?: boolean
 }
 
 interface Step2Data {
@@ -62,6 +63,7 @@ export default function CheckoutIndex({
   donation_percentage,
   stripePublishableKey,
   pickup_available_at_checkout = false,
+  digital_only_checkout = false,
 }: CheckoutProps) {
   const [step, setStep] = useState(1)
   const [step2Data, setStep2Data] = useState<Step2Data | null>(null)
@@ -117,6 +119,7 @@ export default function CheckoutIndex({
               platform_fee_lines={platform_fee_lines}
               donation_percentage={donation_percentage}
               pickupAvailableAtCheckout={pickup_available_at_checkout}
+              digitalOnlyCheckout={digital_only_checkout}
               onComplete={handleStep1Complete}
             />
           ) : (

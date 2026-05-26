@@ -6,7 +6,8 @@ import { MerchantCard, MerchantCardContent, MerchantCardHeader, MerchantCardTitl
 import { MerchantButton } from "@/components/merchant-ui"
 import { MerchantInput } from "@/components/merchant-ui"
 import { MerchantDashboardLayout } from "@/components/merchant"
-import { Package, Truck, FileDown, ExternalLink, Search, Filter, Eye, MoreVertical } from "lucide-react"
+import { Package, Truck, FileDown, ExternalLink, Search, Filter, Eye, MoreVertical, FileText } from "lucide-react"
+import DigitalOrderFulfillment from "@/components/digital/DigitalOrderFulfillment"
 import { motion } from "framer-motion"
 import axios from "axios"
 import {
@@ -21,10 +22,13 @@ import { Button } from "@/components/ui/button"
 import { showSuccessToast, showErrorToast } from "@/lib/toast"
 
 interface OrderLine {
+  order_item_id?: number
   product_name: string
   quantity: number
   line_total: number
   merchant_share: number
+  is_digital?: boolean
+  digital_deliveries?: { id: number; original_filename: string; file_size?: number }[]
 }
 
 interface ShippoRate {
@@ -55,6 +59,7 @@ interface OrderRow {
   merchant_share_total: number
   split_merchant_amount: number | null
   can_create_shippo_label?: boolean
+  is_digital_only?: boolean
 }
 
 interface Paginated {
@@ -99,6 +104,9 @@ export default function MerchantMarketplaceOrdersIndex({ orders, shippo_configur
     tracking_url: string | null
     carrier: string | null
   } | null>(null)
+
+  const [digitalModalOpen, setDigitalModalOpen] = useState(false)
+  const [digitalOrder, setDigitalOrder] = useState<OrderRow | null>(null)
 
   const filteredRows = useMemo(() => {
     return rows.filter((order) => {
@@ -360,15 +368,24 @@ export default function MerchantMarketplaceOrdersIndex({ orders, shippo_configur
                                     <Eye className="h-3.5 w-3.5" />
                                   </MerchantButton>
                                 )}
+                                {order.lines.some((l) => l.is_digital) && order.payment_status === "paid" ? (
+                                  <MerchantButton
+                                    variant="outline"
+                                    size="sm"
+                                    title="Upload digital files"
+                                    onClick={() => {
+                                      setDigitalOrder(order)
+                                      setDigitalModalOpen(true)
+                                    }}
+                                  >
+                                    <FileText className="h-3.5 w-3.5" />
+                                  </MerchantButton>
+                                ) : null}
                                 {order.can_create_shippo_label ? (
                                   <MerchantButton variant="outline" size="sm" onClick={() => openShippoModal(order)}>
-                                    <FileDown className="h-3.5 w-3.5" />
+                                    <Truck className="h-3.5 w-3.5" />
                                   </MerchantButton>
-                                ) : (
-                                  <MerchantButton variant="outline" size="sm" disabled>
-                                    <FileDown className="h-3.5 w-3.5" />
-                                  </MerchantButton>
-                                )}
+                                ) : null}
                                 <MerchantButton variant="outline" size="sm">
                                   <MoreVertical className="h-3.5 w-3.5" />
                                 </MerchantButton>
@@ -577,6 +594,39 @@ export default function MerchantMarketplaceOrdersIndex({ orders, shippo_configur
               </Button>
             </DialogFooter>
           ) : null}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={digitalModalOpen} onOpenChange={setDigitalModalOpen}>
+        <DialogContent className="max-w-lg bg-[#0a1628] border-[#2563EB]/30 text-white">
+          <DialogHeader>
+            <DialogTitle>Digital delivery</DialogTitle>
+            <DialogDescription className="text-white/60">
+              Upload files for {digitalOrder?.reference_number || `#${digitalOrder?.id}`}. The customer can download them from their order.
+            </DialogDescription>
+          </DialogHeader>
+          {digitalOrder ? (
+            <DigitalOrderFulfillment
+              orderId={digitalOrder.id}
+              items={digitalOrder.lines
+                .filter((l) => l.is_digital && l.order_item_id)
+                .map((l) => ({
+                  id: l.order_item_id!,
+                  name: l.product_name,
+                  is_digital: true,
+                  digital_deliveries: l.digital_deliveries,
+                }))}
+              uploadPath={(oid, iid) => `/marketplace-orders/${oid}/items/${iid}/digital-deliveries`}
+              deletePath={(oid, iid, did) =>
+                `/marketplace-orders/${oid}/items/${iid}/digital-deliveries/${did}`
+              }
+            />
+          ) : null}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDigitalModalOpen(false)}>
+              Close
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </MerchantDashboardLayout>

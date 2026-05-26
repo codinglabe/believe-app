@@ -6,14 +6,21 @@ import { usePage } from "@inertiajs/react"
 import { useDebounce } from "@/hooks/useDebounce"
 import toast from "react-hot-toast"
 import echo from "@/lib/echo"
+import { getBrowserTimezone } from "@/lib/timezone-detection"
 
-// Configure Axios instance
+// Configure Axios instance (include X-Timezone so server-side date helpers stay aligned with the viewer)
 const api = axios.create({
   baseURL: "/",
   headers: {
     Accept: "application/json",
     "Content-Type": "application/json",
+    "X-Timezone": getBrowserTimezone(),
   },
+})
+
+api.interceptors.request.use((config) => {
+  config.headers.set("X-Timezone", getBrowserTimezone())
+  return config
 })
 
 // Add response interceptor for error handling
@@ -107,6 +114,9 @@ export interface ChatRoom {
   topics?: ChatTopic[]
 }
 
+const sortMessagesByTime = (messages: ChatMessage[]): ChatMessage[] =>
+  [...messages].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+
 interface ChatContextType {
   chatRooms: ChatRoom[]
   setChatRooms: React.Dispatch<React.SetStateAction<ChatRoom[]>>
@@ -183,6 +193,27 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const messagesContainerRef = useRef<HTMLDivElement>(null)
   const isScrolledToBottomRef = useRef(true)
+
+  useEffect(() => {
+    if (!import.meta.env.DEV) return
+
+    const echoInstance = echo()
+    const connection = echoInstance.connector?.pusher?.connection
+    if (!connection) return
+
+    const logState = (states: { current?: string; previous?: string }) => {
+      console.log("[Chat] Reverb connection:", states.previous, "→", states.current)
+    }
+
+    connection.bind("state_change", logState)
+    connection.bind("error", (error: unknown) => {
+      console.error("[Chat] Reverb connection error:", error)
+    })
+
+    return () => {
+      connection.unbind("state_change", logState)
+    }
+  }, [])
   /** Only apply HTTP-fetched messages if they belong to the room currently being viewed (avoids race when switching chats). */
   const messagesRoomIdRef = useRef<number | null>(null)
   const activeRoomRef = useRef<ChatRoom | null>(null)
@@ -264,7 +295,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       setMessages((prev) => {
         const newMessages = data.messages.filter((msg) => !prev.some((pMsg) => pMsg.id === msg.id))
-        return append ? [...newMessages.reverse(), ...prev] : newMessages.reverse()
+        return sortMessagesByTime(append ? [...newMessages.reverse(), ...prev] : newMessages.reverse())
       })
 
       setHasMoreMessages(data.has_more)
@@ -277,11 +308,12 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const deduplicateMessages = useCallback((messages: ChatMessage[]) => {
     const seen = new Set()
-    return messages.filter((msg) => {
+    const unique = messages.filter((msg) => {
       const duplicate = seen.has(msg.id)
       seen.add(msg.id)
       return !duplicate
     })
+    return sortMessagesByTime(unique)
   }, [])
 
   /** Load thread over HTTP whenever the selected room changes — works with Reverb off. */
@@ -322,9 +354,10 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [activeRoom?.id, fetchMessages, markRoomAsRead])
 
   useEffect(() => {
-    if (!echo || !currentUser?.id) return
+    if (!currentUser?.id) return
 
-    const privateChannel = echo.private(`user.${currentUser.id}`)
+    const echoInstance = echo()
+    const privateChannel = echoInstance.private(`user.${currentUser.id}`)
 
     privateChannel.listen(".MessageSent", (e: any) => {
       const ar = activeRoomRef.current
@@ -350,7 +383,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
         })
       }
 
-      if (e.message && ar?.id === e.message?.chat_room_id && ar?.type === "direct") {
+      if (e.message && ar?.id === e.message?.chat_room_id && (ar?.type === "direct" || ar?.type === "private")) {
         setMessages((prev) => {
           const existingMessage = prev.find((msg) => msg.id === e.message.id)
           if (existingMessage) return prev
@@ -365,16 +398,23 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     })
 
+    privateChannel.error((error: unknown) => {
+      if (import.meta.env.DEV) {
+        console.error("[Chat] user channel subscription failed:", error)
+      }
+    })
+
     return () => {
       privateChannel.stopListening(".MessageSent")
-      echo.leave(`user.${currentUser.id}`)
+      echoInstance.leave(`user.${currentUser.id}`)
     }
   }, [currentUser?.id, markRoomAsRead, deduplicateMessages])
 
   // Real-time event handling (subscriptions only — messages load via HTTP above)
   useEffect(() => {
-    if (!echo || !activeRoom) return
+    if (!activeRoom) return
 
+    const echoInstance = echo()
     const roomId = activeRoom.id
     const roomType = activeRoom.type
 
@@ -384,19 +424,25 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     switch (roomType) {
       case "public":
         channelName = `public-chat.${roomId}`
-        channel = echo.channel(channelName)
+        channel = echoInstance.channel(channelName)
         break
       case "private":
         channelName = `private-chat.${roomId}`
-        channel = echo.private(channelName)
+        channel = echoInstance.private(channelName)
         break
       case "direct":
         channelName = `direct-chat.${roomId}`
-        channel = echo.private(channelName)
+        channel = echoInstance.private(channelName)
         break
       default:
         return
     }
+
+    channel.error((error: unknown) => {
+      if (import.meta.env.DEV) {
+        console.error(`[Chat] room channel subscription failed (${channelName}):`, error)
+      }
+    })
 
     // Message listener (merge with optimistic sends)
     channel.listen(".MessageSent", (e: { message: ChatMessage }) => {
@@ -485,7 +531,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     // Presence channel for private/direct chats
     if (roomType !== "public") {
-      const presenceChannel = echo.join(`presence-chat.${roomId}`)
+      const presenceChannel = echoInstance.join(`presence-chat.${roomId}`)
 
       presenceChannel
         .here((users: User[]) => setActiveUsers(users))
@@ -494,9 +540,9 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     return () => {
-      echo.leave(channelName)
+      echoInstance.leave(channelName)
       if (roomType !== "public") {
-        echo.leave(`presence-chat.${roomId}`)
+        echoInstance.leave(`presence-chat.${roomId}`)
       }
     }
   }, [activeRoom, currentUser.id, deduplicateMessages, markRoomAsRead])
@@ -565,15 +611,16 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Global room updates listener
   useEffect(() => {
-    if (!echo) {
-      console.error("Echo not initialized")
-      return
+    if (!currentUser?.id) return
+
+    const echoInstance = echo()
+
+    if (import.meta.env.DEV) {
+      console.log("[Chat] Setting up room listeners for user:", currentUser.id)
     }
 
-    console.log("Setting up room listeners for user:", currentUser.id)
-
     // Public room listener
-    const publicChannel = echo.channel("chat-rooms")
+    const publicChannel = echoInstance.channel("chat-rooms")
     publicChannel.listen(".RoomCreated", (e: any) => {
       console.log("Public room created:", e.room)
 
@@ -594,7 +641,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     })
 
     // Private room listener
-    const privateChannel = echo.private(`user.${currentUser.id}`)
+    const privateChannel = echoInstance.private(`user.${currentUser.id}`)
     privateChannel.listen(".RoomCreated", (e: any) => {
       setChatRooms((prev) => {
         const exists = prev.some((r) => r.id === e.room.id)
@@ -609,8 +656,8 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => {
       publicChannel.stopListening(".RoomCreated")
       privateChannel.stopListening(".RoomCreated")
-      echo.leave("chat-rooms")
-      // Do not echo.leave(user.*) here — the MessageSent effect owns that subscription.
+      echoInstance.leave("chat-rooms")
+      // Do not leave user.* here — the MessageSent effect owns that subscription.
     }
   }, [currentUser.id, addMembers, leaveRoom])
 

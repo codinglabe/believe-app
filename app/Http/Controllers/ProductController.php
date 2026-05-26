@@ -904,6 +904,10 @@ class ProductController extends BaseController
 
         $validated = $request->validate($rules, $messages);
 
+        if ($isPrintifyProduct) {
+            $validated['type'] = 'physical';
+        }
+
         if (! $isPrintifyProduct && in_array($pricingModel, ['fixed', 'offer'], true) && $request->filled('source_cost')) {
             $validated['unit_price'] = round((float) $request->input('source_cost'), 2);
         }
@@ -1321,7 +1325,7 @@ class ProductController extends BaseController
     {
         $this->authorizePermission($request, 'product.edit');
 
-        $product = Product::with(['categories', 'shipFromMerchant'])->findOrFail($id);
+        $product = Product::with(['categories', 'shipFromMerchant', 'digitalFiles'])->findOrFail($id);
         $categories = $this->categoriesForProductForm();
         $organizations = Organization::all(['id', 'name']);
         $merchantsForShipFrom = $this->merchantsForShipFromPicker();
@@ -1349,8 +1353,15 @@ class ProductController extends BaseController
             }
         }
 
+        $productPayload = $product->toArray();
+        $productPayload['digital_files'] = $product->digitalFiles->map(fn ($f) => [
+            'id' => $f->id,
+            'original_filename' => $f->original_filename,
+            'file_size' => $f->file_size,
+        ])->values();
+
         return Inertia::render('products/edit', [
-            'product' => $product,
+            'product' => $productPayload,
             'categories' => $categories,
             'selectedCategories' => $selectedCategories,
             'organizations' => $organizations,
