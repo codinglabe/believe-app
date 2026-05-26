@@ -68,7 +68,7 @@ export default function AdminPlansEdit({ plan }: EditPlanProps) {
     const form = useForm({
         name: plan.name,
         frequency: plan.frequency,
-        price: plan.price.toString(),
+        price: Number(plan.price).toFixed(2),
         stripe_price_id: plan.stripe_price_id || '',
         stripe_product_id: plan.stripe_product_id || '',
         description: plan.description || '',
@@ -374,7 +374,7 @@ export default function AdminPlansEdit({ plan }: EditPlanProps) {
                                                 {field.type === 'number' && (
                                                     <div className="space-y-2">
                                                         <Label>
-                                                            Description (e.g., Token Re-ups ($1 per 50K tokens))
+                                                            Description (e.g., Token Re-ups ($5 per 25K tokens))
                                                         </Label>
                                                         <Input
                                                             value={field.description || ''}
@@ -383,7 +383,7 @@ export default function AdminPlansEdit({ plan }: EditPlanProps) {
                                                                 updated[index].description = e.target.value
                                                                 setData('custom_fields', updated)
                                                             }}
-                                                            placeholder="e.g., Token Re-ups ($1 per 50K tokens)"
+                                                            placeholder="e.g., Token Re-ups ($5 per 25K tokens)"
                                                         />
                                                     </div>
                                                 )}

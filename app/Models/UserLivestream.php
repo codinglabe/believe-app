@@ -152,7 +152,7 @@ class UserLivestream extends Model
         $layoutsParam = '&slotmode&layouts=' . rawurlencode(json_encode($layouts));
         $base = "https://vdo.ninja/?director={$room}{$passwordParam}&clearstorage&label={$label}&showlabels=zoom&fontsize=82&activespeaker=1&cleandirector&openscene{$layoutsParam}";
 
-        if ($recordEnabled && $recordToDropbox) {
+        if ($recordToDropbox) {
             $ctx = $this->resolveDropboxUploadContext();
             if ($ctx !== null) {
                 $oauthService = app(\App\Services\DropboxOAuthService::class);
@@ -190,8 +190,8 @@ class UserLivestream extends Model
     /** Folder segment when recording via the supporter's organization's linked Dropbox (Integrations pattern). */
     public function getOrganizationDropboxFolderName(): string
     {
-        $this->user?->loadMissing('organization');
-        $orgFolder = $this->user?->organization?->dropbox_folder_name;
+        $organization = $this->user ? Organization::forAuthUser($this->user) : null;
+        $orgFolder = $organization?->dropbox_folder_name;
         if ($orgFolder !== null && $orgFolder !== '') {
             $safe = self::sanitizeDropboxFolderName($orgFolder);
             if ($safe !== '') {
@@ -224,8 +224,7 @@ class UserLivestream extends Model
                 : null;
         }
 
-        $this->user->loadMissing('organization');
-        $organization = $this->user->organization;
+        $organization = Organization::forAuthUser($this->user);
         if ($organization && ! empty($organization->dropbox_refresh_token)) {
             $dropboxToken = $oauthService->getAccessTokenForOrganization($organization);
 
@@ -375,10 +374,16 @@ class UserLivestream extends Model
             ? rawurlencode($streamKey.'_s1')
             : $push;
 
-        $dropboxCtx = ($recordEnabled && $recordToDropbox) ? $this->resolveDropboxUploadContext() : null;
+        $dropboxCtx = $recordToDropbox ? $this->resolveDropboxUploadContext() : null;
 
-        // &record enables recording controls. With Dropbox params, VDO uploads to Dropbox while recording (may also save locally — VDO limitation).
-        $recordParam = $recordEnabled ? '&record' : '';
+        // Dropbox: cloud upload via &autorecord. Local-only: &autorecordlocal (browser download).
+        if ($dropboxCtx !== null) {
+            $recordParam = '&record&autorecord=6000';
+        } elseif ($recordEnabled) {
+            $recordParam = '&record&autorecordlocal=6000';
+        } else {
+            $recordParam = '';
+        }
 
         $base = "https://vdo.ninja/?room={$room}&push={$effectivePush}&label={$label}{$recordParam}&quality=0&bitrate=6000&webcam&ssb&vdo=1&audiodevice=1&proaudio&stereo=2&showlabels=zoom&showall&rows=1&fontsize=82&nocontrols&clock=false{$avatarParam}" . \App\Support\VdoMeetingVirtualBackground::querySegment() . "&autostart&noheader{$passwordParam}";
 

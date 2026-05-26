@@ -7,6 +7,7 @@ use App\Models\Merchant;
 use App\Models\Order;
 use App\Models\ShippoShipment;
 use App\Services\ShippoService;
+use App\Support\DigitalProductDelivery;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -44,6 +45,7 @@ class MerchantMarketplaceOrderController extends Controller
                 'items.marketplaceProduct',
                 'items.organizationProduct.marketplaceProduct',
                 'items.product',
+                'items.digitalDeliveries',
             ])
             ->whereHas('items', function ($q) use ($merchant) {
                 $q->where(function ($q2) use ($merchant) {
@@ -72,12 +74,22 @@ class MerchantMarketplaceOrderController extends Controller
                     $lineShare = round((float) $item->subtotal * $pct / 100, 2);
                     $merchantShare += $lineShare;
                     $lines[] = [
+                        'order_item_id' => $item->id,
                         'product_name' => $mp->name,
                         'quantity' => (int) $item->quantity,
                         'line_total' => (float) $item->subtotal,
                         'merchant_share' => $lineShare,
+                        'is_digital' => DigitalProductDelivery::orderItemIsDigital($item),
+                        'digital_deliveries' => $item->digitalDeliveries->map(fn ($d) => [
+                            'id' => $d->id,
+                            'original_filename' => $d->original_filename,
+                            'file_size' => $d->file_size,
+                        ])->values(),
                     ];
                 }
+
+                $isDigitalOnly = $merchantItems->isNotEmpty()
+                    && $merchantItems->every(fn ($item) => DigitalProductDelivery::orderItemIsDigital($item));
 
                 return [
                     'id' => $order->id,
@@ -99,7 +111,9 @@ class MerchantMarketplaceOrderController extends Controller
                     'split_merchant_amount' => $order->orderSplit
                         ? (float) $order->orderSplit->merchant_amount
                         : null,
-                    'can_create_shippo_label' => $this->shippoService->isConfigured()
+                    'is_digital_only' => $isDigitalOnly,
+                    'can_create_shippo_label' => ! $isDigitalOnly
+                        && $this->shippoService->isConfigured()
                         && $this->merchantMayUseShippoFlow($merchant, $order),
                 ];
             });
@@ -235,6 +249,10 @@ class MerchantMarketplaceOrderController extends Controller
             'items.product',
         ]);
 
+        if (DigitalProductDelivery::orderIsDigitalOnly($order)) {
+            return false;
+        }
+
         if ($order->payment_status !== 'paid' || ! $order->shippingInfo || $order->tracking_number) {
             return false;
         }
@@ -286,6 +304,9 @@ class MerchantMarketplaceOrderController extends Controller
     private function orderHasManualOrPoolItem(Order $order): bool
     {
         return $order->items->contains(function ($item) {
+            if (DigitalProductDelivery::orderItemIsDigital($item)) {
+                return true;
+            }
             if ($item->marketplace_product_id || $item->organization_product_id) {
                 return true;
             }

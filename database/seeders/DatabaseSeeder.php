@@ -56,6 +56,7 @@ class DatabaseSeeder extends Seeder
         $this->callUnlessSeeded(CompanionEventTypesSeeder::class);
         $this->callUnlessSeeded(ChatRoomsSeeder::class);
         $this->callUnlessSeeded(PlanSeeder::class);
+        $this->callUnlessSeeded(PlanPricingPageSeeder::class);
         $this->callUnlessSeeded(WalletPlanSeeder::class);
         $this->callUnlessSeeded(SmsPackageSeeder::class);
         $this->callUnlessSeeded(ContactPageContentSeeder::class);

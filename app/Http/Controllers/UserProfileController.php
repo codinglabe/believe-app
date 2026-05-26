@@ -32,6 +32,7 @@ use App\Services\ImpactScoreService;
 use App\Services\KioskProviderAiIngestService;
 use App\Services\PrintifyService;
 use App\Services\YouTubeService;
+use App\Support\DigitalProductDelivery;
 use App\Support\ProfileReligions;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -861,7 +862,13 @@ class UserProfileController extends Controller
     public function orders(): Response
     {
         $orders = Order::where('user_id', auth()->id())
-            ->with(['items.product', 'items.marketplaceProduct', 'items.organizationProduct.marketplaceProduct', 'shippingInfo'])
+            ->with([
+                'items.product',
+                'items.marketplaceProduct',
+                'items.organizationProduct.marketplaceProduct',
+                'items.digitalDeliveries',
+                'shippingInfo',
+            ])
             ->orderBy('created_at', 'desc')
             ->get()
             ->map(function ($order) {
@@ -885,6 +892,10 @@ class UserProfileController extends Controller
                     'tracking_url' => $order->tracking_url,
                     'carrier' => $order->carrier,
                     'shipping_status' => $order->shipping_status,
+                    'is_digital_only' => DigitalProductDelivery::orderIsDigitalOnly($order),
+                    'has_digital_downloads' => $order->items->contains(
+                        fn ($item) => $item->digitalDeliveries->contains(fn ($d) => $d->isReleased())
+                    ),
                     'items' => $order->items->take(2)->map(function ($item) {
                         $line = $this->supporterOrderItemLine($item);
 
@@ -895,6 +906,7 @@ class UserProfileController extends Controller
                             'quantity' => $item->quantity,
                             'unit_price' => $item->unit_price,
                             'subtotal' => $item->subtotal,
+                            'is_digital' => DigitalProductDelivery::orderItemIsDigital($item),
                         ];
                     }),
                 ];
@@ -1147,7 +1159,13 @@ class UserProfileController extends Controller
     public function orderDetails($id): Response
     {
         $order = Order::where('user_id', auth()->id())
-            ->with(['items.product', 'items.marketplaceProduct', 'items.organizationProduct.marketplaceProduct', 'shippingInfo'])
+            ->with([
+                'items.product',
+                'items.marketplaceProduct',
+                'items.organizationProduct.marketplaceProduct',
+                'items.digitalDeliveries',
+                'shippingInfo',
+            ])
             ->findOrFail($id);
 
         $order->loadMissing('user');
@@ -1221,8 +1239,19 @@ class UserProfileController extends Controller
                     'printify_variant_id' => $item->printify_variant_id,
                     'variant_data' => $variantData,
                     'is_manual_product' => $line['is_manual_product'],
+                    'is_digital' => DigitalProductDelivery::orderItemIsDigital($item),
+                    'digital_downloads' => $item->digitalDeliveries
+                        ->filter(fn ($d) => $d->isReleased())
+                        ->map(fn ($d) => [
+                            'id' => $d->id,
+                            'original_filename' => $d->original_filename,
+                            'file_size' => $d->file_size,
+                            'download_url' => route('digital-deliveries.download', $d),
+                        ])
+                        ->values(),
                 ];
             }),
+            'is_digital_only' => DigitalProductDelivery::orderIsDigitalOnly($order),
         ];
 
         // Get Printify order details if available

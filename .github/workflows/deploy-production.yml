@@ -208,7 +208,7 @@ jobs:
             ${RSYNC_EXCLUDES} \
             --exclude=vendor/ \
             ./ cpanel-deploy:${DEPLOY_PATH}/
-          rsync -avz \
+          rsync -avz --delete \
             -e "${RSYNC_RSH}" \
             ./vendor/ cpanel-deploy:${DEPLOY_PATH}/vendor/
           ${SSH_CMD} cpanel-deploy "test -f ${DEPLOY_PATH}/public/build/manifest.json && ls -la ${DEPLOY_PATH}/public/build/manifest.json | head -1"
@@ -236,10 +236,6 @@ jobs:
           chmod -R 775 storage bootstrap/cache 2>/dev/null || true
           chmod -R 755 public/build 2>/dev/null || true
           rm -rf vendor/laravel/sail vendor/laravel/pint vendor/laravel/pail vendor/nunomaduro/collision vendor/symfony/yaml 2>/dev/null || true
-          php artisan config:clear
-          php artisan route:clear
-          php artisan view:clear
-          php artisan cache:clear
           timeout 300 php artisan migrate --force -v || {
             echo "::warning::migrate exceeded 5m or failed; check migrate:status on server"
             php artisan migrate:status 2>&1 | tail -20
@@ -247,6 +243,7 @@ jobs:
           }
           php artisan storage:link --force
           php artisan config:cache
+          php artisan event:cache
           php artisan view:cache
           php artisan route:cache
           # EA-Nginx proxy cache breaks Inertia (JSON without X-Inertia header). Keep disabled on prod.
@@ -268,6 +265,15 @@ jobs:
             echo "::error::Production smoke test must not use 501c3ers.com (check PRODUCTION_APP_URL variable)"
             exit 1
           fi
-          code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 30 "${SMOKE_URL}/")
-          echo "GET ${SMOKE_URL}/ => HTTP ${code}"
-          test "${code}" = "200" || test "${code}" = "302" || { echo "::error::Homepage returned HTTP ${code}"; exit 1; }
+          # Allow retries: homepage can be slow right after config:cache (GitHub runners also hit believeinunity.org slowly).
+          ok=0
+          for attempt in 1 2 3; do
+            code=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 60 "${SMOKE_URL}/" || echo "000")
+            echo "GET ${SMOKE_URL}/ => HTTP ${code} (attempt ${attempt}/3)"
+            if [ "${code}" = "200" ] || [ "${code}" = "302" ]; then
+              ok=1
+              break
+            fi
+            sleep 15
+          done
+          test "${ok}" = "1" || { echo "::error::Homepage smoke test failed after 3 attempts"; exit 1; }

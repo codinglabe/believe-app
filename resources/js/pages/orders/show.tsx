@@ -31,6 +31,7 @@ import {
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { showSuccessToast, showErrorToast } from '@/lib/toast';
 import axios from 'axios';
+import DigitalOrderFulfillment from '@/components/digital/DigitalOrderFulfillment';
 
 interface Product {
     id: number;
@@ -66,6 +67,8 @@ interface OrderItem {
     printify_variant_id: string;
     variant_data: any;
     is_manual_product?: boolean;
+    is_digital?: boolean;
+    digital_deliveries?: { id: number; original_filename: string; file_size?: number }[];
     marketplace_product_id?: number | null;
     merchant_hub_revenue?: MerchantHubRevenue | null;
 }
@@ -153,6 +156,7 @@ interface Order {
     carrier?: string | null;
     can_create_shippo_label?: boolean;
     has_manual_product?: boolean;
+    is_digital_only?: boolean;
     shippo_configured?: boolean;
     user: {
         id: number;
@@ -441,8 +445,42 @@ export default function Show({ order, userRole }: Props) {
                     )}
                 </div>
 
+                {/* Digital delivery — org / admin fulfill manual & pool digital lines */}
+                {(userRole === 'admin' || userRole === 'organization') &&
+                    order.payment_status === 'paid' &&
+                    order.items.some((i) => i.is_digital) && (
+                    <Card>
+                        <CardHeader>
+                            <CardTitle className="flex items-center gap-2">
+                                <FileDown className="w-5 h-5" />
+                                Digital delivery
+                            </CardTitle>
+                            <CardDescription>
+                                Upload downloadable files for the customer. No shipping or Shippo label is required for digital products.
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <DigitalOrderFulfillment
+                                orderId={order.id}
+                                items={order.items.map((i) => ({
+                                    id: i.id,
+                                    name: i.name,
+                                    is_digital: i.is_digital,
+                                    digital_deliveries: i.digital_deliveries,
+                                }))}
+                                uploadPath={(oid, iid) => `/orders/${oid}/items/${iid}/digital-deliveries`}
+                                deletePath={(oid, iid, did) =>
+                                    `/orders/${oid}/items/${iid}/digital-deliveries/${did}`
+                                }
+                            />
+                        </CardContent>
+                    </Card>
+                )}
+
                 {/* Shipping (Shippo) - Manual / Bidding products */}
-                {(userRole === 'admin' || userRole === 'organization') && order.has_manual_product && (
+                {(userRole === 'admin' || userRole === 'organization') &&
+                    order.has_manual_product &&
+                    !order.is_digital_only && (
                     <Card>
                         <CardHeader>
                             <CardTitle className="flex items-center gap-2">

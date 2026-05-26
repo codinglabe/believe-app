@@ -60,9 +60,11 @@ final class RecordingYoutubePublishService
             ];
         }
 
+        $pathHash = RecordingYoutubeUpload::hashDropboxPath($dropboxPath);
+
         $existing = RecordingYoutubeUpload::query()
             ->where('user_id', $user->id)
-            ->where('dropbox_path', $dropboxPath)
+            ->where('dropbox_path_hash', $pathHash)
             ->first();
 
         if ($existing !== null) {
@@ -113,9 +115,10 @@ final class RecordingYoutubePublishService
         $upload = RecordingYoutubeUpload::query()->updateOrCreate(
             [
                 'user_id' => $user->id,
-                'dropbox_path' => $dropboxPath,
+                'dropbox_path_hash' => $pathHash,
             ],
             [
+                'dropbox_path' => $dropboxPath,
                 'dropbox_name' => $dropboxName,
                 'status' => RecordingYoutubeUpload::STATUS_PENDING,
                 'title' => $resolvedTitle,

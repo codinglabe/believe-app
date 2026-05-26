@@ -19,7 +19,9 @@ use App\Services\PrintifyService;
 use App\Services\ShippoService;
 use App\Services\StripeConfigService;
 use App\Services\StripeProcessingFeeEstimator;
+use App\Services\DigitalDeliveryService;
 use App\Services\SupporterActivityService;
+use App\Support\DigitalProductDelivery;
 use App\Support\MarketplacePickup;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -149,6 +151,7 @@ class CheckoutController extends Controller
             // Stripe processing fee is always passed through to the buyer on card checkout.
             'customerPaysProcessingFee' => true,
             'pickup_available_at_checkout' => MarketplacePickup::cartAllowsUnifiedPickup($cart),
+            'digital_only_checkout' => DigitalProductDelivery::cartIsDigitalOnly($cart),
         ]);
     }
 
@@ -157,19 +160,6 @@ class CheckoutController extends Controller
      */
     public function submitStep1(Request $request): JsonResponse
     {
-        $validated = $request->validate([
-            'name' => 'required|string',
-            'email' => 'required|email',
-            'phone' => 'required|string|max:20',
-            'address' => 'required|string',
-            'city' => 'required|string',
-            'state' => 'required|string',
-            'zip' => 'required|string',
-            'country' => 'required|string',
-            // 'donation_amount' => 'required|numeric', // Commented out - removed donation for Printify products
-            'donation_amount' => 'nullable|numeric', // Made optional and will be set to 0
-        ]);
-
         $user = auth()->user();
         $cart = $user->cart()->with([
             'items.product.organization',
@@ -189,6 +179,28 @@ class CheckoutController extends Controller
             'items.organizationProduct.marketplaceProduct.merchant.shippingAddresses',
             'items.organizationProduct.organization',
         ]);
+
+        $digitalOnlyCheckout = DigitalProductDelivery::cartIsDigitalOnly($cart);
+
+        $validated = $request->validate([
+            'name' => 'required|string',
+            'email' => 'required|email',
+            'phone' => 'required|string|max:20',
+            'address' => $digitalOnlyCheckout ? 'nullable|string' : 'required|string',
+            'city' => $digitalOnlyCheckout ? 'nullable|string' : 'required|string',
+            'state' => 'nullable|string',
+            'zip' => $digitalOnlyCheckout ? 'nullable|string' : 'required|string',
+            'country' => $digitalOnlyCheckout ? 'nullable|string' : 'required|string',
+            'donation_amount' => 'nullable|numeric',
+        ]);
+
+        if ($digitalOnlyCheckout) {
+            $validated['address'] = $validated['address'] ?? '';
+            $validated['city'] = $validated['city'] ?? '';
+            $validated['state'] = $validated['state'] ?? '';
+            $validated['zip'] = $validated['zip'] ?? '';
+            $validated['country'] = $validated['country'] ?? 'US';
+        }
 
         DB::beginTransaction();
         try {
@@ -371,6 +383,16 @@ class CheckoutController extends Controller
                             'error' => $e->getMessage(),
                         ]);
                     }
+                } elseif ($manualProduct && DigitalProductDelivery::productIsDigital($manualProduct)) {
+                    $shippingCost = 0;
+                    $shippingMethods = [
+                        [
+                            'id' => DigitalProductDelivery::SHIPPING_RATE_ID,
+                            'name' => 'Digital delivery',
+                            'cost' => 0,
+                            'estimated_days' => '—',
+                        ],
+                    ];
                 } elseif ($manualProduct && $canQuoteShippo) {
                     $manualProduct->load(['organization.user', 'user', 'shipFromMerchant.shippingAddresses']);
                     $org = $manualProduct->organization;
@@ -461,6 +483,16 @@ class CheckoutController extends Controller
 
                 $nonPrintifyShipping = $shippingCost;
                 $nonPrintifyShippingMethods = $shippingMethods;
+            } elseif (DigitalProductDelivery::cartHasDigitalItems($cart) && ! $this->cartHasNonPrintifyShippableItems($cart)) {
+                $nonPrintifyShipping = 0;
+                $nonPrintifyShippingMethods = [
+                    [
+                        'id' => DigitalProductDelivery::SHIPPING_RATE_ID,
+                        'name' => 'Digital delivery',
+                        'cost' => 0,
+                        'estimated_days' => '—',
+                    ],
+                ];
             }
 
             $shippingData = $this->mergeShippingData($shippingData, $nonPrintifyShipping, $nonPrintifyShippingMethods);
@@ -1296,6 +1328,15 @@ class CheckoutController extends Controller
                 ]);
             }
 
+            try {
+                app(DigitalDeliveryService::class)->provisionCatalogFilesForOrder($order);
+            } catch (\Throwable $e) {
+                \Log::warning('Digital catalog provisioning failed', [
+                    'order_id' => $order->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+
             // Post-commit: for manual-only orders, auto-create Shippo label/tracking
             // (Printify orders are handled via Printify webhooks + OrderController UI.)
             try {
@@ -1738,12 +1779,7 @@ class CheckoutController extends Controller
                 return false;
             }
 
-            $mp = $item->marketplaceProduct ?? $item->organizationProduct?->marketplaceProduct;
-            if ($mp && $this->marketplaceProductIsDigitalDeliveryOnly($mp)) {
-                return false;
-            }
-
-            return true;
+            return DigitalProductDelivery::cartItemNeedsShipping($item);
         });
     }
 

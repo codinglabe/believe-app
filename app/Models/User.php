@@ -478,7 +478,11 @@ class User extends Authenticatable implements MustVerifyEmail
         if (Schema::hasColumn('organizations', 'youtube_access_token')) {
             $youtubeOAuth .= ', organizations.youtube_access_token, organizations.youtube_refresh_token, organizations.youtube_token_expires_at';
         }
-        $select = $base.$youtube.$youtubeOAuth.', board_members.user_id as laravel_through_key';
+        $dropboxOAuth = '';
+        if (Schema::hasColumn('organizations', 'dropbox_refresh_token')) {
+            $dropboxOAuth .= ', organizations.dropbox_refresh_token, organizations.dropbox_access_token, organizations.dropbox_token_expires_at, organizations.dropbox_folder_name';
+        }
+        $select = $base.$youtube.$youtubeOAuth.$dropboxOAuth.', board_members.user_id as laravel_through_key';
 
         return $this->hasOneThrough(
             Organization::class,

@@ -20,6 +20,7 @@ import { Button } from "@/components/frontend/ui/button"
 import { Badge } from "@/components/frontend/ui/badge"
 import { Card, CardContent } from "@/components/frontend/ui/card"
 import { Link, usePage } from "@inertiajs/react"
+import { DigitalDownloadsList } from "@/components/digital/DigitalOrderFulfillment"
 
 interface OrderItem {
   id: number
@@ -31,6 +32,13 @@ interface OrderItem {
   subtotal: number
   printify_variant_id?: string
   variant_data?: any
+  is_digital?: boolean
+  digital_downloads?: {
+    id: number
+    original_filename: string
+    file_size?: number
+    download_url: string
+  }[]
 }
 
 interface ShippingInfo {
@@ -90,6 +98,7 @@ interface Order {
   shipping_info: ShippingInfo | null
   customer_account?: { name: string; email: string } | null
   items: OrderItem[]
+  is_digital_only?: boolean
   printify_details?: PrintifyDetails | null
 }
 
@@ -391,6 +400,14 @@ export default function OrderDetails() {
                             </span>
                           </div>
                         )}
+                        {item.is_digital && (
+                          <div className="mt-3 rounded-md border border-violet-200 bg-violet-50/80 p-3 dark:border-violet-800 dark:bg-violet-950/40">
+                            <p className="text-xs font-medium text-violet-800 dark:text-violet-200 mb-2">
+                              Digital downloads
+                            </p>
+                            <DigitalDownloadsList downloads={item.digital_downloads ?? []} />
+                          </div>
+                        )}
                       </div>
                       <div className="text-right">
                         <p className="font-medium text-gray-900 dark:text-white">
@@ -561,7 +578,21 @@ export default function OrderDetails() {
             </Card>
 
             {/* Shipping Information */}
-            {order.shipping_info && (
+            {order.is_digital_only && order.payment_status === 'paid' && (
+              <Card className="border border-violet-200 dark:border-violet-800">
+                <CardContent className="p-6">
+                  <h3 className="font-semibold text-gray-900 dark:text-white mb-2 flex items-center gap-2">
+                    <Download className="h-5 w-5 text-violet-600" />
+                    Digital delivery
+                  </h3>
+                  <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                    This order does not require shipping. Download your files below when the seller has uploaded them.
+                  </p>
+                </CardContent>
+              </Card>
+            )}
+
+            {order.shipping_info && !order.is_digital_only && (
               <Card className="border border-gray-200 dark:border-gray-700">
                 <CardContent className="p-6">
                   <h3 className="font-semibold text-gray-900 dark:text-white mb-4">

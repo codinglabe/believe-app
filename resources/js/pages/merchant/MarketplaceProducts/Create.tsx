@@ -11,6 +11,7 @@ import { MerchantDashboardLayout } from "@/components/merchant"
 import { ArrowLeft, Upload, X } from "lucide-react"
 import { motion } from "framer-motion"
 import { showSuccessToast, showErrorToast } from "@/lib/toast"
+import DigitalCatalogFiles from "@/components/digital/DigitalCatalogFiles"
 
 interface ProductRow {
   id: number
@@ -33,6 +34,7 @@ interface ProductRow {
   nonprofit_approval_type: string
   status: string
   pickup_available?: boolean
+  digital_files?: { id: number; original_filename: string; file_size?: number }[]
 }
 
 interface CategoryOption {
@@ -394,6 +396,18 @@ export default function MerchantMarketplaceProductForm({ product, categories = [
                     <option value="media">Media</option>
                   </select>
                 </div>
+                {data.product_type === "digital" && isEdit && product?.id ? (
+                  <div className="md:col-span-2">
+                    <DigitalCatalogFiles
+                      files={product.digital_files ?? []}
+                      uploadUrl={`/marketplace-products/${product.id}/digital-files`}
+                    />
+                  </div>
+                ) : data.product_type === "digital" && !isEdit ? (
+                  <p className="md:col-span-2 text-xs text-white/55">
+                    Save the product first, then edit it to attach downloadable files.
+                  </p>
+                ) : null}
               </div>
 
               <label className="flex items-center justify-between rounded-md border border-[#2563EB]/20 bg-black/25 px-4 py-3">

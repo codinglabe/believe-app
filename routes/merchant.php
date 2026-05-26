@@ -112,6 +112,9 @@ Route::middleware(['auth:merchant'])->group(function () {
         Route::get('/marketplace-orders', [App\Http\Controllers\Merchant\MerchantMarketplaceOrderController::class, 'index'])->name('merchant.marketplace-orders.index');
         Route::get('/marketplace-orders/{order}/shippo/rates', [App\Http\Controllers\Merchant\MerchantMarketplaceOrderController::class, 'getShippoRates'])->name('merchant.marketplace-orders.shippo.rates');
         Route::post('/marketplace-orders/{order}/shippo/purchase-label', [App\Http\Controllers\Merchant\MerchantMarketplaceOrderController::class, 'purchaseShippoLabel'])->name('merchant.marketplace-orders.shippo.purchase-label');
+        Route::post('/marketplace-orders/{order}/items/{orderItem}/digital-deliveries', [App\Http\Controllers\DigitalDeliveryController::class, 'uploadOrderItemFiles'])->name('merchant.marketplace-orders.digital-deliveries.upload');
+        Route::delete('/marketplace-orders/{order}/items/{orderItem}/digital-deliveries/{delivery}', [App\Http\Controllers\DigitalDeliveryController::class, 'deleteOrderItemDelivery'])->name('merchant.marketplace-orders.digital-deliveries.delete');
+        Route::post('/marketplace-products/{marketplaceProduct}/digital-files', [App\Http\Controllers\DigitalDeliveryController::class, 'uploadCatalogForMarketplaceProduct'])->name('merchant.marketplace-products.digital-files.upload');
 
         // Feedback & Rewards
         Route::prefix('feedback-rewards')->name('feedback-rewards.')->group(function () {
