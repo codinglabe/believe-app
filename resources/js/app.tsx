@@ -15,11 +15,10 @@ import { registerServiceWorker } from './pwa/register-service-worker';
 import { PWAUpdatePrompt } from './components/PWAUpdatePrompt';
 import { isLivestockDomain } from './lib/livestock-domain';
 import { isMerchantDomain } from './lib/merchant-domain';
-import { applyFirebaseWebConfig, resetMessagingRegistration } from './lib/firebase';
-import { attachFirebasePushToastListener } from './lib/firebase-push-toast';
+import { applyFirebaseWebConfig, ensureMessagingReady, resetMessagingRegistration } from './lib/firebase';
+import { attachFirebasePushToastListener, showFirebasePushToast } from './lib/firebase-push-toast';
 import { syncPushTokenWithServer } from './lib/push-token-sync';
 import { logPushDiagnostics, shouldAutoPromptForPushPermission } from './lib/push-environment';
-import { showFirebasePushToast } from './lib/firebase-push-toast';
 import { Toaster } from 'react-hot-toast';
 import { getBrowserTimezone } from './lib/timezone-detection';
 import axios from 'axios';
@@ -223,6 +222,17 @@ if (typeof window !== 'undefined' && !isLivestockDomain()) {
         (window as Window & { testBelievePushToast?: () => void }).testBelievePushToast = () =>
             showFirebasePushToast({ title: 'Test notification', body: 'If you see this toast, foreground UI works.' });
         console.info('[Push] Dev helpers: enableBelievePush(), testBelievePushToast()');
+    }
+
+    if ('permissions' in navigator) {
+        void navigator.permissions.query({ name: 'notifications' as PermissionName }).then((status) => {
+            status.addEventListener('change', () => {
+                if (Notification.permission === 'granted') {
+                    resetMessagingRegistration();
+                    void ensureMessagingReady();
+                }
+            });
+        });
     }
 }
 
