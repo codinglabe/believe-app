@@ -7,7 +7,8 @@ set -euo pipefail
 
 patch_ini() {
   local file="$1"
-  sed -i 's/--queue=default --sleep=3 --tries=3 --timeout=900 --max-time=3600/--queue=default --sleep=3 --tries=3 --timeout=7200 --max-time=7200/g' "$file"
+  sed -i 's/--queue=default --sleep=3 --tries=3 --timeout=900 --max-time=3600/--queue=mail,default --sleep=3 --tries=3 --timeout=7200 --max-time=7200/g' "$file"
+  sed -i 's/--queue=default --sleep=3 --tries=3 --timeout=7200 --max-time=7200/--queue=mail,default --sleep=3 --tries=3 --timeout=7200 --max-time=7200/g' "$file"
   sed -i 's/--queue=irs-import --memory=512 --sleep=3 --tries=2 --timeout=600 --max-time=3600/--queue=irs-import --memory=512 --sleep=3 --tries=2 --timeout=10800 --max-time=10800/g' "$file"
   sed -i 's/stopwaitsecs=3600/stopwaitsecs=7200/g' "$file"
   # irs-import program block stopwaitsecs may be 600

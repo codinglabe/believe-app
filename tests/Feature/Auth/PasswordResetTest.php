@@ -3,8 +3,8 @@
 use App\Jobs\SendPasswordResetEmailJob;
 use App\Mail\PasswordResetMail;
 use App\Models\User;
+use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Mail;
-use Illuminate\Support\Facades\Queue;
 
 uses(\Illuminate\Foundation\Testing\RefreshDatabase::class);
 
@@ -15,13 +15,13 @@ test('reset password link screen can be rendered', function () {
 });
 
 test('reset password link can be requested', function () {
-    Queue::fake();
+    Bus::fake();
 
     $user = User::factory()->create();
 
     $this->post('/forgot-password', ['email' => $user->email]);
 
-    Queue::assertPushed(SendPasswordResetEmailJob::class, function (SendPasswordResetEmailJob $job) use ($user) {
+    Bus::assertDispatchedAfterResponse(SendPasswordResetEmailJob::class, function (SendPasswordResetEmailJob $job) use ($user) {
         return $job->userId === $user->id && $job->token !== '';
     });
 });
