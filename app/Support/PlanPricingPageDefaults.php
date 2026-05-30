@@ -7,6 +7,9 @@ final class PlanPricingPageDefaults
     /** Introductory monthly rate from marketing artwork. */
     public const INTRO_PRICE = 19.90;
 
+    /** Length of introductory pricing (months) before standard rate applies. */
+    public const INTRO_PERIOD_MONTHS = 12;
+
     /** Standard monthly rate after introductory period. */
     public const STANDARD_PRICE = 34.00;
 
@@ -220,6 +223,14 @@ final class PlanPricingPageDefaults
                 'key' => 'pricing_standard_price',
                 'label' => 'Pricing Standard Price',
                 'value' => (string) self::STANDARD_PRICE,
+                'type' => 'text',
+                'icon' => '',
+                'description' => null,
+            ],
+            [
+                'key' => 'pricing_intro_period_months',
+                'label' => 'Pricing Intro Period Months',
+                'value' => (string) self::INTRO_PERIOD_MONTHS,
                 'type' => 'text',
                 'icon' => '',
                 'description' => null,

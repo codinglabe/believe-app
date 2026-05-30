@@ -8,6 +8,7 @@ use App\Models\User;
 use App\Models\WalletPlan;
 use App\Support\PlanAiMediaStudioSubscriptionCredits;
 use App\Support\PlanFirstMonthWelcomeCredits;
+use App\Support\PlanIntroductorySubscription;
 use App\Support\PlanStripeAmount;
 use App\Support\StripeCustomerChargeAmount;
 use App\Support\SupporterSubscriptionService;
@@ -889,6 +890,8 @@ class PlansController extends Controller
                         'stripe_subscription_id' => $session->subscription,
                         'plan_id' => $plan->id,
                     ]);
+
+                    PlanIntroductorySubscription::attachScheduleIfNeeded($plan, (string) $session->subscription);
                 } catch (\Exception $e) {
                     Log::error('Failed to sync plan subscription using Cashier', [
                         'error' => $e->getMessage(),
@@ -929,11 +932,16 @@ class PlansController extends Controller
             // Prepare current_plan_details as JSON
             $welcomeBonus = PlanFirstMonthWelcomeCredits::grantIfEligible($user, (int) $plan->id, $sessionId);
 
+            $introDetails = PlanIntroductorySubscription::subscriptionDetailsForUser($plan);
+
             $planDetails = [
                 'name' => $plan->name,
                 'price' => (float) $plan->price,
                 'frequency' => $plan->frequency,
                 'subscribed_at' => now()->toIso8601String(),
+                'intro_period_months' => $introDetails['intro_period_months'],
+                'standard_price_after_intro' => $introDetails['standard_price'],
+                'intro_ends_at' => $introDetails['intro_ends_at'],
                 'ai_media_studio_credits_granted' => 0,
                 'first_month_welcome_granted' => $welcomeBonus['granted'],
                 'first_month_welcome_ai_tokens' => $welcomeBonus['ai_tokens'],

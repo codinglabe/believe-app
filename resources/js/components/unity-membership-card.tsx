@@ -4,10 +4,13 @@ import { Badge } from "@/components/frontend/ui/badge"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import {
+  formatAfterIntroductoryPeriodCopy,
   formatCurrencyCustomFieldDisplay,
+  formatIntroductoryPeriodHeadline,
   formatPlanPrice,
   planCurrencyCustomFields,
   pricingPageMarketingFromPlan,
+  resolveIntroPeriodMonths,
   UNITY_MEMBERSHIP_DEFAULTS,
   type PlanPricingCustomField,
   type PlanPricingShape,
@@ -81,6 +84,8 @@ export function UnityMembershipCard({
 }: UnityMembershipCardProps) {
   const pricingMarketing = pricingPageMarketingFromPlan(plan)
   const verificationCurrencyFields = planCurrencyCustomFields(plan)
+  const introPeriodMonths = resolveIntroPeriodMonths(plan)
+  const showIntroductoryStandard = standardPrice > introPrice
 
   return (
     <div
@@ -136,9 +141,20 @@ export function UnityMembershipCard({
                   / {UNITY_MEMBERSHIP_DEFAULTS.frequency}
                 </span>
               </p>
-              <p className="text-sm font-medium text-slate-600 dark:text-white/75">
-                Then ${formatPlanPrice(standardPrice)}/{UNITY_MEMBERSHIP_DEFAULTS.frequency} after introductory period
-              </p>
+              {showIntroductoryStandard && (
+                <>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-violet-700 dark:text-purple-300">
+                    {formatIntroductoryPeriodHeadline(introPeriodMonths)}
+                  </p>
+                  <p className="text-sm font-medium text-slate-600 dark:text-white/75">
+                    {formatAfterIntroductoryPeriodCopy(
+                      standardPrice,
+                      UNITY_MEMBERSHIP_DEFAULTS.frequency,
+                      introPeriodMonths,
+                    )}
+                  </p>
+                </>
+              )}
               <p className="text-xs text-slate-500 dark:text-white/60">{pricingMarketing.cancellationPolicy}</p>
               {verificationCurrencyFields.length > 0 ? (
                 verificationCurrencyFields.map((f: PlanPricingCustomField, i: number) => {
