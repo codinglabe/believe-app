@@ -7,6 +7,7 @@ use App\Http\Controllers\Merchant\MerchantFeedbackRewardsController;
 use App\Http\Controllers\Merchant\MerchantMarketplacePoolApprovalController;
 use App\Http\Controllers\Merchant\MerchantMarketplaceProductController;
 use App\Http\Controllers\SupporterFeedbackController;
+use App\Support\PasswordResetCooldown;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
@@ -32,6 +33,8 @@ Route::middleware('guest:merchant')->group(function () {
     Route::get('forgot-password', function (Request $request) {
         return Inertia::render('merchant/Auth/ForgotPassword', [
             'status' => $request->session()->get('status'),
+            'passwordResetCooldownUntil' => $request->session()->get('passwordResetCooldownUntil'),
+            'passwordResetThrottleSeconds' => PasswordResetCooldown::seconds('merchants'),
         ]);
     })->name('merchant.password.request');
 
