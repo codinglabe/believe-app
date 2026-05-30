@@ -1,7 +1,8 @@
 "use client";
 
 import { useMemo, useState, useEffect } from "react";
-import { Head, Link, usePage } from "@inertiajs/react";
+import { Link, usePage } from "@inertiajs/react";
+import { PageHead } from "@/components/frontend/PageHead";
 import FrontendLayout from "@/layouts/frontend/frontend-layout";
 import SupporterPricingTab, {
   type SupporterPlanOption,
@@ -87,6 +88,7 @@ interface CurrentPlan {
 }
 
 interface Props {
+  seo?: { title?: string; description?: string; share_image?: string };
   plans: Plan[];
   addOns: AddOn[];
   currentPlan?: CurrentPlan | null;
@@ -501,6 +503,7 @@ function resolveInitialAudience(url: string, userRole?: string | null): PricingA
 }
 
 export default function PricingPage({
+  seo,
   plans,
   addOns,
   currentPlan,
@@ -533,7 +536,7 @@ export default function PricingPage({
 
   return (
     <FrontendLayout>
-      <Head title="Pricing | Believe In Unity" />
+      <PageHead title={seo?.title ?? "Pricing"} description={seo?.description} image={seo?.share_image} />
       <div className="min-h-screen overflow-x-hidden bg-slate-50 text-slate-900 antialiased dark:bg-[#0A0A1A] dark:text-white">
         <div className="container mx-auto px-4 py-8 sm:py-12 md:py-14">
           <header className="mx-auto mb-8 text-center sm:mb-10">

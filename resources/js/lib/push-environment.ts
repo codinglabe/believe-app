@@ -7,6 +7,18 @@ export function isPushCapableBrowser(): boolean {
         return false;
     }
 
+    return isServiceWorkerCapable();
+}
+
+/** True when a service worker can be registered (PWA updates + push). */
+export function isServiceWorkerCapable(): boolean {
+    if (typeof window === "undefined") {
+        return false;
+    }
+    if (!("serviceWorker" in navigator)) {
+        return false;
+    }
+
     const host = window.location.hostname;
 
     if (window.isSecureContext) {
@@ -17,7 +29,6 @@ export function isPushCapableBrowser(): boolean {
         return true;
     }
 
-    // Laravel Herd, Valet, .test TLDs (HTTP is not isSecureContext but FCM allows localhost-class dev)
     if (host.endsWith(".test") || host.endsWith(".localhost")) {
         return true;
     }

@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\NonprofitExemptionCertificateController;
 use App\Http\Controllers\PaymentMethodSettingController;
+use App\Http\Controllers\Settings\DonateWidgetController;
 use App\Http\Controllers\Settings\PasswordController;
 use App\Http\Controllers\Settings\ProfileController;
 use App\Http\Controllers\Settings\ReferralLinkController;
@@ -57,6 +58,10 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin|car
 
         // Exemption Certificates - For nonprofit organizations
         Route::middleware('role:organization|care_alliance')->group(function () {
+            Route::get('settings/donate-widget', [DonateWidgetController::class, 'edit'])
+                ->name('donate-widget.settings')
+                ->middleware('role:organization');
+
             Route::get('settings/exemption-certificates', [NonprofitExemptionCertificateController::class, 'index'])->name('exemption-certificates.index');
             Route::post('settings/exemption-certificates', [NonprofitExemptionCertificateController::class, 'store'])->name('exemption-certificates.store');
             Route::put('settings/exemption-certificates/{id}', [NonprofitExemptionCertificateController::class, 'update'])->name('exemption-certificates.update');

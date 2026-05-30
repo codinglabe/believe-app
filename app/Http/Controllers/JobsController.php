@@ -8,6 +8,7 @@ use App\Models\JobPost;
 use App\Models\Organization;
 use App\Models\PositionCategory;
 use App\Models\User;
+use App\Services\SeoService;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 
@@ -78,6 +79,7 @@ class JobsController extends Controller
             ->toArray();
 
         return Inertia::render('frontend/jobs/index', [
+            'seo' => SeoService::forPage('jobs'),
             'jobs' => $jobs,
             'organizations' => $organizations,
             'positionCategories' => $positionCategories,
@@ -236,6 +238,7 @@ class JobsController extends Controller
         $filters['position_ids'] = array_map(static fn (int $id) => (string) $id, $positionIds);
 
         return Inertia::render('frontend/jobs/volunteer-opportunities', [
+            'seo' => SeoService::forPage('volunteer_opportunities'),
             'jobs' => $jobs,
             'organizations' => $organizations,
             'positionCategories' => $positionCategories,

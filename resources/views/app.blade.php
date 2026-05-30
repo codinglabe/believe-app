@@ -15,15 +15,13 @@
         <meta name="firebase-vapid-key" content="{{ config('services.firebase.vapid_key', '') }}">
         @endunless
         @unless($isLivestock || $isMerchant)
-        <meta name="description" content="{{ config('app.name') }} - Connect with nonprofits and supporters. Donate, volunteer, and make an impact.">
-        <meta property="og:type" content="website">
-        <meta property="og:site_name" content="{{ config('app.name') }}">
-        <meta name="twitter:card" content="summary_large_image">
+        @include('partials.social-meta')
         @endunless
 
         <!-- PWA Meta Tags -->
         <link rel="manifest" href="/manifest.json">
         <meta name="theme-color" content="#000000">
+        <meta name="app-version" content="{{ app_version() }}">
 
         <!-- Icons -->
         <link rel="icon" href="/web-app-manifest-192x192.png">

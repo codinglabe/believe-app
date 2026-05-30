@@ -235,6 +235,8 @@ jobs:
           php artisan storage:link --force
           php artisan config:cache
           php artisan view:cache
+          # cPanel docroot is public_html; Vite assets are under public/build — nginx needs /build at account root.
+          ln -sfn public/build build
           # Do not route:cache — duplicate route names can break serialization on the server.
           test -f .env && test -d storage && test -f .htaccess && echo DEPLOY_OK
           REMOTE

@@ -42,6 +42,7 @@ export interface SharedData {
     auth: Auth;
     ziggy: { location: string; [key: string]: unknown };
     sidebarOpen: boolean;
+    pwaVersion?: string;
     [key: string]: unknown;
 }
 

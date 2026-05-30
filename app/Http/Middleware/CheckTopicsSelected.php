@@ -14,12 +14,35 @@ class CheckTopicsSelected
      *
      * @param  \Closure(\Illuminate\Http\Request): (\Symfony\Component\HttpFoundation\Response)  $next
      */
-    // CheckTopicsSelected.php
     public function handle(Request $request, Closure $next): Response
     {
-        $excludedRoutes = ['topics.select', 'topics.store', 'logout', 'wallet.plans'];
+        if (! config('app.require_topics_selection', true)) {
+            return $next($request);
+        }
 
-        if (in_array($request->route()->getName(), $excludedRoutes)) {
+        $route = $request->route();
+        $routeName = $route?->getName();
+
+        $excludedRoutes = [
+            'user.topics.select',
+            'auth.topics.select',
+            'topics.select',
+            'user.topics.store',
+            'topics.store',
+            'logout',
+            'wallet.plans',
+        ];
+
+        if ($routeName !== null && in_array($routeName, $excludedRoutes, true)) {
+            return $next($request);
+        }
+
+        // Topic onboarding pages (route names differ between user vs org).
+        if ($request->is(
+            'profile/topics/select',
+            'group-topics/select',
+            'user/topics/store',
+        )) {
             return $next($request);
         }
 
@@ -41,6 +64,11 @@ class CheckTopicsSelected
         }
 
         if ($user && ! $user->interestedTopics()->exists()) {
+            // No topics in DB — cannot complete onboarding; do not trap users in a redirect loop.
+            $hasSelectableTopics = \App\Models\ChatTopic::query()->exists();
+            if (! $hasSelectableTopics) {
+                return $next($request);
+            }
 
             // For JSON/API requests, return JSON response instead of redirecting
             if ($request->expectsJson() || $request->wantsJson() || $request->is('api/*') || $request->header('Accept') === 'application/json') {

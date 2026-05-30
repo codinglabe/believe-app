@@ -12,6 +12,7 @@ use App\Support\PlanIntroductorySubscription;
 use App\Support\PlanStripeAmount;
 use App\Support\StripeCustomerChargeAmount;
 use App\Support\SupporterSubscriptionService;
+use App\Services\SeoService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
@@ -202,6 +203,7 @@ class PlansController extends Controller
             ->all();
 
         return Inertia::render('frontend/Pricing', [
+            'seo' => SeoService::forPage('pricing'),
             'plans' => $plans,
             'addOns' => $addOns,
             'currentPlan' => $currentPlanData,
